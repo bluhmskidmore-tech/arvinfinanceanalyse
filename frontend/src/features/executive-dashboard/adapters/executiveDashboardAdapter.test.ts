@@ -359,3 +359,70 @@ describe("adaptDashboard · mixed effective_date", () => {
     }
   });
 });
+
+describe("adaptDashboard · domainsEffectiveDate / datesDiverged", () => {
+  it("datesDiverged=false when all calibers share the same date", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      domainsEffectiveDate: {
+        balance_sheet: "2026-04-18",
+        pnl: "2026-04-18",
+      },
+    });
+    expect(out.datesDiverged).toBe(false);
+    expect(out.domainsEffectiveDate).toEqual({
+      balance_sheet: "2026-04-18",
+      pnl: "2026-04-18",
+    });
+  });
+
+  it("datesDiverged=true when calibers have different dates", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      domainsEffectiveDate: {
+        balance_sheet: "2026-04-18",
+        pnl: "2026-04-17",
+      },
+    });
+    expect(out.datesDiverged).toBe(true);
+  });
+
+  it("datesDiverged=false and domainsEffectiveDate={} when input omitted", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+    });
+    expect(out.datesDiverged).toBe(false);
+    expect(out.domainsEffectiveDate).toEqual({});
+  });
+
+  it("datesDiverged=false when only one caliber has data", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      domainsEffectiveDate: {
+        balance_sheet: "2026-04-18",
+      },
+    });
+    expect(out.datesDiverged).toBe(false);
+    expect(out.domainsEffectiveDate).toEqual({ balance_sheet: "2026-04-18" });
+  });
+});

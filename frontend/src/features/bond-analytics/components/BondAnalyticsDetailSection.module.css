@@ -1,34 +1,34 @@
 .detailSection {
   display: grid;
-  gap: 16px;
+  gap: var(--moss-space-4);
   min-width: 0;
-  padding: 20px;
-  border: 1px solid #dfe5ee;
-  border-radius: 8px;
+  padding: var(--moss-space-5);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.98)),
     #ffffff;
-  box-shadow: 0 14px 34px rgba(22, 35, 46, 0.07);
+  box-shadow: var(--moss-shadow-card);
 }
 
 .header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
+  gap: var(--moss-space-4);
   align-items: end;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #e2e6ec;
+  padding-bottom: var(--moss-space-4);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
 }
 
 .headingStack {
   display: grid;
-  gap: 6px;
+  gap: var(--moss-space-2);
   min-width: 0;
 }
 
 .title {
   margin: 0;
-  color: #1f2937;
+  color: var(--moss-color-neutral-900);
   font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
@@ -37,7 +37,7 @@
 .description {
   max-width: 860px;
   margin: 0;
-  color: #4b5563;
+  color: var(--moss-color-neutral-700);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -47,11 +47,11 @@
   align-items: center;
   min-height: 28px;
   max-width: 100%;
-  padding: 5px 10px;
+  padding: 5px var(--moss-space-3);
   border: 1px solid #cfe0f5;
-  border-radius: 8px;
+  border-radius: var(--moss-radius-sm);
   background: #f3f8ff;
-  color: #1850a1;
+  color: var(--moss-color-primary-600);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
@@ -67,28 +67,28 @@
 }
 
 .tabRail :global(.ant-tabs-nav::before) {
-  border-bottom-color: #dfe5ee;
+  border-bottom-color: var(--moss-color-neutral-200);
 }
 
 .tabRail :global(.ant-tabs-tab) {
   padding: 9px 0;
-  color: #4b5563;
+  color: var(--moss-color-neutral-700);
 }
 
 .tabRail :global(.ant-tabs-tab + .ant-tabs-tab) {
-  margin-left: 20px;
+  margin-left: var(--moss-space-5);
 }
 
 .tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
-  color: #1850a1;
+  color: var(--moss-color-primary-600);
   font-weight: 700;
 }
 
 .contentFrame {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid #e2e6ec;
-  border-radius: 8px;
+  padding: var(--moss-space-4);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
   background: #ffffff;
   overflow-x: auto;
   overflow-wrap: anywhere;
@@ -99,15 +99,15 @@
   min-height: 96px;
   place-items: center;
   border: 1px dashed #cfe0f5;
-  border-radius: 8px;
+  border-radius: var(--moss-radius-sm);
   background: #f8fbff;
-  color: #6b7280;
+  color: var(--moss-color-neutral-600);
   font-size: 13px;
 }
 
 @media (max-width: 720px) {
   .detailSection {
-    padding: 16px;
+    padding: var(--moss-space-4);
   }
 
   .header {
@@ -125,7 +125,7 @@
   }
 
   .contentFrame {
-    padding: 12px;
+    padding: var(--moss-space-3);
   }
 
   .contentFrame :global(.ant-table) {

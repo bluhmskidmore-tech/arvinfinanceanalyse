@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import "./LivermoreStrategyPanel.css";
@@ -8,6 +9,7 @@ type Props = {
   isError: boolean;
   fetchErrorDetail?: string | null;
   onRetry: () => void;
+  onRefreshGateSupplement?: () => Promise<{ status: string; computed_rows: number; message?: string }>;
 };
 
 function statusClass(status: string) {
@@ -20,7 +22,29 @@ export function LivermoreStrategyPanel({
   isError,
   fetchErrorDetail,
   onRetry,
+  onRefreshGateSupplement,
 }: Props) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<string | null>(null);
+
+  const handleRefreshGate = async () => {
+    if (!onRefreshGateSupplement || refreshing) return;
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const res = await onRefreshGateSupplement();
+      if (res.status === "completed") {
+        setRefreshResult(`已计算 ${res.computed_rows} 条门控数据`);
+        setTimeout(() => onRetry(), 600);
+      } else {
+        setRefreshResult(res.message || `状态: ${res.status}`);
+      }
+    } catch (err) {
+      setRefreshResult(`刷新失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   if (isLoading) {
     return (
       <section className="livermore-strategy-panel" data-testid="market-data-livermore-panel">
@@ -77,7 +101,23 @@ export function LivermoreStrategyPanel({
               : "结果日期待定"}
           </div>
         </div>
-        <span className="livermore-strategy-panel__badge">分析口径 · 不生成交易指令</span>
+        <div className="livermore-strategy-panel__actions">
+          {onRefreshGateSupplement ? (
+            <button
+              className="livermore-strategy-panel__refresh-btn"
+              onClick={handleRefreshGate}
+              disabled={refreshing}
+              type="button"
+              title="从已有 CSI300 数据计算 breadth / limit-up 门控"
+            >
+              {refreshing ? "计算中…" : "刷新门控数据"}
+            </button>
+          ) : null}
+          {refreshResult ? (
+            <span className="livermore-strategy-panel__refresh-result">{refreshResult}</span>
+          ) : null}
+          <span className="livermore-strategy-panel__badge">分析口径 · 不生成交易指令</span>
+        </div>
       </div>
 
       {model.statusNotes.length > 0 ? (

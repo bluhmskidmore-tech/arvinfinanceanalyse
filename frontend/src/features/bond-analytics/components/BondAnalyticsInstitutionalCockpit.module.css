@@ -1,47 +1,47 @@
 .phaseSection {
   display: grid;
-  gap: 12px;
+  gap: var(--moss-space-3);
 }
 
 .evidenceSection {
   display: grid;
-  gap: 8px;
+  gap: var(--moss-space-2);
 }
 
 .stackCompact {
   display: grid;
-  gap: 12px;
+  gap: var(--moss-space-3);
 }
 
 .heroBody {
   display: grid;
-  gap: 14px;
+  gap: var(--moss-space-4);
 }
 
 .heroTopGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.85fr);
-  gap: 12px;
+  gap: var(--moss-space-3);
   align-items: start;
 }
 
 .heroTitleStack {
   display: grid;
-  gap: 8px;
+  gap: var(--moss-space-2);
 }
 
 .kpiBlock {
   display: grid;
-  gap: 8px;
+  gap: var(--moss-space-2);
 }
 
 .summaryBody {
   display: grid;
-  gap: 10px;
+  gap: var(--moss-space-3);
 }
 
 .summaryNarrative {
-  color: #10356a;
+  color: var(--moss-color-primary-800);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -49,34 +49,34 @@
 .evidenceMetricGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--moss-space-3);
 }
 
 .progressRow {
   display: grid;
-  gap: 6px;
+  gap: var(--moss-space-2);
 }
 
 .progressHeader {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--moss-space-3);
 }
 
 .statRow {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--moss-space-3);
 }
 
 .statRowDivider {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e2e6ec;
+  gap: var(--moss-space-3);
+  padding-bottom: var(--moss-space-3);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
 }
 
 @media (max-width: 720px) {

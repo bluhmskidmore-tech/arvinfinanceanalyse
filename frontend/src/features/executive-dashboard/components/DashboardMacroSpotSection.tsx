@@ -139,6 +139,11 @@ export function DashboardMacroSpotSection() {
       title="市场快照"
       state={state}
       onRetry={() => void query.refetch()}
+      extra={
+        <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, fontWeight: 600 }}>
+          最近交易日 · 不绑定报告日
+        </span>
+      }
     >
       <div
         data-testid="dashboard-macro-spot-grid"

@@ -1,13 +1,13 @@
 /* Page-local layout for yield curve term structure card (keeps TSX free of style= growth). */
 .subtitle {
   font-size: 11px;
-  color: #7a8795;
-  margin-bottom: 8px;
+  color: var(--moss-color-text-muted);
+  margin-bottom: var(--moss-space-2);
   line-height: 1.5;
 }
 
 .warningStack {
-  margin-bottom: 8px;
+  margin-bottom: var(--moss-space-2);
 }
 
 .warningItem {
@@ -17,7 +17,7 @@
 .spinWrap {
   display: flex;
   justify-content: center;
-  padding: 24px;
+  padding: var(--moss-space-6);
 }
 
 .chart {
@@ -32,10 +32,10 @@
 }
 
 .empty {
-  border: 1px dashed #d6dedc;
-  border-radius: 12px;
-  padding: 16px;
+  border: 1px dashed var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-md);
+  padding: var(--moss-space-4);
   text-align: center;
-  color: #9eadab;
+  color: var(--moss-color-neutral-400);
   font-size: 13px;
 }

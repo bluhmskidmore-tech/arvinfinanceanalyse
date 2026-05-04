@@ -74,6 +74,9 @@ const PlatformConfigPage = lazy(
   () => import("../features/platform-config/PlatformConfigPage"),
 );
 const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
+const MarketDataPage = lazy(
+  () => import("../features/market-data/pages/MarketDataPage"),
+);
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
@@ -208,6 +211,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<CrossAssetPage />),
+      };
+    }
+
+    if (section.path === "/market-data") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<MarketDataPage />),
       };
     }
 

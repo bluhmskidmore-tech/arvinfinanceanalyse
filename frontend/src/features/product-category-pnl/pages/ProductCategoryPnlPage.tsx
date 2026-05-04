@@ -11,6 +11,7 @@ import type {
   ProductCategoryManualAdjustmentRequest,
 } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
@@ -56,10 +57,12 @@ const pageHeaderStyle = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 16,
-  padding: 20,
+  padding: 22,
   borderRadius: 18,
   border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
+  background:
+    "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,251,254,0.98) 62%, rgba(232,241,251,0.72) 100%)",
+  boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
   marginBottom: 18,
 } as const;
 
@@ -1701,7 +1704,7 @@ export default function ProductCategoryPnlPage() {
   }
 
   return (
-    <section data-testid="product-category-page">
+    <section data-testid="product-category-page" className="product-category-page-shell">
       <FilterBar style={{ marginBottom: 16 }}>
         <button
           type="button"
@@ -1720,133 +1723,127 @@ export default function ProductCategoryPnlPage() {
           月度经营分析
         </button>
       </FilterBar>
-      <div style={pageHeaderStyle}>
-        <div>
-          <h1
-            data-testid="product-category-page-title"
-            style={{
-              margin: 0,
-              fontSize: 28,
-              fontWeight: 700,
-              letterSpacing: "-0.03em",
-            }}
-          >
-            产品分类损益
-          </h1>
+      <PageDecisionHero
+        testId="product-category-contract-hero"
+        className="product-category-contract-hero"
+        titleTestId="product-category-page-title"
+        questionTestId="product-category-page-subtitle"
+        eyebrow="工作台"
+        title="产品分类损益"
+        businessQuestion="按业务分类查看损益、FTP 和净收入。用于经营分析，不等同于逐笔损益明细。"
+        reportDateSlot={<span data-testid="product-category-report-date-slot">报表日期：{selectedDate || "待选"}</span>}
+        conclusion={
           <p
-            data-testid="product-category-page-subtitle"
-            style={{
-              marginTop: 8,
-              marginBottom: 0,
-              color: designTokens.color.neutral[600],
-              fontSize: 14,
-              lineHeight: 1.7,
-            }}
+            data-testid="product-category-boundary-copy"
+            style={{ margin: 0, color: designTokens.color.neutral[600], fontSize: 12, lineHeight: 1.6 }}
           >
-            按业务分类查看损益、FTP 和净收入。用于经营分析，不等同于逐笔损益明细。
-          </p>
-          <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
             系统层经营口径：正式基线来自正式读模型；情景预览仅在显式应用后生效。
           </p>
+        }
+        actions={
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span
+              data-testid="product-category-role-badge"
+              style={{
+                ...chipTypography,
+                background: designTokens.color.primary[50],
+                color: designTokens.color.primary[600],
+              }}
+            >
+              系统层
+            </span>
+            <span
+              style={{
+                ...chipTypography,
+                background:
+                  client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+                color:
+                  client.mode === "real"
+                    ? displayTokens.apiMode.realForeground
+                    : displayTokens.apiMode.mockForeground,
+              }}
+            >
+              {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
+            </span>
+            <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
+              查看调整审计
+            </a>
+            <a data-testid="product-category-ledger-link" href={ledgerPnlHref}>
+              总账损益
+            </a>
+            <button
+              type="button"
+              data-testid="product-category-manual-button"
+              onClick={() => {
+                setShowManualForm((current) => !current);
+                setEditingAdjustmentId(null);
+                setAdjustmentError(null);
+                if (showManualForm) {
+                  setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
+                }
+              }}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                border: `1px solid ${designTokens.color.neutral[900]}`,
+                background: designTokens.color.neutral[50],
+                color: designTokens.color.neutral[900],
+                fontWeight: 600,
+              }}
+            >
+              + 手工录入
+            </button>
+            <button
+              type="button"
+              data-testid="product-category-refresh-button"
+              onClick={() => void handleRefresh()}
+              disabled={isRefreshing}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                border: `1px solid ${designTokens.color.neutral[900]}`,
+                background: designTokens.color.neutral[50],
+                color: designTokens.color.neutral[900],
+                fontWeight: 600,
+                cursor: isRefreshing ? "progress" : "pointer",
+                opacity: isRefreshing ? 0.7 : 1,
+              }}
+            >
+              {isRefreshing ? "刷新中..." : "刷新损益数据"}
+            </button>
+          </div>
+        }
+        style={pageHeaderStyle}
+      >
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
           {isRefreshing ? (
-            <p data-testid="product-category-refresh-status">
+            <p data-testid="product-category-refresh-status" style={{ margin: 0 }}>
               {formatProductCategoryRefreshStatusLine(refreshPollSnapshot)}
             </p>
           ) : null}
           {lastRefreshRunId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+            <p style={{ margin: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
               最近刷新任务：{lastRefreshRunId}
             </p>
           ) : null}
           {lastAdjustmentId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+            <p style={{ margin: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
               最近录入调整：{lastAdjustmentId}
             </p>
           ) : null}
           {refreshError ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}>
-              {refreshError}
-            </p>
+            <p style={{ margin: 0, color: designTokens.color.danger[700], fontSize: 12 }}>{refreshError}</p>
           ) : null}
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <span
-            data-testid="product-category-role-badge"
-            style={{
-              ...chipTypography,
-              background: designTokens.color.primary[50],
-              color: designTokens.color.primary[600],
-            }}
-          >
-            系统层
-          </span>
-          <span
-            style={{
-              ...chipTypography,
-              background:
-                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-              color:
-                client.mode === "real"
-                  ? displayTokens.apiMode.realForeground
-                  : displayTokens.apiMode.mockForeground,
-            }}
-          >
-            {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
-          </span>
-          <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
-            查看调整审计
-          </a>
-          <a data-testid="product-category-ledger-link" href={ledgerPnlHref}>
-            总账损益
-          </a>
-          <button
-            type="button"
-            data-testid="product-category-manual-button"
-            onClick={() => {
-              setShowManualForm((current) => !current);
-              setEditingAdjustmentId(null);
-              setAdjustmentError(null);
-              if (showManualForm) {
-                setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-              }
-            }}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              border: `1px solid ${designTokens.color.neutral[900]}`,
-              background: designTokens.color.neutral[50],
-              color: designTokens.color.neutral[900],
-              fontWeight: 600,
-            }}
-          >
-            + 手工录入
-          </button>
-          <button
-            type="button"
-            data-testid="product-category-refresh-button"
-            onClick={() => void handleRefresh()}
-            disabled={isRefreshing}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              border: `1px solid ${designTokens.color.neutral[900]}`,
-              background: designTokens.color.neutral[50],
-              color: designTokens.color.neutral[900],
-              fontWeight: 600,
-              cursor: isRefreshing ? "progress" : "pointer",
-              opacity: isRefreshing ? 0.7 : 1,
-            }}
-          >
-            {isRefreshing ? "刷新中..." : "刷新损益数据"}
-          </button>
-        </div>
-      </div>
+      </PageDecisionHero>
 
-      <ProductCategoryGovernanceStrip
-        asOfDateGapText={PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY}
-        notices={governanceNotices}
-        formalScenarioDistinct={formalScenarioDistinct}
-      />
+      <DataStatusStrip testId="product-category-data-status-strip">
+        <ProductCategoryGovernanceStrip
+          asOfDateGapText={PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY}
+          notices={governanceNotices}
+          formalScenarioDistinct={formalScenarioDistinct}
+        />
+      </DataStatusStrip>
 
       <FormalResultMetaPanel
         testId="product-category-result-meta"

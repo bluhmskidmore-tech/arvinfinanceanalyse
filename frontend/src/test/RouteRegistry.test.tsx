@@ -156,6 +156,14 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
 
+vi.mock("../features/market-data/pages/MarketDataPage", () => ({
+  default: () => (
+    <section data-testid="market-data-page">
+      <h1 data-testid="market-data-page-title">市场数据</h1>
+    </section>
+  ),
+}));
+
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
 
@@ -262,18 +270,19 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("审计-报表月份")).toBeInTheDocument();
   });
 
-  it("renders the market-data route as a reserved placeholder", async () => {
+  it("renders the market-data route as a live page", async () => {
     renderWorkbenchApp(["/market-data"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByTestId("market-data-page-title")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
   });
 
-  it("redirects V1 bookmark /market to the reserved market-data placeholder", async () => {
+  it("redirects V1 bookmark /market to the live market-data page", async () => {
     renderWorkbenchApp(["/market"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByTestId("market-data-page-title")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
   });
 
   it("redirects V1 bookmark /assets to bond-dashboard", async () => {
@@ -288,11 +297,11 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("average-balance-page")).toBeInTheDocument();
   });
 
-  it("redirects legacy /macro-analysis to the reserved market-data placeholder", async () => {
+  it("redirects legacy /macro-analysis to the live market-data page", async () => {
     renderWorkbenchApp(["/macro-analysis"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByTestId("market-data-page-title")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
   });
 
   it("renders the balance-analysis route", async () => {

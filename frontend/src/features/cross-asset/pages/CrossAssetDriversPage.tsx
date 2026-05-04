@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -37,7 +37,27 @@ import {
   type CrossAssetTransmissionAxisRow,
 } from "../lib/crossAssetDriversPageModel";
 import { buildDriverColumns, buildEnvironmentTags, driverStanceStyle } from "../lib/crossAssetDriversModel";
-import { buildCrossAssetTrendOption } from "../lib/crossAssetTrendChart";
+import { buildCrossAssetTrendOption, buildCrossAssetTrendSummary } from "../lib/crossAssetTrendChart";
+import {
+  buildCorrelationMatrix,
+  correlationColor,
+  formatCorrelation,
+  identifyMarketRegime,
+  computeSparklinePercentile,
+  percentileZoneColor,
+  buildMomentumScoreboard,
+  detectVolatilityClustering,
+  computeEquityBondERP,
+  buildDriverWaterfall,
+  TREND_GROUPS,
+  trendGroupLabels,
+  type TrendGroupKey,
+  type CorrelationMatrix,
+  type MomentumRow,
+  type VolatilityAlert,
+  type EquityBondERP,
+  type WaterfallBar,
+} from "../lib/crossAssetAnalytics";
 import {
   maxCrossAssetHeadlineTradeDate,
   resolveCrossAssetKpis,
@@ -106,6 +126,23 @@ function resultMetaQualityLabel(value: string | null | undefined): string {
   return value ?? "待定";
 }
 
+function PercentileGauge({ sparkline }: { sparkline: number[] }) {
+  const info = computeSparklinePercentile(sparkline);
+  if (!info) return null;
+  const markerColor = percentileZoneColor(info.zone);
+  return (
+    <div className="ca-percentile" title={`近期 ${sparkline.length} 日分位：第 ${info.percentile} 百分位`}>
+      <div className="ca-percentile__track">
+        <div
+          className="ca-percentile__marker"
+          style={{ left: `${info.percentile}%`, background: markerColor }}
+        />
+      </div>
+      <span className="ca-percentile__label">{info.label}</span>
+    </div>
+  );
+}
+
 function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
   const stroke = sparkStroke[kpi.changeTone];
   return (
@@ -119,6 +156,7 @@ function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
           <div className="cross-asset-drivers-page__mini-kpi-delta" style={{ color: stroke }}>
             {kpi.changeLabel}
           </div>
+          <PercentileGauge sparkline={kpi.sparkline} />
           {kpi.tag ? <div className="cross-asset-drivers-page__mini-kpi-tag">{kpi.tag}</div> : null}
         </div>
         <div className="cross-asset-drivers-page__mini-kpi-chart">
@@ -556,8 +594,342 @@ function directionClassName(direction: string) {
   }
   return "neutral";
 }
+function MarketRegimePanel({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
+  const regime = useMemo(() => identifyMarketRegime(kpis), [kpis]);
+  return (
+    <div
+      className="ca-regime"
+      style={{ background: regime.bgColor, borderColor: regime.color + "40" }}
+      data-testid="cross-asset-regime-indicator"
+    >
+      <span className="ca-regime__icon">{regime.icon}</span>
+      <div className="ca-regime__body">
+        <div className="ca-regime__label" style={{ color: regime.color }}>
+          当前体制：{regime.label}
+        </div>
+        <div className="ca-regime__desc" style={{ color: regime.color }}>
+          {regime.description}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CorrelationHeatmapPanel({ matrix }: { matrix: CorrelationMatrix }) {
+  if (matrix.keys.length < 2) return null;
+  const n = matrix.keys.length;
+  return (
+    <section className="ca-correlation" data-testid="cross-asset-correlation-heatmap">
+      <h2 className="ca-correlation__title">资产相关性矩阵</h2>
+      <p className="ca-correlation__subtitle">
+        基于 sparkline 窗口滚动 Pearson 相关系数，一眼看清哪些资产在共振或背离。
+      </p>
+      <div
+        className="ca-correlation__grid"
+        style={{ gridTemplateColumns: `62px repeat(${n}, minmax(48px, 1fr))` }}
+      >
+        {/* Top-left corner: empty */}
+        <div className="ca-correlation__cell ca-correlation__cell--header" />
+        {/* Column headers */}
+        {matrix.labels.map((label) => (
+          <div key={`col-${label}`} className="ca-correlation__cell ca-correlation__cell--header ca-correlation__cell--header-top">
+            {label}
+          </div>
+        ))}
+        {/* Rows */}
+        {matrix.cells.map((row, ri) => (
+          <div key={`row-group-${matrix.keys[ri]}`} style={{ display: "contents" }}>
+            <div className="ca-correlation__cell ca-correlation__cell--header">
+              {matrix.labels[ri]}
+            </div>
+            {row.map((cell, ci) => {
+              const isDiag = ri === ci;
+              return (
+                <div
+                  key={`${cell.rowKey}-${cell.colKey}`}
+                  className={`ca-correlation__cell${isDiag ? " ca-correlation__cell--diagonal" : ""}`}
+                  style={{
+                    background: isDiag ? undefined : correlationColor(cell.value),
+                    color: cell.value != null && Math.abs(cell.value) > 0.5 ? "#fff" : undefined,
+                  }}
+                  title={`${matrix.labels[ri]} × ${matrix.labels[ci]}: ${formatCorrelation(cell.value)}`}
+                >
+                  {isDiag ? "1" : formatCorrelation(cell.value)}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="ca-correlation__legend">
+        <span>−1</span>
+        <div className="ca-correlation__legend-bar" />
+        <span>+1</span>
+        <span style={{ marginLeft: 8 }}>负相关 ← 中性 → 正相关</span>
+      </div>
+    </section>
+  );
+}
+
+function MomentumScoreboardPanel({ rows }: { rows: MomentumRow[] }) {
+  if (rows.length === 0) return null;
+
+  function fmtChg(v: number | null) {
+    if (v == null) return "—";
+    const sign = v > 0 ? "+" : "";
+    return `${sign}${v.toFixed(2)}%`;
+  }
+
+  function chgClass(v: number | null) {
+    if (v == null || Math.abs(v) < 0.001) return "ca-momentum__chg--neutral";
+    return v > 0 ? "ca-momentum__chg--positive" : "ca-momentum__chg--negative";
+  }
+
+  function dirArrow(d: MomentumRow["direction"]) {
+    if (d === "up") return "↑";
+    if (d === "down") return "↓";
+    return "→";
+  }
+
+  function accelLabel(a: MomentumRow["acceleration"]) {
+    if (a === "accelerating") return "加速";
+    if (a === "decelerating") return "减速";
+    return "稳定";
+  }
+
+  return (
+    <section className="ca-momentum" data-testid="cross-asset-momentum-scoreboard">
+      <h2 className="ca-momentum__title">跨资产动量计分板</h2>
+      <p className="ca-momentum__subtitle">各资产的 1日/5日/20日 涨跌幅，方向箭头与加速/减速标记。</p>
+      <table className="ca-momentum__table">
+        <thead>
+          <tr>
+            <th>资产</th>
+            <th>方向</th>
+            <th>1日</th>
+            <th>5日</th>
+            <th>20日</th>
+            <th>动能</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <td>
+                <span className="ca-momentum__asset-name">{row.label}</span>
+                <span className="ca-momentum__tag">{row.tag}</span>
+              </td>
+              <td>
+                <span className={`ca-momentum__dir ca-momentum__dir--${row.direction}`}>
+                  {dirArrow(row.direction)}
+                </span>
+              </td>
+              <td className={chgClass(row.chg1d)}>{fmtChg(row.chg1d)}</td>
+              <td className={chgClass(row.chg5d)}>{fmtChg(row.chg5d)}</td>
+              <td className={chgClass(row.chg20d)}>{fmtChg(row.chg20d)}</td>
+              <td>
+                <span className={`ca-momentum__accel ca-momentum__accel--${row.acceleration}`}>
+                  {accelLabel(row.acceleration)}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function TrendGroupToggle({
+  active,
+  onChange,
+}: {
+  active: TrendGroupKey;
+  onChange: (key: TrendGroupKey) => void;
+}) {
+  return (
+    <div className="ca-trend-groups" data-testid="cross-asset-trend-groups">
+      {TREND_GROUPS.map((g) => (
+        <button
+          key={g.key}
+          className={`ca-trend-groups__btn${active === g.key ? " ca-trend-groups__btn--active" : ""}`}
+          onClick={() => onChange(g.key)}
+          type="button"
+        >
+          {g.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function VolatilityClusteringPanel({ alert }: { alert: VolatilityAlert }) {
+  const severityLabel: Record<VolatilityAlert["severity"], string> = {
+    normal: "正常",
+    elevated: "偏高",
+    critical: "警告",
+  };
+  return (
+    <section
+      className={`ca-vol-alert ca-vol-alert--${alert.severity}`}
+      data-testid="cross-asset-vol-alert"
+    >
+      <div className="ca-vol-alert__header">
+        <h2 className="ca-vol-alert__title">波动率聚类</h2>
+        <span className={`ca-vol-alert__badge ca-vol-alert__badge--${alert.severity}`}>
+          {severityLabel[alert.severity]}
+        </span>
+      </div>
+      <p className="ca-vol-alert__headline">{alert.headline}</p>
+      {alert.assets.length > 0 ? (
+        <div className="ca-vol-alert__bars">
+          {alert.assets.map((a) => {
+            const fillPct = Math.min(100, (a.volRatio / 3) * 100);
+            const fillColor = a.isElevated ? "#f59e0b" : "#94a3b8";
+            return (
+              <div
+                key={a.key}
+                className={`ca-vol-alert__bar-item${a.isElevated ? " ca-vol-alert__bar-item--elevated" : ""}`}
+              >
+                <div className="ca-vol-alert__bar-label">{a.label}</div>
+                <div className="ca-vol-alert__bar-track">
+                  <div
+                    className="ca-vol-alert__bar-fill"
+                    style={{ width: `${fillPct}%`, background: fillColor }}
+                  />
+                </div>
+                <div className="ca-vol-alert__bar-value">
+                  {a.volRatio.toFixed(2)}× {a.isElevated ? "⚡" : ""}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function EquityBondERPPanel({ erp }: { erp: EquityBondERP }) {
+  // Map ERP to a gauge position (0-100)
+  // ERP range roughly -2 to 6; map 0% = -2, 100% = 6
+  const gaugeMin = -2;
+  const gaugeMax = 6;
+  const gaugePct = erp.erpPct != null
+    ? Math.max(0, Math.min(100, ((erp.erpPct - gaugeMin) / (gaugeMax - gaugeMin)) * 100))
+    : 50;
+
+  return (
+    <section
+      className="ca-erp"
+      style={{ background: erp.verdictBg, borderColor: erp.verdictColor + "30" }}
+      data-testid="cross-asset-erp-gauge"
+    >
+      <div className="ca-erp__header">
+        <h2 className="ca-erp__title">股债性价比</h2>
+        <span
+          className="ca-erp__verdict-pill"
+          style={{ background: erp.verdictColor + "18", color: erp.verdictColor }}
+        >
+          {erp.verdictLabel}
+        </span>
+      </div>
+      {erp.available ? (
+        <>
+          <div className="ca-erp__metrics">
+            <div className="ca-erp__metric">
+              <div className="ca-erp__metric-label">盈利收益率</div>
+              <div className="ca-erp__metric-value" style={{ color: t.color.neutral[900] }}>
+                {erp.earningsYieldPct?.toFixed(2)}%
+              </div>
+            </div>
+            <div className="ca-erp__metric">
+              <div className="ca-erp__metric-label">10Y国债</div>
+              <div className="ca-erp__metric-value" style={{ color: t.color.neutral[900] }}>
+                {erp.bondYieldPct?.toFixed(2)}%
+              </div>
+            </div>
+            <div className="ca-erp__metric">
+              <div className="ca-erp__metric-label">ERP</div>
+              <div className="ca-erp__metric-value" style={{ color: erp.verdictColor }}>
+                {erp.erpPct?.toFixed(2)}%
+              </div>
+            </div>
+          </div>
+          <div>
+            <div className="ca-erp__gauge-track">
+              <div
+                className="ca-erp__gauge-marker"
+                style={{ left: `${gaugePct}%`, background: erp.verdictColor }}
+              />
+            </div>
+            <div className="ca-erp__gauge-labels">
+              <span>股票贵</span>
+              <span>中性</span>
+              <span>股票便宜</span>
+            </div>
+          </div>
+        </>
+      ) : null}
+      <p className="ca-erp__desc">{erp.verdictDescription}</p>
+    </section>
+  );
+}
+
+function DriverWaterfallPanel({ bars }: { bars: WaterfallBar[] }) {
+  if (bars.length === 0) return null;
+
+  const maxAbs = Math.max(
+    ...bars.map((b) => Math.abs(b.value)),
+    0.01, // prevent division by zero
+  );
+  const chartHeight = 120; // px available for bars
+
+  return (
+    <section className="ca-waterfall" data-testid="cross-asset-driver-waterfall">
+      <h2 className="ca-waterfall__title">驱动力归因瀑布</h2>
+      <p className="ca-waterfall__subtitle">
+        环境综合评分由各子因子累加构成，正值利好债市，负值利空。
+      </p>
+      <div className="ca-waterfall__chart">
+        <div className="ca-waterfall__zero-line" style={{ bottom: `${chartHeight / 2 + 28}px` }} />
+        {bars.map((bar) => {
+          const barHeight = Math.max(4, (Math.abs(bar.value) / maxAbs) * (chartHeight / 2));
+          const isNeg = bar.value < 0;
+          const isTotal = bar.kind === "total";
+          const sign = bar.value > 0 ? "+" : "";
+
+          return (
+            <div key={bar.key} className="ca-waterfall__bar-group">
+              <div
+                className={`ca-waterfall__bar${isNeg ? " ca-waterfall__bar--negative" : ""}${isTotal ? " ca-waterfall__bar--total" : ""}`}
+                style={{
+                  height: `${barHeight}px`,
+                  background: bar.color,
+                  marginBottom: isNeg ? "auto" : undefined,
+                  marginTop: isNeg ? undefined : "auto",
+                }}
+                title={`${bar.label}: ${sign}${bar.value.toFixed(3)}`}
+              >
+                <span
+                  className={`ca-waterfall__bar-value ${isNeg ? "ca-waterfall__bar-value--below" : "ca-waterfall__bar-value--above"}`}
+                  style={{ color: bar.color }}
+                >
+                  {sign}{bar.value.toFixed(2)}
+                </span>
+                <span className="ca-waterfall__bar-label">{bar.label}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function CrossAssetDriversPage() {
   const client = useApiClient();
+  const [trendGroup, setTrendGroup] = useState<TrendGroupKey>("all");
   const latestQuery = useQuery({
     queryKey: ["cross-asset", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
@@ -614,6 +986,12 @@ export default function CrossAssetDriversPage() {
   const remainder = kpis.length % 4;
   const kpiPlaceholderCount = remainder !== 0 ? 4 - remainder : 0;
   const trendOption = useMemo(() => buildCrossAssetTrendOption(latestSeries), [latestSeries]);
+  const trendSummary = useMemo(() => buildCrossAssetTrendSummary(kpis), [kpis]);
+  const correlationMatrix = useMemo(() => buildCorrelationMatrix(kpis), [kpis]);
+  const momentumRows = useMemo(() => buildMomentumScoreboard(kpis), [kpis]);
+  const volAlert = useMemo(() => detectVolatilityClustering(kpis), [kpis]);
+  const erpData = useMemo(() => computeEquityBondERP(kpis), [kpis]);
+  const waterfallBars = useMemo(() => buildDriverWaterfall(env), [env]);
   const drivers = useMemo(() => buildDriverColumns(env), [env]);
   const envTags = useMemo(() => buildEnvironmentTags(env), [env]);
   const heatmapRows = useMemo(() => linkageHeatmapRows(macroBondLinkage.top_correlations ?? []), [macroBondLinkage.top_correlations]);
@@ -760,6 +1138,7 @@ export default function CrossAssetDriversPage() {
                 <StatusPill key={flag.id} status={flag.tone} label={flag.label} />
               ))}
             </div>
+            <MarketRegimePanel kpis={kpis} />
           </div>
         </PageHeader>
 
@@ -911,6 +1290,13 @@ export default function CrossAssetDriversPage() {
               </div>
             </section>
 
+            <DriverWaterfallPanel bars={waterfallBars} />
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: t.space[3], alignItems: "start" }}>
+              <VolatilityClusteringPanel alert={volAlert} />
+              <EquityBondERPPanel erp={erpData} />
+            </div>
+
             <MarketCandidateActions rows={candidateActions} />
 
             <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
@@ -922,30 +1308,61 @@ export default function CrossAssetDriversPage() {
                 description="完成研究判断后，再查看价格走势、事件流和观察名单，避免把短噪音误当成主结论。"
               />
             </div>
-            <div data-testid="cross-asset-trend-panel" style={{ minWidth: 0 }}>
+            <MomentumScoreboardPanel rows={momentumRows} />
+
+            <CorrelationHeatmapPanel matrix={correlationMatrix} />
+
+            <div data-testid="cross-asset-trend-panel" className="cross-asset-trend-panel">
               <SectionCard title="跨资产走势（近 20 日，统一基准 = 100）" style={{ minWidth: 0 }}>
-                <p style={{ margin: `0 0 ${t.space[3]}px`, color: t.color.neutral[500], fontSize: t.fontSize[12] }}>
+                <TrendGroupToggle active={trendGroup} onChange={setTrendGroup} />
+                {trendSummary ? (
+                  <div className={`cross-asset-trend-panel__summary cross-asset-trend-panel__summary--${trendSummary.tone}`} data-testid="cross-asset-trend-summary">
+                    <span className="cross-asset-trend-panel__summary-dot" />
+                    <span className="cross-asset-trend-panel__summary-text">{trendSummary.headline}</span>
+                    <div className="cross-asset-trend-panel__summary-signals">
+                      {trendSummary.signals.map((sig) => (
+                        <span key={sig.label} className={`cross-asset-trend-panel__signal cross-asset-trend-panel__signal--${sig.tone}`} title={sig.description}>
+                          {sig.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <p className="cross-asset-trend-panel__note">
                   各资产发布日与休市不同，在统一时间轴上先对缺失日沿用「上一有效观测」(LOCF)，再按窗口内首次观测 = 100
                   归一化；否则多市场下会出现大段空档与碎线。曲线在两次真实更新之间为水平持有，不代表日内波动。
                 </p>
                 {latestQuery.isLoading ? (
-                  <div
-                    style={{
-                      height: 360,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: t.color.neutral[500],
-                    }}
-                  >
+                  <div className="cross-asset-trend-panel__loading">
+                    <div className="cross-asset-trend-panel__spinner" />
                     正在加载宏观序列…
                   </div>
                 ) : trendOption ? (
-                  <div className="cross-asset-trend-chart" style={{ minWidth: 0, width: "100%" }}>
-                    <ReactECharts option={trendOption} style={{ height: 360, width: "100%" }} notMerge lazyUpdate />
+                  <div className="cross-asset-trend-chart">
+                    <ReactECharts
+                      option={(() => {
+                        const visibleLabels = trendGroupLabels(trendGroup, kpis);
+                        if (!visibleLabels || !trendOption.legend) return trendOption;
+                        const selected: Record<string, boolean> = {};
+                        const series = trendOption.series as Array<{ name?: string }>;
+                        for (const s of series) {
+                          if (s.name) selected[s.name] = visibleLabels.has(s.name);
+                        }
+                        return {
+                          ...trendOption,
+                          legend: {
+                            ...(typeof trendOption.legend === "object" ? trendOption.legend : {}),
+                            selected,
+                          },
+                        };
+                      })()}
+                      style={{ height: 420, width: "100%" }}
+                      notMerge
+                      lazyUpdate
+                    />
                   </div>
                 ) : (
-                  <div style={{ minHeight: 120, color: t.color.neutral[500], fontSize: t.fontSize[13] }}>
+                  <div className="cross-asset-trend-panel__empty">
                     当前没有足够历史点，无法绘制跨资产走势。
                   </div>
                 )}

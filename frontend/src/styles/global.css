@@ -677,7 +677,7 @@ select {
 
 .moss-page-v2-shell {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -693,9 +693,15 @@ select {
 /* Opt-in layout contract primitives (RALPLAN Phase 1) — unmigrated pages 无此类名 */
 .moss-page-v2-decision-hero {
   display: grid;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 18px;
+  margin-bottom: 18px;
   min-width: 0;
+  padding: 22px;
+  border: 1px solid rgba(209, 213, 219, 0.82);
+  border-radius: var(--moss-radius-lg);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 251, 254, 0.98) 58%, rgba(232, 241, 251, 0.7) 100%);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
 }
 
 .moss-page-v2-decision-hero__top {
@@ -723,17 +729,18 @@ select {
 
 .moss-page-v2-decision-hero__title {
   margin: 0;
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   color: var(--moss-color-text-primary);
 }
 
 .moss-page-v2-decision-hero__question {
   margin: 0;
-  color: var(--moss-color-text-secondary);
+  max-width: 760px;
+  color: var(--moss-color-neutral-700);
   font-size: 15px;
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .moss-page-v2-decision-hero__report,
@@ -744,10 +751,11 @@ select {
 }
 
 .moss-page-v2-decision-hero__conclusion {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(var(--moss-color-primary-rgb), 0.06);
-  border: 1px solid rgba(var(--moss-color-primary-rgb), 0.12);
+  padding: 12px 14px;
+  border-radius: var(--moss-radius-md);
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(var(--moss-color-primary-rgb), 0.14);
+  box-shadow: inset 3px 0 0 rgba(var(--moss-color-primary-rgb), 0.42);
   color: var(--moss-color-text-primary);
 }
 
@@ -763,11 +771,11 @@ select {
   align-items: center;
   gap: 8px 12px;
   min-width: 0;
-  padding: 10px 14px;
+  padding: 12px 14px;
   border-radius: 12px;
-  border: none;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(226, 230, 236, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.045);
 }
 
 .moss-page-v2-kpi-band {
@@ -780,9 +788,9 @@ select {
 .moss-page-v2-kpi-metric {
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid #e9eef5;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(22, 35, 46, 0.04);
+  border: 1px solid #e4ebf3;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 8px 20px rgba(22, 35, 46, 0.045);
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -844,8 +852,29 @@ select {
   min-width: 0;
   padding: 18px;
   border-radius: 12px;
-  border: 1px solid #e7edf5;
-  background: rgba(250, 252, 255, 0.94);
+  border: 1px solid #e4ebf3;
+  background: rgba(250, 252, 255, 0.98);
+  box-shadow: 0 8px 20px rgba(22, 35, 46, 0.04);
+}
+
+.dashboard-executive-hero {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.dashboard-executive-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(var(--moss-color-primary-rgb), 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 52%);
+}
+
+.dashboard-executive-hero > * {
+  position: relative;
 }
 
 .moss-page-v2-evidence-panel__heading {
@@ -1144,6 +1173,9 @@ select {
 }
 
 .dashboard-overview-hero-strip > article {
+  border-color: #e4ebf3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+  box-shadow: 0 8px 20px rgba(22, 35, 46, 0.045);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
@@ -1171,6 +1203,22 @@ select {
   gap: 12px;
   align-items: start;
   margin-top: 12px;
+}
+
+.dashboard-overview-command-grid > *,
+.dashboard-overview-support-grid > *,
+.dashboard-overview-live-grid > * {
+  min-width: 0;
+}
+
+.dashboard-overview-command-grid > article,
+.dashboard-overview-command-grid > section,
+.dashboard-overview-support-grid > section,
+.dashboard-overview-live-grid > section,
+.dashboard-overview-live-grid .dashboard-span-wide > section {
+  border-color: #e4ebf3 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+  box-shadow: 0 8px 22px rgba(22, 35, 46, 0.045);
 }
 
 .dashboard-overview-support-grid {

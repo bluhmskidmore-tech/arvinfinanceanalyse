@@ -36,6 +36,8 @@ export type DashboardHeroMetric = {
   delta: string;
   tone: Tone;
   history: number[] | null;
+  /** Optional data-date attribution, e.g. "资产 2026-04-18". */
+  domainDate?: string | null;
 };
 
 export type DashboardAlert = {
@@ -418,6 +420,20 @@ export function DashboardOverviewHeroStrip({
             >
               {metric.note}
             </span>
+            {metric.domainDate ? (
+              <span
+                data-testid={`hero-domain-date-${metric.id}`}
+                style={{
+                  color: shellTokens.colorTextMuted,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {metric.domainDate}
+              </span>
+            ) : null}
           </article>
         );
       })}

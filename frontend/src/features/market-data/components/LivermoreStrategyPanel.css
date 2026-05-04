@@ -241,6 +241,44 @@
   cursor: pointer;
 }
 
+.livermore-strategy-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-2);
+  flex-wrap: wrap;
+}
+
+.livermore-strategy-panel__refresh-btn {
+  border: 1px solid #7eb5e3;
+  border-radius: var(--moss-radius-sm);
+  background: linear-gradient(180deg, #e8f2fd 0%, #d1e6f9 100%);
+  color: var(--moss-color-primary-700, #1a56a0);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.livermore-strategy-panel__refresh-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d1e6f9 0%, #bbd8f4 100%);
+  border-color: #5a9fd4;
+}
+
+.livermore-strategy-panel__refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.livermore-strategy-panel__refresh-result {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--moss-color-success-500, #12a150);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
 @media (max-width: 1180px) {
   .livermore-strategy-panel__metrics,
   .livermore-strategy-panel__grid {

@@ -1,4 +1,4 @@
-﻿import {
+import {
   createContext,
   createElement,
   useContext,
@@ -46,15 +46,20 @@ import type {
   CarryRollDownPayload,
   KRDCurveRiskPayload,
   KRDAttributionPayload,
+  LedgerPnlDataPayload,
+  LedgerPnlDatesPayload,
+  LedgerPnlSummaryPayload,
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
-  NcdFundingProxyPayload,
+  CockpitWarningsPayload,
   ContributionPayload,
+  ContributionSplitPayload,
   CounterpartyStatsResponse,
   CustomerBalanceTrendResponse,
   AdbComparisonResponse,
   AdbAccountingBasisDailyAvgTrendItem,
   AdbMonthlyResponse,
+  AdbCoveragePayload,
   AdbPayload,
   LiabilitiesMonthlyPayload,
   LiabilityCounterpartyPayload,
@@ -72,13 +77,12 @@ import type {
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,
   InterbankPositionItem,
-  LedgerPnlDataPayload,
-  LedgerPnlDatesPayload,
-  LedgerPnlSummaryPayload,
+
   MacroBondLinkagePayload,
   MacroVendorPayload,
   MaturityStructurePayload,
   NumericUnit,
+  NcdFundingProxyPayload,
   PageResponse,
   OverviewPayload,
   PnlBridgePayload,
@@ -178,6 +182,13 @@ import {
   type CubeClientMethods,
 } from "./cubeClient";
 
+import {
+  mockCampisiFourEffects,
+  mockCampisiEnhanced,
+  mockCampisiMaturityBuckets,
+} from "../mocks/campisiMocks";
+import { mockLedgerPnlData, mockLedgerPnlDates, mockLedgerPnlSummary } from "../mocks/ledgerPnlMocks";
+
 export type DataSourceMode = "mock" | "real";
 
 // Re-export domain method types for consumers who want fine-grained imports
@@ -250,189 +261,6 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-const mockLedgerMoney = (yuan: string) => ({
-  yuan,
-  yi: (Number(yuan) / 100_000_000).toFixed(2),
-  wan: (Number(yuan) / 10_000).toFixed(2),
-});
-
-const mockLedgerPnlDates: LedgerPnlDatesPayload = {
-  dates: ["2025-12-31", "2025-11-30"],
-};
-
-const mockLedgerPnlSummary: LedgerPnlSummaryPayload = {
-  report_date: "2025-12-31",
-  source_version: "sv_mock_ledger",
-  ledger_total_assets: mockLedgerMoney("1250000000"),
-  ledger_total_liabilities: mockLedgerMoney("980000000"),
-  ledger_net_assets: mockLedgerMoney("270000000"),
-  ledger_monthly_pnl_core: mockLedgerMoney("3520000"),
-  ledger_monthly_pnl_all: mockLedgerMoney("4180000"),
-  by_currency: [
-    { currency: "CNX", total_pnl: mockLedgerMoney("3010000") },
-    { currency: "CNY", total_pnl: mockLedgerMoney("510000") },
-  ],
-  by_account: [
-    {
-      account_code: "514100",
-      account_name: "利息收入",
-      total_pnl: mockLedgerMoney("2120000"),
-      count: 18,
-    },
-    {
-      account_code: "516100",
-      account_name: "公允价值变动损益",
-      total_pnl: mockLedgerMoney("880000"),
-      count: 9,
-    },
-  ],
-};
-
-const mockLedgerPnlData: LedgerPnlDataPayload = {
-  report_date: "2025-12-31",
-  items: [
-    {
-      account_code: "514100",
-      account_name: "利息收入",
-      currency: "CNX",
-      beginning_balance: mockLedgerMoney("101200000"),
-      ending_balance: mockLedgerMoney("106500000"),
-      monthly_pnl: mockLedgerMoney("880000"),
-      daily_avg_balance: mockLedgerMoney("104100000"),
-      days_in_period: 31,
-    },
-    {
-      account_code: "516100",
-      account_name: "公允价值变动损益",
-      currency: "CNX",
-      beginning_balance: mockLedgerMoney("10000000"),
-      ending_balance: mockLedgerMoney("11200000"),
-      monthly_pnl: mockLedgerMoney("420000"),
-      daily_avg_balance: mockLedgerMoney("10600000"),
-      days_in_period: 31,
-    },
-  ],
-  summary: {
-    total_pnl_cnx: mockLedgerMoney("1300000"),
-    total_pnl_cny: mockLedgerMoney("0"),
-    total_pnl: mockLedgerMoney("1300000"),
-    count: 2,
-  },
-};
-
-const mockCampisiFourEffects: CampisiFourEffectsPayload = {
-  report_date: "2026-03-31",
-  period_start: "2026-03-01",
-  period_end: "2026-03-31",
-  num_days: 30,
-  totals: {
-    income_return: 820000,
-    treasury_effect: -210000,
-    spread_effect: 160000,
-    selection_effect: 95000,
-    total_return: 865000,
-    market_value_start: 128000000,
-  },
-  by_asset_class: [
-    {
-      asset_class: "政策性金融债",
-      market_value_start: 78000000,
-      income_return: 520000,
-      treasury_effect: -180000,
-      spread_effect: 120000,
-      selection_effect: 50000,
-      total_return: 510000,
-      weight_pct: 60.94,
-    },
-  ],
-  by_bond: [
-    {
-      bond_code: "240001.IB",
-      asset_class: "政策性金融债",
-      maturity_bucket: "1-3Y",
-      market_value_start: 32000000,
-      income_return: 210000,
-      treasury_effect: -70000,
-      spread_effect: 42000,
-      selection_effect: 20000,
-      total_return: 202000,
-      mod_duration: 2.7,
-    },
-  ],
-};
-
-const mockCampisiEnhanced: CampisiEnhancedPayload = {
-  report_date: "2026-03-31",
-  period_start: "2026-03-01",
-  period_end: "2026-03-31",
-  num_days: 30,
-  totals: {
-    income_return: 820000,
-    treasury_effect: -210000,
-    spread_effect: 160000,
-    convexity_effect: 18000,
-    cross_effect: 6000,
-    reinvestment_effect: 0,
-    selection_effect: 81000,
-    total_return: 875000,
-    market_value_start: 128000000,
-  },
-  by_asset_class: [
-    {
-      asset_class: "政策性金融债",
-      market_value_start: 78000000,
-      income_return: 520000,
-      treasury_effect: -180000,
-      spread_effect: 120000,
-      convexity_effect: 12000,
-      cross_effect: 3000,
-      reinvestment_effect: 0,
-      selection_effect: 45000,
-      total_return: 520000,
-      weight_pct: 60.94,
-    },
-  ],
-  by_bond: [
-    {
-      bond_code: "240001.IB",
-      asset_class: "政策性金融债",
-      maturity_bucket: "1-3Y",
-      market_value_start: 32000000,
-      income_return: 210000,
-      treasury_effect: -70000,
-      spread_effect: 42000,
-      convexity_effect: 5000,
-      cross_effect: 1000,
-      reinvestment_effect: 0,
-      selection_effect: 17000,
-      total_return: 205000,
-      mod_duration: 2.7,
-    },
-  ],
-};
-
-const mockCampisiMaturityBuckets: CampisiMaturityBucketsPayload = {
-  period_start: "2026-03-01",
-  period_end: "2026-03-31",
-  buckets: {
-    "0-1Y": {
-      market_value_start: 18000000,
-      income_return: 90000,
-      treasury_effect: -20000,
-      spread_effect: 15000,
-      selection_effect: 6000,
-      total_return: 91000,
-    },
-    "1-3Y": {
-      market_value_start: 52000000,
-      income_return: 330000,
-      treasury_effect: -82000,
-      spread_effect: 61000,
-      selection_effect: 26000,
-      total_return: 335000,
-    },
-  },
-};
 
 function _buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
   return {
@@ -2079,12 +1907,26 @@ function normalizeAdbComparisonResponse(
     report_date: String(raw.report_date ?? raw.end_date ?? ""),
     start_date: String(raw.start_date ?? ""),
     end_date: String(raw.end_date ?? ""),
+    calendar_days_inclusive: Number(raw.calendar_days_inclusive ?? raw.num_days ?? 0),
+    adb_denominator_basis: String(raw.adb_denominator_basis ?? "snapshot_calendar") as
+      | "formal_calendar"
+      | "snapshot_distinct_days"
+      | "snapshot_calendar"
+      | "ledger_weighted",
     num_days: Number(raw.num_days ?? 0),
+    coverage_days:
+      raw.coverage_days === null || raw.coverage_days === undefined
+        ? undefined
+        : Number(raw.coverage_days),
+    sample_filled: raw.sample_filled === true || raw.sample_filled === "true" ? true : undefined,
+    sample_fill_method: raw.sample_fill_method ? String(raw.sample_fill_method) : undefined,
     simulated: Boolean(raw.simulated),
     total_spot_assets: Number(raw.total_spot_assets ?? 0),
     total_avg_assets: Number(raw.total_avg_assets ?? 0),
     total_spot_liabilities: Number(raw.total_spot_liabilities ?? 0),
     total_avg_liabilities: Number(raw.total_avg_liabilities ?? 0),
+    total_avg_interbank_assets: Number(raw.total_avg_interbank_assets ?? 0),
+    total_avg_interbank_liabilities: Number(raw.total_avg_interbank_liabilities ?? 0),
     asset_yield:
       raw.asset_yield === null || raw.asset_yield === undefined ? null : Number(raw.asset_yield),
     liability_cost:
@@ -3961,6 +3803,29 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       };
     },
+    async getCockpitWarnings(reportDate?: string | null) {
+      await delay();
+      return buildMockApiEnvelope(
+        "liability.cockpit_warnings",
+        {
+          report_date: reportDate?.trim() || "",
+          watch_items: [],
+          alert_events: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getContributionSplit(reportDate?: string | null) {
+      await delay();
+      return buildMockApiEnvelope(
+        "liability.contribution_split",
+        {
+          report_date: reportDate?.trim() || "",
+          contributions: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getLiabilitiesMonthly(year: number) {
       await delay();
       return {
@@ -4002,12 +3867,17 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         report_date: "",
         start_date: "",
         end_date: "",
+        calendar_days_inclusive: 0,
+        adb_denominator_basis: "snapshot_calendar" as const,
         num_days: 0,
+        coverage_days: 0,
         simulated: false,
         total_spot_assets: 0,
         total_avg_assets: 0,
         total_spot_liabilities: 0,
         total_avg_liabilities: 0,
+        total_avg_interbank_assets: 0,
+        total_avg_interbank_liabilities: 0,
         asset_yield: null,
         liability_cost: null,
         net_interest_margin: null,
@@ -4026,6 +3896,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         ytd_liability_cost: null,
         ytd_nim: null,
         unit: "percent",
+      };
+    },
+    async getAdbCoverage(_startDate: string, _endDate: string) {
+      await delay();
+      return {
+        start_date: _startDate,
+        end_date: _endDate,
+        calendar_days: 0,
+        snapshot_tables: {},
+        formal_tables: {},
+        snapshot_date_count: 0,
+        formal_date_count: 0,
+        missing_dates: [],
+        missing_count: 0,
+        coverage_pct: 0,
       };
     },
     async getBondAnalyticsRefreshStatus(runId: string) {
@@ -4713,6 +4598,30 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         "/ui/liability/business-context",
       ),
+    getCockpitWarnings: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestJson<CockpitWarningsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/liabilities/cockpit-warnings${q ? `?${q}` : ""}`,
+      );
+    },
+    getContributionSplit: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestJson<ContributionSplitPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/liabilities/contribution-split${q ? `?${q}` : ""}`,
+      );
+    },
     getLiabilitiesMonthly: (year) =>
       requestEnvelopeOrPlainJson<LiabilitiesMonthlyPayload>(
         fetchImpl,
@@ -4761,6 +4670,16 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
       );
       return normalizeAdbMonthlyResponse(result, result_meta);
+    },
+    getAdbCoverage: (startDate, endDate) => {
+      const params = new URLSearchParams();
+      params.set("start_date", startDate.trim());
+      params.set("end_date", endDate.trim());
+      return requestPlainJson<AdbCoveragePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb/coverage?${params.toString()}`,
+      );
     },
     getContribution: () =>
       requestJson<ContributionPayload>(

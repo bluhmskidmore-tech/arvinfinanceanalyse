@@ -284,10 +284,8 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
   attribution: pnlAttributionPayload,
   domains_missing: [],
   domains_effective_date: {
-    balance: "2026-04-18",
+    balance_sheet: "2026-04-18",
     pnl: "2026-04-18",
-    liability: "2026-04-18",
-    bond: "2026-04-18",
   },
   verdict: mockVerdictPayload,
 };

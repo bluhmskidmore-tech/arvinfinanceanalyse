@@ -1,11 +1,11 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Col, Row, Select, Skeleton, Space, Tabs, Tag, Typography } from "antd";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { KpiCard } from "../../../components/KpiCard";
-import type { LiabilityYieldKpi } from "../../../api/contracts";
+import type { LiabilityYieldKpi, CockpitWatchItem, CockpitAlertEvent, ContributionSplitRow } from "../../../api/contracts";
 import { adaptLiabilityCounterparty, getLiabilitySyntheticSectionStates } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
 import { LiabilityCustomerTable } from "../components/LiabilityCustomerTable";
@@ -185,6 +185,20 @@ export default function LiabilityAnalyticsPage() {
     queryKey: ["liability", "knowledge-brief", client.mode],
     queryFn: () => client.getLiabilityKnowledgeBrief(),
     enabled: activeTab === "daily",
+    retry: false,
+  });
+
+  const cockpitWarningsQuery = useQuery({
+    queryKey: ["liability", "cockpit-warnings", client.mode, reportDate],
+    queryFn: () => client.getCockpitWarnings(reportDate || null),
+    enabled: activeTab === "daily" && Boolean(reportDate),
+    retry: false,
+  });
+
+  const contributionQuery = useQuery({
+    queryKey: ["liability", "contribution-split", client.mode, reportDate],
+    queryFn: () => client.getContributionSplit(reportDate || null),
+    enabled: activeTab === "daily" && Boolean(reportDate),
     retry: false,
   });
 
@@ -436,9 +450,8 @@ export default function LiabilityAnalyticsPage() {
     return assetTotalYi - liabilityTotalYi;
   }, [assetTotalYi, liabilityTotalYi]);
   const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? "—";
-  // TODO(orchestrator-review): backend gap — 待关注事项为 cockpit 示意文案，待统一预警/限额 API
-  const watchItems = [] as const;
-  const alertEvents = [] as const;
+  const watchItems: CockpitWatchItem[] = cockpitWarningsQuery.data?.result?.watch_items ?? [];
+  const alertEvents: CockpitAlertEvent[] = cockpitWarningsQuery.data?.result?.alert_events ?? [];
   const syntheticSections = getLiabilitySyntheticSectionStates();
   /** 风险全景：维度来自真实桶/对手方衍生；展示列为前端聚合文案 */
   const riskOverviewRows = useMemo(
@@ -451,8 +464,7 @@ export default function LiabilityAnalyticsPage() {
     ],
     [assetTotalYi, balanceOverviewQuery.data?.result.report_date, firstYearPressureYi, liabilityTotalYi, topCounterpartyShare],
   );
-  // TODO(orchestrator-review): backend gap — 分项资产负债贡献仍为示意拆分；债券/同业行为 balance overview + 负债桶，合计行为真实接口
-  const contributionRows = [] as const;
+  const contributionRows: ContributionSplitRow[] = contributionQuery.data?.result?.contributions ?? [];
   const riskIndicators = [] as const;
   const calendarItems = [] as const;
   const liabilityHeadlineCards = useMemo(
@@ -475,12 +487,14 @@ export default function LiabilityAnalyticsPage() {
       { label: "净估值差额", value: floatingGapYi !== null ? `${floatingGapYi >= 0 ? "+" : ""}${floatingGapYi.toFixed(2)}` : "—", unit: "亿", detail: "资产-负债" },
       {
         label: "异常预警",
-        value: "待定",
-        detail: `${syntheticSections.watchItems.detail}（当前隐藏 ${watchItems.length} 条示意项）`,
+        value: watchItems.length + alertEvents.length > 0 ? `${watchItems.length + alertEvents.length} 条` : "无",
+        detail: watchItems.length + alertEvents.length > 0
+          ? `${alertEvents.length} 条预警，${watchItems.length} 条关注`
+          : "所有指标均在正常范围内",
         valueVariant: "text" as const,
       },
     ],
-    [assetTotalYi, floatingGapYi, firstYearPressureYi, liabilityTotalYi, staticSpreadBp, syntheticSections.watchItems.detail, watchItems.length, yieldKpi?.asset_yield?.display, yieldKpi?.liability_cost?.display],
+    [assetTotalYi, floatingGapYi, firstYearPressureYi, liabilityTotalYi, staticSpreadBp, watchItems.length, alertEvents.length, yieldKpi?.asset_yield?.display, yieldKpi?.liability_cost?.display],
   );
   return (
     <section data-testid="liability-analytics-page">
@@ -782,30 +796,103 @@ export default function LiabilityAnalyticsPage() {
 
                 <div style={threeColumnGridStyle}>
                   <Card title="资产 / 负债 / 缺口贡献" style={sectionCardStyle}>
-                    <Alert
-                      type="warning"
-                      showIcon
-                      message={syntheticSections.contributionRows.title}
-                      description={`${syntheticSections.contributionRows.detail}（当前隐藏 ${contributionRows.length} 条示意行）`}
-                    />
+                    {contributionRows.length === 0 ? (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message="暂无贡献拆分数据"
+                        description={contributionQuery.isLoading ? "加载中…" : "所选报告日无可用拆分数据。"}
+                      />
+                    ) : (
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: designTokens.fontSize[13],
+                          ...numericTabularStyle,
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ textAlign: "left", color: designTokens.color.neutral[600] }}>
+                            <th style={{ paddingBottom: 8 }}>分类</th>
+                            <th style={{ paddingBottom: 8 }}>方向</th>
+                            <th style={{ paddingBottom: 8, textAlign: "right" }}>金额（亿）</th>
+                            <th style={{ paddingBottom: 8, textAlign: "right" }}>收益/成本</th>
+                            <th style={{ paddingBottom: 8, textAlign: "right" }}>贡献（亿）</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {contributionRows.map((row) => (
+                            <tr
+                              key={`${row.side}-${row.category}`}
+                              style={{ borderTop: `1px solid ${designTokens.color.neutral[200]}` }}
+                            >
+                              <td style={{ padding: "8px 0", fontWeight: 600 }}>{row.category}</td>
+                              <td style={{ padding: "8px 0" }}>
+                                <Tag color={row.side === "asset" ? "green" : "gold"}>
+                                  {row.side === "asset" ? "资产" : "负债"}
+                                </Tag>
+                              </td>
+                              <td style={{ padding: "8px 0", textAlign: "right" }}>
+                                {row.amount_yi !== null ? row.amount_yi.toFixed(2) : "—"}
+                              </td>
+                              <td style={{ padding: "8px 0", textAlign: "right" }}>
+                                {row.yield_or_cost !== null ? `${(row.yield_or_cost * 100).toFixed(2)}%` : "—"}
+                              </td>
+                              <td style={{ padding: "8px 0", textAlign: "right" }}>
+                                {row.contribution_yi !== null ? row.contribution_yi.toFixed(4) : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </Card>
 
                   <Card title="待关注事项" style={sectionCardStyle}>
-                    <Alert
-                      type="info"
-                      showIcon
-                      message={syntheticSections.watchItems.title}
-                      description={`${syntheticSections.watchItems.detail}（当前隐藏 ${watchItems.length} 条示意项）`}
-                    />
+                    {watchItems.length === 0 ? (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message="当前无待关注事项"
+                        description={cockpitWarningsQuery.isLoading ? "加载中…" : "所有指标均在正常范围内。"}
+                      />
+                    ) : (
+                      <Space direction="vertical" size={designTokens.space[2]} style={{ width: "100%" }}>
+                        {watchItems.map((item) => (
+                          <Alert
+                            key={item.id}
+                            type={item.level === "warning" ? "warning" : "info"}
+                            showIcon
+                            message={item.label}
+                            description={item.detail}
+                          />
+                        ))}
+                      </Space>
+                    )}
                   </Card>
 
                   <Card title="预警与事件" style={sectionCardStyle}>
-                    <Alert
-                      type="info"
-                      showIcon
-                      message={syntheticSections.alertEvents.title}
-                      description={`${syntheticSections.alertEvents.detail}（当前隐藏 ${alertEvents.length} 条示意事件）`}
-                    />
+                    {alertEvents.length === 0 ? (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message="当前无预警事件"
+                        description={cockpitWarningsQuery.isLoading ? "加载中…" : "未触发预警阈值。"}
+                      />
+                    ) : (
+                      <Space direction="vertical" size={designTokens.space[2]} style={{ width: "100%" }}>
+                        {alertEvents.map((evt) => (
+                          <Alert
+                            key={evt.id}
+                            type={evt.severity === "high" ? "error" : evt.severity === "medium" ? "warning" : "info"}
+                            showIcon
+                            message={evt.title}
+                            description={`${evt.occurred_at} — ${evt.detail}`}
+                          />
+                        ))}
+                      </Space>
+                    )}
                   </Card>
                 </div>
 

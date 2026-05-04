@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { displayTokens } from "../theme/displayTokens";
 
@@ -19,6 +19,8 @@ export type KpiCardProps = {
   sparklineData?: number[];
   status?: "normal" | "warning" | "danger";
   onClick?: () => void;
+  /** For tests / QA; forwarded as `data-testid` on the card root. */
+  testId?: string;
 };
 
 type ToneKey = NonNullable<KpiCardProps["tone"]>;
@@ -97,6 +99,7 @@ export function KpiCard({
   sparklineData,
   status: _status,
   onClick,
+  testId,
 }: KpiCardProps) {
   const heading = title ?? label ?? "";
   const tone = toneProp !== "default" ? toneProp : resolveToneFromHints({ status: _status, trend });
@@ -122,7 +125,7 @@ export function KpiCard({
     alignItems: "center",
     justifyContent: "center",
     fontSize: 18,
-  };
+  } satisfies CSSProperties;
 
   const cardStyle = {
     minHeight: isMetric ? 152 : 132,
@@ -136,14 +139,14 @@ export function KpiCard({
     flexDirection: "column",
     cursor: onClick ? "pointer" : undefined,
     overflow: "visible",
-  };
+  } satisfies CSSProperties;
 
   const headerStyle = {
     display: "flex",
     alignItems: "flex-start",
     gap: 10,
     marginBottom: isMetric ? 12 : 8,
-  };
+  } satisfies CSSProperties;
 
   const titleStyle = {
     color: TITLE_COLOR,
@@ -157,7 +160,7 @@ export function KpiCard({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-  };
+  } satisfies CSSProperties;
 
   const bodyStyle = {
     flex: 1,
@@ -165,7 +168,7 @@ export function KpiCard({
     flexDirection: "column",
     alignItems: isMetric ? "center" : "stretch",
     textAlign: isMetric ? "center" : "left",
-  };
+  } satisfies CSSProperties;
 
   const valueWrapperStyle = {
     display: "flex",
@@ -174,14 +177,14 @@ export function KpiCard({
     justifyContent: isMetric ? "center" : "flex-start",
     gap: "4px 8px",
     width: "100%",
-  };
+  } satisfies CSSProperties;
 
   const titleTextStyle = {
     flex: "1 1 auto",
     minWidth: 0,
     overflowWrap: "break-word",
     wordBreak: "break-word",
-  };
+  } satisfies CSSProperties;
 
   const valueStyle = {
     color: valueColor,
@@ -206,7 +209,7 @@ export function KpiCard({
     width: "100%",
     overflowWrap: "anywhere",
     wordBreak: "break-word",
-  };
+  } satisfies CSSProperties;
 
   const changeStyle = {
     ...secondaryTextStyle,
@@ -221,6 +224,7 @@ export function KpiCard({
 
   return (
     <div
+      data-testid={testId}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}

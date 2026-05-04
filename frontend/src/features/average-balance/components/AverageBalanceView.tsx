@@ -29,6 +29,9 @@ import type {
 } from "../../../api/contracts";
 import AdbComparisonChart, { type AdbComparisonChartRow } from "./AdbComparisonChart";
 import AdbDailyTrendChart from "./AdbDailyTrendChart";
+import AdbDenominatorSummary from "./AdbDenominatorSummary";
+import AdbAccountingBasisSection from "./AdbAccountingBasisSection";
+import AdbCoverageDiagnostics from "./AdbCoverageDiagnostics";
 import AdbMonthlyHorizontalChart, {
   type AdbMonthlyHorizontalChartRow,
 } from "./AdbMonthlyHorizontalChart";
@@ -161,6 +164,20 @@ type AdbYoYAmountRow = {
 function computeYoyPct(current: number, prior: number): number | null {
   if (!Number.isFinite(current) || !Number.isFinite(prior) || prior === 0) return null;
   return ((current - prior) / prior) * 100;
+}
+
+function buildCategoryYoyRows(
+  side: "asset" | "liability",
+  current: AdbCategoryItem[],
+  prior: AdbCategoryItem[] | undefined,
+): AdbYoYAmountRow[] {
+  const priorMap = new Map((prior ?? []).map((r) => [r.category, r]));
+  return current.map((item) => ({
+    key: `${side}-${item.category}`,
+    label: `${side === "asset" ? "资产" : "负债"} · ${item.category}`,
+    current: item.avg_balance,
+    prior: priorMap.get(item.category)?.avg_balance ?? 0,
+  }));
 }
 
 function buildAdbYoYAdbScaleRows(
@@ -432,6 +449,7 @@ export default function AverageBalanceView() {
   const [endDate, setEndDate] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [adbTopN, setAdbTopN] = useState(20);
 
   const datesQuery = useQuery({
     queryKey: ["average-balance", "balance-analysis-dates", client.mode],
@@ -472,8 +490,8 @@ export default function AverageBalanceView() {
   }, [reportDate]);
 
   const comparisonQuery = useQuery({
-    queryKey: ["average-balance", "comparison", client.mode, startDate, endDate],
-    queryFn: () => client.getAdbComparison(startDate, endDate),
+    queryKey: ["average-balance", "comparison", client.mode, startDate, endDate, adbTopN],
+    queryFn: () => client.getAdbComparison(startDate, endDate, { topN: adbTopN }),
     enabled: activeTab === "daily" && Boolean(startDate && endDate),
     retry: false,
   });
@@ -500,10 +518,30 @@ export default function AverageBalanceView() {
       client.mode,
       priorYearRange?.startDate ?? "",
       priorYearRange?.endDate ?? "",
+      adbTopN,
     ],
-    queryFn: () => client.getAdbComparison(priorYearRange!.startDate, priorYearRange!.endDate),
+    queryFn: () =>
+      client.getAdbComparison(priorYearRange!.startDate, priorYearRange!.endDate, {
+        topN: adbTopN,
+      }),
     enabled:
       activeTab === "daily" && Boolean(priorYearRange?.startDate && priorYearRange?.endDate),
+    retry: false,
+  });
+
+  const lowCoverageWarning = useMemo(() => {
+    const d = comparisonQuery.data;
+    if (!d) return false;
+    if (d.num_days <= 1) return false;
+    const cov = d.coverage_days;
+    if (cov === undefined || cov === null) return false;
+    return cov < d.num_days * 0.5;
+  }, [comparisonQuery.data]);
+
+  const coverageQuery = useQuery({
+    queryKey: ["average-balance", "adb-coverage", client.mode, startDate, endDate],
+    queryFn: () => client.getAdbCoverage(startDate, endDate),
+    enabled: activeTab === "daily" && Boolean(startDate && endDate) && lowCoverageWarning,
     retry: false,
   });
 
@@ -578,6 +616,24 @@ export default function AverageBalanceView() {
     if (!dailyData || !prior) return [];
     return buildAdbYoYAdbScaleRows(dailyData, prior);
   }, [dailyData, priorYearComparisonQuery.data]);
+  const yoyAssetCategoryRows = useMemo(
+    () =>
+      buildCategoryYoyRows(
+        "asset",
+        dailyData?.assets_breakdown ?? [],
+        priorYearComparisonQuery.data?.assets_breakdown,
+      ),
+    [dailyData?.assets_breakdown, priorYearComparisonQuery.data?.assets_breakdown],
+  );
+  const yoyLiabilityCategoryRows = useMemo(
+    () =>
+      buildCategoryYoyRows(
+        "liability",
+        dailyData?.liabilities_breakdown ?? [],
+        priorYearComparisonQuery.data?.liabilities_breakdown,
+      ),
+    [dailyData?.liabilities_breakdown, priorYearComparisonQuery.data?.liabilities_breakdown],
+  );
   const yoyAmountColumns = useMemo(() => buildYoYAmountColumns(), []);
 
   const dailyAssetColumns = useMemo(() => buildDetailColumns("asset"), []);
@@ -605,14 +661,32 @@ export default function AverageBalanceView() {
         dataIndex: "mom_change_pct_assets",
         key: "mom_change_pct_assets",
         align: "right",
-        render: (_value: number | null, row) => formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets),
+        render: (_value: number | null, row: AdbMonthlyDataItem) => (
+          <Space direction="vertical" size={0}>
+            <Text>{formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets)}</Text>
+            {row.mom_change_assets != null ? (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                额 {formatSignedYiBillions(row.mom_change_assets)} 亿元
+              </Text>
+            ) : null}
+          </Space>
+        ),
       },
       {
         title: "负债环比",
         dataIndex: "mom_change_pct_liabilities",
         key: "mom_change_pct_liabilities",
         align: "right",
-        render: (_value: number | null, row) => formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities),
+        render: (_value: number | null, row: AdbMonthlyDataItem) => (
+          <Space direction="vertical" size={0}>
+            <Text>{formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities)}</Text>
+            {row.mom_change_liabilities != null ? (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                额 {formatSignedYiBillions(row.mom_change_liabilities)} 亿元
+              </Text>
+            ) : null}
+          </Space>
+        ),
       },
     ],
     [],
@@ -735,6 +809,15 @@ export default function AverageBalanceView() {
                         <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>年初至今</Button>
                         <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} style={{ width: 160 }} />
                         <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} style={{ width: 160 }} />
+                        <Text type="secondary">明细条数</Text>
+                        <Select
+                          aria-label="adb-top-n"
+                          data-testid="adb-top-n-select"
+                          style={{ width: 100 }}
+                          value={adbTopN}
+                          options={[20, 50, 100, 200].map((n) => ({ label: String(n), value: n }))}
+                          onChange={(v) => setAdbTopN(v)}
+                        />
                       </FilterBar>
                     </Col>
                     <Col>
@@ -761,6 +844,15 @@ export default function AverageBalanceView() {
                       description="覆盖不足时日均余额会退化为有数据日的均值（极端情况等于期末时点），请确认 fact_formal 表已对区间内每个日期执行物化。"
                     />
                   ) : null}
+                  {lowCoverageWarning && startDate && endDate ? (
+                    <div style={{ marginTop: 16 }}>
+                      <AdbCoverageDiagnostics
+                        loading={coverageQuery.isLoading}
+                        isError={coverageQuery.isError}
+                        data={coverageQuery.data}
+                      />
+                    </div>
+                  ) : null}
                 </Card>
 
                 {datesQuery.isLoading || comparisonQuery.isLoading || priorYearComparisonQuery.isLoading ? (
@@ -780,6 +872,12 @@ export default function AverageBalanceView() {
                     <ResultMetaNotice
                       meta={dailyData.result_meta}
                       testId="adb-daily-result-meta"
+                    />
+                    <AdbDenominatorSummary data={dailyData} />
+                    <AdbAccountingBasisSection
+                      snapshot={dailyData.accounting_basis_daily_avg}
+                      trend={dailyData.accounting_basis_daily_avg_trend}
+                      titleSuffix="日度区间"
                     />
                     {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
                     {priorYearRange ? (
@@ -813,6 +911,37 @@ export default function AverageBalanceView() {
                                 columns={yoyAmountColumns}
                                 dataSource={yoyAdbRows}
                               />
+                            </div>
+                          ) : null}
+                          {!priorYearComparisonQuery.isError &&
+                          (yoyAssetCategoryRows.length > 0 || yoyLiabilityCategoryRows.length > 0) ? (
+                            <div data-testid="adb-daily-yoy-category">
+                              {yoyAssetCategoryRows.length > 0 ? (
+                                <div>
+                                  <Text strong>资产端分类 · 区间日均同比</Text>
+                                  <Table<AdbYoYAmountRow>
+                                    style={{ marginTop: 8 }}
+                                    size="small"
+                                    pagination={false}
+                                    rowKey={(row) => row.key}
+                                    columns={yoyAmountColumns}
+                                    dataSource={yoyAssetCategoryRows}
+                                  />
+                                </div>
+                              ) : null}
+                              {yoyLiabilityCategoryRows.length > 0 ? (
+                                <div style={{ marginTop: 16 }}>
+                                  <Text strong>负债端分类 · 区间日均同比</Text>
+                                  <Table<AdbYoYAmountRow>
+                                    style={{ marginTop: 8 }}
+                                    size="small"
+                                    pagination={false}
+                                    rowKey={(row) => row.key}
+                                    columns={yoyAmountColumns}
+                                    dataSource={yoyLiabilityCategoryRows}
+                                  />
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
                         </Space>
@@ -967,6 +1096,10 @@ export default function AverageBalanceView() {
                     <ResultMetaNotice
                       meta={monthlyData.result_meta}
                       testId="adb-monthly-result-meta"
+                    />
+                    <AdbAccountingBasisSection
+                      trend={monthlyData.accounting_basis_daily_avg_trend}
+                      titleSuffix={`${monthlyData.year} 月度`}
                     />
                     <Row gutter={[16, 16]}>
                       {[

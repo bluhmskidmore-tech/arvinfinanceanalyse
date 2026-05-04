@@ -34,6 +34,7 @@ import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
+import { DataModeRibbon } from "../components/DataModeRibbon";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -426,6 +427,8 @@ export function WorkbenchShell() {
   const contentSurfaceShadow = "0 16px 34px rgba(15, 23, 42, 0.08)";
 
   return (
+    <>
+    <DataModeRibbon />
     <div
       className="workbench-shell-grid"
       style={{
@@ -1555,5 +1558,6 @@ export function WorkbenchShell() {
         <AgentWorkbenchPage />
       </Modal>
     </div>
+    </>
   );
 }

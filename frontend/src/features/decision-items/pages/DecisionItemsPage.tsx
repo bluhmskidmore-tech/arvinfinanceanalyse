@@ -12,12 +12,16 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import {
-  PageHeader,
+  DataStatusStrip,
+  PageDecisionHero,
   PageSectionLead,
 } from "../../../components/page/PagePrimitives";
 import { pageSurfacePanelStyle } from "../../../components/page/PagePrimitiveStyles";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { shellTokens } from "../../../theme/tokens";
 import { buildDecisionItemsPageViewModel } from "../lib/decisionItemsPageModel";
+
+import "./DecisionItemsPage.css";
 
 const t = designTokens;
 
@@ -286,31 +290,67 @@ export default function DecisionItemsPage() {
 
   return (
     <div
+      className="decision-items-page"
       data-testid="decision-items-page"
       style={{ padding: t.space[6], background: t.color.neutral[50], minHeight: "100%" }}
     >
-      <PageHeader
-        eyebrow="工作台"
+      <PageDecisionHero
+        testId="decision-items-contract-hero"
         title="决策事项"
-        description="按报告日与口径拉取资产负债分析「决策事项」读模型，可在此确认/忽略并写回同一路径的更新接口。"
+        titleTestId="decision-items-page-title"
+        questionTestId="decision-items-page-subtitle"
+        eyebrow="工作台"
+        reportDateSlot={
+          <span data-testid="decision-items-report-date-slot">
+            报告日 <strong style={{ ...tabularNumsStyle }}>{reportDate || "—"}</strong>
+          </span>
+        }
+        businessQuestion="按报告日与口径拉取资产负债分析「决策事项」读模型，可在此确认/忽略并写回同一路径的更新接口。"
         style={{ marginBottom: t.space[4] }}
-      />
-
-      {showMockWarning ? (
-        <div
-          style={{
-            marginBottom: t.space[4],
-            padding: t.space[3],
-            borderRadius: t.radius.md,
-            border: `1px solid ${t.color.warning[300]}`,
-            background: t.color.warning[50],
-            color: t.color.neutral[800],
-            fontSize: t.fontSize[13],
-          }}
-        >
-          当前为 mock 数据模式，决策事项与操作人回写为本地模拟，不代表生产正式结果。
+        actions={
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "8px 14px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              ...(client.mode === "real"
+                ? { background: shellTokens.colorBgSuccessSoft, color: shellTokens.colorSuccess }
+                : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
+            }}
+          >
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
+        }
+      >
+        <div style={{ marginTop: t.space[3], display: "grid", gap: t.space[3] }}>
+          <DataStatusStrip testId="decision-items-data-status-strip">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: t.space[3], alignItems: "center" }}>
+              <span style={{ fontSize: t.fontSize[13], color: t.color.neutral[700] }}>
+                模式 {client.mode === "real" ? "real" : "mock"} · 操作人 {userLabel}
+              </span>
+            </div>
+            {showMockWarning ? (
+              <div
+                style={{
+                  marginTop: t.space[3],
+                  padding: t.space[3],
+                  borderRadius: t.radius.md,
+                  border: `1px solid ${t.color.warning[300]}`,
+                  background: t.color.warning[50],
+                  color: t.color.neutral[800],
+                  fontSize: t.fontSize[13],
+                }}
+              >
+                当前为 mock 数据模式，决策事项与操作人回写为本地模拟，不代表生产正式结果。
+              </div>
+            ) : null}
+          </DataStatusStrip>
         </div>
-      ) : null}
+      </PageDecisionHero>
 
       <PageSectionLead
         eyebrow="治理"

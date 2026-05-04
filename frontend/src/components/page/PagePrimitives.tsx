@@ -20,6 +20,8 @@ export type PageHeaderProps = {
   badgeTone?: HeaderBadgeTone;
   actions?: ReactNode;
   children?: ReactNode;
+  className?: string;
+  testId?: string;
   style?: CSSProperties;
 };
 
@@ -54,10 +56,14 @@ export function PageHeader({
   badgeTone = "neutral",
   actions,
   children,
+  className,
+  testId,
   style,
 }: PageHeaderProps) {
   return (
     <section
+      data-testid={testId}
+      className={className}
       style={{
         display: "grid",
         gap: 18,

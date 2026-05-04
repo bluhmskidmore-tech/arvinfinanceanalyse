@@ -155,6 +155,7 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-executive-hero")).toHaveClass("dashboard-executive-hero");
     expect(screen.getByTestId("dashboard-bank-ledger-header-link")).toHaveAttribute(
       "href",
       "/bank-ledger-dashboard",

@@ -1,17 +1,17 @@
 .balance-movement-conclusion {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-4);
   border: 1px solid #b7d8c5;
-  border-radius: 8px;
+  border-radius: var(--moss-radius-sm);
   background: #f6fbf7;
-  margin-bottom: 18px;
+  margin-bottom: var(--moss-space-5);
 }
 
 .balance-movement-conclusion__top {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--moss-space-3);
   justify-content: space-between;
 }
 
@@ -36,7 +36,7 @@
 .balance-movement-conclusion__shares {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--moss-space-3);
   color: #26364a;
   font-size: 13px;
 }
@@ -54,10 +54,10 @@
 
 .balance-movement-date-status {
   display: grid;
-  gap: 4px;
-  margin: -4px 0 18px;
-  padding: 12px 14px;
-  border-radius: 8px;
+  gap: var(--moss-space-1);
+  margin: -4px 0 var(--moss-space-5);
+  padding: var(--moss-space-3) var(--moss-space-4);
+  border-radius: var(--moss-radius-sm);
   font-size: 13px;
 }
 
@@ -77,23 +77,23 @@
 
 .balance-movement-date-status--empty {
   border: 1px solid #d7dfea;
-  background: #f8fafc;
+  background: var(--moss-color-neutral-50);
   color: #26364a;
 }
 
 .balance-movement-business-summary {
   display: grid;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding: 18px;
+  gap: var(--moss-space-4);
+  margin-bottom: var(--moss-space-5);
+  padding: var(--moss-space-5);
   border: 1px solid #cfd9e6;
-  border-radius: 8px;
+  border-radius: var(--moss-radius-sm);
   background: #ffffff;
 }
 
 .balance-movement-business-summary__headline {
   display: grid;
-  gap: 6px;
+  gap: var(--moss-space-2);
 }
 
 .balance-movement-business-summary__headline span {
@@ -117,16 +117,16 @@
 .balance-movement-business-summary__facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--moss-space-3);
 }
 
 .balance-movement-business-summary__facts div {
   display: grid;
-  gap: 6px;
-  padding: 12px;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-3);
   border: 1px solid #edf1f6;
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
 }
 
 .balance-movement-business-summary__facts span {
@@ -145,30 +145,30 @@
 .balance-movement-business-summary__body {
   display: grid;
   grid-template-columns: minmax(320px, 1.25fr) minmax(220px, 0.75fr);
-  gap: 14px;
+  gap: var(--moss-space-4);
 }
 
 .balance-movement-zqtz-calibration {
   display: grid;
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 18px;
+  gap: var(--moss-space-4);
+  margin-bottom: var(--moss-space-5);
+  padding: var(--moss-space-5);
   border: 1px solid #cfd9e6;
-  border-radius: 8px;
+  border-radius: var(--moss-radius-sm);
   background: #fbfcfe;
 }
 
 .balance-movement-zqtz-calibration__header {
   display: grid;
   grid-template-columns: minmax(220px, 0.5fr) minmax(320px, 1fr);
-  gap: 16px;
+  gap: var(--moss-space-4);
   align-items: start;
 }
 
 .balance-movement-zqtz-calibration__header div,
 .balance-movement-zqtz-calibration__diagnosis div {
   display: grid;
-  gap: 6px;
+  gap: var(--moss-space-2);
 }
 
 .balance-movement-zqtz-calibration__header span,
@@ -194,13 +194,13 @@
 .balance-movement-zqtz-calibration__diagnosis {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--moss-space-3);
 }
 
 .balance-movement-zqtz-calibration__diagnosis div {
-  padding: 12px;
+  padding: var(--moss-space-3);
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--moss-radius-sm);
   background: #ffffff;
 }
 
@@ -218,7 +218,7 @@
 
 .balance-movement-zqtz-calibration__table th,
 .balance-movement-zqtz-calibration__table td {
-  padding: 10px 8px;
+  padding: var(--moss-space-3) var(--moss-space-2);
   border-bottom: 1px solid #edf1f6;
   text-align: right;
   vertical-align: top;
@@ -232,7 +232,7 @@
 
 .balance-movement-zqtz-calibration__table td:first-child {
   display: grid;
-  gap: 4px;
+  gap: var(--moss-space-1);
 }
 
 .balance-movement-zqtz-calibration__table td:first-child span {
@@ -245,7 +245,7 @@
   display: inline-flex;
   justify-content: center;
   min-width: 48px;
-  padding: 4px 8px;
+  padding: var(--moss-space-1) var(--moss-space-2);
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;

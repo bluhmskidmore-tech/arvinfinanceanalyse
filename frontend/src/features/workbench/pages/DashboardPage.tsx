@@ -449,6 +449,9 @@ export default function DashboardPage() {
   return (
     <section data-testid="fixed-income-dashboard-page">
       <PageHeader
+        testId="dashboard-executive-hero"
+        className="dashboard-executive-hero"
+        titleTestId="dashboard-executive-hero-title"
         title="驾驶舱"
         eyebrow="总览驾驶舱"
         description={`观察日期 ${effectiveReportDate || "最新可用"}。首页先做状态判断、风险分流和专题下钻，不在首屏堆叠所有明细。`}

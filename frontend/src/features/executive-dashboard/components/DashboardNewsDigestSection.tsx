@@ -236,6 +236,11 @@ export function DashboardNewsDigestSection() {
       state={state}
       onRetry={() => void query.refetch()}
       emptyFooter={emptyFooter}
+      extra={
+        <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, fontWeight: 600 }}>
+          实时推送 · 不绑定报告日
+        </span>
+      }
     >
       <div data-testid="dashboard-news-digest-list" style={{ display: "grid", gap: 12 }}>
         <div

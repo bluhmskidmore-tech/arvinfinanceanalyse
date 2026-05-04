@@ -971,7 +971,7 @@ export type LivermoreRuleReadinessStatus =
   | "blocked"
   | "stale";
 export type LivermoreDiagnosticSeverity = "info" | "warning" | "error";
-export type LivermoreDataGapStatus = "missing" | "partial" | "stale";
+export type LivermoreDataGapStatus = "missing" | "partial" | "stale" | "ready";
 export type LivermoreOutputKey =
   | "market_gate"
   | "sector_rank"
@@ -3256,6 +3256,40 @@ export type LiabilitiesMonthlyPayload = {
   ytd_avg_liability_cost: Numeric | null;
 };
 
+export type CockpitWatchItem = {
+  id: string;
+  label: string;
+  level: "watch" | "warning";
+  detail: string;
+};
+
+export type CockpitAlertEvent = {
+  id: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  occurred_at: string;
+  detail: string;
+};
+
+export type CockpitWarningsPayload = {
+  report_date: string;
+  watch_items: CockpitWatchItem[];
+  alert_events: CockpitAlertEvent[];
+};
+
+export type ContributionSplitRow = {
+  category: string;
+  side: "asset" | "liability";
+  amount_yi: number | null;
+  yield_or_cost: number | null;
+  contribution_yi: number | null;
+};
+
+export type ContributionSplitPayload = {
+  report_date: string;
+  contributions: ContributionSplitRow[];
+};
+
 /** ADB 日均分析 — 与 V1 `/api/analysis/adb` 对齐 */
 export type AdbSummary = {
   total_avg_assets: number;
@@ -3316,12 +3350,35 @@ export type AdbComparisonResponse = {
   report_date: string;
   start_date: string;
   end_date: string;
+  /** 用户选择的起止日期对应的日历天数（含首尾），不因 ledger 加权而改变 */
+  calendar_days_inclusive: number;
+  /**
+   * formal_calendar：数据来自 fact_formal_*（CNY 物化）；日均对比分母仍为查询区间日历天数。
+   * snapshot_calendar：无 formal 表时回退快照；与页面“7日/30日/年初至今”观察窗口一致。
+   * snapshot_distinct_days / ledger_weighted：历史兼容值。
+   */
+  adb_denominator_basis:
+    | "formal_calendar"
+    | "snapshot_distinct_days"
+    | "snapshot_calendar"
+    | "ledger_weighted";
+  /** 与区间日均口径一致的分母：有快照时为上述不重复日期数；无数据时为 0 */
   num_days: number;
+  /** 正式表中实际覆盖的不重复日期数（可能 < num_days）；未覆盖日由 sample_fill 补全 */
+  coverage_days?: number;
+  /** 是否触发了 sample_fill（coverage < calendar 时自动放大） */
+  sample_filled?: boolean;
+  /** sample_fill 补全方法标识 */
+  sample_fill_method?: string;
   simulated: boolean;
   total_spot_assets: number;
   total_avg_assets: number;
   total_spot_liabilities: number;
   total_avg_liabilities: number;
+  /** 同业（TYW）区间日均资产（元）；分母与 num_days（快照 distinct 日数）一致 */
+  total_avg_interbank_assets: number;
+  /** 同业（TYW）区间日均负债（元） */
+  total_avg_interbank_liabilities: number;
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
@@ -3368,6 +3425,26 @@ export type AdbMonthlyResponse = {
   ytd_liability_cost: number | null;
   ytd_nim: number | null;
   unit?: string;
+};
+
+/** `GET /api/analysis/adb/coverage` 只读诊断（快照 vs formal 日期覆盖） */
+export type AdbCoverageTableBlock = {
+  dates_count: number;
+  dates: string[];
+  error?: string;
+};
+
+export type AdbCoveragePayload = {
+  start_date: string;
+  end_date: string;
+  calendar_days: number;
+  snapshot_tables: Record<string, AdbCoverageTableBlock>;
+  formal_tables: Record<string, AdbCoverageTableBlock>;
+  snapshot_date_count: number;
+  formal_date_count: number;
+  missing_dates: string[];
+  missing_count: number;
+  coverage_pct: number;
 };
 
 /** @deprecated 使用 AdbMonthlyItem — 保留别名供旧代码类型引用 */

@@ -28,7 +28,7 @@ import type {
 import { runPollingTask } from "../../../app/jobs/polling";
 import { FilterBar } from "../../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import { PageFilterTray, PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { PageDecisionHero, PageFilterTray, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
@@ -1799,14 +1799,35 @@ export default function BalanceAnalysisPage() {
 
   return (
     <section data-testid="balance-analysis-page">
-      <PageHeader
+      <PageDecisionHero
+        testId="balance-analysis-contract-hero"
         title="资产负债分析"
         titleTestId="balance-analysis-page-title"
-        description="以报告日、头寸范围和币种口径为统一页首筛选，先读正式汇总驾驶舱，再进入工作簿主栏与治理右侧栏。保留现有接口合约、结果元信息和正式/分析口径边界，不在前端补算正式指标。"
-        descriptionTestId="balance-analysis-page-subtitle"
+        questionTestId="balance-analysis-page-subtitle"
+        businessQuestion="以报告日、头寸范围和币种口径为统一页首筛选，先读正式汇总驾驶舱，再进入工作簿主栏与治理右侧栏。保留现有接口合约、结果元信息和正式/分析口径边界，不在前端补算正式指标。"
         eyebrow="总览"
-        badgeLabel={client.mode === "real" ? "正式只读链路" : "本地演示数据"}
-        badgeTone={client.mode === "real" ? "positive" : "accent"}
+        reportDateSlot={
+          <span data-testid="balance-analysis-report-date-slot">报告日 {selectedReportDate || "—"}</span>
+        }
+        conclusion={<span style={{ fontSize: 13, color: designTokens.color.neutral[700] }}>口径与头寸变更后请先确认汇总驾驶舱，再向下钻取工作簿与治理侧栏。</span>}
+        actions={
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "8px 14px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              ...(client.mode === "real"
+                ? { background: shellTokens.colorBgSuccessSoft, color: shellTokens.colorSuccess }
+                : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
+            }}
+          >
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
+        }
       >
         <PageFilterTray>
           <FilterBar style={controlBarStyle}>
@@ -1882,7 +1903,7 @@ export default function BalanceAnalysisPage() {
             </button>
           </FilterBar>
         </PageFilterTray>
-      </PageHeader>
+      </PageDecisionHero>
 
       {(refreshStatus || refreshError) && (
         <div

@@ -33,7 +33,7 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
       },
     },
     legend: {
-      data: ["加权YTM", "加权票息", "NIM利差"],
+      data: ["资产收益率", "负债成本率", "NIM利差"],
       top: 0,
     },
     grid: { left: 52, right: 24, top: 48, bottom: 36 },
@@ -50,7 +50,7 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
     },
     series: [
       {
-        name: "加权YTM",
+        name: "资产收益率",
         type: "line",
         data: yieldValues,
         symbol: "circle",
@@ -59,7 +59,7 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
         itemStyle: { color: "#2563eb" },
       },
       {
-        name: "加权票息",
+        name: "负债成本率",
         type: "line",
         data: costValues,
         symbol: "circle",

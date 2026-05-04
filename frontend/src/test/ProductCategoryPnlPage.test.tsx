@@ -139,6 +139,10 @@ describe("ProductCategoryPnlPage", () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const table = await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-page")).toHaveClass("product-category-page-shell");
+    expect(screen.getByTestId("product-category-contract-hero")).toHaveClass(
+      "product-category-contract-hero",
+    );
     expect(screen.getByTestId("product-category-page-title")).toHaveTextContent("产品分类损益");
     expect(screen.getByTestId("product-category-page-subtitle")).toHaveTextContent(
       "按业务分类查看损益、FTP 和净收入",
