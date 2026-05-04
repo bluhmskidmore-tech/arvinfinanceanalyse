@@ -71,6 +71,7 @@
 
 - **Single source of numeric scales:** `frontend/src/theme/designSystem.ts`；域内可扩展（如 `bondAnalyticsCockpitTokens`）但需与本文件**语义一致**。
 - **Formal metrics:** 展示仅消费后端或已约定 adapter 输出，前端不自行推导正式金融指标（与 `AGENTS.md` / `CLAUDE.md` 一致）。
+- **全站版式（opt-in）：** 页面解剖、栅格与状态面等见 [`docs/frontend-layout-contract.md`](docs/frontend-layout-contract.md)。未在本文「Page: …」中**锁定区块顺序**的页面以该契约为默认骨架；已锁定页（如本节债券分析首页）仍以**本文顺序与层次**为准。
 
 ## Decisions Log
 
