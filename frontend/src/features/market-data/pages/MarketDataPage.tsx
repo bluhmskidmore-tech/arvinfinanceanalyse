@@ -728,6 +728,13 @@ export default function MarketDataPage() {
     queryFn: () => client.getLivermoreStrategy({ asOfDate: watchDate }),
     retry: false,
   });
+  const formalRatesQuery = useQuery({
+    queryKey: ["market-data", "formal-rates", client.mode],
+    queryFn: () => client.getMarketDataRates(),
+    retry: false,
+  });
+  const formalRatesMeta = formalRatesQuery.data?.result_meta;
+  const isFormalBasis = formalRatesMeta?.basis === "formal";
 
   const catalog = useMemo(
     () => catalogQuery.data?.result.series ?? [],
@@ -815,7 +822,7 @@ export default function MarketDataPage() {
       ),
     [macroBondLinkage.top_correlations],
   );
-  const macroMeta = latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
+  const macroMeta = formalRatesMeta ?? latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
   const fxAnalyticalMeta = fxAnalyticalQuery.data?.result_meta;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -978,6 +985,9 @@ export default function MarketDataPage() {
         <div style={{ marginTop: s[3], display: "grid", gap: s[3] }}>
           <DataStatusStrip testId="market-data-data-status-strip">
             <div className="market-data-header-meta">
+              <span>
+                口径 {isFormalBasis ? "正式" : "分析"}
+              </span>
               <span>
                 目录 {catalog.length}
               </span>
@@ -1257,6 +1267,7 @@ export default function MarketDataPage() {
               : null
           }
           onRetry={() => void livermoreStrategyQuery.refetch()}
+          onRefreshGateSupplement={() => client.refreshGateSupplement({ asOfDate: watchDate })}
         />
       </MarketSectionBlock>
 

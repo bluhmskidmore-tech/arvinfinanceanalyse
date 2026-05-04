@@ -320,6 +320,65 @@ def choice_macro_latest_envelope(
     )
 
 
+FORMAL_RATES_RULE_VERSION = "rv_market_data_rates_formal_v1"
+FORMAL_RATES_CACHE_VERSION = "cv_market_data_rates_formal_v1"
+
+
+def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
+    """Formal-basis envelope: only stable-tier series for market-data page."""
+    payload = load_choice_macro_latest_payload(duckdb_path, category="stable")
+    quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    source_version = _aggregate_lineage_value(
+        [item.source_version for item in payload.series],
+        empty_value="sv_market_data_rates_empty",
+    )
+    vendor_version = _aggregate_lineage_value(
+        [item.vendor_version for item in payload.series],
+        empty_value="vv_none",
+    )
+    return build_result_envelope(
+        basis="formal",
+        trace_id="tr_market_data_formal",
+        result_kind="market_data.rates",
+        cache_version=FORMAL_RATES_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=FORMAL_RATES_RULE_VERSION,
+        quality_flag=quality_flag,
+        vendor_version=vendor_version,
+        vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
+        fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
+        result_payload=payload.model_dump(mode="json"),
+        source_surface="market_data",
+    )
+
+
+def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
+    """Formal-basis envelope for the macro catalog (stable entries)."""
+    payload = load_macro_vendor_payload(duckdb_path)
+    source_version = _load_macro_vendor_source_version(
+        duckdb_path,
+        series_ids=[item.series_id for item in payload.series],
+    )
+    vendor_version = _aggregate_lineage_value(
+        [item.vendor_version for item in payload.series],
+        empty_value="vv_none",
+    )
+    return build_result_envelope(
+        basis="formal",
+        trace_id="tr_market_data_catalog_formal",
+        result_kind="market_data.catalog",
+        cache_version=CACHE_VERSION,
+        source_version=source_version,
+        rule_version=RULE_VERSION,
+        quality_flag=_quality_flag_for_presence(payload.series),
+        vendor_version=vendor_version,
+        vendor_status=_vendor_status_for_presence(payload.series),
+        fallback_mode="none",
+        result_payload=payload.model_dump(mode="json"),
+        source_surface="market_data",
+    )
+
+
 def load_fx_formal_status_payload(duckdb_path: str) -> FxFormalStatusPayload:
     settings = get_settings()
     try:

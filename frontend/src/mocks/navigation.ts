@@ -236,10 +236,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/market-data",
     icon: "market",
     description: "市场观察入口",
-    readiness: "placeholder",
-    readinessLabel: "Reserved",
+    readiness: "live",
+    readinessLabel: "已开放",
     readinessNote:
-      "Reserved by the current boundary. Market-data preview/vendor/analytical surfaces remain hidden behind placeholder behavior.",
+      "已接正式利率行情读链路，稳定序列走 formal 口径；分析口径模块（Livermore / 联动）独立标注。",
   },
   {
     key: "source-preview",

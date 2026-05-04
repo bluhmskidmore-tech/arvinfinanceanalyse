@@ -8,9 +8,11 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
 from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.macro_vendor_service import (
+    choice_macro_formal_envelope,
     choice_macro_latest_envelope,
     fx_analytical_envelope,
     fx_formal_status_envelope,
+    macro_foundation_formal_envelope,
     macro_vendor_envelope,
 )
 from backend.app.tasks.choice_macro import (
@@ -22,30 +24,46 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 router = APIRouter()
 
 
-def _raise_macro_vendor_reserved_surface() -> None:
-    raise HTTPException(
-        status_code=503,
-        detail="Macro vendor and market-data analytical surfaces are reserved by the current boundary.",
-    )
+# ── Formal market-data endpoints (Phase 1 promotion) ───────────────
+
+@router.get("/ui/market-data/rates")
+def market_data_rates() -> dict[str, object]:
+    """Formal-basis rates for the market-data page (stable series only)."""
+    settings = get_settings()
+    return choice_macro_formal_envelope(settings.duckdb_path)
+
+
+@router.get("/ui/market-data/catalog")
+def market_data_catalog() -> dict[str, object]:
+    """Formal-basis macro catalog for the market-data page."""
+    settings = get_settings()
+    return macro_foundation_formal_envelope(settings.duckdb_path)
+
+
+# ── Analytical / preview endpoints (unlocked from 503) ─────────────
 
 @router.get("/ui/preview/macro-foundation")
 def macro_foundation() -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    return macro_vendor_envelope(settings.duckdb_path)
 
 
 @router.get("/ui/macro/choice-series/latest")
 def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    return choice_macro_latest_envelope(settings.duckdb_path, category=category)
 
 
 @router.get("/ui/market-data/fx/formal-status")
 def fx_formal_status() -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    return fx_formal_status_envelope(settings.duckdb_path)
 
 
 @router.get("/ui/market-data/fx/analytical")
 def fx_analytical() -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    return fx_analytical_envelope(settings.duckdb_path)
 
 
 @router.post("/ui/macro/choice-series/refresh")
@@ -53,7 +71,13 @@ def choice_series_refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    choice_payload = refresh_choice_macro_snapshot(
+        duckdb_path=settings.duckdb_path,
+        backfill_days=backfill_days,
+    )
+    public_payload = _run_public_cross_asset_headline_refresh()
+    return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload)
 
 
 def _run_public_cross_asset_headline_refresh() -> dict[str, object]:
@@ -90,4 +114,6 @@ def _merge_choice_and_public_refresh_payloads(
 def choice_series_refresh_status(
     run_id: str = Query(default=""),
 ) -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    repo = GovernanceRepository(settings.duckdb_path)
+    return repo.get_run_status(CACHE_BUILD_RUN_STREAM, run_id)

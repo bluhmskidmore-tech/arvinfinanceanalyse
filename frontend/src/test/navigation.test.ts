@@ -156,16 +156,24 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
   });
 
-  it("keeps market-data, news-events, and source-preview outside live navigation", () => {
-    for (const key of ["market-data", "news-events", "source-preview"]) {
+  it("keeps news-events and source-preview outside live navigation", () => {
+    for (const key of ["news-events", "source-preview"]) {
       const section = workbenchNavigation.find((s) => s.key === key);
       expect(section?.readiness).toBe("placeholder");
       expect(section?.readinessLabel).toBe("Reserved");
       expect(primaryWorkbenchNavigation.some((s) => s.key === key)).toBe(false);
     }
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "source-preview")).toBe(false);
+  });
+
+  it("promotes market-data into the live primary navigation as a formally open page", () => {
+    const section = workbenchNavigation.find((s) => s.key === "market-data");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("已开放");
+    expect(section?.governanceStatus).toBeUndefined();
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(false);
   });
 
   it("promotes decision-items into the live primary navigation as a temporary exception", () => {

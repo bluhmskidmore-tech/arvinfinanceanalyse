@@ -69,6 +69,10 @@ export type MarketDataClientMethods = {
   getLivermoreStrategy: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreStrategyPayload>>;
+  refreshGateSupplement: (options?: {
+    asOfDate?: string;
+    lookbackDays?: number;
+  }) => Promise<{ status: string; computed_rows: number; first_date?: string; last_date?: string; message?: string }>;
   getChoiceNewsEvents: (options: {
     limit: number;
     offset: number;
@@ -91,6 +95,8 @@ export type MarketDataClientMethods = {
     startDate?: string;
     endDate?: string;
   }) => Promise<ResearchCalendarEvent[]>;
+  getMarketDataRates: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
+  getMarketDataCatalog: () => Promise<ApiEnvelope<MacroVendorPayload>>;
 };
 
 export type MarketDataDomainClientMethods = MarketDataClientMethods;
@@ -1347,6 +1353,39 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         news: { inserted: 0, skipped_duplicates: 0, fetched: 0, src: "mock" },
       };
     },
+    async refreshGateSupplement(_options?: { asOfDate?: string; lookbackDays?: number }) {
+      await delay();
+      return { status: "completed", computed_rows: 15, first_date: "2026-04-10", last_date: "2026-04-29" };
+    },
+    async getMarketDataRates() {
+      await delay();
+      // Mock returns stable-only series with formal basis
+      const stableSeries = MOCK_CHOICE_MACRO_LATEST_PAYLOAD.series.filter(
+        (s) => s.refresh_tier === "stable",
+      );
+      return buildMockApiEnvelope("market_data.rates", {
+        ...MOCK_CHOICE_MACRO_LATEST_PAYLOAD,
+        series: stableSeries,
+      }, {
+        basis: "formal",
+        formal_use_allowed: true,
+        source_version: "sv_market_data_rates_mock",
+        vendor_version: "vv_choice_macro_20260410",
+        rule_version: "rv_market_data_rates_formal_v1",
+        cache_version: "cv_market_data_rates_formal_v1",
+      });
+    },
+    async getMarketDataCatalog() {
+      await delay();
+      return buildMockApiEnvelope("market_data.catalog", MOCK_MACRO_FOUNDATION_PAYLOAD, {
+        basis: "formal",
+        formal_use_allowed: true,
+        source_version: "sv_macro_vendor_mock",
+        vendor_version: "vv_choice_catalog_v1",
+        rule_version: "rv_phase1_macro_vendor_v1",
+        cache_version: "cv_phase1_macro_vendor_v1",
+      });
+    },
   };
 }
 
@@ -1520,6 +1559,34 @@ export function createRealMarketDataClient({
         { method: "POST" },
       );
     },
+    refreshGateSupplement: (options?: { asOfDate?: string; lookbackDays?: number }) => {
+      const params = new URLSearchParams();
+      if (options?.asOfDate?.trim()) {
+        params.set("as_of_date", options.asOfDate.trim());
+      }
+      if (options?.lookbackDays != null) {
+        params.set("lookback_days", String(options.lookbackDays));
+      }
+      const query = params.toString();
+      return requestActionJson<{ status: string; computed_rows: number; first_date?: string; last_date?: string; message?: string }>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/refresh-gate-supplement${query ? `?${query}` : ""}`,
+        { method: "POST" },
+      );
+    },
+    getMarketDataRates: () =>
+      requestJson<ChoiceMacroLatestPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/rates",
+      ),
+    getMarketDataCatalog: () =>
+      requestJson<MacroVendorPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/catalog",
+      ),
   };
 }
 

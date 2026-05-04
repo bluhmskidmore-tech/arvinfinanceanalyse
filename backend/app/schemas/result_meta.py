@@ -14,6 +14,7 @@ SourceSurface = Literal[
     "risk_tensor",
     "cashflow",
     "pnl_bridge",
+    "market_data",
 ]
 
 _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
@@ -26,6 +27,7 @@ _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
     ("risk.tensor", "risk_tensor"),
     ("cashflow_projection.", "cashflow"),
     ("pnl.bridge", "pnl_bridge"),
+    ("market_data.", "market_data"),
 ]
 
 _GOVERNED_RESULT_KIND_PREFIXES = tuple(
