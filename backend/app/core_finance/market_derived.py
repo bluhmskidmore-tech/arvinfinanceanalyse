@@ -113,32 +113,38 @@ def get_credit_spread(rating: str, tenor_years: float, curve: dict[str, Any] | N
 
 
 def interpolate_ftp_rate(term_months: float, curve_points: list[tuple[float, float]]) -> float:
-    """
-    按期限（月）对 FTP 年化利率做线性插值。curve_points: [(months, rate), ...]，rate 为小数。
-    点集按月份排序；单点则返回该点利率；空集返回 0.0。
+    """按期限（月）对 FTP 年化利率做插值。curve_points: [(months, rate), ...]，rate 为小数。
+
+    Delegates to ``curve_engine`` cubic spline for ≥ 3 points;
+    falls back to piecewise linear otherwise.  Signature unchanged.
+
+    Note: the engine uses ``years`` as the x-axis label but the actual unit
+    is months here — the math is unit-agnostic.
     """
     if not curve_points:
         return 0.0
-    pts = sorted(curve_points, key=lambda x: x[0])
+
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
+
     t = float(term_months)
+    pts = sorted(curve_points, key=lambda x: x[0])
+
     if t <= 0:
         return float(pts[0][1])
 
-    tenors = [p[0] for p in pts]
-    rates = [float(p[1]) for p in pts]
+    # Reuse CurvePoint (years field stores months here — unit-agnostic)
+    engine_points = [CurvePoint(years=m, rate=Decimal(str(r))) for m, r in pts]
 
-    if t <= tenors[0]:
-        return rates[0]
-    if t >= tenors[-1]:
-        return rates[-1]
-
-    for i in range(len(tenors) - 1):
-        t0, t1 = tenors[i], tenors[i + 1]
-        if t0 <= t <= t1:
-            r0, r1 = rates[i], rates[i + 1]
-            if t1 == t0:
-                return r0
-            w = (t - t0) / (t1 - t0)
-            return r0 + (r1 - r0) * w
-
-    return rates[-1]
+    if len(engine_points) >= 3:
+        fitted = _build_spline(engine_points)
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(engine_points))
+    return float(_engine_interpolate(fitted, t))

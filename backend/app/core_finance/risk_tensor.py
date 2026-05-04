@@ -160,6 +160,12 @@ def _aggregate_krd_values(
     rows: list[dict[str, Any]],
     warnings: list[str],
 ) -> dict[str, Decimal]:
+    """Aggregate per-row DV01 into the 6 standard KRD buckets.
+
+    Non-standard tenor buckets (2Y, 15Y, 20Y, etc.) are remapped to the nearest
+    supported bucket via ``KRD_BUCKET_FALLBACK``.  Truly unknown buckets with
+    non-zero DV01 are excluded and reported in ``warnings``.
+    """
     krd_values = {field_name: ZERO for field_name in SUPPORTED_KRD_BUCKETS.values()}
     unsupported_buckets: set[str] = set()
     remapped_buckets: set[str] = set()
@@ -195,6 +201,13 @@ def _aggregate_krd_values(
 
 
 def _resolve_face_value(row: dict[str, Any]) -> Decimal:
+    """Return face_value for coupon cashflow projection, falling back to market_value.
+
+    When the source bond analytics fact row lacks an explicit ``face_value`` column
+    (e.g. imported from legacy balance snapshots that only carry MV), market_value is
+    used as an approximation.  This is acceptable for near-par bonds but may overstate
+    coupon cashflows for deep-discount or premium positions.
+    """
     if row.get("face_value") is not None:
         return _safe_decimal(row.get("face_value"))
     return _safe_decimal(row.get("market_value"))

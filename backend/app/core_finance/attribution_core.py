@@ -249,24 +249,33 @@ def interpolate_yield_curve(
     yield_curve: Dict[int, Decimal],
     target_tenor: float,
 ) -> Decimal:
+    """Interpolate a yield from a {tenor_years_int: rate} curve.
+
+    Delegates to ``curve_engine`` cubic spline when ≥ 3 points are available;
+    falls back to piecewise linear otherwise.  Signature unchanged.
+    """
     if not yield_curve:
         return Decimal("0")
 
-    tenors = sorted(yield_curve.keys())
-    target = Decimal(str(target_tenor))
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
 
-    if target <= Decimal(str(tenors[0])):
-        return yield_curve[tenors[0]]
-    if target >= Decimal(str(tenors[-1])):
-        return yield_curve[tenors[-1]]
-
-    for i in range(len(tenors) - 1):
-        t1, t2 = tenors[i], tenors[i + 1]
-        if Decimal(str(t1)) <= target <= Decimal(str(t2)):
-            y1, y2 = yield_curve[t1], yield_curve[t2]
-            return y1 + (y2 - y1) * (target - Decimal(str(t1))) / Decimal(str(t2 - t1))
-
-    return Decimal("0")
+    curve_points = sorted(
+        [CurvePoint(years=float(t), rate=yield_curve[t]) for t in yield_curve],
+        key=lambda p: p.years,
+    )
+    if len(curve_points) >= 3:
+        fitted = _build_spline(list(curve_points))
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(curve_points))
+    return _engine_interpolate(fitted, target_tenor)
 
 
 TENOR_BUCKETS = [

@@ -75,9 +75,13 @@ def aggregate_daily_totals(
 
 def enrich_bonds_asset_frame(bonds_assets_df: pd.DataFrame) -> pd.DataFrame:
     """Add category / balance / rate_decimal / weighted columns to bond asset frame."""
-    from backend.app.core_finance.adb_analytics import _clean_cat_local  # avoid circular — defined below
+    from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
+
     df = bonds_assets_df.copy()
-    df["category"] = df["sub_type"].apply(_clean_cat_local)
+    if "bond_category" in df.columns:
+        df["category"] = df["bond_category"].apply(_clean_cat_local)
+    else:
+        df["category"] = df.apply(lambda r: classify_zqtz_asset_bond_label(r.to_dict()), axis=1)
     df["balance"] = pd.to_numeric(df["market_value"], errors="coerce").fillna(0.0)
     df["rate_decimal"] = normalize_rate_values(df["yield_to_maturity"].tolist(), "yield_to_maturity")
     df["weighted"] = df["balance"] * df["rate_decimal"]
@@ -86,9 +90,11 @@ def enrich_bonds_asset_frame(bonds_assets_df: pd.DataFrame) -> pd.DataFrame:
 
 def enrich_bonds_liability_frame(bonds_liab_df: pd.DataFrame) -> pd.DataFrame:
     """Add category / balance / rate_decimal / weighted columns to bond liability frame."""
-    from backend.app.core_finance.adb_analytics import _clean_cat_local
     df = bonds_liab_df.copy()
-    df["category"] = df["sub_type"].apply(_clean_cat_local)
+    if "bond_category" in df.columns:
+        df["category"] = df["bond_category"].apply(_clean_cat_local)
+    else:
+        df["category"] = df["sub_type"].apply(_clean_cat_local)
     df["balance"] = pd.to_numeric(df["market_value"], errors="coerce").fillna(0.0)
     normalized = normalize_rate_values(df["coupon_rate"].tolist(), "coupon_rate")
     df["rate_decimal"] = [

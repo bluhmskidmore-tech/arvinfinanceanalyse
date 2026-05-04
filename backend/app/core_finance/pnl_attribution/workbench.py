@@ -5,10 +5,13 @@ Reuses `read_models` aggregators where applicable (iron rule: no duplicate bucke
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_FVTPL
 
@@ -772,6 +775,18 @@ def build_campisi_attribution(
                 "selection_effect": round(sel, 4),
                 "selection_effect_pct": 0.0,
             }
+        )
+
+    # LO-03: Log credit spread coverage so production logs surface the stub impact.
+    credit_ac_count = sum(1 for i in items if "credit" in str(i.get("category", "")).lower())
+    if credit_ac_count > 0:
+        logger.info(
+            "Campisi attribution: %d/%d asset classes are credit but spread/selection=0 (Phase 3 stub); "
+            "total_income=%.2f, total_treasury=%.2f",
+            credit_ac_count,
+            len(items),
+            tot_inc,
+            tot_t,
         )
 
     total_return = tot_inc + tot_t + tot_s + tot_sel
