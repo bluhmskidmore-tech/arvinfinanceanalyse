@@ -821,9 +821,14 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
 
     ytd_avg_total = (year_total_amount / Decimal(year_total_days)) if year_total_days > 0 else ZERO
 
+    # Compute YTD weighted average liability cost across all months.
+    ytd_weighted_num = sum((m.weighted_num for m in monthly.values()), ZERO)
+    ytd_weighted_den = sum((m.weighted_den for m in monthly.values()), ZERO)
+    ytd_avg_cost = (ytd_weighted_num / ytd_weighted_den) if ytd_weighted_den > ZERO else None
+
     return {
         "year": year,
         "months": months,
         "ytd_avg_total_liabilities": to_float(ytd_avg_total),
-        "ytd_avg_liability_cost": None,
+        "ytd_avg_liability_cost": to_float(ytd_avg_cost),
     }

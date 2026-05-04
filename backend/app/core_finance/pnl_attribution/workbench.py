@@ -801,4 +801,7 @@ def build_campisi_attribution(
         "primary_driver": primary,
         "interpretation": "Campisi 四效应为收入、国债平移、利差与选择（此处利差/选择按简化残差框架可扩展）。",
         "items": items,
+        "warnings": [
+            "spread_effect 和 selection_effect 尚未实现信用曲线数据接入，当前为 0（Phase 3 待集成）。",
+        ],
     }

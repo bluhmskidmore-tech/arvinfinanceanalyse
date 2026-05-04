@@ -329,7 +329,7 @@ def tpl_market_correlation_envelope(*, months: int = 12) -> dict[str, object]:
                 "tpl_scale": tpl_scale,
                 "treasury_10y": tsy,
                 "treasury_10y_change": dtsy,
-                "dr007": None,
+                "dr007": None,  # Placeholder — DR007 series requires external data integration (Phase 3).
             }
         )
 

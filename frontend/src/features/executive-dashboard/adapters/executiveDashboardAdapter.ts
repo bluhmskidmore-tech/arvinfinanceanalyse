@@ -65,6 +65,7 @@ export type DashboardAdapterInput = {
   attributionError: boolean;
   verdictPayload?: VerdictPayload | null;
   snapshotFetchErrorDetail?: string;
+  domainsEffectiveDate?: Record<string, string>;
 };
 
 export type DashboardAdapterOutput = {
@@ -79,6 +80,8 @@ export type DashboardAdapterOutput = {
     meta: ResultMeta | null;
   };
   verdict: VerdictPayload | null;
+  domainsEffectiveDate: Record<string, string>;
+  datesDiverged: boolean;
 };
 
 export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOutput {
@@ -101,6 +104,11 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
   const overviewVM = buildOverviewVM(input.overviewEnv?.result);
   const attributionVM = buildAttributionVM(input.attributionEnv?.result);
 
+  const domains = input.domainsEffectiveDate ?? {};
+  const domainValues = Object.values(domains).filter((v) => typeof v === "string" && v.trim());
+  const uniqueDates = new Set(domainValues);
+  const datesDiverged = uniqueDates.size > 1;
+
   return {
     overview: {
       vm: overviewVM,
@@ -113,6 +121,8 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
       meta: input.attributionEnv?.result_meta ?? null,
     },
     verdict: sanitizeVerdict(input.verdictPayload ?? null),
+    domainsEffectiveDate: domains,
+    datesDiverged,
   };
 }
 

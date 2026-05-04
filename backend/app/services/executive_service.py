@@ -152,13 +152,15 @@ def _fmt_signed_percent(value: float | None) -> Numeric:
 
 
 def _normalize_ratio_percent_input(value: float | None) -> float:
-    """Normalize legacy percent inputs onto decimal-ratio semantics."""
+    """Treat input as decimal-ratio (e.g. 0.035 = 3.5%).
+
+    Upstream callers (compute_liability_yield_metrics → weighted_rate) all
+    return decimal ratios.  The previous heuristic threshold ``abs(v) >= 0.1``
+    caused a 100× error for NIM values at or above 10 bp decimal (0.001).
+    """
     if value is None:
         return 0.0
-    normalized = float(value)
-    if abs(normalized) >= 0.1:
-        return normalized / 100.0
-    return normalized
+    return float(value)
 
 
 def _fmt_signed_ratio_percent(value: float | None) -> Numeric:
@@ -341,6 +343,11 @@ def _tone_for_signed(yi: float) -> str:
 
 
 _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT: dict[str, str] = {
+    # Only level-1 category_ids reach _aggregate_attribution_segments (via
+    # _level1_monthly_rows L380-384).  Currently only ``bond_investment``
+    # defines children at level 1 in product_category_mapping.py; other
+    # product categories (interbank, repo, NCD, etc.) are all level 0 and
+    # flow entirely into the ``other`` bucket by design.
     "bond_tpl": "trading",
     "bond_ac": "carry",
     "bond_fvoci": "carry",
@@ -1411,38 +1418,64 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
         return _fallback_executive_alerts()
 
 
-_HOME_SNAPSHOT_DOMAINS = ("balance", "pnl", "liability", "bond")
+_HOME_SNAPSHOT_CALIBERS = ("balance_sheet", "pnl")
+"""Business calibers for the home snapshot.
+
+- ``balance_sheet``: AUM + NIM + DV01 — all from the same T+1 daily pipeline.
+  Available dates = intersection(balance, liability, bond).
+- ``pnl``: YTD P&L — independent formal build cycle.
+- Market/macro data is excluded; it is real-time and not bound to report date.
+"""
 
 
 def _list_domain_dates() -> dict[str, set[str]]:
-    """Return the set of available report_dates per domain."""
+    """Return the set of available report_dates per caliber.
+
+    ``balance_sheet`` = intersection of balance, liability, bond dates.
+    ``pnl`` = formal fixed-income P&L dates.
+    """
     settings = get_settings()
-    dates: dict[str, set[str]] = {d: set() for d in _HOME_SNAPSHOT_DOMAINS}
+
+    balance_dates: set[str] = set()
+    liability_dates: set[str] = set()
+    bond_dates: set[str] = set()
+    pnl_dates: set[str] = set()
+
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
-        dates["balance"] = set(_list_executive_aum_report_dates(balance_repo, currency_basis="CNY"))
+        balance_dates = set(_list_executive_aum_report_dates(balance_repo, currency_basis="CNY"))
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["balance"] = set()
+        pass
 
     try:
         pnl_repo = PnlRepository(str(settings.duckdb_path))
-        dates["pnl"] = set(pnl_repo.list_formal_fi_report_dates())
+        pnl_dates = set(pnl_repo.list_formal_fi_report_dates())
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["pnl"] = set()
+        pass
 
     try:
         liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
-        dates["liability"] = set(liability_repo.list_report_dates())
+        liability_dates = set(liability_repo.list_report_dates())
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["liability"] = set()
+        pass
 
     try:
         bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
-        dates["bond"] = set(bond_repo.list_report_dates())
+        bond_dates = set(bond_repo.list_report_dates())
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["bond"] = set()
+        pass
 
-    return dates
+    # balance_sheet caliber: a date is available only when ALL THREE
+    # sub-sources (balance, liability, bond) have data for that date.
+    bs_components = [balance_dates, liability_dates, bond_dates]
+    balance_sheet_dates = (
+        set.intersection(*bs_components) if all(bs_components) else set()
+    )
+
+    return {
+        "balance_sheet": balance_sheet_dates,
+        "pnl": pnl_dates,
+    }
 
 
 def _compute_unified_report_date(
@@ -1470,16 +1503,16 @@ def _compute_unified_report_date(
                 return (
                     requested,
                     [],
-                    {domain: requested for domain in _HOME_SNAPSHOT_DOMAINS},
+                    {domain: requested for domain in _HOME_SNAPSHOT_CALIBERS},
                 )
-            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
         if not intersection:
-            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
         top_date = max(intersection)
         return (
             top_date,
             [],
-            {domain: top_date for domain in _HOME_SNAPSHOT_DOMAINS},
+            {domain: top_date for domain in _HOME_SNAPSHOT_CALIBERS},
         )
 
     # partial: accept any requested or fall back to union max
@@ -1488,14 +1521,14 @@ def _compute_unified_report_date(
     else:
         union = set.union(*domain_dates.values()) if domain_dates.values() else set()
         if not union:
-            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
         target = max(union)
 
     missing = [
-        domain for domain in _HOME_SNAPSHOT_DOMAINS if target not in domain_dates[domain]
+        domain for domain in _HOME_SNAPSHOT_CALIBERS if target not in domain_dates[domain]
     ]
     effective: dict[str, str] = {}
-    for domain in _HOME_SNAPSHOT_DOMAINS:
+    for domain in _HOME_SNAPSHOT_CALIBERS:
         if target in domain_dates[domain]:
             effective[domain] = target
         elif domain_dates[domain]:
@@ -1585,7 +1618,7 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
         source_surface="executive_analytical",
         overview=OverviewPayload(title="经营总览", metrics=[]),
         attribution=_pnl_attribution_unavailable_payload(),
-        domains_missing=list(_HOME_SNAPSHOT_DOMAINS),
+        domains_missing=list(_HOME_SNAPSHOT_CALIBERS),
         domains_effective_date={},
         verdict=None,
     )
@@ -1679,7 +1712,7 @@ def _compute_home_snapshot_envelope(
                 "requested_report_date": normalized,
                 "allow_partial": allow_partial,
                 "effective_report_dates": {},
-                "domains_missing": list(_HOME_SNAPSHOT_DOMAINS),
+                "domains_missing": list(_HOME_SNAPSHOT_CALIBERS),
             },
         )
 

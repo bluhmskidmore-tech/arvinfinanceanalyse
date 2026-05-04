@@ -297,7 +297,7 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
                 "asset_yield": 2.45,
                 "liability_cost": 2.07,
                 "market_liability_cost": 2.07,
-                "nim": 0.38 if report_date == "2030-03-15" else 0.33,
+                "nim": 0.0038 if report_date == "2030-03-15" else 0.0033,
             },
         },
     )
@@ -447,7 +447,7 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
             "kpi": {
-                "nim": 0.25 if report_date == "2025-11-20" else 0.20,
+                "nim": 0.0025 if report_date == "2025-11-20" else 0.0020,
             },
         },
     )
@@ -574,7 +574,7 @@ def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
             "kpi": {
-                "nim": 0.25 if report_date == "2025-12-31" else 0.20,
+                "nim": 0.0025 if report_date == "2025-12-31" else 0.0020,
             },
         },
     )
@@ -658,7 +658,7 @@ def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(
     monkeypatch.setattr(
         exec_mod,
         "compute_liability_yield_metrics",
-        lambda report_date, zqtz_rows, tyw_rows: {"report_date": report_date, "kpi": {"nim": 0.25}},
+        lambda report_date, zqtz_rows, tyw_rows: {"report_date": report_date, "kpi": {"nim": 0.0025}},
     )
 
     out = exec_mod.executive_overview()
@@ -1283,7 +1283,7 @@ def test_executive_overview_latest_governed_ytd_uses_latest_report_date(monkeypa
         "compute_liability_yield_metrics",
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
-            "kpi": {"nim": 0.42 if report_date == "2024-12-31" else 0.40},
+            "kpi": {"nim": 0.0042 if report_date == "2024-12-31" else 0.0040},
         },
     )
     monkeypatch.setattr(exec_mod, "date", FixedDate)

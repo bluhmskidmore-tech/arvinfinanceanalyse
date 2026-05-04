@@ -1,7 +1,10 @@
 """Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
 from __future__ import annotations
 
+import logging
 import uuid
+
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -351,6 +354,8 @@ def _overlay_return_decomposition_trading_pnl517(
 
     summary["bond_details"] = bond_rows
     summary["trading_total"] = sum((safe_decimal(r.get("trading")) for r in bond_rows if isinstance(r, dict)), ZERO)
+    matched_coverage_pct = float(matched_mv / total_mv * 100) if total_mv > ZERO else 0.0
+    summary["matched_coverage_pct"] = round(matched_coverage_pct, 2)
     by_ac, by_acc = rebucket_return_decomposition(bond_rows)
     summary["by_asset_class"] = by_ac
     summary["by_accounting_class"] = by_acc
@@ -372,6 +377,12 @@ def _overlay_return_decomposition_trading_pnl517(
             "capital_gain_517 matched for a subset of positions (instrument+book); others show trading 0."
         )
         details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_PARTIAL_DETAIL.items()})
+        if matched_coverage_pct < 80.0:
+            details.append({
+                "code": "return_decomposition_trading_pnl517_low_coverage",
+                "level": "warning",
+                "message": f"matched_coverage_pct={matched_coverage_pct:.1f}%_below_80pct_threshold",
+            })
     return summary, extra_warnings, details
 
 
@@ -2060,6 +2071,10 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
             pnl_by_key=pnl_by_key,
         )
     except Exception:
+        logger.exception(
+            "Action attribution computation failed for report_date=%s period_type=%s, returning placeholder",
+            report_date, period_type,
+        )
         return _build_action_attribution_placeholder_response(
             report_date=report_date, period_type=period_type
         )
