@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import os
 from datetime import UTC, datetime, timedelta
@@ -29,6 +32,7 @@ def _resolve_tushare_token() -> str:
     try:
         return resolve_tushare_token_with_settings_fallback(get_settings())
     except Exception:
+        logger.warning("Failed to resolve tushare token from settings, returning empty", exc_info=True)
         return ""
 
 
@@ -41,7 +45,7 @@ def _resolve_tushare_news_src(default: str = "sina") -> str:
         if configured:
             return configured
     except Exception:
-        pass
+        logger.debug("Failed to read tushare_news_src from settings", exc_info=True)
     return default
 
 # `pro.npr` is "National Policy Repository" — Tushare's `policy_brief` does NOT exist.
@@ -475,10 +479,12 @@ def ingest_tushare_npr_to_choice_news(
         try:
             purged = _purge_expired_choice_news_events(conn)
         except Exception:
+            logger.warning("Failed to purge expired choice_news_event rows", exc_info=True)
             purged = 0
         try:
             purged_warehouse = purge_expired_news_events(conn)
         except Exception:
+            logger.warning("Failed to purge expired warehouse news events", exc_info=True)
             purged_warehouse = 0
     finally:
         conn.close()
@@ -545,6 +551,7 @@ def _ingest_cctv_news_block(
             )
         except Exception:
             # Per-day failure (often "no data" on weekends) — keep aggregating others.
+            logger.debug("CCTV news ingest failed for date %s, skipping", date_str, exc_info=True)
             continue
         for key in aggregate:
             aggregate[key] += block[key]

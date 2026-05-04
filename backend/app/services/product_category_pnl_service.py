@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -118,6 +122,10 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                     run_id=run_id,
                 )
             except Exception:
+                logger.warning(
+                    "Async dispatch for product-category refresh failed, falling back to sync",
+                    exc_info=True,
+                )
                 try:
                     payload = materialize_product_category_pnl.fn(
                         duckdb_path=str(settings.duckdb_path),

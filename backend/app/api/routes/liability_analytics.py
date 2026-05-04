@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
 from backend.app.services.liability_analytics_service import (
+    cockpit_warnings_payload,
+    contribution_split_payload,
     liabilities_monthly_payload,
     liability_counterparty_payload,
     liability_risk_buckets_payload,
@@ -78,3 +80,25 @@ def liabilities_monthly(
 @router.get("/ui/liability/business-context")
 def liability_business_context() -> dict[str, object]:
     return liability_knowledge_brief_envelope()
+
+
+@router.get("/api/analysis/liabilities/cockpit-warnings")
+def liability_cockpit_warnings(
+    report_date: str | None = Query(None, description="Report date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    validated = _validate_optional_report_date(report_date)
+    return cockpit_warnings_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        report_date=validated,
+    )
+
+
+@router.get("/api/analysis/liabilities/contribution-split")
+def liability_contribution_split(
+    report_date: str | None = Query(None, description="Report date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    validated = _validate_optional_report_date(report_date)
+    return contribution_split_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        report_date=validated,
+    )

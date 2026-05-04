@@ -6,6 +6,10 @@ from backend.app.core_finance.liability_analytics_compat import (
     compute_liability_risk_buckets,
     compute_liability_yield_metrics,
 )
+from backend.app.core_finance.liability_cockpit import (
+    compute_cockpit_warnings,
+    compute_contribution_split,
+)
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from backend.app.schemas.liability_analytics import (
     LiabilitiesMonthlyPayload,
@@ -259,4 +263,44 @@ def liabilities_monthly_payload(*, duckdb_path: str, year: int) -> dict[str, obj
         result_payload=LiabilitiesMonthlyPayload.model_validate(
             _promote_liability_payload(payload, LiabilitiesMonthlyPayload)
         ).model_dump(mode="json"),
+    )
+
+
+def cockpit_warnings_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
+    repo = LiabilityAnalyticsRepository(duckdb_path)
+    resolved_date = _resolve_report_date(repo, report_date)
+    if not resolved_date:
+        return _envelope(
+            result_kind="liability_analytics.cockpit_warnings",
+            source_rows=[],
+            quality_flag="warning",
+            result_payload={"report_date": "", "watch_items": [], "alert_events": []},
+        )
+    zqtz_rows = repo.fetch_zqtz_rows(resolved_date)
+    tyw_rows = repo.fetch_tyw_rows(resolved_date)
+    payload = compute_cockpit_warnings(resolved_date, zqtz_rows, tyw_rows)
+    return _envelope(
+        result_kind="liability_analytics.cockpit_warnings",
+        source_rows=[*zqtz_rows, *tyw_rows],
+        result_payload=payload,
+    )
+
+
+def contribution_split_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
+    repo = LiabilityAnalyticsRepository(duckdb_path)
+    resolved_date = _resolve_report_date(repo, report_date)
+    if not resolved_date:
+        return _envelope(
+            result_kind="liability_analytics.contribution_split",
+            source_rows=[],
+            quality_flag="warning",
+            result_payload={"report_date": "", "contributions": []},
+        )
+    zqtz_rows = repo.fetch_zqtz_rows(resolved_date)
+    tyw_rows = repo.fetch_tyw_rows(resolved_date)
+    payload = compute_contribution_split(resolved_date, zqtz_rows, tyw_rows)
+    return _envelope(
+        result_kind="liability_analytics.contribution_split",
+        source_rows=[*zqtz_rows, *tyw_rows],
+        result_payload=payload,
     )

@@ -16,8 +16,11 @@ Design notes
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Callable, Sequence
+
+logger = logging.getLogger(__name__)
 
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
@@ -115,24 +118,24 @@ class AnalyticalBridgeService:
         """Query the same governed tables as formal but stamp the result as analytical."""
         table_name = CubeQueryService.table_name_for(request.fact_table)
         svc = self._cube_service
-        dimensions = svc._validate_dimensions(request)
-        filters = svc._validate_filters(request)
-        measure_specs = svc._parse_measures(request)
-        where_sql, where_params = svc._build_where_clause(request.report_date, filters)
+        dimensions = svc.validate_dimensions(request)
+        filters = svc.validate_filters(request)
+        measure_specs = svc.parse_measures(request)
+        where_sql, where_params = svc.build_where_clause(request.report_date, filters)
         repo = self._repo_factory(duckdb_path)
-        matching = svc._matching_row_count(repo, table_name, where_sql, where_params)
+        matching = svc.matching_row_count(repo, table_name, where_sql, where_params)
 
         if matching == 0:
             rows: list[dict[str, object]] = []
             total_rows = 0
         else:
-            total_rows = svc._total_rows(repo, table_name, dimensions, where_sql, where_params)
-            rows = svc._fetch_rows(
+            total_rows = svc.total_rows(repo, table_name, dimensions, where_sql, where_params)
+            rows = svc.fetch_rows(
                 repo, table_name, dimensions, measure_specs,
                 where_sql, where_params, request.order_by, request.limit, request.offset,
             )
 
-        drill_paths = svc._build_drill_paths(
+        drill_paths = svc.build_drill_paths(
             repo, request=request, table_name=table_name,
             dimensions=dimensions, filters=filters,
         )
@@ -182,6 +185,11 @@ class AnalyticalBridgeService:
         try:
             matching = _matching_row_count(repo, table_name, where_sql, where_params)
         except Exception:
+            logger.warning(
+                "Ledger table %s not queryable, treating as empty",
+                table_name,
+                exc_info=True,
+            )
             matching = 0
 
         if matching == 0:

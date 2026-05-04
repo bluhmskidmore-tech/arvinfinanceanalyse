@@ -356,9 +356,16 @@ def _overlay_return_decomposition_trading_pnl517(
     summary["trading_total"] = sum((safe_decimal(r.get("trading")) for r in bond_rows if isinstance(r, dict)), ZERO)
     matched_coverage_pct = float(matched_mv / total_mv * 100) if total_mv > ZERO else 0.0
     summary["matched_coverage_pct"] = round(matched_coverage_pct, 2)
-    by_ac, by_acc = rebucket_return_decomposition(bond_rows)
-    summary["by_asset_class"] = by_ac
-    summary["by_accounting_class"] = by_acc
+    try:
+        by_ac, by_acc = rebucket_return_decomposition(bond_rows)
+        summary["by_asset_class"] = by_ac
+        summary["by_accounting_class"] = by_acc
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+        logger.exception(
+            "rebucket_return_decomposition failed after trading overlay; "
+            "by_asset_class / by_accounting_class unchanged: %s",
+            exc,
+        )
 
     if not pnl_map:
         extra_warnings.append(

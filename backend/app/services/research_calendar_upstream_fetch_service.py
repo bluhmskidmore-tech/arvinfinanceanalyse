@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import re
 from datetime import UTC, datetime
@@ -348,6 +351,7 @@ def fetch_mof_treasury_supply_auction_rows(
         try:
             listing_html = _fetch_text(listing_url)
         except Exception:
+            logger.debug("MOF listing fetch failed for %s, skipping", listing_url, exc_info=True)
             continue
         for detail_url, title_hint in _extract_notice_links(listing_html):
             parsed = _parse_detail(detail_url, title_hint)
@@ -369,11 +373,13 @@ def fetch_adbc_policy_bank_supply_auction_rows(
         try:
             listing_html = _fetch_text(listing_url)
         except Exception:
+            logger.debug("ADBC listing fetch failed for %s, skipping", listing_url, exc_info=True)
             continue
         for detail_url, title_hint in _extract_adbc_notice_links(listing_html, listing_url):
             try:
                 parsed = _parse_adbc_detail(detail_url, title_hint)
             except Exception:
+                logger.debug("ADBC detail parse failed for %s, skipping", detail_url, exc_info=True)
                 continue
             if parsed is None:
                 continue
@@ -391,11 +397,13 @@ def fetch_chinabond_policy_bank_supply_auction_rows(
     try:
         homepage_html = _fetch_text(CHINABOND_HOME)
     except Exception:
+        logger.warning("Chinabond homepage fetch failed, returning empty", exc_info=True)
         return rows
     for detail_url, title_hint in _extract_chinabond_policy_bank_links(homepage_html):
         try:
             parsed = _parse_chinabond_policy_bank_detail(detail_url, title_hint)
         except Exception:
+            logger.debug("Chinabond detail parse failed for %s, skipping", detail_url, exc_info=True)
             continue
         if parsed is None:
             continue

@@ -52,6 +52,9 @@ _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
 _CACHE_VERSION = "cv_exec_dashboard_v1"
 
+# Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
+_YUAN_PER_YI: float = 1e8
+
 
 def _normalize_report_date(report_date: str | None) -> str | None:
     if report_date is None:
@@ -112,7 +115,7 @@ def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> Numeric:
             sign_aware=signed,
         )
     v = float(value)
-    yi = v / 1e8
+    yi = v / _YUAN_PER_YI
     if signed:
         sign = "+" if yi >= 0 else ""
         display = f"{sign}{yi:,.2f} 亿"
@@ -130,7 +133,7 @@ def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> Numeric:
 def _fmt_signed_segment_yi(yi: float) -> Numeric:
     sign = "+" if yi >= 0 else ""
     return Numeric(
-        raw=float(yi) * 1e8,
+        raw=float(yi) * _YUAN_PER_YI,
         unit="yuan",
         display=f"{sign}{yi:.2f} 亿",
         precision=2,
@@ -389,7 +392,7 @@ def _aggregate_attribution_segments(rows: list[dict[str, object]]) -> dict[str, 
         except (TypeError, ValueError):
             val = 0.0
         seg = _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT.get(cid, "other")
-        totals[seg] += val / 1e8
+        totals[seg] += val / _YUAN_PER_YI
     return totals
 
 

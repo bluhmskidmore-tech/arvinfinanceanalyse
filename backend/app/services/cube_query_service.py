@@ -104,19 +104,19 @@ class CubeQueryService:
             raise ValueError("Cube query currently supports basis=formal only.")
 
         table_name = self.table_name_for(request.fact_table)
-        dimensions = self._validate_dimensions(request)
-        filters = self._validate_filters(request)
-        measure_specs = self._parse_measures(request)
-        where_sql, where_params = self._build_where_clause(request.report_date, filters)
+        dimensions = self.validate_dimensions(request)
+        filters = self.validate_filters(request)
+        measure_specs = self.parse_measures(request)
+        where_sql, where_params = self.build_where_clause(request.report_date, filters)
         repo = self._repo_factory(duckdb_path)
-        matching_row_count = self._matching_row_count(repo, table_name, where_sql, where_params)
+        matching_row_count = self.matching_row_count(repo, table_name, where_sql, where_params)
 
         if matching_row_count == 0:
             rows: list[dict[str, object]] = []
             total_rows = 0
         else:
-            total_rows = self._total_rows(repo, table_name, dimensions, where_sql, where_params)
-            rows = self._fetch_rows(
+            total_rows = self.total_rows(repo, table_name, dimensions, where_sql, where_params)
+            rows = self.fetch_rows(
                 repo,
                 table_name,
                 dimensions,
@@ -128,7 +128,7 @@ class CubeQueryService:
                 request.offset,
             )
 
-        source_version, rule_version = self._fetch_lineage(
+        source_version, rule_version = self.fetch_lineage(
             repo,
             fact_table=request.fact_table,
             table_name=table_name,
@@ -136,7 +136,7 @@ class CubeQueryService:
             where_params=where_params,
             has_rows=matching_row_count > 0,
         )
-        drill_paths = self._build_drill_paths(
+        drill_paths = self.build_drill_paths(
             repo,
             request=request,
             table_name=table_name,
@@ -161,7 +161,7 @@ class CubeQueryService:
             ),
         )
 
-    def _validate_dimensions(self, request: CubeQueryRequest) -> list[str]:
+    def validate_dimensions(self, request: CubeQueryRequest) -> list[str]:
         allowed_dimensions = set(self.ALLOWED_DIMENSIONS[request.fact_table])
         invalid_dimensions = [dimension for dimension in request.dimensions if dimension not in allowed_dimensions]
         if invalid_dimensions:
@@ -171,7 +171,7 @@ class CubeQueryService:
             )
         return list(request.dimensions)
 
-    def _validate_filters(self, request: CubeQueryRequest) -> dict[str, list[str]]:
+    def validate_filters(self, request: CubeQueryRequest) -> dict[str, list[str]]:
         allowed_dimensions = set(self.ALLOWED_DIMENSIONS[request.fact_table])
         invalid_filters = [name for name in request.filters if name not in allowed_dimensions]
         if invalid_filters:
@@ -186,7 +186,7 @@ class CubeQueryService:
                 normalized[name] = list(dict.fromkeys(values))
         return normalized
 
-    def _parse_measures(self, request: CubeQueryRequest) -> list[_MeasureSpec]:
+    def parse_measures(self, request: CubeQueryRequest) -> list[_MeasureSpec]:
         allowed_fields = self.ALLOWED_MEASURE_FIELDS[request.fact_table]
         aliases: set[str] = set()
         specs: list[_MeasureSpec] = []
@@ -217,7 +217,7 @@ class CubeQueryService:
             specs.append(_MeasureSpec(alias=alias, sql=sql))
         return specs
 
-    def _build_where_clause(
+    def build_where_clause(
         self,
         report_date: str,
         filters: dict[str, list[str]],
@@ -234,7 +234,7 @@ class CubeQueryService:
             params.extend(values)
         return " where " + " and ".join(clauses), params
 
-    def _matching_row_count(
+    def matching_row_count(
         self,
         repo: CubeQueryRepository,
         table_name: str,
@@ -244,7 +244,7 @@ class CubeQueryService:
         row = repo.fetchall(f"select count(*) from {table_name}{where_sql}", where_params)[0]
         return int(row[0])
 
-    def _total_rows(
+    def total_rows(
         self,
         repo: CubeQueryRepository,
         table_name: str,
@@ -267,7 +267,7 @@ class CubeQueryService:
         )[0]
         return int(row[0])
 
-    def _fetch_rows(
+    def fetch_rows(
         self,
         repo: CubeQueryRepository,
         table_name: str,
@@ -281,7 +281,7 @@ class CubeQueryService:
     ) -> list[dict[str, object]]:
         select_parts = list(dimensions) + [f"{spec.sql} as {spec.alias}" for spec in measure_specs]
         group_sql = f" group by {', '.join(dimensions)}" if dimensions else ""
-        order_sql = self._build_order_by(order_by, dimensions, measure_specs)
+        order_sql = self._build_order_by(order_by, dimensions, measure_specs)  # stays private: internal-only helper
         rows = repo.fetchall(
             f"""
             select {", ".join(select_parts)}
@@ -312,7 +312,7 @@ class CubeQueryService:
             order_parts.append(f"{field} {'desc' if descending else 'asc'}")
         return " order by " + ", ".join(order_parts)
 
-    def _build_drill_paths(
+    def build_drill_paths(
         self,
         repo: CubeQueryRepository,
         *,
@@ -323,7 +323,7 @@ class CubeQueryService:
     ) -> list[DrillPath]:
         drill_paths: list[DrillPath] = []
         for dimension in dimensions:
-            where_sql, where_params = self._build_where_clause(
+            where_sql, where_params = self.build_where_clause(
                 request.report_date,
                 filters,
                 skip_dimension=dimension,
@@ -347,7 +347,7 @@ class CubeQueryService:
             )
         return drill_paths
 
-    def _fetch_lineage(
+    def fetch_lineage(
         self,
         repo: CubeQueryRepository,
         *,

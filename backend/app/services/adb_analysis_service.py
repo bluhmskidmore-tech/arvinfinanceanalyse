@@ -1,8 +1,9 @@
 """
 日均资产负债（ADB）分析 — DuckDB 读模型。
 
-ADB **只读** `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily` 的 `currency_basis = 'CNY'` 行。
-**不读** `zqtz_bond_daily_snapshot` / `tyw_interbank_daily_snapshot`（避免与 formal 物化口径混用；缺数请先跑 balance 物化）。
+ADB 优先读 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily` 的 `currency_basis = 'CNY'` 行。
+当 formal 表缺少某些日期时，自动从 `zqtz_bond_daily_snapshot` / `tyw_interbank_daily_snapshot` 补充（原币，
+不做 FX 转换——国内业务绝大多数 CNY 原币即 CNY，偏差可接受）。
 
 - 债券：`position_scope = liability` 或 `is_issuance_like` → 负债，其余 → 资产。
 - 同业：`position_scope` / `position_side` 推断 `ASSET` / `LIABILITY`。
@@ -11,6 +12,7 @@ ADB **只读** `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +20,8 @@ from typing import Any
 
 import duckdb
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.adb_analytics import (
     aggregate_daily_totals,
@@ -32,6 +36,7 @@ from backend.app.core_finance.adb_analytics import (
 )
 from backend.app.core_finance.adb_interbank_labels import map_ib_category
 from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
+from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
 from backend.app.governance.settings import get_settings
 from backend.app.services.formal_result_runtime import build_result_envelope
 
@@ -108,6 +113,96 @@ def _issued_mask(bonds_df: pd.DataFrame) -> pd.Series:
     if "asset_class" in bonds_df.columns:
         issued_mask = issued_mask | bonds_df["asset_class"].astype(str).str.contains("发行", na=False)
     return issued_mask
+
+
+OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS = (
+    "instrument_code",
+    "instrument_name",
+    "business_type_primary",
+    "business_type_final",
+    "sub_type",
+    "currency_code",
+    "accounting_basis",
+)
+
+
+def _column_exists(conn: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
+    try:
+        row = conn.execute(
+            """
+            select 1 from information_schema.columns
+            where lower(table_name) = lower(?) and lower(column_name) = lower(?)
+            limit 1
+            """,
+            [table, column],
+        ).fetchone()
+        return row is not None
+    except duckdb.Error:
+        return False
+
+
+def _select_list_zqtz_formal(conn: duckdb.DuckDBPyConnection) -> str:
+    table = "fact_formal_zqtz_balance_daily"
+    base = [
+        "report_date",
+        "position_scope",
+        "market_value_amount",
+        "ytm_value",
+        "coupon_rate",
+        "asset_class",
+        "bond_type",
+        "is_issuance_like",
+        "source_version",
+        "rule_version",
+    ]
+    parts = list(base)
+    for col in OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS:
+        if _column_exists(conn, table, col):
+            parts.append(col)
+        else:
+            parts.append(f"cast(null as varchar) as {col}")
+    return ",\n                  ".join(parts)
+
+
+def _select_list_zqtz_snapshot(conn: duckdb.DuckDBPyConnection) -> str:
+    table = "zqtz_bond_daily_snapshot"
+    header = [
+        "report_date",
+        "case when is_issuance_like then 'liability' else 'asset' end as position_scope",
+        "market_value_native as market_value_amount",
+        "ytm_value",
+        "coupon_rate",
+        "asset_class",
+        "bond_type",
+        "is_issuance_like",
+        "source_version",
+        "rule_version",
+    ]
+    parts = list(header)
+    for col in OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS:
+        if _column_exists(conn, table, col):
+            parts.append(col)
+        else:
+            parts.append(f"cast(null as varchar) as {col}")
+    return ",\n                      ".join(parts)
+
+
+def _assign_zqtz_bond_categories(bonds_df: pd.DataFrame) -> pd.DataFrame:
+    """资产侧：与资产负债表迁徙同源 ZQTZ 规则；负债/发行侧：仍按 bond_type 文本清洗。"""
+    if bonds_df.empty:
+        return bonds_df
+    issued = _issued_mask(bonds_df)
+    bd = bonds_df.copy()
+    assets = bd[~issued]
+    liabilities = bd[issued]
+    if not assets.empty:
+        bd.loc[assets.index, "bond_category"] = assets.apply(
+            lambda r: classify_zqtz_asset_bond_label(r.to_dict()),
+            axis=1,
+        )
+    if not liabilities.empty:
+        bd.loc[liabilities.index, "bond_category"] = liabilities["sub_type"].map(_clean_cat)
+    return bd
 
 
 def _build_analytical_envelope(
@@ -236,16 +331,24 @@ def _collect_version_strings(
 
 
 def _adb_lineage_sources(zqtz_src: str, tyw_src: str) -> tuple[str, list[str]]:
-    """comparison 分母标签与 result_meta.tables_used（ADB 仅 formal，无 snapshot 分支）。"""
-    if zqtz_src == "formal" or tyw_src == "formal":
+    """comparison 分母标签与 result_meta.tables_used。支持 formal / snapshot / formal+snapshot 混合。"""
+    has_formal = "formal" in zqtz_src or "formal" in tyw_src
+    has_snapshot = "snapshot" in zqtz_src or "snapshot" in tyw_src
+    if has_formal and has_snapshot:
+        basis = "formal+snapshot_calendar"
+    elif has_formal:
         basis = "formal_calendar"
     else:
         basis = "snapshot_calendar"
     tables: list[str] = []
-    if zqtz_src == "formal":
+    if "formal" in zqtz_src:
         tables.append("fact_formal_zqtz_balance_daily")
-    if tyw_src == "formal":
+    if "formal" in tyw_src:
         tables.append("fact_formal_tyw_balance_daily")
+    if "snapshot" in zqtz_src:
+        tables.append("zqtz_bond_daily_snapshot")
+    if "snapshot" in tyw_src:
+        tables.append("tyw_interbank_daily_snapshot")
     return basis, tables
 
 
@@ -264,21 +367,13 @@ def _load_adb_raw_data(
 
     conn = _conn_ro(duckdb_path)
     try:
+        # --- 1. Load from formal tables (primary source) ---
         if _table_exists(conn, "fact_formal_zqtz_balance_daily"):
             zqtz_src = "formal"
             zqtz_df = conn.execute(
-                """
+                f"""
                 select
-                  report_date,
-                  position_scope,
-                  market_value_amount,
-                  ytm_value,
-                  coupon_rate,
-                  asset_class,
-                  bond_type,
-                  is_issuance_like,
-                  source_version,
-                  rule_version
+                  {_select_list_zqtz_formal(conn)}
                 from fact_formal_zqtz_balance_daily
                 where cast(report_date as date) between ? and ?
                   and currency_basis = 'CNY'
@@ -305,6 +400,86 @@ def _load_adb_raw_data(
                 """,
                 [start_date, end_date],
             ).fetchdf()
+
+        # --- 2. Snapshot fallback for dates missing from formal tables ---
+        formal_dates: set[str] = set()
+        for df in (zqtz_df, tyw_df):
+            if not df.empty and "report_date" in df.columns:
+                formal_dates.update(
+                    pd.to_datetime(df["report_date"], errors="coerce")
+                    .dropna()
+                    .dt.strftime("%Y-%m-%d")
+                    .unique()
+                    .tolist()
+                )
+
+        snapshot_dates: set[str] = set()
+        has_zqtz_snap = _table_exists(conn, "zqtz_bond_daily_snapshot")
+        has_tyw_snap = _table_exists(conn, "tyw_interbank_daily_snapshot")
+        if has_zqtz_snap or has_tyw_snap:
+            for snap_tbl in ("zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"):
+                if _table_exists(conn, snap_tbl):
+                    snap_date_rows = conn.execute(
+                        f"""
+                        select distinct cast(report_date as varchar)
+                        from {snap_tbl}
+                        where cast(report_date as date) between ? and ?
+                        """,
+                        [start_date, end_date],
+                    ).fetchall()
+                    snapshot_dates.update(r[0] for r in snap_date_rows if r[0])
+
+        missing_dates = sorted(snapshot_dates - formal_dates)
+        if missing_dates:
+            logger.info(
+                "ADB snapshot fallback: %d dates missing from formal tables, supplementing from snapshots",
+                len(missing_dates),
+            )
+
+            # Supplement ZQTZ from snapshot
+            if has_zqtz_snap:
+                zqtz_snap = conn.execute(
+                    f"""
+                    select
+                      {_select_list_zqtz_snapshot(conn)}
+                    from zqtz_bond_daily_snapshot
+                    where cast(report_date as date) between ? and ?
+                      and cast(report_date as varchar) in ({})
+                    """.format(",".join(f"'{d}'" for d in missing_dates)),
+                    [start_date, end_date],
+                ).fetchdf()
+                if not zqtz_snap.empty:
+                    zqtz_df = pd.concat([zqtz_df, zqtz_snap], ignore_index=True) if not zqtz_df.empty else zqtz_snap
+                    if zqtz_src == "none":
+                        zqtz_src = "snapshot"
+                    else:
+                        zqtz_src = "formal+snapshot"
+
+            # Supplement TYW from snapshot
+            if has_tyw_snap:
+                tyw_snap = conn.execute(
+                    """
+                    select
+                      report_date,
+                      coalesce(position_side, 'all') as position_scope,
+                      position_side,
+                      principal_native as principal_amount,
+                      funding_cost_rate,
+                      product_type,
+                      source_version,
+                      rule_version
+                    from tyw_interbank_daily_snapshot
+                    where cast(report_date as date) between ? and ?
+                      and cast(report_date as varchar) in ({})
+                    """.format(",".join(f"'{d}'" for d in missing_dates)),
+                    [start_date, end_date],
+                ).fetchdf()
+                if not tyw_snap.empty:
+                    tyw_df = pd.concat([tyw_df, tyw_snap], ignore_index=True) if not tyw_df.empty else tyw_snap
+                    if tyw_src == "none":
+                        tyw_src = "snapshot"
+                    else:
+                        tyw_src = "formal+snapshot"
     finally:
         conn.close()
 
@@ -329,6 +504,20 @@ def _load_adb_raw_data(
         scoped_scope = scoped["position_scope"].fillna("").astype(str)
         issuance = scoped["is_issuance_like"].fillna(False).astype(bool)
         liability_mask = scoped_scope.eq("liability") | issuance
+
+        def _ofill_str(column: str) -> pd.Series:
+            if column not in scoped.columns:
+                return pd.Series("", index=scoped.index, dtype=object)
+            return scoped[column].fillna("").astype(str)
+
+        bond_type_series = (
+            scoped["bond_type"].fillna("").astype(str) if "bond_type" in scoped.columns else pd.Series("", index=scoped.index)
+        )
+        if "sub_type" in scoped.columns:
+            sub_type_series = scoped["sub_type"].fillna("").astype(str)
+        else:
+            sub_type_series = bond_type_series.copy()
+
         bonds_df = pd.DataFrame(
             {
                 "report_date": scoped["report_date"],
@@ -336,8 +525,15 @@ def _load_adb_raw_data(
                 "yield_to_maturity": scoped["ytm_value"],
                 "coupon_rate": scoped["coupon_rate"],
                 "interest_rate": 0.0,
-                "asset_class": scoped["asset_class"].fillna(""),
-                "sub_type": scoped["bond_type"].fillna(""),
+                "asset_class": scoped["asset_class"].fillna("").astype(str),
+                "bond_type": bond_type_series,
+                "sub_type": sub_type_series,
+                "business_type_primary": _ofill_str("business_type_primary"),
+                "business_type_final": _ofill_str("business_type_final"),
+                "instrument_code": _ofill_str("instrument_code"),
+                "instrument_name": _ofill_str("instrument_name"),
+                "currency_code": _ofill_str("currency_code"),
+                "accounting_basis": _ofill_str("accounting_basis"),
                 "is_issuance_like": liability_mask.to_numpy(),
             }
         )
@@ -346,6 +542,7 @@ def _load_adb_raw_data(
             date_columns=("report_date",),
             numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
         )
+        bonds_df = _assign_zqtz_bond_categories(bonds_df)
 
     if tyw_df.empty:
         ib_df = pd.DataFrame()
@@ -617,7 +814,7 @@ def _split_rate_frames(
         issued_mask = _issued_mask(bonds_df)
         bonds_assets_df = bonds_df[~issued_mask].copy()
         if not bonds_assets_df.empty:
-            bonds_assets_df["category"] = bonds_assets_df["sub_type"].apply(_clean_cat)
+            bonds_assets_df["category"] = bonds_assets_df["bond_category"].map(_clean_cat)
             bonds_assets_df["balance"] = pd.to_numeric(bonds_assets_df["market_value"], errors="coerce").fillna(0.0)
             bonds_assets_df["rate_decimal"] = normalize_rate_values(
                 bonds_assets_df["yield_to_maturity"].tolist(),
@@ -628,7 +825,7 @@ def _split_rate_frames(
 
         bonds_liab_df = bonds_df[issued_mask].copy()
         if not bonds_liab_df.empty:
-            bonds_liab_df["category"] = bonds_liab_df["sub_type"].apply(_clean_cat)
+            bonds_liab_df["category"] = bonds_liab_df["bond_category"].map(_clean_cat)
             bonds_liab_df["balance"] = pd.to_numeric(bonds_liab_df["market_value"], errors="coerce").fillna(0.0)
             bonds_liab_df["rate_decimal"] = [
                 rate if coupon not in (None, 0, 0.0) else 0.0
@@ -707,10 +904,10 @@ def _adb_breakdown_from_frames(
         bonds_assets_df = bonds_df[~issued_mask].copy()
         bonds_liab_df = bonds_df[issued_mask].copy()
         for row in bonds_assets_df.itertuples(index=False):
-            key = (_clean_cat(getattr(row, "sub_type", None)), "Asset")
+            key = (_clean_cat(getattr(row, "bond_category", None)), "Asset")
             breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "market_value"))
         for row in bonds_liab_df.itertuples(index=False):
-            key = (f"Issuance-{_clean_cat(getattr(row, 'sub_type', None))}", "Liability")
+            key = (f"Issuance-{_clean_cat(getattr(row, 'bond_category', None))}", "Liability")
             breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "market_value"))
 
     if not interbank_df.empty:
@@ -809,7 +1006,7 @@ def _build_comparison_spot_sum_maps(
             bonds_df[~issued_mask],
             amount_attr="market_value",
             end_date=end_date,
-            category_resolver=lambda row: getattr(row, "sub_type", None),
+            category_resolver=lambda row: getattr(row, "bond_category", None),
             spot_map=spot_assets,
             sum_map=sum_assets,
         )
@@ -817,7 +1014,7 @@ def _build_comparison_spot_sum_maps(
             bonds_df[issued_mask],
             amount_attr="market_value",
             end_date=end_date,
-            category_resolver=lambda row: getattr(row, "sub_type", None),
+            category_resolver=lambda row: getattr(row, "bond_category", None),
             spot_map=spot_liabilities,
             sum_map=sum_liabilities,
         )
@@ -1026,7 +1223,7 @@ def _build_month_breakdowns(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build and annotate asset/liability breakdown rows for a single month."""
     breakdown_assets = _frame_breakdown_rows(
-        month_bonds_assets, category_attr="sub_type", amount_attr="market_value", num_days=num_days
+        month_bonds_assets, category_attr="bond_category", amount_attr="market_value", num_days=num_days
     )
     breakdown_assets.extend(
         _frame_breakdown_rows(
@@ -1038,7 +1235,7 @@ def _build_month_breakdowns(
     )
     breakdown_liabilities.extend(
         _frame_breakdown_rows(
-            month_bonds_liab, category_attr="sub_type", amount_attr="market_value", num_days=num_days, prefix="发行债券-"
+            month_bonds_liab, category_attr="bond_category", amount_attr="market_value", num_days=num_days, prefix="发行债券-"
         )
     )
     for item in breakdown_assets:
