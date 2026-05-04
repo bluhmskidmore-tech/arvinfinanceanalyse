@@ -44,7 +44,7 @@ class TestTreasuryYieldInterpolation:
         assert interpolate_treasury_yield_pct(market, 30.0) == 4.0
 
     def test_interpolate_between_tenors(self):
-        """Linear interpolation between tenors."""
+        """Interpolation between tenors (cubic spline may differ from strict linear midpoint)."""
         market = {
             "treasury_1y": 2.0,
             "treasury_3y": 3.0,
@@ -53,10 +53,10 @@ class TestTreasuryYieldInterpolation:
             "treasury_10y": 5.0,
             "treasury_30y": 6.0,
         }
-        # Between 1y and 3y: 2.0 + (3.0 - 2.0) * (2 - 1) / (3 - 1) = 2.5
-        assert interpolate_treasury_yield_pct(market, 2.0) == 2.5
-        # Between 3y and 5y: 3.0 + (4.0 - 3.0) * (4 - 3) / (5 - 3) = 3.5
-        assert interpolate_treasury_yield_pct(market, 4.0) == 3.5
+        # Between 1y and 3y: cubic spline value near 2.5 (linear midpoint)
+        assert interpolate_treasury_yield_pct(market, 2.0) == pytest.approx(2.5, abs=0.15)
+        # Between 3y and 5y: cubic spline value near 3.5
+        assert interpolate_treasury_yield_pct(market, 4.0) == pytest.approx(3.5, abs=0.15)
 
     def test_extrapolate_below_min_tenor(self):
         """Values below 1y should return 1y yield."""

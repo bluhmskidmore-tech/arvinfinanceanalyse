@@ -9,7 +9,7 @@ import pytest
 from backend.app.schemas.executive_dashboard import HomeSnapshotPayload
 from backend.app.services.executive_service import (
     _compute_unified_report_date,
-    _HOME_SNAPSHOT_DOMAINS,
+    _HOME_SNAPSHOT_CALIBERS,
     invalidate_home_snapshot_cache,
 )
 
@@ -29,34 +29,30 @@ def _executive_service():
 
 class TestComputeUnifiedReportDate:
     def test_strict_intersection_empty_returns_none(self) -> None:
-        dates = {"balance": set(), "pnl": set(), "liability": set(), "bond": set()}
+        dates = {"balance_sheet": set(), "pnl": set()}
         rd, missing, effective = _compute_unified_report_date(
             requested=None, allow_partial=False, domain_dates=dates
         )
         assert rd is None
-        assert set(missing) == set(_HOME_SNAPSHOT_DOMAINS)
+        assert set(missing) == set(_HOME_SNAPSHOT_CALIBERS)
         assert effective == {}
 
     def test_strict_intersection_nonempty_picks_max(self) -> None:
         dates = {
-            "balance": {"2026-04-08", "2026-04-07"},
+            "balance_sheet": {"2026-04-08", "2026-04-07"},
             "pnl": {"2026-04-08", "2026-04-07", "2026-04-06"},
-            "liability": {"2026-04-08", "2026-04-06"},
-            "bond": {"2026-04-08", "2026-04-07"},
         }
         rd, missing, effective = _compute_unified_report_date(
             requested=None, allow_partial=False, domain_dates=dates
         )
         assert rd == "2026-04-08"
         assert missing == []
-        assert all(effective[d] == "2026-04-08" for d in _HOME_SNAPSHOT_DOMAINS)
+        assert all(effective[d] == "2026-04-08" for d in _HOME_SNAPSHOT_CALIBERS)
 
     def test_strict_requested_in_intersection(self) -> None:
         dates = {
-            "balance": {"2026-04-08", "2026-04-07"},
+            "balance_sheet": {"2026-04-08", "2026-04-07"},
             "pnl": {"2026-04-08", "2026-04-07"},
-            "liability": {"2026-04-08", "2026-04-07"},
-            "bond": {"2026-04-08", "2026-04-07"},
         }
         rd, missing, effective = _compute_unified_report_date(
             requested="2026-04-07", allow_partial=False, domain_dates=dates
@@ -66,44 +62,38 @@ class TestComputeUnifiedReportDate:
 
     def test_strict_requested_not_in_intersection_returns_none(self) -> None:
         dates = {
-            "balance": {"2026-04-08"},
-            "pnl": {"2026-04-08"},
-            "liability": {"2026-04-07"},  # missing 04-08
-            "bond": {"2026-04-08"},
+            "balance_sheet": {"2026-04-08"},
+            "pnl": {"2026-04-07"},  # no common date with balance_sheet caliber set
         }
         rd, missing, effective = _compute_unified_report_date(
             requested="2026-04-08", allow_partial=False, domain_dates=dates
         )
         assert rd is None
-        assert set(missing) == set(_HOME_SNAPSHOT_DOMAINS)
+        assert set(missing) == set(_HOME_SNAPSHOT_CALIBERS)
 
     def test_partial_requested_labels_missing_domains(self) -> None:
         dates = {
-            "balance": {"2026-04-08", "2026-04-07"},
-            "pnl": {"2026-04-08"},
-            "liability": {"2026-04-07"},  # missing 04-08
-            "bond": {"2026-04-08", "2026-04-07"},
+            "balance_sheet": {"2026-04-08", "2026-04-07"},
+            "pnl": {"2026-04-07"},  # missing 04-08
         }
         rd, missing, effective = _compute_unified_report_date(
             requested="2026-04-08", allow_partial=True, domain_dates=dates
         )
         assert rd == "2026-04-08"
-        assert "liability" in missing
-        assert effective["balance"] == "2026-04-08"
-        assert effective["liability"] == "2026-04-07"  # latest available
+        assert "pnl" in missing
+        assert effective["balance_sheet"] == "2026-04-08"
+        assert effective["pnl"] == "2026-04-07"  # latest available
 
     def test_partial_no_requested_uses_union_max(self) -> None:
         dates = {
-            "balance": {"2026-04-08"},
+            "balance_sheet": {"2026-04-08"},
             "pnl": {"2026-04-07"},
-            "liability": {"2026-04-06"},
-            "bond": {"2026-04-05"},
         }
         rd, missing, effective = _compute_unified_report_date(
             requested=None, allow_partial=True, domain_dates=dates
         )
         assert rd == "2026-04-08"
-        assert {"pnl", "liability", "bond"} <= set(missing)
+        assert {"pnl"} <= set(missing)
 
 
 class TestHomeSnapshotEnvelope:
@@ -129,25 +119,21 @@ class TestHomeSnapshotEnvelope:
         es = _executive_service()
         with patch.object(es, "_list_domain_dates") as mock_dates:
             mock_dates.return_value = {
-                "balance": set(),
+                "balance_sheet": set(),
                 "pnl": set(),
-                "liability": set(),
-                "bond": set(),
             }
             env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
             assert env["result_meta"]["quality_flag"] == "error"
             assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
             assert env["result"]["report_date"] == ""
-            assert set(env["result"]["domains_missing"]) == set(_HOME_SNAPSHOT_DOMAINS)
+            assert set(env["result"]["domains_missing"]) == set(_HOME_SNAPSHOT_CALIBERS)
 
     def test_strict_intersection_returns_unified_date(self) -> None:
         es = _executive_service()
         with patch.object(es, "_list_domain_dates") as mock_dates:
             mock_dates.return_value = {
-                "balance": {"2026-04-08"},
+                "balance_sheet": {"2026-04-08"},
                 "pnl": {"2026-04-08"},
-                "liability": {"2026-04-08"},
-                "bond": {"2026-04-08"},
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
@@ -173,10 +159,8 @@ class TestHomeSnapshotEnvelope:
         es = _executive_service()
         with patch.object(es, "_list_domain_dates") as mock_dates:
             mock_dates.return_value = {
-                "balance": {"2026-04-08"},
-                "pnl": {"2026-04-08"},
-                "liability": set(),  # missing entirely
-                "bond": {"2026-04-08"},
+                "balance_sheet": {"2026-04-08"},
+                "pnl": set(),  # missing entirely
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
@@ -196,7 +180,7 @@ class TestHomeSnapshotEnvelope:
                         report_date="2026-04-08", allow_partial=True
                     )
                     assert env["result"]["mode"] == "partial"
-                    assert "liability" in env["result"]["domains_missing"]
+                    assert "pnl" in env["result"]["domains_missing"]
                     assert env["result_meta"]["quality_flag"] == "warning"
 
 class TestHomeSnapshotPayloadSchema:
@@ -225,10 +209,8 @@ class TestHomeSnapshotPayloadSchema:
             ),
             domains_missing=[],
             domains_effective_date={
-                "balance": "2026-04-08",
+                "balance_sheet": "2026-04-08",
                 "pnl": "2026-04-08",
-                "liability": "2026-04-08",
-                "bond": "2026-04-08",
             },
         )
         dumped = payload.model_dump(mode="json")
