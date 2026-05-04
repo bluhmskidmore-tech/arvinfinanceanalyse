@@ -42,7 +42,7 @@ def infer_source_surface_for_result_kind(result_kind: str) -> SourceSurface | No
 
 class ResultMeta(BaseModel):
     trace_id: str = Field(..., description="Trace identifier for governance and audit.")
-    basis: Literal["formal", "scenario", "analytical"] = "formal"
+    basis: Literal["formal", "scenario", "analytical", "ledger"] = "formal"
     result_kind: str = "analysis_view"
     formal_use_allowed: bool = True
     source_version: str

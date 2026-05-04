@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from backend.app.schemas.result_meta import ResultMeta
 
 
-CubeBasis = Literal["formal", "scenario", "analytical"]
+CubeBasis = Literal["formal", "scenario", "analytical", "ledger"]
 
 
 class CubeQueryRequest(BaseModel):

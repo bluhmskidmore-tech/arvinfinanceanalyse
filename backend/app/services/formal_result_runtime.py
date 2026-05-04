@@ -9,7 +9,7 @@ from backend.app.schemas.result_meta import (
     infer_source_surface_for_result_kind,
 )
 
-ResultBasis = Literal["formal", "scenario", "analytical"]
+ResultBasis = Literal["formal", "scenario", "analytical", "ledger"]
 QualityFlag = Literal["ok", "warning", "error", "stale"]
 VendorStatus = Literal["ok", "vendor_stale", "vendor_unavailable"]
 FallbackMode = Literal["none", "latest_snapshot"]
@@ -18,12 +18,14 @@ _BASIS_FIXED_FLAGS: dict[ResultBasis, tuple[bool, bool]] = {
     "formal": (True, False),
     "scenario": (False, True),
     "analytical": (False, False),
+    "ledger": (False, False),
 }
 
 _BASIS_DEFAULT_QUALITY: dict[ResultBasis, QualityFlag] = {
     "formal": "ok",
     "scenario": "warning",
     "analytical": "warning",
+    "ledger": "warning",
 }
 
 LineageFieldMessageBuilder = Callable[[str], str]
@@ -89,6 +91,42 @@ def build_analytical_result_meta(
 ) -> ResultMeta:
     return _build_result_meta(
         basis="analytical",
+        trace_id=trace_id,
+        result_kind=result_kind,
+        cache_version=cache_version,
+        source_version=source_version,
+        rule_version=rule_version,
+        quality_flag=quality_flag,
+        vendor_version=vendor_version,
+        vendor_status=vendor_status,
+        fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        next_drill=next_drill,
+        source_surface=source_surface,
+    )
+
+
+def build_ledger_result_meta(
+    *,
+    trace_id: str,
+    result_kind: str,
+    cache_version: str,
+    source_version: str,
+    rule_version: str,
+    quality_flag: QualityFlag | None = None,
+    vendor_version: str = "vv_none",
+    vendor_status: VendorStatus = "ok",
+    fallback_mode: FallbackMode = "none",
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
+) -> ResultMeta:
+    return _build_result_meta(
+        basis="ledger",
         trace_id=trace_id,
         result_kind=result_kind,
         cache_version=cache_version,
