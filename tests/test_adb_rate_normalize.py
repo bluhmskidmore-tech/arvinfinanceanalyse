@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pandas as pd
+import pytest
 
 from tests.helpers import load_module
 
@@ -18,7 +19,8 @@ def test_normalize_rate_values_auto_converts_percent_like_inputs() -> None:
         field_name="yield_to_maturity",
     )
 
-    assert normalized == [0.024, 0.035, 0.0, 0.0]
+    # yield_to_maturity is percent: 2.4 → 0.024; 0.035 → 0.035% → 0.00035
+    assert normalized == pytest.approx([0.024, 0.00035, 0.0, 0.0], abs=1e-10)
 
 
 def test_normalize_rate_series_pd_preserves_index_and_interbank_percent_rule() -> None:
@@ -45,4 +47,5 @@ def test_normalize_rate_values_handles_nan_like_inputs_without_vector_dependency
         field_name="coupon_rate",
     )
 
-    assert normalized == [0.0, 0.0, 0.0, 0.025, 0.035]
+    # coupon_rate is percent: 2.5 → 0.025; 0.035 → 0.035% → 0.00035
+    assert normalized == pytest.approx([0.0, 0.0, 0.0, 0.025, 0.00035], abs=1e-10)
