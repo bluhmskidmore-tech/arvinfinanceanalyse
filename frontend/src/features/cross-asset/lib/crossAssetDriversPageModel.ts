@@ -16,7 +16,7 @@ import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 type StatusTone = "normal" | "caution" | "warning" | "danger";
 type ActionTone = "bull" | "warning" | "bear";
 type WatchSignal = "green" | "yellow" | "red";
-type ResearchCardSource = "backend" | "fallback";
+type ResearchCardSource = "backend" | "fallback" | "unavailable";
 
 const RESEARCH_VIEW_ORDER = ["duration", "curve", "credit", "instrument"] as const;
 const TRANSMISSION_AXIS_ORDER = [
@@ -493,6 +493,33 @@ function fallbackAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroB
 
 const HEURISTIC_AXIS_WARNING =
   "仅来自环境评分的启发式判断，不是治理后的传导主线信号。";
+const LINKAGE_UNAVAILABLE_MESSAGE = "macro_bond_linkage.analysis 加载失败；暂不生成兜底研究判断。";
+const OPTION_LOCAL_EVIDENCE_NOTE =
+  "本地 phase1_macro_vendor_catalog / choice_market_snapshot / fact_choice_macro_daily 未发现已治理序列";
+
+function unavailableResearchView(key: (typeof RESEARCH_VIEW_ORDER)[number]): MacroBondResearchView {
+  return {
+    key,
+    status: "pending_signal",
+    stance: "pending_signal",
+    confidence: "low",
+    summary: LINKAGE_UNAVAILABLE_MESSAGE,
+    affected_targets: [],
+    evidence: ["macro_bond_linkage.analysis 加载失败"],
+  };
+}
+
+function unavailableTransmissionAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroBondTransmissionAxis {
+  return {
+    axis_key: axisKey,
+    status: "pending_signal",
+    stance: "pending_signal",
+    summary: LINKAGE_UNAVAILABLE_MESSAGE,
+    impacted_views: [],
+    required_series_ids: [],
+    warnings: ["macro_bond_linkage.analysis 加载失败"],
+  };
+}
 
 function buildFallbackTransmissionAxes(input: {
   env: Partial<MacroBondLinkageEnvironmentScore>;
@@ -777,6 +804,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
   const megaCapTop5 = kpiByKey(input.kpis, "mega_cap_top5_weight");
   const energy = kpiByKey(input.kpis, "brent");
   const ferrous = kpiByKey(input.kpis, "steel");
+  const copper = kpiByKey(input.kpis, "copper");
+  const aluminum = kpiByKey(input.kpis, "aluminum");
   const stockLines: CrossAssetClassAnalysisLine[] = [
     {
       key: "broad_index",
@@ -872,17 +901,28 @@ export function buildCrossAssetClassAnalysisRows(input: {
     {
       key: "nonferrous",
       label: "有色",
-      status: "pending_signal",
-      stateLabel: "missing_dependency",
-      direction: commodityAxis?.status === "ready" ? commodityAxis.stance : "待接入",
-      dataLabel: "需补齐铜/铝 Choice 接入码或公共补充治理输入",
-      sourceLabel: commodityAxis?.requiredSeriesIds.length
-        ? `${normalizeLabel(commodityAxis.source)}: ${commodityAxis.requiredSeriesIds.join(", ")}`
-        : "缺失",
+      status: hasUsableKpi(copper) || hasUsableKpi(aluminum) ? "ready" : "pending_signal",
+      stateLabel: hasUsableKpi(copper) || hasUsableKpi(aluminum)
+        ? stateLabelFromKpi(copper ?? aluminum, input.latestMeta)
+        : "missing_dependency",
+      direction: commodityAxis?.status === "ready" ? commodityAxis.stance : directionFromKpi(copper ?? aluminum),
+      dataLabel: combinedDataLabel(
+        [compactKpiData(copper), compactKpiData(aluminum)],
+        "需补齐铜/铝 Choice 接入码或公共补充治理输入",
+      ),
+      sourceLabel: combinedSourceLabel([copper, aluminum], "需登记铜/铝 Choice 接入码或公共补充治理输入"),
       explanation:
-        commodityAxis?.status === "ready"
-          ? commodityAxis.summary
-          : "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
+        hasUsableKpi(copper) || hasUsableKpi(aluminum)
+          ? combinedDataLabel(
+              [
+                hasUsableKpi(copper) ? explanationFromKpi(copper, "") : null,
+                hasUsableKpi(aluminum) ? explanationFromKpi(aluminum, "") : null,
+              ],
+              "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
+            )
+          : commodityAxis?.status === "ready"
+            ? commodityAxis.summary
+            : "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
     },
   ];
   const optionLines: CrossAssetClassAnalysisLine[] = [
@@ -892,9 +932,12 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: "pending_signal",
       stateLabel: "pending_definition",
       direction: "待接入",
-      dataLabel: "需登记隐含波动率、偏度、看跌看涨比 Choice 接入码或期权治理源",
-      sourceLabel: "缺失",
-      explanation: "治理后的权益期权输入尚不可用，无法判断波动率、偏度或看跌看涨压力。",
+      dataLabel:
+        "待治理: equity_option.iv, equity_option.skew, equity_option.put_call_ratio；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
+      sourceLabel:
+        `${OPTION_LOCAL_EVIDENCE_NOTE}：equity_option.iv, equity_option.skew, equity_option.put_call_ratio`,
+      explanation:
+        "治理后的权益期权输入尚不可用，无法判断波动率、偏度或看跌看涨压力；接入前不使用股指历史波动或相邻资产替代。",
     },
     {
       key: "commodity_options",
@@ -902,9 +945,12 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: "pending_signal",
       stateLabel: "pending_definition",
       direction: "待接入",
-      dataLabel: "需登记商品期权隐含波动率、偏度、尾部风险 Choice 接入码或期权治理源",
-      sourceLabel: "缺失",
-      explanation: "治理后的商品期权输入尚不可用，无法判断尾部风险或供给冲击定价。",
+      dataLabel:
+        "待治理: commodity_option.iv, commodity_option.skew, commodity_option.tail_risk；需登记 Choice 接入码或期权治理源（单位/频率/日期口径待确认）",
+      sourceLabel:
+        `${OPTION_LOCAL_EVIDENCE_NOTE}：commodity_option.iv, commodity_option.skew, commodity_option.tail_risk`,
+      explanation:
+        "治理后的商品期权输入尚不可用，无法判断尾部风险或供给冲击定价；接入前不使用原油/铜铝/钢材现货波动替代。",
     },
     {
       key: "rates_bond_options",
@@ -912,9 +958,12 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: "pending_signal",
       stateLabel: "pending_definition",
       direction: "待接入",
-      dataLabel: "需登记利率波动率、曲线波动率 Choice 接入码或利率期权治理源",
-      sourceLabel: "缺失",
-      explanation: "当前没有治理后的利率或债券期权输入可用于久期波动和曲线风险。",
+      dataLabel:
+        "待治理: rates_option.implied_vol, rates_option.curve_vol；需登记 Choice 接入码或利率期权治理源（单位/期限/日期口径待确认）",
+      sourceLabel:
+        `${OPTION_LOCAL_EVIDENCE_NOTE}：rates_option.implied_vol, rates_option.curve_vol`,
+      explanation:
+        "当前没有治理后的利率或债券期权输入可用于久期波动和曲线风险；接入前不使用收益率实现波动替代。",
     },
   ];
   const stockReady = stockLines.some((line) => line.status === "ready") || equityAxis?.status === "ready";
@@ -974,15 +1023,18 @@ export function buildCrossAssetDriversViewModel(input: {
   /** When macro/linkage fetches fail, pass stable module keys for status flags. */
   loadingFailures?: string[];
 }): CrossAssetDriversViewModel {
+  const linkageUnavailable = input.loadingFailures?.includes("macro_bond_linkage.analysis") ?? false;
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
     env: input.env,
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
+    linkageUnavailable,
   });
   const transmissionAxes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
+    linkageUnavailable,
   });
   const assetClassAnalysisRows = buildCrossAssetClassAnalysisRows({
     kpis: input.kpis,
@@ -997,6 +1049,7 @@ export function buildCrossAssetDriversViewModel(input: {
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     ncdProxy: input.ncdProxy,
+    linkageUnavailable,
   });
   const watchList = buildCrossAssetWatchList({
     kpis: input.kpis,
@@ -1004,6 +1057,7 @@ export function buildCrossAssetDriversViewModel(input: {
     transmissionAxes: input.transmissionAxes,
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
+    linkageUnavailable,
   });
   const eventCalendarRows = buildCrossAssetEventItems({
     events: input.calendarEvents,
@@ -1128,8 +1182,12 @@ export function buildResearchSummaryCards(input: {
   env: Partial<MacroBondLinkageEnvironmentScore>;
   topCorrelations: MacroBondLinkageTopCorrelation[];
   linkageWarnings: string[];
+  linkageUnavailable?: boolean;
 }): CrossAssetResearchViewCard[] {
   const backendViews = new Map((input.researchViews ?? []).map((row) => [row.key, row]));
+  const unavailableViews = new Map(
+    RESEARCH_VIEW_ORDER.map((key) => [key, unavailableResearchView(key)] as const),
+  );
   const fallbackViews = new Map(
     buildFallbackResearchViews(input).map((row) => [row.key, row] as const),
   );
@@ -1139,6 +1197,9 @@ export function buildResearchSummaryCards(input: {
     if (backend) {
       return viewCardFromSource(backend, "backend");
     }
+    if (input.linkageUnavailable) {
+      return viewCardFromSource(unavailableViews.get(key)!, "unavailable");
+    }
     return viewCardFromSource(fallbackViews.get(key)!, "fallback");
   });
 }
@@ -1146,8 +1207,12 @@ export function buildResearchSummaryCards(input: {
 export function buildTransmissionAxisRows(input: {
   transmissionAxes?: MacroBondTransmissionAxis[];
   env: Partial<MacroBondLinkageEnvironmentScore>;
+  linkageUnavailable?: boolean;
 }): CrossAssetTransmissionAxisRow[] {
   const backendAxes = new Map((input.transmissionAxes ?? []).map((row) => [row.axis_key, row]));
+  const unavailableAxes = new Map(
+    TRANSMISSION_AXIS_ORDER.map((axisKey) => [axisKey, unavailableTransmissionAxis(axisKey)] as const),
+  );
   const fallbackAxes = new Map(
     buildFallbackTransmissionAxes(input).map((row) => [row.axis_key, row] as const),
   );
@@ -1156,6 +1221,9 @@ export function buildTransmissionAxisRows(input: {
     const backend = backendAxes.get(axisKey);
     if (backend) {
       return transmissionAxisFromSource(backend, "backend");
+    }
+    if (input.linkageUnavailable) {
+      return transmissionAxisFromSource(unavailableAxes.get(axisKey)!, "unavailable");
     }
     return transmissionAxisFromSource(fallbackAxes.get(axisKey)!, "fallback");
   });
@@ -1169,11 +1237,13 @@ export function buildCrossAssetCandidateActions(input: {
   linkageWarnings: string[];
   /** 仅作旁证，不得当作真实 NCD 发行矩阵 */
   ncdProxy?: NcdFundingProxyPayload | null;
+  linkageUnavailable?: boolean;
 }): CrossAssetCandidateAction[] {
   const views = buildResearchSummaryCards(input);
   const axes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
+    linkageUnavailable: input.linkageUnavailable,
   });
   const rows: CrossAssetCandidateAction[] = [];
   const ncd = input.ncdProxy;
@@ -1303,16 +1373,19 @@ export function buildCrossAssetWatchList(input: {
   transmissionAxes?: MacroBondTransmissionAxis[];
   topCorrelations: MacroBondLinkageTopCorrelation[];
   linkageWarnings: string[];
+  linkageUnavailable?: boolean;
 }): CrossAssetWatchRow[] {
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
     env: {},
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
+    linkageUnavailable: input.linkageUnavailable,
   });
   const axisRows = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: {},
+    linkageUnavailable: input.linkageUnavailable,
   });
   const readyResearch = researchCards.filter((row) => row.status === "ready");
   const readyAxes = axisRows.filter((row) => row.status === "ready");

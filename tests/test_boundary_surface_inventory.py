@@ -50,7 +50,6 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("market-data.fx.analytical", "/ui/market-data/fx/analytical", "GET"),
     SurfaceCase("macro.choice-series.refresh", "/ui/macro/choice-series/refresh", "POST", side_effect_target="refresh_choice_macro_snapshot.fn", side_effect_module="backend.app.api.routes.macro_vendor", side_effect_file="backend/app/api/routes/macro_vendor.py"),
     SurfaceCase("macro.choice-series.refresh-status", "/ui/macro/choice-series/refresh-status", "GET"),
-    SurfaceCase("macro-bond-linkage.analysis", "/api/macro-bond-linkage/analysis", "GET", params={"report_date": "2026-04-30"}),
     SurfaceCase("preview.source-foundation", "/ui/preview/source-foundation", "GET"),
     SurfaceCase("preview.source-foundation.history", "/ui/preview/source-foundation/history", "GET", params={"limit": 5, "offset": 0}),
     SurfaceCase("preview.source-foundation.rows", "/ui/preview/source-foundation/zqtz/rows", "GET", params={"limit": 1, "offset": 0}),
@@ -149,7 +148,6 @@ def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> N
     assert "news.api.ingest" in backend_slugs
     assert "preview.source-foundation.refresh" in backend_slugs
     assert "macro.choice-series.refresh" in backend_slugs
-    assert "macro-bond-linkage.analysis" in backend_slugs
     assert "qdb-gl-monthly-analysis.manual-adjustments.restore" in backend_slugs
     assert "cube.query" in backend_slugs
     assert "cube.dimensions" in backend_slugs

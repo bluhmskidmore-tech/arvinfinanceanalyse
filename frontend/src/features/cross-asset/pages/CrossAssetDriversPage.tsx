@@ -544,7 +544,10 @@ function researchStatusLabel(status: CrossAssetResearchViewCard["status"]) {
 }
 
 function researchSourceLabel(source: CrossAssetResearchViewCard["source"]) {
-  return source === "backend" ? "后端" : "兜底";
+  if (source === "backend") {
+    return "后端";
+  }
+  return source === "unavailable" ? "待确认" : "兜底";
 }
 
 function evidenceStatusLabel(status: CrossAssetEquityEvidenceItem["status"]) {
@@ -972,6 +975,7 @@ export default function CrossAssetDriversPage() {
   );
   const linkageMeta = macroBondLinkageQuery.data?.result_meta;
   const macroBondLinkageWarnings = useMemo(() => macroBondLinkage.warnings ?? [], [macroBondLinkage.warnings]);
+  const macroBondLinkageUnavailable = macroBondLinkageQuery.isError;
   const hasPortfolioImpact = Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0;
   const linkageBodyEmpty =
     macroBondLinkageQuery.isSuccess &&
@@ -1002,16 +1006,18 @@ export default function CrossAssetDriversPage() {
         env,
         topCorrelations: macroBondLinkage.top_correlations ?? [],
         linkageWarnings: macroBondLinkageWarnings,
+        linkageUnavailable: macroBondLinkageUnavailable,
       }),
-    [env, macroBondLinkage.research_views, macroBondLinkage.top_correlations, macroBondLinkageWarnings],
+    [env, macroBondLinkage.research_views, macroBondLinkage.top_correlations, macroBondLinkageUnavailable, macroBondLinkageWarnings],
   );
   const transmissionAxisRows = useMemo(
     () =>
       buildTransmissionAxisRows({
         transmissionAxes: macroBondLinkage.transmission_axes,
         env,
+        linkageUnavailable: macroBondLinkageUnavailable,
       }),
-    [env, macroBondLinkage.transmission_axes],
+    [env, macroBondLinkage.transmission_axes, macroBondLinkageUnavailable],
   );
   const assetClassAnalysisRows = useMemo(
     () =>
@@ -1042,12 +1048,14 @@ export default function CrossAssetDriversPage() {
         topCorrelations: macroBondLinkage.top_correlations ?? [],
         linkageWarnings: macroBondLinkageWarnings,
         ncdProxy: ncdProxyPayload,
+        linkageUnavailable: macroBondLinkageUnavailable,
       }),
     [
       env,
       macroBondLinkage.research_views,
       macroBondLinkage.top_correlations,
       macroBondLinkage.transmission_axes,
+      macroBondLinkageUnavailable,
       macroBondLinkageWarnings,
       ncdProxyPayload,
     ],
@@ -1067,12 +1075,14 @@ export default function CrossAssetDriversPage() {
         transmissionAxes: macroBondLinkage.transmission_axes,
         topCorrelations: macroBondLinkage.top_correlations ?? [],
         linkageWarnings: macroBondLinkageWarnings,
+        linkageUnavailable: macroBondLinkageUnavailable,
       }),
     [
       kpis,
       macroBondLinkage.research_views,
       macroBondLinkage.top_correlations,
       macroBondLinkage.transmission_axes,
+      macroBondLinkageUnavailable,
       macroBondLinkageWarnings,
     ],
   );

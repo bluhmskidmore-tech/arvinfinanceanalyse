@@ -153,6 +153,36 @@ describe("crossAssetDriversPageModel", () => {
     expect(loadFail?.label).toContain("choice_macro.latest");
   });
 
+  it("does not synthesize fallback research conclusions when macro-bond linkage failed", () => {
+    const vm = buildCrossAssetDriversViewModel({
+      env: {
+        liquidity_score: 0.42,
+        rate_direction_score: -0.35,
+        inflation_score: 0.24,
+        growth_score: -0.2,
+      },
+      topCorrelations: [],
+      linkageWarnings: [],
+      kpis: [],
+      latestSeries: [],
+      crossAssetDataDate: "",
+      linkageReportDate: "2026-04-30",
+      ncdProxy: null,
+      ncdProxyAvailable: false,
+      loadingFailures: ["macro_bond_linkage.analysis"],
+    });
+
+    expect(vm.statusFlags.find((flag) => flag.id === "loading-failure")?.label).toContain(
+      "macro_bond_linkage.analysis",
+    );
+    expect(vm.researchCards.every((card) => card.status === "pending_signal")).toBe(true);
+    expect(vm.researchCards.every((card) => card.source !== "fallback")).toBe(true);
+    expect(vm.researchCards.map((card) => card.summary).join(" ")).not.toContain("兜底判断");
+    expect(vm.transmissionAxes.every((axis) => axis.status === "pending_signal")).toBe(true);
+    expect(vm.transmissionAxes.every((axis) => axis.source !== "fallback")).toBe(true);
+    expect(vm.transmissionAxes.map((axis) => axis.summary).join(" ")).not.toContain("兜底判断");
+  });
+
   it("builds candidate actions from current environment scores and top-correlation evidence", () => {
     const rows = buildCrossAssetCandidateActions({
       env: {
@@ -379,7 +409,42 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines.every((line) => line.stateLabel === "pending_definition")).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
+    expect(rows[2].lines[0].dataLabel).toContain("equity_option.iv");
+    expect(rows[2].lines[0].dataLabel).toContain("equity_option.put_call_ratio");
+    expect(rows[2].lines[1].dataLabel).toContain("commodity_option.iv");
+    expect(rows[2].lines[2].dataLabel).toContain("rates_option.implied_vol");
+    expect(rows[2].lines.every((line) => line.sourceLabel.includes("phase1_macro_vendor_catalog"))).toBe(true);
+    expect(rows[2].lines.every((line) => line.sourceLabel.includes("choice_market_snapshot"))).toBe(true);
+    expect(rows[2].lines.every((line) => line.sourceLabel.includes("fact_choice_macro_daily"))).toBe(true);
     expect(rows[2].lines[0].explanation).toContain("治理后的权益期权输入尚不可用");
+  });
+
+  it("marks nonferrous commodities ready when governed copper and aluminum inputs exist", () => {
+    const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
+    const kpis = resolveCrossAssetKpis([
+      makePoint("CA.COPPER", "铜主力期货收盘价", 101030, {
+        unit: "CNY/t",
+        latest_change: -600,
+        ...vendor("tushare"),
+      }),
+      makePoint("CA.ALUMINUM", "铝主力期货收盘价", 24430, {
+        unit: "CNY/t",
+        latest_change: -185,
+        ...vendor("tushare"),
+      }),
+    ]);
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: [] });
+    const nonferrous = rows.find((row) => row.key === "commodities")?.lines.find((line) => line.key === "nonferrous");
+
+    expect(nonferrous?.status).toBe("ready");
+    expect(nonferrous?.stateLabel).toBe("ready");
+    expect(nonferrous?.dataLabel).toContain("101,030");
+    expect(nonferrous?.dataLabel).toContain("24,430");
+    expect(nonferrous?.sourceLabel).toContain("CA.COPPER");
+    expect(nonferrous?.sourceLabel).toContain("CA.ALUMINUM");
+    expect(nonferrous?.explanation).toContain("铜主力期货");
+    expect(nonferrous?.explanation).toContain("铝主力期货");
   });
 
   it("builds stock index and mega-cap evidence items with unit, date, and source trace", () => {
