@@ -58,7 +58,7 @@ def compute_bond_four_effects(
     spread_change: Decimal,
     report_date: date,
     coupon_frequency: int = 2,
-) -> Dict[str, Decimal]:
+) -> dict[str, Decimal | bool | list[str]]:
     """
     单券四效应：income / treasury / spread / selection + total_return。
 
@@ -141,6 +141,17 @@ def compute_bond_four_effects(
         selection_effect = Decimal("0")
         total_return = income_return
 
+    diagnostics: list[str] = []
+    if not has_accrued:
+        diagnostics.append("accrued_interest_fallback_to_zero")
+        log_id = bond_code or str(
+            _get_bond_field(bond, "instrument_code", "instrument_id", default="") or "UNKNOWN"
+        )
+        logger.warning(
+            "bond %s: accrued_interest missing, falling back to zero (clean-price basis)",
+            log_id,
+        )
+
     return {
         "income_return": income_return,
         "treasury_effect": treasury_effect,
@@ -149,6 +160,8 @@ def compute_bond_four_effects(
         "total_return": total_return,
         "total_price_change": total_price_change,
         "mod_duration": mod_dur,
+        "has_accrued_interest": has_accrued,
+        "diagnostics": diagnostics,
     }
 
 
@@ -159,7 +172,7 @@ def compute_bond_six_effects(
     spread_change: Decimal,
     report_date: date,
     coupon_frequency: int = 2,
-) -> Dict[str, Decimal]:
+) -> dict[str, Decimal | bool | list[str]]:
     """
     六效应（票息 / 利率 / 利差 / 凸性 / 交叉 / 再投资 + 选券残差）。
 
@@ -192,6 +205,8 @@ def compute_bond_six_effects(
             "total_return": fx["total_return"],
             "total_price_change": fx["total_price_change"],
             "mod_duration": fx["mod_duration"],
+            "has_accrued_interest": fx["has_accrued_interest"],
+            "diagnostics": list(fx["diagnostics"]),
         }
 
     coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
@@ -255,4 +270,6 @@ def compute_bond_six_effects(
         "total_return": total_return,
         "total_price_change": fx["total_price_change"],
         "mod_duration": fx["mod_duration"],
+        "has_accrued_interest": fx["has_accrued_interest"],
+        "diagnostics": list(fx["diagnostics"]),
     }

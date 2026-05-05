@@ -739,6 +739,7 @@ def _result_to_payload(
         payload["warnings"] = warnings
     if formal_closure is not None:
         payload["formal_closure"] = formal_closure
+    payload["diagnostics"] = list(result.diagnostics)
     return payload
 
 
@@ -825,6 +826,8 @@ def campisi_four_effects_envelope(
         start_date=date.fromisoformat(anchor_start),
         end_date=date.fromisoformat(anchor_end),
     )
+    if result.diagnostics:
+        input_quality["warnings"] = [*input_quality["warnings"], *result.diagnostics]
 
     formal_closure = _fetch_formal_closure(
         settings=settings,
@@ -898,12 +901,14 @@ def campisi_enhanced_envelope(
         start_date=date.fromisoformat(anchor_start),
         end_date=date.fromisoformat(anchor_end),
     )
+    if result.get("diagnostics"):
+        input_quality["warnings"] = [*input_quality["warnings"], *result["diagnostics"]]
 
     result["report_date"] = anchor_end
     result["period_start"] = anchor_start
     result["period_end"] = anchor_end
     result["input_quality"] = input_quality
-    result["warnings"] = input_quality["warnings"]
+    result["warnings"] = list(input_quality["warnings"])
     return build_formal_result_envelope(
         result_meta=_meta_with_quality("campisi.enhanced", input_quality),
         result_payload=result,
