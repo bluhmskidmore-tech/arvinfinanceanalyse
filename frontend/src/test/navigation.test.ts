@@ -56,6 +56,7 @@ describe("workbench navigation mocks", () => {
       "operations-analysis",
       "bond-analysis",
       "cross-asset",
+      "macro-toolkit",
       "decision-items",
       "team-performance",
       "platform-config",
@@ -175,6 +176,15 @@ describe("workbench navigation mocks", () => {
     expect(section?.governanceStatus).toBeUndefined();
     expect(primaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(false);
+  });
+
+  it("promotes macro-toolkit into the live primary navigation", () => {
+    const section = workbenchNavigation.find((s) => s.key === "macro-toolkit");
+    expect(section?.path).toBe("/macro-toolkit");
+    expect(section?.readiness).toBe("live");
+    expect(section?.governanceStatus).toBe("temporary-exception");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "macro-toolkit")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "macro-toolkit")).toBe(false);
   });
 
   it("promotes decision-items into the live primary navigation as a temporary exception", () => {

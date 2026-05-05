@@ -458,7 +458,7 @@ export default function AverageBalanceView() {
   const trendQuery = useQuery({
     queryKey: ["average-balance", "trend", client.mode, startDate, endDate],
     queryFn: () => client.getAdb({ startDate, endDate }),
-    enabled: activeTab === "daily" && Boolean(startDate && endDate),
+    enabled: activeTab === "daily" && Boolean(startDate && endDate && comparisonQuery.data),
     retry: false,
   });
 
@@ -484,7 +484,8 @@ export default function AverageBalanceView() {
         topN: adbTopN,
       }),
     enabled:
-      activeTab === "daily" && Boolean(priorYearRange?.startDate && priorYearRange?.endDate),
+      activeTab === "daily" &&
+      Boolean(comparisonQuery.data && priorYearRange?.startDate && priorYearRange?.endDate),
     retry: false,
   });
 
@@ -534,16 +535,21 @@ export default function AverageBalanceView() {
       ? ((dailyData.total_spot_liabilities - dailyData.total_avg_liabilities) / dailyData.total_avg_liabilities) * 100
       : 0;
 
-  const comparisonRows = useMemo<AdbComparisonChartRow[]>(() => {
-    if (!dailyData) return [];
-    const mapRows = (items: AdbCategoryItem[], prefix: string) =>
+  const { comparisonAssetRows, comparisonLiabilityRows } = useMemo(() => {
+    if (!dailyData) {
+      return { comparisonAssetRows: [] as AdbComparisonChartRow[], comparisonLiabilityRows: [] as AdbComparisonChartRow[] };
+    }
+    const mapRows = (items: AdbCategoryItem[], prefix: string): AdbComparisonChartRow[] =>
       items.map((item) => ({
         label: `${prefix} · ${item.category}`,
         spot: item.spot_balance,
         avg: item.avg_balance,
         deviationPct: item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
       }));
-    return [...mapRows(dailyData.assets_breakdown, "资产"), ...mapRows(dailyData.liabilities_breakdown, "负债")];
+    return {
+      comparisonAssetRows: mapRows(dailyData.assets_breakdown, "资产"),
+      comparisonLiabilityRows: mapRows(dailyData.liabilities_breakdown, "负债"),
+    };
   }, [dailyData]);
 
   const monthlyData = monthlyQuery.data;
@@ -817,7 +823,7 @@ export default function AverageBalanceView() {
                   ) : null}
                 </Card>
 
-                {datesQuery.isLoading || comparisonQuery.isLoading || priorYearComparisonQuery.isLoading ? (
+                {datesQuery.isLoading || comparisonQuery.isLoading ? (
                   <Spin />
                 ) : null}
                 {dailyErrorMessage ? <Alert type="error" showIcon message={dailyErrorMessage} /> : null}
@@ -981,8 +987,11 @@ export default function AverageBalanceView() {
                       ))}
                     </Row>
 
-                    <Card title="期末时点与日均偏离对比" size="small">
-                      <AdbComparisonChart rows={comparisonRows} />
+                    <Card title="期末时点与日均偏离对比 · 资产" size="small">
+                      <AdbComparisonChart rows={comparisonAssetRows} />
+                    </Card>
+                    <Card title="期末时点与日均偏离对比 · 负债" size="small">
+                      <AdbComparisonChart rows={comparisonLiabilityRows} />
                     </Card>
 
                     {trendQuery.data?.trend && trendQuery.data.trend.length > 0 ? (

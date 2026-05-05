@@ -249,6 +249,25 @@ class AccountingAssetMovementRepository:
             reverse=True,
         )
 
+    def fetch_zqtz_asset_business_rows(
+        self,
+        *,
+        report_date: str,
+        currency_basis: str = "CNX",
+    ) -> list[dict[str, object]]:
+        try:
+            conn = self._connect()
+            return self._fetch_zqtz_asset_rows(
+                conn,
+                report_date=report_date,
+                currency_basis=currency_basis,
+            )
+        except duckdb.Error:
+            return []
+        finally:
+            if "conn" in locals():
+                conn.close()
+
     def fetch_basis_movement_components(
         self,
         *,

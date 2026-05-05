@@ -214,6 +214,16 @@ class VerdictPayload(BaseModel):
     suggestions: list[VerdictSuggestion]
 
 
+class ProductCategoryYtdHeadlinePayload(BaseModel):
+    """产品分类损益 ytd 与专题页「汇总视图」对齐的首屏摘要（不含前端自算）。"""
+
+    view: Literal["ytd"] = "ytd"
+    operating_income: Numeric
+    operating_income_detail: str
+    intermediate_business_income: Numeric
+    intermediate_business_income_detail: str
+
+
 class HomeSnapshotPayload(BaseModel):
     """Authoritative unified home snapshot payload.
 
@@ -242,3 +252,4 @@ class HomeSnapshotPayload(BaseModel):
     domains_missing: list[str]
     domains_effective_date: dict[str, str]
     verdict: VerdictPayload | None = None
+    product_category_ytd: ProductCategoryYtdHeadlinePayload | None = None

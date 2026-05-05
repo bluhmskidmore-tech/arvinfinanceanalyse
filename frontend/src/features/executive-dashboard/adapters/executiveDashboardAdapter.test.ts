@@ -112,6 +112,8 @@ describe("adaptDashboard · normal path", () => {
     expect(out.overview.vm?.metrics[0]?.value.raw).toBe(123_456_000_000);
     expect(out.overview.vm?.metrics[0]?.caliberLabel).toBe("本币资产口径");
     expect(out.attribution.vm?.total.display).toBe("+32.00 亿");
+    expect(out.productCategoryYtd.state.kind).toBe("empty");
+    expect(out.productCategoryYtd.vm).toBeNull();
   });
 
   it("passes Numeric shape through untouched", () => {
@@ -424,5 +426,41 @@ describe("adaptDashboard · domainsEffectiveDate / datesDiverged", () => {
     });
     expect(out.datesDiverged).toBe(false);
     expect(out.domainsEffectiveDate).toEqual({ balance_sheet: "2026-04-18" });
+  });
+});
+
+describe("adaptDashboard · product_category_ytd", () => {
+  it("maps ytd headline into vm when snapshot includes block", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      productCategoryYtd: {
+        view: "ytd",
+        operating_income: makeNumeric({ raw: 1_325_000_000, display: "+13.25 亿" }),
+        operating_income_detail: "与产品分类损益页脚口径一致。",
+        intermediate_business_income: makeNumeric({ raw: 500_000_000, display: "+5.00 亿" }),
+        intermediate_business_income_detail: "中间业务收入 ytd。",
+      },
+    });
+    expect(out.productCategoryYtd.state.kind).toBe("ok");
+    expect(out.productCategoryYtd.vm?.operatingIncomeDisplay).toBe("+13.25 亿");
+    expect(out.productCategoryYtd.vm?.intermediateDisplay).toBe("+5.00 亿");
+    expect(out.productCategoryYtd.vm?.operatingIncomeDetail).toContain("产品分类");
+  });
+
+  it("loading state for ytd mirrors overview loading", () => {
+    const out = adaptDashboard({
+      overviewEnv: undefined,
+      attributionEnv: undefined,
+      overviewLoading: true,
+      overviewError: false,
+      attributionLoading: true,
+      attributionError: false,
+    });
+    expect(out.productCategoryYtd.state.kind).toBe("loading");
   });
 });

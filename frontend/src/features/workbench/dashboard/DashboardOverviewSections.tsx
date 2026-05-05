@@ -2,6 +2,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import type { VerdictPayload } from "../../../api/contracts";
+import type { DataSectionState } from "../../../components/DataSection.types";
+import type { DashboardProductCategoryYtdVM } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { TONE_COLOR, type Tone } from "../../../utils/tone";
@@ -888,6 +890,160 @@ function CalendarPanel({
               );
             })
           : null}
+      </div>
+    </section>
+  );
+}
+
+export function DashboardProductCategoryYtdCards({
+  state,
+  vm,
+  onRetry,
+}: {
+  state: DataSectionState;
+  vm: DashboardProductCategoryYtdVM | null;
+  onRetry: () => void;
+}) {
+  const retryButtonStyle: CSSProperties = {
+    marginTop: designTokens.space[2],
+    padding: "6px 12px",
+    borderRadius: designTokens.radius.sm,
+    border: `1px solid ${shellTokens.colorBorderSoft}`,
+    background: shellTokens.colorBgSurface,
+    color: shellTokens.colorTextPrimary,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+
+  const cardShell: CSSProperties = {
+    display: "grid",
+    gap: designTokens.space[2],
+    padding: designTokens.space[4],
+    borderRadius: designTokens.radius.md,
+    border: `1px solid ${shellTokens.colorBorderSoft}`,
+    background: shellTokens.colorBgSurface,
+  };
+
+  const showValues = state.kind === "ok" && vm !== null;
+  const operatingDisplay = showValues
+    ? vm.operatingIncomeDisplay
+    : state.kind === "loading"
+      ? "…"
+      : "—";
+  const intermediateDisplay = showValues
+    ? vm.intermediateDisplay
+    : state.kind === "loading"
+      ? "…"
+      : "—";
+  const statusHint =
+    state.kind === "loading"
+      ? "快照载入中，数值就绪后自动刷新。"
+      : state.kind === "error"
+        ? state.message ?? "快照请求失败。"
+        : state.kind === "empty"
+          ? state.hint ??
+            "后端未返回产品分类 ytd 摘要：请确认已部署含 product_category_ytd 的快照接口，且读模型可用。"
+          : null;
+
+  const operatingDetail = showValues
+    ? vm.operatingIncomeDetail
+    : "与产品分类损益「汇总视图」（ytd）页脚「全部市场科目 + 投资收益合计」口径一致。";
+  const intermediateDetail = showValues
+    ? vm.intermediateDetail
+    : "与产品分类损益「中间业务收入」分类行（ytd）一致。";
+
+  return (
+    <section data-testid="dashboard-product-category-ytd" style={panelStyle}>
+      <DashboardSectionHeader eyebrow="产品经营" title="营业收入与中间业务收入" />
+      {statusHint ? (
+        <p
+          style={{
+            ...bodyTextStyle,
+            marginTop: designTokens.space[1],
+            color:
+              state.kind === "error"
+                ? designTokens.color.danger[600]
+                : shellTokens.colorTextMuted,
+            fontSize: designTokens.fontSize[12],
+          }}
+        >
+          {statusHint}
+        </p>
+      ) : (
+        <p style={{ ...bodyTextStyle, marginTop: designTokens.space[1] }}>
+          口径与「产品分类损益」汇总视图（ytd）一致；与页脚「全部市场科目 + 投资收益合计」及「中间业务收入」行对拍。
+        </p>
+      )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: designTokens.space[3],
+          marginTop: designTokens.space[3],
+        }}
+      >
+        <article style={cardShell}>
+          <span style={sectionLabelStyle}>
+            {showValues ? vm.operatingIncomeLabel : "营业收入"}
+          </span>
+          <div
+            style={{
+              fontSize: designTokens.fontSize[20],
+              fontWeight: 800,
+              color: shellTokens.colorTextPrimary,
+              ...tabularNumsStyle,
+            }}
+          >
+            {operatingDisplay}
+          </div>
+          <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[11], margin: 0 }}>
+            {operatingDetail}
+          </p>
+        </article>
+        <article style={cardShell}>
+          <span style={sectionLabelStyle}>
+            {showValues ? vm.intermediateLabel : "中间业务收入"}
+          </span>
+          <div
+            style={{
+              fontSize: designTokens.fontSize[20],
+              fontWeight: 800,
+              color: shellTokens.colorTextPrimary,
+              ...tabularNumsStyle,
+            }}
+          >
+            {intermediateDisplay}
+          </div>
+          <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[11], margin: 0 }}>
+            {intermediateDetail}
+          </p>
+        </article>
+      </div>
+      <div
+        style={{
+          marginTop: designTokens.space[3],
+          display: "flex",
+          flexWrap: "wrap",
+          gap: designTokens.space[3],
+          alignItems: "center",
+        }}
+      >
+        <Link
+          to="/product-category-pnl"
+          style={{
+            fontSize: designTokens.fontSize[12],
+            fontWeight: 700,
+            color: designTokens.color.info[600],
+          }}
+        >
+          前往产品分类损益
+        </Link>
+        {state.kind === "error" ? (
+          <button type="button" onClick={onRetry} style={retryButtonStyle}>
+            重试
+          </button>
+        ) : null}
       </div>
     </section>
   );

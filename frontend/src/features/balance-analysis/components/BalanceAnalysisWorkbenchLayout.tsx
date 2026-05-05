@@ -17,6 +17,9 @@ import { KpiCard } from "../../../components/KpiCard";
 import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
+  formatBalanceDecisionWorkflowStatusDisplay,
+  formatBalanceGovernedSeverityDisplay,
+  formatBalanceWorkbookOperationalSectionKeyDisplay,
   formatBalanceWorkbookWanTextDisplay,
 } from "../pages/balanceAnalysisPageModel";
 import "./balanceWorkbench.css";
@@ -175,7 +178,11 @@ function buildCards({
               <li key={row.decision_key} className="balance-workbench-card__item">
                 <strong>{row.title}</strong>
                 <span className="balance-workbench-card__item-meta">
-                  {row.severity} / {row.latest_status?.status ?? "未返回状态"} / {row.source_section}
+                  {formatBalanceGovernedSeverityDisplay(row.severity)} /{" "}
+                  {row.latest_status?.status != null
+                    ? formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)
+                    : "未返回状态"}{" "}
+                  / {formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section)}
                 </span>
               </li>
             ))}

@@ -23,6 +23,7 @@ import type {
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
   PageResponse,
+  YieldByPeriodPayload,
   PositionDirection,
   ProductTypesResponse,
   RatingStatsResponse,
@@ -86,6 +87,10 @@ export type PositionsClientMethods = {
   }) => Promise<ApiEnvelope<CustomerBalanceTrendResponse>>;
   getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsPayload>;
   getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsPayload>;
+  getYieldByPeriod: (options: {
+    year: number;
+    periodType?: "monthly" | "quarterly" | "yearly";
+  }) => Promise<YieldByPeriodPayload>;
   getLiabilityCounterparty: (options: {
     reportDate?: string | null;
     topN?: number;

@@ -8,6 +8,16 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+# 固收/非标 V1 的 classification_row 里，bond_type、business_type_primary 常为「资管计划」「证券业资管计划」等，
+# 与 ZQTZ 敞口「其他」并存；仅匹配「其他」会使 match_zqtz_asset_bond_rows 落空，业务种类损益该行严重偏小。
+_ZQTZ_PREFIX_BUCKET_BOND_TYPES: tuple[str, ...] = (
+    "其他",
+    "资管计划",
+    "证券业资管计划",
+    "债权投资",
+    "特定目的载体及其他非标类",
+)
+
 # 唯一规则源：`_ZQTZ_ASSET_ROWS` 从本模块导出，迁徙页 DuckDB predicate 与用户态分类共用。
 ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
     {
@@ -96,7 +106,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_public_fund",
         "row_label": "公募基金",
         "sort_order": 80,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("SA",),
         "source_note": "ZQTZSHOW bond_type=其他 and instrument_code prefix=SA",
     },
@@ -104,7 +114,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_non_bottom_investment",
         "row_label": "非底层投资资产",
         "sort_order": 82,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("G0", "J0", "J1", "J4"),
         "source_note": "ZQTZSHOW bond_type=其他 and instrument_code prefix in G0/J0/J1/J4",
     },
@@ -112,7 +122,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_detail_trust_plan",
         "row_label": "信托计划",
         "sort_order": 83,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("G0",),
         "source_note": "ZQTZSHOW 其中项：instrument_code prefix=G0",
     },
@@ -120,7 +130,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_detail_securities_asset_management_plan",
         "row_label": "证券业资管计划",
         "sort_order": 84,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J0", "J1", "J4"),
         "source_note": "ZQTZSHOW 其中项：instrument_code prefix in J0/J1/J4",
     },
@@ -128,7 +138,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_detail_structured_finance_broker",
         "row_label": "其中：结构化融资（券商）",
         "sort_order": 85,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J4",),
         "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4",
     },
@@ -136,7 +146,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_detail_foreign_currency_delegated",
         "row_label": "其中：外币委外",
         "sort_order": 86,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J1",),
         "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J1",
     },
@@ -144,7 +154,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_detail_local_currency_delegated_market_value",
         "row_label": "其中：本币委外（市值法）",
         "sort_order": 87,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J0",),
         "instrument_codes": ("J02205260102", "J02503280102", "J02512240102"),
         "source_note": "ZQTZSHOW 其中项：J0 市值法产品清单",
@@ -153,7 +163,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_detail_local_currency_special_account_cost",
         "row_label": "其中：本币专户（成本法）",
         "sort_order": 88,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J0",),
         "exclude_instrument_codes": ("J02205260102", "J02503280102", "J02512240102"),
         "source_note": "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
@@ -162,7 +172,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_other_debt_financing",
         "row_label": "其他债权融资类产品",
         "sort_order": 90,
-        "bond_types": ("其他",),
+        "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("JM",),
         "source_note": "ZQTZSHOW bond_type=其他 and instrument_code prefix=JM",
     },
@@ -282,6 +292,11 @@ def _row_matches_definition(row: Mapping[str, Any], row_def: dict[str, Any]) -> 
 
 
 _ZQTZ_ASSET_ROWS_DESC = tuple(sorted(ZQTZ_ASSET_BOND_ROWS, key=lambda r: int(r["sort_order"]), reverse=True))
+
+
+def match_zqtz_asset_bond_rows(row: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    """Return every ZQTZ asset row definition matched by ``row`` in display order."""
+    return tuple(row_def for row_def in ZQTZ_ASSET_BOND_ROWS if _row_matches_definition(row, row_def))
 
 
 def classify_zqtz_asset_bond_label(row: Mapping[str, Any]) -> str:

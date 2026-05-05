@@ -630,11 +630,97 @@ def _empty_campisi_payload(start: str, end: str) -> dict[str, Any]:
     }
 
 
+def _build_formal_closure(
+    *,
+    report_date: str,
+    campisi_total_return: Decimal,
+    bridge_envelope: dict[str, Any],
+) -> dict[str, Any]:
+    summary = (bridge_envelope.get("result") or {}).get("summary") or {}
+    meta = bridge_envelope.get("result_meta") or {}
+    formal_actual_pnl = _decimal_value((summary.get("total_actual_pnl") or {}).get("raw"))
+    residual = formal_actual_pnl - campisi_total_return
+    residual_ratio = (
+        abs(residual) / abs(formal_actual_pnl)
+        if formal_actual_pnl != 0
+        else (Decimal("0") if residual == 0 else None)
+    )
+    status = "closed" if abs(residual) <= Decimal("1.00") else "warning"
+    message = (
+        "Campisi total return does not close to formal PnL; "
+        "residual_to_formal_pnl is required."
+        if status == "warning"
+        else "Campisi total return closes to formal PnL."
+    )
+    return {
+        "basis": "pnl.bridge.total_actual_pnl",
+        "report_date": report_date,
+        "status": status,
+        "campisi_total_return": float(campisi_total_return),
+        "formal_actual_pnl": float(formal_actual_pnl),
+        "residual_to_formal_pnl": float(residual),
+        "residual_ratio": float(residual_ratio) if residual_ratio is not None else None,
+        "bridge_quality_flag": meta.get("quality_flag"),
+        "bridge_vendor_status": meta.get("vendor_status"),
+        "bridge_fallback_mode": meta.get("fallback_mode"),
+        "message": message,
+    }
+
+
+def _formal_closure_unavailable(
+    *,
+    report_date: str,
+    campisi_total_return: Decimal,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "basis": "pnl.bridge.total_actual_pnl",
+        "report_date": report_date,
+        "status": "unavailable",
+        "campisi_total_return": float(campisi_total_return),
+        "formal_actual_pnl": None,
+        "residual_to_formal_pnl": None,
+        "residual_ratio": None,
+        "bridge_quality_flag": None,
+        "bridge_vendor_status": None,
+        "bridge_fallback_mode": None,
+        "message": f"Formal PnL bridge unavailable for Campisi closure: {reason}",
+    }
+
+
+def _fetch_formal_closure(
+    *,
+    settings: Any,
+    report_date: str,
+    campisi_total_return: Decimal,
+) -> dict[str, Any]:
+    try:
+        from backend.app.services.pnl_bridge_service import pnl_bridge_envelope
+
+        bridge = pnl_bridge_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+        )
+    except Exception as exc:  # pragma: no cover - formal bridge availability is data/runtime dependent.
+        return _formal_closure_unavailable(
+            report_date=report_date,
+            campisi_total_return=campisi_total_return,
+            reason=str(exc),
+        )
+    return _build_formal_closure(
+        report_date=report_date,
+        campisi_total_return=campisi_total_return,
+        bridge_envelope=bridge,
+    )
+
+
 def _result_to_payload(
     result: CampisiResult,
     start: str,
     end: str,
     input_quality: dict[str, Any] | None = None,
+    formal_closure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = {
         "report_date": end,
@@ -647,18 +733,28 @@ def _result_to_payload(
     }
     if input_quality is not None:
         payload["input_quality"] = input_quality
-        payload["warnings"] = input_quality["warnings"]
+        warnings = list(input_quality["warnings"])
+        if formal_closure is not None and formal_closure.get("status") != "closed":
+            warnings.append(str(formal_closure.get("message") or "Campisi formal closure warning."))
+        payload["warnings"] = warnings
+    if formal_closure is not None:
+        payload["formal_closure"] = formal_closure
     return payload
 
 
-def _meta_with_quality(result_kind: str, input_quality: dict[str, Any]):
+def _meta_with_quality(
+    result_kind: str,
+    input_quality: dict[str, Any],
+    formal_closure: dict[str, Any] | None = None,
+):
+    has_closure_warning = formal_closure is not None and formal_closure.get("status") != "closed"
     return build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind=result_kind,
         cache_version=CACHE_VERSION,
         source_version=SOURCE_VERSION,
         rule_version=RULE_VERSION,
-        quality_flag="warning" if input_quality["warnings"] else None,
+        quality_flag="warning" if input_quality["warnings"] or has_closure_warning else None,
     )
 
 
@@ -730,9 +826,14 @@ def campisi_four_effects_envelope(
         end_date=date.fromisoformat(anchor_end),
     )
 
-    payload = _result_to_payload(result, anchor_start, anchor_end, input_quality)
+    formal_closure = _fetch_formal_closure(
+        settings=settings,
+        report_date=anchor_end,
+        campisi_total_return=Decimal(str(result.totals.get("total_return") or 0)),
+    )
+    payload = _result_to_payload(result, anchor_start, anchor_end, input_quality, formal_closure)
     return build_formal_result_envelope(
-        result_meta=_meta_with_quality("campisi.four_effects", input_quality),
+        result_meta=_meta_with_quality("campisi.four_effects", input_quality, formal_closure),
         result_payload=payload,
     )
 

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
@@ -157,15 +157,21 @@ function buildPnlClient(): ApiClient {
     year: 2025,
     period_type: "yearly",
     period_label: "2025年12月累计",
-    total_pnl: "13.00",
-    source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily"],
+    total_pnl: "130000.00",
+    source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
     items: [
       {
+        row_key: "asset_zqtz_policy_financial_bond",
+        sort_order: 66,
         business_type: "政策性金融债",
-        interest_income: "10.00",
-        fair_value_change: "1.00",
-        capital_gain: "2.00",
-        total_pnl: "13.00",
+        interest_income: "100000.00",
+        fair_value_change: "10000.00",
+        capital_gain: "20000.00",
+        total_pnl: "130000.00",
+        current_balance: "100000000.00",
+        balance_yield_pct: "0.0013",
+        source_kind: "zqtz",
+        source_note: "ZQTZ_ASSET_BOND_ROWS",
         proportion: "1.000000",
         assets_count: 1,
       },
@@ -192,6 +198,22 @@ function buildPnlClient(): ApiClient {
 
   return {
     ...base,
+    getLiabilityYieldMetrics: vi.fn(async () => ({
+      report_date: "2025-12-31",
+      kpi: {
+        asset_yield: null,
+        liability_cost: null,
+        market_liability_cost: null,
+        nim: null,
+      },
+      history: [],
+      scatter: [],
+    })),
+    getYieldByPeriod: vi.fn(async () => ({
+      year: 2025,
+      period_type: "monthly",
+      periods: [],
+    })),
     getFormalPnlDates: vi.fn(async () => ({
       result_meta: buildMeta("pnl.dates", "tr_route_dates"),
       result: dates,
@@ -220,6 +242,34 @@ function buildPnlClient(): ApiClient {
       result_meta: buildMeta("pnl.yearly_summary", "tr_route_business_year"),
       result: yearlyBusiness,
     })),
+    getAdbComparison: vi.fn(async (_startDate: string, _endDate: string) => ({
+      report_date: _endDate,
+      start_date: _startDate,
+      end_date: _endDate,
+      calendar_days_inclusive: 365,
+      adb_denominator_basis: "snapshot_calendar" as const,
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 0,
+      total_avg_assets: 0,
+      total_spot_liabilities: 0,
+      total_avg_liabilities: 0,
+      total_avg_interbank_assets: 0,
+      total_avg_interbank_liabilities: 0,
+      asset_yield: null,
+      liability_cost: null,
+      net_interest_margin: null,
+      assets_breakdown: [
+        {
+          category: "政策性金融债",
+          spot_balance: 100_000_000,
+          avg_balance: 100_000_000,
+          proportion: 100,
+          weighted_rate: null,
+        },
+      ],
+      liabilities_breakdown: [],
+    })),
   };
 }
 
@@ -227,18 +277,16 @@ describe("pnl routed pages smoke", () => {
   it("renders the real /pnl route surface through workbench routes", async () => {
     renderWorkbenchApp(["/pnl"], { client: buildPnlClient() });
 
-    expect(await screen.findByTestId("pnl-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("yield-analysis-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "收益分析", level: 1 })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByLabelText("pnl-report-date")).toHaveValue("2025-12-31");
+      expect(screen.getByLabelText("选择报表月份")).toHaveValue("2025-12-31");
     });
-    expect(await screen.findByTestId("pnl-refresh-button")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_route_data");
+      expect(screen.getByText("损益表归因分析")).toBeInTheDocument();
     });
-
     await waitFor(() => {
-      expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("13.00");
-      expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
+      expect(screen.getByText("240001.IB")).toBeInTheDocument();
     });
   });
 
@@ -259,18 +307,46 @@ describe("pnl routed pages smoke", () => {
   });
 
   it("renders the real /pnl-by-business route surface through workbench routes", async () => {
-    renderWorkbenchApp(["/pnl-by-business"], { client: buildPnlClient() });
+    const client = buildPnlClient();
+    renderWorkbenchApp(["/pnl-by-business"], { client });
 
     expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText("pnl-by-business-report-date")).toHaveValue("2025-12-31");
     });
+    await waitFor(() => {
+      expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-12-31");
+    });
+    expect(client.getPnlByBusiness).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(client.getAdbComparison).toHaveBeenCalledWith(
+        "2025-01-01",
+        "2025-12-31",
+        expect.objectContaining({ topN: 200 }),
+      );
+    });
     expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_ytd");
 
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("合计损益（万元）");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("日均(亿元)");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("1.00");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("年化收益率");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("0.13%");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("100.00%");
+      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("父级汇总");
+      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("13");
     });
+
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "formal" } });
+    await waitFor(() => {
+      expect(client.getPnlByBusiness).toHaveBeenCalledWith("2025-12-31");
+    });
+    expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
+    expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");
+    expect(screen.getByTestId("pnl-by-business-formal-table-footer")).toHaveTextContent("全表合计");
   });
 });

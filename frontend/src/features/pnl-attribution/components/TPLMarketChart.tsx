@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import type { TPLMarketCorrelationPayload } from "../../../api/contracts";
+import type { Numeric, TPLMarketCorrelationPayload } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -69,15 +69,25 @@ type Props = {
   onRetry: () => void;
 };
 
-/** Mock / legacy payloads may expose BP total as a plain number under `treasury_10y_total_change_bp`. */
-function treasuryTotalChangeBp(data: TPLMarketCorrelationPayload): number | null {
-  const n = data.treasury_10y_total_change;
-  if (n != null) {
-    return n.raw ?? 0;
+function numericRaw(value: Numeric | number | null | undefined): number | null {
+  if (typeof value === "number") {
+    return value;
   }
-  const legacy = (data as TPLMarketCorrelationPayload & { treasury_10y_total_change_bp?: number | null })
-    .treasury_10y_total_change_bp;
-  return legacy ?? null;
+  if (value && typeof value === "object") {
+    return value.raw;
+  }
+  return null;
+}
+
+/** Legacy payloads may expose BP total under `treasury_10y_total_change`. */
+function treasuryTotalChangeBp(data: TPLMarketCorrelationPayload): number | null {
+  const current = numericRaw(data.treasury_10y_total_change_bp);
+  if (current !== null) {
+    return current;
+  }
+  const legacy = (data as TPLMarketCorrelationPayload & { treasury_10y_total_change?: Numeric | number | null })
+    .treasury_10y_total_change;
+  return numericRaw(legacy);
 }
 
 /** TPL 公允价值变动与国债收益率走势的双轴对比。 */
@@ -439,7 +449,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                           ...tabularNumsStyle,
                         }}
                       >
-                        {point.treasury_10y !== null ? (point.treasury_10y.raw ?? 0).toFixed(3) : "—"}
+                        {point.treasury_10y !== null ? point.treasury_10y.display : "—"}
                       </td>
                       <td
                         style={{
@@ -463,7 +473,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                           ...tabularNumsStyle,
                         }}
                       >
-                        {point.dr007 !== null ? (point.dr007.raw ?? 0).toFixed(3) : "—"}
+                        {point.dr007 !== null ? point.dr007.display : "—"}
                       </td>
                     </tr>
                   ))}

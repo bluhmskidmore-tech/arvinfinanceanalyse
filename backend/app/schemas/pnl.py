@@ -153,11 +153,17 @@ class PnlByBusinessPayload(BaseModel):
 class PnlByBusinessYtdItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    row_key: str
+    sort_order: int
     business_type: str
     interest_income: Decimal
     fair_value_change: Decimal
     capital_gain: Decimal
     total_pnl: Decimal
+    current_balance: Decimal
+    balance_yield_pct: Decimal | None
+    source_kind: str | None = None
+    source_note: str | None = None
     proportion: Decimal | None
     assets_count: int
 

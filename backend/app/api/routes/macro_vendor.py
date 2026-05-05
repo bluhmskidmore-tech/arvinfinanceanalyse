@@ -23,6 +23,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter()
 
+CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
+
 
 # ── Formal market-data endpoints (Phase 1 promotion) ───────────────
 
@@ -115,5 +118,26 @@ def choice_series_refresh_status(
     run_id: str = Query(default=""),
 ) -> dict[str, object]:
     settings = get_settings()
-    repo = GovernanceRepository(settings.duckdb_path)
-    return repo.get_run_status(CACHE_BUILD_RUN_STREAM, run_id)
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name")) == CHOICE_MACRO_REFRESH_JOB_NAME
+        and str(record.get("cache_key")) == CHOICE_MACRO_REFRESH_CACHE_KEY
+    ]
+    if run_id:
+        records = [record for record in records if str(record.get("run_id")) == run_id]
+        if not records:
+            raise HTTPException(status_code=404, detail=f"Unknown choice macro refresh run_id={run_id}")
+    if not records:
+        return {
+            "status": "idle",
+            "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
+            "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
+            "trigger_mode": "idle",
+        }
+    latest = records[-1]
+    status = str(latest.get("status", "unknown"))
+    return {
+        **latest,
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
+    }

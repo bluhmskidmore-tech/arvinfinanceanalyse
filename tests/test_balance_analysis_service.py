@@ -453,13 +453,13 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
                         "title": "Decision Items",
                         "section_kind": "decision_items",
                         "columns": [
-                            {"key": "title", "label": "Title"},
-                            {"key": "action_label", "label": "Action"},
-                            {"key": "severity", "label": "Severity"},
-                            {"key": "reason", "label": "Reason"},
-                            {"key": "source_section", "label": "Source Section"},
-                            {"key": "rule_id", "label": "Rule Id"},
-                            {"key": "rule_version", "label": "Rule Version"},
+                            {"key": "title", "label": "标题"},
+                            {"key": "action_label", "label": "动作"},
+                            {"key": "severity", "label": "等级"},
+                            {"key": "reason", "label": "原因"},
+                            {"key": "source_section", "label": "来源区块"},
+                            {"key": "rule_id", "label": "规则编号"},
+                            {"key": "rule_version", "label": "规则版本"},
                         ],
                         "rows": [
                             {
@@ -505,17 +505,17 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
 
     assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
     assert payload["result"]["columns"] == [
-        {"key": "title", "label": "Title"},
-        {"key": "action_label", "label": "Action"},
-        {"key": "severity", "label": "Severity"},
-        {"key": "reason", "label": "Reason"},
-        {"key": "source_section", "label": "Source Section"},
-        {"key": "rule_id", "label": "Rule Id"},
-        {"key": "rule_version", "label": "Rule Version"},
+        {"key": "title", "label": "标题"},
+        {"key": "action_label", "label": "动作"},
+        {"key": "severity", "label": "等级"},
+        {"key": "reason", "label": "原因"},
+        {"key": "source_section", "label": "来源区块"},
+        {"key": "rule_id", "label": "规则编号"},
+        {"key": "rule_version", "label": "规则版本"},
     ]
     assert payload["result"]["rows"] == [
         {
-            "decision_key": "bal_gap_rule::maturity_gap::Tighten duration gap",
+            "decision_key": "bal_gap_rule",
             "title": "Tighten duration gap",
             "action_label": "Review",
             "severity": "high",
@@ -524,7 +524,7 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
             "rule_id": "bal_gap_rule",
             "rule_version": "rv-test",
             "latest_status": {
-                "decision_key": "bal_gap_rule::maturity_gap::Tighten duration gap",
+                "decision_key": "bal_gap_rule",
                 "status": "pending",
                 "updated_at": None,
                 "updated_by": None,

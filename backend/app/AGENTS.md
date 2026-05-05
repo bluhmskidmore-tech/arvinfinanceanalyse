@@ -23,11 +23,14 @@ The following backend surfaces are still outside the current repo-wide `Phase 2`
 - `backend/app/api/routes/executive.py` except the E1 surfaces:
   - `/ui/home/overview`
   - `/ui/home/summary`
+  - `/ui/home/snapshot`
   - `/ui/pnl/attribution`
 - `backend/app/services/executive_service.py` except:
   - `executive_overview`
   - `executive_summary`
   - `executive_pnl_attribution`
+  - `home_snapshot_envelope` / `_compute_home_snapshot_envelope` / `_build_product_category_ytd_headline`
+    （经 `product_category_pnl_service.resolve_product_category_ytd_payload_for_home_snapshot`：读模型 ytd 缺失时自 canonical 重算）
 - `backend/app/api/routes/agent.py`
 - Agent MVP / real agent query enablement
 - `source_preview`

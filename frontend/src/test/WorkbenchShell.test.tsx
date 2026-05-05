@@ -105,7 +105,7 @@ describe("WorkbenchShell", () => {
 
     const subnav = screen.getByTestId("workbench-section-subnav");
     expect(subnav).toHaveTextContent("全部已开放页面");
-    expect(within(subnav).getByRole("link", { name: /损益明细/ })).toHaveAttribute("href", "/pnl");
+    expect(within(subnav).getByRole("link", { name: /收益分析/ })).toHaveAttribute("href", "/pnl");
   });
 
   it("keeps live balance-analysis focused on page content with its compact hint", async () => {
@@ -183,9 +183,12 @@ describe("WorkbenchShell", () => {
     const subnav = await screen.findByTestId("workbench-section-subnav");
     const sectionLinks = within(subnav).getAllByRole("link");
     const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
-    expect(hrefs).toHaveLength(3);
-    expect(hrefs).toEqual(expect.arrayContaining(["/market-data", "/cross-asset", "/news-events"]));
+    expect(hrefs).toHaveLength(4);
+    expect(hrefs).toEqual(
+      expect.arrayContaining(["/market-data", "/macro-toolkit", "/cross-asset", "/news-events"]),
+    );
     expect(subnav).toHaveTextContent("市场数据");
+    expect(subnav).toHaveTextContent("宏观工具");
     expect(subnav).toHaveTextContent("跨资产驱动");
     expect(subnav).toHaveTextContent("新闻事件");
   });

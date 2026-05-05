@@ -61,7 +61,7 @@ def _stub_executive_payload(result_kind: str) -> dict[str, Any]:
 
 def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     module = load_module(
-        f"tests._result_meta_exec.executive_contract",
+        "tests._result_meta_exec.executive_contract",
         "backend/app/api/routes/executive.py",
     )
     monkeypatch.setattr(
@@ -139,6 +139,11 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
         ("/ui/pnl/product-category/dates", {}),
         ("/ui/balance-movement-analysis/dates", {}),
         ("/ui/balance-analysis/dates", {}),
+        ("/ui/preview/macro-foundation", {}),
+        ("/ui/macro/choice-series/latest", {}),
+        ("/ui/market-data/fx/formal-status", {}),
+        ("/ui/market-data/fx/analytical", {}),
+        ("/ui/market-data/livermore", {}),
     ],
 )
 def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_path, monkeypatch):
@@ -190,11 +195,6 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
 @pytest.mark.parametrize(
     "path",
     (
-        "/ui/preview/macro-foundation",
-        "/ui/macro/choice-series/latest",
-        "/ui/market-data/fx/formal-status",
-        "/ui/market-data/fx/analytical",
-        "/ui/market-data/livermore",
         "/ui/news/choice-events/latest",
         "/ui/preview/source-foundation",
         "/ui/preview/source-foundation/history",
@@ -204,7 +204,6 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
         "/ui/home/contribution",
         "/ui/home/alerts",
         "/ui/risk/overview",
-        "/ui/home/snapshot",
     ),
 )
 def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
@@ -225,7 +224,7 @@ def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
     get_settings.cache_clear()
 
 
-def test_excluded_macro_vendor_surfaces_do_not_emit_governed_envelopes(tmp_path, monkeypatch):
+def test_macro_vendor_surfaces_emit_governed_envelopes(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -239,8 +238,9 @@ def test_excluded_macro_vendor_surfaces_do_not_emit_governed_envelopes(tmp_path,
         "/ui/market-data/fx/analytical",
     ):
         response = client.get(path)
-        assert response.status_code == 503, path
-        assert "result_meta" not in response.json(), path
+        assert response.status_code == 200, path
+        meta = _assert_json_envelope(response.json(), path=path)
+        _assert_basis_consistency(meta, path=path)
     get_settings.cache_clear()
 
 

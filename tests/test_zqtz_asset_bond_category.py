@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
+from backend.app.core_finance.zqtz_asset_bond_category import (
+    classify_zqtz_asset_bond_label,
+    match_zqtz_asset_bond_rows,
+)
 
 
 @pytest.mark.parametrize(
@@ -112,10 +115,39 @@ from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asse
             },
             "其他债权融资类产品",
         ),
+        # 敞口/损益行常见「资管计划」标签，须与「其他」等价归入 J0/J1/J4 桶（否则业务种类漏数）
+        (
+            {
+                "bond_type": "资管计划",
+                "business_type_primary": "资管计划",
+                "business_type_final": "资管计划",
+                "sub_type": "",
+                "instrument_code": "J09999990102",
+                "instrument_name": "",
+                "currency_code": "CNY",
+            },
+            "其中：本币专户（成本法）",
+        ),
     ],
 )
 def test_classify_zqtz_asset_bond_label(row: dict[str, str], expected: str) -> None:
     assert classify_zqtz_asset_bond_label(row) == expected
+
+
+def test_match_zqtz_asset_bond_rows_includes_securities_am_for_asset_management_bond_type() -> None:
+    row = {
+        "bond_type": "资管计划",
+        "business_type_primary": "资管计划",
+        "business_type_final": "资管计划",
+        "sub_type": "",
+        "instrument_name": "某资管",
+        "instrument_code": "J01234560102",
+        "asset_class": "资管计划",
+        "currency_code": "CNY",
+    }
+    keys = [r["row_key"] for r in match_zqtz_asset_bond_rows(row)]
+    assert "asset_zqtz_detail_securities_asset_management_plan" in keys
+    assert "asset_zqtz_non_bottom_investment" in keys
 
 
 def test_unclassified_returns_other() -> None:

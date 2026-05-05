@@ -41,6 +41,7 @@ describe("PnlAttributionPage", () => {
     await user.click(screen.getByRole("button", { name: /Campisi/i }));
 
     expect(await screen.findByText("Campisi 四效应归因（组合）")).toBeInTheDocument();
+    expect(await screen.findByTestId("campisi-formal-closure-warning")).toHaveTextContent("正式 PnL");
     expect(screen.getByText("Campisi 六效应归因（扩展）")).toBeInTheDocument();
     expect(screen.getByText("Campisi 到期桶拆解")).toBeInTheDocument();
     expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("Carry / Roll-down");

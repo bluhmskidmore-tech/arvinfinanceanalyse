@@ -76,7 +76,7 @@ export type PnlClientMethods = {
     currency?: string,
   ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
   getPnlByBusiness: (reportDate: string) => Promise<ApiEnvelope<PnlByBusinessPayload>>;
-  getPnlByBusinessYtd: (year: number) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
+  getPnlByBusinessYtd: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
@@ -241,7 +241,7 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getPnlByBusinessYtd(year: number) {
+    async getPnlByBusinessYtd(year: number, _asOfDate?: string) {
       await delay();
       return buildMockApiEnvelope(
         "pnl.by_business_ytd",
@@ -250,7 +250,7 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
           period_type: "yearly",
           period_label: `${year}年累计`,
           total_pnl: "0.00",
-          source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily"],
+          source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
           items: [],
         },
         { basis: "formal", formal_use_allowed: true },
@@ -288,12 +288,17 @@ export function createRealPnlBusinessClient({
         baseUrl,
         `/api/pnl/by-business?report_date=${encodeURIComponent(reportDate)}`,
       ),
-    getPnlByBusinessYtd: (year: number) =>
-      requestJson<PnlByBusinessYtdPayload>(
+    getPnlByBusinessYtd: (year: number, asOfDate?: string) => {
+      const query = new URLSearchParams({ year: String(year) });
+      if (asOfDate) {
+        query.set("as_of_date", asOfDate);
+      }
+      return requestJson<PnlByBusinessYtdPayload>(
         fetchImpl,
         baseUrl,
-        `/api/pnl/by-business-ytd?year=${encodeURIComponent(String(year))}`,
-      ),
+        `/api/pnl/by-business-ytd?${query.toString()}`,
+      );
+    },
     getPnlYearlyBusinessSummary: (year: number) =>
       requestJson<PnlYearlyBusinessSummaryPayload>(
         fetchImpl,

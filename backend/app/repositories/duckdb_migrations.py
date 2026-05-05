@@ -55,6 +55,7 @@ def ensure_balance_zqtz_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         "alter table fact_formal_zqtz_balance_daily add column if not exists overdue_interest_days integer",
         "alter table fact_formal_zqtz_balance_daily add column if not exists value_date varchar",
         "alter table fact_formal_zqtz_balance_daily add column if not exists customer_attribute varchar",
+        "alter table fact_formal_zqtz_balance_daily add column if not exists sub_type varchar",
     ):
         conn.execute(statement)
 
@@ -85,6 +86,28 @@ def _v22_livermore_position_snapshot(conn: duckdb.DuckDBPyConnection) -> None:
 
 def _v23_livermore_gate_supplement(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "23_livermore_gate_supplement.sql")
+
+
+def _v24_zqtz_accounting_sub_type(conn: duckdb.DuckDBPyConnection) -> None:
+    """Persist accounting/data-dictionary sub_type on ZQTZ snapshot + formal facts; backfill from 业务种类1."""
+    conn.execute("alter table zqtz_bond_daily_snapshot add column if not exists sub_type varchar")
+    conn.execute("alter table fact_formal_zqtz_balance_daily add column if not exists sub_type varchar")
+    if _main_table_exists(conn, "zqtz_bond_daily_snapshot"):
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set sub_type = business_type_primary
+            where sub_type is null or trim(coalesce(sub_type, '')) = ''
+            """
+        )
+    if _main_table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set sub_type = business_type_primary
+            where sub_type is null or trim(coalesce(sub_type, '')) = ''
+            """
+        )
 
 
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -180,6 +203,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(21, "Choice stock materialization front layer", _v21_choice_stock)
     registry.register(22, "Livermore position snapshot read model", _v22_livermore_position_snapshot)
     registry.register(23, "Livermore gate supplement daily (breadth/limit-up)", _v23_livermore_gate_supplement)
+    registry.register(24, "ZQTZ accounting sub_type on snapshot + formal facts", _v24_zqtz_accounting_sub_type)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

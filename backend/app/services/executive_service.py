@@ -28,6 +28,7 @@ from backend.app.schemas.executive_dashboard import (
     ExecutiveMetric,
     HomeSnapshotPayload,
     OverviewPayload,
+    ProductCategoryYtdHeadlinePayload,
     PnlAttributionPayload,
     RiskOverviewPayload,
     RiskSignal,
@@ -39,6 +40,9 @@ from backend.app.schemas.executive_dashboard import (
     VerdictTone,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.product_category_pnl_service import (
+    resolve_product_category_ytd_payload_for_home_snapshot,
+)
 from backend.app.services.kpi_service import (
     resolve_executive_kpi_metrics,
     resolve_kpi_authority_gate,
@@ -1614,6 +1618,60 @@ def executive_verdict(
     )
 
 
+def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtdHeadlinePayload | None:
+    """与 /product-category-pnl「汇总视图」（ytd）一致：grand_total + intermediate_business_income。"""
+    settings = get_settings()
+    duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
+    if not duck_path:
+        return None
+    try:
+        pc_payload = resolve_product_category_ytd_payload_for_home_snapshot(
+            duck_path,
+            str(settings.governance_path),
+            report_date,
+            float(settings.ftp_rate_pct),
+        )
+    except Exception:
+        return None
+
+    if pc_payload is None:
+        return None
+
+    op_val = float(pc_payload.grand_total.business_net_income)
+    operating = _fmt_yi_amount(op_val, signed=True)
+    operating_detail = (
+        "与产品分类损益「汇总视图」（view=ytd）页脚「全部市场科目 + 投资收益合计」口径一致："
+        f"grand_total.business_net_income；report_date={report_date}；"
+        "优先读 product_category_pnl_formal_read_model（view=ytd）；"
+        "若缺行则自 product_category_pnl_canonical_fact 重算（与刷数任务同口径）。"
+    )
+
+    intermediate_row = next(
+        (r for r in pc_payload.rows if r.category_id == "intermediate_business_income"),
+        None,
+    )
+    if intermediate_row is None:
+        int_numeric = _fmt_yi_amount(None, signed=True)
+        int_detail = (
+            "未找到 intermediate_business_income 分类行（product_category ytd, "
+            f"report_date={report_date}）。"
+        )
+    else:
+        int_numeric = _fmt_yi_amount(float(intermediate_row.business_net_income), signed=True)
+        int_detail = (
+            "与产品分类损益「中间业务收入」（intermediate_business_income）ytd 行一致；"
+            f"report_date={report_date}。"
+        )
+
+    return ProductCategoryYtdHeadlinePayload(
+        view="ytd",
+        operating_income=operating,
+        operating_income_detail=operating_detail,
+        intermediate_business_income=int_numeric,
+        intermediate_business_income_detail=int_detail,
+    )
+
+
 def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
     return HomeSnapshotPayload(
         report_date="",
@@ -1624,6 +1682,7 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
         domains_missing=list(_HOME_SNAPSHOT_CALIBERS),
         domains_effective_date={},
         verdict=None,
+        product_category_ytd=None,
     )
 
 
@@ -1733,6 +1792,7 @@ def _compute_home_snapshot_envelope(
         partial_note=partial_note,
         client_mode="real",
     )
+    product_category_ytd = _build_product_category_ytd_headline(target_date)
     payload = HomeSnapshotPayload(
         report_date=target_date,
         mode="partial" if allow_partial else "strict",
@@ -1742,6 +1802,7 @@ def _compute_home_snapshot_envelope(
         domains_missing=domains_missing,
         domains_effective_date=effective,
         verdict=verdict,
+        product_category_ytd=product_category_ytd,
     )
 
     quality_flag: Literal["ok", "warning", "error", "stale"] = (

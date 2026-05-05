@@ -1556,48 +1556,48 @@
         "columns": [
           {
             "key": "title",
-            "label": "Title"
+            "label": "标题"
           },
           {
             "key": "action_label",
-            "label": "Action"
+            "label": "动作"
           },
           {
             "key": "severity",
-            "label": "Severity"
+            "label": "等级"
           },
           {
             "key": "reason",
-            "label": "Reason"
+            "label": "原因"
           },
           {
             "key": "source_section",
-            "label": "Source Section"
+            "label": "来源区块"
           },
           {
             "key": "rule_id",
-            "label": "Rule Id"
+            "label": "规则编号"
           },
           {
             "key": "rule_version",
-            "label": "Rule Version"
+            "label": "规则版本"
           }
         ],
         "rows": [
           {
-            "title": "Review 1-2年 gap positioning",
-            "action_label": "Review gap",
+            "title": "复核1-2年期限缺口配置",
+            "action_label": "复核缺口",
             "severity": "low",
-            "reason": "Bucket gap is 0.01000000 wan yuan.",
+            "reason": "全口径期限桶缺口为 0.01000000 万元。",
             "source_section": "maturity_gap",
             "rule_id": "bal_wb_decision_gap_001",
             "rule_version": "v1"
           },
           {
-            "title": "Check concentration in AAA",
-            "action_label": "Review concentration",
+            "title": "关注 AAA 评级集中度",
+            "action_label": "复核集中度",
             "severity": "high",
-            "reason": "Top rating bucket share reached 1.0000.",
+            "reason": "最高评级桶占比已达 100.00%。",
             "source_section": "rating_analysis",
             "rule_id": "bal_wb_decision_rating_001",
             "rule_version": "v1"
@@ -1687,7 +1687,7 @@
           {
             "title": "Negative gap in 3-6个月",
             "severity": "high",
-            "reason": "Gap dropped to -0.00100000 wan yuan.",
+            "reason": "Full-scope gap dropped to -0.00100000 wan yuan.",
             "source_section": "maturity_gap",
             "rule_id": "bal_wb_risk_gap_001",
             "rule_version": "v1"

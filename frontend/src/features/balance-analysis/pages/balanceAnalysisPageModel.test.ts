@@ -13,9 +13,13 @@ import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
   formatBalanceGridThousandsValue,
+  formatBalanceDecisionWorkflowStatusDisplay,
+  formatBalanceGovernedSeverityDisplay,
   formatBalanceOverviewNumber,
   formatBalanceScopeTotalAmountToYi,
   formatBalanceWorkbookCellDisplay,
+  formatBalanceWorkbookMetricTwoDecimals,
+  formatBalanceWorkbookOperationalSectionKeyDisplay,
   formatBalanceWorkbookWanAmountDisplay,
   formatBalanceWorkbookWanTextDisplay,
   gapChartBarWidthPercent,
@@ -98,6 +102,39 @@ describe("balanceAnalysisPageModel", () => {
 
     it("rewrites 万元 (Chinese) amounts in workbook notes the same as wan yuan", () => {
       expect(formatBalanceWorkbookWanTextDisplay("观测峰值 99.00 万元。")).toBe("观测峰值 0.01 亿元。");
+    });
+
+    it("formats issuance-style workbook metrics to two decimal places (zh-CN)", () => {
+      expect(formatBalanceWorkbookMetricTwoDecimals(null)).toBe("—");
+      const rateRaw = "1.636938618874038072093965168";
+      expect(formatBalanceWorkbookMetricTwoDecimals(rateRaw)).toBe(
+        Number(rateRaw).toLocaleString("zh-CN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      const termRaw = "0.5008068564920967983834593446";
+      expect(formatBalanceWorkbookMetricTwoDecimals(termRaw)).toBe(
+        Number(termRaw).toLocaleString("zh-CN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      expect(formatBalanceWorkbookMetricTwoDecimals("not-a-number")).toBe("not-a-number");
+    });
+
+    it("maps governed severity, workflow status, and workbook section keys for Chinese operators", () => {
+      expect(formatBalanceGovernedSeverityDisplay("high")).toBe("高");
+      expect(formatBalanceGovernedSeverityDisplay("medium")).toBe("中");
+      expect(formatBalanceGovernedSeverityDisplay("low")).toBe("低");
+      expect(formatBalanceDecisionWorkflowStatusDisplay("pending")).toBe("待处理");
+      expect(formatBalanceDecisionWorkflowStatusDisplay("confirmed")).toBe("已确认");
+      expect(formatBalanceDecisionWorkflowStatusDisplay("dismissed")).toBe("已忽略");
+      expect(formatBalanceWorkbookOperationalSectionKeyDisplay("maturity_gap")).toBe("期限缺口分析");
+      expect(formatBalanceWorkbookOperationalSectionKeyDisplay("rating_analysis")).toBe("信用评级分析");
+      expect(formatBalanceWorkbookOperationalSectionKeyDisplay("issuance_business_types")).toBe(
+        "发行类分析",
+      );
     });
   });
 

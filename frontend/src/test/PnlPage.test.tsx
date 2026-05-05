@@ -13,7 +13,7 @@ import type {
   PnlV1DetailRow,
   ResultMeta,
 } from "../api/contracts";
-import PnlPage from "../features/pnl/PnlPage";
+import FormalPnlV1Page from "../features/pnl/FormalPnlV1Page";
 
 function renderPnlPage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -35,7 +35,7 @@ function renderPnlPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <PnlPage />
+      <FormalPnlV1Page />
     </Wrapper>,
   );
 }
@@ -160,8 +160,8 @@ describe("PnlPage", () => {
     });
 
     const overview = await screen.findByTestId("pnl-overview-cards");
-    expect(overview).toHaveTextContent("0.17");
-    expect(overview).toHaveTextContent("0.01");
+    expect(overview).toHaveTextContent("0.12");
+    expect(overview).toHaveTextContent("万元");
 
     const fiTable = await screen.findByTestId("pnl-formal-fi-table");
     expect(fiTable).toHaveTextContent("240001.IB");
@@ -228,7 +228,7 @@ describe("PnlPage", () => {
     });
 
     const overview = await screen.findByTestId("pnl-overview-cards");
-    expect(overview).toHaveTextContent("0.17");
+    expect(overview).toHaveTextContent("0.12");
 
     const fiTable = await screen.findByTestId("pnl-formal-fi-table");
     expect(fiTable).toHaveTextContent("240002.IB");
@@ -285,7 +285,7 @@ describe("PnlPage", () => {
       expect(getFormalPnlDates).toHaveBeenCalledWith("analytical");
     });
 
-    expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("0.17");
+    expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("0.12");
     expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("analytical");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_pnl_data_formal");

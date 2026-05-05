@@ -207,11 +207,13 @@ def test_executive_dashboard_http_routes_reject_invalid_report_date():
         response = client.get(path, params={"report_date": "2025-99-99"})
         assert response.status_code == 422, path
 
+    response = client.get("/ui/home/snapshot", params={"report_date": "2025-99-99"})
+    assert response.status_code == 422, "/ui/home/snapshot"
+
     for path in (
         "/ui/risk/overview",
         "/ui/home/contribution",
         "/ui/home/alerts",
-        "/ui/home/snapshot",
     ):
         response = client.get(path, params={"report_date": "2025-99-99"})
         assert response.status_code == 503, path

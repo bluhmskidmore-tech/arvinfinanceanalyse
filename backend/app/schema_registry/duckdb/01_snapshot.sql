@@ -36,6 +36,8 @@ alter table zqtz_bond_daily_snapshot add column if not exists customer_attribute
 -- MOSS:STMT
 alter table zqtz_bond_daily_snapshot add column if not exists market_value_cny decimal(24, 8)
 -- MOSS:STMT
+alter table zqtz_bond_daily_snapshot add column if not exists sub_type varchar
+-- MOSS:STMT
 create table if not exists tyw_interbank_daily_snapshot (
   report_date date,
   position_id varchar,

@@ -122,6 +122,15 @@ export type VerdictPayload = {
   suggestions: VerdictSuggestion[];
 };
 
+/** 与 /product-category-pnl「汇总视图」（ytd）页脚口径一致的首屏摘要（后端算、前端只展示）。 */
+export type ProductCategoryYtdHeadlinePayload = {
+  view: "ytd";
+  operating_income: Numeric;
+  operating_income_detail: string;
+  intermediate_business_income: Numeric;
+  intermediate_business_income_detail: string;
+};
+
 export type HomeSnapshotPayload = {
   report_date: string;
   mode: "strict" | "partial";
@@ -131,6 +140,7 @@ export type HomeSnapshotPayload = {
   domains_missing: string[];
   domains_effective_date: Record<string, string>;
   verdict?: VerdictPayload | null;
+  product_category_ytd?: ProductCategoryYtdHeadlinePayload | null;
 };
 
 export type GetHomeSnapshotOptions = {
@@ -1271,11 +1281,17 @@ export type PnlByBusinessPayload = {
 };
 
 export type PnlByBusinessYtdItem = {
+  row_key: string;
+  sort_order: number;
   business_type: string;
   interest_income: string;
   fair_value_change: string;
   capital_gain: string;
   total_pnl: string;
+  current_balance: string;
+  balance_yield_pct: string | null;
+  source_kind?: string | null;
+  source_note?: string | null;
   proportion: string | null;
   assets_count: number;
 };
@@ -2662,10 +2678,10 @@ export type VolumeRateAttributionItem = {
   level: number;
   current_scale: Numeric;
   current_pnl: Numeric;
-  current_yield: Numeric | null;
+  current_yield_pct: Numeric | null;
   previous_scale: Numeric | null;
   previous_pnl: Numeric | null;
-  previous_yield: Numeric | null;
+  previous_yield_pct: Numeric | null;
   pnl_change: Numeric | null;
   pnl_change_pct: Numeric | null;
   volume_effect: Numeric | null;
@@ -2710,7 +2726,7 @@ export type TPLMarketCorrelationPayload = {
   correlation_interpretation: string;
   total_tpl_fv_change: Numeric;
   avg_treasury_10y_change: Numeric | null;
-  treasury_10y_total_change: Numeric | null;
+  treasury_10y_total_change_bp: Numeric | null;
   data_points: TPLMarketDataPoint[];
   analysis_summary: string;
 };
@@ -2978,6 +2994,20 @@ export type CampisiEnhancedTotals = CampisiFourEffectsTotals & {
   reinvestment_effect: number;
 };
 
+export type CampisiFormalClosure = {
+  basis: "pnl.bridge.total_actual_pnl";
+  report_date: string;
+  status: "closed" | "warning" | "unavailable";
+  campisi_total_return: number | null;
+  formal_actual_pnl: number | null;
+  residual_to_formal_pnl: number | null;
+  residual_ratio: number | null;
+  bridge_quality_flag?: string | null;
+  bridge_vendor_status?: string | null;
+  bridge_fallback_mode?: string | null;
+  message: string;
+};
+
 export type CampisiFourEffectsRow = {
   asset_class: string;
   market_value_start: number;
@@ -3023,6 +3053,8 @@ export type CampisiFourEffectsPayload = {
   totals: CampisiFourEffectsTotals;
   by_asset_class: CampisiFourEffectsRow[];
   by_bond: CampisiFourEffectsBondRow[];
+  formal_closure?: CampisiFormalClosure;
+  warnings?: string[];
 };
 
 export type CampisiEnhancedPayload = {
@@ -3277,9 +3309,48 @@ export type LiabilityYieldKpi = {
   nim: Numeric | null;
 };
 
+export type LiabilityYieldHistoryPoint = {
+  date: string;
+  asset_yield: number | null;
+  liability_cost: number | null;
+  market_liability_cost: number | null;
+  nim: number | null;
+};
+
+export type LiabilityYieldScatterPoint = {
+  x: number;
+  y: number;
+  z: number;
+  name: string;
+};
+
 export type LiabilityYieldMetricsPayload = {
   report_date: string;
   kpi: LiabilityYieldKpi;
+  history?: LiabilityYieldHistoryPoint[];
+  scatter?: LiabilityYieldScatterPoint[];
+};
+
+/** V1-compatible `/api/analysis/yield-by-period` payload (periods empty when the year has no PnL rollups). */
+export type YieldByPeriodSummary = {
+  period: string;
+  period_type: string;
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  total_avg_balance: number;
+  total_pnl: number;
+  overall_yield: number | null;
+  overall_annualized_yield: number | null;
+  weighted_portfolio_yield: number | null;
+  weighted_portfolio_annualized_yield: number | null;
+  items: unknown[];
+};
+
+export type YieldByPeriodPayload = {
+  period_type: string;
+  year: number;
+  periods: YieldByPeriodSummary[];
 };
 
 export type LiabilityCounterpartyItem = {

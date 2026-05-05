@@ -340,6 +340,7 @@ __all__ = [
     "NonStdPnlBridgeRow",
     "build_formal_pnl_fi_fact_rows",
     "build_nonstd_pnl_bridge_rows",
+    "compute_nonstd_signed_ledger_amount",
     "normalize_fi_pnl_records",
     "normalize_nonstd_journal_entries",
 ]
@@ -392,6 +393,26 @@ def _normalize_nonstd_signed_amount(
     if normalized_dc in {"\u501f", "debit", "dr"}:
         return raw_amount * Decimal("-1")
     raise ValueError(f"Unsupported dc_flag={dc_flag!r} for journal_type={journal_type}")
+
+
+def compute_nonstd_signed_ledger_amount(
+    *,
+    raw_amount: object,
+    dc_flag: object,
+    journal_type: str,
+) -> Decimal:
+    """与 ``normalize_nonstd_journal_entries`` / 物化桥接相同的借贷与 direct_* 签符规则。
+
+    V1 汇总（如业务种类 YTD）必须与此一致，否则会出现「桥接事实表与页面损益不一致」。
+    """
+    jt = str(journal_type or "").strip()
+    if jt not in get_args(JournalType):
+        raise ValueError(f"Unsupported journal_type={journal_type!r}")
+    return _normalize_nonstd_signed_amount(
+        raw_amount=_coerce_decimal(raw_amount),
+        journal_type=jt,  # type: ignore[arg-type]
+        dc_flag=str(dc_flag),
+    )
 
 
 def _normalize_fi_invest_type(value: str) -> tuple[InvestTypeStd, AccountingBasis]:

@@ -1755,7 +1755,7 @@ describe("createApiClient", () => {
     await client.getPnlV1Data("2026-02-28");
     await client.getFormalPnlOverview("2026-02-28");
     await client.getPnlByBusiness("2026-02-28");
-    await client.getPnlByBusinessYtd(2026);
+    await client.getPnlByBusinessYtd(2026, "2026-03-31");
     await client.getPnlYearlyBusinessSummary(2026);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -1805,7 +1805,7 @@ describe("createApiClient", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
-      "http://localhost:8000/api/pnl/by-business-ytd?year=2026",
+      "http://localhost:8000/api/pnl/by-business-ytd?year=2026&as_of_date=2026-03-31",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",

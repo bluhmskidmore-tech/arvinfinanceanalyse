@@ -222,6 +222,66 @@ export function formatBalanceWorkbookCellDisplay(value: unknown): string {
   return String(value);
 }
 
+/** Workbook numeric metric (e.g. 加权利率%、加权期限年): zh-CN, 2 fraction digits; missing → em dash; invalid → original string. */
+export function formatBalanceWorkbookMetricTwoDecimals(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  const n = finiteNumberFromUnknown(value);
+  if (n === null) {
+    return String(value);
+  }
+  return n.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** Workbook operational section keys (e.g. maturity_gap) → panel title for UI copy. */
+const WORKBOOK_OPERATIONAL_SECTION_KEY_LABELS: Record<string, string> = {
+  maturity_gap: "期限缺口分析",
+  rating_analysis: "信用评级分析",
+  issuance_business_types: "发行类分析",
+};
+
+export function formatBalanceWorkbookOperationalSectionKeyDisplay(value: unknown): string {
+  const raw = formatBalanceWorkbookCellDisplay(value);
+  if (raw === "—") {
+    return raw;
+  }
+  return WORKBOOK_OPERATIONAL_SECTION_KEY_LABELS[raw] ?? raw;
+}
+
+/** Severity enums from governed payloads → short Chinese labels for operators. */
+export function formatBalanceGovernedSeverityDisplay(value: unknown): string {
+  const key = String(value ?? "").trim().toLowerCase();
+  if (key === "high") {
+    return "高";
+  }
+  if (key === "medium") {
+    return "中";
+  }
+  if (key === "low") {
+    return "低";
+  }
+  return formatBalanceWorkbookCellDisplay(value);
+}
+
+/** Decision workflow status from API → Chinese operator-facing label. */
+export function formatBalanceDecisionWorkflowStatusDisplay(value: unknown): string {
+  const key = String(value ?? "").trim().toLowerCase();
+  if (key === "pending") {
+    return "待处理";
+  }
+  if (key === "confirmed") {
+    return "已确认";
+  }
+  if (key === "dismissed") {
+    return "已忽略";
+  }
+  return formatBalanceWorkbookCellDisplay(value);
+}
+
 /** Overview-style integer grouping; missing → "—"; invalid → original string. */
 export function formatBalanceOverviewNumber(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {

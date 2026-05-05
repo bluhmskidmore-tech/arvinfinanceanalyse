@@ -33,6 +33,12 @@ describe("PositionsView", () => {
 
     expect(await screen.findByTestId("positions-page")).toBeInTheDocument();
     expect(await screen.findByTestId("positions-page-title")).toHaveTextContent("持仓透视");
+    expect(await screen.findByTestId("positions-decision-hero")).toHaveTextContent(
+      "数据来源：ZQTZ + TYWL",
+    );
+    expect(screen.getByTestId("positions-data-status")).toHaveTextContent("当前：债券持仓");
+    expect(screen.getByTestId("positions-kpi-band")).toHaveTextContent("业务种类");
+    expect(screen.getByTestId("positions-filter-tray")).toBeInTheDocument();
     expect(screen.getByText("持仓概览")).toBeInTheDocument();
     expect(
       await screen.findByRole("combobox", { name: "positions-report-date" }),

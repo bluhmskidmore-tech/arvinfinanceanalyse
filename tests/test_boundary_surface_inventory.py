@@ -43,13 +43,6 @@ class SurfaceCase:
 
 BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("agent.query", "/api/agent/query", "POST", json={"question": "ping"}, side_effect_target="audit_disabled_agent_query", side_effect_module="backend.app.api.routes.agent", side_effect_file="backend/app/api/routes/agent.py"),
-    SurfaceCase("market-data.livermore", "/ui/market-data/livermore", "GET"),
-    SurfaceCase("preview.macro-foundation", "/ui/preview/macro-foundation", "GET"),
-    SurfaceCase("macro.choice-series.latest", "/ui/macro/choice-series/latest", "GET"),
-    SurfaceCase("market-data.fx.formal-status", "/ui/market-data/fx/formal-status", "GET"),
-    SurfaceCase("market-data.fx.analytical", "/ui/market-data/fx/analytical", "GET"),
-    SurfaceCase("macro.choice-series.refresh", "/ui/macro/choice-series/refresh", "POST", side_effect_target="refresh_choice_macro_snapshot.fn", side_effect_module="backend.app.api.routes.macro_vendor", side_effect_file="backend/app/api/routes/macro_vendor.py"),
-    SurfaceCase("macro.choice-series.refresh-status", "/ui/macro/choice-series/refresh-status", "GET"),
     SurfaceCase("preview.source-foundation", "/ui/preview/source-foundation", "GET"),
     SurfaceCase("preview.source-foundation.history", "/ui/preview/source-foundation/history", "GET", params={"limit": 5, "offset": 0}),
     SurfaceCase("preview.source-foundation.rows", "/ui/preview/source-foundation/zqtz/rows", "GET", params={"limit": 1, "offset": 0}),
@@ -68,23 +61,9 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.edit", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-adjustment/edit", "POST", json={"amount": "200"}, side_effect_target="update_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
     SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.revoke", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-adjustment/revoke", "POST", side_effect_target="revoke_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
     SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.restore", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-adjustment/restore", "POST", side_effect_target="restore_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
-    SurfaceCase(
-        "cube.query",
-        "/api/cube/query",
-        "POST",
-        json={
-            "fact_table": "bond_analytics",
-            "report_date": "2026-04-30",
-            "measures": [],
-            "dimensions": [],
-            "filters": {},
-        },
-    ),
-    SurfaceCase("cube.dimensions", "/api/cube/dimensions/bond_analytics", "GET"),
     SurfaceCase("executive.risk-overview", "/ui/risk/overview", "GET"),
     SurfaceCase("executive.home.alerts", "/ui/home/alerts", "GET"),
     SurfaceCase("executive.home.contribution", "/ui/home/contribution", "GET"),
-    SurfaceCase("executive.home.snapshot", "/ui/home/snapshot", "GET"),
 )
 
 FRONTEND_RESERVED_KEYS = (
@@ -144,17 +123,12 @@ def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> N
 
     backend_slugs = {case.slug for case in BACKEND_BOUNDARY_CASES}
     assert "agent.query" in backend_slugs
-    assert "market-data.livermore" in backend_slugs
     assert "news.api.ingest" in backend_slugs
     assert "preview.source-foundation.refresh" in backend_slugs
-    assert "macro.choice-series.refresh" in backend_slugs
     assert "qdb-gl-monthly-analysis.manual-adjustments.restore" in backend_slugs
-    assert "cube.query" in backend_slugs
-    assert "cube.dimensions" in backend_slugs
     assert "executive.risk-overview" in backend_slugs
     assert "executive.home.alerts" in backend_slugs
     assert "executive.home.contribution" in backend_slugs
-    assert "executive.home.snapshot" in backend_slugs
     assert set(FRONTEND_RESERVED_KEYS) == {
         "cube-query",
         "risk-overview",
@@ -179,6 +153,22 @@ def test_backend_boundary_surfaces_fail_closed_without_governed_result_meta(
     body = response.json()
     assert "result_meta" not in body, case.path
     assert case.detail_substring.lower() in str(body.get("detail", "")).lower(), case.path
+    get_settings.cache_clear()
+
+
+def test_choice_macro_refresh_status_returns_idle_without_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get("/ui/macro/choice-series/refresh-status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "idle"
+    assert payload["job_name"] == "choice_macro_refresh"
+    assert payload["cache_key"] == "choice_macro.latest"
     get_settings.cache_clear()
 
 

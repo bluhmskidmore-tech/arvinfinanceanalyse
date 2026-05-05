@@ -11,13 +11,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse
 from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.analytical_bridge_service import AnalyticalBridgeService
 from backend.app.services.cube_query_service import CubeQueryService
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter(prefix="/api/cube")
 
@@ -33,6 +32,8 @@ def cube_query(
         return bridge.execute(request, settings.duckdb_path, auth=auth)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/dimensions/{fact_table}")

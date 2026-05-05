@@ -4,11 +4,13 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_SCRIPT = REPO_ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
+CODEX_CONFIG = REPO_ROOT / ".codex" / "config.toml"
 
 
 class McpProcess:
@@ -92,17 +94,67 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
         "moss-data-catalog",
         "playwright",
     }
-    assert servers["moss-metric-contracts"]["args"] == [
-        "scripts/mcp/moss_project_mcp.py",
-        "metric-contracts",
-    ]
-    assert servers["moss-lineage-evidence"]["args"][-1] == "lineage-evidence"
-    assert servers["moss-data-catalog"]["args"][-1] == "data-catalog"
     assert servers["gitnexus"]["command"] == "node"
-    assert servers["gitnexus"]["args"] == [
-        ".tmp-gitnexus-v13/node_modules/gitnexus/dist/cli/index.js",
-        "mcp",
+    assert servers["gitnexus"]["args"] == ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+    assert servers["moss-metric-contracts"]["command"] == "cmd.exe"
+    assert servers["moss-metric-contracts"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_contracts.cmd",
     ]
+    assert servers["moss-lineage-evidence"]["command"] == "cmd.exe"
+    assert servers["moss-lineage-evidence"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_lineage.cmd",
+    ]
+    assert servers["moss-data-catalog"]["command"] == "cmd.exe"
+    assert servers["moss-data-catalog"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_catalog.cmd",
+    ]
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+
+
+def test_project_codex_config_declares_read_only_surfaces() -> None:
+    payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
+    servers = payload["mcp_servers"]
+
+    assert set(servers) >= {
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "playwright",
+    }
+    assert servers["gitnexus"]["command"] == "node"
+    assert servers["gitnexus"]["args"] == ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+    assert servers["moss-metric-contracts"]["command"] == "cmd.exe"
+    assert servers["moss-metric-contracts"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_contracts.cmd",
+    ]
+    assert servers["moss-lineage-evidence"]["command"] == "cmd.exe"
+    assert servers["moss-lineage-evidence"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_lineage.cmd",
+    ]
+    assert servers["moss-data-catalog"]["command"] == "cmd.exe"
+    assert servers["moss-data-catalog"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_catalog.cmd",
+    ]
+    assert servers["playwright"]["command"] == "npx"
     assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
 
 

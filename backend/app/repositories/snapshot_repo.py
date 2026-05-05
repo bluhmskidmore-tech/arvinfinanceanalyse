@@ -126,9 +126,10 @@ def replace_zqtz_snapshot_rows(
           ingest_batch_id,
           trace_id,
           value_date,
-          customer_attribute
+          customer_attribute,
+          sub_type
         ) values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -163,6 +164,7 @@ def replace_zqtz_snapshot_rows(
                 r["trace_id"],
                 _sql_value(r.get("value_date")),
                 r.get("customer_attribute") or "",
+                r.get("sub_type") or "",
             )
             for r in rows
         ],

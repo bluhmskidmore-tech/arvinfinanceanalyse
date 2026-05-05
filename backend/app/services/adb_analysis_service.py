@@ -5,6 +5,9 @@ ADB 优先读 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily`
 当 formal 表缺少某些日期时，自动从 `zqtz_bond_daily_snapshot` / `tyw_interbank_daily_snapshot` 补充（原币，
 不做 FX 转换——国内业务绝大多数 CNY 原币即 CNY，偏差可接受）。
 
+期末时点与区间日均对比：若某分类在 ``end_date`` 当天无任何快照行，但区间内曾有余额，则该分类期末时点取
+区间内**不晚于** ``end_date`` 的**最近观测日**的同类合计（LOCF），避免「时点=0、日均>0」的伪偏离。
+
 - 债券：`position_scope = liability` 或 `is_issuance_like` → 负债，其余 → 资产。
 - 同业：`position_scope` / `position_side` 推断 `ASSET` / `LIABILITY`。
 """
@@ -128,6 +131,17 @@ OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS = (
     "currency_code",
     "accounting_basis",
 )
+ZQTZ_ASSET_CLASSIFIER_KEY_COLUMNS = (
+    "sub_type",
+    "business_type_final",
+    "business_type_primary",
+    "bond_type",
+    "instrument_name",
+    "asset_class",
+    "instrument_code",
+    "accounting_basis",
+    "currency_code",
+)
 
 
 def _column_exists(conn: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
@@ -191,8 +205,52 @@ def _select_list_zqtz_snapshot(conn: duckdb.DuckDBPyConnection) -> str:
     return ",\n                      ".join(parts)
 
 
+def _liability_bond_display_category(row: pd.Series) -> str:
+    """负债/发行分类：优先会计 sub_type；为空则依次业务种类、债券类型，避免尽落入「其它」。"""
+    for col in ("sub_type", "business_type_primary", "bond_type"):
+        if col not in row.index:
+            continue
+        raw = row[col]
+        try:
+            if pd.isna(raw):
+                continue
+        except TypeError:
+            pass
+        if raw is None:
+            continue
+        label = _clean_cat(raw)
+        if label != "其它":
+            return label
+    return "其它"
+
+
+def _classify_zqtz_asset_categories(assets: pd.DataFrame) -> pd.Series:
+    if assets.empty:
+        return pd.Series(index=assets.index, dtype=object)
+
+    key_frame = pd.DataFrame(index=assets.index)
+    for column in ZQTZ_ASSET_CLASSIFIER_KEY_COLUMNS:
+        if column in assets.columns:
+            key_frame[column] = assets[column].fillna("").astype(str)
+        else:
+            key_frame[column] = ""
+
+    keys = pd.Series(
+        list(map(tuple, key_frame.to_numpy(dtype=object))),
+        index=assets.index,
+        dtype=object,
+    )
+    category_by_key = {
+        key: classify_zqtz_asset_bond_label(
+            dict(zip(ZQTZ_ASSET_CLASSIFIER_KEY_COLUMNS, key, strict=True))
+        )
+        for key in keys.drop_duplicates()
+    }
+    return keys.map(category_by_key)
+
+
 def _assign_zqtz_bond_categories(bonds_df: pd.DataFrame) -> pd.DataFrame:
-    """资产侧：与资产负债表迁徙同源 ZQTZ 规则；负债/发行侧：仍按 bond_type 文本清洗。"""
+    """资产侧：与资产负债表迁徙同源 ZQTZ 规则；负债/发行侧：sub_type 优先，空则回退业务种类/债券类型。"""
     if bonds_df.empty:
         return bonds_df
     issued = _issued_mask(bonds_df)
@@ -200,12 +258,9 @@ def _assign_zqtz_bond_categories(bonds_df: pd.DataFrame) -> pd.DataFrame:
     assets = bd[~issued]
     liabilities = bd[issued]
     if not assets.empty:
-        bd.loc[assets.index, "bond_category"] = assets.apply(
-            lambda r: classify_zqtz_asset_bond_label(r.to_dict()),
-            axis=1,
-        )
+        bd.loc[assets.index, "bond_category"] = _classify_zqtz_asset_categories(assets)
     if not liabilities.empty:
-        bd.loc[liabilities.index, "bond_category"] = liabilities["sub_type"].map(_clean_cat)
+        bd.loc[liabilities.index, "bond_category"] = liabilities.apply(_liability_bond_display_category, axis=1)
     return bd
 
 
@@ -434,7 +489,10 @@ def _load_adb_raw_data(
                     snapshot_dates.update(r[0] for r in snap_date_rows if r[0])
 
         missing_dates = sorted(snapshot_dates - formal_dates)
-        if missing_dates:
+        has_zqtz_formal = _table_exists(conn, "fact_formal_zqtz_balance_daily")
+        has_tyw_formal = _table_exists(conn, "fact_formal_tyw_balance_daily")
+        # 仅当对应 formal 表存在时才从快照补缺失日：无 formal 表则不读快照（须先物化 formal）
+        if missing_dates and (has_zqtz_formal or has_tyw_formal):
             logger.info(
                 "ADB snapshot fallback: %d dates missing from formal tables, supplementing from snapshots",
                 len(missing_dates),
@@ -442,7 +500,7 @@ def _load_adb_raw_data(
             snapshot_date_in_list = ",".join(f"'{d}'" for d in missing_dates)
 
             # Supplement ZQTZ from snapshot
-            if has_zqtz_snap:
+            if has_zqtz_snap and has_zqtz_formal:
                 zqtz_snap_sql = (
                     f"""
                     select
@@ -464,7 +522,7 @@ def _load_adb_raw_data(
                         zqtz_src = "formal+snapshot"
 
             # Supplement TYW from snapshot
-            if has_tyw_snap:
+            if has_tyw_snap and has_tyw_formal:
                 tyw_snap_sql = f"""
                     select
                       report_date,
@@ -525,7 +583,7 @@ def _load_adb_raw_data(
         if "sub_type" in scoped.columns:
             sub_type_series = scoped["sub_type"].fillna("").astype(str)
         else:
-            sub_type_series = bond_type_series.copy()
+            sub_type_series = pd.Series("", index=scoped.index, dtype=object)
 
         bonds_df = pd.DataFrame(
             {
@@ -705,8 +763,63 @@ def _accumulate_spot_and_sum_maps(
         amount = _decimal_or_zero(getattr(row, amount_attr))
         sum_map[category] = sum_map.get(category, Decimal("0")) + amount
         report_date = getattr(row, "report_date", None)
-        if report_date is not None and report_date.date() == end_date:
+        row_day = _adb_row_report_day(report_date)
+        if row_day is not None and row_day == end_date:
             spot_map[category] = spot_map.get(category, Decimal("0")) + amount
+
+
+def _adb_row_report_day(report_date: object) -> date | None:
+    if report_date is None:
+        return None
+    try:
+        ts = pd.Timestamp(report_date)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if pd.isna(ts):
+        return None
+    return ts.date()
+
+
+def _finalize_spot_map_locf_for_frame(
+    frame: pd.DataFrame,
+    *,
+    amount_attr: str,
+    end_date: date,
+    category_resolver,
+    spot_map: dict[str, Decimal],
+    sum_map: dict[str, Decimal],
+) -> None:
+    """仅针对当前 frame 内出现的分类：若在 end_date 无行则做 LOCF（见模块说明）。"""
+    if frame.empty:
+        return
+    frame_categories: set[str] = set()
+    end_date_seen: set[str] = set()
+    pairs_by_cat: dict[str, list[tuple[date, Decimal]]] = {}
+    for row in frame.itertuples(index=False):
+        cat = _clean_cat(category_resolver(row))
+        frame_categories.add(cat)
+        day = _adb_row_report_day(getattr(row, "report_date", None))
+        if day is None or day > end_date:
+            continue
+        amount = _decimal_or_zero(getattr(row, amount_attr))
+        pairs_by_cat.setdefault(cat, []).append((day, amount))
+        if day == end_date:
+            end_date_seen.add(cat)
+
+    for cat in frame_categories:
+        if sum_map.get(cat, Decimal("0")) == Decimal("0"):
+            continue
+        if cat in end_date_seen:
+            continue
+        if spot_map.get(cat, Decimal("0")) != Decimal("0"):
+            continue
+        pairs = pairs_by_cat.get(cat) or []
+        if not pairs:
+            continue
+        latest = max(d for d, _ in pairs)
+        locf_total = sum(amt for d, amt in pairs if d == latest)
+        if locf_total != Decimal("0"):
+            spot_map[cat] = locf_total
 
 
 def _normalize_adb_frame(
@@ -1011,8 +1124,18 @@ def _build_comparison_spot_sum_maps(
 
     if not bonds_df.empty:
         issued_mask = _issued_mask(bonds_df)
+        bonds_asset_frame = bonds_df[~issued_mask]
+        bonds_liab_frame = bonds_df[issued_mask]
         _accumulate_spot_and_sum_maps(
-            bonds_df[~issued_mask],
+            bonds_asset_frame,
+            amount_attr="market_value",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "bond_category", None),
+            spot_map=spot_assets,
+            sum_map=sum_assets,
+        )
+        _finalize_spot_map_locf_for_frame(
+            bonds_asset_frame,
             amount_attr="market_value",
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "bond_category", None),
@@ -1020,7 +1143,15 @@ def _build_comparison_spot_sum_maps(
             sum_map=sum_assets,
         )
         _accumulate_spot_and_sum_maps(
-            bonds_df[issued_mask],
+            bonds_liab_frame,
+            amount_attr="market_value",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "bond_category", None),
+            spot_map=spot_liabilities,
+            sum_map=sum_liabilities,
+        )
+        _finalize_spot_map_locf_for_frame(
+            bonds_liab_frame,
             amount_attr="market_value",
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "bond_category", None),
@@ -1029,8 +1160,18 @@ def _build_comparison_spot_sum_maps(
         )
 
     if not interbank_df.empty:
+        ib_asset_frame = interbank_df[interbank_df["direction"] == "ASSET"]
+        ib_liab_frame = interbank_df[interbank_df["direction"] == "LIABILITY"]
         _accumulate_spot_and_sum_maps(
-            interbank_df[interbank_df["direction"] == "ASSET"],
+            ib_asset_frame,
+            amount_attr="amount",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "product_type", None),
+            spot_map=spot_assets,
+            sum_map=sum_assets,
+        )
+        _finalize_spot_map_locf_for_frame(
+            ib_asset_frame,
             amount_attr="amount",
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "product_type", None),
@@ -1038,7 +1179,15 @@ def _build_comparison_spot_sum_maps(
             sum_map=sum_assets,
         )
         _accumulate_spot_and_sum_maps(
-            interbank_df[interbank_df["direction"] == "LIABILITY"],
+            ib_liab_frame,
+            amount_attr="amount",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "product_type", None),
+            spot_map=spot_liabilities,
+            sum_map=sum_liabilities,
+        )
+        _finalize_spot_map_locf_for_frame(
+            ib_liab_frame,
             amount_attr="amount",
             end_date=end_date,
             category_resolver=lambda row: getattr(row, "product_type", None),

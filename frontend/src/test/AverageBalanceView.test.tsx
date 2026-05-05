@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -315,6 +315,67 @@ function renderView(clientOverrides?: Record<string, unknown>) {
 }
 
 describe("AverageBalanceView", () => {
+  it("defers trend and prior-year requests until the current comparison is ready", async () => {
+    let resolveCurrentComparison: (value: unknown) => void = () => {};
+    const currentComparisonPromise = new Promise((resolve) => {
+      resolveCurrentComparison = resolve;
+    });
+    const comparisonPayload = {
+      report_date: "2026-04-14",
+      start_date: "2026-01-01",
+      end_date: "2026-04-14",
+      calendar_days_inclusive: 104,
+      adb_denominator_basis: "formal_calendar" as const,
+      num_days: 104,
+      coverage_days: 104,
+      simulated: false,
+      total_spot_assets: 550000000,
+      total_avg_assets: 500000000,
+      total_spot_liabilities: 230000000,
+      total_avg_liabilities: 200000000,
+      total_avg_interbank_assets: 240000000,
+      total_avg_interbank_liabilities: 110000000,
+      asset_yield: 2.55,
+      liability_cost: 1.75,
+      net_interest_margin: 0.8,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    };
+    const getAdbComparison = vi.fn((startDate: string, endDate: string) => {
+      if (startDate.startsWith("2025")) {
+        return Promise.resolve({
+          ...comparisonPayload,
+          report_date: "2025-04-14",
+          start_date: startDate,
+          end_date: endDate,
+        });
+      }
+      return currentComparisonPromise;
+    });
+    const getAdb = vi.fn(async () => ({
+      summary: {
+        total_avg_assets: 500000000,
+        total_avg_liabilities: 200000000,
+        end_spot_assets: 550000000,
+        end_spot_liabilities: 230000000,
+      },
+      trend: [],
+      breakdown: [],
+    }));
+
+    renderView({ getAdbComparison, getAdb });
+
+    await waitFor(() => expect(getAdbComparison).toHaveBeenCalledTimes(1));
+    expect(getAdbComparison.mock.calls[0][0]).toBe("2026-01-01");
+    expect(getAdb).not.toHaveBeenCalled();
+
+    resolveCurrentComparison(comparisonPayload);
+
+    await waitFor(() => expect(getAdb).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getAdbComparison).toHaveBeenCalledTimes(2));
+    expect(getAdbComparison.mock.calls[1][0]).toBe("2025-01-01");
+  });
+
   it("renders the daily analysis tab with preset ranges, KPI cards, warning copy, and breakdown tables", async () => {
     renderView();
 
@@ -366,9 +427,10 @@ describe("AverageBalanceView", () => {
     expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("资产端分类");
     expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("负债端分类");
     expect(screen.getByTestId("adb-top-n-select")).toBeInTheDocument();
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
 
-    expect(screen.getByText("期末时点与日均偏离对比")).toBeInTheDocument();
+    expect(screen.getByText(/期末时点与日均偏离对比 · 资产/)).toBeInTheDocument();
+    expect(screen.getByText(/期末时点与日均偏离对比 · 负债/)).toBeInTheDocument();
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getAllByText("期末时点（亿元）").length).toBeGreaterThan(0);

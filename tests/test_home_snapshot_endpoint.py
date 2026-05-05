@@ -113,6 +113,7 @@ class TestHomeSnapshotEnvelope:
         assert "attribution" in result
         assert "domains_missing" in result
         assert "domains_effective_date" in result
+        assert "product_category_ytd" in result
         assert env["result_meta"]["result_kind"] == "home.snapshot"
 
     def test_strict_empty_returns_explicit_miss_envelope(self) -> None:
@@ -137,23 +138,26 @@ class TestHomeSnapshotEnvelope:
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
-                    mock_ov.return_value = {
-                        "result_meta": {},
-                        "result": {"title": "经营总览", "metrics": []},
-                    }
-                    mock_attr.return_value = {
-                        "result_meta": {},
-                        "result": {
-                            "title": "经营贡献拆解",
-                            "total": "+0.00 亿",
-                            "segments": [],
-                        },
-                    }
-                    env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
-                    assert env["result"]["report_date"] == "2026-04-08"
-                    assert env["result"]["mode"] == "strict"
-                    assert env["result"]["domains_missing"] == []
-                    assert env["result_meta"]["quality_flag"] == "ok"
+                    with patch.object(es, "_build_product_category_ytd_headline", return_value=None):
+                        mock_ov.return_value = {
+                            "result_meta": {},
+                            "result": {"title": "经营总览", "metrics": []},
+                        }
+                        mock_attr.return_value = {
+                            "result_meta": {},
+                            "result": {
+                                "title": "经营贡献拆解",
+                                "total": "+0.00 亿",
+                                "segments": [],
+                            },
+                        }
+                        env = es.home_snapshot_envelope(
+                            report_date=None, allow_partial=False
+                        )
+            assert env["result"]["report_date"] == "2026-04-08"
+            assert env["result"]["mode"] == "strict"
+            assert env["result"]["domains_missing"] == []
+            assert env["result_meta"]["quality_flag"] == "ok"
 
     def test_partial_mode_labels_missing(self) -> None:
         es = _executive_service()
@@ -164,24 +168,101 @@ class TestHomeSnapshotEnvelope:
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
-                    mock_ov.return_value = {
-                        "result_meta": {},
-                        "result": {"title": "经营总览", "metrics": []},
-                    }
-                    mock_attr.return_value = {
-                        "result_meta": {},
-                        "result": {
-                            "title": "经营贡献拆解",
-                            "total": "+0.00 亿",
-                            "segments": [],
-                        },
-                    }
-                    env = es.home_snapshot_envelope(
-                        report_date="2026-04-08", allow_partial=True
-                    )
-                    assert env["result"]["mode"] == "partial"
-                    assert "pnl" in env["result"]["domains_missing"]
-                    assert env["result_meta"]["quality_flag"] == "warning"
+                    with patch.object(es, "_build_product_category_ytd_headline", return_value=None):
+                        mock_ov.return_value = {
+                            "result_meta": {},
+                            "result": {"title": "经营总览", "metrics": []},
+                        }
+                        mock_attr.return_value = {
+                            "result_meta": {},
+                            "result": {
+                                "title": "经营贡献拆解",
+                                "total": "+0.00 亿",
+                                "segments": [],
+                            },
+                        }
+                        env = es.home_snapshot_envelope(
+                            report_date="2026-04-08", allow_partial=True
+                        )
+            assert env["result"]["mode"] == "partial"
+            assert "pnl" in env["result"]["domains_missing"]
+            assert env["result_meta"]["quality_flag"] == "warning"
+
+    def test_build_product_category_ytd_headline_matches_envelope_grand_total(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Parity: headline builder must echo product_category_pnl_envelope ytd grand_total / intermediate."""
+        from backend.app.schemas.product_category_pnl import (
+            ProductCategoryPnlPayload,
+            ProductCategoryPnlRow,
+        )
+
+        es = _executive_service()
+
+        def row_dict(cid: str, name: str, side: str, bni: str) -> dict[str, object]:
+            return {
+                "category_id": cid,
+                "category_name": name,
+                "side": side,
+                "level": 0,
+                "view": "ytd",
+                "report_date": "2026-04-08",
+                "baseline_ftp_rate_pct": "1.60",
+                "cnx_scale": "0",
+                "cny_scale": "0",
+                "foreign_scale": "0",
+                "cnx_cash": "0",
+                "cny_cash": "0",
+                "foreign_cash": "0",
+                "cny_ftp": "0",
+                "foreign_ftp": "0",
+                "cny_net": "0",
+                "foreign_net": "0",
+                "business_net_income": bni,
+                "weighted_yield": None,
+                "is_total": True,
+                "children": [],
+                "scenario_rate_pct": None,
+            }
+
+        at = row_dict("asset_total", "资产合计", "asset", "9000000000")
+        lt = row_dict("liability_total", "负债合计", "liability", "-1000000000")
+        gt = row_dict("grand_total", "grand_total", "all", "1325000000")
+        im = row_dict(
+            "intermediate_business_income",
+            "中间业务收入",
+            "asset",
+            "500000000",
+        )
+        pc_payload = ProductCategoryPnlPayload(
+            report_date="2026-04-08",
+            view="ytd",
+            available_views=["ytd", "monthly"],
+            scenario_rate_pct=None,
+            rows=[
+                ProductCategoryPnlRow.model_validate(im),
+                ProductCategoryPnlRow.model_validate(at),
+                ProductCategoryPnlRow.model_validate(lt),
+                ProductCategoryPnlRow.model_validate(gt),
+            ],
+            asset_total=ProductCategoryPnlRow.model_validate(at),
+            liability_total=ProductCategoryPnlRow.model_validate(lt),
+            grand_total=ProductCategoryPnlRow.model_validate(gt),
+        )
+
+        def fake_resolve(_duck: str, _gov: str, rd: str, _ftp: float):
+            assert rd == "2026-04-08"
+            return pc_payload
+
+        monkeypatch.setattr(
+            "backend.app.services.executive_service.resolve_product_category_ytd_payload_for_home_snapshot",
+            fake_resolve,
+        )
+        headline = getattr(es, "_build_product_category_ytd_headline")("2026-04-08")
+        assert headline is not None
+        assert headline.operating_income.raw == pytest.approx(1325000000.0)
+        assert headline.intermediate_business_income.raw == pytest.approx(500000000.0)
+
 
 class TestHomeSnapshotPayloadSchema:
     def test_roundtrip(self) -> None:
@@ -217,3 +298,4 @@ class TestHomeSnapshotPayloadSchema:
         restored = HomeSnapshotPayload.model_validate(dumped)
         assert restored.report_date == "2026-04-08"
         assert restored.source_surface == "executive_analytical"
+        assert restored.product_category_ytd is None

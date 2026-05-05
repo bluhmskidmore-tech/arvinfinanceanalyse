@@ -50,6 +50,7 @@ def _zqtz_snapshot_row_from_tuple(row: tuple) -> ZqtzSnapshotRow:
         ingest_batch_id=row[26] or "",
         trace_id=row[27] or "",
         business_type_primary=row[8] or "",
+        sub_type=str(row[30] or "").strip(),
     )
 
 
@@ -104,7 +105,8 @@ class BalanceAnalysisRepository(DuckDBRepository):
                    currency_code, face_value_native, market_value_native, amortized_cost_native,
                    accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
                    overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-                   ingest_batch_id, trace_id, value_date, customer_attribute
+                   ingest_batch_id, trace_id, value_date, customer_attribute,
+                   coalesce(sub_type, '') as sub_type
             from zqtz_bond_daily_snapshot
             where {' and '.join(where_parts)}
             order by instrument_code, portfolio_name, cost_center, currency_code
@@ -320,6 +322,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                       account_category,
                       asset_class,
                       bond_type,
+                      sub_type,
                       business_type_primary,
                       issuer_name,
                       industry_name,
@@ -347,7 +350,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                       ingest_batch_id,
                       trace_id
                     ) values
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -359,6 +362,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                             row.account_category,
                             row.asset_class,
                             row.bond_type,
+                            row.sub_type,
                             row.business_type_primary,
                             row.issuer_name,
                             row.industry_name,
@@ -505,7 +509,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
         rows = self._fetch_rows(
             f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                   account_category, asset_class, bond_type, business_type_primary, issuer_name, industry_name, rating, invest_type_std,
+                   account_category, asset_class, bond_type, sub_type, business_type_primary, issuer_name, industry_name, rating, invest_type_std,
                    accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
                    market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
                    ytm_value, maturity_date, interest_mode, is_issuance_like, overdue_principal_days,
@@ -526,6 +530,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
             "account_category",
             "asset_class",
             "bond_type",
+            "sub_type",
             "business_type_primary",
             "issuer_name",
             "industry_name",
@@ -1123,6 +1128,7 @@ def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnect
           and trim(coalesce(s.account_category, '')) = trim(coalesce(f.account_category, ''))
           and trim(coalesce(s.asset_class, '')) = trim(coalesce(f.asset_class, ''))
           and trim(coalesce(s.bond_type, '')) = trim(coalesce(f.bond_type, ''))
+          and trim(coalesce(s.sub_type, '')) = trim(coalesce(f.sub_type, ''))
           and trim(coalesce(s.business_type_primary, '')) = trim(coalesce(f.business_type_primary, ''))
           and trim(coalesce(s.issuer_name, '')) = trim(coalesce(f.issuer_name, ''))
           and trim(coalesce(s.industry_name, '')) = trim(coalesce(f.industry_name, ''))

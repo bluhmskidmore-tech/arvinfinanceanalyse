@@ -577,6 +577,38 @@ def test_positions_reads_normalize_percentage_rates_and_compute_net_price_from_m
     assert bond_item["yield_rate"] == "0.03250000"
     assert bond_item["valuation_net_price"] == "120.00000000"
 
+    rating_response = client.get(
+        "/api/positions/stats/rating",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "Gov"},
+    )
+    assert rating_response.status_code == 200
+    rating_item = rating_response.json()["result"]["items"][0]
+    assert rating_item["weighted_rate"] == "0.03250000"
+
+    counterparty_response = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "sub_type": "Gov",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert counterparty_response.status_code == 200
+    counterparty_body = counterparty_response.json()["result"]
+    assert counterparty_body["total_weighted_rate"] == "0.03250000"
+    assert counterparty_body["total_weighted_coupon_rate"] == "0.02500000"
+
+    details_response = client.get(
+        "/api/positions/customer/details",
+        params={"customer_name": "Issuer-Gov", "report_date": "2026-01-10"},
+    )
+    assert details_response.status_code == 200
+    details_item = details_response.json()["result"]["items"][0]
+    assert details_item["yield_rate"] == "0.03250000"
+
     ib_response = client.get(
         "/api/positions/interbank",
         params={
@@ -590,6 +622,13 @@ def test_positions_reads_normalize_percentage_rates_and_compute_net_price_from_m
     assert ib_response.status_code == 200
     ib_item = ib_response.json()["result"]["items"][0]
     assert ib_item["interest_rate"] == "0.02500000"
+
+    ib_split_response = client.get(
+        "/api/positions/counterparty/interbank/split",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "product_type": "IB"},
+    )
+    assert ib_split_response.status_code == 200
+    assert ib_split_response.json()["result"]["asset_total_weighted_rate"] == "0.02500000"
 
 
 def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date(tmp_path, monkeypatch) -> None:
@@ -609,4 +648,3 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"
     assert details.json()["result"]["bond_count"] == 1
-

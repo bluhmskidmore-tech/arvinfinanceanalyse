@@ -111,6 +111,7 @@ def test_balance_analysis_core_exports_future_formal_fact_types():
         "ingest_batch_id",
         "trace_id",
         "business_type_primary",
+        "sub_type",
     ]
     assert [field.name for field in fields(module.FormalTywBalanceFactRow)] == [
         "report_date",

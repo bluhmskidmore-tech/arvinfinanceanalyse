@@ -22,6 +22,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
 )
 
 CompareType = Literal["mom", "yoy"]
+PositionKey = tuple[str, str, str]
 DATA_FALLBACK_MSG = "数据尚未物化，当前展示空白结构。"
 
 
@@ -67,24 +68,30 @@ def _category_type_for_invest(inv: str) -> str:
     return "asset"
 
 
-def mv_index(bond_rows: list[dict[str, Any]]) -> dict[tuple[str, str], float]:
-    out: dict[tuple[str, str], float] = defaultdict(float)
+def position_key(row: dict[str, Any]) -> PositionKey:
+    return (
+        str(row.get("instrument_code") or ""),
+        str(row.get("portfolio_name") or ""),
+        str(row.get("cost_center") or ""),
+    )
+
+
+def mv_index(bond_rows: list[dict[str, Any]]) -> dict[PositionKey, float]:
+    out: dict[PositionKey, float] = defaultdict(float)
     for r in bond_rows:
-        k = (str(r.get("instrument_code") or ""), str(r.get("portfolio_name") or ""))
-        out[k] += _f(r.get("market_value"))
+        out[position_key(r)] += _f(r.get("market_value"))
     return dict(out)
 
 
 def _aggregate_scale_pnl_by_group(
     pnl_rows: list[dict[str, Any]],
-    mv_by_key: dict[tuple[str, str], float],
+    mv_by_key: dict[PositionKey, float],
     group_field: str = "invest_type_std",
 ) -> dict[str, dict[str, float]]:
     agg: dict[str, dict[str, float]] = defaultdict(lambda: {"pnl": 0.0, "scale": 0.0})
     for r in pnl_rows:
         g = str(r.get(group_field) or "未分类")
-        k = (str(r.get("instrument_code") or ""), str(r.get("portfolio_name") or ""))
-        mv = mv_by_key.get(k, 0.0)
+        mv = mv_by_key.get(position_key(r), 0.0)
         agg[g]["pnl"] += _f(r.get("total_pnl"))
         agg[g]["scale"] += mv
     return dict(agg)

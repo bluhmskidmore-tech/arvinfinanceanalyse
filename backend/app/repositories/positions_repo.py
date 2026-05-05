@@ -69,6 +69,20 @@ def _fmt_rate(val: object | None, *, is_interbank: bool) -> str | None:
     return format(normalized, "f")
 
 
+def _normalized_rate_sql(column: str, *, is_interbank: bool) -> str:
+    if is_interbank:
+        return (
+            f"(case when {column} is null then null "
+            f"when {column} > 1 then {column} / 100 "
+            f"else {column} end)"
+        )
+    return (
+        f"(case when {column} is null then null "
+        f"when {column} > 1 and {column} <= 100 then {column} / 100 "
+        f"else {column} end)"
+    )
+
+
 def _map_direction(position_side: str | None) -> str:
     side = position_side or ""
     low = side.lower()
@@ -355,8 +369,8 @@ class PositionsRepository(DuckDBRepository):
             select issuer_name,
               sum(market_value_native) as total_amount,
               count(*) as transaction_count,
-              sum(coalesce(ytm_value, 0) * coalesce(market_value_native, 0)) as w_ytm_num,
-              sum(coalesce(coupon_rate, 0) * coalesce(market_value_native, 0)) as w_cpn_num,
+              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum(coalesce({_normalized_rate_sql("coupon_rate", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_cpn_num,
               sum(coalesce(market_value_native, 0)) as mv_sum
             from zqtz_bond_daily_snapshot
             where {where_sql}
@@ -370,8 +384,8 @@ class PositionsRepository(DuckDBRepository):
             f"""
             select
               sum(coalesce(market_value_native, 0)),
-              sum(coalesce(ytm_value, 0) * coalesce(market_value_native, 0)),
-              sum(coalesce(coupon_rate, 0) * coalesce(market_value_native, 0))
+              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)),
+              sum(coalesce({_normalized_rate_sql("coupon_rate", is_interbank=False)}, 0) * coalesce(market_value_native, 0))
             from zqtz_bond_daily_snapshot
             where {where_sql}
             """,
@@ -468,7 +482,7 @@ class PositionsRepository(DuckDBRepository):
                   counterparty_name,
                   sum(principal_native) as total_amount,
                   count(*) as transaction_count,
-                  sum(coalesce(funding_cost_rate, 0) * coalesce(principal_native, 0)) as w_rate_num,
+                  sum(coalesce({_normalized_rate_sql("funding_cost_rate", is_interbank=True)}, 0) * coalesce(principal_native, 0)) as w_rate_num,
                   sum(coalesce(principal_native, 0)) as mv_sum
                 from tyw_interbank_daily_snapshot
                 where {where_sql}
@@ -496,7 +510,7 @@ class PositionsRepository(DuckDBRepository):
                 f"""
                 select
                   sum(coalesce(principal_native, 0)),
-                  sum(coalesce(funding_cost_rate, 0) * coalesce(principal_native, 0))
+                  sum(coalesce({_normalized_rate_sql("funding_cost_rate", is_interbank=True)}, 0) * coalesce(principal_native, 0))
                 from tyw_interbank_daily_snapshot
                 where {where_sql}
                 """,
@@ -570,7 +584,7 @@ class PositionsRepository(DuckDBRepository):
               end as rating_bucket,
               sum(market_value_native) as total_amount,
               count(*) as bond_count,
-              sum(coalesce(ytm_value, 0) * coalesce(market_value_native, 0)) as w_ytm_num
+              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_ytm_num
             from zqtz_bond_daily_snapshot
             where {where_sql}
             group by rating_bucket
@@ -636,7 +650,7 @@ class PositionsRepository(DuckDBRepository):
               end as ind_bucket,
               sum(market_value_native) as total_amount,
               count(*) as bond_count,
-              sum(coalesce(ytm_value, 0) * coalesce(market_value_native, 0)) as w_ytm_num
+              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_ytm_num
             from zqtz_bond_daily_snapshot
             where {where_sql}
             group by ind_bucket
@@ -725,7 +739,7 @@ class PositionsRepository(DuckDBRepository):
                     "sub_type": str(row[1]) if row[1] is not None else None,
                     "asset_class": str(row[2]) if row[2] is not None else None,
                     "market_value": _fmt_amount(row[3]),
-                    "yield_rate": _fmt_opt(row[4]),
+                    "yield_rate": _fmt_rate(row[4], is_interbank=False),
                     "maturity_date": str(row[5]) if row[5] is not None else None,
                     "rating": str(rating_v) if rating_v is not None else "",
                     "industry": str(ind_v) if ind_v is not None else "",

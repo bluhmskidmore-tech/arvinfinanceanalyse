@@ -87,4 +87,7 @@ def home_snapshot(
     report_date: str | None = None,
     allow_partial: bool = False,
 ) -> dict[str, object]:
-    _raise_executive_reserved_surface("home_snapshot")
+    return home_snapshot_envelope(
+        report_date=_normalize_report_date(report_date),
+        allow_partial=allow_partial,
+    )

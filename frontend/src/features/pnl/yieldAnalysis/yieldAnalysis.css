@@ -1,0 +1,441 @@
+.yield-analysis-card {
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: var(--moss-shadow-card);
+}
+
+.yield-analysis-card--padded {
+  padding: var(--moss-space-6);
+}
+
+.yield-analysis-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--moss-space-4);
+  margin-bottom: var(--moss-space-4);
+}
+
+.yield-analysis-title {
+  margin: 0;
+  color: var(--moss-color-neutral-900);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.yield-analysis-description {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.yield-analysis-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--moss-space-2);
+  padding: 8px 14px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.yield-analysis-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-3);
+  margin-bottom: var(--moss-space-4);
+}
+
+.yield-analysis-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yield-analysis-label {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.yield-analysis-control {
+  min-width: 120px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.yield-analysis-control--wide {
+  min-width: 140px;
+}
+
+.yield-analysis-loading {
+  padding: var(--moss-space-8);
+  text-align: center;
+}
+
+.yield-analysis-error {
+  color: var(--moss-color-danger-700);
+  font-size: 14px;
+}
+
+.yield-analysis-empty {
+  padding: var(--moss-space-6);
+  border: 1px dashed var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.yield-analysis-period-table-wrap {
+  overflow-x: auto;
+}
+
+.yield-analysis-period-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.yield-analysis-period-table th,
+.yield-analysis-period-table td {
+  padding: 10px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+.yield-analysis-period-table th:first-child,
+.yield-analysis-period-table td:first-child {
+  text-align: left;
+}
+
+.yield-analysis-period-table td:nth-child(2) {
+  white-space: nowrap;
+}
+
+.yield-analysis-period-table th {
+  font-weight: 700;
+  color: var(--moss-color-neutral-600);
+  background: var(--moss-color-neutral-50);
+}
+
+.yield-analysis-period-note {
+  margin-top: var(--moss-space-3);
+  font-size: 12px;
+  color: var(--moss-color-neutral-500);
+  line-height: 1.6;
+}
+
+.pnl-filter-panel {
+  display: grid;
+  gap: var(--moss-space-4);
+  padding: var(--moss-space-5);
+}
+
+.pnl-filter-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+}
+
+.pnl-filter-copy {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.pnl-filter-title {
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pnl-filter-description {
+  margin-top: 4px;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.pnl-filter-summary {
+  margin-top: var(--moss-space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 10px;
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-filter-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--moss-space-2);
+}
+
+.pnl-filter-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--moss-color-neutral-900);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pnl-filter-summary-text {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-filter-summary-text--expanded {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.pnl-filter-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+}
+
+.pnl-filter-button {
+  padding: 8px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 999px;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pnl-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--moss-space-4);
+}
+
+.pnl-filter-field-label {
+  margin-bottom: var(--moss-space-2);
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.pnl-filter-control {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+}
+
+.pnl-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+  padding-top: var(--moss-space-4);
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.pnl-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.yield-ranking-card {
+  overflow: hidden;
+}
+
+.yield-ranking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  background: var(--moss-color-neutral-50);
+}
+
+.yield-ranking-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.yield-ranking-title {
+  margin: 0;
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.yield-ranking-subtitle,
+.yield-ranking-top-count {
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+}
+
+.yield-ranking-subtitle {
+  margin: 4px 0 0;
+  color: var(--moss-color-neutral-600);
+}
+
+.yield-ranking-top-count {
+  flex-shrink: 0;
+}
+
+.yield-ranking-body {
+  display: grid;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-4);
+}
+
+.yield-ranking-empty {
+  padding: 20px 16px;
+  border: 1px dashed var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-500);
+  font-size: 14px;
+  text-align: center;
+}
+
+.yield-ranking-row {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-md);
+  background: #ffffff;
+  cursor: default;
+  text-align: left;
+}
+
+.yield-ranking-row--clickable {
+  cursor: pointer;
+}
+
+.yield-ranking-row-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--moss-space-3);
+}
+
+.yield-ranking-index {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.yield-ranking-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.yield-ranking-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+}
+
+.yield-ranking-text {
+  min-width: 0;
+}
+
+.yield-ranking-label,
+.yield-ranking-breakdown {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yield-ranking-label {
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.yield-ranking-breakdown {
+  margin-top: 4px;
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+}
+
+.yield-ranking-value-block {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.yield-ranking-value {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.yield-ranking-value--positive {
+  color: var(--moss-color-success-700);
+}
+
+.yield-ranking-value--negative {
+  color: var(--moss-color-danger-700);
+}
+
+.yield-ranking-proportion {
+  margin-top: 4px;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+.yield-ranking-bar {
+  height: 8px;
+  margin-top: var(--moss-space-3);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-100);
+}
+
+.yield-ranking-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.yield-ranking-bar-fill--positive {
+  background: var(--moss-color-success-500);
+}
+
+.yield-ranking-bar-fill--negative {
+  background: var(--moss-color-danger-500);
+}

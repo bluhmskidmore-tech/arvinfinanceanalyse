@@ -7,6 +7,7 @@ from .liquidity_stress import compute_liquidity_stress_test
 from .macro_portfolio_impact import compute_macro_portfolio_impact
 from .monetary_policy_stance import compute_monetary_policy_stance
 from .rate_turning_point import compute_rate_turning_point
+from .toolkit import get_toolkit_script, iter_toolkit_scripts, run_toolkit_script
 from .yield_curve_shape import compute_yield_curve_shape
 
 __all__ = [
@@ -20,4 +21,7 @@ __all__ = [
     "compute_monetary_policy_stance",
     "compute_rate_turning_point",
     "compute_yield_curve_shape",
+    "get_toolkit_script",
+    "iter_toolkit_scripts",
+    "run_toolkit_script",
 ]

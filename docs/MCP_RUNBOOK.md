@@ -1,15 +1,22 @@
 # MOSS MCP Runbook
 
-This repository has a project-level MCP configuration in `.mcp.json`.
+This repository has project-level MCP configuration for both Codex and
+Cursor-style clients:
+
+- Codex: `.codex/config.toml`
+- Cursor-compatible clients: `.mcp.json`
+
+Existing Codex sessions do not hot-reload MCP registrations. Start a new
+thread/session after changing MCP config.
 
 ## Servers
 
 | Server | Purpose | Command |
 | --- | --- | --- |
-| `gitnexus` | Repository graph, context, and processes. | `node .tmp-gitnexus-v13/node_modules/gitnexus/dist/cli/index.js mcp` |
-| `moss-metric-contracts` | Read-only access to page contracts, metric dictionary, calc rules, product-category truth docs, and golden-sample catalog. | `python scripts/mcp/moss_project_mcp.py metric-contracts` |
-| `moss-lineage-evidence` | Read-only access to governance JSONL streams, latest evidence records, and lineage search. | `python scripts/mcp/moss_project_mcp.py lineage-evidence` |
-| `moss-data-catalog` | Read-only DuckDB table inventory, schema registry, table description, and available date lookup. | `python scripts/mcp/moss_project_mcp.py data-catalog` |
+| `gitnexus` | Repository graph, context, and processes. | `node scripts/mcp/gitnexus_mcp_launcher.mjs` |
+| `moss-metric-contracts` | Read-only access to page contracts, metric dictionary, calc rules, product-category truth docs, and golden-sample catalog. | `cmd.exe /d /s /c scripts\mcp\moss_contracts.cmd` |
+| `moss-lineage-evidence` | Read-only access to governance JSONL streams, latest evidence records, and lineage search. | `cmd.exe /d /s /c scripts\mcp\moss_lineage.cmd` |
+| `moss-data-catalog` | Read-only DuckDB table inventory, schema registry, table description, and available date lookup. | `cmd.exe /d /s /c scripts\mcp\moss_catalog.cmd` |
 | `playwright` | Browser/page QA through Playwright MCP. | `npx -y @playwright/mcp@latest` |
 
 ## Boundaries
@@ -100,6 +107,12 @@ powershell -ExecutionPolicy Bypass -File scripts/codex-page-smoke.ps1 -PageSlug 
 The smoke helper intentionally prints the route, governed API, expected visible states, and Playwright MCP checklist. It does not replace browser verification or add a new browser automation dependency.
 
 ## Local Verification
+
+Confirm Codex can see the configured MCP servers:
+
+```powershell
+codex mcp list
+```
 
 Run the local MCP contract tests:
 

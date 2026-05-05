@@ -175,7 +175,7 @@ def _load_product_category_pnl_service_module():
     return importlib.import_module("backend.app.services.product_category_pnl_service")
 
 
-def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
+def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     source_dir.mkdir(parents=True)
@@ -1304,6 +1304,7 @@ def test_materialize_failure_appends_error_message_to_governance(
 def test_manual_adjustment_not_in_formal_read_model_until_rematerialize(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
@@ -1415,7 +1416,7 @@ def test_product_category_refresh_status_returns_503_when_status_backend_fails(
     get_settings.cache_clear()
 
 
-def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monkeypatch):
+def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -1599,7 +1600,7 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_manual_adjustment_list_supports_exact_id_and_current_state_paging(tmp_path, monkeypatch):
+def test_manual_adjustment_list_supports_exact_id_and_current_state_paging(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -2172,8 +2173,12 @@ def _write_average_workbook(path: Path, report_date: str, *, january: bool) -> N
 
 def _ledger_rows(currency: str, *, january: bool) -> list[list[object]]:
     cny = currency == "CNY"
-    scale = lambda a, b: b if cny else a
-    pnl = lambda a, b: b if cny else a
+
+    def scale(a: object, b: object) -> object:
+        return b if cny else a
+
+    def pnl(a: object, b: object) -> object:
+        return b if cny else a
 
     rows: list[list[object]] = []
 
@@ -2283,3 +2288,65 @@ def _pnl_row(account_code: str, account_name: str, currency: str, monthly_pnl: f
     if monthly_pnl >= 0:
         return [int(account_code), account_name, currency, 0, 0, monthly_pnl, -monthly_pnl]
     return [int(account_code), account_name, currency, 0, abs(monthly_pnl), 0, abs(monthly_pnl)]
+
+
+def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persisted_ytd(
+    tmp_path, monkeypatch,
+) -> None:
+    """Home headline resolver: when formal ytd rows are deleted, recompute from canonical facts."""
+    import sys
+
+    import duckdb
+
+    from backend.app.services import product_category_pnl_service as pcs
+
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    assert task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )["status"] == "completed"
+
+    anchor = "2026-02-28"
+    env = pcs.product_category_pnl_envelope(str(duckdb_path), anchor, "ytd")
+    ref_grand = float(env["result"]["grand_total"]["business_net_income"])
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "delete from product_category_pnl_formal_read_model where view = 'ytd'"
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(pcs.ProductCategoryReadModelNotFoundError):
+        pcs.product_category_pnl_envelope(str(duckdb_path), anchor, "ytd")
+
+    resolved = pcs.resolve_product_category_ytd_payload_for_home_snapshot(
+        str(duckdb_path),
+        str(governance_dir),
+        anchor,
+        float(get_settings().ftp_rate_pct),
+    )
+    assert resolved is not None
+    assert float(resolved.grand_total.business_net_income) == pytest.approx(ref_grand, rel=1e-9, abs=1e-6)
+
+    get_settings.cache_clear()

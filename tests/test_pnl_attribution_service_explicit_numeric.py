@@ -190,3 +190,79 @@ def test_promote_helper_handles_nested_item_list():
     assert item["current_scale"]["sign_aware"] is False
     assert isinstance(item["current_pnl"], dict)
     assert item["current_pnl"]["sign_aware"] is True
+
+
+def test_promote_helper_treats_small_pct_values_as_percent_points():
+    from backend.app.schemas.pnl_attribution import VolumeRateAttributionPayload
+
+    payload = {
+        "current_period": "2026-04",
+        "previous_period": "2026-03",
+        "compare_type": "mom",
+        "total_current_pnl": 110_000.0,
+        "items": [
+            {
+                "category": "A",
+                "category_type": "asset",
+                "level": 0,
+                "current_scale": 100_000_000.0,
+                "current_pnl": 110_000.0,
+                "current_yield_pct": 0.11,
+                "previous_scale": 100_000_000.0,
+                "previous_pnl": 100_000.0,
+                "previous_yield_pct": 0.10,
+                "pnl_change_pct": 10.0,
+                "volume_contribution_pct": 0.5,
+            }
+        ],
+        "has_previous_data": True,
+    }
+
+    promoted = _pnl_svc()._promote_payload_numerics(payload, VolumeRateAttributionPayload)
+    row = promoted["items"][0]
+
+    assert row["current_yield_pct"]["raw"] == pytest.approx(0.0011)
+    assert row["current_yield_pct"]["display"] == "+0.11%"
+    assert row["previous_yield_pct"]["raw"] == pytest.approx(0.001)
+    assert row["previous_yield_pct"]["display"] == "+0.10%"
+    assert row["pnl_change_pct"]["display"] == "+10.00%"
+    assert row["volume_contribution_pct"]["display"] == "+0.50%"
+
+
+def test_promote_helper_keeps_tpl_rate_changes_in_bp():
+    from backend.app.schemas.pnl_attribution import TPLMarketCorrelationPayload
+
+    payload = {
+        "start_period": "2026-02",
+        "end_period": "2026-03",
+        "num_periods": 2,
+        "correlation_coefficient": -0.62,
+        "correlation_interpretation": "test",
+        "total_tpl_fv_change": 42_000_000.0,
+        "avg_treasury_10y_change": -7.5,
+        "treasury_10y_total_change_bp": -15.0,
+        "analysis_summary": "summary",
+        "data_points": [
+            {
+                "period": "2026-03",
+                "period_label": "2026-03",
+                "tpl_fair_value_change": 32_000_000.0,
+                "tpl_total_pnl": 32_000_000.0,
+                "tpl_scale": 1_100_000_000.0,
+                "treasury_10y": 2.2,
+                "treasury_10y_change": -15.0,
+                "dr007": None,
+            }
+        ],
+    }
+
+    promoted = _pnl_svc()._promote_payload_numerics(payload, TPLMarketCorrelationPayload)
+
+    assert promoted["avg_treasury_10y_change"]["unit"] == "bp"
+    assert promoted["avg_treasury_10y_change"]["raw"] == pytest.approx(-7.5)
+    assert promoted["treasury_10y_total_change_bp"]["raw"] == pytest.approx(-15.0)
+    point = promoted["data_points"][0]
+    assert point["treasury_10y_change"]["unit"] == "bp"
+    assert point["treasury_10y_change"]["raw"] == pytest.approx(-15.0)
+    assert point["treasury_10y"]["unit"] == "pct"
+    assert point["treasury_10y"]["display"] == "+2.20%"

@@ -22,6 +22,7 @@ import {
   DashboardModuleEntryGrid,
   DashboardModuleSnapshotPanel,
   DashboardOverviewHeroStrip,
+  DashboardProductCategoryYtdCards,
   DashboardTasksCalendarPanels,
   type DashboardAlert,
   type DashboardHeroMetric,
@@ -198,6 +199,7 @@ export default function DashboardPage() {
         verdictPayload: snapshotQuery.data?.result.verdict ?? null,
         snapshotFetchErrorDetail:
           snapshotQuery.error instanceof Error ? snapshotQuery.error.message : undefined,
+        productCategoryYtd: snapshotQuery.data?.result.product_category_ytd ?? null,
       }),
     [
       overviewEnv,
@@ -206,6 +208,7 @@ export default function DashboardPage() {
       snapshotQuery.isError,
       snapshotQuery.error,
       snapshotQuery.data?.result.verdict,
+      snapshotQuery.data?.result.product_category_ytd,
     ],
   );
 
@@ -566,6 +569,11 @@ export default function DashboardPage() {
         <div style={{ display: "grid", gap: designTokens.space[3] }}>
           <GovernancePills pills={governancePills} />
           <DashboardOverviewHeroStrip metrics={heroMetrics} />
+          <DashboardProductCategoryYtdCards
+            state={adapterOutput.productCategoryYtd.state}
+            vm={adapterOutput.productCategoryYtd.vm}
+            onRetry={() => void snapshotQuery.refetch()}
+          />
         </div>
       </PageHeader>
 

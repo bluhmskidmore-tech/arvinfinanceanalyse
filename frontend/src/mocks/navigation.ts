@@ -95,6 +95,7 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   "bank-ledger-dashboard": "portfolio",
   "average-balance": "portfolio",
   "market-data": "market",
+  "macro-toolkit": "market",
   "cross-asset": "market",
   "news-events": "market",
   "risk-overview": "risk",
@@ -240,6 +241,18 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "已开放",
     readinessNote:
       "已接正式利率行情读链路，稳定序列走 formal 口径；分析口径模块（Livermore / 联动）独立标注。",
+  },
+  {
+    key: "macro-toolkit",
+    label: "宏观工具",
+    path: "/macro-toolkit",
+    icon: "analysis",
+    description: "迁移后的宏观脚本工具入口，默认读取系统 Choice/Tushare 数据源。",
+    readiness: "live",
+    readinessLabel: "临时开放",
+    governanceStatus: "temporary-exception",
+    readinessNote:
+      "脚本注册表与运行入口已接到后端宏观模块；中金所席位数据仍等待正式落库。",
   },
   {
     key: "source-preview",
@@ -408,13 +421,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl",
-    label: "损益明细",
+    label: "收益分析",
     path: "/pnl",
     icon: "analysis",
-    description: "正式损益明细入口",
+    description: "收益总览、损益归因与期间收益（与 V1 /pnl 对齐）",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "已接正式损益事实表读链路，报告日由后端日期接口驱动。",
+    readinessNote: "收益指标与归因读链路已接；期间收益表为占位接口，正式明细表见 /pnl-formal-v1。",
   },
   {
     key: "pnl-bridge",

@@ -104,6 +104,16 @@ def load_latest_pnl_refresh_input(
     )
 
 
+def list_pnl_refresh_report_dates(
+    *,
+    governance_dir: str | Path,
+    data_root: str | Path | None = None,
+) -> list[str]:
+    resolved_data_root = Path(data_root) if data_root is not None else resolve_pnl_data_input_root()
+    candidates = [*_manifest_candidates(governance_dir), *_direct_candidates(resolved_data_root)]
+    return sorted({candidate.report_date for candidate in candidates}, reverse=True)
+
+
 def _merge_candidates_for_report_date(
     *,
     manifest_candidates: list[PnlSourceSnapshot],

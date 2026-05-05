@@ -120,6 +120,10 @@ def by_business(
 @router.get("/pnl/by-business-ytd")
 def by_business_ytd(
     year: int = Query(..., description="Requested calendar year for V1-compatible PnL by business type."),
+    as_of_date: str | None = Query(
+        None,
+        description="Optional report-date cutoff for V1-compatible YTD PnL.",
+    ),
 ) -> dict[str, object]:
     settings = get_settings()
     try:
@@ -127,6 +131,7 @@ def by_business_ytd(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             year=year,
+            as_of_date=as_of_date,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

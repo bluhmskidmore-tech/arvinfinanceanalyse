@@ -21,6 +21,19 @@ export const mockCampisiFourEffects: CampisiFourEffectsPayload = {
     total_return: 865000,
     market_value_start: 128000000,
   },
+  formal_closure: {
+    basis: "pnl.bridge.total_actual_pnl",
+    report_date: "2026-03-31",
+    status: "warning",
+    campisi_total_return: 865000,
+    formal_actual_pnl: 125000,
+    residual_to_formal_pnl: -740000,
+    residual_ratio: 5.92,
+    bridge_quality_flag: "ok",
+    bridge_vendor_status: "ok",
+    bridge_fallback_mode: "none",
+    message: "Campisi total return does not close to formal PnL; residual_to_formal_pnl is required.",
+  },
   by_asset_class: [
     {
       asset_class: "政策性金融债",

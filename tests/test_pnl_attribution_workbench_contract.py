@@ -53,6 +53,80 @@ def test_build_volume_rate_attribution_exposes_yields_as_percent_values() -> Non
     assert "previous_yield" not in row
 
 
+def test_build_volume_rate_attribution_matches_scale_by_cost_center() -> None:
+    payload = build_volume_rate_attribution(
+        current_pnl=[
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "total_pnl": 10.0,
+            },
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "total_pnl": 30.0,
+            },
+        ],
+        prior_pnl=[
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "total_pnl": 8.0,
+            },
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "total_pnl": 24.0,
+            },
+        ],
+        current_bond=[
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "market_value": 100.0,
+            },
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "market_value": 300.0,
+            },
+        ],
+        prior_bond=[
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "market_value": 80.0,
+            },
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "market_value": 240.0,
+            },
+        ],
+        current_period="2026-04",
+        previous_period="2026-03",
+        compare_type="mom",
+    )
+
+    row = payload["items"][0]
+    assert row["current_scale"] == pytest.approx(400.0)
+    assert row["previous_scale"] == pytest.approx(320.0)
+    assert row["current_yield_pct"] == pytest.approx(10.0)
+    assert row["previous_yield_pct"] == pytest.approx(10.0)
+
+
 def test_build_tpl_market_correlation_exposes_total_change_in_bp() -> None:
     payload = build_tpl_market_correlation(
         monthly_points=[

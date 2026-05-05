@@ -155,6 +155,7 @@ def test_parse_zqtz_smoke_workbook_currency_and_issuance_flag():
     assert row["instrument_code"]
     assert row["currency_code"]  # normalized via normalize_currency_code
     assert "is_issuance_like" in row
+    assert row.get("sub_type") == row.get("business_type_primary")
     assert row["next_call_date"] is None or isinstance(row["next_call_date"], str)
     issuance_rows = [x for x in rows if "发行类债" in str(x.get("asset_class", ""))]
     if issuance_rows:
@@ -278,6 +279,8 @@ def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
             "account_category": "可供出售债券",
             "asset_class": "债券类",
             "bond_type": "国债",
+            "business_type_primary": "",
+            "sub_type": "",
             "issuer_name": "发行人A",
             "industry_name": "金融业",
             "rating": "AAA",

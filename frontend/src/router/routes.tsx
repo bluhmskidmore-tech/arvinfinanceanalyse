@@ -17,6 +17,7 @@ const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
+const FormalPnlV1Page = lazy(() => import("../features/pnl/FormalPnlV1Page"));
 const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const PnlAttributionPage = lazy(
@@ -77,6 +78,9 @@ const PlatformConfigPage = lazy(
 const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
 const MarketDataPage = lazy(
   () => import("../features/market-data/pages/MarketDataPage"),
+);
+const MacroToolkitPage = lazy(
+  () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
 );
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
@@ -222,6 +226,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/macro-toolkit") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<MacroToolkitPage />),
+      };
+    }
+
     if (section.path === "/positions") {
       return {
         path: section.path.slice(1),
@@ -296,6 +307,10 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "pnl-by-business",
         element: routeElement(<PnlByBusinessPage />),
+      },
+      {
+        path: "pnl-formal-v1",
+        element: routeElement(<FormalPnlV1Page />),
       },
       {
         path: "liabilities",

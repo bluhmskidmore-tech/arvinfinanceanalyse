@@ -22,6 +22,7 @@ from backend.app.core_finance.pnl import (
     NonStdPnlBridgeRow,
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
+    compute_nonstd_signed_ledger_amount,
     normalize_fi_pnl_records,
     normalize_nonstd_journal_entries,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "build_monthly_buckets",
     "build_pnl_bridge_rows",
     "build_nonstd_pnl_bridge_rows",
+    "compute_nonstd_signed_ledger_amount",
     "compute_duration_gap",
     "derive_accounting_basis",
     "derive_invest_type_std",

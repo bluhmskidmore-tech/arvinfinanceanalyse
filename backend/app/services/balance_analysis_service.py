@@ -750,13 +750,14 @@ def _extract_generated_decision_section(workbook: dict[str, Any]) -> dict[str, A
 
 
 def _build_decision_key(row: dict[str, object]) -> str:
-    return "::".join(
-        [
-            str(row.get("rule_id") or "").strip(),
-            str(row.get("source_section") or "").strip(),
-            str(row.get("title") or "").strip(),
-        ]
-    )
+    """Stable key for persisted status rows: prefer rule_id (language-stable across localized titles)."""
+    rule_id = str(row.get("rule_id") or "").strip()
+    if rule_id:
+        return rule_id
+    section = str(row.get("source_section") or "").strip()
+    title = str(row.get("title") or "").strip()
+    parts = [part for part in (section, title) if part]
+    return "::".join(parts)
 
 
 def _resolve_balance_build_lineage(

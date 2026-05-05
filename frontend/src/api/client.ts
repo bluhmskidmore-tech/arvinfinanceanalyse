@@ -66,6 +66,7 @@ import type {
   LiabilityKnowledgeBriefPayload,
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
+  YieldByPeriodPayload,
   CustomerBondDetailsResponse,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
@@ -149,6 +150,7 @@ import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCu
 import type { ExecutiveClientMethods } from "./executiveClient";
 import { fetchHomeSnapshotEnvelope } from "./executiveHomeSnapshotFetch";
 import type { MarketDataClientMethods } from "./marketDataClient";
+import type { MacroToolkitClientMethods } from "./macroToolkitClient";
 import {
   createMockPnlBusinessClient,
   createRealPnlBusinessClient,
@@ -176,6 +178,10 @@ import {
   createRealMarketDataClient,
 } from "./marketDataClient";
 import {
+  createMockMacroToolkitClient,
+  createRealMacroToolkitClient,
+} from "./macroToolkitClient";
+import {
   createMockKpiClient,
   createRealKpiClient,
   type KpiClientMethods,
@@ -200,6 +206,7 @@ export type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 export type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 export type { ExecutiveClientMethods } from "./executiveClient";
 export type { MarketDataClientMethods } from "./marketDataClient";
+export type { MacroToolkitClientMethods } from "./macroToolkitClient";
 export type { PnlClientMethods } from "./pnlClient";
 export type { PositionsClientMethods } from "./positionsClient";
 export type { LedgerClientMethods } from "./ledgerClient";
@@ -215,6 +222,7 @@ export type ApiClient = {
   & BalanceAnalysisClientMethods
   & PositionsClientMethods
   & MarketDataClientMethods
+  & MacroToolkitClientMethods
   & LedgerClientMethods
   & KpiClientMethods
   & CubeClientMethods
@@ -2204,6 +2212,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createMockBalanceMovementClient(),
     ...createMockLedgerClient(),
     ...createMockMarketDataClient(),
+    ...createMockMacroToolkitClient(),
     ...createMockKpiClient(),
     ...createMockCubeClient(),
     ...createMockPnlBusinessClient(),
@@ -3797,6 +3806,40 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           market_liability_cost: null,
           nim: null,
         },
+        history: [],
+        scatter: [],
+      };
+    },
+    async getYieldByPeriod(options: { year: number; periodType?: "monthly" | "quarterly" | "yearly" }) {
+      await delay();
+      const y = options.year;
+      const pt = options.periodType ?? "monthly";
+      return {
+        year: y,
+        period_type: pt,
+        periods: [
+          {
+            period: `${y}-12`,
+            period_type: pt,
+            start_date: `${y}-12-01`,
+            end_date: `${y}-12-31`,
+            num_days: 31,
+            total_avg_balance: 1_000_000_000,
+            total_pnl: 1_300_000,
+            overall_yield: 0.13,
+            overall_annualized_yield: 1.53,
+            weighted_portfolio_yield: 0.13,
+            weighted_portfolio_annualized_yield: 1.53,
+            items: [
+              {
+                business_type_primary: "政策性金融债",
+                total_pnl: 1_300_000,
+                scale_amount: 1_000_000_000,
+                yield_pct: 0.13,
+              },
+            ],
+          },
+        ],
       };
     },
     async getLiabilityCounterparty(options: { reportDate?: string | null; topN?: number }) {
@@ -3967,6 +4010,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealBalanceMovementClient({ fetchImpl, baseUrl }),
     ...createRealLedgerClient({ fetchImpl, baseUrl }),
     ...createRealMarketDataClient({ fetchImpl, baseUrl }),
+    ...createRealMacroToolkitClient({ fetchImpl, baseUrl }),
     ...createRealKpiClient({ fetchImpl, baseUrl }),
     ...createRealCubeClient({ fetchImpl, baseUrl }),
     ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
@@ -4608,6 +4652,18 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/api/analysis/yield_metrics${q ? `?${q}` : ""}`,
+      );
+    },
+    getYieldByPeriod: ({ year, periodType }) => {
+      const params = new URLSearchParams();
+      params.set("year", String(year));
+      if (periodType) {
+        params.set("period_type", periodType);
+      }
+      return requestEnvelopeOrPlainJson<YieldByPeriodPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/yield-by-period?${params.toString()}`,
       );
     },
     getLiabilityCounterparty: ({ reportDate, topN }) => {

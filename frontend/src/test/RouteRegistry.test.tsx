@@ -117,11 +117,11 @@ vi.mock("../features/risk-tensor/RiskTensorPage", () => ({
 
 vi.mock("../features/pnl/PnlPage", () => ({
   default: () => (
-    <section data-testid="pnl-page">
-      <h1>损益明细</h1>
+    <section data-testid="yield-analysis-page">
+      <h1>收益分析</h1>
       <label>
-        报告日
-        <select aria-label="pnl-report-date" defaultValue="2026-03-31">
+        选择报表月份
+        <select aria-label="选择报表月份" defaultValue="2026-03-31">
           <option value="2026-03-31">2026-03-31</option>
         </select>
       </label>
@@ -275,7 +275,6 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
-    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
   });
 
   it("redirects V1 bookmark /market to the live market-data page", async () => {
@@ -322,10 +321,10 @@ describe("RouteRegistry", () => {
   it("renders the pnl route", async () => {
     renderWorkbenchApp(["/pnl"], { client: mockClient });
 
-    expect(await screen.findByTestId("pnl-page")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "损益明细" })).toBeInTheDocument();
+    expect(await screen.findByTestId("yield-analysis-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "收益分析" })).toBeInTheDocument();
     expect(await screen.findByTestId("pnl-overview-cards")).toBeInTheDocument();
-    expect(await screen.findByLabelText("pnl-report-date")).toBeInTheDocument();
+    expect(await screen.findByLabelText("选择报表月份")).toBeInTheDocument();
   });
 
   it("renders the pnl-attribution route", async () => {

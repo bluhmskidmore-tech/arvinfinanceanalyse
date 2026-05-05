@@ -57,6 +57,26 @@ def test_cube_query_route_rejects_invalid_request(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_cube_query_route_returns_503_when_storage_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "missing.duckdb"))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post(
+        "/api/cube/query",
+        json={
+            "report_date": "2026-03-31",
+            "fact_table": "bond_analytics",
+            "measures": ["sum(market_value)"],
+            "dimensions": ["asset_class_std"],
+        },
+    )
+
+    assert response.status_code == 503
+    assert "storage is unavailable" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
 def test_cube_dimensions_route_returns_promoted_contract():
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/cube/dimensions/bond_analytics")

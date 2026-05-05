@@ -288,4 +288,25 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
     pnl: "2026-04-18",
   },
   verdict: mockVerdictPayload,
+  product_category_ytd: {
+    view: "ytd",
+    operating_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    operating_income_detail:
+      "演示：与产品分类损益「汇总视图」（ytd）一致时，此处为 grand_total.business_net_income；当前为占位。",
+    intermediate_business_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    intermediate_business_income_detail:
+      "演示：与产品分类损益「中间业务收入」ytd 行一致时，此处为该行 business_net_income；当前为占位。",
+  },
 };
