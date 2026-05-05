@@ -2,6 +2,8 @@
  * P&L and Attribution domain — type slice of ApiClient.
  * Imported and re-exported by client.ts for backward compatibility.
  */
+import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { readHttpJsonDetail } from "./httpResponseError";
 import type {
   ApiEnvelope,
   AdvancedAttributionSummary,
@@ -18,11 +20,15 @@ import type {
   PnlAttributionAnalysisSummary,
   PnlAttributionPayload,
   PnlBasis,
+  PnlByBusinessPayload,
+  PnlByBusinessYtdPayload,
   PnlBridgePayload,
   PnlCompositionPayload,
   PnlDataPayload,
   PnlDatesPayload,
   PnlOverviewPayload,
+  PnlV1DataPayload,
+  PnlYearlyBusinessSummaryPayload,
   ProductCategoryDatesPayload,
   ProductCategoryAttributionPayload,
   ProductCategoryManualAdjustmentExportPayload,
@@ -45,6 +51,13 @@ import type {
   VolumeRateAttributionPayload,
 } from "./contracts";
 
+type FetchLike = typeof fetch;
+
+type PnlClientFactoryOptions = {
+  fetchImpl: FetchLike;
+  baseUrl: string;
+};
+
 export type PnlClientMethods = {
   getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
   getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
@@ -52,6 +65,7 @@ export type PnlClientMethods = {
     reportDate: string,
     basis?: PnlBasis,
   ) => Promise<ApiEnvelope<PnlOverviewPayload>>;
+  getPnlV1Data: (date: string) => Promise<ApiEnvelope<PnlV1DataPayload>>;
   getLedgerPnlDates: () => Promise<ApiEnvelope<LedgerPnlDatesPayload>>;
   getLedgerPnlData: (
     reportDate: string,
@@ -61,6 +75,9 @@ export type PnlClientMethods = {
     reportDate: string,
     currency?: string,
   ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
+  getPnlByBusiness: (reportDate: string) => Promise<ApiEnvelope<PnlByBusinessPayload>>;
+  getPnlByBusinessYtd: (year: number) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
+  getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
@@ -183,3 +200,120 @@ export type PnlClientMethods = {
     reportMonth: string,
   ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentExportPayload>;
 };
+
+type PnlBusinessClientMethods = Pick<
+  PnlClientMethods,
+  "getPnlV1Data" | "getPnlByBusiness" | "getPnlByBusinessYtd" | "getPnlYearlyBusinessSummary"
+>;
+
+const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+
+export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
+  return {
+    async getPnlV1Data(date: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.v1_data",
+        {
+          report_date: date,
+          source_tables: ["data_input/pnl", "data_input/pnl_514", "data_input/pnl_516", "data_input/pnl_517"],
+          rows: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getPnlByBusiness(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.by_business",
+        {
+          report_date: reportDate,
+          source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+          summary: {
+            business_count: 0,
+            total_pnl: "0.00",
+            total_scale_amount: "0.00",
+            traced_pnl_row_count: 0,
+            untraced_pnl_row_count: 0,
+          },
+          rows: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getPnlByBusinessYtd(year: number) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.by_business_ytd",
+        {
+          year,
+          period_type: "yearly",
+          period_label: `${year}年累计`,
+          total_pnl: "0.00",
+          source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily"],
+          items: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getPnlYearlyBusinessSummary(year: number) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.yearly_summary",
+        {
+          year,
+          source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+          rows: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+  };
+}
+
+export function createRealPnlBusinessClient({
+  fetchImpl,
+  baseUrl,
+}: PnlClientFactoryOptions): PnlBusinessClientMethods {
+  return {
+    getPnlV1Data: (date: string) =>
+      requestJson<PnlV1DataPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/v1-data?date=${encodeURIComponent(date)}`,
+      ),
+    getPnlByBusiness: (reportDate: string) =>
+      requestJson<PnlByBusinessPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getPnlByBusinessYtd: (year: number) =>
+      requestJson<PnlByBusinessYtdPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-ytd?year=${encodeURIComponent(String(year))}`,
+      ),
+    getPnlYearlyBusinessSummary: (year: number) =>
+      requestJson<PnlYearlyBusinessSummaryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/yearly-summary?year=${encodeURIComponent(String(year))}`,
+      ),
+  };
+}
+
+async function requestJson<TData>(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+): Promise<ApiEnvelope<TData>> {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await readHttpJsonDetail(response);
+    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
+  }
+  return (await response.json()) as ApiEnvelope<TData>;
+}

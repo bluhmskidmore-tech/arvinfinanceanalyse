@@ -80,6 +80,77 @@ def overview(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/pnl/v1-data")
+def v1_data(
+    date: str = Query(
+        ...,
+        description="Requested report date for V1-compatible /api/pnl detail data.",
+    ),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return _pnl_service().pnl_v1_data_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business")
+def by_business(
+    report_date: str = Query(..., description="Requested report date for formal PnL by ZQTZ business type 1."),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return _pnl_service().pnl_by_business_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business-ytd")
+def by_business_ytd(
+    year: int = Query(..., description="Requested calendar year for V1-compatible PnL by business type."),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return _pnl_service().pnl_by_business_ytd_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/yearly-summary")
+def yearly_summary(
+    year: int = Query(..., description="Requested calendar year for formal PnL by ZQTZ business type 1."),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return _pnl_service().pnl_yearly_summary_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/data/refresh_pnl")
 def refresh_pnl(
     auth: Annotated[AuthContext, Depends(get_auth_context)],

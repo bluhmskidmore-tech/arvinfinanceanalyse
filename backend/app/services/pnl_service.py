@@ -17,12 +17,21 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.pnl import (
+    PnlByBusinessPayload,
+    PnlByBusinessRow,
+    PnlByBusinessSummary,
+    PnlByBusinessYtdItem,
+    PnlByBusinessYtdPayload,
     PnlDataPayload,
     PnlDatesPayload,
     PnlFormalFiRow,
     PnlMaterializePayload,
     PnlNonStdBridgeRow,
     PnlOverviewPayload,
+    PnlV1DataPayload,
+    PnlV1DetailRow,
+    PnlYearlyBusinessSummaryPayload,
+    PnlYearlyBusinessSummaryRow,
 )
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage as build_formal_result_envelope_from_lineage_runtime,
@@ -45,10 +54,44 @@ PNL_CACHE_VERSION = PNL_RESULT_CACHE_VERSION
 PNL_JOB_NAME = "pnl_materialize"
 PENDING_SOURCE_VERSION = "sv_pnl_pending"
 TWOPLACES = Decimal("0.01")
+RATIOPLACES = Decimal("0.000001")
 IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
 SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError, OSError, TimeoutError)
+V1_VAT_DIVISOR = Decimal("1.06")
+V1_FI_TAXABLE_BOND_TYPES = (
+    "同业存单",
+    "存单",
+    "短期融资券",
+    "短融",
+    "中期票据",
+    "中票",
+    "企业债",
+    "资产支持证券",
+    "ABS",
+    "铁道债",
+    "铁道",
+)
+V1_ZQTZ_PREFIX_MAP = {
+    "SA": "公募基金",
+    "J0": "人民币资管产品",
+    "J1": "美元委外产品",
+    "J4": "结构化产业基金",
+    "JM": "债权投资",
+    "G0": "信托结构化产品",
+    "G2": "信托产品",
+}
+V1_BUSINESS_NAME_NORMALIZATION = {
+    "存单": "同业存单",
+    "次级债": "次级债券",
+    "美元委外": "美元委外产品",
+    "结构化产品": "结构化产业基金",
+    "债券-其他": "其他债券",
+    "未分类": "其他债券",
+    "大额存单": "同业存单",
+    "凭证式国债": "国债",
+}
 
 
 class PnlRefreshServiceError(RuntimeError):
@@ -237,6 +280,501 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
     )
 
 
+def pnl_v1_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    repo = PnlRepository(duckdb_path)
+    source_root = resolve_pnl_data_input_root()
+    refresh_input = load_latest_pnl_refresh_input(
+        governance_dir=governance_dir,
+        data_root=source_root,
+        report_date=report_date,
+    )
+    target_report_date = str(refresh_input.report_date)
+
+    sub_type_dates = {target_report_date}
+    for rows in refresh_input.nonstd_rows_by_type.values():
+        sub_type_dates.update(str(row.get("voucher_date") or "").strip() for row in rows if row.get("voucher_date"))
+    sub_type_map = repo.fetch_zqtz_sub_type_map(sorted(sub_type_dates))
+
+    base_currencies = {
+        str(row.get("fx_base_currency") or "").strip().upper()
+        for row in refresh_input.fi_rows
+        if str(row.get("fx_base_currency") or "").strip()
+    }
+    if any(
+        str(row.get("asset_code") or "").strip().upper().startswith("J1")
+        for rows in refresh_input.nonstd_rows_by_type.values()
+        for row in rows
+    ):
+        base_currencies.add("USD")
+    fx_rates = repo.fetch_latest_fx_rates(target_report_date, base_currencies)
+    missing_fx = sorted(currency for currency in base_currencies if currency not in fx_rates)
+    if missing_fx:
+        raise RuntimeError(f"Missing fx rates for report_date={target_report_date}: {missing_fx}")
+
+    payload = PnlV1DataPayload(
+        report_date=target_report_date,
+        source_tables=[
+            "data_input/pnl",
+            "data_input/pnl_514",
+            "data_input/pnl_516",
+            "data_input/pnl_517",
+            "fact_formal_zqtz_balance_daily",
+            "fx_daily_mid",
+        ],
+        rows=_build_v1_detail_rows(
+            report_date=target_report_date,
+            refresh_input=refresh_input,
+            sub_type_map=sub_type_map,
+            fx_rates=fx_rates,
+        ),
+    )
+    return _build_pnl_formal_result_envelope_from_lineage(
+        governance_dir=governance_dir,
+        report_date=target_report_date,
+        trace_id=f"tr_pnl_v1_data_{target_report_date}",
+        result_kind="pnl.v1_data",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    repo = PnlRepository(duckdb_path)
+    if report_date not in repo.list_formal_fi_report_dates():
+        raise ValueError(f"No formal pnl data found for report_date={report_date} in fact_formal_pnl_fi.")
+
+    rows = [PnlByBusinessRow(**_quantized_business_row(row)) for row in repo.fetch_by_business_rows(report_date)]
+    untraced_count = repo.count_untraced_formal_fi_rows(report_date)
+    payload = PnlByBusinessPayload(
+        report_date=report_date,
+        source_tables=["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily"],
+        summary=PnlByBusinessSummary(
+            business_count=len(rows),
+            total_pnl=_quantize_decimal(sum((row.total_pnl for row in rows), Decimal("0"))),
+            total_scale_amount=_quantize_decimal(sum((row.scale_amount for row in rows), Decimal("0"))),
+            traced_pnl_row_count=sum(row.pnl_row_count for row in rows if row.balance_row_count > 0),
+            untraced_pnl_row_count=untraced_count,
+        ),
+        rows=rows,
+    )
+    return _build_pnl_formal_result_envelope_from_lineage(
+        governance_dir=governance_dir,
+        report_date=report_date,
+        trace_id=f"tr_pnl_by_business_{report_date}",
+        result_kind="pnl.by_business",
+        result_payload=payload.model_dump(mode="json"),
+        quality_flag="warning" if untraced_count else None,
+    )
+
+
+def pnl_by_business_ytd_envelope(*, duckdb_path: str, governance_dir: str, year: int) -> dict[str, object]:
+    repo = PnlRepository(duckdb_path)
+    report_dates = [date for date in repo.list_union_report_dates() if str(date).startswith(f"{year:04d}")]
+    if not report_dates:
+        raise ValueError(f"No V1-compatible pnl data found for year={year}.")
+
+    source_root = resolve_pnl_data_input_root()
+    refresh_inputs: list[tuple[str, object]] = []
+    sub_type_dates = set(report_dates)
+    groups: dict[str, dict[str, object]] = {}
+    loaded_dates: list[str] = []
+
+    for report_date in sorted(report_dates):
+        refresh_input = load_latest_pnl_refresh_input(
+            governance_dir=governance_dir,
+            data_root=source_root,
+            report_date=report_date,
+        )
+        refresh_inputs.append((report_date, refresh_input))
+        loaded_dates.append(report_date)
+        for rows in refresh_input.nonstd_rows_by_type.values():
+            sub_type_dates.update(str(row.get("voucher_date") or "").strip() for row in rows if row.get("voucher_date"))
+
+    sub_type_map = repo.fetch_zqtz_sub_type_map(sorted(sub_type_dates))
+
+    for report_date, refresh_input in refresh_inputs:
+        base_currencies = {
+            str(row.get("fx_base_currency") or "").strip().upper()
+            for row in refresh_input.fi_rows
+            if str(row.get("fx_base_currency") or "").strip()
+        }
+        if any(str(row.get("asset_code") or "").strip().upper().startswith("J1") for rows in refresh_input.nonstd_rows_by_type.values() for row in rows):
+            base_currencies.add("USD")
+        fx_rates = repo.fetch_latest_fx_rates(report_date, base_currencies)
+        missing_fx = sorted(currency for currency in base_currencies if currency not in fx_rates)
+        if missing_fx:
+            raise RuntimeError(f"Missing fx rates for report_date={report_date}: {missing_fx}")
+
+        for record in _iter_v1_compatible_pnl_records(
+            report_date=report_date,
+            refresh_input=refresh_input,
+            sub_type_map=sub_type_map,
+            fx_rates=fx_rates,
+        ):
+            _merge_v1_business_record(groups, record)
+
+    if not loaded_dates:
+        raise ValueError(f"No V1-compatible pnl source bundle found for year={year}.")
+
+    total_pnl = sum((Decimal(str(group["total_pnl"])) for group in groups.values()), Decimal("0"))
+    items = [
+        PnlByBusinessYtdItem(
+            business_type=business_type,
+            interest_income=_quantize_decimal(Decimal(str(group["interest_income"]))),
+            fair_value_change=_quantize_decimal(Decimal(str(group["fair_value_change"]))),
+            capital_gain=_quantize_decimal(Decimal(str(group["capital_gain"]))),
+            total_pnl=_quantize_decimal(Decimal(str(group["total_pnl"]))),
+            proportion=(
+                _quantize_ratio(Decimal(str(group["total_pnl"])) / total_pnl)
+                if total_pnl != Decimal("0")
+                else None
+            ),
+            assets_count=len(group["asset_codes"]) if group["asset_codes"] else int(group["row_count"]),
+        )
+        for business_type, group in sorted(
+            groups.items(),
+            key=lambda item: (abs(Decimal(str(item[1]["total_pnl"]))), item[0]),
+            reverse=True,
+        )
+    ]
+    start_month = min(loaded_dates)[:7]
+    end_month = max(loaded_dates)[:7]
+    payload = PnlByBusinessYtdPayload(
+        year=year,
+        period_label=f"{year}年{start_month[-2:]}-{end_month[-2:]}月累计" if start_month != end_month else f"{year}年{end_month[-2:]}月累计",
+        total_pnl=_quantize_decimal(total_pnl),
+        source_tables=[
+            "data_input/pnl",
+            "data_input/pnl_514",
+            "data_input/pnl_516",
+            "data_input/pnl_517",
+            "fact_formal_zqtz_balance_daily",
+            "fx_daily_mid",
+        ],
+        items=items,
+    )
+    return _build_pnl_formal_result_envelope_from_lineage(
+        governance_dir=governance_dir,
+        report_date=max(loaded_dates),
+        trace_id=f"tr_pnl_by_business_ytd_{year}",
+        result_kind="pnl.by_business_ytd",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def pnl_yearly_summary_envelope(*, duckdb_path: str, governance_dir: str, year: int) -> dict[str, object]:
+    repo = PnlRepository(duckdb_path)
+    rows = [
+        PnlYearlyBusinessSummaryRow(
+            year=year,
+            report_month=str(row["report_date"])[:7],
+            report_date=str(row["report_date"]),
+            business_type_primary=str(row["business_type_primary"]),
+            business_type=str(row["business_type"]),
+            currency_basis=str(row["currency_basis"]),
+            total_pnl=_quantize_decimal(Decimal(str(row["total_pnl"] or "0"))),
+            scale_amount=_quantize_decimal(Decimal(str(row["scale_amount"] or "0"))),
+            yield_pct=_quantize_yield_pct(row.get("yield_pct")),
+            pnl_row_count=int(row["pnl_row_count"] or 0),
+        )
+        for row in repo.fetch_yearly_business_rows(year)
+    ]
+    if not rows:
+        raise ValueError(f"No formal pnl business summary found for year={year}.")
+    payload = PnlYearlyBusinessSummaryPayload(
+        year=year,
+        source_tables=["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily"],
+        rows=rows,
+    )
+    return _build_pnl_formal_result_envelope_from_lineage(
+        governance_dir=governance_dir,
+        report_date=None,
+        trace_id=f"tr_pnl_yearly_summary_{year}",
+        result_kind="pnl.yearly_summary",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def _build_v1_detail_rows(
+    *,
+    report_date: str,
+    refresh_input,
+    sub_type_map: dict[tuple[str, str], str],
+    fx_rates: dict[str, Decimal],
+) -> list[PnlV1DetailRow]:
+    rows: list[PnlV1DetailRow] = []
+
+    for row in refresh_input.fi_rows:
+        code = str(row.get("instrument_code") or "").strip()
+        if not code:
+            continue
+        asset_class = str(row.get("asset_class") or "").strip()
+        fx_rate = _v1_fx_rate(row.get("fx_base_currency"), fx_rates)
+        interest_income = Decimal(str(row.get("interest_income_514") or "0"))
+        if any(taxable in asset_class for taxable in V1_FI_TAXABLE_BOND_TYPES):
+            interest_income = interest_income / V1_VAT_DIVISOR
+        fair_value_change = Decimal(str(row.get("fair_value_change_516") or "0"))
+        capital_gain = Decimal(str(row.get("capital_gain_517") or "0")) * Decimal("-1") / V1_VAT_DIVISOR
+        interest_income *= fx_rate
+        fair_value_change *= fx_rate
+        capital_gain *= fx_rate
+        business_type = _v1_normalize_business_type(
+            sub_type_map.get((report_date, code)) or asset_class,
+            code,
+        )
+        rows.append(
+            PnlV1DetailRow(
+                report_date=report_date,
+                source="FI",
+                asset_code=code,
+                bond_name=str(row.get("instrument_name") or code),
+                portfolio=str(row.get("portfolio_name") or ""),
+                asset_type=business_type,
+                asset_class=asset_class or business_type,
+                market_value=Decimal(str(row.get("market_value") or row.get("position_amount") or "0")),
+                interest_income=interest_income,
+                fair_value_change=fair_value_change,
+                capital_gain=capital_gain,
+                total_pnl=interest_income + fair_value_change + capital_gain,
+                source_version=str(row.get("source_version") or ""),
+                trace_id=str(row.get("trace_id") or f"v1-fi:{code}"),
+            )
+        )
+
+    nonstd_groups: dict[str, dict[str, object]] = {}
+    for journal_type, source_rows in refresh_input.nonstd_rows_by_type.items():
+        for row in source_rows:
+            voucher_date = str(row.get("voucher_date") or "").strip()
+            code = str(row.get("asset_code") or "").strip()
+            if not voucher_date or not code:
+                continue
+            if not refresh_input.is_month_end and voucher_date != report_date:
+                continue
+            group = nonstd_groups.setdefault(
+                code,
+                {
+                    "interest_income": Decimal("0"),
+                    "fair_value_change": Decimal("0"),
+                    "capital_gain": Decimal("0"),
+                    "portfolio": str(row.get("portfolio_name") or ""),
+                    "source_version": "",
+                    "trace_id": "",
+                },
+            )
+            amount = Decimal(str(row.get("raw_amount") or "0")) * _v1_dc_sign(row.get("dc_flag"))
+            code_prefix = code[:2].upper()
+            if str(journal_type) == "514" and code_prefix == "JM":
+                amount = amount / V1_VAT_DIVISOR
+            if code_prefix == "J1":
+                amount = amount * _v1_fx_rate("USD", fx_rates)
+            if str(journal_type) == "514":
+                group["interest_income"] = Decimal(str(group["interest_income"])) + amount
+            elif str(journal_type) == "516":
+                group["fair_value_change"] = Decimal(str(group["fair_value_change"])) + amount
+            elif str(journal_type) == "517":
+                group["capital_gain"] = Decimal(str(group["capital_gain"])) + amount
+            _append_unique_value(group, "source_version", str(row.get("source_version") or ""))
+            _append_unique_value(group, "trace_id", str(row.get("trace_id") or ""))
+
+    for code, group in sorted(nonstd_groups.items()):
+        interest_income = Decimal(str(group["interest_income"]))
+        fair_value_change = Decimal(str(group["fair_value_change"]))
+        capital_gain = Decimal(str(group["capital_gain"]))
+        asset_class = sub_type_map.get((report_date, code)) or _v1_nonstd_display_name(code)
+        rows.append(
+            PnlV1DetailRow(
+                report_date=report_date,
+                source="NonStd",
+                asset_code=code,
+                bond_name=code,
+                portfolio=str(group.get("portfolio") or ""),
+                asset_type="H" if interest_income > Decimal("0") else "T",
+                asset_class=asset_class,
+                market_value=Decimal("0"),
+                interest_income=interest_income,
+                fair_value_change=fair_value_change,
+                capital_gain=capital_gain,
+                total_pnl=interest_income + fair_value_change + capital_gain,
+                source_version=str(group.get("source_version") or ""),
+                trace_id=str(group.get("trace_id") or f"v1-nonstd:{code}"),
+            )
+        )
+
+    return rows
+
+
+def _iter_v1_compatible_pnl_records(
+    *,
+    report_date: str,
+    refresh_input,
+    sub_type_map: dict[tuple[str, str], str],
+    fx_rates: dict[str, Decimal],
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for row in refresh_input.fi_rows:
+        code = str(row.get("instrument_code") or "").strip()
+        if not code:
+            continue
+        asset_class = str(row.get("asset_class") or "")
+        fx_rate = _v1_fx_rate(row.get("fx_base_currency"), fx_rates)
+        interest_income = Decimal(str(row.get("interest_income_514") or "0"))
+        if any(taxable in asset_class for taxable in V1_FI_TAXABLE_BOND_TYPES):
+            interest_income = interest_income / V1_VAT_DIVISOR
+        fair_value_change = Decimal(str(row.get("fair_value_change_516") or "0"))
+        capital_gain = Decimal(str(row.get("capital_gain_517") or "0")) * Decimal("-1") / V1_VAT_DIVISOR
+        records.append(
+            _v1_record(
+                report_date=report_date,
+                bond_code=code,
+                raw_business_type=sub_type_map.get((report_date, code)) or asset_class or "未分类",
+                interest_income=interest_income * fx_rate,
+                fair_value_change=fair_value_change * fx_rate,
+                capital_gain=capital_gain * fx_rate,
+                source_version=str(row.get("source_version") or ""),
+            )
+        )
+
+    nonstd_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    for journal_type, rows in refresh_input.nonstd_rows_by_type.items():
+        for row in rows:
+            voucher_date = str(row.get("voucher_date") or "").strip()
+            code = str(row.get("asset_code") or "").strip()
+            if not voucher_date or not code:
+                continue
+            key = (voucher_date, code)
+            bucket = nonstd_by_key.setdefault(
+                key,
+                {
+                    "interest_income": Decimal("0"),
+                    "fair_value_change": Decimal("0"),
+                    "capital_gain": Decimal("0"),
+                    "source_version": "",
+                },
+            )
+            amount = Decimal(str(row.get("raw_amount") or "0")) * _v1_dc_sign(row.get("dc_flag"))
+            code_prefix = code[:2].upper()
+            if str(journal_type) == "514" and code_prefix == "JM":
+                amount = amount / V1_VAT_DIVISOR
+            if code_prefix == "J1":
+                amount = amount * _v1_fx_rate("USD", fx_rates)
+            if str(journal_type) == "514":
+                bucket["interest_income"] = Decimal(str(bucket["interest_income"])) + amount
+            elif str(journal_type) == "516":
+                bucket["fair_value_change"] = Decimal(str(bucket["fair_value_change"])) + amount
+            elif str(journal_type) == "517":
+                bucket["capital_gain"] = Decimal(str(bucket["capital_gain"])) + amount
+            _append_unique_value(bucket, "source_version", str(row.get("source_version") or ""))
+
+    for (voucher_date, code), row in nonstd_by_key.items():
+        records.append(
+            _v1_record(
+                report_date=voucher_date,
+                bond_code=code,
+                raw_business_type=sub_type_map.get((voucher_date, code)) or _v1_nonstd_display_name(code),
+                interest_income=Decimal(str(row["interest_income"])),
+                fair_value_change=Decimal(str(row["fair_value_change"])),
+                capital_gain=Decimal(str(row["capital_gain"])),
+                source_version=str(row["source_version"]),
+            )
+        )
+    return records
+
+
+def _v1_record(
+    *,
+    report_date: str,
+    bond_code: str,
+    raw_business_type: str,
+    interest_income: Decimal,
+    fair_value_change: Decimal,
+    capital_gain: Decimal,
+    source_version: str,
+) -> dict[str, object]:
+    return {
+        "report_date": report_date,
+        "business_type": _v1_normalize_business_type(raw_business_type, bond_code),
+        "bond_code": bond_code,
+        "interest_income": interest_income,
+        "fair_value_change": fair_value_change,
+        "capital_gain": capital_gain,
+        "total_pnl": interest_income + fair_value_change + capital_gain,
+        "source_version": source_version,
+    }
+
+
+def _merge_v1_business_record(groups: dict[str, dict[str, object]], record: dict[str, object]) -> None:
+    business_type = str(record["business_type"])
+    group = groups.setdefault(
+        business_type,
+        {
+            "interest_income": Decimal("0"),
+            "fair_value_change": Decimal("0"),
+            "capital_gain": Decimal("0"),
+            "total_pnl": Decimal("0"),
+            "asset_codes": set(),
+            "row_count": 0,
+        },
+    )
+    for key in ("interest_income", "fair_value_change", "capital_gain", "total_pnl"):
+        group[key] = Decimal(str(group[key])) + Decimal(str(record[key]))
+    code = str(record.get("bond_code") or "").strip()
+    if code:
+        group["asset_codes"].add(code)
+    group["row_count"] = int(group["row_count"]) + 1
+
+
+def _v1_normalize_business_type(raw_business_type: object, bond_code: object) -> str:
+    normalized = V1_BUSINESS_NAME_NORMALIZATION.get(
+        str(raw_business_type or "").strip(),
+        str(raw_business_type or "").strip() or "其他债券",
+    )
+    if normalized != "其他债券":
+        return normalized
+    code = str(bond_code or "").strip().upper()
+    if len(code) >= 2:
+        return V1_ZQTZ_PREFIX_MAP.get(code[:2], "其他债券")
+    return "其他债券"
+
+
+def _v1_nonstd_display_name(asset_code: object) -> str:
+    code = str(asset_code or "").strip()
+    if not code or code.lower() in {"nan", "none"}:
+        return "未标注"
+    for prefix, name in (
+        ("J0", "人民币资管产品"),
+        ("JM", "债权投资"),
+        ("J4", "结构化产业基金"),
+        ("J1", "美元委外"),
+        ("SA", "公募基金"),
+        ("G0", "结构化融资"),
+        ("G2", "信托产品"),
+    ):
+        if code.startswith(prefix):
+            return name
+    return "其他"
+
+
+def _v1_fx_rate(base_currency: object, fx_rates: dict[str, Decimal]) -> Decimal:
+    key = str(base_currency or "").strip().upper()
+    if not key:
+        return Decimal("1")
+    return fx_rates[key]
+
+
+def _v1_dc_sign(dc_flag: object) -> Decimal:
+    normalized = str(dc_flag or "").strip().lower()
+    return Decimal("1") if normalized in {"贷", "credit", "cr"} else Decimal("-1")
+
+
+def _append_unique_value(bucket: dict[str, object], key: str, value: str) -> None:
+    if not value:
+        return
+    existing = str(bucket.get(key) or "")
+    values = [part for part in existing.split("__") if part]
+    if value not in values:
+        values.append(value)
+    bucket[key] = "__".join(values)
+
+
 def _build_pnl_formal_result_envelope_from_lineage(
     *,
     governance_dir: str,
@@ -293,6 +831,33 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dic
 
 def _quantize_decimal(value: Decimal) -> Decimal:
     return value.quantize(TWOPLACES)
+
+
+def _quantize_ratio(value: Decimal) -> Decimal:
+    return value.quantize(RATIOPLACES)
+
+
+def _quantize_yield_pct(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value)).quantize(Decimal("0.000001"))
+
+
+def _quantized_business_row(row: dict[str, object]) -> dict[str, object]:
+    out = dict(row)
+    for key in (
+        "interest_income_514",
+        "fair_value_change_516",
+        "capital_gain_517",
+        "manual_adjustment",
+        "total_pnl",
+        "scale_amount",
+    ):
+        out[key] = _quantize_decimal(Decimal(str(out.get(key) or "0")))
+    out["yield_pct"] = _quantize_yield_pct(out.get("yield_pct"))
+    out["pnl_row_count"] = int(out.get("pnl_row_count") or 0)
+    out["balance_row_count"] = int(out.get("balance_row_count") or 0)
+    return out
 
 
 def _json_safe_payload(value: object) -> object:

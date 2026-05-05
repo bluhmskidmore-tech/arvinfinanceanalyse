@@ -1685,6 +1685,33 @@ describe("createApiClient", () => {
           }),
         };
       }
+      if (url.includes("/api/pnl/v1-data?date=2026-02-28")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_v1_data",
+              basis: "formal",
+              result_kind: "pnl.v1_data",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_date: "2026-02-28",
+              source_tables: ["data_input/pnl"],
+              rows: [],
+            },
+          }),
+        };
+      }
       return {
         ok: true,
         json: async () => ({
@@ -1725,7 +1752,11 @@ describe("createApiClient", () => {
 
     await client.getFormalPnlDates();
     await client.getFormalPnlData("2026-02-28");
+    await client.getPnlV1Data("2026-02-28");
     await client.getFormalPnlOverview("2026-02-28");
+    await client.getPnlByBusiness("2026-02-28");
+    await client.getPnlByBusinessYtd(2026);
+    await client.getPnlYearlyBusinessSummary(2026);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1747,7 +1778,43 @@ describe("createApiClient", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
+      "http://localhost:8000/api/pnl/v1-data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       "http://localhost:8000/api/pnl/overview?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/pnl/by-business?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/pnl/by-business-ytd?year=2026",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/pnl/yearly-summary?year=2026",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",

@@ -149,7 +149,11 @@ import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCu
 import type { ExecutiveClientMethods } from "./executiveClient";
 import { fetchHomeSnapshotEnvelope } from "./executiveHomeSnapshotFetch";
 import type { MarketDataClientMethods } from "./marketDataClient";
-import type { PnlClientMethods } from "./pnlClient";
+import {
+  createMockPnlBusinessClient,
+  createRealPnlBusinessClient,
+  type PnlClientMethods,
+} from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import {
@@ -2202,6 +2206,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createMockMarketDataClient(),
     ...createMockKpiClient(),
     ...createMockCubeClient(),
+    ...createMockPnlBusinessClient(),
     async getHealth() {
       await delay();
       return { status: "ok" };
@@ -3964,6 +3969,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealMarketDataClient({ fetchImpl, baseUrl }),
     ...createRealKpiClient({ fetchImpl, baseUrl }),
     ...createRealCubeClient({ fetchImpl, baseUrl }),
+    ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
     async getHealth() {
       const response = await fetchImpl(`${baseUrl}/health/ready`, {
         headers: { Accept: "application/json" },

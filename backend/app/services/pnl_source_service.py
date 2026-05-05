@@ -302,9 +302,11 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
         parsed_row = {
             "report_date": report_date,
             "instrument_code": instrument_code,
+            "instrument_name": _cell_text(raw_row.get("债券名称")),
             "portfolio_name": _cell_text(raw_row.get("投资组合")),
             "cost_center": _cell_text(raw_row.get("成本中心")),
             "invest_type_raw": _cell_text(raw_row.get("投资类型")),
+            "asset_class": _cell_text(raw_row.get("债券分类")),
             "interest_income_514": _to_decimal(raw_row.get("利息514")),
             "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
             "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),

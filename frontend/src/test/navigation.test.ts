@@ -68,6 +68,7 @@ describe("workbench navigation mocks", () => {
       "cashflow-projection",
       "kpi-performance",
       "product-category-pnl",
+      "pnl-by-business",
     ];
 
     for (const key of temporaryExceptionKeys) {
@@ -276,7 +277,7 @@ describe("workbench navigation mocks", () => {
   it("resolves MOSS-V1-style paths to the canonical V3 workbench routes", () => {
     expect(resolveWorkbenchPathAlias("/adb")).toBe("/average-balance");
     expect(resolveWorkbenchPathAlias("/macro-analysis")).toBe("/market-data");
-    expect(resolveWorkbenchPathAlias("/pnl-by-business")).toBe("/ledger-pnl");
+    expect(resolveWorkbenchPathAlias("/pnl-by-business")).toBe("/pnl-by-business");
     expect(resolveWorkbenchPathAlias("/liabilities")).toBe("/liability-analytics");
     expect(resolveWorkbenchPathAlias("/bonds")).toBe("/bond-dashboard");
     expect(resolveWorkbenchPathAlias("/bond-analytics-advanced")).toBe("/bond-analysis");

@@ -9,9 +9,12 @@ import { createApiClient, type ApiClient } from "../api/client";
 import type {
   Numeric,
   PnlBridgePayload,
-  PnlDataPayload,
+  PnlByBusinessPayload,
+  PnlByBusinessYtdPayload,
   PnlDatesPayload,
   PnlOverviewPayload,
+  PnlV1DataPayload,
+  PnlYearlyBusinessSummaryPayload,
   ResultMeta,
 } from "../api/contracts";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
@@ -55,29 +58,27 @@ function buildPnlClient(): ApiClient {
     manual_adjustment: "0.00",
     total_pnl: "13.00",
   };
-  const data: PnlDataPayload = {
+  const data: PnlV1DataPayload = {
     report_date: "2025-12-31",
-    formal_fi_rows: [
+    source_tables: ["data_input/pnl"],
+    rows: [
       {
         report_date: "2025-12-31",
-        instrument_code: "240001.IB",
-        portfolio_name: "Route FI",
-        cost_center: "cc-route",
-        invest_type_std: "T",
-        accounting_basis: "FVTPL",
-        currency_basis: "CNY",
-        interest_income_514: "10.00",
-        fair_value_change_516: "1.00",
-        capital_gain_517: "2.00",
-        manual_adjustment: "0.00",
-        total_pnl: "13.00",
+        source: "FI",
+        asset_code: "240001.IB",
+        bond_name: "Route Bond",
+        portfolio: "Route FI",
+        asset_type: "T",
+        asset_class: "bond",
+        market_value: "1000000.00",
+        interest_income: "100000.00",
+        fair_value_change: "10000.00",
+        capital_gain: "20000.00",
+        total_pnl: "130000.00",
         source_version: "sv_route_smoke",
-        rule_version: "rv_route_smoke",
-        ingest_batch_id: "ib-route",
         trace_id: "tr_route_fi",
       },
     ],
-    nonstd_bridge_rows: [],
   };
   const bridge: PnlBridgePayload = {
     report_date: "2025-12-31",
@@ -124,6 +125,70 @@ function buildPnlClient(): ApiClient {
       },
     ],
   };
+  const byBusiness: PnlByBusinessPayload = {
+    report_date: "2025-12-31",
+    source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    summary: {
+      business_count: 1,
+      total_pnl: "13.00",
+      total_scale_amount: "100000000.00",
+      traced_pnl_row_count: 1,
+      untraced_pnl_row_count: 0,
+    },
+    rows: [
+      {
+        report_date: "2025-12-31",
+        business_type_primary: "政策性金融债",
+        business_type: "政策性金融债",
+        currency_basis: "CNY",
+        interest_income_514: "10.00",
+        fair_value_change_516: "1.00",
+        capital_gain_517: "2.00",
+        manual_adjustment: "0.00",
+        total_pnl: "13.00",
+        scale_amount: "100000000.00",
+        yield_pct: "0.000013",
+        pnl_row_count: 1,
+        balance_row_count: 1,
+      },
+    ],
+  };
+  const byBusinessYtd: PnlByBusinessYtdPayload = {
+    year: 2025,
+    period_type: "yearly",
+    period_label: "2025年12月累计",
+    total_pnl: "13.00",
+    source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily"],
+    items: [
+      {
+        business_type: "政策性金融债",
+        interest_income: "10.00",
+        fair_value_change: "1.00",
+        capital_gain: "2.00",
+        total_pnl: "13.00",
+        proportion: "1.000000",
+        assets_count: 1,
+      },
+    ],
+  };
+  const yearlyBusiness: PnlYearlyBusinessSummaryPayload = {
+    year: 2025,
+    source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    rows: [
+      {
+        year: 2025,
+        report_month: "2025-12",
+        report_date: "2025-12-31",
+        business_type_primary: "政策性金融债",
+        business_type: "政策性金融债",
+        currency_basis: "CNY",
+        total_pnl: "13.00",
+        scale_amount: "100000000.00",
+        yield_pct: "0.000013",
+        pnl_row_count: 1,
+      },
+    ],
+  };
 
   return {
     ...base,
@@ -135,13 +200,25 @@ function buildPnlClient(): ApiClient {
       result_meta: buildMeta("pnl.overview", "tr_route_overview"),
       result: overview,
     })),
-    getFormalPnlData: vi.fn(async () => ({
-      result_meta: buildMeta("pnl.data", "tr_route_data"),
+    getPnlV1Data: vi.fn(async () => ({
+      result_meta: buildMeta("pnl.v1_data", "tr_route_data"),
       result: data,
     })),
     getPnlBridge: vi.fn(async () => ({
       result_meta: buildMeta("pnl.bridge", "tr_route_bridge"),
       result: bridge,
+    })),
+    getPnlByBusiness: vi.fn(async () => ({
+      result_meta: buildMeta("pnl.by_business", "tr_route_business"),
+      result: byBusiness,
+    })),
+    getPnlByBusinessYtd: vi.fn(async () => ({
+      result_meta: buildMeta("pnl.by_business_ytd", "tr_route_business_ytd"),
+      result: byBusinessYtd,
+    })),
+    getPnlYearlyBusinessSummary: vi.fn(async () => ({
+      result_meta: buildMeta("pnl.yearly_summary", "tr_route_business_year"),
+      result: yearlyBusiness,
     })),
   };
 }
@@ -155,7 +232,9 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByLabelText("pnl-report-date")).toHaveValue("2025-12-31");
     });
     expect(await screen.findByTestId("pnl-refresh-button")).toBeInTheDocument();
-    expect(await screen.findByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_route_data");
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_route_data");
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("13.00");
@@ -176,6 +255,22 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("6.00");
       expect(screen.getByTestId("pnl-bridge-detail-table")).toHaveTextContent("240001.IB");
+    });
+  });
+
+  it("renders the real /pnl-by-business route surface through workbench routes", async () => {
+    renderWorkbenchApp(["/pnl-by-business"], { client: buildPnlClient() });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("pnl-by-business-report-date")).toHaveValue("2025-12-31");
+    });
+    expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_ytd");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("100.00%");
     });
   });
 });

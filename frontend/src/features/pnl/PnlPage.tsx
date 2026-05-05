@@ -7,7 +7,7 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../api/client";
-import type { LiabilityYieldKpi, Numeric, PnlBasis, PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
+import type { LiabilityYieldKpi, Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
 import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
@@ -101,27 +101,16 @@ function thousandsValueFormatter(params: ValueFormatterParams) {
   return numeric.toLocaleString("zh-CN");
 }
 
-const formalFiColumnDefs: ColDef<PnlFormalFiRow>[] = [
-  { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
-  { field: "portfolio_name", headerName: "组合", width: 120 },
-  { field: "cost_center", headerName: "成本中心", width: 120 },
-  { field: "invest_type_std", headerName: "投资类型", width: 120 },
-  { field: "accounting_basis", headerName: "会计分类", width: 100 },
-  { field: "interest_income_514", headerName: "利息收入(514)", width: 140, type: "numericColumn" },
-  { field: "fair_value_change_516", headerName: "公允变动(516)", width: 140, type: "numericColumn" },
-  { field: "capital_gain_517", headerName: "资本利得(517)", width: 140, type: "numericColumn" },
-  { field: "manual_adjustment", headerName: "手工调整", width: 120, type: "numericColumn" },
-  { field: "total_pnl", headerName: "合计损益", width: 130, type: "numericColumn" },
-];
-
-const nonstdBridgeColumnDefs: ColDef<PnlNonStdBridgeRow>[] = [
-  { field: "bond_code", headerName: "债券代码", width: 140, pinned: "left" },
-  { field: "portfolio_name", headerName: "组合", width: 120 },
-  { field: "cost_center", headerName: "成本中心", width: 120 },
-  { field: "interest_income_514", headerName: "利息收入(514)", width: 140, type: "numericColumn" },
-  { field: "fair_value_change_516", headerName: "公允变动(516)", width: 140, type: "numericColumn" },
-  { field: "capital_gain_517", headerName: "资本利得(517)", width: 140, type: "numericColumn" },
-  { field: "manual_adjustment", headerName: "手工调整", width: 120, type: "numericColumn" },
+const v1DetailColumnDefs: ColDef<PnlV1DetailRow>[] = [
+  { field: "asset_code", headerName: "资产代码", width: 140, pinned: "left" },
+  { field: "bond_name", headerName: "资产名称", width: 180 },
+  { field: "portfolio", headerName: "组合", width: 130 },
+  { field: "asset_type", headerName: "投资类型", width: 120 },
+  { field: "asset_class", headerName: "资产分类", width: 140 },
+  { field: "market_value", headerName: "市值", width: 130, type: "numericColumn" },
+  { field: "interest_income", headerName: "514利息收入", width: 140, type: "numericColumn" },
+  { field: "fair_value_change", headerName: "516公允价值", width: 140, type: "numericColumn" },
+  { field: "capital_gain", headerName: "517投资收益", width: 140, type: "numericColumn" },
   { field: "total_pnl", headerName: "合计损益", width: 130, type: "numericColumn" },
 ];
 
@@ -158,6 +147,25 @@ function isYieldKpiAllNull(kpi: LiabilityYieldKpi | null | undefined) {
   );
 }
 
+function parseMoney(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return 0;
+  }
+  const parsed = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sumPnlRows(rows: PnlV1DetailRow[], field: "interest_income" | "fair_value_change" | "capital_gain" | "total_pnl") {
+  return rows.reduce((total, row) => total + parseMoney(row[field]), 0);
+}
+
+function formatWan(value: number) {
+  return (value / 10000).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export default function PnlPage() {
   const client = useApiClient();
   const [basis, setBasis] = useState<PnlBasis>("formal");
@@ -167,8 +175,7 @@ export default function PnlPage() {
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
-  const formalFiColDefs = useMemo(() => withNumericFormatters(formalFiColumnDefs), []);
-  const nonstdColDefs = useMemo(() => withNumericFormatters(nonstdBridgeColumnDefs), []);
+  const v1DetailColDefs = useMemo(() => withNumericFormatters(v1DetailColumnDefs), []);
 
   const agGridShellStyle = useMemo(
     () =>
@@ -210,17 +217,10 @@ export default function PnlPage() {
     }
   }, [reportDates, selectedReportDate]);
 
-  const overviewQuery = useQuery({
-    queryKey: ["pnl", "overview", client.mode, basis, selectedReportDate],
-    enabled: Boolean(selectedReportDate),
-    queryFn: () => client.getFormalPnlOverview(selectedReportDate, basis),
-    retry: false,
-  });
-
   const dataQuery = useQuery({
-    queryKey: ["pnl", "data", client.mode, basis, selectedReportDate],
+    queryKey: ["pnl", "v1-data", client.mode, selectedReportDate],
     enabled: Boolean(selectedReportDate),
-    queryFn: () => client.getFormalPnlData(selectedReportDate, basis),
+    queryFn: () => client.getPnlV1Data(selectedReportDate),
     retry: false,
   });
 
@@ -231,19 +231,29 @@ export default function PnlPage() {
     retry: false,
   });
 
-  const overview = overviewQuery.data?.result;
-  const formalRows = dataQuery.data?.result.formal_fi_rows ?? [];
-  const nonstdRows = dataQuery.data?.result.nonstd_bridge_rows ?? [];
+  const allRows = useMemo(() => dataQuery.data?.result.rows ?? [], [dataQuery.data?.result.rows]);
+  const formalRows = useMemo(() => allRows.filter((row) => row.source === "FI"), [allRows]);
+  const nonstdRows = useMemo(() => allRows.filter((row) => row.source === "NonStd"), [allRows]);
+  const pnlTotals = useMemo(
+    () => ({
+      formalRowCount: formalRows.length,
+      nonstdRowCount: nonstdRows.length,
+      interestIncome: sumPnlRows(allRows, "interest_income"),
+      fairValueChange: sumPnlRows(allRows, "fair_value_change"),
+      capitalGain: sumPnlRows(allRows, "capital_gain"),
+      totalPnl: sumPnlRows(allRows, "total_pnl"),
+    }),
+    [allRows, formalRows.length, nonstdRows.length],
+  );
 
-  const overviewLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && overviewQuery.isLoading);
-  const overviewError = datesQuery.isError || overviewQuery.isError;
+  const overviewLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
+  const overviewError = datesQuery.isError || dataQuery.isError;
   const overviewEmpty =
     !datesQuery.isLoading &&
-    !overviewQuery.isLoading &&
+    !dataQuery.isLoading &&
     !datesQuery.isError &&
-    !overviewQuery.isError &&
-    (!selectedReportDate ||
-      ((overview?.formal_fi_row_count ?? 0) === 0 && (overview?.nonstd_bridge_row_count ?? 0) === 0));
+    !dataQuery.isError &&
+    (!selectedReportDate || allRows.length === 0);
 
   const dataLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
   const dataError = datesQuery.isError || dataQuery.isError;
@@ -333,7 +343,7 @@ export default function PnlPage() {
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
       }
-      await Promise.all([datesQuery.refetch(), overviewQuery.refetch(), dataQuery.refetch()]);
+      await Promise.all([datesQuery.refetch(), dataQuery.refetch()]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新损益失败");
     } finally {
@@ -480,45 +490,49 @@ export default function PnlPage() {
           isError={overviewError}
           isEmpty={overviewEmpty}
           onRetry={() => {
-            void Promise.all([datesQuery.refetch(), overviewQuery.refetch()]);
+            void Promise.all([datesQuery.refetch(), dataQuery.refetch()]);
           }}
         >
           <div data-testid="pnl-overview-cards" style={summaryGridStyle}>
             <KpiCard
               title="固收明细行数"
-              value={cellText(overview?.formal_fi_row_count)}
+              value={cellText(pnlTotals.formalRowCount)}
               detail="正式固收明细行数（后端计数）。"
               unit="行"
             />
             <KpiCard
               title="非标桥接行数"
-              value={cellText(overview?.nonstd_bridge_row_count)}
+              value={cellText(pnlTotals.nonstdRowCount)}
               detail="非标桥接明细行数（后端计数）。"
               unit="行"
             />
             <KpiCard
               title="利息收入 (514)"
-              value={cellText(overview?.interest_income_514)}
+              value={formatWan(pnlTotals.interestIncome)}
               detail="后端返回的汇总金额字符串。"
-              tone={toneFromSignedDisplayString(cellText(overview?.interest_income_514))}
+              unit="万元"
+              tone={toneFromSignedDisplayString(formatWan(pnlTotals.interestIncome))}
             />
             <KpiCard
               title="公允价值变动 (516)"
-              value={cellText(overview?.fair_value_change_516)}
+              value={formatWan(pnlTotals.fairValueChange)}
               detail="后端返回的汇总金额字符串。"
-              tone={toneFromSignedDisplayString(cellText(overview?.fair_value_change_516))}
+              unit="万元"
+              tone={toneFromSignedDisplayString(formatWan(pnlTotals.fairValueChange))}
             />
             <KpiCard
               title="资本利得 (517)"
-              value={cellText(overview?.capital_gain_517)}
+              value={formatWan(pnlTotals.capitalGain)}
               detail="后端返回的汇总金额字符串。"
-              tone={toneFromSignedDisplayString(cellText(overview?.capital_gain_517))}
+              unit="万元"
+              tone={toneFromSignedDisplayString(formatWan(pnlTotals.capitalGain))}
             />
             <KpiCard
               title="损益合计"
-              value={cellText(overview?.total_pnl)}
+              value={formatWan(pnlTotals.totalPnl)}
               detail="后端返回的汇总损益字符串。"
-              tone={toneFromSignedDisplayString(cellText(overview?.total_pnl))}
+              unit="万元"
+              tone={toneFromSignedDisplayString(formatWan(pnlTotals.totalPnl))}
             />
           </div>
         </AsyncSection>
@@ -550,29 +564,29 @@ export default function PnlPage() {
         >
           {dataTab === "fi" ? (
             <div className="ag-theme-alpine" data-testid="pnl-formal-fi-table" style={agGridShellStyle}>
-              <AgGridReact<PnlFormalFiRow>
+              <AgGridReact<PnlV1DetailRow>
                 rowData={formalRows}
-                columnDefs={formalFiColDefs}
+                columnDefs={v1DetailColDefs}
                 defaultColDef={gridDefaultColDef}
                 animateRows
                 pagination
                 paginationPageSize={50}
                 getRowId={(params) =>
-                  `${String(params.data.trace_id)}-${String(params.data.instrument_code)}-${String(params.data.report_date)}`
+                  `${String(params.data.trace_id)}-${String(params.data.asset_code)}-${String(params.data.report_date)}`
                 }
               />
             </div>
           ) : dataTab === "nonstd" ? (
             <div className="ag-theme-alpine" data-testid="pnl-nonstd-bridge-table" style={agGridShellStyle}>
-              <AgGridReact<PnlNonStdBridgeRow>
+              <AgGridReact<PnlV1DetailRow>
                 rowData={nonstdRows}
-                columnDefs={nonstdColDefs}
+                columnDefs={v1DetailColDefs}
                 defaultColDef={gridDefaultColDef}
                 animateRows
                 pagination
                 paginationPageSize={50}
                 getRowId={(params) =>
-                  `${String(params.data.trace_id)}-${String(params.data.bond_code)}-${String(params.data.report_date)}`
+                  `${String(params.data.trace_id)}-${String(params.data.asset_code)}-${String(params.data.report_date)}`
                 }
               />
             </div>
@@ -611,8 +625,7 @@ export default function PnlPage() {
         testId="pnl-result-meta-panel"
         sections={[
           { key: "dates", title: "报告日列表", meta: datesQuery.data?.result_meta },
-          { key: "overview", title: "正式损益汇总", meta: overviewQuery.data?.result_meta },
-          { key: "data", title: "正式明细与桥接", meta: dataQuery.data?.result_meta },
+          { key: "data", title: "V1明细口径", meta: dataQuery.data?.result_meta },
         ]}
       />
     </section>

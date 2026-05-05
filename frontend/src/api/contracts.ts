@@ -1218,6 +1218,96 @@ export type PnlOverviewPayload = {
   total_pnl: string;
 };
 
+export type PnlV1DetailRow = {
+  report_date: string;
+  source: "FI" | "NonStd" | string;
+  asset_code: string;
+  bond_name: string;
+  portfolio: string;
+  asset_type: string;
+  asset_class: string;
+  market_value: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  total_pnl: string;
+  source_version: string;
+  trace_id: string;
+};
+
+export type PnlV1DataPayload = {
+  report_date: string;
+  source_tables: string[];
+  rows: PnlV1DetailRow[];
+};
+
+export type PnlByBusinessRow = {
+  report_date: string;
+  business_type_primary: string;
+  business_type: string;
+  currency_basis: string;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  scale_amount: string;
+  yield_pct: string | null;
+  pnl_row_count: number;
+  balance_row_count: number;
+};
+
+export type PnlByBusinessPayload = {
+  report_date: string;
+  source_tables: string[];
+  summary: {
+    business_count: number;
+    total_pnl: string;
+    total_scale_amount: string;
+    traced_pnl_row_count: number;
+    untraced_pnl_row_count: number;
+  };
+  rows: PnlByBusinessRow[];
+};
+
+export type PnlByBusinessYtdItem = {
+  business_type: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  total_pnl: string;
+  proportion: string | null;
+  assets_count: number;
+};
+
+export type PnlByBusinessYtdPayload = {
+  year: number;
+  period_type: "yearly";
+  period_label: string;
+  total_pnl: string;
+  source_tables: string[];
+  items: PnlByBusinessYtdItem[];
+};
+
+export type PnlYearlyBusinessSummaryRow = {
+  year: number;
+  report_month: string;
+  report_date: string;
+  business_type_primary: string;
+  business_type: string;
+  currency_basis: string;
+  total_pnl: string;
+  scale_amount: string;
+  yield_pct: string | null;
+  pnl_row_count: number;
+};
+
+export type PnlYearlyBusinessSummaryPayload = {
+  year: number;
+  source_tables: string[];
+  rows: PnlYearlyBusinessSummaryRow[];
+};
+
 export type PnlBridgeQuality = "ok" | "warning" | "error";
 
 export type PnlBridgeRow = {

@@ -17,6 +17,7 @@ const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
+const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const PnlAttributionPage = lazy(
   () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
@@ -294,7 +295,7 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "pnl-by-business",
-        element: <Navigate to="/ledger-pnl" replace />,
+        element: routeElement(<PnlByBusinessPage />),
       },
       {
         path: "liabilities",
