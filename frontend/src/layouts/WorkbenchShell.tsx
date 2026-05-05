@@ -374,12 +374,20 @@ export function WorkbenchShell() {
     isLiabilityAnalyticsCompactChrome;
   const isMinimalMainChrome =
     isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isPortfolioPageOwnedChrome;
-  const showWorkspaceHeroCard =
+  const showBalanceAnalysisLightHint = isPortfolioGroup && isBalanceAnalysisCompactChrome;
+  const showFullWorkspaceGuidance =
+    currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
     !isBalanceMovementAnalysisCompactChrome &&
     !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
+  const showWorkspaceHeroCard = showBalanceAnalysisLightHint || showFullWorkspaceGuidance;
+  const showPortfolioDecisionBoard =
+    isPortfolioGroup &&
+    currentSection.readiness !== "live" &&
+    !isBondAnalysisMinimalShell &&
+    !isPortfolioPageOwnedChrome;
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
   const bondAnalyticsDatesQuery = useQuery({
@@ -1354,7 +1362,7 @@ export function WorkbenchShell() {
             gap: 18,
           }}
         >
-          {isPortfolioGroup && !isBondAnalysisMinimalShell && !isPortfolioPageOwnedChrome ? (
+          {showPortfolioDecisionBoard ? (
             <section
               data-testid="portfolio-workbench-board"
               style={{

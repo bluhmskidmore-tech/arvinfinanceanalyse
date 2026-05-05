@@ -46,6 +46,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
           { path: "liability-analytics", element: <div>liability-analytics body</div> },
           { path: "pnl", element: <div>pnl body</div> },
+          { path: "reports", element: <div>reports body</div> },
           { path: "platform-config", element: <div>platform body</div> },
           { path: "agent", element: <div>agent body</div> },
         ],
@@ -94,27 +95,20 @@ describe("WorkbenchShell", () => {
     expect(hrefs).not.toContain("/reports");
   });
 
-  it("renders a portfolio-specific decision surface when browsing the portfolio workbench", async () => {
+  it("keeps live portfolio pages focused on page content instead of shell guidance", async () => {
     renderShellAt("/pnl");
 
-    const lead = await screen.findByTestId("portfolio-workbench-lead");
-    expect(lead).toHaveTextContent("组合状态先看错配，再看损益，最后定位仓位与归因");
-    expect(lead).toHaveTextContent("资产负债分析");
+    expect(await screen.findByText("pnl body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
 
-    const flow = screen.getByTestId("portfolio-workbench-flow");
-    expect(flow).toHaveTextContent("先看资产负债");
-    expect(flow).toHaveTextContent("最后做原因解释");
-
-    const board = screen.getByTestId("portfolio-workbench-board");
-    expect(board).toHaveTextContent("状态判断");
-    expect(board).toHaveTextContent("仓位与结构");
-    expect(board).toHaveTextContent("原因解释");
-    expect(board).toHaveTextContent("债券总览");
-    expect(board).toHaveTextContent("持仓透视");
-    expect(board).toHaveTextContent("损益桥接");
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    expect(subnav).toHaveTextContent("全部已开放页面");
+    expect(within(subnav).getByRole("link", { name: /损益明细/ })).toHaveAttribute("href", "/pnl");
   });
 
-  it("keeps portfolio page selection with a compact hint on balance-analysis", async () => {
+  it("keeps live balance-analysis focused on page content with its compact hint", async () => {
     renderShellAt("/balance-analysis");
 
     expect(await screen.findByText("balance-analysis body")).toBeInTheDocument();
@@ -131,6 +125,14 @@ describe("WorkbenchShell", () => {
       .map((link) => link.getAttribute("href"));
     expect(hrefs).toContain("/balance-analysis");
     expect(hrefs).toContain("/balance-movement-analysis");
+  });
+
+  it("retains shell guidance and readiness warning for placeholder routes", async () => {
+    renderShellAt("/reports");
+
+    expect(await screen.findByText("reports body")).toBeInTheDocument();
+    expect(screen.getByText("当前只突出可验证的真实读链路")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-readiness-banner")).toHaveTextContent("当前页面仍是占位壳层");
   });
 
   it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
