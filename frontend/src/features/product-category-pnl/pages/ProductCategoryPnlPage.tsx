@@ -9,9 +9,11 @@ import type {
   ProductCategoryAttributionPayload,
   ProductCategoryAttributionRow,
   ProductCategoryManualAdjustmentRequest,
+  ResultMeta,
 } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
+import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
@@ -593,6 +595,7 @@ function productCategoryAttributionIncompleteCopy(compare: ProductCategoryAttrib
 
 function ProductCategoryInterestSpreadAttributionPanel(props: {
   surface: ProductCategoryInterestSpreadAttributionSurface | null;
+  resultMeta?: ResultMeta | null;
 }) {
   if (!props.surface) {
     return null;
@@ -625,11 +628,10 @@ function ProductCategoryInterestSpreadAttributionPanel(props: {
           </div>
         ))}
       </div>
-      {props.surface.incompleteReasons.length > 0 ? (
-        <div className="product-category-interest-spread-attribution__notice">
-          {props.surface.incompleteReasons.join(" ")}
-        </div>
-      ) : null}
+      <DataQualityBanner
+        resultMeta={props.resultMeta}
+        degradedReasons={props.surface.incompleteReasons}
+      />
       <div className="product-category-interest-spread-attribution__table-wrap">
         <table className="product-category-interest-spread-attribution__table">
           <thead>
@@ -682,6 +684,7 @@ function ProductCategoryAttributionPanel(props: {
   selectedView: string;
   compare: ProductCategoryAttributionCompare;
   payload?: ProductCategoryAttributionPayload;
+  resultMeta?: ResultMeta | null;
   isLoading: boolean;
   isError: boolean;
   onCompareChange: (compare: ProductCategoryAttributionCompare) => void;
@@ -744,6 +747,10 @@ function ProductCategoryAttributionPanel(props: {
             onCompareChange={props.onCompareChange}
           />
         </div>
+        <DataQualityBanner
+          resultMeta={props.resultMeta}
+          degradedReasons={["归因数据准备中，请稍后刷新"]}
+        />
         <div
           className="product-category-attribution__empty"
           data-testid="product-category-attribution-incomplete"
@@ -2261,6 +2268,7 @@ export default function ProductCategoryPnlPage() {
         selectedView={selectedView}
         compare={attributionCompare}
         payload={attributionQuery.data?.result}
+        resultMeta={attributionQuery.data?.result_meta}
         isLoading={attributionQuery.isLoading}
         isError={attributionQuery.isError}
         onCompareChange={setAttributionCompare}
@@ -2924,6 +2932,7 @@ export default function ProductCategoryPnlPage() {
           </div>
           <ProductCategoryInterestSpreadAttributionPanel
             surface={interestSpreadAttributionSurface}
+            resultMeta={baselineQuery.data?.result_meta}
           />
         </>
       ) : null}

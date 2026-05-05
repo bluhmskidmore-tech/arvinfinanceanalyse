@@ -122,27 +122,6 @@ import type {
   YieldDistributionPayload,
   VolumeRateAttributionPayload,
 } from "./contracts";
-import {
-  mockAdvancedAttributionSummary,
-  mockCampisiAttribution,
-  mockCarryRollDown,
-  mockKrdAttribution,
-  mockPnlAttributionAnalysisSummary,
-  mockPnlComposition,
-  mockSpreadAttribution,
-  mockTplMarketCorrelation,
-  mockVolumeRateAttribution,
-} from "../mocks/pnlAttributionWorkbench";
-import {
-  alertsPayload,
-  contributionPayload,
-  mockHomeSnapshot,
-  overviewPayload,
-  placeholderSnapshots,
-  pnlAttributionPayload,
-  riskOverviewPayload,
-  summaryPayload,
-} from "../mocks/workbench";
 import { formatRawAsNumeric } from "../utils/format";
 import type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
@@ -157,11 +136,6 @@ import {
   type PnlClientMethods,
 } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
-import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
-import {
-  buildMockProductCategoryAttributionEnvelope,
-  buildMockProductCategoryPnlEnvelope,
-} from "../mocks/productCategoryPnl";
 import { MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES } from "./marketDataMocks";
 import {
   createMockBalanceMovementClient,
@@ -191,13 +165,6 @@ import {
   createRealCubeClient,
   type CubeClientMethods,
 } from "./cubeClient";
-
-import {
-  mockCampisiFourEffects,
-  mockCampisiEnhanced,
-  mockCampisiMaturityBuckets,
-} from "../mocks/campisiMocks";
-import { mockLedgerPnlData, mockLedgerPnlDates, mockLedgerPnlSummary } from "../mocks/ledgerPnlMocks";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -245,6 +212,36 @@ type ApiClientProviderProps = {
 const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+
+type MockClientBundle = Awaited<ReturnType<typeof loadMockClientBundle>>;
+let mockClientBundleCache: MockClientBundle | null = null;
+
+async function loadMockClientBundle(): Promise<MockClientBundle> {
+  const [mockApi, workbench, pnlAttribution, productCategory, campisi, ledgerPnl] =
+    await Promise.all([
+      import("../mocks/mockApiEnvelope"),
+      import("../mocks/workbench"),
+      import("../mocks/pnlAttributionWorkbench"),
+      import("../mocks/productCategoryPnl"),
+      import("../mocks/campisiMocks"),
+      import("../mocks/ledgerPnlMocks"),
+    ]);
+  return {
+    buildMockApiEnvelope: mockApi.buildMockApiEnvelope,
+    buildMockProductCategoryPnlEnvelope: productCategory.buildMockProductCategoryPnlEnvelope,
+    buildMockProductCategoryAttributionEnvelope:
+      productCategory.buildMockProductCategoryAttributionEnvelope,
+    ...workbench,
+    ...pnlAttribution,
+    ...campisi,
+    ...ledgerPnl,
+  };
+}
+
+async function ensureMockClientBundle(): Promise<MockClientBundle> {
+  mockClientBundleCache ??= await loadMockClientBundle();
+  return mockClientBundleCache;
+}
 
 function isFiniteNumber(value: number | undefined): value is number {
   return value !== undefined && Number.isFinite(value);
@@ -1273,15 +1270,16 @@ function buildBalanceAnalysisBasisRows(
   }));
 }
 
-function buildMockBalanceAnalysisSummaryTable(
+async function buildMockBalanceAnalysisSummaryTable(
   reportDate: string,
   positionScope: BalancePositionScope,
   currencyBasis: BalanceCurrencyBasis,
   limit: number,
   offset: number,
-): ApiEnvelope<BalanceAnalysisSummaryTablePayload> {
+): Promise<ApiEnvelope<BalanceAnalysisSummaryTablePayload>> {
   const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
-  return buildMockApiEnvelope(
+  const wrap = (await import("../mocks/mockApiEnvelope")).buildMockApiEnvelope;
+  return wrap(
     "balance-analysis.summary",
     {
       report_date: reportDate,
@@ -1352,12 +1350,13 @@ function buildMockBalanceAnalysisSummaryCsv(
   };
 }
 
-function buildMockBalanceAnalysisWorkbook(
+async function buildMockBalanceAnalysisWorkbook(
   reportDate: string,
   positionScope: BalancePositionScope,
   currencyBasis: BalanceCurrencyBasis,
-): ApiEnvelope<BalanceAnalysisWorkbookPayload> {
-  return buildMockApiEnvelope(
+): Promise<ApiEnvelope<BalanceAnalysisWorkbookPayload>> {
+  const wrap = (await import("../mocks/mockApiEnvelope")).buildMockApiEnvelope;
+  return wrap(
     "balance-analysis.workbook",
     {
       report_date: reportDate,
@@ -1617,12 +1616,13 @@ function buildMockBalanceAnalysisWorkbook(
   );
 }
 
-function buildMockBalanceAnalysisDecisionItems(
+async function buildMockBalanceAnalysisDecisionItems(
   reportDate: string,
   positionScope: BalancePositionScope,
   currencyBasis: BalanceCurrencyBasis,
-): ApiEnvelope<BalanceAnalysisDecisionItemsPayload> {
-  return buildMockApiEnvelope(
+): Promise<ApiEnvelope<BalanceAnalysisDecisionItemsPayload>> {
+  const wrap = (await import("../mocks/mockApiEnvelope")).buildMockApiEnvelope;
+  return wrap(
     "balance-analysis.decision-items",
     {
       report_date: reportDate,
@@ -2230,19 +2230,19 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getOverview(_reportDate?: string) {
       await delay();
-      return buildMockApiEnvelope("executive.overview", overviewPayload);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.overview", (await ensureMockClientBundle()).overviewPayload);
     },
     async getHomeSnapshot(_options?: GetHomeSnapshotOptions) {
       await delay();
-      return buildMockApiEnvelope("home.snapshot", mockHomeSnapshot);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("home.snapshot", (await ensureMockClientBundle()).mockHomeSnapshot);
     },
     async getSummary() {
       await delay();
-      return buildMockApiEnvelope("executive.summary", summaryPayload);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.summary", (await ensureMockClientBundle()).summaryPayload);
     },
     async getFormalPnlDates(basis = "formal") {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl.dates",
         {
           report_dates: [],
@@ -2254,7 +2254,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getFormalPnlData(date: string, basis = "formal") {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl.data",
         {
           report_date: date,
@@ -2266,7 +2266,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getFormalPnlOverview(reportDate: string, basis = "formal") {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl.overview",
         {
           report_date: reportDate,
@@ -2283,35 +2283,35 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getLedgerPnlDates() {
       await delay();
-      return buildMockApiEnvelope("ledger_pnl.dates", mockLedgerPnlDates, {
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("ledger_pnl.dates", (await ensureMockClientBundle()).mockLedgerPnlDates, {
         basis: "formal",
         formal_use_allowed: true,
       });
     },
     async getLedgerPnlData(reportDate: string, currency) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "ledger_pnl.data",
         {
-          ...mockLedgerPnlData,
+          ...(await ensureMockClientBundle()).mockLedgerPnlData,
           report_date: reportDate,
           items: currency
-            ? mockLedgerPnlData.items.filter((item) => item.currency === currency)
-            : mockLedgerPnlData.items,
+            ? (await ensureMockClientBundle()).mockLedgerPnlData.items.filter((item) => item.currency === currency)
+            : (await ensureMockClientBundle()).mockLedgerPnlData.items,
         },
         { basis: "formal", formal_use_allowed: true },
       );
     },
     async getLedgerPnlSummary(reportDate: string, currency) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "ledger_pnl.summary",
         {
-          ...mockLedgerPnlSummary,
+          ...(await ensureMockClientBundle()).mockLedgerPnlSummary,
           report_date: reportDate,
           by_currency: currency
-            ? mockLedgerPnlSummary.by_currency.filter((item) => item.currency === currency)
-            : mockLedgerPnlSummary.by_currency,
+            ? (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency.filter((item) => item.currency === currency)
+            : (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency,
         },
         { basis: "formal", formal_use_allowed: true },
       );
@@ -2320,7 +2320,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       const z = (unit: NumericUnit, sign_aware: boolean) =>
         formatRawAsNumeric({ raw: 0, unit, sign_aware });
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl.bridge",
         {
           report_date: reportDate,
@@ -2375,81 +2375,81 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getPnlAttribution(_reportDate?: string) {
       await delay();
-      return buildMockApiEnvelope("executive.pnl-attribution", pnlAttributionPayload);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.pnl-attribution", (await ensureMockClientBundle()).pnlAttributionPayload);
     },
     async getVolumeRateAttribution(options) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.volume_rate", {
-        ...mockVolumeRateAttribution,
-        compare_type: options?.compareType ?? mockVolumeRateAttribution.compare_type,
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.volume_rate", {
+        ...(await ensureMockClientBundle()).mockVolumeRateAttribution,
+        compare_type: options?.compareType ?? (await ensureMockClientBundle()).mockVolumeRateAttribution.compare_type,
       });
     },
     async getTplMarketCorrelation(_options) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.tpl_market", mockTplMarketCorrelation);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.tpl_market", (await ensureMockClientBundle()).mockTplMarketCorrelation);
     },
     async getPnlCompositionBreakdown(_options) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.composition", mockPnlComposition);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.composition", (await ensureMockClientBundle()).mockPnlComposition);
     },
     async getPnlAttributionAnalysisSummary(_reportDate) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl_attribution.summary",
-        mockPnlAttributionAnalysisSummary,
+        (await ensureMockClientBundle()).mockPnlAttributionAnalysisSummary,
       );
     },
     async getPnlCarryRollDown(_reportDate) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.carry_rolldown", mockCarryRollDown);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.carry_rolldown", (await ensureMockClientBundle()).mockCarryRollDown);
     },
     async getPnlSpreadAttribution(_options) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.spread", mockSpreadAttribution);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.spread", (await ensureMockClientBundle()).mockSpreadAttribution);
     },
     async getPnlKrdAttribution(_options) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.krd", mockKrdAttribution);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.krd", (await ensureMockClientBundle()).mockKrdAttribution);
     },
     async getPnlAdvancedAttributionSummary(_reportDate) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl_attribution.advanced_summary",
-        mockAdvancedAttributionSummary,
+        (await ensureMockClientBundle()).mockAdvancedAttributionSummary,
       );
     },
     async getPnlCampisiAttribution(_options) {
       await delay();
-      return buildMockApiEnvelope("pnl_attribution.campisi", mockCampisiAttribution);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.campisi", (await ensureMockClientBundle()).mockCampisiAttribution);
     },
     async getPnlCampisiFourEffects(_options) {
       await delay();
-      return buildMockApiEnvelope("campisi.four_effects", mockCampisiFourEffects, {
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("campisi.four_effects", (await ensureMockClientBundle()).mockCampisiFourEffects, {
         basis: "formal",
         formal_use_allowed: true,
       });
     },
     async getPnlCampisiEnhanced(_options) {
       await delay();
-      return buildMockApiEnvelope("campisi.enhanced", mockCampisiEnhanced, {
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("campisi.enhanced", (await ensureMockClientBundle()).mockCampisiEnhanced, {
         basis: "formal",
         formal_use_allowed: true,
       });
     },
     async getPnlCampisiMaturityBuckets(_options) {
       await delay();
-      return buildMockApiEnvelope("campisi.maturity_buckets", mockCampisiMaturityBuckets, {
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("campisi.maturity_buckets", (await ensureMockClientBundle()).mockCampisiMaturityBuckets, {
         basis: "formal",
         formal_use_allowed: true,
       });
     },
     async getRiskOverview() {
       await delay();
-      return buildMockApiEnvelope("executive.risk-overview", riskOverviewPayload);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.risk-overview", (await ensureMockClientBundle()).riskOverviewPayload);
     },
     async getRiskTensorDates() {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "risk.tensor.dates",
         {
           report_dates: ["2026-02-28", "2026-01-31", "2025-12-31"],
@@ -2460,7 +2460,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getRiskTensor(reportDate: string) {
       await delay();
       const zero = "0.00000000";
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "risk.tensor",
         {
           report_date: reportDate,
@@ -2489,22 +2489,23 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getContribution() {
       await delay();
-      return buildMockApiEnvelope("executive.contribution", contributionPayload);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.contribution", (await ensureMockClientBundle()).contributionPayload);
     },
     async getAlerts() {
       await delay();
-      return buildMockApiEnvelope("executive.alerts", alertsPayload);
+      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.alerts", (await ensureMockClientBundle()).alertsPayload);
     },
     async getPlaceholderSnapshot(key: string) {
       await delay();
-      return buildMockApiEnvelope(
+      const $m = await ensureMockClientBundle();
+      return $m.buildMockApiEnvelope(
         `workbench.${key}`,
-        placeholderSnapshots[key] ?? placeholderSnapshots.dashboard,
+        $m.placeholderSnapshots[key] ?? $m.placeholderSnapshots.dashboard,
       );
     },
     async getProductCategoryDates() {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "product_category_pnl.dates",
         {
           report_dates: ["2026-02-28", "2026-01-31"],
@@ -2699,15 +2700,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getProductCategoryPnl(options) {
       await delay();
-      return buildMockProductCategoryPnlEnvelope(options);
+      return (await ensureMockClientBundle()).buildMockProductCategoryPnlEnvelope(options);
     },
     async getProductCategoryAttribution(options) {
       await delay();
-      return buildMockProductCategoryAttributionEnvelope(options);
+      return (await ensureMockClientBundle()).buildMockProductCategoryAttributionEnvelope(options);
     },
     async getQdbGlMonthlyAnalysisDates() {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "qdb-gl-monthly-analysis.dates",
         { report_months: [] },
         {
@@ -2721,7 +2722,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getQdbGlMonthlyAnalysisWorkbook({ reportMonth }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "qdb-gl-monthly-analysis.workbook",
         { report_month: reportMonth, sheets: [] },
         {
@@ -2771,7 +2772,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       deviationCritical,
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "qdb-gl-monthly-analysis.scenario",
         {
           report_month: reportMonth,
@@ -2860,7 +2861,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisDates() {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "balance-analysis.dates",
         {
           report_dates: ["2025-12-31"],
@@ -2876,7 +2877,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisOverview({ reportDate, positionScope, currencyBasis }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "balance-analysis.overview",
         buildBalanceAnalysisOverviewPayload(reportDate, positionScope, currencyBasis),
         {
@@ -2893,7 +2894,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
       const baseDetails = buildBalanceAnalysisDetailRows(reportDate, rows);
       const summary = buildBalanceAnalysisDetailSummary(rows);
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "balance-analysis.detail",
         {
           report_date: reportDate,
@@ -2916,7 +2917,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const rows = buildBalanceAnalysisBasisRows(
         buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis),
       );
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "balance-analysis.basis_breakdown",
         {
           report_date: reportDate,
@@ -2935,7 +2936,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisAdvancedAttribution({ reportDate }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "balance-analysis.advanced_attribution_bundle",
         {
           report_date: reportDate,
@@ -2963,7 +2964,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisSummary({ reportDate, positionScope, currencyBasis, limit, offset }) {
       await delay();
-      return buildMockBalanceAnalysisSummaryTable(
+      return await buildMockBalanceAnalysisSummaryTable(
         reportDate,
         positionScope,
         currencyBasis,
@@ -2973,7 +2974,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisWorkbook({ reportDate, positionScope, currencyBasis }) {
       await delay();
-      return buildMockBalanceAnalysisWorkbook(reportDate, positionScope, currencyBasis);
+      return await buildMockBalanceAnalysisWorkbook(reportDate, positionScope, currencyBasis);
     },
     async getBalanceAnalysisCurrentUser() {
       await delay();
@@ -2985,7 +2986,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisDecisionItems({ reportDate, positionScope, currencyBasis }) {
       await delay();
-      return buildMockBalanceAnalysisDecisionItems(reportDate, positionScope, currencyBasis);
+      return await buildMockBalanceAnalysisDecisionItems(reportDate, positionScope, currencyBasis);
     },
     async updateBalanceAnalysisDecisionStatus({
       decisionKey,
@@ -3050,7 +3051,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondAnalyticsDates() {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.dates",
         {
           report_dates: ["2026-03-31", "2026-02-28", "2025-12-31"],
@@ -3061,7 +3062,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getBondDashboardDates() {
       await delay();
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.dates",
           { report_dates: ["2026-03-31", "2026-02-28", "2025-12-31"] },
           { basis: "formal", formal_use_allowed: true },
@@ -3076,7 +3077,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zr = (raw: number, sign_aware = false) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware });
       const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.headline_kpis",
           {
             report_date: reportDate,
@@ -3112,7 +3113,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.asset_structure",
           {
             report_date: reportDate,
@@ -3161,7 +3162,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: true });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.yield_distribution",
           {
             report_date: reportDate,
@@ -3188,7 +3189,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zr = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
       const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.portfolio_comparison",
           {
             report_date: reportDate,
@@ -3229,7 +3230,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: true });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.spread_analysis",
           {
             report_date: reportDate,
@@ -3270,7 +3271,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.maturity_structure",
           {
             report_date: reportDate,
@@ -3295,7 +3296,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.industry_distribution",
           {
             report_date: reportDate,
@@ -3318,7 +3319,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
       const zr = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
       return {
-        ...buildMockApiEnvelope(
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.risk_indicators",
           {
             report_date: reportDate,
@@ -3344,7 +3345,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       void _options;
       const zy = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware });
       const zp = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware });
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.return_decomposition",
         {
           report_date: reportDate,
@@ -3385,7 +3386,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zPct = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: s });
       const zBp = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "bp", sign_aware: s });
       const zRatio = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.benchmark_excess",
         {
           report_date: reportDate,
@@ -3422,7 +3423,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ) {
       await delay();
       void _options;
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.krd_curve_risk",
         {
           report_date: reportDate,
@@ -3444,7 +3445,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zy = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: s });
       const zr = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
       const zd = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: s });
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.action_attribution",
         {
           report_date: reportDate,
@@ -3469,7 +3470,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getBondAnalyticsAccountingClassAudit(reportDate: string) {
       await delay();
       const zm = () => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false });
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.accounting_class_audit",
         {
           report_date: reportDate,
@@ -3495,7 +3496,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ) {
       await delay();
       void _options;
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.credit_spread_migration",
         {
           report_date: reportDate,
@@ -3522,7 +3523,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const zPct = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: s });
       const zRatio = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
       const zDv = () => formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.portfolio_headlines",
         {
           report_date: reportDate,
@@ -3544,7 +3545,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondAnalyticsTopHoldings(reportDate: string, topN = 20) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.top_holdings",
         {
           report_date: reportDate,
@@ -3567,7 +3568,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getCreditSpreadAnalysisDetail(reportDate: string) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "credit_spread_analysis.detail",
         {
           report_date: reportDate,
@@ -3586,7 +3587,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getPositionsBondSubTypes(_reportDate?: string | null) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.bonds.sub_types",
         { sub_types: ["利率债", "信用债"] },
         { basis: "formal", formal_use_allowed: true },
@@ -3600,7 +3601,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       includeIssued?: boolean;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.bonds.list",
         {
           items: [],
@@ -3620,7 +3621,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       pageSize?: number;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.counterparty.bonds",
         {
           start_date: options.startDate,
@@ -3638,7 +3639,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getPositionsInterbankProductTypes(_reportDate?: string | null) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.interbank.product_types",
         { product_types: ["拆借", "存放"] },
         { basis: "formal", formal_use_allowed: true },
@@ -3652,7 +3653,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       pageSize: number;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.interbank.list",
         {
           items: [],
@@ -3670,7 +3671,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       topN?: number;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.counterparty.interbank.split",
         {
           start_date: options.startDate,
@@ -3696,7 +3697,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       subType?: string | null;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.stats.rating",
         {
           start_date: options.startDate,
@@ -3716,7 +3717,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       topN?: number;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.stats.industry",
         {
           start_date: options.startDate,
@@ -3734,7 +3735,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       reportDate?: string | null;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.customer.details",
         {
           customer_name: options.customerName,
@@ -3752,7 +3753,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       days?: number;
     }) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.customer.trend",
         {
           customer_name: options.customerName,
@@ -3766,7 +3767,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getCashflowProjection(reportDate: string) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "cashflow_projection.overview",
         {
           report_date: reportDate,
@@ -3880,7 +3881,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getCockpitWarnings(reportDate?: string | null) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "liability.cockpit_warnings",
         {
           report_date: reportDate?.trim() || "",
@@ -3892,7 +3893,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getContributionSplit(reportDate?: string | null) {
       await delay();
-      return buildMockApiEnvelope(
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "liability.contribution_split",
         {
           report_date: reportDate?.trim() || "",
@@ -4002,6 +4003,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   };
 
   if (mode === "mock") {
+    void ensureMockClientBundle();
     return mockClient;
   }
 

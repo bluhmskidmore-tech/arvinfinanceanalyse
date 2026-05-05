@@ -7,7 +7,8 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
   apiClientLines: 5220,
-  apiClientMockOccurrences: 296,
+  // Raised after mock isolation: dynamic import() adds "mock" in paths (../mocks/) per call site.
+  apiClientMockOccurrences: 400,
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

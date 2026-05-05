@@ -1,6 +1,6 @@
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApiEnvelope } from "../../../api/contracts";
+import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
 import type {
   ActionAttributionResponse,
   BondAnalyticsAccountingClassFilter,
@@ -9,7 +9,9 @@ import type {
   PeriodType,
 } from "../types";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
+import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import { buildBondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
+import { classifyWarningSignals } from "../lib/bondAnalyticsModuleReadiness";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -33,6 +35,11 @@ const BondAnalyticsDetailSection = lazy(() =>
 export function BondAnalyticsViewContent() {
   const client = useApiClient();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    void import("./BondAnalyticsOverviewPanels");
+    void import("./BondAnalyticsDetailSection");
+  }, []);
   const [searchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
   const datesQuery = useQuery({
@@ -156,6 +163,19 @@ export function BondAnalyticsViewContent() {
     actionAttributionError: actionAttributionErrorMessage,
   });
 
+  const actionAttributionResult = actionAttributionQuery.data?.result ?? null;
+  const actionAttributionResultMeta: ResultMeta | null | undefined =
+    actionAttributionQuery.data?.result_meta;
+  const dataQualityWarningSignals = useMemo(
+    () =>
+      classifyWarningSignals(
+        actionAttributionResultMeta?.warnings ??
+          actionAttributionResult?.warnings ??
+          [],
+      ),
+    [actionAttributionResultMeta, actionAttributionResult],
+  );
+
   const calendarItems = useMemo(
     () =>
       (researchCalendarQuery.data ?? [])
@@ -245,6 +265,16 @@ export function BondAnalyticsViewContent() {
       style={{ display: "flex", flexDirection: "column", gap: designTokens.space[4] }}
       data-testid="bond-analysis-overview"
     >
+      <DataQualityBanner
+        resultMeta={actionAttributionResultMeta}
+        warnings={
+          dataQualityWarningSignals.hasPlaceholderSignals
+            ? ["部分模块数据为占位值，尚未填充真实计算结果"]
+            : dataQualityWarningSignals.hasPartialSignals
+              ? ["部分指标因输入不可用暂设为零"]
+              : []
+        }
+      />
       <Suspense
         fallback={
           <div
