@@ -158,6 +158,64 @@
   gap: var(--moss-space-2);
 }
 
+.macro-toolkit-cffex-panel {
+  display: grid;
+  gap: var(--moss-space-2);
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-cffex-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-cffex-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+  align-items: center;
+}
+
+.macro-toolkit-empty-output {
+  padding: 16px;
+  border: 1px dashed var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.macro-toolkit-omitted-list {
+  display: grid;
+  gap: 8px;
+}
+
+.macro-toolkit-omitted-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-omitted-item span {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.macro-toolkit-omitted-item small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .macro-toolkit-source-item {
   display: grid;
   gap: 4px;
@@ -254,6 +312,7 @@
 
 @media (max-width: 900px) {
   .macro-toolkit-analysis-hero,
+  .macro-toolkit-cffex-metrics,
   .macro-toolkit-signal-grid,
   .macro-toolkit-hero-grid {
     grid-template-columns: 1fr;

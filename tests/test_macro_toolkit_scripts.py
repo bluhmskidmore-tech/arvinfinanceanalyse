@@ -5,6 +5,7 @@ import py_compile
 import sys
 
 import duckdb
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
@@ -12,6 +13,8 @@ from backend.app.core_finance.macro.toolkit import get_toolkit_script, iter_tool
 from backend.app.core_finance.macro.toolkit.runner import OMITTED_SOURCE_SCRIPTS, SCRIPTS_DIR, TOOLKIT_ROOT
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias, load_system_macro_frame
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
+from backend.app.services import cffex_member_rank_service
 
 
 def test_macro_toolkit_registry_points_to_migrated_scripts() -> None:
@@ -77,7 +80,7 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
         windpy.w.start()
         result = windpy.w.edb("EDB_CPI_YOY", "2026-04-01", "2026-04-30")
         spread_inputs = windpy.w.wsd("S0059760,M0067855", "close", "2026-04-01", "2026-04-30")
-        missing_wset = windpy.w.wset("cffexmemberrank", "date=2026-04-10;windcode=T.CFE;rankby=volume")
+        member_rank = windpy.w.wset("cffexmemberrank", "date=2026-04-10;windcode=T.CFE;rankby=volume")
     finally:
         if previous_akshare is not None:
             sys.modules["akshare"] = previous_akshare
@@ -95,7 +98,9 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
     assert result.Data == [[0.7]]
     assert spread_inputs.ErrorCode == 0
     assert spread_inputs.Data == [[2.91], [7.1234]]
-    assert missing_wset.ErrorCode == 501
+    assert member_rank.ErrorCode == 0
+    assert member_rank.Fields == ["membername", "volume"]
+    assert member_rank.Data == [["中信期货", "国泰君安"], [12345.0, 8901.0]]
 
 
 def test_macro_toolkit_api_exposes_frontend_payload() -> None:
@@ -109,6 +114,14 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
     payload = response.json()
     scripts = {item["name"]: item for item in payload["result"]["scripts"]}
     assert payload["result"]["default_data_sources"] == ["choice", "tushare"]
+    assert all("no formal DuckDB table" not in item for item in payload["result"]["warnings"])
+    assert payload["result"]["cffex_member_rank"]["status"] in {
+        "ok",
+        "missing_database",
+        "unreadable_database",
+        "missing_table",
+        "empty_table",
+    }
     assert "signal_aggregator" in scripts
     assert scripts["signal_aggregator"]["available"] is True
     assert payload["result_meta"]["tables_used"] == [
@@ -117,7 +130,68 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "fx_daily_mid",
         "fact_formal_yield_curve_daily",
         "std_external_macro_daily",
+        "fact_cffex_member_rank_daily",
+        "vw_cffex_member_rank_daily",
     ]
+
+
+def test_cffex_member_rank_refresh_materializes_tushare_rows(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setattr(
+        cffex_member_rank_service,
+        "resolve_tushare_token_with_settings_fallback",
+        lambda _settings: "token",
+    )
+    monkeypatch.setattr(cffex_member_rank_service, "import_tushare_pro", lambda: _FakeTushareModule())
+
+    result = cffex_member_rank_service.materialize_cffex_member_rank(
+        duckdb_path=duckdb_path,
+        trade_date="2026-04-10",
+        contracts=("T.CFE",),
+        sources=("tushare",),
+    )
+
+    assert result["row_count"] == 2
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, contract, member_name, source_vendor, volume, long_holding, short_holding
+            from fact_cffex_member_rank_daily
+            order by source_row_no
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [
+        ("2026-04-10", "T.CFE", "中信期货", "tushare", 12345.0, 23456.0, 21000.0),
+        ("2026-04-10", "T.CFE", "国泰君安", "tushare", 8901.0, 10000.0, 14000.0),
+    ]
+
+
+def test_cffex_member_rank_refresh_materializes_choice_rows(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setattr(cffex_member_rank_service, "ChoiceClient", lambda: _FakeChoiceClient())
+
+    result = cffex_member_rank_service.materialize_cffex_member_rank(
+        duckdb_path=duckdb_path,
+        trade_date="2026-04-10",
+        contracts=("T.CFE",),
+        sources=("choice",),
+    )
+
+    assert result["row_count"] == 1
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select trade_date, contract, member_name, source_vendor, volume, long_holding, short_holding
+            from fact_cffex_member_rank_daily
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == ("2026-04-10", "T.CFE", "中信期货", "choice", 12345.0, 23456.0, 21000.0)
 
 
 def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> None:
@@ -150,6 +224,45 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert indicators["S0059749"]["latest_value"] == 2.48
 
 
+def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into choice_market_snapshot values (
+              'CA.CSI300', 'CSI 300 close', 'index_daily:000300.SH.close', 'tushare', '2026-04-30',
+              4200.0, 'daily', 'index', 'sv_tushare_index', 'vv_tushare_index',
+              'rv_public_cross_asset_headline_v1', 'tushare-run-latest'
+            )
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/scripts")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    capabilities = {item["key"]: item for item in payload["result"]["capabilities"]}
+    assert capabilities["monetary_policy_stance"]["legacy_module"] == "M7"
+    assert capabilities["monetary_policy_stance"]["route_status"] == "not_wired"
+    assert capabilities["yield_curve_shape"]["implementation_status"] == "partial"
+    assert payload["result"]["cffex_member_rank"]["freshness_status"] == "stale"
+    assert payload["result"]["cffex_member_rank"]["reference_date"] == "2026-04-30"
+    assert payload["result"]["cffex_member_rank"]["stale_days"] == 20
+    assert any("中金所席位排名已落库但最新交易日 2026-04-10" in item for item in payload["result"]["warnings"])
+
+
 def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -174,9 +287,110 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
     assert "ErrorCode" in payload["stdout"]
 
 
+class _FakeTushareModule:
+    def pro_api(self, token: str):
+        assert token == "token"
+        return _FakeTusharePro()
+
+
+class _FakeTusharePro:
+    def fut_holding(self, **kwargs):
+        assert kwargs["trade_date"] == "20260410"
+        return pd.DataFrame(
+            [
+                {
+                    "trade_date": "20260410",
+                    "symbol": "T2606",
+                    "broker": "中信期货",
+                    "vol": 12000,
+                    "vol_chg": 100,
+                    "long_hld": 23000,
+                    "long_chg": 200,
+                    "short_hld": 20000,
+                    "short_chg": -60,
+                },
+                {
+                    "trade_date": "20260410",
+                    "symbol": "T2609",
+                    "broker": "中信期货",
+                    "vol": 345,
+                    "vol_chg": 101,
+                    "long_hld": 456,
+                    "long_chg": 2,
+                    "short_hld": 1000,
+                    "short_chg": 10,
+                },
+                {
+                    "trade_date": "20260410",
+                    "symbol": "T2606",
+                    "broker": "国泰君安",
+                    "vol": 8901,
+                    "vol_chg": -20,
+                    "long_hld": 10000,
+                    "long_chg": 15,
+                    "short_hld": 14000,
+                    "short_chg": 30,
+                },
+                {
+                    "trade_date": "20260410",
+                    "symbol": "TF2606",
+                    "broker": "不应命中",
+                    "vol": 99999,
+                    "vol_chg": 0,
+                    "long_hld": 99999,
+                    "long_chg": 0,
+                    "short_hld": 99999,
+                    "short_chg": 0,
+                },
+            ]
+        )
+
+
+class _FakeChoiceClient:
+    def fut_transaction_rankings(self, symbols: str, trade_date: str, indicators: str):
+        assert symbols == "CFFEX.T"
+        assert trade_date == "2026-04-10"
+        assert indicators == "volume,long,short"
+        return pd.DataFrame(
+            [
+                {
+                    "trade_date": "2026-04-10",
+                    "contract": "T.CFE",
+                    "member_name": "中信期货",
+                    "volume": 12345,
+                    "volume_change": 101,
+                    "long_holding": 23456,
+                    "long_change": 202,
+                    "short_holding": 21000,
+                    "short_change": -50,
+                }
+            ]
+        )
+
+
 def _seed_choice_tushare_macro_db(path) -> None:
     conn = duckdb.connect(str(path), read_only=False)
     try:
+        ensure_cffex_member_rank_schema(conn)
+        conn.execute(
+            """
+            insert into fact_cffex_member_rank_daily (
+              trade_date, contract, product_code, exchange, member_name, source_vendor,
+              source_row_no, volume, volume_change, long_holding, long_change,
+              short_holding, short_change, source_version, vendor_version, rule_version,
+              ingest_batch_id, raw_payload_json
+            )
+            values
+              ('2026-04-10', 'T.CFE', 'T', 'CFFEX', '中信期货', 'tushare',
+               1, 12345, 101, 23456, 202, 21000, -50,
+               'sv_test_cffex_rank', 'vv_test_tushare', 'rv_cffex_member_rank_choice_tushare_v1',
+               'batch-test', null),
+              ('2026-04-10', 'T.CFE', 'T', 'CFFEX', '国泰君安', 'tushare',
+               2, 8901, -20, 10000, 15, 14000, 30,
+               'sv_test_cffex_rank', 'vv_test_tushare', 'rv_cffex_member_rank_choice_tushare_v1',
+               'batch-test', null)
+            """
+        )
         conn.execute(
             """
             create table fact_choice_macro_daily (

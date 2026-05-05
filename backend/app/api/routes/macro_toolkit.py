@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import subprocess
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -17,9 +19,12 @@ from backend.app.core_finance.macro.toolkit.runner import (
     MacroToolkitScript,
     get_toolkit_script,
     iter_toolkit_scripts,
+    run_toolkit_script,
 )
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
+from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -30,7 +35,9 @@ _SOURCE_CHECK_ALIASES = (
     "CU0",
     "DR007.IB",
     "M0067855",
+    "M0000612",
     "S0059747",
+    "S0059749",
     "S0059760",
     "M0041813",
 )
@@ -46,16 +53,140 @@ _ANALYSIS_INDICATORS = (
     {"key": "aa_5y", "alias": "S0059760", "label": "5Y AA 信用债", "unit": "%", "group": "信用"},
 )
 
+_CAPABILITY_DEFINITIONS = (
+    {
+        "key": "monetary_policy_stance",
+        "legacy_module": "M7",
+        "label": "货币政策立场",
+        "group": "政策与资金面",
+        "implementation_status": "library_ready",
+        "route_status": "not_wired",
+        "frontend_status": "planned",
+        "data_aliases": ("DR007.IB", "S0059743", "S0059749", "S0059760"),
+        "next_step": "封装 /api/macro/monetary-policy-stance，并在本页接入政策立场卡。",
+    },
+    {
+        "key": "yield_curve_shape",
+        "legacy_module": "M8",
+        "label": "收益率曲线形态",
+        "group": "曲线",
+        "implementation_status": "partial",
+        "route_status": "partial",
+        "frontend_status": "partial",
+        "data_aliases": ("S0059743", "S0059747", "S0059749"),
+        "next_step": "复用正式曲线表，把曲线形态纯函数输出接到宏观工具箱。",
+    },
+    {
+        "key": "credit_spread_risk",
+        "legacy_module": "M9",
+        "label": "信用利差预警",
+        "group": "信用",
+        "implementation_status": "partial",
+        "route_status": "partial",
+        "frontend_status": "partial",
+        "data_aliases": ("S0059652", "S0059670", "S0059760"),
+        "next_step": "把信用利差风险/分位结果合并到本页信用信号区。",
+    },
+    {
+        "key": "leading_indicator",
+        "legacy_module": "M10",
+        "label": "宏观领先指标",
+        "group": "增长与通胀",
+        "implementation_status": "library_ready",
+        "route_status": "not_wired",
+        "frontend_status": "planned",
+        "data_aliases": ("M0000612", "M0001385", "CU0", "S0059670"),
+        "next_step": "补 PMI/M2/社融映射后输出领先指标指数。",
+    },
+    {
+        "key": "liquidity_stress",
+        "legacy_module": "M11",
+        "label": "流动性压力测试",
+        "group": "压力测试",
+        "implementation_status": "library_ready",
+        "route_status": "partial",
+        "frontend_status": "partial",
+        "data_aliases": ("DR007.IB", "M0041813"),
+        "next_step": "接入资产/负债期限桶，避免只用市场代理指标。",
+    },
+    {
+        "key": "cross_market_linkage",
+        "legacy_module": "M12",
+        "label": "跨市场联动",
+        "group": "联动",
+        "implementation_status": "library_ready",
+        "route_status": "not_wired",
+        "frontend_status": "planned",
+        "data_aliases": ("sh000300", "CU0", "M0067855"),
+        "next_step": "把跨资产纯函数输出为联动矩阵和主导变量。",
+    },
+    {
+        "key": "rate_turning_point",
+        "legacy_module": "M13",
+        "label": "利率拐点判断",
+        "group": "曲线",
+        "implementation_status": "library_ready",
+        "route_status": "not_wired",
+        "frontend_status": "planned",
+        "data_aliases": ("DR007.IB", "S0059747", "S0059749"),
+        "next_step": "用正式曲线和资金利率输出拐点概率。",
+    },
+    {
+        "key": "economic_cycle",
+        "legacy_module": "M14",
+        "label": "经济周期定位",
+        "group": "增长与通胀",
+        "implementation_status": "library_ready",
+        "route_status": "not_wired",
+        "frontend_status": "planned",
+        "data_aliases": ("M0000612", "M0001227", "M0001385", "CU0"),
+        "next_step": "补齐增长/通胀宽表后输出周期象限。",
+    },
+    {
+        "key": "macro_portfolio_impact",
+        "legacy_module": "M15",
+        "label": "宏观情景组合影响",
+        "group": "组合影响",
+        "implementation_status": "library_ready",
+        "route_status": "partial",
+        "frontend_status": "partial",
+        "data_aliases": ("S0059749", "S0059760", "M0067855"),
+        "next_step": "把组合暴露输入与宏观情景结果合并展示。",
+    },
+    {
+        "key": "decision_summary",
+        "legacy_module": "M16",
+        "label": "宏观决策摘要",
+        "group": "决策摘要",
+        "implementation_status": "not_wired",
+        "route_status": "not_wired",
+        "frontend_status": "planned",
+        "data_aliases": ("DR007.IB", "S0059749", "sh000300", "M0067855"),
+        "next_step": "聚合 M7-M15 后生成一屏决策摘要，而不是前端拼文案。",
+    },
+)
+
 
 class MacroToolkitRunRequest(BaseModel):
     argv: list[str] = Field(default_factory=list)
     timeout_seconds: int = Field(default=120, ge=5, le=600)
 
 
+class CffexMemberRankRefreshRequest(BaseModel):
+    trade_date: str | None = None
+    contracts: list[str] = Field(default_factory=lambda: list(DEFAULT_CFFEX_CONTRACTS))
+    sources: list[str] = Field(default_factory=lambda: ["choice", "tushare"])
+
+
 @router.get("/scripts")
 def macro_toolkit_scripts() -> dict[str, object]:
     settings = get_settings()
     scripts = [_script_payload(script) for script in iter_toolkit_scripts()]
+    source_checks = _source_checks(settings.duckdb_path)
+    cffex_status = _cffex_member_rank_status(
+        settings.duckdb_path,
+        reference_date=_latest_source_check_date(source_checks),
+    )
     return _envelope(
         "macro_toolkit.scripts",
         {
@@ -66,13 +197,10 @@ def macro_toolkit_scripts() -> dict[str, object]:
             "groups": sorted({str(item["group"]) for item in scripts}),
             "omitted_scripts": OMITTED_SOURCE_SCRIPTS,
             "output_files": _output_files(),
-            "source_checks": _source_checks(settings.duckdb_path),
-            "warnings": [
-                (
-                    "cffexmemberrank member-rank data has scripts and CSV output contracts, "
-                    "but no formal DuckDB table is materialized yet."
-                )
-            ],
+            "source_checks": source_checks,
+            "capabilities": _capability_plan(settings.duckdb_path),
+            "cffex_member_rank": cffex_status,
+            "warnings": _script_warnings(cffex_status),
         },
     )
 
@@ -104,7 +232,33 @@ def macro_toolkit_analysis() -> dict[str, object]:
             "signal_cards": signal_cards,
             "output_files": output_files,
             "source_checks": _source_checks(settings.duckdb_path),
+            "capabilities": _capability_plan(settings.duckdb_path),
+            "cffex_member_rank": _cffex_member_rank_status(
+                settings.duckdb_path,
+                reference_date=_latest_indicator_date(indicators),
+            ),
             "warnings": _analysis_warnings(coverage),
+        },
+    )
+
+
+@router.post("/cffex-member-rank/refresh")
+def macro_toolkit_refresh_cffex_member_rank(
+    request: CffexMemberRankRefreshRequest | None = None,
+) -> dict[str, object]:
+    refresh_request = request or CffexMemberRankRefreshRequest()
+    settings = get_settings()
+    result = materialize_cffex_member_rank(
+        duckdb_path=settings.duckdb_path,
+        trade_date=refresh_request.trade_date,
+        contracts=tuple(refresh_request.contracts or DEFAULT_CFFEX_CONTRACTS),
+        sources=tuple(refresh_request.sources or ["choice", "tushare"]),
+    )
+    return _envelope(
+        "macro_toolkit.cffex_member_rank_refresh",
+        {
+            "refresh": result,
+            "cffex_member_rank": _cffex_member_rank_status(settings.duckdb_path),
         },
     )
 
@@ -129,8 +283,6 @@ def macro_toolkit_run(name: str, request: MacroToolkitRunRequest | None = None) 
             env=env,
             capture_output=True,
             text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=run_request.timeout_seconds,
             check=False,
         )
@@ -144,15 +296,39 @@ def macro_toolkit_run(name: str, request: MacroToolkitRunRequest | None = None) 
             "output_files": _output_files(),
             "message": f"script exceeded {run_request.timeout_seconds}s timeout",
         }
+    except OSError as exc:
+        stdout_text, stderr_text, exit_code = _run_toolkit_script_inline(script.name, run_request.argv)
+        return {
+            "status": "completed" if exit_code == 0 else "failed",
+            "script": _script_payload(script),
+            "exit_code": exit_code,
+            "stdout": _tail_text(stdout_text),
+            "stderr": _tail_text(f"{stderr_text}\nsubprocess fallback: {exc}".strip()),
+            "output_files": _output_files(),
+        }
+    stdout_text = completed.stdout
+    stderr_text = completed.stderr
 
     return {
         "status": "completed" if completed.returncode == 0 else "failed",
         "script": _script_payload(script),
         "exit_code": completed.returncode,
-        "stdout": _tail_text(completed.stdout),
-        "stderr": _tail_text(completed.stderr),
+        "stdout": _tail_text(stdout_text),
+        "stderr": _tail_text(stderr_text),
         "output_files": _output_files(),
     }
+
+
+def _run_toolkit_script_inline(name: str, argv: list[str]) -> tuple[str, str, int]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            run_toolkit_script(name, argv)
+    except Exception as exc:  # pragma: no cover - returned to UI as script stderr
+        stderr.write(f"\ninline runner failed: {exc}")
+        return stdout.getvalue(), stderr.getvalue(), 1
+    return stdout.getvalue(), stderr.getvalue(), 0
 
 
 def _script_payload(script: MacroToolkitScript) -> dict[str, object]:
@@ -188,20 +364,136 @@ def _output_files() -> list[dict[str, object]]:
 
 
 def _source_checks(duckdb_path: str | Path) -> list[dict[str, object]]:
-    checks: list[dict[str, object]] = []
-    for alias in _SOURCE_CHECK_ALIASES:
-        frame = load_series_by_alias(alias, duckdb_path=duckdb_path)
-        latest = None
-        if not frame.empty:
-            latest_row = frame.sort_values("date").iloc[-1]
-            latest = {
-                "date": str(latest_row["date"])[:10],
-                "series_id": str(latest_row["series_id"]),
-                "vendor_name": str(latest_row["vendor_name"]),
-                "value": float(latest_row["value"]),
+    return [_source_check(alias, duckdb_path) for alias in _SOURCE_CHECK_ALIASES]
+
+
+def _source_check(alias: str, duckdb_path: str | Path) -> dict[str, object]:
+    frame = load_series_by_alias(alias, duckdb_path=duckdb_path)
+    latest = None
+    if not frame.empty:
+        latest_row = frame.sort_values("date").iloc[-1]
+        latest = {
+            "date": str(latest_row["date"])[:10],
+            "series_id": str(latest_row["series_id"]),
+            "vendor_name": str(latest_row["vendor_name"]),
+            "value": float(latest_row["value"]),
+        }
+    return {"alias": alias, "row_count": int(len(frame)), "latest": latest}
+
+
+def _latest_source_check_date(checks: list[dict[str, object]]) -> str | None:
+    dates = [
+        str(latest["date"])
+        for check in checks
+        if isinstance((latest := check.get("latest")), dict) and latest.get("date")
+    ]
+    return max(dates) if dates else None
+
+
+def _cffex_member_rank_status(
+    duckdb_path: str | Path,
+    *,
+    reference_date: str | None = None,
+) -> dict[str, object]:
+    stats = table_stats(duckdb_path)
+    latest_trade_date = str(stats.get("latest_trade_date") or "")[:10] or None
+    return {
+        **stats,
+        **_cffex_freshness(latest_trade_date, reference_date),
+    }
+
+
+def _cffex_freshness(latest_trade_date: str | None, reference_date: str | None) -> dict[str, object]:
+    if not latest_trade_date:
+        return {
+            "freshness_status": "missing",
+            "reference_date": reference_date,
+            "stale_days": None,
+        }
+    if not reference_date:
+        return {
+            "freshness_status": "unknown",
+            "reference_date": None,
+            "stale_days": None,
+        }
+    try:
+        latest = date.fromisoformat(latest_trade_date[:10])
+        reference = date.fromisoformat(reference_date[:10])
+    except ValueError:
+        return {
+            "freshness_status": "unknown",
+            "reference_date": reference_date,
+            "stale_days": None,
+        }
+    stale_days = (reference - latest).days
+    if stale_days <= 1:
+        status = "current"
+    elif stale_days <= 7:
+        status = "lagging"
+    else:
+        status = "stale"
+    return {
+        "freshness_status": status,
+        "reference_date": reference.isoformat(),
+        "stale_days": stale_days,
+    }
+
+
+def _script_warnings(cffex_status: dict[str, object]) -> list[str]:
+    if cffex_status.get("freshness_status") == "stale":
+        latest = cffex_status.get("latest_trade_date") or "缺失"
+        reference = cffex_status.get("reference_date") or "当前分析日"
+        stale_days = cffex_status.get("stale_days")
+        return [
+            f"中金所席位排名已落库但最新交易日 {latest}，落后宏观分析日 {reference} {stale_days} 天；"
+            "可使用刷新席位补齐 Choice/Tushare 数据。"
+        ]
+    if int(cffex_status.get("row_count") or 0) > 0:
+        return []
+    if cffex_status.get("materialized") is True:
+        return ["中金所席位排名表已创建但暂无数据；运行 CFFEX refresh 后可用 Choice/Tushare 补齐。"]
+    return ["中金所席位排名表尚未初始化；运行 CFFEX refresh 会创建正式表并用 Choice/Tushare 补齐。"]
+
+
+def _capability_plan(duckdb_path: str | Path) -> list[dict[str, object]]:
+    return [_capability_payload(item, duckdb_path) for item in _CAPABILITY_DEFINITIONS]
+
+
+def _capability_payload(definition: dict[str, object], duckdb_path: str | Path) -> dict[str, object]:
+    aliases = tuple(str(alias) for alias in definition["data_aliases"])
+    checks = [_source_check(alias, duckdb_path) for alias in aliases]
+    hit_count = sum(1 for check in checks if check["latest"])
+    required_count = len(checks)
+    if required_count == 0:
+        data_status = "not_required"
+    elif hit_count == required_count:
+        data_status = "ready"
+    elif hit_count > 0:
+        data_status = "partial"
+    else:
+        data_status = "missing"
+    return {
+        "key": definition["key"],
+        "legacy_module": definition["legacy_module"],
+        "label": definition["label"],
+        "group": definition["group"],
+        "implementation_status": definition["implementation_status"],
+        "route_status": definition["route_status"],
+        "frontend_status": definition["frontend_status"],
+        "data_status": data_status,
+        "data_hit_count": hit_count,
+        "data_required_count": required_count,
+        "evidence": [
+            {
+                "alias": check["alias"],
+                "row_count": check["row_count"],
+                "latest_date": check["latest"]["date"] if check["latest"] else None,
+                "series_id": check["latest"]["series_id"] if check["latest"] else None,
             }
-        checks.append({"alias": alias, "row_count": int(len(frame)), "latest": latest})
-    return checks
+            for check in checks
+        ],
+        "next_step": definition["next_step"],
+    }
 
 
 def _analysis_indicators(duckdb_path: str | Path) -> list[dict[str, object]]:
@@ -401,15 +693,9 @@ def _analysis_conclusion(
 
 
 def _analysis_warnings(coverage: dict[str, object]) -> list[str]:
-    warnings = [
-        (
-            "cffexmemberrank member-rank data has scripts and CSV output contracts, "
-            "but no formal DuckDB table is materialized yet."
-        )
-    ]
-    if int(coverage["output_file_count"]) == 0:
-        warnings.append("No macro toolkit output files have been generated yet; script result panels use live source data only.")
-    return warnings
+    if float(coverage["hit_rate"]) < 0.6:
+        return ["核心宏观指标命中不足，当前结论只展示可用证据，不形成完整方向判断。"]
+    return []
 
 
 def _latest_indicator_date(indicators: list[dict[str, object]]) -> str | None:
@@ -453,6 +739,8 @@ def _envelope(result_kind: str, result: dict[str, object]) -> dict[str, object]:
                 "fx_daily_mid",
                 "fact_formal_yield_curve_daily",
                 "std_external_macro_daily",
+                "fact_cffex_member_rank_daily",
+                "vw_cffex_member_rank_daily",
             ],
             "evidence_rows": _evidence_rows(result),
         },

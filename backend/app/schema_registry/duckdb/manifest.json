@@ -101,6 +101,26 @@
       "path": "20_ledger_analytics.sql",
       "ensure_module": "backend.app.repositories.ledger_analytics_repo",
       "ensure_symbol": "ensure_ledger_analytics_tables"
+    },
+    {
+      "path": "21_choice_stock.sql",
+      "ensure_module": "backend.app.tasks.choice_stock_materialize",
+      "ensure_symbol": "ensure_choice_stock_schema"
+    },
+    {
+      "path": "22_livermore_position_snapshot.sql",
+      "ensure_module": "backend.app.tasks.livermore_position_snapshot_materialize",
+      "ensure_symbol": "ensure_livermore_position_snapshot_schema"
+    },
+    {
+      "path": "23_livermore_gate_supplement.sql",
+      "ensure_module": "backend.app.repositories.livermore_gate_supplement_repo",
+      "ensure_symbol": "ensure_livermore_gate_supplement_schema"
+    },
+    {
+      "path": "24_cffex_member_rank.sql",
+      "ensure_module": "backend.app.repositories.cffex_member_rank_repo",
+      "ensure_symbol": "ensure_cffex_member_rank_schema"
     }
   ]
 }

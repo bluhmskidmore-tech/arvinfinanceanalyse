@@ -6,7 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  MacroToolkitCapability,
   MacroToolkitIndicator,
+  MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
   MacroToolkitSignalCard,
@@ -69,6 +71,30 @@ function toneTagColor(tone: MacroToolkitSignalCard["tone"]) {
   return "blue";
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    current: "已对齐",
+    lagging: "轻微滞后",
+    stale: "陈旧",
+    missing: "缺失",
+    unknown: "待确认",
+    ready: "数据齐备",
+    partial: "部分就绪",
+    not_required: "无需数据",
+    library_ready: "函数已迁入",
+    not_wired: "未接线",
+    planned: "待接入",
+  };
+  return labels[status] ?? status;
+}
+
+function statusColor(status: string) {
+  if (["current", "ready", "library_ready"].includes(status)) return "green";
+  if (["lagging", "partial", "planned"].includes(status)) return "gold";
+  if (["stale", "missing", "not_wired"].includes(status)) return "red";
+  return "default";
+}
+
 function formatValue(value: number | null, unit = "") {
   if (value === null) {
     return "缺失";
@@ -93,6 +119,9 @@ export default function MacroToolkitPage() {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<MacroToolkitRunResponse | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [refreshResult, setRefreshResult] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [isRefreshingCffex, setIsRefreshingCffex] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
   const analysisQuery = useQuery({
@@ -142,6 +171,8 @@ export default function MacroToolkitPage() {
   const outputDetail = payload?.output_files.length
     ? `${payload.output_files[0]!.name} · ${formatSize(payload.output_files[0]!.size_bytes)}`
     : payload?.output_dir ?? "data/macro_toolkit/output";
+  const cffexStatus = payload?.cffex_member_rank ?? analysis?.cffex_member_rank ?? null;
+  const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
 
   const runSelectedScript = useCallback(async () => {
     if (!selectedScript) {
@@ -153,12 +184,31 @@ export default function MacroToolkitPage() {
     try {
       const result = await client.runMacroToolkitScript(selectedScript.name);
       setRunResult(result);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "运行失败");
     } finally {
       setIsRunning(false);
     }
-  }, [client, selectedScript]);
+  }, [analysisQuery, client, scriptsQuery, selectedScript]);
+
+  const refreshCffexMemberRank = useCallback(async () => {
+    setIsRefreshingCffex(true);
+    setRefreshError(null);
+    setRefreshResult(null);
+    try {
+      const response = await client.refreshCffexMemberRank({
+        tradeDate: analysis?.as_of_date ?? undefined,
+      });
+      const rank = response.result.cffex_member_rank;
+      setRefreshResult(`刷新完成：${rank.row_count} 行，最新交易日 ${rank.latest_trade_date ?? "缺失"}`);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "刷新席位失败");
+    } finally {
+      setIsRefreshingCffex(false);
+    }
+  }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery]);
 
   const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     {
@@ -258,6 +308,75 @@ export default function MacroToolkitPage() {
         <Tag color={available ? "green" : "red"}>{available ? "可运行" : "缺失"}</Tag>
       ),
       width: 100,
+    },
+  ];
+
+  const capabilityColumns: ColumnsType<MacroToolkitCapability> = [
+    {
+      title: "功能",
+      dataIndex: "label",
+      key: "label",
+      render: (_, item) => (
+        <div className="macro-toolkit-script-cell">
+          <span className="macro-toolkit-script-name">
+            {item.legacy_module} · {item.label}
+          </span>
+          <span className="macro-toolkit-script-file">{item.group}</span>
+        </div>
+      ),
+    },
+    {
+      title: "代码",
+      dataIndex: "implementation_status",
+      key: "implementation_status",
+      width: 120,
+      render: (status: string) => <Tag color={statusColor(status)}>{statusLabel(status)}</Tag>,
+    },
+    {
+      title: "页面/API",
+      dataIndex: "route_status",
+      key: "route_status",
+      width: 140,
+      render: (status: string, item) => (
+        <div className="macro-toolkit-tag-row">
+          <Tag color={statusColor(status)}>{statusLabel(status)}</Tag>
+          <Tag color={statusColor(item.frontend_status)}>{statusLabel(item.frontend_status)}</Tag>
+        </div>
+      ),
+    },
+    {
+      title: "数据",
+      dataIndex: "data_status",
+      key: "data_status",
+      width: 140,
+      render: (status: string, item) => (
+        <span>
+          <Tag color={statusColor(status)}>{statusLabel(status)}</Tag>
+          {item.data_hit_count}/{item.data_required_count}
+        </span>
+      ),
+    },
+    {
+      title: "下一步",
+      dataIndex: "next_step",
+      key: "next_step",
+    },
+  ];
+
+  const outputColumns: ColumnsType<MacroToolkitOutputFile> = [
+    { title: "文件", dataIndex: "name", key: "name" },
+    {
+      title: "大小",
+      dataIndex: "size_bytes",
+      key: "size_bytes",
+      width: 100,
+      render: (size: number) => formatSize(size),
+    },
+    {
+      title: "更新时间",
+      dataIndex: "modified_at",
+      key: "modified_at",
+      width: 220,
     },
   ];
 
@@ -371,6 +490,21 @@ export default function MacroToolkitPage() {
         </>
       ) : null}
 
+      <section className="macro-toolkit-section">
+        <PageSectionLead
+          eyebrow="closure"
+          title="功能补齐方案"
+          description="按 V1 宏观分析 M7-M16 对齐，区分代码迁入、API/页面接线和数据命中。"
+        />
+        <Table
+          rowKey="key"
+          size="small"
+          columns={capabilityColumns}
+          dataSource={payload?.capabilities ?? analysis?.capabilities ?? []}
+          pagination={false}
+        />
+      </section>
+
       <PageDecisionHero
         title="宏观工具"
         eyebrow="宏观模块"
@@ -424,6 +558,67 @@ export default function MacroToolkitPage() {
 
       <section className="macro-toolkit-section">
         <PageSectionLead
+          eyebrow="cffex"
+          title="CFFEX席位状态"
+          description="crowding_cn 等脚本依赖的中金所席位排名读面。"
+        />
+        <div className="macro-toolkit-cffex-panel">
+          <div className="macro-toolkit-cffex-metrics">
+            <MetricTile
+              label="席位行数"
+              value={cffexStatus?.row_count ?? 0}
+              detail={cffexStatus?.status ?? "未读取"}
+            />
+            <MetricTile
+              label="最新交易日"
+              value={cffexStatus?.latest_trade_date ?? "缺失"}
+              detail={`对齐 ${cffexStatus?.reference_date ?? analysis?.as_of_date ?? "待定"}`}
+            />
+            <MetricTile
+              label="新鲜度"
+              value={statusLabel(cffexStatus?.freshness_status ?? "unknown")}
+              detail={
+                cffexStatus?.stale_days == null
+                  ? "待确认"
+                  : `落后 ${cffexStatus.stale_days} 天`
+              }
+            />
+          </div>
+          <div className="macro-toolkit-cffex-actions">
+            <Button
+              icon={<ReloadOutlined />}
+              loading={isRefreshingCffex}
+              onClick={() => void refreshCffexMemberRank()}
+            >
+              刷新席位
+            </Button>
+            {refreshResult ? <Alert type="success" showIcon message={refreshResult} /> : null}
+            {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="macro-toolkit-section">
+        <PageSectionLead
+          eyebrow="outputs"
+          title="脚本产物"
+          description="运行脚本后自动刷新这里，便于确认 CSV、图片或报告是否生成。"
+        />
+        {payload?.output_files.length ? (
+          <Table
+            rowKey="path"
+            size="small"
+            columns={outputColumns}
+            dataSource={payload.output_files}
+            pagination={false}
+          />
+        ) : (
+          <div className="macro-toolkit-empty-output">尚未发现输出文件。</div>
+        )}
+      </section>
+
+      <section className="macro-toolkit-section">
+        <PageSectionLead
           eyebrow="source"
           title="系统数据源命中"
           description="这些旧代码别名已经映射到当前系统的 Choice/Tushare 数据面。"
@@ -438,6 +633,24 @@ export default function MacroToolkitPage() {
           ))}
         </div>
       </section>
+
+      {omittedEntries.length ? (
+        <section className="macro-toolkit-section">
+          <PageSectionLead
+            eyebrow="omitted"
+            title="未纳入脚本"
+            description="这些源文件保留为迁移证据，但暂不作为可执行宏观工作流。"
+          />
+          <div className="macro-toolkit-omitted-list">
+            {omittedEntries.map(([filename, reason]) => (
+              <div className="macro-toolkit-omitted-item" key={filename}>
+                <span>{filename}</span>
+                <small>{reason}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="macro-toolkit-section">
         <PageSectionLead

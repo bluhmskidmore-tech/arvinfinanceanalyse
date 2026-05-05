@@ -38,6 +38,38 @@ export type MacroToolkitSourceCheck = {
   };
 };
 
+export type MacroToolkitCapability = {
+  key: string;
+  legacy_module: string;
+  label: string;
+  group: string;
+  implementation_status: string;
+  route_status: string;
+  frontend_status: string;
+  data_status: string;
+  data_hit_count: number;
+  data_required_count: number;
+  evidence: Array<{
+    alias: string;
+    row_count: number;
+    latest_date: string | null;
+    series_id: string | null;
+  }>;
+  next_step: string;
+};
+
+export type MacroToolkitCffexMemberRankStatus = {
+  materialized: boolean;
+  status: string;
+  row_count: number;
+  latest_trade_date: string | null;
+  contracts: string[];
+  source_vendors: string[];
+  freshness_status?: string;
+  reference_date?: string | null;
+  stale_days?: number | null;
+};
+
 export type MacroToolkitPayload = {
   default_data_sources: string[];
   toolkit_root: string;
@@ -47,6 +79,8 @@ export type MacroToolkitPayload = {
   omitted_scripts: Record<string, string>;
   output_files: MacroToolkitOutputFile[];
   source_checks: MacroToolkitSourceCheck[];
+  capabilities: MacroToolkitCapability[];
+  cffex_member_rank?: MacroToolkitCffexMemberRankStatus;
   warnings: string[];
 };
 
@@ -96,6 +130,8 @@ export type MacroToolkitAnalysisPayload = {
   signal_cards: MacroToolkitSignalCard[];
   output_files: MacroToolkitOutputFile[];
   source_checks: MacroToolkitSourceCheck[];
+  capabilities: MacroToolkitCapability[];
+  cffex_member_rank?: MacroToolkitPayload["cffex_member_rank"];
   warnings: string[];
 };
 
@@ -109,6 +145,11 @@ export type MacroToolkitRunResponse = {
   message?: string;
 };
 
+export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
+  refresh: Record<string, unknown>;
+  cffex_member_rank: MacroToolkitCffexMemberRankStatus;
+}>;
+
 export type MacroToolkitClientMethods = {
   getMacroToolkitAnalysis: () => Promise<ApiEnvelope<MacroToolkitAnalysisPayload>>;
   getMacroToolkitScripts: () => Promise<ApiEnvelope<MacroToolkitPayload>>;
@@ -116,6 +157,11 @@ export type MacroToolkitClientMethods = {
     name: string,
     options?: { timeoutSeconds?: number; argv?: string[] },
   ) => Promise<MacroToolkitRunResponse>;
+  refreshCffexMemberRank: (options?: {
+    tradeDate?: string;
+    contracts?: string[];
+    sources?: string[];
+  }) => Promise<MacroToolkitCffexRefreshResponse>;
 };
 
 const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
@@ -220,9 +266,19 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   ],
   output_files: [],
   source_checks: [],
-  warnings: [
-    "cffexmemberrank member-rank data has scripts and CSV output contracts, but no formal DuckDB table is materialized yet.",
-  ],
+  capabilities: [],
+  cffex_member_rank: {
+    materialized: true,
+    status: "ok",
+    row_count: 80,
+    latest_trade_date: "2026-04-30",
+    contracts: ["T.CFE", "TF.CFE", "TL.CFE", "TS.CFE"],
+    source_vendors: ["choice", "tushare"],
+    freshness_status: "current",
+    reference_date: "2026-04-30",
+    stale_days: 0,
+  },
+  warnings: [],
 };
 
 const MOCK_SCRIPTS: MacroToolkitScriptRecord[] = [
@@ -258,6 +314,41 @@ const MOCK_SCRIPTS: MacroToolkitScriptRecord[] = [
   },
 ];
 
+const MOCK_CAPABILITIES: MacroToolkitCapability[] = [
+  {
+    key: "monetary_policy_stance",
+    legacy_module: "M7",
+    label: "货币政策立场",
+    group: "政策与资金面",
+    implementation_status: "library_ready",
+    route_status: "not_wired",
+    frontend_status: "planned",
+    data_status: "ready",
+    data_hit_count: 3,
+    data_required_count: 3,
+    evidence: [
+      { alias: "DR007.IB", row_count: 248, latest_date: "2026-04-30", series_id: "CA.DR007" },
+    ],
+    next_step: "封装 /api/macro/monetary-policy-stance，并在本页接入政策立场卡。",
+  },
+  {
+    key: "yield_curve_shape",
+    legacy_module: "M8",
+    label: "收益率曲线形态",
+    group: "曲线",
+    implementation_status: "partial",
+    route_status: "partial",
+    frontend_status: "partial",
+    data_status: "partial",
+    data_hit_count: 2,
+    data_required_count: 3,
+    evidence: [
+      { alias: "S0059749", row_count: 122, latest_date: "2026-04-29", series_id: "E1000180" },
+    ],
+    next_step: "复用正式曲线表，把曲线形态纯函数输出接到宏观工具箱。",
+  },
+];
+
 const MOCK_PAYLOAD: MacroToolkitPayload = {
   default_data_sources: ["choice", "tushare"],
   toolkit_root: "backend/app/core_finance/macro/toolkit",
@@ -290,9 +381,19 @@ const MOCK_PAYLOAD: MacroToolkitPayload = {
       },
     },
   ],
-  warnings: [
-    "cffexmemberrank member-rank data has scripts and CSV output contracts, but no formal DuckDB table is materialized yet.",
-  ],
+  capabilities: MOCK_CAPABILITIES,
+  cffex_member_rank: {
+    materialized: true,
+    status: "ok",
+    row_count: 80,
+    latest_trade_date: "2026-04-30",
+    contracts: ["T.CFE", "TF.CFE", "TL.CFE", "TS.CFE"],
+    source_vendors: ["choice", "tushare"],
+    freshness_status: "current",
+    reference_date: "2026-04-30",
+    stale_days: 0,
+  },
+  warnings: [],
 };
 
 export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
@@ -328,6 +429,23 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         output_files: [],
       };
     },
+    async refreshCffexMemberRank() {
+      return buildMockApiEnvelope(
+        "macro_toolkit.cffex_member_rank_refresh",
+        {
+          refresh: { row_count: 80 },
+          cffex_member_rank: MOCK_PAYLOAD.cffex_member_rank!,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
   };
 }
 
@@ -351,6 +469,21 @@ export function createRealMacroToolkitClient({
           body: JSON.stringify({
             argv: options?.argv ?? [],
             timeout_seconds: options?.timeoutSeconds ?? 120,
+          }),
+        },
+      ),
+    refreshCffexMemberRank: (options) =>
+      requestActionJson<MacroToolkitCffexRefreshResponse>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/cffex-member-rank/refresh",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trade_date: options?.tradeDate ?? null,
+            contracts: options?.contracts ?? ["TS.CFE", "TF.CFE", "T.CFE", "TL.CFE"],
+            sources: options?.sources ?? ["choice", "tushare"],
           }),
         },
       ),

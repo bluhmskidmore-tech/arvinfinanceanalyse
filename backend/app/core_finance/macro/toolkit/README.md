@@ -17,10 +17,10 @@ package provides local `WindPy` and `akshare` compatibility modules so migrated
 scripts resolve those legacy imports to the system Choice/Tushare DuckDB data
 instead of calling Wind or Akshare directly.
 
-`w.wset("cffexmemberrank", ...)` remains explicit: the scripts and CSV output
-contract exist, but no system DuckDB table currently materializes CFFEX member
-rank data, so the compatibility layer returns a non-zero error instead of
-pretending that empty data is valid.
+`w.wset("cffexmemberrank", ...)` is backed by
+`fact_cffex_member_rank_daily` / `vw_cffex_member_rank_daily`. If the requested
+trade date is not already cached, the compatibility layer attempts a
+Choice/Tushare refresh before returning the Wind-style member-rank payload.
 
 Generated output defaults to `data/macro_toolkit/output`. Set
 `MOSS_MACRO_TOOLKIT_OUTPUT_DIR` to override it.

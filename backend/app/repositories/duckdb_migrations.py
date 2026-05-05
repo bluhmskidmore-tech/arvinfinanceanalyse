@@ -110,6 +110,10 @@ def _v24_zqtz_accounting_sub_type(conn: duckdb.DuckDBPyConnection) -> None:
         )
 
 
+def _v25_cffex_member_rank(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "24_cffex_member_rank.sql")
+
+
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "01_snapshot.sql")
 
@@ -204,6 +208,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(22, "Livermore position snapshot read model", _v22_livermore_position_snapshot)
     registry.register(23, "Livermore gate supplement daily (breadth/limit-up)", _v23_livermore_gate_supplement)
     registry.register(24, "ZQTZ accounting sub_type on snapshot + formal facts", _v24_zqtz_accounting_sub_type)
+    registry.register(25, "CFFEX member-rank daily from Choice/Tushare", _v25_cffex_member_rank)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

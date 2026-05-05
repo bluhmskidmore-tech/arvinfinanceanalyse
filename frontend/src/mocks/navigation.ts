@@ -252,7 +252,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote:
-      "脚本注册表与运行入口已接到后端宏观模块；中金所席位数据仍等待正式落库。",
+      "脚本注册表与运行入口已接到后端宏观模块；中金所席位数据可通过 Choice/Tushare 刷新落库。",
   },
   {
     key: "source-preview",
