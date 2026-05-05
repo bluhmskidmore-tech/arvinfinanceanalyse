@@ -7,8 +7,9 @@ import math
 import pandas as pd
 
 RATE_INPUT_OVERRIDES: dict[str, str] = {
-    "yield_to_maturity": "percent",
-    "coupon_rate": "percent",
+    # Auto: values in [1, 100] treated as percent points (e.g. 2.4 -> 0.024); smaller positives as decimals (0.035 -> 0.035).
+    "yield_to_maturity": "auto",
+    "coupon_rate": "auto",
     "interest_rate": "auto",
     "interbank_interest_rate": "percent",
 }
