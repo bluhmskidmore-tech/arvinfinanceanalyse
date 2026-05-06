@@ -1064,6 +1064,7 @@ export type LivermoreStockCandidateItem = {
   sector_rank: number;
   close: number;
   breakout_level: number;
+  ema10?: number | null;
   ma20: number;
   ma60: number;
   ma120: number;
@@ -1095,6 +1096,19 @@ export type LivermoreRiskExitItem = {
   prior_ema10: number;
 };
 
+export type LivermoreRiskExitWatchItem = {
+  stock_code: string;
+  stock_name: string;
+  entry_cost: number;
+  bars_since_entry: number;
+  latest_close: number;
+  latest_ema10: number;
+  prior_close: number;
+  prior_ema10: number;
+  exit_watch_price: number;
+  triggered: boolean;
+};
+
 export type LivermoreRiskExitPayload = {
   as_of_date: string;
   formula_version: string;
@@ -1103,6 +1117,7 @@ export type LivermoreRiskExitPayload = {
   excluded_position_count: number;
   insufficient_history_count: number;
   items: LivermoreRiskExitItem[];
+  watch_items?: LivermoreRiskExitWatchItem[];
 };
 
 export type LivermoreStrategyPayload = {
@@ -1119,6 +1134,102 @@ export type LivermoreStrategyPayload = {
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
   risk_exit?: LivermoreRiskExitPayload;
+};
+
+export type LivermoreSignalConfluenceMacroStatus =
+  | "supportive"
+  | "neutral"
+  | "restrictive"
+  | "unknown";
+
+export type LivermoreSignalConfluenceMacroContext = {
+  status: LivermoreSignalConfluenceMacroStatus;
+  composite_score: number | null;
+  multiplier: number;
+  description?: string | null;
+};
+
+export type LivermoreSignalConfluenceStrategyContext = {
+  market_gate_state: string;
+  market_gate_exposure: number;
+  allows_new_entry_observations: boolean;
+  new_entry_observation_allowed?: boolean | null;
+  position_size_hint?: number | null;
+};
+
+export type LivermoreSignalConfluenceEntryObservationAction =
+  | "observe_entry_setup"
+  | "observe_only";
+
+export type LivermoreSignalConfluenceEntryObservation = {
+  stock_code: string | null;
+  stock_name: string | null;
+  action: LivermoreSignalConfluenceEntryObservationAction;
+  trigger_price: number | null;
+  buy_trigger_price?: number | null;
+  current_price: number | null;
+  invalidation_reference_price: number | null;
+  position_size_hint?: number | null;
+  evidence?: string[] | string | null;
+};
+
+export type LivermoreSignalConfluenceExitObservationAction =
+  | "observe_exit_watch"
+  | "exit_triggered";
+
+export type LivermoreSignalConfluenceExitObservation = {
+  stock_code: string | null;
+  stock_name: string | null;
+  action: LivermoreSignalConfluenceExitObservationAction;
+  current_price: number | null;
+  exit_watch_price: number | null;
+  triggered?: boolean | null;
+  evidence?: string[] | string | null;
+};
+
+export type LivermoreSignalConfluenceDiagnostic =
+  | string
+  | {
+      severity?: string | null;
+      code?: string | null;
+      message?: string | null;
+    };
+
+export type LivermoreSignalConfluencePayload = {
+  as_of_date: string;
+  macro_context: LivermoreSignalConfluenceMacroContext;
+  strategy_context: LivermoreSignalConfluenceStrategyContext;
+  position_size_hint: number;
+  entry_observations: LivermoreSignalConfluenceEntryObservation[];
+  exit_observations: LivermoreSignalConfluenceExitObservation[];
+  diagnostics: LivermoreSignalConfluenceDiagnostic[];
+  disclaimer: string;
+};
+
+export type LivermorePositionSnapshotPayload = {
+  status: string;
+  fact_source: string;
+  input_mode?: "csv" | "manual";
+  as_of_date: string;
+  row_count: number;
+  run_id: string;
+  source_file_hash: string;
+  source_systems: string[];
+  source_version: string;
+  vendor_version: string;
+  csv_path: string | null;
+  risk_exit_input_status: "ready" | "blocked";
+  risk_exit_input_block_reason: string;
+};
+
+export type LivermoreManualPositionInput = {
+  stockCode: string;
+  stockName?: string;
+  entryCost: number;
+  barsSinceEntry?: number;
+  entryDate?: string;
+  positionQuantity?: number;
+  positionStatus?: "ACTIVE" | "CLOSED" | "EXITED";
 };
 
 export type ResearchCalendarEventKind = "macro" | "supply" | "auction" | "internal";
@@ -1300,9 +1411,102 @@ export type PnlByBusinessYtdPayload = {
   year: number;
   period_type: "yearly";
   period_label: string;
+  period_start_date: string;
+  period_end_date: string;
   total_pnl: string;
   source_tables: string[];
   items: PnlByBusinessYtdItem[];
+};
+
+export type PnlByBusinessMonthlyItem = {
+  row_key: string;
+  sort_order: number;
+  business_type: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  proportion: string | null;
+  asset_count: number;
+  source_note?: string | null;
+};
+
+export type PnlByBusinessMonthlySummary = {
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  asset_count: number;
+};
+
+export type PnlByBusinessMonthlyBucket = {
+  month_key: string;
+  period_start_date: string;
+  period_end_date: string;
+  calendar_days: number;
+  summary: PnlByBusinessMonthlySummary;
+  items: PnlByBusinessMonthlyItem[];
+};
+
+export type PnlByBusinessMonthlyPayload = {
+  year: number;
+  as_of_date: string;
+  source_tables: string[];
+  months: PnlByBusinessMonthlyBucket[];
+};
+
+export type PnlByBusinessAnalysisDimension =
+  | "monthly"
+  | "portfolio"
+  | "accounting"
+  | "cost_center"
+  | "instrument"
+  | "bond_bucket"
+  | "bond_bucket_monthly";
+
+export type PnlByBusinessAnalysisRow = {
+  dimension_key: string;
+  dimension_label: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  asset_count: number;
+};
+
+export type PnlByBusinessAnalysisPayload = {
+  year: number;
+  as_of_date: string;
+  business_key: string | null;
+  dimension: PnlByBusinessAnalysisDimension;
+  period_start_date: string;
+  period_end_date: string;
+  source_tables: string[];
+  rows: PnlByBusinessAnalysisRow[];
 };
 
 export type PnlYearlyBusinessSummaryRow = {

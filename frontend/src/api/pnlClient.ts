@@ -20,6 +20,9 @@ import type {
   PnlAttributionAnalysisSummary,
   PnlAttributionPayload,
   PnlBasis,
+  PnlByBusinessAnalysisDimension,
+  PnlByBusinessAnalysisPayload,
+  PnlByBusinessMonthlyPayload,
   PnlByBusinessPayload,
   PnlByBusinessYtdPayload,
   PnlBridgePayload,
@@ -77,6 +80,13 @@ export type PnlClientMethods = {
   ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
   getPnlByBusiness: (reportDate: string) => Promise<ApiEnvelope<PnlByBusinessPayload>>;
   getPnlByBusinessYtd: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
+  getPnlByBusinessMonthly: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessMonthlyPayload>>;
+  getPnlByBusinessAnalysis: (options: {
+    year: number;
+    asOfDate?: string;
+    businessKey?: string;
+    dimension: PnlByBusinessAnalysisDimension;
+  }) => Promise<ApiEnvelope<PnlByBusinessAnalysisPayload>>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
@@ -203,7 +213,12 @@ export type PnlClientMethods = {
 
 type PnlBusinessClientMethods = Pick<
   PnlClientMethods,
-  "getPnlV1Data" | "getPnlByBusiness" | "getPnlByBusinessYtd" | "getPnlYearlyBusinessSummary"
+  | "getPnlV1Data"
+  | "getPnlByBusiness"
+  | "getPnlByBusinessYtd"
+  | "getPnlByBusinessMonthly"
+  | "getPnlByBusinessAnalysis"
+  | "getPnlYearlyBusinessSummary"
 >;
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
@@ -249,9 +264,51 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
           year,
           period_type: "yearly",
           period_label: `${year}年累计`,
+          period_start_date: `${year}-01-01`,
+          period_end_date: _asOfDate ?? `${year}-12-31`,
           total_pnl: "0.00",
           source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
           items: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getPnlByBusinessMonthly(year: number, _asOfDate?: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.by_business_monthly",
+        {
+          year,
+          as_of_date: _asOfDate ?? `${year}-12-31`,
+          source_tables: [
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+            "fact_formal_zqtz_balance_daily",
+            "ZQTZ_ASSET_BOND_ROWS",
+          ],
+          months: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getPnlByBusinessAnalysis(options) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.by_business_analysis",
+        {
+          year: options.year,
+          as_of_date: options.asOfDate ?? `${options.year}-12-31`,
+          business_key: options.businessKey ?? null,
+          dimension: options.dimension,
+          period_start_date: `${options.year}-01-01`,
+          period_end_date: options.asOfDate ?? `${options.year}-12-31`,
+          source_tables: [
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+            "fact_formal_zqtz_balance_daily",
+            "ZQTZ_ASSET_BOND_ROWS",
+          ],
+          rows: [],
         },
         { basis: "formal", formal_use_allowed: true },
       );
@@ -297,6 +354,34 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/by-business-ytd?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessMonthly: (year: number, asOfDate?: string) => {
+      const query = new URLSearchParams({ year: String(year) });
+      if (asOfDate) {
+        query.set("as_of_date", asOfDate);
+      }
+      return requestJson<PnlByBusinessMonthlyPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-monthly?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessAnalysis: (options) => {
+      const query = new URLSearchParams({
+        year: String(options.year),
+        dimension: options.dimension,
+      });
+      if (options.asOfDate) {
+        query.set("as_of_date", options.asOfDate);
+      }
+      if (options.businessKey) {
+        query.set("business_key", options.businessKey);
+      }
+      return requestJson<PnlByBusinessAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-analysis?${query.toString()}`,
       );
     },
     getPnlYearlyBusinessSummary: (year: number) =>

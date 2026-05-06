@@ -117,6 +117,34 @@ def test_load_latest_pnl_refresh_input_keeps_manifest_report_date_for_archived_f
     assert refresh.fi_rows[0]["report_date"] == "2026-02-28"
 
 
+def test_pnl_refresh_discovers_processed_fi_month_files(tmp_path):
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    processed_dir = tmp_path / "data_input" / "pnl" / "processed"
+    processed_dir.mkdir(parents=True)
+    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    processed_fi = processed_dir / "FI损益202502.xls"
+    processed_fi.write_bytes(source_fi.read_bytes())
+
+    report_dates = source_module.list_pnl_refresh_report_dates(
+        governance_dir=tmp_path / "governance",
+        data_root=tmp_path / "data_input",
+    )
+    assert "2025-02-28" in report_dates
+
+    refresh = source_module.load_latest_pnl_refresh_input(
+        governance_dir=tmp_path / "governance",
+        data_root=tmp_path / "data_input",
+        report_date="2025-02-28",
+    )
+
+    assert refresh.fi_rows
+    assert refresh.fi_rows[0]["report_date"] == "2025-02-28"
+
+
 def test_load_latest_pnl_refresh_input_marks_usd_rows_for_fx_conversion(tmp_path) -> None:
     source_module = load_module(
         "backend.app.services.pnl_source_service",

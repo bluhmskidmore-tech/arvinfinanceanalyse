@@ -121,6 +121,11 @@
       "path": "24_cffex_member_rank.sql",
       "ensure_module": "backend.app.repositories.cffex_member_rank_repo",
       "ensure_symbol": "ensure_cffex_member_rank_schema"
+    },
+    {
+      "path": "25_pnl_by_business_precompute.sql",
+      "ensure_module": "backend.app.tasks.pnl_materialize",
+      "ensure_symbol": "_ensure_tables"
     }
   ]
 }

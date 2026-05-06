@@ -116,6 +116,8 @@ class Settings(BaseSettings):
     ftp_rate_pct: Decimal = Decimal("1.75")
     formal_pnl_enabled: bool = True
     formal_pnl_scope_json: str = '["*"]'
+    #: 为 True 时，/api/pnl/by-business-ytd 优先用 fact_formal_pnl_fi + fact_nonstd_pnl_bridge 按年累计聚合（与物化正式口径一致）；为 False 时沿用刷新包 + V1 兼容变换（供契约测试与排障）。
+    pnl_by_business_ytd_prefer_formal_facts: bool = True
     cors_origins: str = (
         "http://localhost:5888,http://127.0.0.1:5888,http://[::1]:5888,"
         "http://localhost:5173,http://127.0.0.1:5173,http://[::1]:5173"

@@ -40,6 +40,12 @@ curl -s "http://127.0.0.1:7888/api/pnl/by-business-ytd?year=2025&as_of_date=2025
 
 若需 **方案 B**（仅强化文案、不增加 formal 视图），可再收敛 UI。
 
+## 6. 后端：`/api/pnl/by-business-ytd` 默认与物化 formal 对齐
+
+自本变更起，**当年有 `fact_formal_pnl_fi` 或 `fact_nonstd_pnl_bridge` 行时**，YTD 接口默认按 **上述两表在 `as_of_date`（含）前的金额按持仓汇总**，再经 `match_zqtz_asset_bond_rows` 拆桶；**不再**对同一损益重复套用刷新包里的 V1 VAT 变换（避免与已物化事实不一致）。
+
+- 环境变量 **`MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS`**：设为 `false` 时回退为「刷新包 + `_iter_v1_compatible_pnl_records`」路径（契约测试与排障用）。
+
 ## 5. 本实施验证输出（2026-05-05）
 
 ```text

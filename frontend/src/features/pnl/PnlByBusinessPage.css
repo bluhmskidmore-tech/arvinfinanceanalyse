@@ -61,24 +61,283 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-width: 1120px;
 }
 
 .pnl-by-business-table th {
   padding: 10px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
   font-size: 13px;
   text-align: left;
+  white-space: nowrap;
 }
 
 .pnl-by-business-table td {
   padding: 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-900);
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.pnl-by-business-table th:not(:first-child) {
+  text-align: right;
+}
+
+.pnl-by-business-table th:first-child,
+.pnl-by-business-table td:first-child {
+  min-width: 180px;
+  text-align: left;
+  white-space: normal;
+}
+
+.pnl-by-business-table tbody tr[role="button"] {
+  cursor: pointer;
+}
+
+.pnl-by-business-table tbody tr[role="button"]:hover,
+.pnl-by-business-table-row-selected {
+  background: var(--moss-color-primary-50);
 }
 
 .pnl-by-business-table-footer-cell {
   border-top: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   font-weight: 600;
+}
+
+.pnl-by-business-analysis-block {
+  display: grid;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.pnl-by-business-analysis-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--moss-space-4);
+}
+
+.pnl-by-business-analysis-heading h2,
+.pnl-by-business-mini-table h3 {
+  margin: 0;
+  color: var(--moss-color-neutral-900);
+}
+
+.pnl-by-business-analysis-heading h2 {
+  font-size: 18px;
+}
+
+.pnl-by-business-analysis-heading p {
+  margin: 6px 0 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.pnl-by-business-driver-grid,
+.pnl-by-business-analysis-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--moss-space-4);
+}
+
+.pnl-by-business-mini-table {
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-lg);
+  background: #ffffff;
+}
+
+.pnl-by-business-mini-table h3 {
+  padding: 12px 14px 4px;
+  font-size: 14px;
+}
+
+.pnl-by-business-mini-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pnl-by-business-mini-table td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.pnl-by-business-mini-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pnl-by-business-analysis-state {
+  padding: 14px 16px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-lg);
+  background: #ffffff;
+  color: var(--moss-color-neutral-600);
+}
+
+.pnl-by-business-section-pill {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--moss-color-primary-100);
+  border-radius: 999px;
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-primary-700);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pnl-by-business-monthly-section {
+  gap: 12px;
+}
+
+.pnl-by-business-monthly-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pnl-by-business-month-row {
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.pnl-by-business-month-row-open {
+  border-color: var(--moss-color-primary-200);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07);
+}
+
+.pnl-by-business-month-button {
+  display: grid;
+  grid-template-columns: 28px minmax(170px, 240px) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 14px 10px 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: #ffffff;
+  color: var(--moss-color-neutral-900);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pnl-by-business-month-button:hover {
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-month-button[aria-expanded="true"] {
+  border-left-color: var(--moss-color-primary-600);
+  background: #f8fbff;
+}
+
+.pnl-by-business-month-chevron {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 999px;
+  color: var(--moss-color-neutral-500);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.pnl-by-business-month-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pnl-by-business-month-title strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.pnl-by-business-month-title span {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pnl-by-business-month-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(96px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.pnl-by-business-month-metrics span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  justify-items: end;
+  padding-left: 10px;
+  border-left: 1px solid var(--moss-color-neutral-100);
+}
+
+.pnl-by-business-month-metrics small {
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+}
+
+.pnl-by-business-month-metrics strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pnl-by-business-month-panel {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 48px);
+}
+
+.pnl-by-business-month-table-shell {
+  max-height: 430px;
+  overflow: auto;
+  border-radius: var(--moss-radius-sm);
+}
+
+.pnl-by-business-month-table-shell .pnl-by-business-table {
+  min-width: 1360px;
+}
+
+.pnl-by-business-month-table-shell .pnl-by-business-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.pnl-by-business-month-table-shell .pnl-by-business-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+}
+
+@media (max-width: 1080px) {
+  .pnl-by-business-month-button {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .pnl-by-business-month-metrics {
+    grid-column: 2;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .pnl-by-business-month-metrics span {
+    justify-items: start;
+    padding-left: 0;
+    border-left: 0;
+  }
 }

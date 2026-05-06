@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
@@ -28,6 +29,248 @@ class PnlRepository:
 
     def list_nonstd_bridge_report_dates(self) -> list[str]:
         return self._list_report_dates("fact_nonstd_pnl_bridge")
+
+    def fetch_pnl_by_business_precompute(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+        result_kind: str,
+        dimension: str,
+        business_key: str,
+    ) -> dict[str, object] | None:
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            if not self._table_exists(conn, "fact_pnl_by_business_precompute"):
+                return None
+            row = conn.execute(
+                """
+                select payload_json, source_version
+                from fact_pnl_by_business_precompute
+                where year = ?
+                  and as_of_date = ?
+                  and result_kind = ?
+                  and dimension = ?
+                  and business_key = ?
+                order by generated_at desc
+                limit 1
+                """,
+                [year, as_of_date, result_kind, dimension, business_key],
+            ).fetchone()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
+                return None
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        if row is None or row[0] in (None, ""):
+            return None
+        source_version = self.pnl_by_business_precompute_source_version(year=year, as_of_date=as_of_date)
+        if str(row[1] or "") != source_version:
+            return None
+        return json.loads(str(row[0]))
+
+    def pnl_by_business_precompute_source_version(self, *, year: int, as_of_date: str) -> str:
+        y = f"{year:04d}"
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            report_dates: list[str] = []
+            for table_name in ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"):
+                if not self._table_exists(conn, table_name):
+                    continue
+                rows = conn.execute(
+                    f"""
+                    select distinct cast(report_date as varchar)
+                    from {table_name}
+                    where substr(cast(report_date as varchar), 1, 4) = ?
+                      and cast(report_date as varchar) <= ?
+                    """,
+                    [y, as_of_date],
+                ).fetchall()
+                report_dates.extend(str(row[0]) for row in rows)
+            period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
+            fingerprint = {
+                "version": "v1",
+                "year": year,
+                "as_of_date": as_of_date,
+                "period_start": period_start,
+                "report_dates": sorted(set(report_dates)),
+                "formal_fi": self._pnl_precompute_fact_stats(
+                    conn,
+                    table_name="fact_formal_pnl_fi",
+                    year=y,
+                    as_of_date=as_of_date,
+                ),
+                "nonstd_bridge": self._pnl_precompute_fact_stats(
+                    conn,
+                    table_name="fact_nonstd_pnl_bridge",
+                    year=y,
+                    as_of_date=as_of_date,
+                ),
+                "zqtz_balance": self._pnl_precompute_balance_stats(
+                    conn,
+                    period_start=period_start,
+                    as_of_date=as_of_date,
+                ),
+            }
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
+                return "sv_pnl_by_business_precompute_v1:unavailable"
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return "sv_pnl_by_business_precompute_v1:" + json.dumps(
+            fingerprint,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def _pnl_precompute_fact_stats(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        table_name: str,
+        year: str,
+        as_of_date: str,
+    ) -> dict[str, str]:
+        if not self._table_exists(conn, table_name):
+            return self._empty_pnl_precompute_stats()
+        row = conn.execute(
+            f"""
+            select
+              count(*) as row_count,
+              coalesce(sum(interest_income_514), 0) as interest_income,
+              coalesce(sum(fair_value_change_516), 0) as fair_value_change,
+              coalesce(sum(capital_gain_517), 0) as capital_gain,
+              coalesce(sum(manual_adjustment), 0) as manual_adjustment,
+              coalesce(sum(total_pnl), 0) as total_pnl
+            from {table_name}
+            where substr(cast(report_date as varchar), 1, 4) = ?
+              and cast(report_date as varchar) <= ?
+            """,
+            [year, as_of_date],
+        ).fetchone()
+        return self._pnl_precompute_stats_from_row(row)
+
+    def _pnl_precompute_balance_stats(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        period_start: str,
+        as_of_date: str,
+    ) -> dict[str, str]:
+        table_name = "fact_formal_zqtz_balance_daily"
+        if not self._table_exists(conn, table_name):
+            return {"row_count": "0", "avg_amount": "0", "current_amount": "0"}
+        current_amount_expr = self._zqtz_current_amount_expression(conn)
+        row = conn.execute(
+            f"""
+            select
+              count(*) as row_count,
+              coalesce(sum(market_value_amount), 0) as avg_amount,
+              coalesce(sum({current_amount_expr}), 0) as current_amount
+            from fact_formal_zqtz_balance_daily
+            where cast(report_date as date) between ?::date and ?::date
+              and coalesce(currency_basis, '') = 'CNY'
+              and coalesce(position_scope, '') = 'asset'
+            """,
+            [period_start, as_of_date],
+        ).fetchone()
+        if row is None:
+            return {"row_count": "0", "avg_amount": "0", "current_amount": "0"}
+        return {
+            "row_count": str(row[0] or 0),
+            "avg_amount": str(row[1] or 0),
+            "current_amount": str(row[2] or 0),
+        }
+
+    def _empty_pnl_precompute_stats(self) -> dict[str, str]:
+        return {
+            "row_count": "0",
+            "interest_income": "0",
+            "fair_value_change": "0",
+            "capital_gain": "0",
+            "manual_adjustment": "0",
+            "total_pnl": "0",
+        }
+
+    def _pnl_precompute_stats_from_row(self, row: tuple[object, ...] | None) -> dict[str, str]:
+        if row is None:
+            return self._empty_pnl_precompute_stats()
+        return {
+            "row_count": str(row[0] or 0),
+            "interest_income": str(row[1] or 0),
+            "fair_value_change": str(row[2] or 0),
+            "capital_gain": str(row[3] or 0),
+            "manual_adjustment": str(row[4] or 0),
+            "total_pnl": str(row[5] or 0),
+        }
+
+    def replace_pnl_by_business_precompute(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+        records: list[dict[str, object]],
+    ) -> None:
+        in_transaction = False
+        try:
+            conn = duckdb.connect(self.path, read_only=False)
+            conn.execute(
+                """
+                create table if not exists fact_pnl_by_business_precompute (
+                  year integer,
+                  as_of_date varchar,
+                  result_kind varchar,
+                  dimension varchar,
+                  business_key varchar,
+                  payload_json varchar,
+                  source_version varchar,
+                  rule_version varchar,
+                  generated_at varchar
+                )
+                """
+            )
+            conn.execute("begin transaction")
+            in_transaction = True
+            conn.execute(
+                "delete from fact_pnl_by_business_precompute where year = ? and as_of_date = ?",
+                [year, as_of_date],
+            )
+            if records:
+                conn.executemany(
+                    """
+                    insert into fact_pnl_by_business_precompute values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        [
+                            int(record["year"]),
+                            str(record["as_of_date"]),
+                            str(record["result_kind"]),
+                            str(record["dimension"]),
+                            str(record["business_key"]),
+                            str(record["payload_json"]),
+                            str(record["source_version"]),
+                            str(record["rule_version"]),
+                            str(record["generated_at"]),
+                        ]
+                        for record in records
+                    ],
+                )
+            conn.execute("commit")
+            in_transaction = False
+        except duckdb.Error as exc:
+            if "conn" in locals() and in_transaction:
+                conn.execute("rollback")
+            if "cannot open database" in str(exc).lower():
+                return
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
 
     def fetch_zqtz_sub_type_map(self, report_dates: list[str]) -> dict[tuple[str, str], str]:
         dates = sorted({str(d) for d in report_dates if str(d or "").strip()})
@@ -281,6 +524,321 @@ class PnlRepository:
             return Decimal("0")
         return Decimal(str(row[0]))
 
+    def sum_nonstd_bridge_total_pnl_through_report_date(self, report_date: str) -> Decimal:
+        year = str(report_date)[:4]
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            row = conn.execute(
+                """
+                select coalesce(sum(total_pnl), 0)
+                from fact_nonstd_pnl_bridge
+                where substr(cast(report_date as varchar), 1, 4) = ?
+                  and cast(report_date as varchar) <= ?
+                """,
+                [year, report_date],
+            ).fetchone()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return Decimal("0")
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        if row is None:
+            return Decimal("0")
+        return Decimal(str(row[0]))
+
+    def formal_pnl_ytd_has_rows(self, *, year: int, as_of_date: str) -> bool:
+        """当年 ``as_of_date``（含）以前是否存在 formal FI 或 nonstd 桥接行。"""
+        y = str(year)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            row = conn.execute(
+                """
+                select (
+                  (select count(*) from fact_formal_pnl_fi p
+                    where substr(cast(p.report_date as varchar), 1, 4) = ?
+                      and cast(p.report_date as varchar) <= ?)
+                  +
+                  (select count(*) from fact_nonstd_pnl_bridge b
+                    where substr(cast(b.report_date as varchar), 1, 4) = ?
+                      and cast(b.report_date as varchar) <= ?)
+                ) as cnt
+                """,
+                [y, as_of_date, y, as_of_date],
+            ).fetchone()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return False
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return int(row[0] or 0) > 0
+
+    def fetch_formal_fi_ytd_by_position(self, *, year: int, as_of_date: str) -> list[dict[str, object]]:
+        """按 (instrument, portfolio, cost_center, currency_basis) 汇总当年至 ``as_of_date`` 的 FI 损益。"""
+        y = str(year)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                """
+                select
+                  instrument_code,
+                  portfolio_name,
+                  cost_center,
+                  currency_basis,
+                  max(nullif(trim(coalesce(invest_type_std, '')), '')) as invest_type_std,
+                  coalesce(sum(interest_income_514), 0) as interest_income_514,
+                  coalesce(sum(fair_value_change_516), 0) as fair_value_change_516,
+                  coalesce(sum(capital_gain_517), 0) as capital_gain_517,
+                  coalesce(sum(manual_adjustment), 0) as manual_adjustment,
+                  coalesce(sum(total_pnl), 0) as total_pnl
+                from fact_formal_pnl_fi
+                where substr(cast(report_date as varchar), 1, 4) = ?
+                  and cast(report_date as varchar) <= ?
+                group by instrument_code, portfolio_name, cost_center, currency_basis
+                order by instrument_code, portfolio_name, cost_center, currency_basis
+                """,
+                [y, as_of_date],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        columns = [
+            "instrument_code",
+            "portfolio_name",
+            "cost_center",
+            "currency_basis",
+            "invest_type_std",
+            "interest_income_514",
+            "fair_value_change_516",
+            "capital_gain_517",
+            "manual_adjustment",
+            "total_pnl",
+        ]
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def fetch_nonstd_bridge_ytd_by_position(self, *, year: int, as_of_date: str) -> list[dict[str, object]]:
+        """按 (bond_code, portfolio, cost_center) 汇总当年至 ``as_of_date`` 的 nonstd 桥接损益。"""
+        y = str(year)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                """
+                select
+                  bond_code as instrument_code,
+                  portfolio_name,
+                  cost_center,
+                  'CNY' as currency_basis,
+                  '' as invest_type_std,
+                  coalesce(sum(interest_income_514), 0) as interest_income_514,
+                  coalesce(sum(fair_value_change_516), 0) as fair_value_change_516,
+                  coalesce(sum(capital_gain_517), 0) as capital_gain_517,
+                  coalesce(sum(manual_adjustment), 0) as manual_adjustment,
+                  coalesce(sum(total_pnl), 0) as total_pnl
+                from fact_nonstd_pnl_bridge
+                where substr(cast(report_date as varchar), 1, 4) = ?
+                  and cast(report_date as varchar) <= ?
+                group by bond_code, portfolio_name, cost_center
+                order by bond_code, portfolio_name, cost_center
+                """,
+                [y, as_of_date],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        columns = [
+            "instrument_code",
+            "portfolio_name",
+            "cost_center",
+            "currency_basis",
+            "invest_type_std",
+            "interest_income_514",
+            "fair_value_change_516",
+            "capital_gain_517",
+            "manual_adjustment",
+            "total_pnl",
+        ]
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def max_formal_or_nonstd_report_date_in_year(self, *, year: int, as_of_cap: str | None) -> str | None:
+        """当年已物化的最大报表日（FI ∪ nonstd），且不超过 ``as_of_cap``（若提供）。"""
+        y = f"{year:04d}"
+        cap = as_of_cap or "9999-12-31"
+        candidates: list[str] = []
+        for d in self.list_formal_fi_report_dates():
+            s = str(d)
+            if s.startswith(y) and s <= cap:
+                candidates.append(s)
+        for d in self.list_nonstd_bridge_report_dates():
+            s = str(d)
+            if s.startswith(y) and s <= cap:
+                candidates.append(s)
+        return max(candidates) if candidates else None
+
+    def fetch_by_business_analysis_pnl_rows(self, *, year: int, as_of_date: str) -> list[dict[str, object]]:
+        y = str(year)
+        columns = [
+            "source_kind",
+            "report_date",
+            "instrument_code",
+            "portfolio_name",
+            "cost_center",
+            "currency_basis",
+            "invest_type_std",
+            "accounting_basis",
+            "interest_income_514",
+            "fair_value_change_516",
+            "capital_gain_517",
+            "manual_adjustment",
+            "total_pnl",
+        ]
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                """
+                select *
+                from (
+                  select
+                    'formal_fi' as source_kind,
+                    cast(report_date as varchar) as report_date,
+                    instrument_code,
+                    portfolio_name,
+                    cost_center,
+                    coalesce(nullif(trim(currency_basis), ''), 'CNY') as currency_basis,
+                    coalesce(invest_type_std, '') as invest_type_std,
+                    coalesce(accounting_basis, '') as accounting_basis,
+                    interest_income_514,
+                    fair_value_change_516,
+                    capital_gain_517,
+                    manual_adjustment,
+                    total_pnl
+                  from fact_formal_pnl_fi
+                  where substr(cast(report_date as varchar), 1, 4) = ?
+                    and cast(report_date as varchar) <= ?
+                  union all
+                  select
+                    'nonstd_bridge' as source_kind,
+                    cast(report_date as varchar) as report_date,
+                    bond_code as instrument_code,
+                    portfolio_name,
+                    cost_center,
+                    'CNY' as currency_basis,
+                    '' as invest_type_std,
+                    '' as accounting_basis,
+                    interest_income_514,
+                    fair_value_change_516,
+                    capital_gain_517,
+                    manual_adjustment,
+                    total_pnl
+                  from fact_nonstd_pnl_bridge
+                  where substr(cast(report_date as varchar), 1, 4) = ?
+                    and cast(report_date as varchar) <= ?
+                ) rows
+                order by report_date, source_kind, instrument_code, portfolio_name, cost_center
+                """,
+                [y, as_of_date, y, as_of_date],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def fetch_by_business_analysis_balance_rows(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+    ) -> list[dict[str, object]]:
+        columns = [
+            "report_date",
+            "instrument_code",
+            "instrument_name",
+            "portfolio_name",
+            "cost_center",
+            "account_category",
+            "asset_class",
+            "bond_type",
+            "sub_type",
+            "business_type_primary",
+            "business_type_final",
+            "invest_type_std",
+            "accounting_basis",
+            "position_scope",
+            "currency_basis",
+            "currency_code",
+            "avg_amount",
+            "current_amount",
+        ]
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            if not self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+                return []
+            table = "fact_formal_zqtz_balance_daily"
+            current_amount_expr = self._zqtz_current_amount_expression(conn)
+            optional = {
+                "instrument_name": self._optional_column_expr(conn, table, "instrument_name"),
+                "account_category": self._optional_column_expr(conn, table, "account_category"),
+                "asset_class": self._optional_column_expr(conn, table, "asset_class"),
+                "bond_type": self._optional_column_expr(conn, table, "bond_type"),
+                "sub_type": self._optional_column_expr(conn, table, "sub_type"),
+                "business_type_primary": self._optional_column_expr(conn, table, "business_type_primary"),
+                "business_type_final": self._optional_column_expr(conn, table, "business_type_final"),
+                "invest_type_std": self._optional_column_expr(conn, table, "invest_type_std"),
+                "accounting_basis": self._optional_column_expr(conn, table, "accounting_basis"),
+                "currency_code": self._optional_column_expr(conn, table, "currency_code"),
+            }
+            rows = conn.execute(
+                f"""
+                select
+                  cast(report_date as varchar) as report_date,
+                  coalesce(instrument_code, '') as instrument_code,
+                  {optional["instrument_name"]} as instrument_name,
+                  coalesce(portfolio_name, '') as portfolio_name,
+                  coalesce(cost_center, '') as cost_center,
+                  {optional["account_category"]} as account_category,
+                  {optional["asset_class"]} as asset_class,
+                  {optional["bond_type"]} as bond_type,
+                  {optional["sub_type"]} as sub_type,
+                  {optional["business_type_primary"]} as business_type_primary,
+                  {optional["business_type_final"]} as business_type_final,
+                  {optional["invest_type_std"]} as invest_type_std,
+                  {optional["accounting_basis"]} as accounting_basis,
+                  coalesce(position_scope, '') as position_scope,
+                  coalesce(currency_basis, '') as currency_basis,
+                  {optional["currency_code"]} as currency_code,
+                  coalesce(market_value_amount, 0) as avg_amount,
+                  {current_amount_expr} as current_amount
+                from fact_formal_zqtz_balance_daily
+                where cast(report_date as date) between ?::date and ?::date
+                  and coalesce(currency_basis, '') = 'CNY'
+                  and coalesce(position_scope, '') = 'asset'
+                order by report_date, instrument_code, portfolio_name, cost_center
+                """,
+                [start_date, end_date],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
     def _list_report_dates(self, table_name: str) -> list[str]:
         try:
             conn = duckdb.connect(self.path, read_only=True)
@@ -325,6 +883,83 @@ class PnlRepository:
             if "conn" in locals():
                 conn.close()
         return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def _table_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+        row = conn.execute(
+            """
+            select count(*)
+            from information_schema.tables
+            where lower(table_name) = lower(?)
+            """,
+            [table_name],
+        ).fetchone()
+        return bool(row and int(row[0] or 0) > 0)
+
+    def _column_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str, column_name: str) -> bool:
+        row = conn.execute(
+            """
+            select count(*)
+            from information_schema.columns
+            where lower(table_name) = lower(?) and lower(column_name) = lower(?)
+            """,
+            [table_name, column_name],
+        ).fetchone()
+        return bool(row and int(row[0] or 0) > 0)
+
+    def _optional_column_expr(self, conn: duckdb.DuckDBPyConnection, table_name: str, column_name: str) -> str:
+        if self._column_exists(conn, table_name, column_name):
+            return f"coalesce({column_name}, '')"
+        return "cast('' as varchar)"
+
+    def _zqtz_current_amount_expression(self, conn: duckdb.DuckDBPyConnection) -> str:
+        table = "fact_formal_zqtz_balance_daily"
+        market_amount_expr = (
+            "coalesce(market_value_amount, 0)"
+            if self._column_exists(conn, table, "market_value_amount")
+            else "0"
+        )
+        face_amount_expr = (
+            "coalesce(face_value_amount, 0)"
+            if self._column_exists(conn, table, "face_value_amount")
+            else "0"
+        )
+        interest_addend = (
+            " + coalesce(accrued_interest_amount, 0)"
+            if self._column_exists(conn, table, "accrued_interest_amount")
+            else ""
+        )
+        if self._column_exists(conn, table, "amortized_cost_amount") and self._column_exists(
+            conn,
+            table,
+            "accounting_basis",
+        ):
+            standard_amount_expr = (
+                "case when accounting_basis = 'AC' "
+                f"then coalesce(amortized_cost_amount, {market_amount_expr}) "
+                f"else {market_amount_expr} end"
+            )
+        else:
+            standard_amount_expr = market_amount_expr
+        voucher_terms = []
+        if self._column_exists(conn, table, "business_type_primary"):
+            voucher_terms.append("business_type_primary = '凭证式国债'")
+        if self._column_exists(conn, table, "bond_type"):
+            voucher_terms.append("bond_type = '凭证式国债'")
+        if self._column_exists(conn, table, "instrument_name"):
+            voucher_terms.append("instrument_name like '%凭证式%'")
+        voucher_amount_expr = (
+            f"case when {standard_amount_expr} = 0 "
+            f"then coalesce(nullif({market_amount_expr}, 0), {face_amount_expr}, 0) "
+            f"else {standard_amount_expr} end"
+        )
+        if voucher_terms:
+            return (
+                "case when ("
+                + " or ".join(voucher_terms)
+                + f") then {voucher_amount_expr} else {standard_amount_expr} end"
+                f"{interest_addend}"
+            )
+        return f"{standard_amount_expr}{interest_addend}"
 
     def _fetch_by_business_rows(self, *, where_sql: str, params: list[object]) -> list[dict[str, object]]:
         columns = [

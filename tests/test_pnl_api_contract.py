@@ -20,6 +20,12 @@ from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import ROOT, load_module
 
 
+def _force_pnl_ytd_refresh_bundle_contract(monkeypatch) -> None:
+    """契约测试用 FakeRefreshInput 时关闭 formal 优先，避免与已物化的 DuckDB 行混用。"""
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "false")
+    get_settings.cache_clear()
+
+
 def test_fastapi_application_registers_pnl_routes():
     from backend.app.main import app
 
@@ -32,9 +38,556 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/pnl/v1-data" in paths
     assert "/api/pnl/by-business" in paths
     assert "/api/pnl/by-business-ytd" in paths
+    assert "/api/pnl/by-business-monthly" in paths
+    assert "/api/pnl/by-business-analysis" in paths
     assert "/api/pnl/yearly-summary" in paths
     assert "/api/data/refresh_pnl" in paths
     assert "/api/data/import_status/pnl" in paths
+
+
+def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+    class FakePnlRepository:
+        pnl_fetch_count = 0
+        balance_fetch_count = 0
+
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2026
+            assert as_of_cap in {None, "2026-04-30"}
+            return "2026-04-30"
+
+        def list_union_report_dates(self):
+            return ["2026-01-31", "2026-04-30"]
+
+        def fetch_by_business_analysis_pnl_rows(self, *, year, as_of_date):
+            assert year == 2026
+            assert as_of_date == "2026-04-30"
+            type(self).pnl_fetch_count += 1
+            return [
+                {
+                    "source_kind": "formal_fi",
+                    "report_date": "2026-04-30",
+                    "instrument_code": "P001",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "currency_basis": "CNY",
+                    "invest_type_std": "政策性金融债",
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("100.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("100.00"),
+                }
+            ]
+
+        def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
+            assert start_date == "2026-01-01"
+            assert end_date == "2026-04-30"
+            type(self).balance_fetch_count += 1
+            return [
+                {
+                    "report_date": "2026-04-30",
+                    "instrument_code": "P001",
+                    "instrument_name": "policy bond",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "account_category": "asset",
+                    "asset_class": "政策性金融债",
+                    "bond_type": "政策性金融债",
+                    "sub_type": "政策性金融债",
+                    "business_type_primary": "政策性金融债",
+                    "business_type_final": "政策性金融债",
+                    "invest_type_std": "T",
+                    "accounting_basis": "FVTPL",
+                    "position_scope": "asset",
+                    "currency_basis": "CNY",
+                    "currency_code": "CNY",
+                    "avg_amount": Decimal("1000.00"),
+                    "current_amount": Decimal("1000.00"),
+                }
+            ]
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result": kwargs["result_payload"]},
+    )
+
+    first = pnl_service.pnl_by_business_analysis_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2026,
+        as_of_date="2026-04-30",
+        dimension="bond_bucket",
+    )
+    second = pnl_service.pnl_by_business_analysis_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2026,
+        as_of_date="2026-04-30",
+        dimension="bond_bucket_monthly",
+    )
+
+    assert first["result"]["rows"][0]["dimension_label"] == "利率债"
+    assert second["result"]["dimension"] == "bond_bucket_monthly"
+    assert FakePnlRepository.pnl_fetch_count == 1
+    assert FakePnlRepository.balance_fetch_count == 1
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+
+def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+    cached_payload = {
+        "year": 2025,
+        "as_of_date": "2025-12-31",
+        "source_tables": ["fact_pnl_by_business_precompute"],
+        "months": [],
+    }
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap in {None, "2025-12-31"}
+            return "2025-12-31"
+
+        def fetch_pnl_by_business_precompute(self, *, year, as_of_date, result_kind, dimension, business_key):
+            assert (year, as_of_date, result_kind, dimension, business_key) == (
+                2025,
+                "2025-12-31",
+                "monthly",
+                "",
+                "",
+            )
+            return cached_payload
+
+        def list_union_report_dates(self):  # pragma: no cover - proves cache avoids live build
+            raise AssertionError("monthly endpoint should not rebuild when precompute exists")
+
+        def fetch_by_business_analysis_pnl_rows(self, **_kwargs):  # pragma: no cover
+            raise AssertionError("monthly endpoint should not fetch analysis rows when precompute exists")
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result_meta": {"result_kind": kwargs["result_kind"]}, "result": kwargs["result_payload"]},
+    )
+
+    payload = pnl_service.pnl_by_business_monthly_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_monthly"
+    assert payload["result"] == cached_payload
+
+
+def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+    cached_payload = {
+        "year": 2025,
+        "as_of_date": "2025-12-31",
+        "business_key": "asset_zqtz_policy_financial_bond",
+        "dimension": "instrument",
+        "period_start_date": "2025-01-01",
+        "period_end_date": "2025-12-31",
+        "source_tables": ["fact_pnl_by_business_precompute"],
+        "rows": [],
+    }
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap in {None, "2025-12-31"}
+            return "2025-12-31"
+
+        def fetch_pnl_by_business_precompute(self, *, year, as_of_date, result_kind, dimension, business_key):
+            assert (year, as_of_date, result_kind, dimension, business_key) == (
+                2025,
+                "2025-12-31",
+                "analysis",
+                "instrument",
+                "asset_zqtz_policy_financial_bond",
+            )
+            return cached_payload
+
+        def list_union_report_dates(self):  # pragma: no cover - proves cache avoids live build
+            raise AssertionError("analysis endpoint should not rebuild when precompute exists")
+
+        def fetch_by_business_analysis_pnl_rows(self, **_kwargs):  # pragma: no cover
+            raise AssertionError("analysis endpoint should not fetch rows when precompute exists")
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result_meta": {"result_kind": kwargs["result_kind"]}, "result": kwargs["result_payload"]},
+    )
+
+    payload = pnl_service.pnl_by_business_analysis_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2025,
+        as_of_date="2025-12-31",
+        business_key="asset_zqtz_policy_financial_bond",
+        dimension="instrument",
+    )
+
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_analysis"
+    assert payload["result"] == cached_payload
+
+
+def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+    row_defs = (
+        {
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "row_label": "Policy Financial Bond",
+            "sort_order": 66,
+            "source_note": "test",
+        },
+    )
+
+    class FakePnlRepository:
+        written_records: list[dict[str, object]] = []
+
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap in {None, "2025-12-31"}
+            return "2025-12-31"
+
+        def list_union_report_dates(self):
+            return ["2025-12-31"]
+
+        def fetch_by_business_analysis_pnl_rows(self, *, year, as_of_date):
+            assert year == 2025
+            assert as_of_date == "2025-12-31"
+            return [
+                {
+                    "source_kind": "formal_fi",
+                    "report_date": "2025-12-31",
+                    "instrument_code": "P001",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "currency_basis": "CNY",
+                    "invest_type_std": "Policy Financial Bond",
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("100.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("100.00"),
+                }
+            ]
+
+        def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
+            assert start_date == "2025-12-01"
+            assert end_date == "2025-12-31"
+            return [
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "P001",
+                    "instrument_name": "policy bond",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "account_category": "asset",
+                    "asset_class": "Policy Financial Bond",
+                    "bond_type": "Policy Financial Bond",
+                    "sub_type": "Policy Financial Bond",
+                    "business_type_primary": "Policy Financial Bond",
+                    "business_type_final": "Policy Financial Bond",
+                    "invest_type_std": "Policy Financial Bond",
+                    "accounting_basis": "FVTPL",
+                    "position_scope": "asset",
+                    "currency_basis": "CNY",
+                    "currency_code": "CNY",
+                    "avg_amount": Decimal("10000.00"),
+                    "current_amount": Decimal("11000.00"),
+                }
+            ]
+
+        def replace_pnl_by_business_precompute(self, *, year, as_of_date, records):
+            assert year == 2025
+            assert as_of_date == "2025-12-31"
+            type(self).written_records = records
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(pnl_service, "ZQTZ_ASSET_BOND_ROWS", row_defs)
+    monkeypatch.setattr(pnl_service, "match_zqtz_asset_bond_rows", lambda _classification: row_defs)
+
+    summary = pnl_service.precompute_pnl_by_business_payloads(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+
+    record_keys = {
+        (str(record["result_kind"]), str(record["dimension"]), str(record["business_key"]))
+        for record in FakePnlRepository.written_records
+    }
+    assert ("monthly", "", "") in record_keys
+    assert ("analysis", "bond_bucket", "") in record_keys
+    assert ("analysis", "instrument", "asset_zqtz_policy_financial_bond") in record_keys
+    assert summary["records"] == len(FakePnlRepository.written_records)
+
+    monthly_record = next(record for record in FakePnlRepository.written_records if record["result_kind"] == "monthly")
+    monthly_payload = json.loads(str(monthly_record["payload_json"]))
+    assert monthly_payload["as_of_date"] == "2025-12-31"
+    assert monthly_payload["months"][0]["month_key"] == "2025-12"
+
+
+def test_pnl_by_business_precompute_invalidates_after_source_change(tmp_path, monkeypatch):
+    task_module = load_module("backend.app.tasks.pnl_materialize", "backend/app/tasks/pnl_materialize.py")
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    task_module.materialize_pnl_facts.fn(
+        report_date="2025-12-31",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "P001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "0.00",
+                "capital_gain_517": "0.00",
+                "manual_adjustment": "0.00",
+                "currency_basis": "CNY",
+                "source_version": "src-v1",
+                "rule_version": "rule-v1",
+                "ingest_batch_id": "batch-fi",
+                "trace_id": "trace-fi",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'P002', 'FI Desk', 'CC100', 'T', 'FVTPL', 'CNY',
+              5.00, 0.00, 0.00, 0.00, 5.00,
+              'src-v2', 'rv_pnl_phase2_materialize_v1', 'batch-fi-2', 'trace-fi-2'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = pnl_service.pnl_by_business_analysis_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        year=2025,
+        as_of_date="2025-12-31",
+        dimension="bond_bucket",
+    )
+
+    total_pnl = sum(Decimal(str(row["total_pnl"])) for row in payload["result"]["rows"])
+    assert total_pnl == Decimal("15.00")
+
+
+def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_defs = {str(row["row_key"]): row for row in category_module.ZQTZ_ASSET_BOND_ROWS}
+    policy_type = str(row_defs["asset_zqtz_policy_financial_bond"]["match_keywords"][0])
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap in {None, "2025-02-28"}
+            return "2025-02-28"
+
+        def list_union_report_dates(self):
+            return ["2025-01-31", "2025-02-28"]
+
+        def fetch_by_business_analysis_pnl_rows(self, *, year, as_of_date):
+            assert year == 2025
+            assert as_of_date == "2025-02-28"
+            return [
+                {
+                    "source_kind": "formal_fi",
+                    "report_date": "2025-01-31",
+                    "instrument_code": "P001",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "currency_basis": "CNY",
+                    "invest_type_std": policy_type,
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("100.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("100.00"),
+                },
+                {
+                    "source_kind": "formal_fi",
+                    "report_date": "2025-02-28",
+                    "instrument_code": "P001",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "currency_basis": "CNY",
+                    "invest_type_std": policy_type,
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("200.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("200.00"),
+                },
+            ]
+
+        def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
+            assert start_date == "2025-01-01"
+            assert end_date == "2025-02-28"
+            base = {
+                "instrument_code": "P001",
+                "instrument_name": "policy bond",
+                "portfolio_name": "Rate Desk",
+                "cost_center": "CC-RATE",
+                "account_category": "asset",
+                "asset_class": policy_type,
+                "bond_type": policy_type,
+                "sub_type": policy_type,
+                "business_type_primary": policy_type,
+                "business_type_final": policy_type,
+                "invest_type_std": "T",
+                "accounting_basis": "FVTPL",
+                "position_scope": "asset",
+                "currency_basis": "CNY",
+                "currency_code": "CNY",
+            }
+            return [
+                {
+                    **base,
+                    "report_date": "2025-01-31",
+                    "avg_amount": Decimal("1000.00"),
+                    "current_amount": Decimal("1100.00"),
+                },
+                {
+                    **base,
+                    "report_date": "2025-02-28",
+                    "avg_amount": Decimal("2000.00"),
+                    "current_amount": Decimal("2200.00"),
+                },
+            ]
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result_meta": {"result_kind": kwargs["result_kind"]}, "result": kwargs["result_payload"]},
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business-monthly", params={"year": 2025, "as_of_date": "2025-02-28"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_monthly"
+    result = payload["result"]
+    assert result["year"] == 2025
+    assert result["as_of_date"] == "2025-02-28"
+    assert [month["month_key"] for month in result["months"]] == ["2025-01", "2025-02"]
+
+    jan, feb = result["months"]
+    assert jan["period_start_date"] == "2025-01-01"
+    assert jan["period_end_date"] == "2025-01-31"
+    assert jan["calendar_days"] == 31
+    assert jan["summary"]["total_pnl"] == "100.00"
+    assert jan["summary"]["avg_balance"] == "1000.00"
+    assert jan["summary"]["current_balance"] == "1100.00"
+    assert jan["summary"]["ftp_cost"] == "1.36"
+    assert jan["summary"]["ftp_net_pnl"] == "98.64"
+    jan_item = next(item for item in jan["items"] if item["row_key"] == "asset_zqtz_policy_financial_bond")
+    assert set(jan_item) == {
+        "row_key",
+        "sort_order",
+        "business_type",
+        "interest_income",
+        "fair_value_change",
+        "capital_gain",
+        "manual_adjustment",
+        "total_pnl",
+        "avg_balance",
+        "current_balance",
+        "annualized_yield_pct",
+        "ftp_rate_pct",
+        "ftp_cost",
+        "ftp_net_pnl",
+        "ftp_net_annualized_yield_pct",
+        "proportion",
+        "asset_count",
+        "source_note",
+    }
+    assert jan_item["total_pnl"] == "100.00"
+    assert jan_item["avg_balance"] == "1000.00"
+    assert jan_item["current_balance"] == "1100.00"
+    assert jan_item["annualized_yield_pct"] == "117.741935"
+    assert jan_item["ftp_rate_pct"] == "1.600000"
+    assert jan_item["ftp_cost"] == "1.36"
+    assert jan_item["ftp_net_pnl"] == "98.64"
+    assert jan_item["ftp_net_annualized_yield_pct"] == "116.141935"
+    assert jan_item["proportion"] == "1.000000"
+    assert jan_item["asset_count"] == 1
+    assert feb["summary"]["total_pnl"] == "200.00"
+    assert feb["summary"]["avg_balance"] == "2000.00"
+    assert feb["items"][0]["total_pnl"] != "300.00"
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
 
 
 def test_pnl_service_uses_shared_formal_lineage_and_result_meta_helpers():
@@ -53,6 +606,56 @@ def test_pnl_service_keeps_intentional_local_cache_version_wrapper():
     assert "def _build_pnl_formal_result_envelope_from_lineage" in src
     assert "use_lineage_cache_version=False" in src
     assert "default_cache_version=PNL_CACHE_VERSION" in src
+
+
+def test_pnl_by_business_ytd_runtime_cache_reuses_same_arguments(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    pnl_service.clear_pnl_by_business_ytd_cache()
+    calls: list[dict[str, object]] = []
+
+    def fake_uncached(**kwargs):
+        calls.append(kwargs)
+        return {"result": {"call_count": len(calls)}}
+
+    monkeypatch.setattr(pnl_service, "_pnl_by_business_ytd_envelope_uncached", fake_uncached)
+
+    first = pnl_service.pnl_by_business_ytd_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+    second = pnl_service.pnl_by_business_ytd_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+
+    assert first == second
+    assert first["result"]["call_count"] == 1
+    assert len(calls) == 1
+    pnl_service.clear_pnl_by_business_ytd_cache()
+
+
+def test_adb_comparison_runtime_cache_reuses_same_arguments(monkeypatch):
+    adb_service = load_module("backend.app.services.adb_analysis_service", "backend/app/services/adb_analysis_service.py")
+    adb_service.clear_adb_comparison_cache()
+    calls: list[tuple[str, str, int]] = []
+
+    def fake_uncached(start_date, end_date, top_n=20):
+        calls.append((start_date, end_date, top_n))
+        return {"result": {"call_count": len(calls)}}
+
+    monkeypatch.setattr(adb_service, "_adb_comparison_envelope_uncached", fake_uncached)
+
+    first = adb_service.adb_comparison_envelope("2025-01-01", "2025-12-31", top_n=200)
+    second = adb_service.adb_comparison_envelope("2025-01-01", "2025-12-31", top_n=200)
+
+    assert first == second
+    assert first["result"]["call_count"] == 1
+    assert calls == [("2025-01-01", "2025-12-31", 200)]
+    adb_service.clear_adb_comparison_cache()
 
 
 def test_pnl_refresh_serializes_decimal_rows_before_queue_dispatch(tmp_path, monkeypatch):
@@ -197,6 +800,422 @@ def test_pnl_by_business_traces_formal_fi_to_zqtz_business_type_primary(tmp_path
     get_settings.cache_clear()
 
 
+def test_pnl_by_business_ytd_total_matches_formal_fact_rollups(tmp_path, monkeypatch):
+    """默认 formal 路径：YTD 总损益应等于 FI + nonstd 桥接在 as_of 前的累计（与物化口径一致）。"""
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_ytd"
+    result = payload["result"]
+    repo_mod = load_module("backend.app.repositories.pnl_repo", "backend/app/repositories/pnl_repo.py")
+    repo = repo_mod.PnlRepository(str(duckdb_path))
+    expected = repo.sum_formal_total_pnl_through_report_date("2025-12-31") + repo.sum_nonstd_bridge_total_pnl_through_report_date(
+        "2025-12-31"
+    )
+    assert Decimal(str(result["total_pnl"])) == expected.quantize(Decimal("0.01"))
+    assert result["period_start_date"] == "2025-12-01"
+    assert result["period_end_date"] == "2025-12-31"
+    assert "fact_formal_pnl_fi" in result["source_tables"]
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_ytd_formal_path_classifies_nonstd_prefix_rows(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
+    get_settings.cache_clear()
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        rows = [
+            ("SA001", "20.00", "0.00", "0.00", "20.00"),
+            ("G0001", "7.00", "0.00", "0.00", "7.00"),
+            ("J4001", "11.00", "0.00", "0.00", "11.00"),
+            ("J1001", "14.00", "0.00", "0.00", "14.00"),
+            ("J02205260102", "0.00", "9.00", "0.00", "9.00"),
+            ("J09999990102", "0.00", "0.00", "4.00", "4.00"),
+            ("JM001", "10.00", "0.00", "0.00", "10.00"),
+        ]
+        conn.executemany(
+            """
+            insert into fact_nonstd_pnl_bridge values (
+              '2025-12-31', ?, 'NonStd Desk', 'CC-PREFIX',
+              ?, ?, ?, 0.00, ?,
+              'sv-nonstd-prefix', 'rv_pnl_phase2_materialize_v1', 'ib-nonstd-prefix', 'tr-nonstd-prefix'
+            )
+            """,
+            rows,
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    by_key = {item["row_key"]: item for item in response.json()["result"]["items"]}
+    assert by_key["asset_zqtz_public_fund"]["total_pnl"] == "20.00"
+    assert by_key["asset_zqtz_non_bottom_investment"]["total_pnl"] == "45.00"
+    assert by_key["asset_zqtz_detail_trust_plan"]["total_pnl"] == "7.00"
+    assert by_key["asset_zqtz_detail_securities_asset_management_plan"]["total_pnl"] == "38.00"
+    assert by_key["asset_zqtz_detail_structured_finance_broker"]["total_pnl"] == "11.00"
+    assert by_key["asset_zqtz_detail_foreign_currency_delegated"]["total_pnl"] == "14.00"
+    assert by_key["asset_zqtz_detail_local_currency_delegated_market_value"]["total_pnl"] == "9.00"
+    assert by_key["asset_zqtz_detail_local_currency_special_account_cost"]["total_pnl"] == "4.00"
+    assert by_key["asset_zqtz_other_debt_financing"]["total_pnl"] == "10.00"
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_analysis_contract_reconciles_selected_business(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    classification = _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    other_type = classification["other_type"]
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
+    get_settings.cache_clear()
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        rows = [
+            ("SA001", "20.00", "0.00", "0.00", "20.00"),
+            ("G0001", "7.00", "0.00", "0.00", "7.00"),
+            ("J4001", "11.00", "0.00", "0.00", "11.00"),
+            ("J1001", "14.00", "0.00", "0.00", "14.00"),
+            ("J02205260102", "0.00", "9.00", "0.00", "9.00"),
+            ("J09999990102", "0.00", "0.00", "4.00", "4.00"),
+            ("JM001", "10.00", "0.00", "0.00", "10.00"),
+        ]
+        conn.executemany(
+            """
+            insert into fact_nonstd_pnl_bridge values (
+              '2025-12-31', ?, 'NonStd Desk', 'CC-PREFIX',
+              ?, ?, ?, 0.00, ?,
+              'sv-nonstd-analysis', 'rv_pnl_phase2_materialize_v1', 'ib-nonstd-analysis', 'tr-nonstd-analysis'
+            )
+            """,
+            rows,
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2025-12-01",
+                    "J4001",
+                    "J4 structured",
+                    "NonStd Desk",
+                    "CC-J4",
+                    "asset",
+                    other_type,
+                    other_type,
+                    other_type,
+                    other_type,
+                    "T",
+                    "FVTPL",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "500.00000000",
+                    "500.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-j4-prior",
+                    "rv-z-ytd",
+                    "ib-z-ytd",
+                    "trace-z-j4-prior",
+                ),
+                (
+                    "2025-12-01",
+                    "J1001",
+                    "J1 delegated",
+                    "NonStd Desk",
+                    "CC-J1",
+                    "asset",
+                    other_type,
+                    other_type,
+                    other_type,
+                    other_type,
+                    "T",
+                    "FVTPL",
+                    "asset",
+                    "CNY",
+                    "USD",
+                    "1000.00000000",
+                    "1000.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-j1-prior",
+                    "rv-z-ytd",
+                    "ib-z-ytd",
+                    "trace-z-j1-prior",
+                ),
+                (
+                    "2025-12-01",
+                    "J02205260102",
+                    "J0 market",
+                    "NonStd Desk",
+                    "CC-J0-M",
+                    "asset",
+                    other_type,
+                    other_type,
+                    other_type,
+                    other_type,
+                    "H",
+                    "AC",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "1500.00000000",
+                    "1500.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-j0-market-prior",
+                    "rv-z-ytd",
+                    "ib-z-ytd",
+                    "trace-z-j0-market-prior",
+                ),
+                (
+                    "2025-12-01",
+                    "J09999990102",
+                    "J0 cost",
+                    "NonStd Desk",
+                    "CC-J0-C",
+                    "asset",
+                    other_type,
+                    other_type,
+                    other_type,
+                    other_type,
+                    "H",
+                    "AC",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "2000.00000000",
+                    "2000.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-j0-cost-prior",
+                    "rv-z-ytd",
+                    "ib-z-ytd",
+                    "trace-z-j0-cost-prior",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
+    assert ytd_response.status_code == 200
+    ytd_by_key = {item["row_key"]: item for item in ytd_response.json()["result"]["items"]}
+
+    response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "business_key": "asset_zqtz_detail_securities_asset_management_plan",
+            "dimension": "portfolio",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_analysis"
+    result = payload["result"]
+    assert result["dimension"] == "portfolio"
+    assert result["business_key"] == "asset_zqtz_detail_securities_asset_management_plan"
+    assert result["period_start_date"] == "2025-12-01"
+    assert result["period_end_date"] == "2025-12-31"
+    assert "ZQTZ_ASSET_BOND_ROWS" in result["source_tables"]
+    assert set(result["rows"][0]) == {
+        "dimension_key",
+        "dimension_label",
+        "interest_income",
+        "fair_value_change",
+        "capital_gain",
+        "manual_adjustment",
+        "total_pnl",
+        "avg_balance",
+        "current_balance",
+        "annualized_yield_pct",
+        "ftp_rate_pct",
+        "ftp_cost",
+        "ftp_net_pnl",
+        "ftp_net_annualized_yield_pct",
+        "asset_count",
+    }
+    row = result["rows"][0]
+    assert row["dimension_key"] == "NonStd Desk"
+    assert row["total_pnl"] == ytd_by_key["asset_zqtz_detail_securities_asset_management_plan"]["total_pnl"]
+    assert row["total_pnl"] == "38.00"
+    assert row["avg_balance"] == "7500.00"
+    assert row["current_balance"] == "10012.00"
+    assert row["avg_balance"] != row["current_balance"]
+    assert row["annualized_yield_pct"] == "5.965591"
+    assert row["ftp_rate_pct"] == "1.600000"
+    assert row["ftp_cost"] == "10.19"
+    assert row["ftp_net_pnl"] == "27.81"
+    assert row["ftp_net_annualized_yield_pct"] == "4.365591"
+    assert row["asset_count"] == 4
+
+    empty_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "business_key": "missing-business-key",
+            "dimension": "portfolio",
+        },
+    )
+    assert empty_response.status_code == 200
+    assert empty_response.json()["result"]["rows"] == []
+
+    invalid_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={"year": 2025, "as_of_date": "2025-12-31", "dimension": "bad"},
+    )
+    assert invalid_response.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_analysis_bond_bucket_and_ftp_contract(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    classification = _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    other_type = classification["other_type"]
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
+    get_settings.cache_clear()
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("delete from fact_formal_pnl_fi where substr(cast(report_date as varchar), 1, 4) = '2025'")
+        conn.execute("delete from fact_nonstd_pnl_bridge where substr(cast(report_date as varchar), 1, 4) = '2025'")
+        conn.execute(
+            "delete from fact_formal_zqtz_balance_daily where substr(cast(report_date as varchar), 1, 4) = '2025'"
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', ?, ?, ?, 'T', 'FVTPL', 'CNY',
+              ?, 0.00, 0.00, 0.00, ?,
+              'fi-bucket-v1', 'rv_pnl_phase2_materialize_v1', 'ib-bucket', 'trace-fi-bucket'
+            )
+            """,
+            [
+                ("P001", "Rate Desk", "CC-RATE", "100.00", "100.00"),
+                ("E001", "Credit Desk", "CC-ENT", "30.00", "30.00"),
+                ("ABS001", "Credit Desk", "CC-ABS", "50.00", "50.00"),
+                ("C001", "Financial Desk", "CC-COM", "40.00", "40.00"),
+                ("NCD001", "Financial Desk", "CC-NCD", "60.00", "60.00"),
+                ("J0001", "Other Desk", "CC-J", "70.00", "70.00"),
+                ("U001", "No Balance", "CC-U", "10.00", "10.00"),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              '2025-12-31', ?, ?, ?, ?, 'asset', ?, ?, ?, ?,
+              'T', 'FVTPL', 'asset', 'CNY', 'CNY',
+              ?, ?, 0.00000000, false,
+              'sv-z-bucket', 'rv-z-bucket', 'ib-z-bucket', 'trace-z-bucket'
+            )
+            """,
+            [
+                ("P001", "policy financial bond", "Rate Desk", "CC-RATE", "政策性金融债", "政策性金融债", "政策性金融债", "政策性金融债", "1000.00000000", "1000.00000000"),
+                ("E001", "enterprise bond", "Credit Desk", "CC-ENT", "企业债", "企业债", "企业债", "企业债", "2000.00000000", "2000.00000000"),
+                ("ABS001", "asset backed security", "Credit Desk", "CC-ABS", "资产支持证券", "资产支持证券", "资产支持证券", "资产支持证券", "3000.00000000", "3000.00000000"),
+                ("C001", "commercial financial bond", "Financial Desk", "CC-COM", "商业性金融债", "商业性金融债", "商业性金融债", "商业性金融债", "4000.00000000", "4000.00000000"),
+                ("NCD001", "interbank cd", "Financial Desk", "CC-NCD", "同业存单", "同业存单", "同业存单", "同业存单", "5000.00000000", "5000.00000000"),
+                ("J0001", "non bottom asset", "Other Desk", "CC-J", other_type, other_type, other_type, other_type, "6000.00000000", "6000.00000000"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
+    assert ytd_response.status_code == 200
+    assert ytd_response.json()["result"]["total_pnl"] == "360.00"
+
+    response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={"year": 2025, "as_of_date": "2025-12-31", "dimension": "bond_bucket"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["dimension"] == "bond_bucket"
+    by_label = {row["dimension_label"]: row for row in result["rows"]}
+    assert list(by_label) == ["利率债", "信用债", "金融债", "其它债券"]
+    assert by_label["利率债"]["total_pnl"] == "100.00"
+    assert by_label["信用债"]["total_pnl"] == "80.00"
+    assert by_label["金融债"]["total_pnl"] == "100.00"
+    assert by_label["其它债券"]["total_pnl"] == "80.00"
+    assert sum(Decimal(row["total_pnl"]) for row in result["rows"]) == Decimal("360.00")
+    assert by_label["利率债"]["avg_balance"] == "1000.00"
+    assert by_label["利率债"]["current_balance"] == "1000.00"
+    assert by_label["利率债"]["annualized_yield_pct"] == "117.741935"
+    assert by_label["利率债"]["ftp_rate_pct"] == "1.600000"
+    assert by_label["利率债"]["ftp_cost"] == "1.36"
+    assert by_label["利率债"]["ftp_net_pnl"] == "98.64"
+    assert by_label["利率债"]["ftp_net_annualized_yield_pct"] == "116.141935"
+
+    trend_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={"year": 2025, "as_of_date": "2025-12-31", "dimension": "bond_bucket_monthly"},
+    )
+    assert trend_response.status_code == 200
+    trend_result = trend_response.json()["result"]
+    assert trend_result["dimension"] == "bond_bucket_monthly"
+    trend_by_key = {row["dimension_key"]: row for row in trend_result["rows"]}
+    assert list(trend_by_key) == [
+        "2025-12-31::rate_bond",
+        "2025-12-31::credit_bond",
+        "2025-12-31::financial_bond",
+        "2025-12-31::other_bond",
+    ]
+    assert trend_by_key["2025-12-31::rate_bond"]["dimension_label"] == "2025-12-31 利率债"
+    assert trend_by_key["2025-12-31::rate_bond"]["total_pnl"] == "100.00"
+    assert trend_by_key["2025-12-31::rate_bond"]["avg_balance"] == "1000.00"
+    assert trend_by_key["2025-12-31::rate_bond"]["ftp_net_pnl"] == "98.64"
+
+    no_avg_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={"year": 2025, "as_of_date": "2025-12-31", "dimension": "portfolio"},
+    )
+    assert no_avg_response.status_code == 200
+    by_portfolio = {row["dimension_label"]: row for row in no_avg_response.json()["result"]["rows"]}
+    assert by_portfolio["No Balance"]["avg_balance"] == "0.00"
+    assert by_portfolio["No Balance"]["current_balance"] == "0.00"
+    assert by_portfolio["No Balance"]["annualized_yield_pct"] is None
+    assert by_portfolio["No Balance"]["ftp_cost"] is None
+    assert by_portfolio["No Balance"]["ftp_net_pnl"] is None
+    assert by_portfolio["No Balance"]["ftp_net_annualized_yield_pct"] is None
+    get_settings.cache_clear()
+
+
 def test_pnl_by_business_keeps_same_instrument_positions_separate(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
@@ -294,6 +1313,7 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
     classification = _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    _force_pnl_ytd_refresh_bundle_contract(monkeypatch)
 
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     enterprise_type = classification["enterprise_type"]
@@ -449,6 +1469,7 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
 def legacy_pnl_by_business_ytd_uses_v1_import_formula_and_sub_type_mapping(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
+    _force_pnl_ytd_refresh_bundle_contract(monkeypatch)
     _seed_pnl_by_business_rows(duckdb_path)
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -546,6 +1567,7 @@ def legacy_pnl_by_business_ytd_uses_v1_import_formula_and_sub_type_mapping(tmp_p
 
 def test_pnl_by_business_ytd_respects_as_of_date_cutoff(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _force_pnl_ytd_refresh_bundle_contract(monkeypatch)
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
 
     class FakeRefreshInput:
@@ -589,8 +1611,12 @@ def test_pnl_by_business_ytd_respects_as_of_date_cutoff(tmp_path, monkeypatch):
     cutoff_result = cutoff_response.json()["result"]
     full_result = full_response.json()["result"]
     assert cutoff_result["period_label"] == "2026年01月累计"
+    assert cutoff_result["period_start_date"] == "2026-01-01"
+    assert cutoff_result["period_end_date"] == "2026-01-31"
     assert cutoff_result["total_pnl"] == "10.00"
     assert full_result["period_label"] == "2026年01-02月累计"
+    assert full_result["period_start_date"] == "2026-01-01"
+    assert full_result["period_end_date"] == "2026-02-28"
     assert full_result["total_pnl"] == "30.00"
     get_settings.cache_clear()
 
@@ -1798,6 +2824,36 @@ def test_pnl_refresh_report_date_mixes_manifest_and_direct_sources_by_family(
     assert {row["source_version"] for row in fi_rows} == {"sv_manifest_fi_202601"}
     assert all(row["source_version"] != "sv_manifest_fi_202601" for row in nonstd_rows)
     assert all(str(row["source_version"]).startswith("sv_pnl_") for row in nonstd_rows)
+    get_settings.cache_clear()
+
+
+def test_pnl_refresh_report_date_uses_covering_nonstd_range_when_exact_month_end_missing(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_refresh_sources(tmp_path, monkeypatch)
+    _copy_fi_refresh_source(tmp_path, month_key="202601")
+    _write_nonstd_refresh_workbook(
+        tmp_path / "data_input" / "pnl_516" / "非标516-20260101-0228.xlsx",
+        row_dates=("2026-01-30", "2026-02-28"),
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/api/data/refresh_pnl", params={"report_date": "2026-01-31"})
+
+    assert response.status_code == 200
+    assert queued_messages
+    nonstd_rows = queued_messages[0]["nonstd_rows_by_type"]["516"]
+    assert [row["voucher_date"] for row in nonstd_rows] == ["2026-01-30"]
+    assert nonstd_rows[0]["source_file"] == "非标516-20260101-0228.xlsx"
     get_settings.cache_clear()
 
 

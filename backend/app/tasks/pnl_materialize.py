@@ -200,6 +200,16 @@ def _materialize_pnl_facts(
                 raise
             finally:
                 conn.close()
+
+        from backend.app.services.pnl_service import precompute_pnl_by_business_payloads
+
+        precompute_summary = precompute_pnl_by_business_payloads(
+            duckdb_path=str(duckdb_file),
+            governance_dir=str(governance_path),
+            year=target_report_date.year,
+            as_of_date=report_date,
+        )
+        pnl_by_business_precompute_records = int(precompute_summary.get("records") or 0)
     except Exception as exc:
         logger.error("pnl_materialize failed: %s", exc, exc_info=True)
         failed_record = CacheBuildRunRecord(
@@ -217,6 +227,8 @@ def _materialize_pnl_facts(
         failed_record["report_date"] = report_date
         repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
         raise
+
+    _clear_pnl_page_runtime_caches()
 
     completed_run = CacheBuildRunRecord(
         run_id=run_id,
@@ -265,11 +277,22 @@ def _materialize_pnl_facts(
         "rule_version": RULE_VERSION,
         "vendor_version": "vv_none",
         "lock": PNL_MATERIALIZE_LOCK.key,
+        "pnl_by_business_precompute_records": pnl_by_business_precompute_records,
     }
 
 
 materialize_pnl_facts = register_actor_once("materialize_pnl_facts", _materialize_pnl_facts)
 run_pnl_materialize_sync = _materialize_pnl_facts
+
+
+def _clear_pnl_page_runtime_caches() -> None:
+    try:
+        from backend.app.services import adb_analysis_service, pnl_service
+
+        pnl_service.clear_pnl_by_business_ytd_cache()
+        adb_analysis_service.clear_adb_comparison_cache()
+    except Exception as exc:  # pragma: no cover - cache invalidation must not fail materialization
+        logger.warning("failed to clear pnl page runtime caches: %s", exc)
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:

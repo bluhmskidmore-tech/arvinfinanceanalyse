@@ -23,4 +23,23 @@ describe("resolveAdbAvgYuan", () => {
     ]);
     expect(resolveAdbAvgYuan("非底层投资资产", map)).toBe(999);
   });
+
+  it("sums detail rows for 证券业资管计划 when parent key missing", () => {
+    const map = new Map<string, number>([
+      ["其中：结构化融资（券商）", 10],
+      ["其中：外币委外", 20],
+      ["其中：本币委外（市值法）", 30],
+      ["其中：本币专户（成本法）", 40],
+    ]);
+    expect(resolveAdbAvgYuan("证券业资管计划", map)).toBe(100);
+  });
+
+  it("rolls 非底层投资资产 through 证券业资管计划 without double counting detail rows", () => {
+    const map = new Map<string, number>([
+      ["信托计划", 100],
+      ["证券业资管计划", 400],
+      ["其中：外币委外", 300],
+    ]);
+    expect(resolveAdbAvgYuan("非底层投资资产", map)).toBe(500);
+  });
 });

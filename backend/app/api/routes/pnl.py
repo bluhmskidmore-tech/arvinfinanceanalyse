@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension
 
 
 router = APIRouter(prefix="/api")
@@ -132,6 +133,60 @@ def by_business_ytd(
             governance_dir=str(settings.governance_path),
             year=year,
             as_of_date=as_of_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business-monthly")
+def by_business_monthly(
+    year: int = Query(..., description="Requested calendar year for monthly PnL by business type."),
+    as_of_date: str | None = Query(
+        None,
+        description="Optional report-date cutoff for monthly PnL by business type.",
+    ),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return _pnl_service().pnl_by_business_monthly_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+            as_of_date=as_of_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/pnl/by-business-analysis")
+def by_business_analysis(
+    year: int = Query(..., description="Requested calendar year for PnL by business analysis."),
+    as_of_date: str | None = Query(
+        None,
+        description="Optional report-date cutoff for PnL by business analysis.",
+    ),
+    business_key: str | None = Query(
+        None,
+        description="Optional ZQTZ_ASSET_BOND_ROWS row_key selected from /api/pnl/by-business-ytd.",
+    ),
+    dimension: PnlByBusinessAnalysisDimension = Query(
+        "monthly",
+        description="Analysis dimension.",
+    ),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return _pnl_service().pnl_by_business_analysis_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+            as_of_date=as_of_date,
+            business_key=business_key,
+            dimension=dimension,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,6 +17,7 @@ class PnlMaterializePayload(BaseModel):
     rule_version: str
     vendor_version: str
     lock: str
+    pnl_by_business_precompute_records: int = 0
 
 
 class PnlFormalFiRow(BaseModel):
@@ -174,9 +176,116 @@ class PnlByBusinessYtdPayload(BaseModel):
     year: int
     period_type: str = "yearly"
     period_label: str
+    period_start_date: str
+    period_end_date: str
     total_pnl: Decimal
     source_tables: list[str]
     items: list[PnlByBusinessYtdItem]
+
+
+class PnlByBusinessMonthlyItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_key: str
+    sort_order: int
+    business_type: str
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    avg_balance: Decimal
+    current_balance: Decimal
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+    proportion: Decimal | None
+    asset_count: int
+    source_note: str | None = None
+
+
+class PnlByBusinessMonthlySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    avg_balance: Decimal
+    current_balance: Decimal
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+    asset_count: int
+
+
+class PnlByBusinessMonthlyBucket(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month_key: str
+    period_start_date: str
+    period_end_date: str
+    calendar_days: int
+    summary: PnlByBusinessMonthlySummary
+    items: list[PnlByBusinessMonthlyItem]
+
+
+class PnlByBusinessMonthlyPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    as_of_date: str
+    source_tables: list[str]
+    months: list[PnlByBusinessMonthlyBucket]
+
+
+PnlByBusinessAnalysisDimension = Literal[
+    "monthly",
+    "portfolio",
+    "accounting",
+    "cost_center",
+    "instrument",
+    "bond_bucket",
+    "bond_bucket_monthly",
+]
+
+
+class PnlByBusinessAnalysisRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dimension_key: str
+    dimension_label: str
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    avg_balance: Decimal
+    current_balance: Decimal
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+    asset_count: int
+
+
+class PnlByBusinessAnalysisPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    as_of_date: str
+    business_key: str | None
+    dimension: PnlByBusinessAnalysisDimension
+    period_start_date: str
+    period_end_date: str
+    source_tables: list[str]
+    rows: list[PnlByBusinessAnalysisRow]
 
 
 class PnlYearlyBusinessSummaryRow(BaseModel):
