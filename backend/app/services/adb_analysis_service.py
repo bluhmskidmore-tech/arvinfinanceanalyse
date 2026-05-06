@@ -18,6 +18,7 @@ import hashlib
 import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -1618,6 +1619,19 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
 
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
+    return _cached_adb_comparison_envelope(str(start_date), str(end_date), int(top_n))
+
+
+@lru_cache(maxsize=32)
+def _cached_adb_comparison_envelope(start_date: str, end_date: str, top_n: int) -> dict[str, Any]:
+    return _adb_comparison_envelope_uncached(start_date, end_date, top_n)
+
+
+def clear_adb_comparison_cache() -> None:
+    _cached_adb_comparison_envelope.cache_clear()
+
+
+def _adb_comparison_envelope_uncached(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
     settings = get_settings()
     parsed_start_date = _parse_date(start_date)
     parsed_end_date = _parse_date(end_date)

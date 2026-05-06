@@ -75,6 +75,17 @@ def test_service_workbook_envelope_includes_segment_scale_compare_when_history_e
     assert company_sheet["title"] == "公司规模同比环比"
     assert company_sheet["columns"] == ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"]
     assert any(row["指标"] == "公司贷款合计" and row["口径"] == "时点环比" for row in company_sheet["rows"])
+    retail_sheet = next(
+        sheet for sheet in envelope["result"]["sheets"] if sheet["key"] == "retail_scale_compare"
+    )
+    assert retail_sheet["title"] == "零售规模同比环比"
+    assert retail_sheet["columns"] == ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"]
+    assert any(row["指标"] == "零售存款合计" and row["口径"] == "时点环比" for row in retail_sheet["rows"])
+    income_sheet = next(
+        sheet for sheet in envelope["result"]["sheets"] if sheet["key"] == "income_rate_analysis"
+    )
+    assert income_sheet["title"] == "收益率分析（总账可复算）"
+    assert any(row["指标"] == "公司贷款利息收入" for row in income_sheet["rows"])
 
 
 def test_service_supports_sync_refresh_and_status_flow(tmp_path):
@@ -264,7 +275,9 @@ def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_overrid
         "foreign_currency",
         "segment_base_scale",
         "company_scale",
+        "retail_scale",
         "financial_market_scale",
+        "income_rate_analysis",
     ]
     assert scenario["result"]["applied_overrides"] == {
         "DEVIATION_WARN": 80,

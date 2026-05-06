@@ -50,7 +50,9 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
         "外币分析",
         "分部基础规模",
         "公司规模",
+        "零售规模",
         "金融市场规模",
+        "收益率分析（总账可复算）",
     ]
 
     overview = workbook["经营概览"]
@@ -80,6 +82,8 @@ def test_export_includes_segment_scale_compare_sheet_when_history_exists(tmp_pat
     workbook = load_workbook(BytesIO(response.content))
     assert "分部规模同比环比" in workbook.sheetnames
     assert "公司规模同比环比" in workbook.sheetnames
+    assert "零售规模同比环比" in workbook.sheetnames
     assert "金融市场规模同比环比" in workbook.sheetnames
+    assert "收益率分析（总账可复算）" in workbook.sheetnames
 
     get_settings.cache_clear()

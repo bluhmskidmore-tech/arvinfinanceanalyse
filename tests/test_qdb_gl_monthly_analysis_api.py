@@ -59,7 +59,9 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
         "外币分析",
         "分部基础规模",
         "公司规模",
+        "零售规模",
         "金融市场规模",
+        "收益率分析（总账可复算）",
     ]
 
     get_settings.cache_clear()
@@ -101,6 +103,18 @@ def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists
     )
     assert company_sheet["title"] == "公司规模同比环比"
     assert any(row["指标"] == "公司贷款合计" and row["口径"] == "时点环比" for row in company_sheet["rows"])
+    assert "retail_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    retail_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "retail_scale_compare"
+    )
+    assert retail_sheet["title"] == "零售规模同比环比"
+    assert any(row["指标"] == "零售存款合计" and row["口径"] == "时点环比" for row in retail_sheet["rows"])
+    assert "income_rate_analysis" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    income_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "income_rate_analysis"
+    )
+    assert income_sheet["title"] == "收益率分析（总账可复算）"
+    assert any(row["指标"] == "公司贷款利息收入" for row in income_sheet["rows"])
 
     get_settings.cache_clear()
 
@@ -287,7 +301,9 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
         "foreign_currency",
         "segment_base_scale",
         "company_scale",
+        "retail_scale",
         "financial_market_scale",
+        "income_rate_analysis",
     ]
     alerts_sheet = next(
         sheet for sheet in scenario_payload["result"]["sheets"] if sheet["key"] == "alerts"

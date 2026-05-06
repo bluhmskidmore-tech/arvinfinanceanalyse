@@ -242,6 +242,45 @@ describe("LedgerPnlPage", () => {
           ],
         },
         {
+          key: "retail_scale",
+          title: "零售规模",
+          columns: ["指标", "时点余额", "年日均", "月日均", "口径来源"],
+          rows: [
+            {
+              指标: "零售存款-活期",
+              时点余额: 327.8,
+              年日均: 318.83,
+              月日均: 315.56,
+              口径来源: "零售规模：总账对账+日均同源科目重建",
+            },
+          ],
+        },
+        {
+          key: "retail_scale_compare",
+          title: "零售规模同比环比",
+          columns: ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
+          rows: [
+            {
+              指标: "零售存款合计",
+              口径: "时点环比",
+              本期: 2604.03,
+              对比期: 2566.14,
+              增减额: 37.88,
+              "增减幅%": 1.48,
+              口径来源: "月度分析-零售板块：总账对账+日均同源历史月重建",
+            },
+            {
+              指标: "零售贷款-分支行个贷",
+              口径: "月日均环比",
+              本期: null,
+              对比期: null,
+              增减额: null,
+              "增减幅%": null,
+              口径来源: "source_missing: 零售分支行个贷依赖80297微贷金融支行专段",
+            },
+          ],
+        },
+        {
           key: "financial_market_scale_compare",
           title: "金融市场规模同比环比",
           columns: ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
@@ -254,6 +293,49 @@ describe("LedgerPnlPage", () => {
               增减额: 46.66,
               "增减幅%": 2.73,
               口径来源: "月度分析-金融市场：总账对账+日均同源历史月重建",
+            },
+          ],
+        },
+        {
+          key: "income_rate_analysis",
+          title: "收益率分析（总账可复算）",
+          columns: ["指标", "板块", "收益类别", "年日均规模", "总账收益/支出", "年化收益率/付息率%", "口径来源"],
+          rows: [
+            {
+              指标: "公司贷款利息收入",
+              板块: "公司板块",
+              收益类别: "贷款利息收入",
+              年日均规模: 3339.26,
+              "总账收益/支出": 32.4,
+              "年化收益率/付息率%": 3.93,
+              口径来源: "收益率分析：总账收益科目+日均规模重建",
+            },
+            {
+              指标: "金融投资利息收入",
+              板块: "金融市场",
+              收益类别: "金融投资利息收入",
+              年日均规模: null,
+              "总账收益/支出": null,
+              "年化收益率/付息率%": null,
+              口径来源: "source_missing: 财务指标表该项依赖外部营收分项/FTP/收益率来源，当前总账+日均闭环未确认",
+            },
+          ],
+        },
+        {
+          key: "income_rate_attribution",
+          title: "收益量价归因（年累计同比）",
+          columns: ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "校验差异", "口径来源"],
+          rows: [
+            {
+              指标: "公司贷款利息收入",
+              板块: "公司板块",
+              "本期收益/支出": 32.4,
+              "对比期收益/支出": 29.15,
+              增减额: 3.24,
+              规模贡献: 6.12,
+              利率贡献: -2.88,
+              校验差异: 0,
+              口径来源: "收益量价归因：总账收益科目+日均规模按年累计同比拆解",
             },
           ],
         },
@@ -345,6 +427,15 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-company-scale-compare")).toHaveTextContent(
       "月度分析-公司板块",
     );
+    expect(screen.getByText("零售规模")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-retail-scale")).toHaveTextContent("零售存款-活期");
+    expect(screen.getByText("零售规模同比环比")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-retail-scale-compare")).toHaveTextContent(
+      "零售存款合计",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-retail-scale-compare")).toHaveTextContent(
+      "source_missing",
+    );
     expect(screen.getByText("金融市场规模")).toBeInTheDocument();
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-market-scale")).toHaveTextContent(
       "生息债券投资",
@@ -355,6 +446,18 @@ describe("LedgerPnlPage", () => {
     );
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-market-scale-compare")).toHaveTextContent(
       "月度分析-金融市场",
+    );
+    expect(screen.getByText("收益率分析（总账可复算）")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent(
+      "公司贷款利息收入",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent("source_missing");
+    expect(screen.getByText("收益量价归因（年累计同比）")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate-attribution")).toHaveTextContent(
+      "规模贡献",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate-attribution")).toHaveTextContent(
+      "公司贷款利息收入",
     );
   });
 

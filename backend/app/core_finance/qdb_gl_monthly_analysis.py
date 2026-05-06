@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from calendar import monthrange
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
@@ -118,8 +119,15 @@ SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE = "source_missing: 标准日均源�
 SEGMENT_SCALE_COMPARE_SOURCE = "月度分析-分部情况：总账对账+日均同源历史月重建"
 COMPANY_SCALE_SOURCE = "公司规模：总账对账+日均同源科目重建"
 COMPANY_SCALE_COMPARE_SOURCE = "月度分析-公司板块：总账对账+日均同源历史月重建"
+RETAIL_SCALE_SOURCE = "零售规模：总账对账+日均同源科目重建"
+RETAIL_SCALE_BRANCH_LOAN_MISSING_SOURCE = "source_missing: 零售分支行个贷依赖80297微贷金融支行专段"
+RETAIL_SCALE_COMPARE_SOURCE = "月度分析-零售板块：总账对账+日均同源历史月重建"
 FINANCIAL_MARKET_SCALE_SOURCE = "金融市场规模：总账对账+日均同源科目重建"
 FINANCIAL_MARKET_SCALE_COMPARE_SOURCE = "月度分析-金融市场：总账对账+日均同源历史月重建"
+INCOME_RATE_ANALYSIS_SOURCE = "收益率分析：总账收益科目+日均规模重建"
+INCOME_RATE_ATTRIBUTION_SOURCE = "收益量价归因：总账收益科目+日均规模按年累计同比拆解"
+INCOME_RATE_MISSING_SOURCE = "source_missing: 财务指标表该项依赖外部营收分项/FTP/收益率来源，当前总账+日均闭环未确认"
+INCOME_RATE_PERSONAL_LOAN_SCALE_MISSING_SOURCE = "source_missing: 个人贷款收益率分母依赖信用卡生息规模/80297微贷拆分，当前总账+日均闭环未确认"
 
 
 def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
@@ -323,6 +331,18 @@ def build_qdb_gl_monthly_analysis_workbook(
     )
     if company_scale_compare_sheet is not None:
         sheets.append(company_scale_compare_sheet)
+    retail_scale_sheet = _build_retail_scale_sheet(
+        report_month=report_month,
+        merged_data=merged_data,
+    )
+    if retail_scale_sheet is not None:
+        sheets.append(retail_scale_sheet)
+    retail_scale_compare_sheet = _build_retail_scale_compare_sheet(
+        merged_data=merged_data,
+        comparison_data=comparison_data,
+    )
+    if retail_scale_compare_sheet is not None:
+        sheets.append(retail_scale_compare_sheet)
     financial_market_scale_sheet = _build_financial_market_scale_sheet(
         report_month=report_month,
         merged_data=merged_data,
@@ -335,6 +355,19 @@ def build_qdb_gl_monthly_analysis_workbook(
     )
     if financial_market_scale_compare_sheet is not None:
         sheets.append(financial_market_scale_compare_sheet)
+    income_rate_analysis_sheet = _build_income_rate_analysis_sheet(
+        report_month=report_month,
+        merged_data=merged_data,
+    )
+    if income_rate_analysis_sheet is not None:
+        sheets.append(income_rate_analysis_sheet)
+    income_rate_attribution_sheet = _build_income_rate_attribution_sheet(
+        report_month=report_month,
+        merged_data=merged_data,
+        comparison_data=comparison_data,
+    )
+    if income_rate_attribution_sheet is not None:
+        sheets.append(income_rate_attribution_sheet)
     return {"report_month": report_month, "sheets": sheets}
 
 
@@ -947,6 +980,173 @@ def _build_company_scale_compare_sheet(
     )
 
 
+def _build_retail_scale_sheet(
+    *,
+    report_month: str,
+    merged_data: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not report_month.startswith("2026"):
+        return None
+
+    rows = _retail_scale_raw_rows(merged_data)
+    if not rows:
+        return None
+    return _sheet(
+        "retail_scale",
+        "零售规模",
+        ["指标", "时点余额", "年日均", "月日均", "口径来源"],
+        [
+            {
+                "指标": row["指标"],
+                "时点余额": _display_yi(row["时点余额"]),
+                "年日均": _display_yi(row["年日均"]),
+                "月日均": _display_yi(row["月日均"]),
+                "口径来源": row["口径来源"],
+            }
+            for row in rows
+        ],
+    )
+
+
+def _retail_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
+    avg_rows_3 = {row["科目代码"]: row for row in merged_data.get("日均_3位", [])}
+    avg_rows_5 = {row["科目代码"]: row for row in merged_data.get("日均_5位", [])}
+    rows_11 = list(merged_data.get("11位", []))
+    if not rows_3 or not rows_11:
+        return []
+
+    def value_3d(code: str, field: str) -> Decimal:
+        if field in {"年日均", "月日均"}:
+            avg_row = avg_rows_3.get(code)
+            if avg_row is not None:
+                return _as_decimal(avg_row.get(field)) or ZERO
+        row = rows_3.get(code)
+        return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
+
+    def value_11d(code: str, field: str) -> Decimal:
+        for row in rows_11:
+            if row["科目代码"] == code:
+                return _as_decimal(row.get(field)) or ZERO
+        return ZERO
+
+    def value_5d(code: str, field: str) -> Decimal:
+        if field in {"年日均", "月日均"}:
+            row = avg_rows_5.get(code)
+            return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
+        return sum(
+            (_as_decimal(row.get(field)) or ZERO for row in rows_11 if row["科目代码"].startswith(code)),
+            ZERO,
+        )
+
+    def savings_demand_deposit(field: str) -> Decimal:
+        return -(value_3d("211", field) + value_5d("21702", field))
+
+    def savings_term_deposit(field: str) -> Decimal:
+        return -(value_3d("215", field) + value_5d("20250", field))
+
+    def savings_structured_deposit(field: str) -> Decimal:
+        return -value_5d("21602", field)
+
+    def savings_deposit_total(field: str) -> Decimal:
+        return -(
+            value_5d("20250", field)
+            + value_3d("211", field)
+            + value_3d("215", field)
+            + value_5d("21702", field)
+            + value_11d("21602020001", field)
+        )
+
+    def personal_loan_total(field: str) -> Decimal:
+        return value_3d("122", field) + value_11d("13001000001", field) + value_11d("13003000001", field) + value_5d("13604", field)
+
+    def credit_card(field: str) -> Decimal:
+        return value_5d("13604", field)
+
+    def amount_row(name: str, spot: Decimal | None, year_avg: Decimal | None, month_avg: Decimal | None, source: str) -> dict[str, Any]:
+        return {
+            "指标": name,
+            "时点余额": spot,
+            "年日均": year_avg,
+            "月日均": month_avg,
+            "口径来源": source,
+        }
+
+    return [
+        amount_row("零售存款-活期", savings_demand_deposit("期末余额"), savings_demand_deposit("年日均"), savings_demand_deposit("月日均"), RETAIL_SCALE_SOURCE),
+        amount_row("零售存款-定期", savings_term_deposit("期末余额"), savings_term_deposit("年日均"), savings_term_deposit("月日均"), RETAIL_SCALE_SOURCE),
+        amount_row("零售存款-结构性", savings_structured_deposit("期末余额"), savings_structured_deposit("年日均"), savings_structured_deposit("月日均"), RETAIL_SCALE_SOURCE),
+        amount_row("零售存款合计", savings_deposit_total("期末余额"), savings_deposit_total("年日均"), savings_deposit_total("月日均"), RETAIL_SCALE_SOURCE),
+        amount_row("零售贷款-分支行个贷", None, None, None, RETAIL_SCALE_BRANCH_LOAN_MISSING_SOURCE),
+        amount_row("参考：微贷中心", None, None, None, SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE),
+        amount_row("参考：信用卡", credit_card("期末余额"), credit_card("年日均"), credit_card("月日均"), RETAIL_SCALE_SOURCE),
+        amount_row("参考：个人贷款合计", personal_loan_total("期末余额"), personal_loan_total("年日均"), personal_loan_total("月日均"), RETAIL_SCALE_SOURCE),
+    ]
+
+
+def _build_retail_scale_compare_sheet(
+    *,
+    merged_data: dict[str, Any],
+    comparison_data: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not comparison_data:
+        return None
+
+    current_rows = {row["指标"]: row for row in _retail_scale_raw_rows(merged_data)}
+    if not current_rows:
+        return None
+
+    comparison_rows_by_kind = {
+        kind: {row["指标"]: row for row in _retail_scale_raw_rows(data)}
+        for kind, data in comparison_data.items()
+        if isinstance(data, dict)
+    }
+    compare_specs = [
+        ("时点同比", "时点余额", "prior_year"),
+        ("时点环比", "时点余额", "prior_month"),
+        ("年日均同比", "年日均", "prior_year"),
+        ("月日均环比", "月日均", "prior_month"),
+    ]
+    rows: list[dict[str, Any]] = []
+    for metric_name, current_row in current_rows.items():
+        for compare_label, field, comparison_key in compare_specs:
+            comparison_rows = comparison_rows_by_kind.get(comparison_key)
+            if not comparison_rows:
+                continue
+            comparison_row = comparison_rows.get(metric_name)
+            current_value = _as_decimal(current_row.get(field))
+            comparison_value = _as_decimal(comparison_row.get(field)) if comparison_row else None
+            delta = None if current_value is None or comparison_value is None else current_value - comparison_value
+            current_source = str(current_row.get("口径来源") or "")
+            comparison_source = str((comparison_row or {}).get("口径来源") or "")
+            source = RETAIL_SCALE_COMPARE_SOURCE
+            if current_source.startswith("source_missing:"):
+                source = current_source
+            elif comparison_source.startswith("source_missing:"):
+                source = comparison_source
+            elif comparison_row is None:
+                source = "source_missing: 对比期缺少同名零售规模行"
+            rows.append(
+                {
+                    "指标": metric_name,
+                    "口径": compare_label,
+                    "本期": _display_yi(current_value),
+                    "对比期": _display_yi(comparison_value),
+                    "增减额": _display_yi(delta),
+                    "增减幅%": _display_number(_safe_pct(delta, comparison_value)),
+                    "口径来源": source,
+                }
+            )
+    if not rows:
+        return None
+    return _sheet(
+        "retail_scale_compare",
+        "零售规模同比环比",
+        ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
+        rows,
+    )
+
+
 def _build_financial_market_scale_sheet(
     *,
     report_month: str,
@@ -1102,6 +1302,262 @@ def _build_financial_market_scale_compare_sheet(
         ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
         rows,
     )
+
+
+def _build_income_rate_analysis_sheet(
+    *,
+    report_month: str,
+    merged_data: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not report_month.startswith("2026"):
+        return None
+
+    rows = _income_rate_raw_rows(report_month=report_month, merged_data=merged_data)
+    if not rows:
+        return None
+    return _sheet(
+        "income_rate_analysis",
+        "收益率分析（总账可复算）",
+        ["指标", "板块", "收益类别", "年日均规模", "总账收益/支出", "年化收益率/付息率%", "口径来源"],
+        [
+            {
+                "指标": row["指标"],
+                "板块": row["板块"],
+                "收益类别": row["收益类别"],
+                "年日均规模": _display_yi(row["年日均规模"]),
+                "总账收益/支出": _display_yi(row["总账收益/支出"]),
+                "年化收益率/付息率%": _display_number(row["年化收益率/付息率%"]),
+                "口径来源": row["口径来源"],
+            }
+            for row in rows
+        ],
+    )
+
+
+def _income_rate_raw_rows(*, report_month: str, merged_data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
+    rows_11 = list(merged_data.get("11位", []))
+    if not rows_3 or not rows_11:
+        return []
+
+    days = _ytd_days(report_month)
+    company_rows = {row["指标"]: row for row in _company_scale_raw_rows(merged_data)}
+    retail_rows = {row["指标"]: row for row in _retail_scale_raw_rows(merged_data)}
+
+    def value_3d(code: str) -> Decimal:
+        row = rows_3.get(code)
+        return ZERO if row is None else (_as_decimal(row.get("期末余额")) or ZERO)
+
+    def sum_11d(prefix: str) -> Decimal:
+        return sum(
+            (_as_decimal(row.get("期末余额")) or ZERO for row in rows_11 if row["科目代码"].startswith(prefix)),
+            ZERO,
+        )
+
+    def value_11d(code: str) -> Decimal:
+        for row in rows_11:
+            if row["科目代码"] == code:
+                return _as_decimal(row.get("期末余额")) or ZERO
+        return ZERO
+
+    company_loan_income = -(
+        value_3d("501")
+        - sum_11d("50109")
+        - sum_11d("50110")
+        + value_11d("50110000002")
+        + sum_11d("50206")
+        - sum_11d("50115")
+    )
+    personal_loan_income = -(sum_11d("50109") + sum_11d("50110") - value_11d("50110000002"))
+    discount_callback = -sum_11d("50115")
+    company_deposit_expense = (
+        sum_11d("52101")
+        + sum_11d("52102")
+        + sum_11d("52110")
+        - value_11d("52110000001")
+        + value_11d("52105000001")
+        + value_11d("52106000002")
+    )
+    savings_deposit_expense = (
+        sum_11d("52103")
+        + sum_11d("52104")
+        + value_11d("52105000002")
+        + value_11d("52106000001")
+        + value_11d("52110000001")
+    )
+
+    def scale(metric_name: str, source_rows: dict[str, dict[str, Any]]) -> Decimal | None:
+        row = source_rows.get(metric_name)
+        return None if row is None else _as_decimal(row.get("年日均"))
+
+    def amount_row(
+        *,
+        name: str,
+        segment: str,
+        income_type: str,
+        year_avg_scale: Decimal | None,
+        amount: Decimal | None,
+        source: str,
+    ) -> dict[str, Any]:
+        return {
+            "指标": name,
+            "板块": segment,
+            "收益类别": income_type,
+            "年日均规模": year_avg_scale,
+            "总账收益/支出": amount,
+            "年化收益率/付息率%": _annualized_rate_pct(amount, year_avg_scale, days),
+            "口径来源": source,
+        }
+
+    return [
+        amount_row(
+            name="公司贷款利息收入",
+            segment="公司板块",
+            income_type="贷款利息收入",
+            year_avg_scale=scale("公司贷款合计", company_rows),
+            amount=company_loan_income,
+            source=INCOME_RATE_ANALYSIS_SOURCE,
+        ),
+        amount_row(
+            name="个人贷款利息收入",
+            segment="参考：个人贷款总量",
+            income_type="贷款利息收入",
+            year_avg_scale=None,
+            amount=personal_loan_income,
+            source=INCOME_RATE_PERSONAL_LOAN_SCALE_MISSING_SOURCE,
+        ),
+        amount_row(
+            name="公司存款利息支出",
+            segment="公司板块",
+            income_type="存款利息支出",
+            year_avg_scale=scale("公司存款合计", company_rows),
+            amount=company_deposit_expense,
+            source=INCOME_RATE_ANALYSIS_SOURCE,
+        ),
+        amount_row(
+            name="储蓄存款利息支出",
+            segment="零售存款",
+            income_type="存款利息支出",
+            year_avg_scale=scale("零售存款合计", retail_rows),
+            amount=savings_deposit_expense,
+            source=INCOME_RATE_ANALYSIS_SOURCE,
+        ),
+        amount_row(
+            name="折现回拨",
+            segment="贷款折现",
+            income_type="贷款利息收入调节项",
+            year_avg_scale=None,
+            amount=discount_callback,
+            source=INCOME_RATE_ANALYSIS_SOURCE,
+        ),
+        amount_row(
+            name="金融投资利息收入",
+            segment="金融市场",
+            income_type="金融投资利息收入",
+            year_avg_scale=None,
+            amount=None,
+            source=INCOME_RATE_MISSING_SOURCE,
+        ),
+        amount_row(
+            name="同业资产负债利息净收入",
+            segment="金融市场",
+            income_type="同业资产负债利息净收入",
+            year_avg_scale=None,
+            amount=None,
+            source=INCOME_RATE_MISSING_SOURCE,
+        ),
+    ]
+
+
+def _build_income_rate_attribution_sheet(
+    *,
+    report_month: str,
+    merged_data: dict[str, Any],
+    comparison_data: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not comparison_data:
+        return None
+    prior_year_data = comparison_data.get("prior_year")
+    if not isinstance(prior_year_data, dict):
+        return None
+
+    current_rows = {
+        row["指标"]: row for row in _income_rate_raw_rows(report_month=report_month, merged_data=merged_data)
+    }
+    prior_year_month = f"{int(report_month[:4]) - 1}{report_month[4:]}"
+    prior_rows = {
+        row["指标"]: row
+        for row in _income_rate_raw_rows(report_month=prior_year_month, merged_data=prior_year_data)
+    }
+    current_days = _ytd_days(report_month)
+    prior_days = _ytd_days(prior_year_month)
+    rows: list[dict[str, Any]] = []
+    for metric_name, current_row in current_rows.items():
+        prior_row = prior_rows.get(metric_name)
+        if prior_row is None:
+            continue
+        current_amount = _as_decimal(current_row.get("总账收益/支出"))
+        prior_amount = _as_decimal(prior_row.get("总账收益/支出"))
+        current_scale = _as_decimal(current_row.get("年日均规模"))
+        prior_scale = _as_decimal(prior_row.get("年日均规模"))
+        current_rate = _annualized_rate(current_amount, current_scale, current_days)
+        prior_rate = _annualized_rate(prior_amount, prior_scale, prior_days)
+        source = INCOME_RATE_ATTRIBUTION_SOURCE
+        volume_effect = None
+        rate_effect = None
+        delta = None if current_amount is None or prior_amount is None else current_amount - prior_amount
+        if None in {current_scale, prior_scale, current_rate, prior_rate}:
+            if str(current_row.get("口径来源") or "").startswith("source_missing:"):
+                source = str(current_row["口径来源"])
+            elif str(prior_row.get("口径来源") or "").startswith("source_missing:"):
+                source = str(prior_row["口径来源"])
+            else:
+                source = "source_missing: 收益量价归因缺少年日均规模或收益率"
+        else:
+            volume_effect = (current_scale - prior_scale) * current_rate * Decimal(current_days) / Decimal(365)
+            rate_effect = prior_scale * (
+                current_rate * Decimal(current_days) / Decimal(365)
+                - prior_rate * Decimal(prior_days) / Decimal(365)
+            )
+        check_gap = None if delta is None or volume_effect is None or rate_effect is None else delta - volume_effect - rate_effect
+        rows.append(
+            {
+                "指标": metric_name,
+                "板块": current_row["板块"],
+                "本期收益/支出": _display_yi(current_amount),
+                "对比期收益/支出": _display_yi(prior_amount),
+                "增减额": _display_yi(delta),
+                "规模贡献": _display_yi(volume_effect),
+                "利率贡献": _display_yi(rate_effect),
+                "校验差异": _display_yi(check_gap),
+                "口径来源": source,
+            }
+        )
+    if not rows:
+        return None
+    return _sheet(
+        "income_rate_attribution",
+        "收益量价归因（年累计同比）",
+        ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "校验差异", "口径来源"],
+        rows,
+    )
+
+
+def _ytd_days(month_key: str) -> int:
+    year = int(month_key[:4])
+    month = int(month_key[4:6])
+    return sum(monthrange(year, month_number)[1] for month_number in range(1, month + 1))
+
+
+def _annualized_rate(amount: Decimal | None, average_scale: Decimal | None, days: int) -> Decimal | None:
+    if amount is None or average_scale is None or average_scale == ZERO or days <= 0:
+        return None
+    return amount / average_scale * Decimal(365) / Decimal(days)
+
+
+def _annualized_rate_pct(amount: Decimal | None, average_scale: Decimal | None, days: int) -> Decimal | None:
+    rate = _annualized_rate(amount, average_scale, days)
+    return None if rate is None else rate * Decimal(100)
 
 
 def _industry_sheet(key: str, title: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
