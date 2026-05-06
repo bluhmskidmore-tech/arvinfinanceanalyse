@@ -360,6 +360,59 @@ describe("LedgerPnlPage", () => {
           ],
         },
         {
+          key: "deposit_interest_split",
+          title: "存款利息拆分",
+          columns: ["指标", "板块", "本期年日均", "年累计利息支出", "年化付息率%", "同比增减额", "本月月日均", "本月利息支出", "本月付息率%", "环比增减额", "口径来源"],
+          rows: [
+            {
+              指标: "公司存款",
+              板块: "公司板块",
+              本期年日均: 2518.24,
+              年累计利息支出: 7.67,
+              "年化付息率%": 1.24,
+              同比增减额: -0.41,
+              本月月日均: 2497.6,
+              本月利息支出: 2.67,
+              "本月付息率%": 1.26,
+              环比增减额: 0.29,
+              口径来源: "存款利息拆分：总账521利息支出+日均存款规模重建",
+            },
+          ],
+        },
+        {
+          key: "parent_company_revenue_components",
+          title: "母公司营收分项",
+          columns: ["指标", "类别", "同比本期", "同比对比期", "同比增减额", "同比增减幅%", "环比本月", "环比上月", "环比增减额", "环比增减幅%", "口径来源"],
+          rows: [
+            {
+              指标: "贷款利息收入",
+              类别: "利息净收入",
+              同比本期: 39.01,
+              同比对比期: 36.96,
+              同比增减额: 2.05,
+              "同比增减幅%": 5.55,
+              环比本月: 13.68,
+              环比上月: 12.76,
+              环比增减额: 0.92,
+              "环比增减幅%": 7.21,
+              口径来源: "母公司营收分项：总账损益科目可复算部分",
+            },
+            {
+              指标: "金融投资利息收入",
+              类别: "利息净收入",
+              同比本期: null,
+              同比对比期: null,
+              同比增减额: null,
+              "同比增减幅%": null,
+              环比本月: null,
+              环比上月: null,
+              环比增减额: null,
+              "环比增减幅%": null,
+              口径来源: "source_missing: 母公司营收分项该行依赖外部营收分项/FTP/非息明细来源，当前总账+日均闭环未确认",
+            },
+          ],
+        },
+        {
           key: "industry_gap",
           title: "行业存贷差",
           columns: ["行业", "存贷差_时点"],
@@ -487,6 +540,20 @@ describe("LedgerPnlPage", () => {
     );
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate-attribution")).toHaveTextContent(
       "个人贷款利息收入",
+    );
+    expect(screen.getByText("存款利息拆分")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-deposit-interest-split")).toHaveTextContent(
+      "公司存款",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-deposit-interest-split")).toHaveTextContent(
+      "7.67",
+    );
+    expect(screen.getByText("母公司营收分项")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-parent-company-revenue")).toHaveTextContent(
+      "贷款利息收入",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-parent-company-revenue")).toHaveTextContent(
+      "source_missing",
     );
   });
 

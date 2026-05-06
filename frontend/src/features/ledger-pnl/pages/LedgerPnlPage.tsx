@@ -207,6 +207,11 @@ export default function LedgerPnlPage() {
   );
   const incomeRateAnalysisSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "income_rate_analysis");
   const incomeRateAttributionSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "income_rate_attribution");
+  const depositInterestSplitSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "deposit_interest_split");
+  const parentCompanyRevenueSheet = findAnalysisSheet(
+    monthlyAnalysisWorkbook?.sheets,
+    "parent_company_revenue_components",
+  );
   const industryGapSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "industry_gap");
   const overviewLabelColumn = overviewSheet?.columns[0];
   const overviewValueColumn = overviewSheet?.columns[1];
@@ -465,6 +470,20 @@ export default function LedgerPnlPage() {
             sheet={incomeRateAttributionSheet}
             testId="ledger-pnl-monthly-analysis-income-rate-attribution"
             columnLimit={9}
+          />
+          <AnalysisTable
+            title="存款利息拆分"
+            sheet={depositInterestSplitSheet}
+            testId="ledger-pnl-monthly-analysis-deposit-interest-split"
+            columnLimit={11}
+            rowLimit={9}
+          />
+          <AnalysisTable
+            title="母公司营收分项"
+            sheet={parentCompanyRevenueSheet}
+            testId="ledger-pnl-monthly-analysis-parent-company-revenue"
+            columnLimit={11}
+            rowLimit={17}
           />
           <AnalysisTable
             title="行业存贷差"

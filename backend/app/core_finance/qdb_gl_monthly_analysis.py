@@ -128,6 +128,9 @@ INCOME_RATE_ANALYSIS_SOURCE = "收益率分析：总账收益科目+日均规模
 INCOME_RATE_ATTRIBUTION_SOURCE = "收益量价归因：总账收益科目+日均规模按年累计同比拆解"
 INCOME_RATE_MISSING_SOURCE = "source_missing: 财务指标表该项依赖外部营收分项/FTP/收益率来源，当前总账+日均闭环未确认"
 INCOME_RATE_PERSONAL_LOAN_SCALE_MISSING_SOURCE = "source_missing: 个人贷款收益率分母依赖信用卡生息规模/80297微贷拆分，当前总账+日均闭环未确认"
+DEPOSIT_INTEREST_SPLIT_SOURCE = "存款利息拆分：总账521利息支出+日均存款规模重建"
+PARENT_COMPANY_REVENUE_SOURCE = "母公司营收分项：总账损益科目可复算部分"
+PARENT_COMPANY_REVENUE_MISSING_SOURCE = "source_missing: 母公司营收分项该行依赖外部营收分项/FTP/非息明细来源，当前总账+日均闭环未确认"
 
 
 def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
@@ -368,6 +371,20 @@ def build_qdb_gl_monthly_analysis_workbook(
     )
     if income_rate_attribution_sheet is not None:
         sheets.append(income_rate_attribution_sheet)
+    deposit_interest_split_sheet = _build_deposit_interest_split_sheet(
+        report_month=report_month,
+        merged_data=merged_data,
+        comparison_data=comparison_data,
+    )
+    if deposit_interest_split_sheet is not None:
+        sheets.append(deposit_interest_split_sheet)
+    parent_company_revenue_sheet = _build_parent_company_revenue_components_sheet(
+        report_month=report_month,
+        merged_data=merged_data,
+        comparison_data=comparison_data,
+    )
+    if parent_company_revenue_sheet is not None:
+        sheets.append(parent_company_revenue_sheet)
     return {"report_month": report_month, "sheets": sheets}
 
 
@@ -1541,6 +1558,388 @@ def _build_income_rate_attribution_sheet(
         ["指标", "板块", "本期收益/支出", "对比期收益/支出", "增减额", "规模贡献", "利率贡献", "校验差异", "口径来源"],
         rows,
     )
+
+
+def _build_deposit_interest_split_sheet(
+    *,
+    report_month: str,
+    merged_data: dict[str, Any],
+    comparison_data: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not report_month.startswith("2026"):
+        return None
+
+    current_rows = _deposit_interest_split_raw_rows(merged_data)
+    if not current_rows:
+        return None
+
+    prior_year_rows = _raw_rows_by_metric(
+        _deposit_interest_split_raw_rows((comparison_data or {}).get("prior_year", {}))
+    )
+    prior_month_rows = _raw_rows_by_metric(
+        _deposit_interest_split_raw_rows((comparison_data or {}).get("prior_month", {}))
+    )
+    two_months_ago_rows = _raw_rows_by_metric(
+        _deposit_interest_split_raw_rows((comparison_data or {}).get("two_months_ago", {}))
+    )
+
+    ytd_days = _ytd_days(report_month)
+    current_month_days = monthrange(int(report_month[:4]), int(report_month[4:6]))[1]
+    prior_month_key = _shift_report_month_key(report_month, -1)
+
+    rows: list[dict[str, Any]] = []
+    for row in current_rows:
+        metric_name = row["指标"]
+        prior_year_row = prior_year_rows.get(metric_name)
+        prior_month_row = prior_month_rows.get(metric_name)
+        two_months_ago_row = two_months_ago_rows.get(metric_name)
+        current_amount = _as_decimal(row.get("年累计利息支出"))
+        prior_year_amount = _as_decimal(prior_year_row.get("年累计利息支出")) if prior_year_row else None
+        prior_month_ytd_amount = _as_decimal(prior_month_row.get("年累计利息支出")) if prior_month_row else None
+        two_months_ago_ytd_amount = (
+            _as_decimal(two_months_ago_row.get("年累计利息支出")) if two_months_ago_row else None
+        )
+        current_month_amount = _month_amount(report_month, current_amount, prior_month_ytd_amount)
+        prior_month_amount = (
+            _month_amount(prior_month_key, prior_month_ytd_amount, two_months_ago_ytd_amount)
+            if prior_month_key is not None
+            else None
+        )
+        yoy_delta = None if current_amount is None or prior_year_amount is None else current_amount - prior_year_amount
+        mom_delta = (
+            None
+            if current_month_amount is None or prior_month_amount is None
+            else current_month_amount - prior_month_amount
+        )
+        rows.append(
+            {
+                "指标": metric_name,
+                "板块": row["板块"],
+                "本期年日均": _display_yi(_as_decimal(row.get("年日均规模"))),
+                "年累计利息支出": _display_yi(current_amount),
+                "年化付息率%": _display_number(
+                    _annualized_rate_pct(current_amount, _as_decimal(row.get("年日均规模")), ytd_days)
+                ),
+                "同比增减额": _display_yi(yoy_delta),
+                "本月月日均": _display_yi(_as_decimal(row.get("月日均规模"))),
+                "本月利息支出": _display_yi(current_month_amount),
+                "本月付息率%": _display_number(
+                    _annualized_rate_pct(
+                        current_month_amount,
+                        _as_decimal(row.get("月日均规模")),
+                        current_month_days,
+                    )
+                ),
+                "环比增减额": _display_yi(mom_delta),
+                "口径来源": row["口径来源"],
+            }
+        )
+
+    return _sheet(
+        "deposit_interest_split",
+        "存款利息拆分",
+        [
+            "指标",
+            "板块",
+            "本期年日均",
+            "年累计利息支出",
+            "年化付息率%",
+            "同比增减额",
+            "本月月日均",
+            "本月利息支出",
+            "本月付息率%",
+            "环比增减额",
+            "口径来源",
+        ],
+        rows,
+    )
+
+
+def _deposit_interest_split_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(merged_data, dict):
+        return []
+    rows_11 = list(merged_data.get("11位", []))
+    if not rows_11:
+        return []
+
+    company_rows = {row["指标"]: row for row in _company_scale_raw_rows(merged_data)}
+    retail_rows = {row["指标"]: row for row in _retail_scale_raw_rows(merged_data)}
+
+    def sum_11d(prefix: str) -> Decimal:
+        return sum(
+            (_as_decimal(row.get("期末余额")) or ZERO for row in rows_11 if row["科目代码"].startswith(prefix)),
+            ZERO,
+        )
+
+    def value_11d(code: str) -> Decimal:
+        for row in rows_11:
+            if row["科目代码"] == code:
+                return _as_decimal(row.get("期末余额")) or ZERO
+        return ZERO
+
+    def scale(metric_name: str, source_rows: dict[str, dict[str, Any]], field: str) -> Decimal | None:
+        row = source_rows.get(metric_name)
+        return None if row is None else _as_decimal(row.get(field))
+
+    def sum_scale(
+        left_metric: str,
+        left_rows: dict[str, dict[str, Any]],
+        right_metric: str,
+        right_rows: dict[str, dict[str, Any]],
+        field: str,
+    ) -> Decimal | None:
+        left = scale(left_metric, left_rows, field)
+        right = scale(right_metric, right_rows, field)
+        if left is None or right is None:
+            return None
+        return left + right
+
+    def amount_row(
+        name: str,
+        segment: str,
+        scale_metric: str,
+        scale_rows: dict[str, dict[str, Any]],
+        amount: Decimal,
+    ) -> dict[str, Any]:
+        return {
+            "指标": name,
+            "板块": segment,
+            "年日均规模": scale(scale_metric, scale_rows, "年日均"),
+            "月日均规模": scale(scale_metric, scale_rows, "月日均"),
+            "年累计利息支出": amount,
+            "口径来源": DEPOSIT_INTEREST_SPLIT_SOURCE,
+        }
+
+    company_demand = sum_11d("52101")
+    company_term = sum_11d("52102") + value_11d("52105000001") + sum_11d("52110") - value_11d("52110000001")
+    company_structured = value_11d("52106000002")
+    savings_demand = sum_11d("52103") + value_11d("52110000001")
+    savings_term = sum_11d("52104") + value_11d("52105000002")
+    savings_structured = value_11d("52106000001")
+    total_amount = company_demand + company_term + company_structured + savings_demand + savings_term + savings_structured
+
+    return [
+        amount_row("公司存款", "公司存款", "公司存款合计", company_rows, company_demand + company_term + company_structured),
+        amount_row("公司存款-活期", "公司存款", "公司存款-活期", company_rows, company_demand),
+        amount_row("公司存款-定期", "公司存款", "公司存款-定期", company_rows, company_term),
+        amount_row("公司存款-结构性", "公司存款", "公司存款-结构性", company_rows, company_structured),
+        amount_row("储蓄存款", "零售存款", "零售存款合计", retail_rows, savings_demand + savings_term + savings_structured),
+        amount_row("储蓄存款-活期", "零售存款", "零售存款-活期", retail_rows, savings_demand),
+        amount_row("储蓄存款-定期", "零售存款", "零售存款-定期", retail_rows, savings_term),
+        amount_row("储蓄存款-结构性", "零售存款", "零售存款-结构性", retail_rows, savings_structured),
+        {
+            "指标": "存款利息支出合计",
+            "板块": "母公司",
+            "年日均规模": sum_scale("公司存款合计", company_rows, "零售存款合计", retail_rows, "年日均"),
+            "月日均规模": sum_scale("公司存款合计", company_rows, "零售存款合计", retail_rows, "月日均"),
+            "年累计利息支出": total_amount,
+            "口径来源": DEPOSIT_INTEREST_SPLIT_SOURCE,
+        },
+    ]
+
+
+def _build_parent_company_revenue_components_sheet(
+    *,
+    report_month: str,
+    merged_data: dict[str, Any],
+    comparison_data: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not report_month.startswith("2026"):
+        return None
+
+    current_rows = _parent_company_revenue_raw_rows(merged_data)
+    if not current_rows:
+        return None
+
+    prior_year_rows = _raw_rows_by_metric(
+        _parent_company_revenue_raw_rows((comparison_data or {}).get("prior_year", {}))
+    )
+    prior_month_rows = _raw_rows_by_metric(
+        _parent_company_revenue_raw_rows((comparison_data or {}).get("prior_month", {}))
+    )
+    two_months_ago_rows = _raw_rows_by_metric(
+        _parent_company_revenue_raw_rows((comparison_data or {}).get("two_months_ago", {}))
+    )
+    prior_month_key = _shift_report_month_key(report_month, -1)
+
+    rows: list[dict[str, Any]] = []
+    for row in current_rows:
+        metric_name = row["指标"]
+        prior_year_row = prior_year_rows.get(metric_name)
+        prior_month_row = prior_month_rows.get(metric_name)
+        two_months_ago_row = two_months_ago_rows.get(metric_name)
+        current_ytd = _as_decimal(row.get("年累计金额"))
+        prior_year_ytd = _as_decimal(prior_year_row.get("年累计金额")) if prior_year_row else None
+        prior_month_ytd = _as_decimal(prior_month_row.get("年累计金额")) if prior_month_row else None
+        two_months_ago_ytd = _as_decimal(two_months_ago_row.get("年累计金额")) if two_months_ago_row else None
+        current_month = _month_amount(report_month, current_ytd, prior_month_ytd)
+        prior_month = (
+            _month_amount(prior_month_key, prior_month_ytd, two_months_ago_ytd)
+            if prior_month_key is not None
+            else None
+        )
+        yoy_delta = None if current_ytd is None or prior_year_ytd is None else current_ytd - prior_year_ytd
+        mom_delta = None if current_month is None or prior_month is None else current_month - prior_month
+        rows.append(
+            {
+                "指标": metric_name,
+                "类别": row["类别"],
+                "同比本期": _display_yi(current_ytd),
+                "同比对比期": _display_yi(prior_year_ytd),
+                "同比增减额": _display_yi(yoy_delta),
+                "同比增减幅%": _display_number(_safe_pct(yoy_delta, prior_year_ytd)),
+                "环比本月": _display_yi(current_month),
+                "环比上月": _display_yi(prior_month),
+                "环比增减额": _display_yi(mom_delta),
+                "环比增减幅%": _display_number(_safe_pct(mom_delta, prior_month)),
+                "口径来源": row["口径来源"],
+            }
+        )
+
+    return _sheet(
+        "parent_company_revenue_components",
+        "母公司营收分项",
+        [
+            "指标",
+            "类别",
+            "同比本期",
+            "同比对比期",
+            "同比增减额",
+            "同比增减幅%",
+            "环比本月",
+            "环比上月",
+            "环比增减额",
+            "环比增减幅%",
+            "口径来源",
+        ],
+        rows,
+    )
+
+
+def _parent_company_revenue_raw_rows(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(merged_data, dict):
+        return []
+    components = _interest_component_values(merged_data)
+    if components is None:
+        return []
+
+    company_loan_income = components["company_loan_income"]
+    personal_loan_income = components["personal_loan_income"]
+    discount_callback = components["discount_callback"]
+    company_deposit_expense = components["company_deposit_expense"]
+    savings_deposit_expense = components["savings_deposit_expense"]
+    loan_interest_income = company_loan_income + personal_loan_income + discount_callback
+    deposit_interest_expense = company_deposit_expense + savings_deposit_expense
+
+    def row(name: str, category: str, amount: Decimal | None, source: str) -> dict[str, Any]:
+        return {
+            "指标": name,
+            "类别": category,
+            "年累计金额": amount,
+            "口径来源": source,
+        }
+
+    return [
+        row("贷款利息收入", "利息净收入", loan_interest_income, PARENT_COMPANY_REVENUE_SOURCE),
+        row("公司贷款", "贷款利息收入", company_loan_income, PARENT_COMPANY_REVENUE_SOURCE),
+        row("个人贷款", "贷款利息收入", personal_loan_income, PARENT_COMPANY_REVENUE_SOURCE),
+        row("折现回拨", "贷款利息收入调节项", discount_callback, PARENT_COMPANY_REVENUE_SOURCE),
+        row("利息冲减", "贷款利息收入调节项", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("存款利息支出", "利息净收入", deposit_interest_expense, PARENT_COMPANY_REVENUE_SOURCE),
+        row("公司存款", "存款利息支出", company_deposit_expense, PARENT_COMPANY_REVENUE_SOURCE),
+        row("储蓄存款", "存款利息支出", savings_deposit_expense, PARENT_COMPANY_REVENUE_SOURCE),
+        row("金融投资利息收入", "利息净收入", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("同业资产负债利息净收入", "利息净收入", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("利息净收入", "母公司营收", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("非息净收入", "母公司营收", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("中间业务净收入", "非息净收入", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("汇兑损益", "非息净收入", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("估值及投资收益", "非息净收入", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("其他收入", "非息净收入", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+        row("母公司营业收入合计", "母公司营收", None, PARENT_COMPANY_REVENUE_MISSING_SOURCE),
+    ]
+
+
+def _interest_component_values(merged_data: dict[str, Any]) -> dict[str, Decimal] | None:
+    rows_3 = {row["科目代码"]: row for row in merged_data.get("3位", [])}
+    rows_11 = list(merged_data.get("11位", []))
+    if not rows_3 or not rows_11:
+        return None
+
+    def value_3d(code: str) -> Decimal:
+        row = rows_3.get(code)
+        return ZERO if row is None else (_as_decimal(row.get("期末余额")) or ZERO)
+
+    def sum_11d(prefix: str) -> Decimal:
+        return sum(
+            (_as_decimal(row.get("期末余额")) or ZERO for row in rows_11 if row["科目代码"].startswith(prefix)),
+            ZERO,
+        )
+
+    def value_11d(code: str) -> Decimal:
+        for row in rows_11:
+            if row["科目代码"] == code:
+                return _as_decimal(row.get("期末余额")) or ZERO
+        return ZERO
+
+    return {
+        "company_loan_income": -(
+            value_3d("501")
+            - sum_11d("50109")
+            - sum_11d("50110")
+            + value_11d("50110000002")
+            + sum_11d("50206")
+            - sum_11d("50115")
+        ),
+        "personal_loan_income": -(sum_11d("50109") + sum_11d("50110") - value_11d("50110000002")),
+        "discount_callback": -sum_11d("50115"),
+        "company_deposit_expense": (
+            sum_11d("52101")
+            + sum_11d("52102")
+            + sum_11d("52110")
+            - value_11d("52110000001")
+            + value_11d("52105000001")
+            + value_11d("52106000002")
+        ),
+        "savings_deposit_expense": (
+            sum_11d("52103")
+            + sum_11d("52104")
+            + value_11d("52105000002")
+            + value_11d("52106000001")
+            + value_11d("52110000001")
+        ),
+    }
+
+
+def _raw_rows_by_metric(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {row["指标"]: row for row in rows}
+
+
+def _month_amount(
+    report_month: str | None,
+    ytd_amount: Decimal | None,
+    prior_month_ytd_amount: Decimal | None,
+) -> Decimal | None:
+    if ytd_amount is None or report_month is None:
+        return None
+    if report_month[4:6] == "01":
+        return ytd_amount
+    if prior_month_ytd_amount is None:
+        return None
+    return ytd_amount - prior_month_ytd_amount
+
+
+def _shift_report_month_key(report_month: str, month_delta: int) -> str | None:
+    if len(report_month) != 6 or not report_month.isdigit():
+        return None
+    year = int(report_month[:4])
+    month = int(report_month[4:])
+    if month < 1 or month > 12:
+        return None
+    month_index = year * 12 + month - 1 + month_delta
+    shifted_year = month_index // 12
+    shifted_month = month_index % 12 + 1
+    return f"{shifted_year:04d}{shifted_month:02d}"
 
 
 def _ytd_days(month_key: str) -> int:

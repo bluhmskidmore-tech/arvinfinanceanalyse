@@ -62,6 +62,8 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
         "零售规模",
         "金融市场规模",
         "收益率分析（总账可复算）",
+        "存款利息拆分",
+        "母公司营收分项",
     ]
 
     get_settings.cache_clear()
@@ -304,6 +306,8 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
         "retail_scale",
         "financial_market_scale",
         "income_rate_analysis",
+        "deposit_interest_split",
+        "parent_company_revenue_components",
     ]
     alerts_sheet = next(
         sheet for sheet in scenario_payload["result"]["sheets"] if sheet["key"] == "alerts"

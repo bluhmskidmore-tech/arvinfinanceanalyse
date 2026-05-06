@@ -278,6 +278,8 @@ def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_overrid
         "retail_scale",
         "financial_market_scale",
         "income_rate_analysis",
+        "deposit_interest_split",
+        "parent_company_revenue_components",
     ]
     assert scenario["result"]["applied_overrides"] == {
         "DEVIATION_WARN": 80,

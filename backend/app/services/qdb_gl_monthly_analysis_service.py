@@ -366,6 +366,7 @@ def _load_comparison_merged_data(
 ) -> tuple[dict[str, dict[str, Any]], list[str]]:
     comparison_months = {
         "prior_month": _shift_report_month(report_month, -1),
+        "two_months_ago": _shift_report_month(report_month, -2),
         "prior_year": _shift_report_month(report_month, -12),
     }
     comparison_data: dict[str, dict[str, Any]] = {}

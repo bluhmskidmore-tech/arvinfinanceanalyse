@@ -76,6 +76,8 @@ def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tm
         "零售规模",
         "金融市场规模",
         "收益率分析（总账可复算）",
+        "存款利息拆分",
+        "母公司营收分项",
     ]
 
     overview = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "overview")
@@ -968,6 +970,117 @@ def test_real_202603_qdb_gl_workbook_includes_income_rate_attribution_sheet():
     assert str(personal_loan_income["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
     assert "\u4fe1\u7528\u5361\u751f\u606f\u89c4\u6a21" in str(personal_loan_income["\u53e3\u5f84\u6765\u6e90"])
     assert rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u589e\u51cf\u989d"] is None
+    assert str(rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
+
+
+def test_real_202603_qdb_gl_workbook_includes_deposit_interest_split_sheet():
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    source_dir = _real_qdb_gl_source_dir()
+
+    def merged(month_key: str):
+        avg_path = _real_month_source(source_dir, "\u65e5\u5747", month_key)
+        ledger_path = _real_month_source(source_dir, "\u603b\u8d26\u5bf9\u8d26", month_key)
+        return module.merge_all(
+            module.parse_general_ledger(ledger_path),
+            module.parse_daily_avg(avg_path),
+        )
+
+    workbook = module.build_qdb_gl_monthly_analysis_workbook(
+        report_month="202603",
+        merged_data=merged("202603"),
+        comparison_data={
+            "prior_year": merged("202503"),
+            "prior_month": merged("202602"),
+            "two_months_ago": merged("202601"),
+        },
+    )
+
+    sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "deposit_interest_split")
+    assert sheet["title"] == "\u5b58\u6b3e\u5229\u606f\u62c6\u5206"
+    assert sheet["columns"] == [
+        "\u6307\u6807",
+        "\u677f\u5757",
+        "\u672c\u671f\u5e74\u65e5\u5747",
+        "\u5e74\u7d2f\u8ba1\u5229\u606f\u652f\u51fa",
+        "\u5e74\u5316\u4ed8\u606f\u7387%",
+        "\u540c\u6bd4\u589e\u51cf\u989d",
+        "\u672c\u6708\u6708\u65e5\u5747",
+        "\u672c\u6708\u5229\u606f\u652f\u51fa",
+        "\u672c\u6708\u4ed8\u606f\u7387%",
+        "\u73af\u6bd4\u589e\u51cf\u989d",
+        "\u53e3\u5f84\u6765\u6e90",
+    ]
+
+    rows = {row["\u6307\u6807"]: row for row in sheet["rows"]}
+    source_value = "\u5b58\u6b3e\u5229\u606f\u62c6\u5206\uff1a\u603b\u8d26521\u5229\u606f\u652f\u51fa+\u65e5\u5747\u5b58\u6b3e\u89c4\u6a21\u91cd\u5efa"
+    assert rows["\u516c\u53f8\u5b58\u6b3e"] == {
+        "\u6307\u6807": "\u516c\u53f8\u5b58\u6b3e",
+        "\u677f\u5757": "\u516c\u53f8\u5b58\u6b3e",
+        "\u672c\u671f\u5e74\u65e5\u5747": 2518.24,
+        "\u5e74\u7d2f\u8ba1\u5229\u606f\u652f\u51fa": 7.67,
+        "\u5e74\u5316\u4ed8\u606f\u7387%": 1.24,
+        "\u540c\u6bd4\u589e\u51cf\u989d": -0.41,
+        "\u672c\u6708\u6708\u65e5\u5747": 2497.6,
+        "\u672c\u6708\u5229\u606f\u652f\u51fa": 2.67,
+        "\u672c\u6708\u4ed8\u606f\u7387%": 1.26,
+        "\u73af\u6bd4\u589e\u51cf\u989d": 0.29,
+        "\u53e3\u5f84\u6765\u6e90": source_value,
+    }
+    assert rows["\u50a8\u84c4\u5b58\u6b3e-\u5b9a\u671f"]["\u5e74\u7d2f\u8ba1\u5229\u606f\u652f\u51fa"] == 10.8
+    assert rows["\u5b58\u6b3e\u5229\u606f\u652f\u51fa\u5408\u8ba1"]["\u672c\u6708\u5229\u606f\u652f\u51fa"] == 6.46
+
+
+def test_real_202603_qdb_gl_workbook_includes_parent_company_revenue_components_sheet():
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    source_dir = _real_qdb_gl_source_dir()
+
+    def merged(month_key: str):
+        avg_path = _real_month_source(source_dir, "\u65e5\u5747", month_key)
+        ledger_path = _real_month_source(source_dir, "\u603b\u8d26\u5bf9\u8d26", month_key)
+        return module.merge_all(
+            module.parse_general_ledger(ledger_path),
+            module.parse_daily_avg(avg_path),
+        )
+
+    workbook = module.build_qdb_gl_monthly_analysis_workbook(
+        report_month="202603",
+        merged_data=merged("202603"),
+        comparison_data={
+            "prior_year": merged("202503"),
+            "prior_month": merged("202602"),
+            "two_months_ago": merged("202601"),
+        },
+    )
+
+    sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "parent_company_revenue_components")
+    assert sheet["title"] == "\u6bcd\u516c\u53f8\u8425\u6536\u5206\u9879"
+    assert sheet["columns"] == [
+        "\u6307\u6807",
+        "\u7c7b\u522b",
+        "\u540c\u6bd4\u672c\u671f",
+        "\u540c\u6bd4\u5bf9\u6bd4\u671f",
+        "\u540c\u6bd4\u589e\u51cf\u989d",
+        "\u540c\u6bd4\u589e\u51cf\u5e45%",
+        "\u73af\u6bd4\u672c\u6708",
+        "\u73af\u6bd4\u4e0a\u6708",
+        "\u73af\u6bd4\u589e\u51cf\u989d",
+        "\u73af\u6bd4\u589e\u51cf\u5e45%",
+        "\u53e3\u5f84\u6765\u6e90",
+    ]
+
+    rows = {row["\u6307\u6807"]: row for row in sheet["rows"]}
+    assert rows["\u8d37\u6b3e\u5229\u606f\u6536\u5165"]["\u540c\u6bd4\u672c\u671f"] == 39.01
+    assert rows["\u8d37\u6b3e\u5229\u606f\u6536\u5165"]["\u540c\u6bd4\u589e\u51cf\u5e45%"] == 5.55
+    assert rows["\u8d37\u6b3e\u5229\u606f\u6536\u5165"]["\u73af\u6bd4\u672c\u6708"] == 13.68
+    assert rows["\u5b58\u6b3e\u5229\u606f\u652f\u51fa"]["\u540c\u6bd4\u672c\u671f"] == 18.8
+    assert rows["\u5b58\u6b3e\u5229\u606f\u652f\u51fa"]["\u73af\u6bd4\u589e\u51cf\u989d"] == 0.6
+    assert rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u540c\u6bd4\u672c\u671f"] is None
     assert str(rows["\u91d1\u878d\u6295\u8d44\u5229\u606f\u6536\u5165"]["\u53e3\u5f84\u6765\u6e90"]).startswith("source_missing:")
 
 
