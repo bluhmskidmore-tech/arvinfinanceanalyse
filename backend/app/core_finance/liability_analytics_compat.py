@@ -178,7 +178,7 @@ def normalize_bond_rate_decimal(value: object | None) -> Decimal | None:
 def normalize_interbank_rate_decimal(value: object | None) -> Decimal | None:
     if value in (None, ""):
         return None
-    return Decimal(str(value)) / Decimal("100")
+    return pct_to_decimal(value)
 
 
 def weighted_rate(pairs: list[tuple[Decimal, Decimal | None]]) -> Decimal | None:
