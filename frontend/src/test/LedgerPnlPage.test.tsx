@@ -311,6 +311,15 @@ describe("LedgerPnlPage", () => {
               口径来源: "收益率分析：总账收益科目+日均规模重建",
             },
             {
+              指标: "个人贷款利息收入",
+              板块: "参考：个人贷款总量",
+              收益类别: "贷款利息收入",
+              年日均规模: null,
+              "总账收益/支出": 6.53,
+              "年化收益率/付息率%": null,
+              口径来源: "source_missing: 个人贷款收益率分母依赖信用卡生息规模/80297微贷拆分，当前总账+日均闭环未确认",
+            },
+            {
               指标: "金融投资利息收入",
               板块: "金融市场",
               收益类别: "金融投资利息收入",
@@ -336,6 +345,17 @@ describe("LedgerPnlPage", () => {
               利率贡献: -2.88,
               校验差异: 0,
               口径来源: "收益量价归因：总账收益科目+日均规模按年累计同比拆解",
+            },
+            {
+              指标: "个人贷款利息收入",
+              板块: "参考：个人贷款总量",
+              "本期收益/支出": 6.53,
+              "对比期收益/支出": 7.68,
+              增减额: -1.15,
+              规模贡献: null,
+              利率贡献: null,
+              校验差异: null,
+              口径来源: "source_missing: 个人贷款收益率分母依赖信用卡生息规模/80297微贷拆分，当前总账+日均闭环未确认",
             },
           ],
         },
@@ -451,6 +471,12 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent(
       "公司贷款利息收入",
     );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent(
+      "个人贷款利息收入",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent(
+      "信用卡生息规模",
+    );
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent("source_missing");
     expect(screen.getByText("收益量价归因（年累计同比）")).toBeInTheDocument();
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate-attribution")).toHaveTextContent(
@@ -458,6 +484,9 @@ describe("LedgerPnlPage", () => {
     );
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate-attribution")).toHaveTextContent(
       "公司贷款利息收入",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate-attribution")).toHaveTextContent(
+      "个人贷款利息收入",
     );
   });
 
