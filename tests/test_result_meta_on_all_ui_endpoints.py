@@ -200,7 +200,6 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
         "/ui/preview/source-foundation/history",
         "/ui/preview/source-foundation/zqtz/rows",
         "/ui/preview/source-foundation/zqtz/traces",
-        "/ui/qdb-gl-monthly-analysis/dates",
         "/ui/home/contribution",
         "/ui/home/alerts",
         "/ui/risk/overview",

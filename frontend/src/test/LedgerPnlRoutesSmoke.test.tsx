@@ -28,6 +28,17 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
   };
 }
 
+function buildAnalyticalMeta(resultKind: string, traceId: string): ResultMeta {
+  return {
+    ...buildMeta(resultKind, traceId),
+    basis: "analytical",
+    formal_use_allowed: false,
+    source_version: "sv_qdb_gl_route",
+    rule_version: "rv_qdb_gl_route",
+    cache_version: "cv_qdb_gl_route",
+  };
+}
+
 function moneyYi(value: string) {
   const numeric = Number(value);
   return {
@@ -105,6 +116,47 @@ function buildLedgerClient(): ApiClient {
         },
       },
     })),
+    getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates", "tr_qdb_dates"),
+      result: {
+        report_months: ["202512", "202511"],
+      },
+    })),
+    getQdbGlMonthlyAnalysisWorkbook: vi.fn(async ({ reportMonth }) => ({
+      result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook", "tr_qdb_workbook"),
+      result: {
+        report_month: reportMonth,
+        sheets: [
+          {
+            key: "overview",
+            title: "经营概览",
+            columns: ["指标", "值"],
+            rows: [
+              { 指标: "总资产(亿)", 值: reportMonth === "202511" ? 900 : 1200 },
+              { 指标: "存贷比%", 值: 79.69 },
+            ],
+          },
+          {
+            key: "top_11d",
+            title: "11位偏离TOP",
+            columns: ["科目代码", "科目名称", "偏离额"],
+            rows: [{ 科目代码: "14001000001", 科目名称: "买入返售", 偏离额: 230 }],
+          },
+          {
+            key: "alerts",
+            title: "异动预警",
+            columns: ["科目代码", "科目名称", "预警级别"],
+            rows: [{ 科目代码: "14001000001", 科目名称: "买入返售", 预警级别: "alert" }],
+          },
+          {
+            key: "industry_gap",
+            title: "行业存贷差",
+            columns: ["行业", "存贷差_时点"],
+            rows: [{ 行业: "农林牧渔", 存贷差_时点: -600 }],
+          },
+        ],
+      },
+    })),
   };
 }
 
@@ -139,6 +191,8 @@ describe("ledger-pnl routed page smoke", () => {
     await waitFor(() => {
       expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("40.00");
       expect(screen.getByTestId("ledger-pnl-detail-table")).toHaveTextContent("514100");
+      expect(screen.getByTestId("ledger-pnl-monthly-analysis-panel")).toHaveTextContent("总账对账 + 日均分析");
+      expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202512");
     });
   });
 

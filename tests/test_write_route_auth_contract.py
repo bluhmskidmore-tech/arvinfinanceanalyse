@@ -38,8 +38,8 @@ MUTATION_ROUTES = [
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/revoke", None),
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/edit", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "50"}),
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/restore", None),
-    ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments", {"report_month": "2026-01"}),
-    ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/edit", {"amount": "200"}),
+    ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments", {"report_month": "202601", "adjustment_class": "mapping_adjustment", "target": {"account_code": "123", "field": "account_name"}, "operator": "OVERRIDE", "value": "manual", "approval_status": "approved"}),
+    ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/edit", {"report_month": "202601", "adjustment_class": "mapping_adjustment", "target": {"account_code": "123", "field": "account_name"}, "operator": "OVERRIDE", "value": "manual", "approval_status": "approved"}),
     ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/revoke", None),
     ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/restore", None),
     ("POST", "/ui/news/tushare-npr/ingest", None),
@@ -47,10 +47,6 @@ MUTATION_ROUTES = [
 ]
 
 RESERVED_MUTATION_PATHS = {
-    "/ui/qdb-gl-monthly-analysis/manual-adjustments",
-    "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/edit",
-    "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/revoke",
-    "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/restore",
     "/ui/news/tushare-npr/ingest",
     "/api/news/tushare-npr/ingest",
 }

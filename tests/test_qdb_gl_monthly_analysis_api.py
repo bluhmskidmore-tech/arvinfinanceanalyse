@@ -3,8 +3,21 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
+
+
+def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "auth-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    UserScopeRepository(dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="qdb_gl_monthly_analysis.adjustment",
+        action="write",
+    )
 
 
 def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
@@ -120,6 +133,7 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
 
 def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
 
@@ -155,6 +169,38 @@ def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monke
     assert exported.headers["content-disposition"] == (
         'attachment; filename="monthly-operating-analysis-audit-202602.csv"'
     )
+    get_settings.cache_clear()
+
+
+def test_api_rejects_invalid_manual_adjustment_payload(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.post(
+        "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+        json={
+            "report_month": "2026-02",
+            "adjustment_class": "mapping_adjustment",
+            "target": {},
+            "operator": "PATCH",
+            "value": "",
+            "approval_status": "approved",
+            "unexpected": "field",
+        },
+    )
+
+    assert response.status_code == 422
+
+    listed = client.get(
+        "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+        params={"report_month": "202602"},
+    )
+    assert listed.status_code == 200
+    assert listed.json()["adjustment_count"] == 0
     get_settings.cache_clear()
 
 
@@ -211,6 +257,7 @@ def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
@@ -256,6 +303,7 @@ def test_api_workbook_rebuild_applies_approved_mapping_adjustments(tmp_path, mon
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()

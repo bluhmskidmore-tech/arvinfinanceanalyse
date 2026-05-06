@@ -52,15 +52,6 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("news.choice-events.latest", "/ui/news/choice-events/latest", "GET"),
     SurfaceCase("news.ui.ingest", "/ui/news/tushare-npr/ingest", "POST", side_effect_target="ingest_tushare_npr_to_choice_news", side_effect_module="backend.app.api.routes.choice_news", side_effect_file="backend/app/api/routes/choice_news.py"),
     SurfaceCase("news.api.ingest", "/api/news/tushare-npr/ingest", "POST", side_effect_target="ingest_tushare_npr_to_choice_news", side_effect_module="backend.app.api.routes.choice_news", side_effect_file="backend/app/api/routes/choice_news.py"),
-    SurfaceCase("qdb-gl-monthly-analysis.dates", "/ui/qdb-gl-monthly-analysis/dates", "GET"),
-    SurfaceCase("qdb-gl-monthly-analysis.workbook", "/ui/qdb-gl-monthly-analysis/workbook", "GET", params={"report_month": "2026-01"}),
-    SurfaceCase("qdb-gl-monthly-analysis.scenario", "/ui/qdb-gl-monthly-analysis/scenario", "GET", params={"report_month": "2026-01", "scenario_name": "baseline"}),
-    SurfaceCase("qdb-gl-monthly-analysis.refresh", "/ui/qdb-gl-monthly-analysis/refresh", "POST", params={"report_month": "2026-01"}, side_effect_target="refresh_qdb_gl_monthly_analysis", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
-    SurfaceCase("qdb-gl-monthly-analysis.refresh-status", "/ui/qdb-gl-monthly-analysis/refresh-status", "GET", params={"run_id": "run-test"}),
-    SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.create", "/ui/qdb-gl-monthly-analysis/manual-adjustments", "POST", json={"report_month": "2026-01"}, side_effect_target="create_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
-    SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.edit", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-adjustment/edit", "POST", json={"amount": "200"}, side_effect_target="update_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
-    SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.revoke", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-adjustment/revoke", "POST", side_effect_target="revoke_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
-    SurfaceCase("qdb-gl-monthly-analysis.manual-adjustments.restore", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-adjustment/restore", "POST", side_effect_target="restore_qdb_gl_monthly_analysis_manual_adjustment", side_effect_module="backend.app.api.routes.qdb_gl_monthly_analysis", side_effect_file="backend/app/api/routes/qdb_gl_monthly_analysis.py"),
     SurfaceCase("executive.risk-overview", "/ui/risk/overview", "GET"),
     SurfaceCase("executive.home.alerts", "/ui/home/alerts", "GET"),
     SurfaceCase("executive.home.contribution", "/ui/home/contribution", "GET"),
@@ -125,7 +116,6 @@ def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> N
     assert "agent.query" in backend_slugs
     assert "news.api.ingest" in backend_slugs
     assert "preview.source-foundation.refresh" in backend_slugs
-    assert "qdb-gl-monthly-analysis.manual-adjustments.restore" in backend_slugs
     assert "executive.risk-overview" in backend_slugs
     assert "executive.home.alerts" in backend_slugs
     assert "executive.home.contribution" in backend_slugs
