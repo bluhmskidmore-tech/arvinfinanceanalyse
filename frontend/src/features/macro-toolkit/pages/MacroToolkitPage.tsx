@@ -14,6 +14,7 @@ import type {
   MacroToolkitScriptRecord,
   MacroToolkitSignalCard,
   MacroToolkitSourceCheck,
+  MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
 import {
   DataStatusStrip,
@@ -90,6 +91,7 @@ function statusLabel(status: string) {
     visible: "已展示",
     not_wired: "未接线",
     planned: "待接入",
+    sample_only: "样例展示",
   };
   return labels[status] ?? status;
 }
@@ -98,7 +100,7 @@ function statusColor(status: string) {
   if (["current", "ready", "library_ready", "complete", "wired", "visible"].includes(status)) {
     return "green";
   }
-  if (["lagging", "partial", "planned", "degraded"].includes(status)) return "gold";
+  if (["lagging", "partial", "planned", "degraded", "sample_only"].includes(status)) return "gold";
   if (["stale", "missing", "not_wired", "unavailable"].includes(status)) return "red";
   return "default";
 }
@@ -148,6 +150,7 @@ export default function MacroToolkitPage() {
   const analysis = analysisQuery.data?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
   const capabilityResults = analysis?.capability_results ?? [];
+  const strategySummaries = analysis?.strategy_summaries ?? [];
   const groupOptions = useMemo(
     () => [
       { value: "all", label: "全部分组" },
@@ -513,6 +516,23 @@ export default function MacroToolkitPage() {
               <div className="macro-toolkit-empty-output">暂无 M7-M16 功能结果。</div>
             )}
           </section>
+
+          <section className="macro-toolkit-section">
+            <PageSectionLead
+              eyebrow="strategies"
+              title="策略展示"
+              description="展示已合入宏观模块的 A股策略能力；当前为合成样例和模块可用性检查，不作为正式投资信号。"
+            />
+            {strategySummaries.length ? (
+              <div className="macro-toolkit-strategy-grid">
+                {strategySummaries.map((strategy) => (
+                  <StrategySummaryCard strategy={strategy} key={strategy.key} />
+                ))}
+              </div>
+            ) : (
+              <div className="macro-toolkit-empty-output">暂无策略摘要。</div>
+            )}
+          </section>
         </>
       ) : null}
 
@@ -761,6 +781,24 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
       <strong>{metric ? formatMetricDisplay(metric) : result.score ?? statusLabel(result.status)}</strong>
       <p>{result.headline}</p>
       <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
+    </div>
+  );
+}
+
+function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrategySummary }) {
+  const metric = strategy.primary_metric;
+  return (
+    <div className={`macro-toolkit-strategy-card macro-toolkit-strategy-card--${strategy.tone}`}>
+      <div className="macro-toolkit-capability-result-head">
+        <span>{strategy.group}</span>
+        <Tag color={statusColor(strategy.status)}>{statusLabel(strategy.status)}</Tag>
+      </div>
+      <strong>{strategy.label}</strong>
+      <div className="macro-toolkit-strategy-metric">
+        <span>{metric?.label ?? "状态"}</span>
+        <b>{metric ? `${metric.value}${metric.unit}` : statusLabel(strategy.status)}</b>
+      </div>
+      <small>{strategy.evidence.slice(0, 2).join(" / ") || "暂无证据"}</small>
     </div>
   );
 }

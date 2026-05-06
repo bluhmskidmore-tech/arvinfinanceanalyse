@@ -237,6 +237,14 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     indicators = {item["alias"]: item for item in payload["result"]["indicators"]}
     assert indicators["DR007.IB"]["latest_value"] == 1.82
     assert indicators["S0059749"]["latest_value"] == 2.48
+    strategy_summaries = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    assert set(strategy_summaries) == {
+        "moving_average",
+        "mean_reversion_momentum",
+        "multi_factor_selection",
+    }
+    assert strategy_summaries["moving_average"]["status"] == "sample_only"
+    assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
 
 
 def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_path, monkeypatch) -> None:

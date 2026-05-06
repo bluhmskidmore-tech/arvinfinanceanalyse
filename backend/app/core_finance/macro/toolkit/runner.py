@@ -58,6 +58,12 @@ _SCRIPT_REGISTRY: tuple[MacroToolkitScript, ...] = (
         "allocation",
         optional_dependencies=("matplotlib", "scipy"),
     ),
+    MacroToolkitScript(
+        "equity_strategies",
+        "equity_strategies.py",
+        "allocation",
+        optional_dependencies=("numpy", "pandas"),
+    ),
     MacroToolkitScript("bond_futures_data", "bond_futures_data.py", "rates", optional_dependencies=("pandas",)),
     MacroToolkitScript("bond_futures_signals", "bond_futures_signals.py", "rates", optional_dependencies=("pandas",)),
     MacroToolkitScript(

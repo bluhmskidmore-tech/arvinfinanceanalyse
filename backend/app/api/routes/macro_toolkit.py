@@ -22,6 +22,10 @@ from backend.app.core_finance.macro import (
     compute_monetary_policy_stance,
     compute_rate_turning_point,
     compute_yield_curve_shape,
+    generate_random_prices,
+    mean_reversion_momentum_strategy,
+    moving_average_strategy,
+    multi_factor_selection,
 )
 from backend.app.core_finance.macro.helpers import (
     build_curve_history,
@@ -254,6 +258,7 @@ def macro_toolkit_analysis() -> dict[str, object]:
             "indicators": indicators,
             "signal_cards": signal_cards,
             "capability_results": capability_results,
+            "strategy_summaries": _equity_strategy_summaries(),
             "output_files": output_files,
             "source_checks": _source_checks(settings.duckdb_path),
             "capabilities": _capability_plan(settings.duckdb_path),
@@ -638,6 +643,103 @@ def _macro_capability_results(
         raw_result = raw_results.get(str(definition["key"]))
         cards.append(_capability_result_card(definition, raw_result))
     return cards
+
+
+def _equity_strategy_summaries() -> list[dict[str, object]]:
+    try:
+        prices = generate_random_prices(num_stocks=4, num_days=180, seed=20260506)
+        moving_average = moving_average_strategy(prices)
+        mean_reversion = mean_reversion_momentum_strategy(prices)
+        financials = pd.DataFrame(
+            {
+                "pe": [8.0, 18.0, 35.0, 12.0],
+                "pb": [0.8, 2.2, 4.0, 1.5],
+                "ps": [1.0, 3.0, 8.0, 2.0],
+                "roe": [0.22, 0.12, 0.03, 0.18],
+                "gross_margin": [0.45, 0.30, 0.08, 0.38],
+                "three_month_return": [0.18, 0.08, -0.12, 0.12],
+                "twelve_month_return": [0.42, 0.10, -0.30, 0.24],
+                "volatility": [0.16, 0.25, 0.45, 0.20],
+                "dividend_yield": [0.06, 0.03, 0.00, 0.04],
+                "industry": ["technology", "consumer", "technology", "financial"],
+            },
+            index=["AAA", "BBB", "CCC", "DDD"],
+        )
+        selected = multi_factor_selection(financials, top_pct=0.5, industries_focus=["technology"])
+        return [
+            _strategy_summary(
+                key="moving_average",
+                label="移动均线策略",
+                metric_label="样例累计净值",
+                metric_value=round(float(moving_average.iloc[-1]), 4),
+                evidence=[
+                    "短均线上穿长均线时建仓，下穿或触发止损时退出。",
+                    f"合成价格样本 {len(prices)} 个观察点。",
+                ],
+                result={"final_value": round(float(moving_average.iloc[-1]), 6)},
+            ),
+            _strategy_summary(
+                key="mean_reversion_momentum",
+                label="均值回归 + 动量",
+                metric_label="样例累计净值",
+                metric_value=round(float(mean_reversion.iloc[-1]), 4),
+                evidence=[
+                    "低于均值的价格偏离需同时站上趋势均线才进入观察。",
+                    f"合成价格样本 {len(prices)} 个观察点。",
+                ],
+                result={"final_value": round(float(mean_reversion.iloc[-1]), 6)},
+            ),
+            _strategy_summary(
+                key="multi_factor_selection",
+                label="多因子选股",
+                metric_label="样例入选数量",
+                metric_value=int(len(selected)),
+                evidence=[
+                    "价值、质量、动量、低波和股息因子标准化后加权排序。",
+                    f"样例池 {len(financials)} 只，聚焦 technology 行业。",
+                ],
+                result={
+                    "selected_symbols": [str(symbol) for symbol in selected.index.tolist()],
+                    "top_score": round(float(selected["score"].iloc[0]), 6) if not selected.empty else None,
+                },
+            ),
+        ]
+    except Exception as exc:  # pragma: no cover - displayed as unavailable strategy evidence
+        return [
+            {
+                "key": "equity_strategies",
+                "label": "A股策略模块",
+                "group": "A股策略",
+                "status": "unavailable",
+                "tone": "missing",
+                "primary_metric": None,
+                "evidence": [],
+                "warnings": [f"{type(exc).__name__}: {exc}"],
+                "result": {"data_status": "unavailable"},
+            }
+        ]
+
+
+def _strategy_summary(
+    *,
+    key: str,
+    label: str,
+    metric_label: str,
+    metric_value: int | float,
+    evidence: list[str],
+    result: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "key": key,
+        "label": label,
+        "group": "A股策略",
+        "status": "sample_only",
+        "tone": "neutral",
+        "primary_metric": {"label": metric_label, "value": metric_value, "unit": ""},
+        "evidence": evidence,
+        "warnings": ["SYNTHETIC_SAMPLE_ONLY"],
+        "result": {"data_status": "sample_only", **result},
+    }
 
 
 def _run_capability(

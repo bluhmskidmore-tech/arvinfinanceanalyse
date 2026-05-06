@@ -139,6 +139,59 @@
   gap: var(--moss-space-2);
 }
 
+.macro-toolkit-strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-strategy-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  min-height: 168px;
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 3px solid var(--moss-color-primary-500);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-strategy-card strong {
+  color: var(--moss-color-text-primary);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.macro-toolkit-strategy-card small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-strategy-metric {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.macro-toolkit-strategy-metric span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.macro-toolkit-strategy-metric b {
+  color: var(--moss-color-primary-700);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
 .macro-toolkit-capability-result {
   display: grid;
   gap: 8px;

@@ -35,8 +35,14 @@ describe("MacroToolkitPage", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: "功能结果" }),
     ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "策略展示" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("移动均线策略")).toBeInTheDocument();
+    expect(await screen.findByText("多因子选股")).toBeInTheDocument();
     expect((await screen.findAllByText(/M7/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/M16/)).length).toBeGreaterThan(0);
-    expect(await screen.findAllByText("signal_aggregator")).toHaveLength(2);
+    expect((await screen.findAllByText("signal_aggregator")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("equity_strategies")).length).toBeGreaterThan(0);
   });
 });

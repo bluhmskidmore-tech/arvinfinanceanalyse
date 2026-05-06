@@ -129,6 +129,22 @@ export type MacroToolkitCapabilityResult = {
   result: Record<string, unknown>;
 };
 
+export type MacroToolkitStrategySummary = {
+  key: string;
+  label: string;
+  group: string;
+  status: "sample_only" | "complete" | "degraded" | "unavailable";
+  tone: MacroToolkitSignalCard["tone"];
+  primary_metric: {
+    label: string;
+    value: string | number;
+    unit: string;
+  } | null;
+  evidence: string[];
+  warnings: string[];
+  result: Record<string, unknown>;
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -148,6 +164,7 @@ export type MacroToolkitAnalysisPayload = {
   indicators: MacroToolkitIndicator[];
   signal_cards: MacroToolkitSignalCard[];
   capability_results: MacroToolkitCapabilityResult[];
+  strategy_summaries: MacroToolkitStrategySummary[];
   output_files: MacroToolkitOutputFile[];
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
@@ -212,6 +229,42 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
     evidence: ["M7 资金面偏平衡", "M10 LEI 处于中性区间"],
     warnings: ["部分模块数据降级或不可用"],
     result: { data_status: "degraded" },
+  },
+];
+
+const MOCK_STRATEGY_SUMMARIES: MacroToolkitStrategySummary[] = [
+  {
+    key: "moving_average",
+    label: "移动均线策略",
+    group: "A股策略",
+    status: "sample_only",
+    tone: "neutral",
+    primary_metric: { label: "样例累计净值", value: 1.0832, unit: "" },
+    evidence: ["短均线上穿长均线时建仓。", "合成价格样本 180 个观察点。"],
+    warnings: ["SYNTHETIC_SAMPLE_ONLY"],
+    result: { data_status: "sample_only" },
+  },
+  {
+    key: "mean_reversion_momentum",
+    label: "均值回归 + 动量",
+    group: "A股策略",
+    status: "sample_only",
+    tone: "neutral",
+    primary_metric: { label: "样例累计净值", value: 1.0148, unit: "" },
+    evidence: ["价格偏离需同时满足趋势过滤。", "合成价格样本 180 个观察点。"],
+    warnings: ["SYNTHETIC_SAMPLE_ONLY"],
+    result: { data_status: "sample_only" },
+  },
+  {
+    key: "multi_factor_selection",
+    label: "多因子选股",
+    group: "A股策略",
+    status: "sample_only",
+    tone: "neutral",
+    primary_metric: { label: "样例入选数量", value: 1, unit: "" },
+    evidence: ["价值、质量、动量、低波和股息因子加权排序。", "样例池 4 只。"],
+    warnings: ["SYNTHETIC_SAMPLE_ONLY"],
+    result: { data_status: "sample_only", selected_symbols: ["AAA"] },
   },
 ];
 
@@ -316,6 +369,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
     },
   ],
   capability_results: MOCK_CAPABILITY_RESULTS,
+  strategy_summaries: MOCK_STRATEGY_SUMMARIES,
   output_files: [],
   source_checks: [],
   capabilities: [],
@@ -334,6 +388,16 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
 };
 
 const MOCK_SCRIPTS: MacroToolkitScriptRecord[] = [
+  {
+    name: "equity_strategies",
+    filename: "equity_strategies.py",
+    group: "allocation",
+    default_data_sources: ["choice", "tushare"],
+    optional_dependencies: ["numpy", "pandas"],
+    notes: "",
+    path: "scripts/equity_strategies.py",
+    available: true,
+  },
   {
     name: "signal_aggregator",
     filename: "signal_aggregator.py",
