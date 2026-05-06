@@ -563,6 +563,496 @@
   min-width: 0;
 }
 
+.cross-asset-livermore {
+  display: grid;
+  gap: 16px;
+  border-color: #cfd9df;
+  background: #fbfcfd;
+}
+
+.cross-asset-livermore__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cross-asset-livermore__heading {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cross-asset-livermore__eyebrow {
+  color: #5e6f7c;
+  font-size: 0.6875rem;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.cross-asset-livermore__title {
+  margin: 0;
+  color: var(--ca-text);
+  font-size: 1.125rem;
+  line-height: 1.3;
+}
+
+.cross-asset-livermore__description {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--ca-sub);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.cross-asset-livermore__link {
+  flex: 0 0 auto;
+  color: #1850a1;
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.cross-asset-livermore__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cross-asset-livermore__metric {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 136px;
+  padding: 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.cross-asset-livermore__label {
+  color: #5d6e7b;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.cross-asset-livermore__value {
+  color: #102030;
+  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+  font-size: 1.35rem;
+  font-weight: 750;
+  line-height: 1.15;
+}
+
+.cross-asset-livermore__detail {
+  color: #536577;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.cross-asset-livermore__detail b {
+  color: inherit;
+}
+
+.cross-asset-livermore__risk--ready {
+  border-color: #b8dec3;
+  background: #f1f9f3;
+}
+
+.cross-asset-livermore__risk--blocked {
+  border-color: #e7c980;
+  background: #fffaf0;
+}
+
+.cross-asset-livermore__risk--blocked .cross-asset-livermore__value,
+.cross-asset-livermore__risk--blocked .cross-asset-livermore__detail {
+  color: #8a5f00;
+}
+
+.cross-asset-livermore__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--ca-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.cross-asset-livermore__message {
+  padding: 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ca-sub);
+  font-size: 0.8125rem;
+}
+
+.cross-asset-livermore__message--warning {
+  border-color: #e7c980;
+  background: #fffaf0;
+  color: #8a5f00;
+}
+
+.cross-asset-livermore__manual-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.cross-asset-livermore__manual-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.cross-asset-livermore__manual-header strong {
+  color: #102030;
+  font-size: 0.875rem;
+}
+
+.cross-asset-livermore__manual-header span {
+  color: #5d6e7b;
+  font-size: 0.75rem;
+}
+
+.cross-asset-livermore__manual-fields {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr repeat(3, minmax(120px, 0.8fr));
+  gap: 10px;
+}
+
+.cross-asset-livermore__manual-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #5d6e7b;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.cross-asset-livermore__manual-fields input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #cad5dd;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #102030;
+  background: #fbfcfd;
+  font: inherit;
+  font-weight: 650;
+}
+
+.cross-asset-livermore__manual-fields input:focus {
+  border-color: #5b8bd7;
+  outline: 2px solid rgba(91, 139, 215, 0.18);
+}
+
+.cross-asset-livermore__manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.cross-asset-livermore__manual-actions button {
+  min-height: 34px;
+  border: 1px solid #1850a1;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #ffffff;
+  background: #1850a1;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cross-asset-livermore__manual-actions button:disabled {
+  border-color: #93a5b5;
+  background: #93a5b5;
+  cursor: wait;
+}
+
+.cross-asset-livermore__manual-success,
+.cross-asset-livermore__manual-error {
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.cross-asset-livermore__manual-success {
+  color: #257246;
+}
+
+.cross-asset-livermore__manual-error {
+  color: #b4453d;
+}
+
+.cross-asset-livermore-confluence {
+  display: grid;
+  gap: 16px;
+  border-color: #d3dde4;
+  background: #fbfcfd;
+}
+
+.cross-asset-livermore-confluence__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cross-asset-livermore-confluence__heading {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cross-asset-livermore-confluence__eyebrow,
+.cross-asset-livermore-confluence__summary-label,
+.cross-asset-livermore-confluence__diagnostic-code {
+  color: #5e6f7c;
+  font-size: 0.6875rem;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.cross-asset-livermore-confluence__title {
+  margin: 0;
+  color: var(--ca-text);
+  font-size: 1.125rem;
+  line-height: 1.3;
+}
+
+.cross-asset-livermore-confluence__description,
+.cross-asset-livermore-confluence__context {
+  max-width: 78ch;
+  margin: 0;
+  color: var(--ca-sub);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.cross-asset-livermore-confluence__meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  max-width: 320px;
+  color: var(--ca-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.cross-asset-livermore-confluence__message,
+.cross-asset-livermore-confluence__empty,
+.cross-asset-livermore-confluence__subempty {
+  padding: 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ca-sub);
+  font-size: 0.8125rem;
+}
+
+.cross-asset-livermore-confluence__message--warning {
+  border-color: #e7c980;
+  background: #fffaf0;
+  color: #8a5f00;
+}
+
+.cross-asset-livermore-confluence__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cross-asset-livermore-confluence__summary-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 108px;
+  padding: 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.cross-asset-livermore-confluence__summary-value {
+  color: #102030;
+  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+  font-size: 1.2rem;
+  font-weight: 750;
+  line-height: 1.15;
+}
+
+.cross-asset-livermore-confluence__summary-detail {
+  color: #536577;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.cross-asset-livermore-confluence__diagnostics,
+.cross-asset-livermore-confluence__evidence {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cross-asset-livermore-confluence__diagnostic {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ca-sub);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.cross-asset-livermore-confluence__diagnostic--warning {
+  border-color: #e7c980;
+  background: #fffaf0;
+  color: #8a5f00;
+}
+
+.cross-asset-livermore-confluence__diagnostic--error {
+  border-color: #e7aaa4;
+  background: #fff5f4;
+  color: #9c342c;
+}
+
+.cross-asset-livermore-confluence__groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cross-asset-livermore-confluence__group {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cross-asset-livermore-confluence__group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cross-asset-livermore-confluence__group-header h3 {
+  margin: 0;
+  color: #102030;
+  font-size: 0.9rem;
+}
+
+.cross-asset-livermore-confluence__group-header span {
+  color: #5d6e7b;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.cross-asset-livermore-confluence__list {
+  display: grid;
+  gap: 10px;
+}
+
+.cross-asset-livermore-confluence__item {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dfe6eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.cross-asset-livermore-confluence__item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cross-asset-livermore-confluence__item-identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cross-asset-livermore-confluence__item-action {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #edf5ff;
+  color: #1850a1;
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.cross-asset-livermore-confluence__item-action--warning {
+  background: #fff0e8;
+  color: #b24d16;
+}
+
+.cross-asset-livermore-confluence__item-stock {
+  min-width: 0;
+  color: #102030;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cross-asset-livermore-confluence__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.cross-asset-livermore-confluence__metrics div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f4f7f9;
+}
+
+.cross-asset-livermore-confluence__metrics dt {
+  color: #5d6e7b;
+  font-size: 0.6875rem;
+  font-weight: 750;
+}
+
+.cross-asset-livermore-confluence__metrics dd {
+  margin: 0;
+  color: #102030;
+  font-family: var(--moss-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.cross-asset-livermore-confluence__evidence li {
+  color: #536577;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
 .cross-asset-drivers-page__row-two > .cross-asset-drivers-page__panel {
   display: flex;
   flex-direction: column;
@@ -713,8 +1203,21 @@
 }
 
 @media (max-width: 900px) {
+  .cross-asset-livermore__grid,
+  .cross-asset-livermore__manual-fields,
+  .cross-asset-livermore-confluence__summary,
+  .cross-asset-livermore-confluence__groups,
   .cross-asset-drivers-page__row-two {
     grid-template-columns: 1fr;
+  }
+  .cross-asset-livermore__header,
+  .cross-asset-livermore-confluence__header {
+    flex-direction: column;
+  }
+  .cross-asset-livermore-confluence__meta {
+    justify-items: start;
+    max-width: none;
+    text-align: left;
   }
   .cross-asset-drivers-page__kpi-grid {
     grid-template-columns: 1fr;

@@ -36,6 +36,8 @@ The following docs remain useful, but they are not the repo-level current-state 
   - phase / implementation reference plan
 - `docs/page_contracts.md`
   - page-level contracts to read after repo-level current-state lookup is clear
+- `docs/plans/market-workbench-cursor-prompts.md`
+  - 市场工作台（`/market-data` 及相关路由）**Cursor 可执行外围任务**的拆分与验收提示；用于与 `PAGE-MKT-001`（`docs/page_contracts.md` §13.8）对齐执行顺序，**不**改变上文权威顺序，也不将其中措辞升格为指标定义或 formal 口径
 
 ## 冲突处理
 

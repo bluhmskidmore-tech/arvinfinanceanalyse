@@ -147,6 +147,8 @@ tests/golden_samples/
 | `PAGE-POS-001` / `/positions` | —（**GAP-POS-LIST**） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `PAGE-MKT-001` / `/market-data` | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
+**`PAGE-MKT-001` 现状备注（不新增样本）**：市场页 mixed-source 与硬编码示意表、NCD proxy、Livermore 依赖等边界见 `docs/page_contracts.md` §13.8.J；在 `MTR-*` 与 `tests/golden_samples/` 就绪前本行保持 **GAP-MKT-DATA**，不创建新 `sample_id`。
+
 ## 8. 首批最小行动
 
 ### 8.1 本周必须完成

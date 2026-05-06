@@ -3482,6 +3482,187 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch Livermore signal confluence", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_livermore_signal_confluence",
+          basis: "analytical",
+          result_kind: "market_data.livermore.signal_confluence",
+          formal_use_allowed: false,
+          source_version: "sv_livermore__sv_macro",
+          vendor_version: "vv_livermore__vv_macro",
+          rule_version: "rv_livermore_signal_confluence_v1",
+          cache_version: "cv_livermore_signal_confluence_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+          scenario_flag: false,
+          generated_at: "2026-04-29T00:00:00Z",
+        },
+        result: {
+          as_of_date: "2026-04-29",
+          macro_context: {
+            status: "neutral",
+            composite_score: 0,
+            multiplier: 0.5,
+          },
+          strategy_context: {
+            market_gate_state: "WARM",
+            market_gate_exposure: 0.4,
+            allows_new_entry_observations: true,
+          },
+          position_size_hint: 0.2,
+          entry_observations: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              action: "observe_entry_setup",
+              trigger_price: 21.8,
+              current_price: 21.9,
+              invalidation_reference_price: 20.6,
+            },
+          ],
+          exit_observations: [],
+          diagnostics: [
+            "Observation-only output. This service does not generate trading instructions.",
+          ],
+          disclaimer: "Observation-only output. This service does not generate trading instructions.",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getLivermoreSignalConfluence({ asOfDate: "2026-04-29" });
+
+    expect(envelope.result.as_of_date).toBe("2026-04-29");
+    expect(envelope.result.strategy_context.market_gate_state).toBe("WARM");
+    expect(envelope.result.entry_observations[0]?.action).toBe("observe_entry_setup");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/signal-confluence?as_of_date=2026-04-29",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["unit_test_position_book"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_csv_test",
+        csv_path: "livermore/positions.csv",
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermorePositionSnapshot({
+      asOfDate: "2026-04-30",
+      csvPath: "livermore/positions.csv",
+    });
+
+    expect(payload.risk_exit_input_status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          csv_path: "livermore/positions.csv",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize manual Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        input_mode: "manual",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["livermore_position_snapshot_manual"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_manual_test",
+        csv_path: null,
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermoreManualPositionSnapshot({
+      asOfDate: "2026-04-30",
+      positions: [
+        {
+          stockCode: "000001.SZ",
+          stockName: "Alpha",
+          entryCost: 10.5,
+          barsSinceEntry: 6,
+          positionQuantity: 10000,
+        },
+      ],
+    });
+
+    expect(payload.input_mode).toBe("manual");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot/manual",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          positions: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              entry_cost: 10.5,
+              bars_since_entry: 6,
+              position_quantity: 10000,
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
   it("reads workbook right-rail sections from the existing workbook endpoint", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

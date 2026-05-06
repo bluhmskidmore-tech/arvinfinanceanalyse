@@ -44,6 +44,8 @@ MUTATION_ROUTES = [
     ("POST", "/ui/qdb-gl-monthly-analysis/manual-adjustments/test-id/restore", None),
     ("POST", "/ui/news/tushare-npr/ingest", None),
     ("POST", "/api/news/tushare-npr/ingest", None),
+    ("POST", "/ui/market-data/livermore/position-snapshot", {"as_of_date": "2026-04-30", "csv_path": "livermore/positions.csv"}),
+    ("POST", "/ui/market-data/livermore/position-snapshot/manual", {"as_of_date": "2026-04-30", "positions": [{"stock_code": "000001.SZ", "stock_name": "Alpha", "entry_cost": 10.5, "bars_since_entry": 6}]}),
 ]
 
 RESERVED_MUTATION_PATHS = {

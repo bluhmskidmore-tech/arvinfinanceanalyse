@@ -4,7 +4,7 @@ import csv
 import hashlib
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_regist
 RULE_VERSION = "rv_livermore_position_snapshot_v1"
 FACT_SOURCE = "livermore_position_snapshot"
 DEFAULT_SOURCE_SYSTEM = "livermore_position_snapshot_csv"
+MANUAL_SOURCE_SYSTEM = "livermore_position_snapshot_manual"
 ACTIVE_POSITION_STATUS = "ACTIVE"
 INACTIVE_POSITION_STATUSES = {"CLOSED", "EXITED"}
 VALID_POSITION_STATUSES = {ACTIVE_POSITION_STATUS, *INACTIVE_POSITION_STATUSES}
@@ -91,9 +92,96 @@ def materialize_livermore_position_snapshot(
             }
 
     rows = [latest_by_code[stock_code] for stock_code in sorted(latest_by_code)]
+    return _write_livermore_position_rows(
+        as_of_date=resolved_as_of_date,
+        rows=rows,
+        duckdb_path=duckdb_path,
+        source_file_hash=source_file_hash,
+        input_mode="csv",
+        input_label="CSV",
+        csv_path=str(csv_file),
+    )
+
+
+def materialize_livermore_position_snapshot_rows(
+    *,
+    as_of_date: str | date,
+    rows: Sequence[Mapping[str, object]],
+    duckdb_path: str | None,
+    source_system: str = MANUAL_SOURCE_SYSTEM,
+) -> dict[str, object]:
+    resolved_as_of_date = _normalize_date(as_of_date)
+    if not rows:
+        raise ValueError("Livermore position snapshot manual input requires at least one position.")
+
+    source_file_hash = _source_payload_hash(
+        {
+            "as_of_date": resolved_as_of_date,
+            "rows": [dict(row) for row in rows],
+        }
+    )
+    latest_by_code: dict[str, dict[str, object]] = {}
+    for source_row_no, raw_row in enumerate(rows, start=1):
+        row_as_of_date = (
+            _normalize_date(raw_row.get("as_of_date"))
+            if _text(raw_row.get("as_of_date"))
+            else resolved_as_of_date
+        )
+        if row_as_of_date != resolved_as_of_date:
+            raise ValueError(
+                "Livermore position snapshot manual input row as_of_date must match request "
+                f"as_of_date {resolved_as_of_date}."
+            )
+        stock_code = _normalize_stock_code(raw_row.get("stock_code"), source_row_no=source_row_no)
+        entry_date = _optional_date(raw_row.get("entry_date"))
+        bars_since_entry = _optional_positive_int(
+            raw_row.get("bars_since_entry"),
+            field_name="bars_since_entry",
+        )
+        if bars_since_entry is None and entry_date is None:
+            raise ValueError(
+                "Livermore position snapshot manual input requires bars_since_entry or entry_date "
+                f"for stock_code {stock_code}."
+            )
+        position_status = _position_status(raw_row.get("position_status"), source_row_no=source_row_no)
+        latest_by_code[stock_code] = {
+            "as_of_date": row_as_of_date,
+            "stock_code": stock_code,
+            "stock_name": _text(raw_row.get("stock_name")) or stock_code,
+            "entry_cost": _positive_float_value(raw_row.get("entry_cost"), field_name="entry_cost"),
+            "bars_since_entry": bars_since_entry,
+            "entry_date": entry_date,
+            "position_quantity": _optional_float(raw_row.get("position_quantity"), field_name="position_quantity"),
+            "position_status": position_status,
+            "source_system": _text(raw_row.get("source_system")) or source_system,
+            "source_file_hash": source_file_hash,
+            "source_row_no": source_row_no,
+        }
+
+    return _write_livermore_position_rows(
+        as_of_date=resolved_as_of_date,
+        rows=[latest_by_code[stock_code] for stock_code in sorted(latest_by_code)],
+        duckdb_path=duckdb_path,
+        source_file_hash=source_file_hash,
+        input_mode="manual",
+        input_label="manual input",
+        csv_path=None,
+    )
+
+
+def _write_livermore_position_rows(
+    *,
+    as_of_date: str,
+    rows: Sequence[dict[str, object]],
+    duckdb_path: str | None,
+    source_file_hash: str,
+    input_mode: str,
+    input_label: str,
+    csv_path: str | None,
+) -> dict[str, object]:
     if not rows:
         raise ValueError(
-            f"Livermore position snapshot CSV has no rows for as_of_date {resolved_as_of_date}."
+            f"Livermore position snapshot {input_label} has no rows for as_of_date {as_of_date}."
         )
 
     duckdb_file = Path(str(duckdb_path or get_settings().duckdb_path))
@@ -105,23 +193,26 @@ def materialize_livermore_position_snapshot(
         rows = [_resolve_bars_since_entry(conn, row) for row in rows if row["position_status"] == ACTIVE_POSITION_STATUS]
         if not rows:
             raise ValueError(
-                f"Livermore position snapshot CSV has no active rows for as_of_date {resolved_as_of_date}."
+                f"Livermore position snapshot {input_label} has no active rows for as_of_date {as_of_date}."
             )
         source_version = _build_source_version(
             {
-                "as_of_date": resolved_as_of_date,
+                "as_of_date": as_of_date,
                 "fact_source": FACT_SOURCE,
                 "source_file_hash": source_file_hash,
                 "rows": rows,
             }
         )
-        vendor_version = f"vv_livermore_position_csv_{source_version.removeprefix('sv_livermore_position_')}"
-        run_id = f"livermore_position_snapshot:{resolved_as_of_date}:{uuid.uuid4().hex[:12]}"
+        vendor_version = (
+            f"vv_livermore_position_{input_mode}_"
+            f"{source_version.removeprefix('sv_livermore_position_')}"
+        )
+        run_id = f"livermore_position_snapshot:{as_of_date}:{uuid.uuid4().hex[:12]}"
         conn.execute("begin transaction")
         transaction_started = True
         conn.execute(
             "delete from livermore_position_snapshot where as_of_date = ?",
-            [resolved_as_of_date],
+            [as_of_date],
         )
         placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
         conn.executemany(
@@ -153,14 +244,15 @@ def materialize_livermore_position_snapshot(
     return {
         "status": "completed",
         "fact_source": FACT_SOURCE,
-        "as_of_date": resolved_as_of_date,
+        "input_mode": input_mode,
+        "as_of_date": as_of_date,
         "row_count": len(rows),
         "run_id": run_id,
         "source_file_hash": source_file_hash,
         "source_systems": sorted({str(row["source_system"]) for row in rows if row["source_system"]}),
         "source_version": source_version,
         "vendor_version": vendor_version,
-        "csv_path": str(csv_file),
+        "csv_path": csv_path,
     }
 
 
@@ -183,6 +275,13 @@ def _build_source_version(payload: dict[str, object]) -> str:
 
 def _source_file_hash(path: Path) -> str:
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _source_payload_hash(payload: dict[str, object]) -> str:
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
     return f"sha256:{digest}"
 
 

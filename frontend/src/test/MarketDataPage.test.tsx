@@ -13,7 +13,7 @@ vi.mock("../app/jobs/polling", () => ({
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { runPollingTask } from "../app/jobs/polling";
-import type { ResultMeta } from "../api/contracts";
+import type { ChoiceMacroLatestPoint, ResultMeta } from "../api/contracts";
 import MarketDataPage from "../features/market-data/pages/MarketDataPage";
 
 function renderPage(client: ApiClient) {
@@ -39,6 +39,45 @@ function renderPage(client: ApiClient) {
       <MarketDataPage />
     </Wrapper>,
   );
+}
+
+function buildResultMeta(partial: Partial<ResultMeta> = {}): ResultMeta {
+  return {
+    trace_id: "tr_market_data_test",
+    basis: "formal",
+    result_kind: "market_data.rates",
+    formal_use_allowed: true,
+    source_version: "sv_market_data_test",
+    vendor_version: "vv_market_data_test",
+    rule_version: "rv_market_data_test",
+    cache_version: "cv_market_data_test",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-30T09:00:00Z",
+    ...partial,
+  };
+}
+
+function buildMacroPoint(
+  partial: Partial<ChoiceMacroLatestPoint> & Pick<ChoiceMacroLatestPoint, "series_id">,
+): ChoiceMacroLatestPoint {
+  return {
+    series_name: partial.series_id,
+    trade_date: "2026-04-30",
+    value_numeric: 1.94,
+    unit: "%",
+    source_version: "sv_market_data_test",
+    vendor_version: "vv_market_data_test",
+    refresh_tier: "stable",
+    fetch_mode: "date_slice",
+    fetch_granularity: "batch",
+    quality_flag: "ok",
+    latest_change: 0.012,
+    recent_points: [],
+    ...partial,
+  };
 }
 
 describe("MarketDataPage", () => {
@@ -390,7 +429,6 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("个股候选");
     expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("风险退出");
     expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("推荐标的");
-    expect(screen.queryAllByText("Open Market 7D Reverse Repo")).toHaveLength(0);
     expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("3");
     expect(screen.getByTestId("market-data-stable-count")).toHaveTextContent("1 / 2");
     expect(screen.getByTestId("market-data-fallback-count")).toHaveTextContent("1");
@@ -425,6 +463,89 @@ describe("MarketDataPage", () => {
       expect(getLivermoreStrategy).toHaveBeenCalledWith({
         asOfDate: expect.any(String),
       });
+    });
+  });
+
+  it("drives terminal market panels from formal/latest data and source-pending states", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const rateSeries = [
+      buildMacroPoint({
+        series_id: "EMM00166466",
+        series_name: "中债国债到期收益率:10年",
+        value_numeric: 1.94,
+        latest_change: -0.012,
+      }),
+      buildMacroPoint({
+        series_id: "EMM00166502",
+        series_name: "中债政策性金融债到期收益率(国开行)10年",
+        value_numeric: 2.05,
+        latest_change: 0.004,
+      }),
+      buildMacroPoint({
+        series_id: "M001",
+        series_name: "公开市场7天逆回购利率",
+        value_numeric: 1.75,
+        latest_change: 0.001,
+      }),
+      buildMacroPoint({
+        series_id: "CA.DR007",
+        series_name: "存款类机构质押式回购加权利率:DR007",
+        value_numeric: 1.82,
+        latest_change: -0.006,
+        fetch_mode: "latest",
+      }),
+    ];
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        trace_id: "tr_formal_rates_terminal_test",
+        source_version: "sv_formal_rates_terminal_test",
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: rateSeries,
+      },
+    }));
+    const getChoiceMacroLatest = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical" as const,
+        result_kind: "macro.choice.latest",
+        formal_use_allowed: false,
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: rateSeries,
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getMarketDataRates,
+      getChoiceMacroLatest,
+    });
+
+    const rateTable = await screen.findByTestId("market-data-rate-quote-table");
+    await within(rateTable).findByText("EMM00166466");
+    expect(rateTable).toHaveTextContent("EMM00166466");
+    expect(rateTable).toHaveTextContent("中债国债到期收益率:10年");
+    expect(rateTable).toHaveTextContent("1.94%");
+    expect(rateTable).toHaveTextContent("-1bp");
+    expect(rateTable).toHaveTextContent("2026-04-30");
+    expect(rateTable).toHaveTextContent("sv_formal_rates_terminal_test");
+    expect(rateTable).not.toHaveTextContent("4,856");
+
+    const moneyTable = screen.getByTestId("market-data-money-market-table");
+    expect(moneyTable).toHaveTextContent("公开市场7天逆回购利率");
+    expect(moneyTable).toHaveTextContent("CA.DR007");
+    expect(moneyTable).toHaveTextContent("-0.6bp");
+    expect(moneyTable).not.toHaveTextContent("24,331");
+
+    expect(screen.getByTestId("market-data-bond-futures-source-pending")).toHaveTextContent("source-pending");
+    expect(screen.getByTestId("market-data-bond-trades-source-pending")).toHaveTextContent("source-pending");
+    expect(screen.getByTestId("market-data-credit-trades-source-pending")).toHaveTextContent("source-pending");
+
+    await waitFor(() => {
+      expect(getMarketDataRates).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1146,6 +1267,25 @@ describe("MarketDataPage", () => {
     expect(screen.getByText("债券成交明细（现券）")).toBeInTheDocument();
     expect(screen.getByText("信用债成交明细")).toBeInTheDocument();
     expect(screen.getByText("资讯与日历")).toBeInTheDocument();
+  });
+
+  it("loads supply-auction calendar events in the NewsAndCalendar calendar tab", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getResearchCalendarEvents = vi.fn(base.getResearchCalendarEvents);
+
+    renderPage({
+      ...base,
+      getResearchCalendarEvents,
+    });
+
+    expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "事件日历" }));
+    expect(await screen.findByTestId("market-data-calendar-list")).toBeInTheDocument();
+    expect(screen.getByText("国债净融资节奏")).toBeInTheDocument();
+    expect(screen.getByText("政策性金融债招标")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+    });
   });
 
   it("renders an explicit Shibor proxy in the NCD panel instead of pretending it is a live NCD matrix", async () => {

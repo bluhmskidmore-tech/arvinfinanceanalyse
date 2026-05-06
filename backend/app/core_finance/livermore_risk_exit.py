@@ -31,6 +31,7 @@ def compute_risk_exit(
     snapshots: list[RiskExitSnapshot],
 ) -> RiskExitResult:
     items: list[dict[str, object]] = []
+    watch_items: list[dict[str, object]] = []
     excluded_position_count = 0
     insufficient_history_count = 0
 
@@ -41,10 +42,11 @@ def compute_risk_exit(
             if _is_insufficient_history(snapshot):
                 insufficient_history_count += 1
             continue
-        row = _risk_exit_row(snapshot, validated)
-        if row is None:
-            continue
-        items.append(row)
+        watch_item = _watch_item(snapshot, validated)
+        watch_items.append(watch_item)
+        row = _risk_exit_row(watch_item)
+        if row is not None:
+            items.append(row)
 
     return RiskExitResult(
         payload={
@@ -55,33 +57,51 @@ def compute_risk_exit(
             "excluded_position_count": excluded_position_count,
             "insufficient_history_count": insufficient_history_count,
             "items": items,
+            "watch_items": watch_items,
         }
     )
 
 
-def _risk_exit_row(
+def _watch_item(
     snapshot: RiskExitSnapshot,
     validated: tuple[float, int, list[float]],
-) -> dict[str, object] | None:
+) -> dict[str, object]:
     entry_cost, bars_since_entry, closes = validated
     ema10 = _ema(closes, EMA_WINDOW)
     latest_close = closes[-1]
     prior_close = closes[-2]
     latest_ema10 = ema10[-1]
     prior_ema10 = ema10[-2]
-    if latest_close >= latest_ema10 or prior_close >= prior_ema10:
-        return None
+    triggered = latest_close < latest_ema10 and prior_close < prior_ema10
 
     return {
         "stock_code": snapshot.stock_code,
         "stock_name": snapshot.stock_name,
-        "reason": "2d_below_ema10",
         "entry_cost": round(entry_cost, 6),
         "bars_since_entry": bars_since_entry,
         "latest_close": round(latest_close, 6),
         "latest_ema10": round(latest_ema10, 6),
         "prior_close": round(prior_close, 6),
         "prior_ema10": round(prior_ema10, 6),
+        "exit_watch_price": round(latest_ema10, 6),
+        "triggered": triggered,
+    }
+
+
+def _risk_exit_row(watch_item: dict[str, object]) -> dict[str, object] | None:
+    if not bool(watch_item["triggered"]):
+        return None
+
+    return {
+        "stock_code": watch_item["stock_code"],
+        "stock_name": watch_item["stock_name"],
+        "reason": "2d_below_ema10",
+        "entry_cost": watch_item["entry_cost"],
+        "bars_since_entry": watch_item["bars_since_entry"],
+        "latest_close": watch_item["latest_close"],
+        "latest_ema10": watch_item["latest_ema10"],
+        "prior_close": watch_item["prior_close"],
+        "prior_ema10": watch_item["prior_ema10"],
     }
 
 

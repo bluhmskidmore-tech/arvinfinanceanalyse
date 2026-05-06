@@ -10,6 +10,7 @@ EPS = 1e-12
 FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v1"
 ACTIVE_MARKET_STATES = {"WARM", "HOT", "OVERHEAT"}
 MIN_HISTORY = 120
+EMA_WINDOW = 10
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,7 @@ def _candidate_row(snapshot: StockCandidateSnapshot) -> dict[str, object] | None
         return None
 
     breakout_level = max(closes[-56:-1])
+    ema10 = _ema(closes, EMA_WINDOW)[-1]
     ma20 = _moving_average(closes, 20)
     ma60 = _moving_average(closes, 60)
     ma120 = _moving_average(closes, 120)
@@ -145,6 +147,7 @@ def _candidate_row(snapshot: StockCandidateSnapshot) -> dict[str, object] | None
         "sector_rank": sector_rank,
         "close": round(close_value, 6),
         "breakout_level": round(breakout_level, 6),
+        "ema10": round(ema10, 6),
         "ma20": round(ma20, 6),
         "ma60": round(ma60, 6),
         "ma120": round(ma120, 6),
@@ -183,6 +186,17 @@ def _is_insufficient_history(snapshot: StockCandidateSnapshot) -> bool:
 
 def _moving_average(values: list[float], window: int) -> float:
     return sum(values[-window:]) / window
+
+
+def _ema(values: list[float], window: int) -> list[float]:
+    alpha = 2.0 / (window + 1.0)
+    ema: list[float] = []
+    for value in values:
+        if not ema:
+            ema.append(value)
+        else:
+            ema.append(alpha * value + (1.0 - alpha) * ema[-1])
+    return ema
 
 
 def _close_strength(*, close: float, low: float, high: float) -> float:

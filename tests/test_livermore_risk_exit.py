@@ -34,6 +34,12 @@ def test_compute_risk_exit_flags_two_consecutive_closes_below_ema10() -> None:
     assert item["latest_close"] == 9.1
     assert item["latest_ema10"] > item["latest_close"]
     assert item["prior_ema10"] > item["prior_close"]
+    watch_items = cast(list[dict[str, Any]], payload["watch_items"])
+    assert len(watch_items) == 1
+    watch_item = watch_items[0]
+    assert watch_item["stock_code"] == "000001.SZ"
+    assert watch_item["triggered"] is True
+    assert watch_item["exit_watch_price"] == watch_item["latest_ema10"]
 
 
 def test_compute_risk_exit_keeps_position_when_only_latest_close_breaks_ema10() -> None:
@@ -53,6 +59,10 @@ def test_compute_risk_exit_keeps_position_when_only_latest_close_breaks_ema10() 
     assert result.payload["signal_count"] == 0
     assert result.payload["excluded_position_count"] == 0
     assert result.payload["items"] == []
+    watch_items = cast(list[dict[str, Any]], result.payload["watch_items"])
+    assert len(watch_items) == 1
+    assert watch_items[0]["stock_code"] == "000001.SZ"
+    assert watch_items[0]["triggered"] is False
 
 
 def test_compute_risk_exit_excludes_positions_without_required_inputs() -> None:
@@ -87,3 +97,4 @@ def test_compute_risk_exit_excludes_positions_without_required_inputs() -> None:
     assert result.payload["signal_count"] == 0
     assert result.payload["excluded_position_count"] == 3
     assert result.payload["insufficient_history_count"] == 1
+    assert result.payload["watch_items"] == []

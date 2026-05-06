@@ -164,6 +164,33 @@
   line-height: 1.25;
 }
 
+.market-data-terminal-source {
+  margin: 0 0 var(--moss-space-2);
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.market-data-terminal-empty {
+  display: grid;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-4);
+  border: 1px dashed var(--moss-color-primary-300);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.market-data-terminal-empty__status {
+  color: var(--moss-color-warning-600);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .market-data-filter-tray .ant-select {
   height: 30px;
 }

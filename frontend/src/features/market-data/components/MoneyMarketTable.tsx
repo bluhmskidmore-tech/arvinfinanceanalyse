@@ -3,61 +3,50 @@ import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { designTokens } from "../../../theme/designSystem";
+import type {
+  MarketDataMoneyMarketRow,
+  MarketDataMoneyMarketSection,
+} from "../lib/marketDataTerminalModel";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
-type MoneyRow = {
-  key: string;
-  name: string;
-  ratePct: string;
-  deltaBp: number;
-  volume: number;
-  weighted: string;
-  range: string;
-};
-
-const DATA: MoneyRow[] = [
-  { key: "r001", name: "R001", ratePct: "1.35%", deltaBp: -3.2, volume: 23421, weighted: "1.38", range: "1.32-1.42" },
-  { key: "dr001", name: "DR001", ratePct: "1.30%", deltaBp: -3.5, volume: 18652, weighted: "1.32", range: "1.28-1.36" },
-  { key: "dr007", name: "DR007", ratePct: "1.82%", deltaBp: 2.1, volume: 24331, weighted: "1.84", range: "1.78-1.88" },
-  { key: "r007", name: "R007", ratePct: "1.55%", deltaBp: -3.0, volume: 6321, weighted: "1.54", range: "1.50-1.60" },
-];
-
-function deltaBpColor(bp: number) {
-  if (bp < 0) {
+function deltaTextColor(value: string) {
+  if (value.startsWith("-")) {
     return designTokens.color.semantic.profit;
   }
-  if (bp > 0) {
+  if (value.startsWith("+")) {
     return designTokens.color.semantic.loss;
   }
   return designTokens.color.neutral[700];
 }
 
-export function MoneyMarketTable() {
-  const columns: ColumnsType<MoneyRow> = useMemo(
+function sourceSummary(model: MarketDataMoneyMarketSection) {
+  if (!model.source) {
+    return "来源待确认";
+  }
+  return `口径 ${model.source.basis} · 质量 ${model.source.qualityFlag} · 降级 ${model.source.fallbackMode} · ${model.source.sourceVersion}`;
+}
+
+export function MoneyMarketTable({ model }: { model: MarketDataMoneyMarketSection }) {
+  const columns: ColumnsType<MarketDataMoneyMarketRow> = useMemo(
     () => [
-      { title: "品种", dataIndex: "name", key: "name", width: 72 },
-      { title: "利率%", dataIndex: "ratePct", key: "ratePct", align: "right", width: 80 },
+      { title: "品种", dataIndex: "name", key: "name", width: 128 },
+      { title: "指标", dataIndex: "seriesName", key: "seriesName", ellipsis: true },
+      { title: "利率", dataIndex: "rateText", key: "rateText", align: "right", width: 80 },
       {
-        title: "涨跌bp",
-        dataIndex: "deltaBp",
-        key: "deltaBp",
+        title: "变动",
+        dataIndex: "deltaText",
+        key: "deltaText",
         align: "right",
         width: 88,
-        render: (v: number) => (
-          <span style={{ color: deltaBpColor(v), fontVariantNumeric: "tabular-nums" }}>
-            {v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}
+        render: (v: string) => (
+          <span style={{ color: deltaTextColor(v), fontVariantNumeric: "tabular-nums" }}>
+            {v}
           </span>
         ),
       },
-      {
-        title: "成交量",
-        dataIndex: "volume",
-        key: "volume",
-        align: "right",
-        render: (v: number) => <span style={{ fontVariantNumeric: "tabular-nums" }}>{v.toLocaleString()}</span>,
-      },
-      { title: "加权", dataIndex: "weighted", key: "weighted", align: "right", width: 72 },
-      { title: "区间", dataIndex: "range", key: "range", ellipsis: true },
+      { title: "交易日", dataIndex: "tradeDate", key: "tradeDate", width: 104 },
+      { title: "抓取", dataIndex: "sourceMode", key: "sourceMode", width: 72 },
+      { title: "序列", dataIndex: "seriesId", key: "seriesId", ellipsis: true },
     ],
     [],
   );
@@ -65,14 +54,21 @@ export function MoneyMarketTable() {
   return (
     <section data-testid="market-data-money-market-table" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>资金市场</h2>
-      <Table<MoneyRow>
-        size="small"
-        pagination={false}
-        columns={columns}
-        dataSource={DATA}
-        rowKey="key"
-        scroll={{ x: true }}
-      />
+      <p className="market-data-terminal-source">{sourceSummary(model)}</p>
+      {model.status === "ready" ? (
+        <Table<MarketDataMoneyMarketRow>
+          size="small"
+          pagination={false}
+          columns={columns}
+          dataSource={model.rows}
+          rowKey="key"
+          scroll={{ x: true }}
+        />
+      ) : (
+        <div data-testid="market-data-money-market-empty" className="market-data-terminal-empty">
+          {model.emptyReason}
+        </div>
+      )}
     </section>
   );
 }

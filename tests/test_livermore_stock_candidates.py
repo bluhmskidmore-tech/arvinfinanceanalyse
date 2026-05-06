@@ -20,6 +20,17 @@ def _turnover_history(*, baseline: float, current: float, count: int = 120) -> l
     return [baseline] * (count - 1) + [current]
 
 
+def _ema(values: list[float], window: int) -> list[float]:
+    alpha = 2.0 / (window + 1.0)
+    ema: list[float] = []
+    for value in values:
+        if not ema:
+            ema.append(value)
+        else:
+            ema.append(alpha * value + (1.0 - alpha) * ema[-1])
+    return ema
+
+
 def _snapshot(
     *,
     stock_code: str,
@@ -121,6 +132,7 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
     assert alpha["close_strength"] == pytest.approx((21.9 - 21.4) / (22.0 - 21.4))
     assert alpha["gap_norm"] == pytest.approx(((21.55 - 21.8) / 21.8) / 0.1)
     assert alpha["abnormal_turnover"] == pytest.approx(math.log1p(1.5 / 0.5))
+    assert alpha["ema10"] == pytest.approx(_ema(alpha_closes, 10)[-1])
     assert alpha["ma20"] > alpha["ma60"] > alpha["ma120"]
 
 

@@ -4,10 +4,16 @@ from datetime import date
 from pathlib import Path
 
 import duckdb
-
 from backend.app.core_finance.livermore_strategy import MarketGateSupplement
+from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
 TABLE_NAME = "fact_livermore_gate_supplement_daily"
+
+
+def ensure_livermore_gate_supplement_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    text = (REGISTRY_DIR / "23_livermore_gate_supplement.sql").read_text(encoding="utf-8")
+    for statement in parse_registry_sql_text(text):
+        conn.execute(statement)
 
 
 def fetch_market_gate_supplement(*, duckdb_path: str, trade_date: date) -> MarketGateSupplement | None:

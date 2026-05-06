@@ -7,6 +7,9 @@ import type {
   ChoiceNewsEventsPayload,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
+  LivermoreManualPositionInput,
+  LivermorePositionSnapshotPayload,
+  LivermoreSignalConfluencePayload,
   LivermoreStrategyPayload,
   MacroBondLinkagePayload,
   MacroVendorPayload,
@@ -69,6 +72,17 @@ export type MarketDataClientMethods = {
   getLivermoreStrategy: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreStrategyPayload>>;
+  getLivermoreSignalConfluence: (options?: {
+    asOfDate?: string;
+  }) => Promise<ApiEnvelope<LivermoreSignalConfluencePayload>>;
+  materializeLivermorePositionSnapshot: (options: {
+    asOfDate: string;
+    csvPath: string;
+  }) => Promise<LivermorePositionSnapshotPayload>;
+  materializeLivermoreManualPositionSnapshot: (options: {
+    asOfDate: string;
+    positions: LivermoreManualPositionInput[];
+  }) => Promise<LivermorePositionSnapshotPayload>;
   refreshGateSupplement: (options?: {
     asOfDate?: string;
     lookbackDays?: number;
@@ -583,6 +597,7 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           sector_rank: 1,
           close: 21.9,
           breakout_level: 21.8,
+          ema10: 20.6,
           ma20: 21.05,
           ma60: 19.05,
           ma120: 16.05,
@@ -599,6 +614,7 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           sector_rank: 2,
           close: 19.52,
           breakout_level: 19.44,
+          ema10: 18.88,
           ma20: 18.76,
           ma60: 17.16,
           ma120: 14.76,
@@ -628,7 +644,83 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           prior_ema10: 10.4,
         },
       ],
+      watch_items: [
+        {
+          stock_code: "000001.SZ",
+          stock_name: "Alpha",
+          entry_cost: 10.5,
+          bars_since_entry: 6,
+          latest_close: 9.1,
+          latest_ema10: 10.2,
+          prior_close: 9.8,
+          prior_ema10: 10.4,
+          exit_watch_price: 10.2,
+          triggered: true,
+        },
+        {
+          stock_code: "000777.SZ",
+          stock_name: "Watch Alpha",
+          entry_cost: 19.5,
+          bars_since_entry: 4,
+          latest_close: 19.8,
+          latest_ema10: 20.1,
+          prior_close: 20.4,
+          prior_ema10: 20.0,
+          exit_watch_price: 20.1,
+          triggered: false,
+        },
+      ],
     },
+  };
+}
+
+function buildMockLivermoreSignalConfluencePayload(
+  asOfDate?: string,
+): LivermoreSignalConfluencePayload {
+  const resolvedDate = asOfDate?.trim() || "2026-04-29";
+  return {
+    as_of_date: resolvedDate,
+    macro_context: {
+      status: "neutral",
+      composite_score: 0.05,
+      multiplier: 0.5,
+    },
+    strategy_context: {
+      market_gate_state: "WARM",
+      market_gate_exposure: 0.4,
+      allows_new_entry_observations: true,
+    },
+    position_size_hint: 0.2,
+    entry_observations: [
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        action: "observe_entry_setup",
+        trigger_price: 21.8,
+        current_price: 21.9,
+        invalidation_reference_price: 20.6,
+        position_size_hint: 0.2,
+        evidence: [
+          "候选触发价来自 Livermore breakout_level。",
+          "失效参考价来自候选股 EMA10。",
+        ],
+      },
+    ],
+    exit_observations: [
+      {
+        stock_code: "000777.SZ",
+        stock_name: "Watch Alpha",
+        action: "observe_exit_watch",
+        current_price: 19.8,
+        exit_watch_price: 20.1,
+        triggered: false,
+        evidence: ["退出观察价来自 Livermore EMA10。"],
+      },
+    ],
+    diagnostics: [
+      "Observation-only output. This service does not generate trading instructions.",
+    ],
+    disclaimer: "Observation-only output. This service does not generate trading instructions.",
   };
 }
 
@@ -1332,6 +1424,63 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getLivermoreSignalConfluence(options?: { asOfDate?: string }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.livermore.signal_confluence",
+        buildMockLivermoreSignalConfluencePayload(options?.asOfDate),
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_signal_confluence_mock",
+          vendor_version: "vv_livermore_signal_confluence_mock",
+          rule_version: "rv_livermore_signal_confluence_v1",
+          cache_version: "cv_livermore_signal_confluence_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+        },
+      );
+    },
+    async materializeLivermorePositionSnapshot(options: { asOfDate: string; csvPath: string }) {
+      await delay();
+      return {
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        input_mode: "csv",
+        as_of_date: options.asOfDate,
+        row_count: 1,
+        run_id: `livermore_position_snapshot:${options.asOfDate}:mock`,
+        source_file_hash: "sha256:mock",
+        source_systems: ["mock_position_book"],
+        source_version: "sv_livermore_position_mock",
+        vendor_version: "vv_livermore_position_csv_mock",
+        csv_path: options.csvPath,
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      };
+    },
+    async materializeLivermoreManualPositionSnapshot(options: {
+      asOfDate: string;
+      positions: LivermoreManualPositionInput[];
+    }) {
+      await delay();
+      return {
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        input_mode: "manual",
+        as_of_date: options.asOfDate,
+        row_count: options.positions.length,
+        run_id: `livermore_position_snapshot:${options.asOfDate}:mock`,
+        source_file_hash: "sha256:mock-manual",
+        source_systems: ["livermore_position_snapshot_manual"],
+        source_version: "sv_livermore_position_manual_mock",
+        vendor_version: "vv_livermore_position_manual_mock",
+        csv_path: null,
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      };
+    },
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
@@ -1488,6 +1637,51 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore${buildLivermoreQuery(options)}`,
+      ),
+    getLivermoreSignalConfluence: (options?: { asOfDate?: string }) =>
+      requestJson<LivermoreSignalConfluencePayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/signal-confluence${buildLivermoreQuery(options)}`,
+      ),
+    materializeLivermorePositionSnapshot: (options: { asOfDate: string; csvPath: string }) =>
+      requestActionJson<LivermorePositionSnapshotPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/livermore/position-snapshot",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            as_of_date: options.asOfDate,
+            csv_path: options.csvPath,
+          }),
+        },
+      ),
+    materializeLivermoreManualPositionSnapshot: (options: {
+      asOfDate: string;
+      positions: LivermoreManualPositionInput[];
+    }) =>
+      requestActionJson<LivermorePositionSnapshotPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/livermore/position-snapshot/manual",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            as_of_date: options.asOfDate,
+            positions: options.positions.map((position) => ({
+              stock_code: position.stockCode.trim(),
+              stock_name: position.stockName?.trim() || undefined,
+              entry_cost: position.entryCost,
+              bars_since_entry: position.barsSinceEntry,
+              entry_date: position.entryDate?.trim() || undefined,
+              position_quantity: position.positionQuantity,
+              position_status: position.positionStatus,
+            })),
+          }),
+        },
       ),
     getChoiceNewsEvents: ({
       limit,

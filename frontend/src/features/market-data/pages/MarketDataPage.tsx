@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, type CSSProperties, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Collapse } from "antd";
 
 import { useApiClient } from "../../../api/client";
@@ -33,6 +33,7 @@ import {
   type MarketObservationPoint,
 } from "../lib/marketDataCategoryStore";
 import { buildLivermoreStrategyModel } from "../lib/livermoreStrategyModel";
+import { buildMarketDataTerminalModel } from "../lib/marketDataTerminalModel";
 import { formatSignedNumber } from "../lib/marketDataFormat";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
@@ -409,6 +410,7 @@ function MetadataPanel({
 
 export default function MarketDataPage() {
   const client = useApiClient();
+  const queryClient = useQueryClient();
   const [watchDate, setWatchDate] = useState(() => {
     const d = new Date();
     const y = d.getFullYear();
@@ -462,6 +464,14 @@ export default function MarketDataPage() {
   const latestSeries = useMemo(
     () => latestQuery.data?.result.series ?? [],
     [latestQuery.data?.result.series],
+  );
+  const terminalModel = useMemo(
+    () =>
+      buildMarketDataTerminalModel({
+        ratesEnvelope: formalRatesQuery.data,
+        latestEnvelope: latestQuery.data,
+      }),
+    [formalRatesQuery.data, latestQuery.data],
   );
   const fxAnalyticalGroups = useMemo(
     () => fxAnalyticalQuery.data?.result.groups ?? [],
@@ -578,8 +588,14 @@ export default function MarketDataPage() {
       await Promise.all([
         catalogQuery.refetch(),
         latestQuery.refetch(),
+        formalRatesQuery.refetch(),
         fxAnalyticalQuery.refetch(),
-        macroBondLinkageQuery.refetch(),
+        linkageReportDate
+          ? queryClient.refetchQueries({
+              queryKey: ["market-data", "macro-bond-linkage", client.mode, linkageReportDate],
+              exact: true,
+            })
+          : Promise.resolve(),
         livermoreStrategyQuery.refetch(),
       ]);
     } catch (err) {
@@ -593,8 +609,10 @@ export default function MarketDataPage() {
     client,
     catalogQuery,
     latestQuery,
+    formalRatesQuery,
     fxAnalyticalQuery,
-    macroBondLinkageQuery,
+    queryClient,
+    linkageReportDate,
     livermoreStrategyQuery,
   ]);
 
@@ -701,7 +719,7 @@ export default function MarketDataPage() {
           description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
         />
         <div className="market-data-command-grid">
-          <RateQuoteTable />
+          <RateQuoteTable model={terminalModel.rateQuotes} />
           <MarketDataMacroDepthTabs
             macroDepthTab={macroDepthTab}
             onMacroDepthTabChange={setMacroDepthTab}
@@ -735,8 +753,8 @@ export default function MarketDataPage() {
       </MarketSectionBlock>
 
       <div className="market-data-observation-grid">
-        <MoneyMarketTable />
-        <BondFuturesTable />
+        <MoneyMarketTable model={terminalModel.moneyMarket} />
+        <BondFuturesTable model={terminalModel.bondFutures} />
         <NcdMatrix
           payload={ncdFundingProxy}
           resultMeta={ncdFundingProxyQuery.data?.result_meta}
@@ -747,8 +765,8 @@ export default function MarketDataPage() {
       </div>
 
       <div className="market-data-observation-grid">
-        <BondTradeDetail />
-        <CreditBondTradesTable />
+        <BondTradeDetail model={terminalModel.bondTrades} />
+        <CreditBondTradesTable model={terminalModel.creditTrades} />
         <NewsAndCalendar />
       </div>
 
