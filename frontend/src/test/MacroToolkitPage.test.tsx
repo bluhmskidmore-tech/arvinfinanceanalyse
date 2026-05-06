@@ -32,6 +32,11 @@ describe("MacroToolkitPage", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: "脚本注册表" }),
     ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "功能结果" }),
+    ).toBeInTheDocument();
+    expect((await screen.findAllByText(/M7/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/M16/)).length).toBeGreaterThan(0);
     expect(await screen.findAllByText("signal_aggregator")).toHaveLength(2);
   });
 });

@@ -110,6 +110,25 @@ export type MacroToolkitSignalCard = {
   evidence: string[];
 };
 
+export type MacroToolkitCapabilityResult = {
+  key: string;
+  legacy_module: string;
+  label: string;
+  group: string;
+  status: "complete" | "degraded" | "unavailable";
+  tone: MacroToolkitSignalCard["tone"];
+  score: number | null;
+  headline: string;
+  primary_metric: {
+    label: string;
+    value: string | number;
+    unit: string;
+  } | null;
+  evidence: string[];
+  warnings: string[];
+  result: Record<string, unknown>;
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -128,6 +147,7 @@ export type MacroToolkitAnalysisPayload = {
   };
   indicators: MacroToolkitIndicator[];
   signal_cards: MacroToolkitSignalCard[];
+  capability_results: MacroToolkitCapabilityResult[];
   output_files: MacroToolkitOutputFile[];
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
@@ -163,6 +183,37 @@ export type MacroToolkitClientMethods = {
     sources?: string[];
   }) => Promise<MacroToolkitCffexRefreshResponse>;
 };
+
+const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
+  {
+    key: "monetary_policy_stance",
+    legacy_module: "M7",
+    label: "货币政策立场",
+    group: "政策与资金面",
+    status: "degraded",
+    tone: "neutral",
+    score: 56,
+    headline: "资金面偏平衡，政策立场暂不形成单边信号。",
+    primary_metric: { label: "立场得分", value: 56, unit: "" },
+    evidence: ["DR007=1.82%", "10Y-1Y=34bp"],
+    warnings: ["POLICY_RATE_7D_MISSING"],
+    result: { data_status: "degraded" },
+  },
+  {
+    key: "decision_summary",
+    legacy_module: "M16",
+    label: "宏观决策摘要",
+    group: "决策摘要",
+    status: "degraded",
+    tone: "neutral",
+    score: 50,
+    headline: "宏观信号分化，维持中性观察。",
+    primary_metric: { label: "可用模块", value: 6, unit: "/9" },
+    evidence: ["M7 资金面偏平衡", "M10 LEI 处于中性区间"],
+    warnings: ["部分模块数据降级或不可用"],
+    result: { data_status: "degraded" },
+  },
+];
 
 const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   default_data_sources: ["choice", "tushare"],
@@ -264,6 +315,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
       evidence: ["尚未发现输出文件"],
     },
   ],
+  capability_results: MOCK_CAPABILITY_RESULTS,
   output_files: [],
   source_checks: [],
   capabilities: [],

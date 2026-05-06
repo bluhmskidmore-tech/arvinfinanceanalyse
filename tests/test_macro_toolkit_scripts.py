@@ -219,6 +219,21 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "credit",
         "outputs",
     }
+    capability_results = {item["key"]: item for item in payload["result"]["capability_results"]}
+    assert set(capability_results) == {
+        "monetary_policy_stance",
+        "yield_curve_shape",
+        "credit_spread_risk",
+        "leading_indicator",
+        "liquidity_stress",
+        "cross_market_linkage",
+        "rate_turning_point",
+        "economic_cycle",
+        "macro_portfolio_impact",
+        "decision_summary",
+    }
+    assert capability_results["decision_summary"]["headline"]
+    assert capability_results["decision_summary"]["status"] in {"complete", "degraded"}
     indicators = {item["alias"]: item for item in payload["result"]["indicators"]}
     assert indicators["DR007.IB"]["latest_value"] == 1.82
     assert indicators["S0059749"]["latest_value"] == 2.48
@@ -255,8 +270,9 @@ def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_p
     payload = response.json()
     capabilities = {item["key"]: item for item in payload["result"]["capabilities"]}
     assert capabilities["monetary_policy_stance"]["legacy_module"] == "M7"
-    assert capabilities["monetary_policy_stance"]["route_status"] == "not_wired"
-    assert capabilities["yield_curve_shape"]["implementation_status"] == "partial"
+    assert all(item["route_status"] == "wired" for item in capabilities.values())
+    assert all(item["frontend_status"] == "visible" for item in capabilities.values())
+    assert capabilities["yield_curve_shape"]["implementation_status"] == "library_ready"
     assert payload["result"]["cffex_member_rank"]["freshness_status"] == "stale"
     assert payload["result"]["cffex_member_rank"]["reference_date"] == "2026-04-30"
     assert payload["result"]["cffex_member_rank"]["stale_days"] == 20

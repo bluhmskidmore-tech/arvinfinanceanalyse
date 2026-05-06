@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useApiClient } from "../../../api/client";
 import type {
   MacroToolkitCapability,
+  MacroToolkitCapabilityResult,
   MacroToolkitIndicator,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
@@ -81,7 +82,12 @@ function statusLabel(status: string) {
     ready: "数据齐备",
     partial: "部分就绪",
     not_required: "无需数据",
+    complete: "已完成",
+    degraded: "部分降级",
+    unavailable: "不可用",
     library_ready: "函数已迁入",
+    wired: "已接线",
+    visible: "已展示",
     not_wired: "未接线",
     planned: "待接入",
   };
@@ -89,9 +95,11 @@ function statusLabel(status: string) {
 }
 
 function statusColor(status: string) {
-  if (["current", "ready", "library_ready"].includes(status)) return "green";
-  if (["lagging", "partial", "planned"].includes(status)) return "gold";
-  if (["stale", "missing", "not_wired"].includes(status)) return "red";
+  if (["current", "ready", "library_ready", "complete", "wired", "visible"].includes(status)) {
+    return "green";
+  }
+  if (["lagging", "partial", "planned", "degraded"].includes(status)) return "gold";
+  if (["stale", "missing", "not_wired", "unavailable"].includes(status)) return "red";
   return "default";
 }
 
@@ -139,6 +147,7 @@ export default function MacroToolkitPage() {
   const payload = scriptsQuery.data?.result;
   const analysis = analysisQuery.data?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
+  const capabilityResults = analysis?.capability_results ?? [];
   const groupOptions = useMemo(
     () => [
       { value: "all", label: "全部分组" },
@@ -487,6 +496,23 @@ export default function MacroToolkitPage() {
               pagination={false}
             />
           </section>
+
+          <section className="macro-toolkit-section">
+            <PageSectionLead
+              eyebrow="results"
+              title="功能结果"
+              description="M7-M16 已按现有宏观纯函数和正式事实表输出结果，缺口只保留为数据降级提示。"
+            />
+            {capabilityResults.length ? (
+              <div className="macro-toolkit-capability-result-grid">
+                {capabilityResults.map((result) => (
+                  <CapabilityResultCard result={result} key={result.key} />
+                ))}
+              </div>
+            ) : (
+              <div className="macro-toolkit-empty-output">暂无 M7-M16 功能结果。</div>
+            )}
+          </section>
         </>
       ) : null}
 
@@ -719,6 +745,28 @@ export default function MacroToolkitPage() {
       </section>
     </div>
   );
+}
+
+function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult }) {
+  const metric = result.primary_metric;
+  const evidence = result.evidence.length ? result.evidence : result.warnings;
+  return (
+    <div className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}>
+      <div className="macro-toolkit-capability-result-head">
+        <span>
+          {result.legacy_module} · {result.label}
+        </span>
+        <Tag color={statusColor(result.status)}>{statusLabel(result.status)}</Tag>
+      </div>
+      <strong>{metric ? formatMetricDisplay(metric) : result.score ?? statusLabel(result.status)}</strong>
+      <p>{result.headline}</p>
+      <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
+    </div>
+  );
+}
+
+function formatMetricDisplay(metric: NonNullable<MacroToolkitCapabilityResult["primary_metric"]>) {
+  return `${metric.label} ${metric.value}${metric.unit}`;
 }
 
 function MetricTile({

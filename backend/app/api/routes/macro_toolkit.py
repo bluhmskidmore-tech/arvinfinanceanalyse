@@ -6,10 +6,29 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import duckdb
 import pandas as pd
+from backend.app.core_finance.macro import (
+    analyze_cross_market_linkage,
+    compute_credit_spread_risk,
+    compute_economic_cycle,
+    compute_leading_indicator,
+    compute_liquidity_stress_test,
+    compute_macro_portfolio_impact,
+    compute_monetary_policy_stance,
+    compute_rate_turning_point,
+    compute_yield_curve_shape,
+)
+from backend.app.core_finance.macro.helpers import (
+    build_curve_history,
+    enrich_wide_with_curve_market_fields,
+    sort_wide_rows_for_macro,
+)
+from backend.app.core_finance.macro.macro_portfolio_impact import build_bond_portfolio_profile
 from backend.app.core_finance.macro.toolkit import DEFAULT_DATA_SOURCES
 from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
 from backend.app.core_finance.macro.toolkit.runner import (
@@ -212,6 +231,10 @@ def macro_toolkit_analysis() -> dict[str, object]:
     indicator_by_key = {str(item["key"]): item for item in indicators}
     output_files = _output_files()
     signal_cards = _analysis_signal_cards(indicator_by_key, output_files)
+    capability_results = _macro_capability_results(
+        settings.duckdb_path,
+        report_date=_latest_indicator_date(indicators),
+    )
     hit_count = sum(1 for item in indicators if item["latest_value"] is not None)
     coverage = {
         "indicator_count": len(indicators),
@@ -230,6 +253,7 @@ def macro_toolkit_analysis() -> dict[str, object]:
             "coverage": coverage,
             "indicators": indicators,
             "signal_cards": signal_cards,
+            "capability_results": capability_results,
             "output_files": output_files,
             "source_checks": _source_checks(settings.duckdb_path),
             "capabilities": _capability_plan(settings.duckdb_path),
@@ -477,9 +501,9 @@ def _capability_payload(definition: dict[str, object], duckdb_path: str | Path) 
         "legacy_module": definition["legacy_module"],
         "label": definition["label"],
         "group": definition["group"],
-        "implementation_status": definition["implementation_status"],
-        "route_status": definition["route_status"],
-        "frontend_status": definition["frontend_status"],
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_status": data_status,
         "data_hit_count": hit_count,
         "data_required_count": required_count,
@@ -492,8 +516,788 @@ def _capability_payload(definition: dict[str, object], duckdb_path: str | Path) 
             }
             for check in checks
         ],
-        "next_step": definition["next_step"],
+        "next_step": "已在本页输出结构化结果；下一步沉淀为正式宏观端点和页面契约。",
     }
+
+
+_CURVE_TYPE_TO_ID = {
+    "treasury": "CN_GOVT",
+    "cdb": "CN_CDB",
+    "aaa_credit": "CN_CREDIT_AAA",
+    "aa_plus_credit": "CN_CREDIT_AA_PLUS",
+    "aa_credit": "CN_CREDIT_AA",
+}
+
+_CURVE_ALIAS_POINTS = (
+    ("S0059743", "CN_GOVT", "1Y"),
+    ("S0059746", "CN_GOVT", "3Y"),
+    ("S0059747", "CN_GOVT", "5Y"),
+    ("S0059748", "CN_GOVT", "7Y"),
+    ("S0059749", "CN_GOVT", "10Y"),
+    ("S0059752", "CN_GOVT", "30Y"),
+    ("S0059650", "CN_CREDIT_AAA", "1Y"),
+    ("S0059651", "CN_CREDIT_AAA", "3Y"),
+    ("S0059652", "CN_CREDIT_AAA", "5Y"),
+    ("S0059653", "CN_CREDIT_AA_PLUS", "1Y"),
+    ("S0059654", "CN_CREDIT_AA_PLUS", "3Y"),
+    ("S0059655", "CN_CREDIT_AA_PLUS", "5Y"),
+    ("S0059656", "CN_CREDIT_AA", "1Y"),
+    ("S0059657", "CN_CREDIT_AA", "3Y"),
+    ("S0059760", "CN_CREDIT_AA", "5Y"),
+    ("DR007.IB", "CN_DR", "7D"),
+    ("M0041653", "CN_REPO", "7D"),
+    ("M0041813", "CN_SHIBOR", "3M"),
+)
+
+_WIDE_SERIES_ALIASES = (
+    ("hs300", "sh000300"),
+    ("copper", "CU0"),
+    ("usdcny", "M0067855"),
+    ("fx_usdcny", "M0067855"),
+    ("brent_oil", "CA.BRENT"),
+    ("pmi", "M0017126"),
+    ("cpi_yoy", "M0000612"),
+    ("ppi_yoy", "M0001227"),
+    ("m2_yoy", "M0001385"),
+    ("social_financing_yoy", "M5525763"),
+    ("industrial_yoy", "M0000545"),
+    ("dr007", "DR007.IB"),
+)
+
+
+def _macro_capability_results(
+    duckdb_path: str | Path,
+    *,
+    report_date: str | None,
+) -> list[dict[str, object]]:
+    parsed_report_date = _parse_report_date(report_date)
+    if parsed_report_date is None:
+        return [_unavailable_capability_result(item, "缺少可用分析日期") for item in _CAPABILITY_DEFINITIONS]
+
+    curve_rows = _load_macro_curve_rows(duckdb_path, parsed_report_date)
+    wide_rows = _load_macro_wide_rows(duckdb_path, parsed_report_date, curve_rows)
+    risk_tensor = _load_latest_risk_tensor_row(duckdb_path, parsed_report_date)
+    proxy_rows, bucket_rows, total_assets = _risk_tensor_to_liquidity_inputs(risk_tensor)
+    positions = _load_latest_bond_positions(duckdb_path, parsed_report_date)
+    portfolio_profile = build_bond_portfolio_profile(positions, parsed_report_date)
+    current_curve = _current_gov_curve(curve_rows, parsed_report_date)
+
+    raw_results: dict[str, dict[str, object]] = {
+        "monetary_policy_stance": _run_capability(
+            "monetary_policy_stance",
+            lambda: compute_monetary_policy_stance(curve_rows, report_date=parsed_report_date),
+        ),
+        "yield_curve_shape": _run_capability(
+            "yield_curve_shape",
+            lambda: compute_yield_curve_shape(curve_rows, report_date=parsed_report_date),
+        ),
+        "credit_spread_risk": _run_capability(
+            "credit_spread_risk",
+            lambda: compute_credit_spread_risk(curve_rows, report_date=parsed_report_date),
+        ),
+        "leading_indicator": _run_capability(
+            "leading_indicator",
+            lambda: compute_leading_indicator(wide_rows, parsed_report_date),
+        ),
+        "liquidity_stress": _run_capability(
+            "liquidity_stress",
+            lambda: compute_liquidity_stress_test(
+                proxy_rows,
+                bucket_rows,
+                report_date=parsed_report_date,
+                total_assets=total_assets,
+            ),
+        ),
+        "cross_market_linkage": _run_capability(
+            "cross_market_linkage",
+            lambda: analyze_cross_market_linkage(wide_rows, parsed_report_date),
+        ),
+        "rate_turning_point": _run_capability(
+            "rate_turning_point",
+            lambda: compute_rate_turning_point(curve_rows, report_date=parsed_report_date),
+        ),
+        "economic_cycle": _run_capability(
+            "economic_cycle",
+            lambda: compute_economic_cycle(wide_rows, parsed_report_date),
+        ),
+        "macro_portfolio_impact": _run_capability(
+            "macro_portfolio_impact",
+            lambda: compute_macro_portfolio_impact(
+                portfolio_profile,
+                current_curve,
+                parsed_report_date,
+            ),
+        ),
+    }
+
+    cards: list[dict[str, object]] = []
+    for definition in _CAPABILITY_DEFINITIONS:
+        if definition["key"] == "decision_summary":
+            cards.append(_decision_summary_card(definition, cards, parsed_report_date))
+            continue
+        raw_result = raw_results.get(str(definition["key"]))
+        cards.append(_capability_result_card(definition, raw_result))
+    return cards
+
+
+def _run_capability(
+    key: str,
+    compute: Callable[[], dict[str, object]],
+) -> dict[str, object]:
+    try:
+        return compute()
+    except Exception as exc:  # pragma: no cover - surfaced as degraded UI evidence
+        return {
+            "data_status": "unavailable",
+            "headline": f"{key} 计算失败",
+            "warnings": [f"{type(exc).__name__}: {exc}"],
+        }
+
+
+def _parse_report_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    path = Path(duckdb_path)
+    if path.exists():
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            conn = None
+        if conn is not None:
+            try:
+                if _duckdb_table_exists(conn, "fact_formal_yield_curve_daily"):
+                    formal_rows = conn.execute(
+                        """
+                        select
+                          cast(trade_date as varchar) as biz_date,
+                          lower(curve_type) as curve_type,
+                          tenor,
+                          cast(rate_pct as double) as rate_value
+                        from fact_formal_yield_curve_daily
+                        where try_cast(trade_date as date) <= ?
+                        """,
+                        [report_date],
+                    ).fetchall()
+                    for biz_date, curve_type, tenor, rate_value in formal_rows:
+                        curve_id = _CURVE_TYPE_TO_ID.get(str(curve_type))
+                        if curve_id and rate_value is not None:
+                            rows.append(
+                                {
+                                    "biz_date": str(biz_date)[:10],
+                                    "curve_id": curve_id,
+                                    "tenor": str(tenor),
+                                    "rate_value": float(rate_value),
+                                }
+                            )
+            finally:
+                conn.close()
+
+    for alias, curve_id, tenor in _CURVE_ALIAS_POINTS:
+        frame = load_series_by_alias(alias, end=report_date.isoformat(), duckdb_path=duckdb_path)
+        if frame.empty:
+            continue
+        for _, sample in frame.iterrows():
+            sample_date = _coerce_frame_date(sample.get("date"))
+            if sample_date is None or sample_date > report_date:
+                continue
+            value = _float_or_none(sample.get("value"))
+            if value is None:
+                continue
+            rows.append(
+                {
+                    "biz_date": sample_date.isoformat(),
+                    "curve_id": curve_id,
+                    "tenor": tenor,
+                    "rate_value": value,
+                }
+            )
+    return rows
+
+
+def _load_macro_wide_rows(
+    duckdb_path: str | Path,
+    report_date: date,
+    curve_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    wide_by_date: dict[date, dict[str, float]] = {report_date: {}}
+    fields = [field for field, _ in _WIDE_SERIES_ALIASES]
+    for field, alias in _WIDE_SERIES_ALIASES:
+        frame = load_series_by_alias(alias, end=report_date.isoformat(), duckdb_path=duckdb_path)
+        if frame.empty:
+            continue
+        for _, sample in frame.iterrows():
+            sample_date = _coerce_frame_date(sample.get("date"))
+            value = _float_or_none(sample.get("value"))
+            if sample_date is None or sample_date > report_date or value is None:
+                continue
+            wide_by_date.setdefault(sample_date, {})[field] = value
+
+    for row in curve_rows:
+        row_date = _parse_report_date(str(row.get("biz_date") or ""))
+        if row_date is not None and row_date <= report_date:
+            wide_by_date.setdefault(row_date, {})
+
+    last_seen: dict[str, float] = {}
+    for sample_date in sorted(wide_by_date):
+        current = wide_by_date[sample_date]
+        for field in fields:
+            if field not in current and field in last_seen:
+                current[field] = last_seen[field]
+        for field in fields:
+            value = current.get(field)
+            if value is not None:
+                last_seen[field] = value
+
+    curves_by_date = build_curve_history(curve_rows, report_date=report_date)
+    enrich_wide_with_curve_market_fields(wide_by_date, curves_by_date)
+    return sort_wide_rows_for_macro(wide_by_date, report_date=report_date)
+
+
+def _load_latest_risk_tensor_row(
+    duckdb_path: str | Path,
+    report_date: date,
+) -> dict[str, object] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return None
+    try:
+        if not _duckdb_table_exists(conn, "fact_formal_risk_tensor_daily"):
+            return None
+        frame = conn.execute(
+            """
+            select *
+            from fact_formal_risk_tensor_daily
+            where try_cast(report_date as date) <= ?
+            order by try_cast(report_date as date) desc
+            limit 1
+            """,
+            [report_date],
+        ).fetchdf()
+    finally:
+        conn.close()
+    if frame.empty:
+        return None
+    return dict(frame.iloc[0])
+
+
+def _risk_tensor_to_liquidity_inputs(
+    row: dict[str, object] | None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], float | None]:
+    if row is None:
+        return [], [], None
+
+    total_assets = _float_or_none(row.get("total_market_value"))
+    proxy_rows: list[dict[str, object]] = []
+    top_share = _float_or_none(row.get("issuer_top5_weight"))
+    dv01 = _float_or_none(row.get("portfolio_dv01"))
+    bond_count = _float_or_none(row.get("bond_count"))
+    if top_share is not None or dv01 is not None:
+        proxy_rows.append(
+            {
+                "book_id": "portfolio",
+                "share_of_abs_dv01": top_share,
+                "dv01_sum": dv01,
+                "row_count": int(bond_count or 0),
+            }
+        )
+
+    bucket_rows: list[dict[str, object]] = []
+    asset_30 = _float_or_none(row.get("asset_cashflow_30d"))
+    asset_90 = _float_or_none(row.get("asset_cashflow_90d"))
+    liability_30 = _float_or_none(row.get("liability_cashflow_30d"))
+    liability_90 = _float_or_none(row.get("liability_cashflow_90d"))
+    gap_30 = _float_or_none(row.get("liquidity_gap_30d"))
+    gap_90 = _float_or_none(row.get("liquidity_gap_90d"))
+    gap_ratio_30 = _float_or_none(row.get("liquidity_gap_30d_ratio"))
+
+    if any(value is not None for value in (asset_30, liability_30, gap_30)):
+        net_30 = gap_30 if gap_30 is not None else (asset_30 or 0.0) - (liability_30 or 0.0)
+        bucket_rows.append(
+            {
+                "bucket_name": "<=1M",
+                "asset_amount": asset_30 or 0.0,
+                "liability_amount": liability_30 or 0.0,
+                "net_gap": net_30,
+                "cumulative_gap": gap_30 if gap_30 is not None else net_30,
+                "gap_ratio": gap_ratio_30,
+                "asset_row_count": 1 if asset_30 is not None else 0,
+                "liability_row_count": 1 if liability_30 is not None else 0,
+            }
+        )
+
+    if any(value is not None for value in (asset_90, liability_90, gap_90)):
+        net_90 = (gap_90 or 0.0) - (gap_30 or 0.0) if gap_90 is not None else (asset_90 or 0.0) - (asset_30 or 0.0) - ((liability_90 or 0.0) - (liability_30 or 0.0))
+        bucket_rows.append(
+            {
+                "bucket_name": "1-3M",
+                "asset_amount": max(0.0, (asset_90 or 0.0) - (asset_30 or 0.0)),
+                "liability_amount": max(0.0, (liability_90 or 0.0) - (liability_30 or 0.0)),
+                "net_gap": net_90,
+                "cumulative_gap": gap_90 if gap_90 is not None else net_90,
+                "gap_ratio": (net_90 / total_assets) if total_assets else None,
+                "asset_row_count": 1 if asset_90 is not None else 0,
+                "liability_row_count": 1 if liability_90 is not None else 0,
+            }
+        )
+    return proxy_rows, bucket_rows, total_assets
+
+
+def _load_latest_bond_positions(
+    duckdb_path: str | Path,
+    report_date: date,
+) -> list[dict[str, object]]:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return []
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return []
+    try:
+        if not _duckdb_table_exists(conn, "fact_formal_bond_analytics_daily"):
+            return []
+        frame = conn.execute(
+            """
+            with latest as (
+              select max(try_cast(report_date as date)) as report_date
+              from fact_formal_bond_analytics_daily
+              where try_cast(report_date as date) <= ?
+            )
+            select
+              cast(market_value as double) as market_value,
+              maturity_date,
+              cast(coupon_rate as double) as coupon_rate
+            from fact_formal_bond_analytics_daily, latest
+            where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.report_date
+              and coalesce(cast(market_value as double), 0) > 0
+            limit 5000
+            """,
+            [report_date],
+        ).fetchdf()
+    finally:
+        conn.close()
+    if frame.empty:
+        return []
+    positions: list[dict[str, object]] = []
+    for _, row in frame.iterrows():
+        market_value = _float_or_none(row.get("market_value"))
+        if market_value is None or market_value <= 0:
+            continue
+        positions.append(
+            {
+                "market_value": market_value,
+                "maturity_date": _coerce_frame_date(row.get("maturity_date")),
+                "coupon_rate": _float_or_none(row.get("coupon_rate")),
+            }
+        )
+    return positions
+
+
+def _current_gov_curve(
+    curve_rows: list[dict[str, object]],
+    report_date: date,
+) -> dict[str, float]:
+    curves_by_date = build_curve_history(curve_rows, report_date=report_date)
+    for sample_date in sorted(curves_by_date.keys(), reverse=True):
+        government_curve = curves_by_date.get(sample_date, {}).get("CN_GOVT", {})
+        if government_curve:
+            return {tenor: float(rate) for tenor, rate in government_curve.items()}
+    return {}
+
+
+def _capability_result_card(
+    definition: dict[str, object],
+    result: dict[str, object] | None,
+) -> dict[str, object]:
+    raw_result = result or {}
+    status = _capability_result_status(str(definition["key"]), raw_result)
+    tone = _capability_result_tone(str(definition["key"]), raw_result, status)
+    return {
+        "key": definition["key"],
+        "legacy_module": definition["legacy_module"],
+        "label": definition["label"],
+        "group": definition["group"],
+        "status": status,
+        "tone": tone,
+        "score": _capability_result_score(str(definition["key"]), raw_result),
+        "headline": _capability_result_headline(str(definition["key"]), raw_result),
+        "primary_metric": _capability_primary_metric(str(definition["key"]), raw_result),
+        "evidence": _capability_result_evidence(str(definition["key"]), raw_result),
+        "warnings": [str(item) for item in raw_result.get("warnings", []) if item],
+        "result": raw_result,
+    }
+
+
+def _unavailable_capability_result(
+    definition: dict[str, object],
+    reason: str,
+) -> dict[str, object]:
+    return {
+        "key": definition["key"],
+        "legacy_module": definition["legacy_module"],
+        "label": definition["label"],
+        "group": definition["group"],
+        "status": "unavailable",
+        "tone": "missing",
+        "score": None,
+        "headline": reason,
+        "primary_metric": None,
+        "evidence": [],
+        "warnings": [reason],
+        "result": {"data_status": "unavailable", "warnings": [reason]},
+    }
+
+
+def _capability_result_status(key: str, result: dict[str, object]) -> str:
+    data_status = str(result.get("data_status") or "").lower()
+    if data_status in {"complete", "degraded", "unavailable"}:
+        return data_status
+    if key == "yield_curve_shape" and result.get("shape") == "Unavailable":
+        return "unavailable"
+    if key == "credit_spread_risk" and result.get("risk_level") == "UNAVAILABLE":
+        return "unavailable"
+    warnings = result.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        return "degraded"
+    return "complete" if result else "unavailable"
+
+
+def _capability_result_tone(key: str, result: dict[str, object], status: str) -> str:
+    if status == "unavailable":
+        return "missing"
+    if key == "monetary_policy_stance":
+        stance = str(result.get("stance_label") or "")
+        if stance == "accommodative":
+            return "positive"
+        if stance == "tight":
+            return "negative"
+    if key == "credit_spread_risk":
+        risk = str(result.get("risk_level") or "")
+        if risk in {"HIGH", "CRITICAL"}:
+            return "negative"
+        if risk == "LOW":
+            return "positive"
+    if key == "liquidity_stress":
+        stress = str(result.get("stress_level") or "")
+        if stress in {"HIGH", "CRITICAL"}:
+            return "negative"
+        if stress == "LOW":
+            return "positive"
+    if key == "cross_market_linkage":
+        risk = str(result.get("overall_risk") or "")
+        if risk == "HIGH":
+            return "negative"
+        if risk == "LOW":
+            return "positive"
+    if key == "economic_cycle":
+        phase = str(result.get("cycle_phase") or "")
+        if phase == "recovery":
+            return "positive"
+        if phase in {"stagflation", "recession"}:
+            return "negative"
+    if key == "macro_portfolio_impact":
+        worst = _worst_portfolio_scenario(result)
+        pnl_pct = _float_or_none(worst.get("pnl_pct")) if worst else None
+        if pnl_pct is not None and pnl_pct <= -0.5:
+            return "negative"
+        if pnl_pct is not None and pnl_pct >= 0:
+            return "positive"
+    return "neutral"
+
+
+def _capability_result_score(key: str, result: dict[str, object]) -> float | None:
+    score_fields = {
+        "monetary_policy_stance": "stance_score",
+        "credit_spread_risk": "risk_score",
+        "leading_indicator": "lei_index",
+        "liquidity_stress": "stress_score",
+        "rate_turning_point": "percentile_1y",
+        "economic_cycle": "growth_score",
+    }
+    if key in score_fields:
+        return _round_float(_float_or_none(result.get(score_fields[key])))
+    if key == "yield_curve_shape":
+        spreads = result.get("spreads") if isinstance(result.get("spreads"), dict) else {}
+        return _round_float(_float_or_none(spreads.get("10Y-1Y") if isinstance(spreads, dict) else None))
+    if key == "cross_market_linkage":
+        risk_score = {"LOW": 25.0, "MEDIUM": 55.0, "HIGH": 85.0}.get(str(result.get("overall_risk")), None)
+        return risk_score
+    if key == "macro_portfolio_impact":
+        worst = _worst_portfolio_scenario(result)
+        return _round_float(_float_or_none(worst.get("pnl_pct")) if worst else None)
+    return None
+
+
+def _capability_result_headline(key: str, result: dict[str, object]) -> str:
+    for field in ("headline", "interpretation", "recommendation"):
+        value = result.get(field)
+        if value:
+            return str(value)
+    if key == "leading_indicator":
+        return f"LEI {result.get('lei_index', 'n/a')} · {result.get('economic_state', 'unknown')} · {result.get('trend', 'flat')}"
+    if key == "economic_cycle":
+        return f"周期位置：{result.get('cycle_phase_cn', 'unknown')}"
+    if key == "macro_portfolio_impact":
+        worst = _worst_portfolio_scenario(result)
+        if worst:
+            return f"压力最大情景：{worst.get('name_cn') or worst.get('name')}，PnL {worst.get('pnl_pct')}%"
+    return "暂无可解释结果"
+
+
+def _capability_primary_metric(
+    key: str,
+    result: dict[str, object],
+) -> dict[str, object] | None:
+    if key == "monetary_policy_stance":
+        return _metric("立场得分", result.get("stance_score"), "")
+    if key == "yield_curve_shape":
+        spreads = result.get("spreads") if isinstance(result.get("spreads"), dict) else {}
+        return _metric("10Y-1Y", spreads.get("10Y-1Y") if isinstance(spreads, dict) else None, "bp")
+    if key == "credit_spread_risk":
+        return _metric("AAA利差", result.get("aaa_spread_bp"), "bp")
+    if key == "leading_indicator":
+        return _metric("LEI", result.get("lei_index"), "")
+    if key == "liquidity_stress":
+        return _metric("压力分", result.get("stress_score"), "")
+    if key == "cross_market_linkage":
+        return _metric("联动风险", result.get("overall_risk"), "")
+    if key == "rate_turning_point":
+        return _metric("10Y国债", result.get("current_10y"), "%")
+    if key == "economic_cycle":
+        return _metric("周期", result.get("cycle_phase_cn"), "")
+    if key == "macro_portfolio_impact":
+        worst = _worst_portfolio_scenario(result)
+        return _metric("最差PnL", worst.get("pnl_pct") if worst else None, "%")
+    return None
+
+
+def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str]:
+    if not result:
+        return []
+    if key == "monetary_policy_stance":
+        metrics = result.get("key_metrics") if isinstance(result.get("key_metrics"), dict) else {}
+        return _compact_evidence(
+            [
+                _format_evidence("DR007", metrics.get("dr007"), "%") if isinstance(metrics, dict) else None,
+                _format_evidence("10Y-1Y", metrics.get("gov_slope_10y_1y_bp"), "bp") if isinstance(metrics, dict) else None,
+                _format_evidence("AAA spread", metrics.get("aaa_spread_bp"), "bp") if isinstance(metrics, dict) else None,
+            ]
+        )
+    if key == "yield_curve_shape":
+        spreads = result.get("spreads") if isinstance(result.get("spreads"), dict) else {}
+        return _compact_evidence(
+            [
+                f"shape={result.get('shape')}",
+                _format_evidence("10Y-1Y", spreads.get("10Y-1Y") if isinstance(spreads, dict) else None, "bp"),
+                _format_evidence("percentile", result.get("percentile_1y"), "%"),
+            ]
+        )
+    if key == "credit_spread_risk":
+        return _compact_evidence(
+            [
+                f"risk={result.get('risk_level')}",
+                _format_evidence("AAA", result.get("aaa_spread_bp"), "bp"),
+                _format_evidence("AA-AAA", result.get("aa_minus_aaa_bp"), "bp"),
+            ]
+        )
+    if key == "leading_indicator":
+        return _compact_evidence(
+            [
+                _format_evidence("LEI", result.get("lei_index"), ""),
+                f"state={result.get('economic_state')}",
+                f"trend={result.get('trend')}",
+            ]
+        )
+    if key == "liquidity_stress":
+        return _compact_evidence(
+            [
+                _format_evidence("stress", result.get("stress_score"), ""),
+                _format_evidence("short_gap_ratio", result.get("short_term_gap_ratio"), ""),
+                _format_evidence("negative_buckets", result.get("negative_bucket_count"), ""),
+            ]
+        )
+    if key == "cross_market_linkage":
+        return _compact_evidence(
+            [
+                f"risk={result.get('overall_risk')}",
+                _format_evidence("bond_fx_corr", result.get("bond_fx_corr"), ""),
+                _format_evidence("bond_oil_corr", result.get("bond_commodity_corr"), ""),
+            ]
+        )
+    if key == "rate_turning_point":
+        return _compact_evidence(
+            [
+                f"direction={result.get('direction')}",
+                _format_evidence("10Y", result.get("current_10y"), "%"),
+                _format_evidence("5d", result.get("change_5d_bp"), "bp"),
+            ]
+        )
+    if key == "economic_cycle":
+        return _compact_evidence(
+            [
+                f"phase={result.get('cycle_phase_cn')}",
+                _format_evidence("growth", result.get("growth_score"), ""),
+                _format_evidence("inflation", result.get("inflation_score"), ""),
+            ]
+        )
+    if key == "macro_portfolio_impact":
+        portfolio = result.get("portfolio") if isinstance(result.get("portfolio"), dict) else {}
+        worst = _worst_portfolio_scenario(result)
+        return _compact_evidence(
+            [
+                _format_evidence("total_mv", portfolio.get("total_mv") if isinstance(portfolio, dict) else None, ""),
+                _format_evidence("duration", portfolio.get("weighted_duration") if isinstance(portfolio, dict) else None, ""),
+                _format_evidence("worst_pnl", worst.get("pnl_pct") if worst else None, "%"),
+            ]
+        )
+    return []
+
+
+def _decision_summary_card(
+    definition: dict[str, object],
+    cards: list[dict[str, object]],
+    report_date: date,
+) -> dict[str, object]:
+    usable_cards = [card for card in cards if card["status"] in {"complete", "degraded"}]
+    positive_count = sum(1 for card in usable_cards if card["tone"] == "positive")
+    negative_count = sum(1 for card in usable_cards if card["tone"] == "negative")
+    missing_count = sum(1 for card in cards if card["status"] == "unavailable")
+    if negative_count > positive_count:
+        tone = "negative"
+        headline = "宏观信号偏谨慎，优先控制久期和信用敞口。"
+    elif positive_count > negative_count:
+        tone = "positive"
+        headline = "宏观信号偏支持，组合可保留适度久期与高等级信用。"
+    else:
+        tone = "neutral"
+        headline = "宏观信号分化，维持中性观察。"
+    status = "complete" if len(usable_cards) >= 7 and missing_count == 0 else "degraded"
+    score = round(50 + (positive_count - negative_count) * 8 - missing_count * 3, 2)
+    evidence = [
+        f"{card['legacy_module']} {card['headline']}"
+        for card in usable_cards[:4]
+        if card.get("headline")
+    ]
+    return {
+        "key": definition["key"],
+        "legacy_module": definition["legacy_module"],
+        "label": definition["label"],
+        "group": definition["group"],
+        "status": status,
+        "tone": tone,
+        "score": max(0.0, min(100.0, score)),
+        "headline": headline,
+        "primary_metric": _metric("可用模块", len(usable_cards), "/9"),
+        "evidence": evidence,
+        "warnings": ["部分模块数据降级或不可用"] if status == "degraded" else [],
+        "result": {
+            "report_date": report_date.isoformat(),
+            "data_status": status,
+            "positive_count": positive_count,
+            "negative_count": negative_count,
+            "missing_count": missing_count,
+            "usable_count": len(usable_cards),
+            "headline": headline,
+        },
+    }
+
+
+def _metric(label: str, value: object, unit: str) -> dict[str, object] | None:
+    if value is None:
+        return None
+    rounded = _round_float(_float_or_none(value))
+    return {
+        "label": label,
+        "value": rounded if rounded is not None else value,
+        "unit": unit,
+    }
+
+
+def _worst_portfolio_scenario(result: dict[str, object]) -> dict[str, object] | None:
+    scenarios = result.get("scenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        return None
+    scenario_dicts = [item for item in scenarios if isinstance(item, dict)]
+    if not scenario_dicts:
+        return None
+    return min(scenario_dicts, key=lambda item: _float_or_none(item.get("pnl_pct")) or 0.0)
+
+
+def _compact_evidence(items: list[str | None]) -> list[str]:
+    return [item for item in items if item and "None" not in item and "nan" not in item.lower()]
+
+
+def _format_evidence(label: str, value: object, unit: str) -> str | None:
+    if value is None:
+        return None
+    rounded = _round_float(_float_or_none(value))
+    display = rounded if rounded is not None else value
+    return f"{label}={display}{unit}"
+
+
+def _round_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(value, 2)
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(parsed):
+        return None
+    return parsed
+
+
+def _coerce_frame_date(value: object) -> date | None:
+    if value is None:
+        return None
+    if pd.isna(value):
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if hasattr(value, "date"):
+        try:
+            return value.date()
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _duckdb_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        row = conn.execute(
+            """
+            select count(*)
+            from information_schema.tables
+            where lower(table_name) = lower(?)
+            """,
+            [table_name],
+        ).fetchone()
+    except duckdb.Error:
+        return False
+    return bool(row and row[0])
 
 
 def _analysis_indicators(duckdb_path: str | Path) -> list[dict[str, object]]:
@@ -718,6 +1522,22 @@ def _tail_text(value: str | bytes | None, limit: int = 12000) -> str:
 
 def _envelope(result_kind: str, result: dict[str, object]) -> dict[str, object]:
     generated_at = datetime.now(UTC).isoformat()
+    tables_used = [
+        "fact_choice_macro_daily",
+        "choice_market_snapshot",
+        "fx_daily_mid",
+        "fact_formal_yield_curve_daily",
+        "std_external_macro_daily",
+        "fact_cffex_member_rank_daily",
+        "vw_cffex_member_rank_daily",
+    ]
+    if "capability_results" in result:
+        tables_used.extend(
+            [
+                "fact_formal_risk_tensor_daily",
+                "fact_formal_bond_analytics_daily",
+            ]
+        )
     return {
         "result_meta": {
             "trace_id": f"macro-toolkit-{uuid.uuid4().hex[:12]}",
@@ -733,15 +1553,7 @@ def _envelope(result_kind: str, result: dict[str, object]) -> dict[str, object]:
             "fallback_mode": "none",
             "scenario_flag": False,
             "generated_at": generated_at,
-            "tables_used": [
-                "fact_choice_macro_daily",
-                "choice_market_snapshot",
-                "fx_daily_mid",
-                "fact_formal_yield_curve_daily",
-                "std_external_macro_daily",
-                "fact_cffex_member_rank_daily",
-                "vw_cffex_member_rank_daily",
-            ],
+            "tables_used": tables_used,
             "evidence_rows": _evidence_rows(result),
         },
         "result": result,
