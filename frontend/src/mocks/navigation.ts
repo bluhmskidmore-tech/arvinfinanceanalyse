@@ -97,6 +97,7 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   "market-data": "market",
   "macro-toolkit": "market",
   "cross-asset": "market",
+  "stock-analysis": "market",
   "news-events": "market",
   "risk-overview": "risk",
   "risk-tensor": "risk",
@@ -253,6 +254,18 @@ export const workbenchNavigation: WorkbenchSection[] = [
     governanceStatus: "temporary-exception",
     readinessNote:
       "脚本注册表与运行入口已接到后端宏观模块；中金所席位数据可通过 Choice/Tushare 刷新落库。",
+  },
+  {
+    key: "stock-analysis",
+    label: "股票分析",
+    path: "/stock-analysis",
+    icon: "market",
+    description: "A股市场状态、行业强弱、候选股证据与风险观察。",
+    readiness: "live",
+    readinessLabel: "观察口径",
+    governanceStatus: "temporary-exception",
+    readinessNote:
+      "复用 Livermore / Choice 股票只读分析链路，仅展示观察和复核证据，不生成交易指令。",
   },
   {
     key: "source-preview",

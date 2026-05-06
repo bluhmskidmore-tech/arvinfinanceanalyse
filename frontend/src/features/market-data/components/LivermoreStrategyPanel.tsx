@@ -1,7 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import "./LivermoreStrategyPanel.css";
+
+type StockCandidate = NonNullable<LivermoreStrategyModel["stockCandidates"]>["items"][number];
+
+type WatchPoolItem = {
+  stockCode: string;
+  stockName: string;
+  sectorName: string;
+  entryTrigger: string;
+  pullbackWatch: string;
+  defenseLine: string;
+  addedFromDate: string | null;
+};
 
 type Props = {
   model: LivermoreStrategyModel | null;
@@ -16,6 +28,53 @@ function statusClass(status: string) {
   return `livermore-strategy-panel__status livermore-strategy-panel__status--${status}`;
 }
 
+const WATCH_POOL_STORAGE_KEY = "moss:livermore-watch-pool";
+
+function readWatchPool(): WatchPoolItem[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(WATCH_POOL_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as WatchPoolItem[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((item) => item.stockCode && item.stockName);
+  } catch {
+    return [];
+  }
+}
+
+function writeWatchPool(items: WatchPoolItem[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(WATCH_POOL_STORAGE_KEY, JSON.stringify(items));
+}
+
+function buildWatchPoolItem(
+  candidate: StockCandidate,
+  addedFromDate: string | null,
+): WatchPoolItem {
+  return {
+    stockCode: candidate.stockCode,
+    stockName: candidate.stockName,
+    sectorName: candidate.sectorName,
+    entryTrigger: candidate.entryTrigger,
+    pullbackWatch: candidate.pullbackWatch,
+    defenseLine: candidate.defenseLine,
+    addedFromDate,
+  };
+}
+
+function positionRiskIsInactive(model: LivermoreStrategyModel, inputFamily: string) {
+  return inputFamily === "position_risk" && model.riskExit === null;
+}
+
 export function LivermoreStrategyPanel({
   model,
   isLoading,
@@ -26,6 +85,11 @@ export function LivermoreStrategyPanel({
 }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
+  const [watchPool, setWatchPool] = useState<WatchPoolItem[]>(readWatchPool);
+
+  useEffect(() => {
+    writeWatchPool(watchPool);
+  }, [watchPool]);
 
   const handleRefreshGate = async () => {
     if (!onRefreshGateSupplement || refreshing) return;
@@ -89,6 +153,20 @@ export function LivermoreStrategyPanel({
   const sectorRank = model.sectorRank;
   const stockCandidates = model.stockCandidates;
   const riskExit = model.riskExit;
+  const watchedCodes = new Set(watchPool.map((item) => item.stockCode));
+
+  const addToWatchPool = (candidate: StockCandidate) => {
+    setWatchPool((current) => {
+      if (current.some((item) => item.stockCode === candidate.stockCode)) {
+        return current;
+      }
+      return [buildWatchPoolItem(candidate, model.asOfDate), ...current];
+    });
+  };
+
+  const removeFromWatchPool = (stockCode: string) => {
+    setWatchPool((current) => current.filter((item) => item.stockCode !== stockCode));
+  };
 
   return (
     <section className="livermore-strategy-panel" data-testid="market-data-livermore-panel">
@@ -214,7 +292,9 @@ export function LivermoreStrategyPanel({
                   <span className="livermore-strategy-panel__row-title">{gap.inputFamily}</span>
                   <span className="livermore-strategy-panel__row-detail">{gap.evidence}</span>
                 </span>
-                <span className={statusClass(gap.status)}>{gap.statusLabel}</span>
+                <span className={statusClass(positionRiskIsInactive(model, gap.inputFamily) ? "info" : gap.status)}>
+                  {positionRiskIsInactive(model, gap.inputFamily) ? "未启用" : gap.statusLabel}
+                </span>
               </li>
             ))}
           </ul>
@@ -273,16 +353,66 @@ export function LivermoreStrategyPanel({
                       #{item.rank} {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.sectorName} · 板块第 {item.sectorRank} 名 · 突破位 {item.breakoutLevel}
+                      {item.sectorName} · 板块第 {item.sectorRank} 名 · 现价 {item.close}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      突破买点 {item.entryTrigger} · 回踩观察 {item.pullbackWatch} · 防守位 {item.defenseLine}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       CLV {item.closeStrength} · gap {item.gapNorm} · 异常换手 {item.abnormalTurnover}
                     </span>
                   </span>
-                  <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
+                  <span className="livermore-strategy-panel__row-actions">
+                    <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
+                    <button
+                      className="livermore-strategy-panel__watch-btn"
+                      disabled={watchedCodes.has(item.stockCode)}
+                      onClick={() => addToWatchPool(item)}
+                      type="button"
+                    >
+                      {watchedCodes.has(item.stockCode) ? "已入池" : "加入观察"}
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {stockCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-watch-pool">
+            <h3 className="livermore-strategy-panel__block-title">观察池</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              本地观察池仅记录策略触发价位，不生成交易指令。
+            </div>
+            {watchPool.length > 0 ? (
+              <ul className="livermore-strategy-panel__list">
+                {watchPool.map((item) => (
+                  <li className="livermore-strategy-panel__row" key={item.stockCode}>
+                    <span className="livermore-strategy-panel__row-main">
+                      <span className="livermore-strategy-panel__row-title">
+                        {item.stockName} · {item.stockCode}
+                      </span>
+                      <span className="livermore-strategy-panel__row-detail">
+                        {item.sectorName} · 买点 {item.entryTrigger} · 回踩 {item.pullbackWatch} · 防守 {item.defenseLine}
+                      </span>
+                      <span className="livermore-strategy-panel__row-detail">
+                        来源日期 {item.addedFromDate ?? "未标记"}
+                      </span>
+                    </span>
+                    <button
+                      className="livermore-strategy-panel__watch-btn"
+                      onClick={() => removeFromWatchPool(item.stockCode)}
+                      type="button"
+                    >
+                      移出
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="livermore-strategy-panel__state">尚未选中候选股。</div>
+            )}
           </div>
         ) : null}
 
@@ -328,7 +458,9 @@ export function LivermoreStrategyPanel({
                   <span className="livermore-strategy-panel__row-title">{item.label}</span>
                   <span className="livermore-strategy-panel__row-detail">{item.reason}</span>
                 </span>
-                <span className={statusClass("missing")}>未开放</span>
+                <span className={statusClass(item.key === "risk_exit" ? "info" : "missing")}>
+                  {item.key === "risk_exit" ? "未启用" : "未开放"}
+                </span>
               </li>
             ))}
           </ul>

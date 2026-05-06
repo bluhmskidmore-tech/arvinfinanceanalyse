@@ -41,6 +41,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "dashboard", element: <div>dashboard alias body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
           { path: "cross-asset", element: <div>cross-asset body</div> },
+          { path: "stock-analysis", element: <div>stock-analysis body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
           { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
@@ -183,13 +184,19 @@ describe("WorkbenchShell", () => {
     const subnav = await screen.findByTestId("workbench-section-subnav");
     const sectionLinks = within(subnav).getAllByRole("link");
     const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
-    expect(hrefs).toHaveLength(4);
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/market-data", "/macro-toolkit", "/cross-asset", "/news-events"]),
+      expect.arrayContaining([
+        "/market-data",
+        "/macro-toolkit",
+        "/cross-asset",
+        "/stock-analysis",
+        "/news-events",
+      ]),
     );
     expect(subnav).toHaveTextContent("市场数据");
     expect(subnav).toHaveTextContent("宏观工具");
     expect(subnav).toHaveTextContent("跨资产驱动");
+    expect(subnav).toHaveTextContent("股票分析");
     expect(subnav).toHaveTextContent("新闻事件");
   });
 

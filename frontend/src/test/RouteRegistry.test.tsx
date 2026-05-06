@@ -164,6 +164,14 @@ vi.mock("../features/market-data/pages/MarketDataPage", () => ({
   ),
 }));
 
+vi.mock("../features/stock-analysis/pages/StockAnalysisPage", () => ({
+  default: () => (
+    <section data-testid="stock-analysis-page">
+      <h1>股票分析</h1>
+    </section>
+  ),
+}));
+
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
 
@@ -276,6 +284,13 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+  });
+
+  it("renders the stock-analysis route", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: mockClient });
+
+    expect(await screen.findByTestId("stock-analysis-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
   });
 
   it("redirects V1 bookmark /market to the live market-data page", async () => {

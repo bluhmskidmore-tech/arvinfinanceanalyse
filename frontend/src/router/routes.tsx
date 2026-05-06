@@ -82,6 +82,9 @@ const MarketDataPage = lazy(
 const MacroToolkitPage = lazy(
   () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
 );
+const StockAnalysisPage = lazy(
+  () => import("../features/stock-analysis/pages/StockAnalysisPage"),
+);
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
@@ -231,6 +234,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<MacroToolkitPage />),
+      };
+    }
+
+    if (section.path === "/stock-analysis") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<StockAnalysisPage />),
       };
     }
 

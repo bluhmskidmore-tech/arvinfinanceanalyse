@@ -76,7 +76,14 @@ export type LivermoreStrategyModel = {
       stockName: string;
       sectorName: string;
       sectorRank: number;
+      close: string;
       breakoutLevel: string;
+      ma20: string;
+      ma60: string;
+      ma120: string;
+      entryTrigger: string;
+      pullbackWatch: string;
+      defenseLine: string;
       closeStrength: string;
       gapNorm: string;
       abnormalTurnover: string;
@@ -248,7 +255,14 @@ export function buildLivermoreStrategyModel(input: {
             stockName: item.stock_name,
             sectorName: item.sector_name,
             sectorRank: item.sector_rank,
+            close: formatMetric(item.close),
             breakoutLevel: formatMetric(item.breakout_level),
+            ma20: formatMetric(item.ma20),
+            ma60: formatMetric(item.ma60),
+            ma120: formatMetric(item.ma120),
+            entryTrigger: formatMetric(item.breakout_level),
+            pullbackWatch: formatMetric(item.ma20),
+            defenseLine: formatMetric(item.ma60),
             closeStrength: formatMetric(item.close_strength),
             gapNorm: formatMetric(item.gap_norm),
             abnormalTurnover: formatMetric(item.abnormal_turnover),

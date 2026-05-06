@@ -280,4 +280,46 @@ describe("livermoreStrategyModel", () => {
     });
     expect(model.dataGaps.find((g) => g.inputFamily === "breadth")?.statusLabel).toBe("就绪");
   });
+  it("derives stock-candidate observation levels from the backend candidate fields", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+        stock_candidates: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_stock_candidates_bundle_v1",
+          market_state: "HOT",
+          input_stock_count: 1,
+          candidate_count: 1,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              sector_code: "S270000",
+              sector_name: "电子",
+              sector_rank: 1,
+              close: 22,
+              breakout_level: 21.8,
+              ma20: 20.5,
+              ma60: 19.8,
+              ma120: 18.2,
+              close_strength: 0.83,
+              gap_norm: -0.12,
+              abnormal_turnover: 1.39,
+            },
+          ],
+        },
+      }),
+    });
+
+    const candidate = model.stockCandidates?.items[0] as Record<string, unknown> | undefined;
+    expect(candidate).toMatchObject({
+      close: "22.000",
+      entryTrigger: "21.800",
+      pullbackWatch: "20.500",
+      defenseLine: "19.800",
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, type CSSProperties, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Collapse } from "antd";
 
 import { useApiClient } from "../../../api/client";
@@ -410,7 +410,6 @@ function MetadataPanel({
 
 export default function MarketDataPage() {
   const client = useApiClient();
-  const queryClient = useQueryClient();
   const [watchDate, setWatchDate] = useState(() => {
     const d = new Date();
     const y = d.getFullYear();
@@ -591,10 +590,7 @@ export default function MarketDataPage() {
         formalRatesQuery.refetch(),
         fxAnalyticalQuery.refetch(),
         linkageReportDate
-          ? queryClient.refetchQueries({
-              queryKey: ["market-data", "macro-bond-linkage", client.mode, linkageReportDate],
-              exact: true,
-            })
+          ? macroBondLinkageQuery.refetch()
           : Promise.resolve(),
         livermoreStrategyQuery.refetch(),
       ]);
@@ -611,8 +607,8 @@ export default function MarketDataPage() {
     latestQuery,
     formalRatesQuery,
     fxAnalyticalQuery,
-    queryClient,
     linkageReportDate,
+    macroBondLinkageQuery,
     livermoreStrategyQuery,
   ]);
 

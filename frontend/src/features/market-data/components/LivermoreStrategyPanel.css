@@ -204,6 +204,38 @@
   color: var(--moss-color-primary-600);
 }
 
+.livermore-strategy-panel__row-actions {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--moss-space-2);
+  flex-wrap: wrap;
+}
+
+.livermore-strategy-panel__watch-btn {
+  min-height: 24px;
+  border: 1px solid #b7c8dd;
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-primary-600);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.livermore-strategy-panel__watch-btn:hover:not(:disabled) {
+  background: #edf5ff;
+  border-color: #7eb5e3;
+}
+
+.livermore-strategy-panel__watch-btn:disabled {
+  background: #f3f6fa;
+  color: var(--moss-color-text-muted);
+  cursor: not-allowed;
+}
+
 .livermore-strategy-panel__gap {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
