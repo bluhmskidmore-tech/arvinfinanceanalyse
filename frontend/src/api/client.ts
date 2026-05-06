@@ -213,11 +213,11 @@ const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
 
-type MockClientBundle = Awaited<ReturnType<typeof loadMockClientBundle>>;
+type MockClientBundle = Pick<typeof import("../mocks/mockApiEnvelope"), "buildMockApiEnvelope"> & Pick<typeof import("../mocks/productCategoryPnl"), "buildMockProductCategoryPnlEnvelope" | "buildMockProductCategoryAttributionEnvelope"> & typeof import("../mocks/workbench") & typeof import("../mocks/pnlAttributionWorkbench") & typeof import("../mocks/campisiMocks") & typeof import("../mocks/ledgerPnlMocks");
 let mockClientBundleCache: MockClientBundle | null = null;
 
 async function loadMockClientBundle(): Promise<MockClientBundle> {
-  const [mockApi, workbench, pnlAttribution, productCategory, campisi, ledgerPnl] =
+  const [apiEnvelopeModule, workbench, pnlAttribution, productCategory, campisi, ledgerPnl] =
     await Promise.all([
       import("../mocks/mockApiEnvelope"),
       import("../mocks/workbench"),
@@ -227,7 +227,7 @@ async function loadMockClientBundle(): Promise<MockClientBundle> {
       import("../mocks/ledgerPnlMocks"),
     ]);
   return {
-    buildMockApiEnvelope: mockApi.buildMockApiEnvelope,
+    buildMockApiEnvelope: apiEnvelopeModule.buildMockApiEnvelope,
     buildMockProductCategoryPnlEnvelope: productCategory.buildMockProductCategoryPnlEnvelope,
     buildMockProductCategoryAttributionEnvelope:
       productCategory.buildMockProductCategoryAttributionEnvelope,
@@ -2296,7 +2296,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           ...(await ensureMockClientBundle()).mockLedgerPnlData,
           report_date: reportDate,
           items: currency
-            ? (await ensureMockClientBundle()).mockLedgerPnlData.items.filter((item) => item.currency === currency)
+            ? (await ensureMockClientBundle()).mockLedgerPnlData.items.filter((item: LedgerPnlDataPayload["items"][number]) => item.currency === currency)
             : (await ensureMockClientBundle()).mockLedgerPnlData.items,
         },
         { basis: "formal", formal_use_allowed: true },
@@ -2310,7 +2310,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           ...(await ensureMockClientBundle()).mockLedgerPnlSummary,
           report_date: reportDate,
           by_currency: currency
-            ? (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency.filter((item) => item.currency === currency)
+            ? (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency.filter((item: LedgerPnlSummaryPayload["by_currency"][number]) => item.currency === currency)
             : (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency,
         },
         { basis: "formal", formal_use_allowed: true },

@@ -167,13 +167,8 @@ export function BondAnalyticsViewContent() {
   const actionAttributionResultMeta: ResultMeta | null | undefined =
     actionAttributionQuery.data?.result_meta;
   const dataQualityWarningSignals = useMemo(
-    () =>
-      classifyWarningSignals(
-        actionAttributionResultMeta?.warnings ??
-          actionAttributionResult?.warnings ??
-          [],
-      ),
-    [actionAttributionResultMeta, actionAttributionResult],
+    () => classifyWarningSignals(actionAttributionResult?.warnings ?? []),
+    [actionAttributionResult],
   );
 
   const calendarItems = useMemo(
