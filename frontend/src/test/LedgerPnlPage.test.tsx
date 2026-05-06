@@ -159,6 +159,105 @@ describe("LedgerPnlPage", () => {
           rows: [{ 科目代码: "14001000001", 科目名称: "买入返售", 预警级别: "alert" }],
         },
         {
+          key: "segment_base_scale",
+          title: "分部基础规模",
+          columns: ["指标", "时点余额", "年日均", "月日均", "口径来源"],
+          rows: [
+            {
+              指标: "微贷中心",
+              时点余额: null,
+              年日均: null,
+              月日均: null,
+              口径来源: "source_missing: 标准日均源不含80297微贷金融支行专段",
+            },
+          ],
+        },
+        {
+          key: "segment_scale_compare",
+          title: "分部规模同比环比",
+          columns: ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
+          rows: [
+            {
+              指标: "公司贷款合计",
+              口径: "时点环比",
+              本期: 3458.61,
+              对比期: 3339.26,
+              增减额: 119.35,
+              "增减幅%": 3.57,
+              口径来源: "月度分析-分部情况：总账对账+日均同源历史月重建",
+            },
+            {
+              指标: "微贷中心",
+              口径: "月日均环比",
+              本期: null,
+              对比期: null,
+              增减额: null,
+              "增减幅%": null,
+              口径来源: "source_missing: 标准日均源不含80297微贷金融支行专段",
+            },
+          ],
+        },
+        {
+          key: "financial_market_scale",
+          title: "金融市场规模",
+          columns: ["指标", "时点余额", "年日均", "月日均", "口径来源"],
+          rows: [
+            {
+              指标: "生息债券投资",
+              时点余额: 2541.38,
+              年日均: 2458.66,
+              月日均: 2522.26,
+              口径来源: "金融市场规模：总账对账+日均同源科目重建",
+            },
+          ],
+        },
+        {
+          key: "company_scale",
+          title: "公司规模",
+          columns: ["指标", "时点余额", "年日均", "月日均", "口径来源"],
+          rows: [
+            {
+              指标: "公司存款-活期",
+              时点余额: 923.15,
+              年日均: 935.21,
+              月日均: 920.29,
+              口径来源: "公司规模：总账对账+日均同源科目重建",
+            },
+          ],
+        },
+        {
+          key: "company_scale_compare",
+          title: "公司规模同比环比",
+          columns: ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
+          rows: [
+            {
+              指标: "公司贷款-票据",
+              口径: "月日均环比",
+              本期: 230.53,
+              对比期: 228.03,
+              增减额: 2.5,
+              "增减幅%": 1.1,
+              口径来源: "月度分析-公司板块：总账对账+日均同源历史月重建",
+            },
+          ],
+        },
+        {
+          key: "financial_market_scale_compare",
+          title: "金融市场规模同比环比",
+          columns: ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"],
+          rows: [
+            {
+              指标: "同业负债",
+              口径: "月日均环比",
+              本期: 1756.73,
+              对比期: 1710.07,
+              增减额: 46.66,
+              "增减幅%": 2.73,
+              口径来源: "月度分析-金融市场：总账对账+日均同源历史月重建",
+            },
+          ],
+        },
+        {
           key: "industry_gap",
           title: "行业存贷差",
           columns: ["行业", "存贷差_时点"],
@@ -225,6 +324,38 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202603");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).toHaveTextContent("总资产(亿)");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-alerts")).toHaveTextContent("14001000001");
+    expect(screen.getByText("分部基础规模")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-base-scale")).toHaveTextContent("微贷中心");
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-base-scale")).toHaveTextContent(
+      "source_missing",
+    );
+    expect(screen.getByText("分部规模同比环比")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-scale-compare")).toHaveTextContent(
+      "公司贷款合计",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-scale-compare")).toHaveTextContent(
+      "source_missing",
+    );
+    expect(screen.getByText("公司规模")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-company-scale")).toHaveTextContent("公司存款-活期");
+    expect(screen.getByText("公司规模同比环比")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-company-scale-compare")).toHaveTextContent(
+      "公司贷款-票据",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-company-scale-compare")).toHaveTextContent(
+      "月度分析-公司板块",
+    );
+    expect(screen.getByText("金融市场规模")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-market-scale")).toHaveTextContent(
+      "生息债券投资",
+    );
+    expect(screen.getByText("金融市场规模同比环比")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-market-scale-compare")).toHaveTextContent(
+      "同业负债",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-market-scale-compare")).toHaveTextContent(
+      "月度分析-金融市场",
+    );
   });
 
   it("does not fall back to an unrelated monthly analysis workbook", async () => {

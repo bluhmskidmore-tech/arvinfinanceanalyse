@@ -57,7 +57,50 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
         "11位偏离TOP",
         "异动预警",
         "外币分析",
+        "分部基础规模",
+        "公司规模",
+        "金融市场规模",
     ]
+
+    get_settings.cache_clear()
+
+
+def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601")
+    _write_month_pair(source_dir, "202602")
+
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/qdb-gl-monthly-analysis/workbook",
+        params={"report_month": "202602"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "prior_month:202601" in payload["result_meta"]["source_version"]
+    assert "segment_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    segment_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "segment_scale_compare"
+    )
+    assert segment_sheet["title"] == "分部规模同比环比"
+    assert any(row["口径"] == "时点环比" for row in segment_sheet["rows"])
+    assert "financial_market_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    market_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "financial_market_scale_compare"
+    )
+    assert market_sheet["title"] == "金融市场规模同比环比"
+    assert any(row["指标"] == "同业负债" and row["口径"] == "月日均环比" for row in market_sheet["rows"])
+    assert "company_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    company_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "company_scale_compare"
+    )
+    assert company_sheet["title"] == "公司规模同比环比"
+    assert any(row["指标"] == "公司贷款合计" and row["口径"] == "时点环比" for row in company_sheet["rows"])
 
     get_settings.cache_clear()
 
@@ -242,6 +285,9 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
         "top_11d",
         "alerts",
         "foreign_currency",
+        "segment_base_scale",
+        "company_scale",
+        "financial_market_scale",
     ]
     alerts_sheet = next(
         sheet for sheet in scenario_payload["result"]["sheets"] if sheet["key"] == "alerts"

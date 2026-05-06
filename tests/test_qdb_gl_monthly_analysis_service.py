@@ -41,6 +41,42 @@ def test_service_blocks_generation_when_input_contract_validation_fails(tmp_path
         raise AssertionError("Expected month-pair generation to fail when the canonical source file is missing.")
 
 
+def test_service_workbook_envelope_includes_segment_scale_compare_when_history_exists(tmp_path):
+    module = load_module(
+        "backend.app.services.qdb_gl_monthly_analysis_service",
+        "backend/app/services/qdb_gl_monthly_analysis_service.py",
+    )
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601")
+    _write_month_pair(source_dir, "202602")
+
+    envelope = module.qdb_gl_monthly_analysis_workbook_envelope(
+        source_dir=str(source_dir),
+        report_month="202602",
+    )
+
+    assert "prior_month:202601" in envelope["result_meta"]["source_version"]
+    segment_sheet = next(
+        sheet for sheet in envelope["result"]["sheets"] if sheet["key"] == "segment_scale_compare"
+    )
+    assert segment_sheet["title"] == "分部规模同比环比"
+    assert segment_sheet["columns"] == ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"]
+    assert any(row["口径"] == "时点环比" for row in segment_sheet["rows"])
+    market_sheet = next(
+        sheet for sheet in envelope["result"]["sheets"] if sheet["key"] == "financial_market_scale_compare"
+    )
+    assert market_sheet["title"] == "金融市场规模同比环比"
+    assert market_sheet["columns"] == ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"]
+    assert any(row["指标"] == "同业负债" and row["口径"] == "月日均环比" for row in market_sheet["rows"])
+    company_sheet = next(
+        sheet for sheet in envelope["result"]["sheets"] if sheet["key"] == "company_scale_compare"
+    )
+    assert company_sheet["title"] == "公司规模同比环比"
+    assert company_sheet["columns"] == ["指标", "口径", "本期", "对比期", "增减额", "增减幅%", "口径来源"]
+    assert any(row["指标"] == "公司贷款合计" and row["口径"] == "时点环比" for row in company_sheet["rows"])
+
+
 def test_service_supports_sync_refresh_and_status_flow(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",
@@ -226,6 +262,9 @@ def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_overrid
         "top_11d",
         "alerts",
         "foreign_currency",
+        "segment_base_scale",
+        "company_scale",
+        "financial_market_scale",
     ]
     assert scenario["result"]["applied_overrides"] == {
         "DEVIATION_WARN": 80,

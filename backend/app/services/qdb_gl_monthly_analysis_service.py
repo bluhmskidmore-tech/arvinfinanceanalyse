@@ -1,18 +1,13 @@
 from __future__ import annotations
 
+import csv
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from io import StringIO
 from pathlib import Path
 from typing import Any
-from datetime import datetime, timezone
 from uuid import uuid4
-import csv
-from io import StringIO
 
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    GovernanceRepository,
-)
-from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.core_finance.qdb_gl_monthly_analysis import (
     build_qdb_gl_monthly_analysis_workbook,
     export_qdb_gl_monthly_analysis_workbook_xlsx_bytes,
@@ -20,6 +15,11 @@ from backend.app.core_finance.qdb_gl_monthly_analysis import (
     parse_daily_avg,
     parse_general_ledger,
 )
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
@@ -28,7 +28,6 @@ from backend.app.services.qdb_gl_input_validation_service import (
     discover_qdb_gl_baseline_bindings,
     validate_qdb_gl_baseline_source,
 )
-
 
 RULE_VERSION = "rv_qdb_gl_monthly_analysis_v1"
 CACHE_VERSION = "cv_qdb_gl_monthly_analysis_v1"
@@ -178,7 +177,7 @@ def create_qdb_gl_monthly_analysis_manual_adjustment(
     record = {
         "adjustment_id": adjustment_id,
         "event_type": "created",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "stream": ADJUSTMENT_STREAM,
         **payload,
     }
@@ -218,7 +217,7 @@ def update_qdb_gl_monthly_analysis_manual_adjustment(
         **payload,
         "adjustment_id": adjustment_id,
         "event_type": "edited",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "stream": ADJUSTMENT_STREAM,
     }
     GovernanceRepository(base_dir=governance_dir).append(ADJUSTMENT_STREAM, record)
@@ -235,7 +234,7 @@ def revoke_qdb_gl_monthly_analysis_manual_adjustment(
         **current,
         "adjustment_id": adjustment_id,
         "event_type": "revoked",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "approval_status": "rejected",
         "stream": ADJUSTMENT_STREAM,
     }
@@ -253,7 +252,7 @@ def restore_qdb_gl_monthly_analysis_manual_adjustment(
         **current,
         "adjustment_id": adjustment_id,
         "event_type": "restored",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "approval_status": "approved",
         "stream": ADJUSTMENT_STREAM,
     }
@@ -340,6 +339,10 @@ def _rebuild_workbook_payload(
 ) -> tuple[dict[str, Any], str]:
     avg_path, ledger_path, source_version = _resolve_valid_month_pair(source_dir, report_month)
     merged_data = merge_all(parse_general_ledger(ledger_path), parse_daily_avg(avg_path))
+    comparison_data, comparison_source_versions = _load_comparison_merged_data(
+        source_dir=source_dir,
+        report_month=report_month,
+    )
     active_adjustments = _load_active_adjustments(
         governance_dir=governance_dir,
         report_month=report_month,
@@ -349,9 +352,50 @@ def _rebuild_workbook_payload(
         report_month=report_month,
         merged_data=merged_data,
         threshold_overrides=threshold_overrides,
+        comparison_data=comparison_data,
     )
     _apply_analysis_adjustments(workbook_payload, active_adjustments)
-    return workbook_payload, source_version
+    all_source_versions = [source_version, *comparison_source_versions]
+    return workbook_payload, "__".join(sorted(all_source_versions))
+
+
+def _load_comparison_merged_data(
+    *,
+    source_dir: str | Path,
+    report_month: str,
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    comparison_months = {
+        "prior_month": _shift_report_month(report_month, -1),
+        "prior_year": _shift_report_month(report_month, -12),
+    }
+    comparison_data: dict[str, dict[str, Any]] = {}
+    source_versions: list[str] = []
+    for comparison_key, comparison_month in comparison_months.items():
+        if comparison_month is None:
+            continue
+        try:
+            avg_path, ledger_path, source_version = _resolve_valid_month_pair(source_dir, comparison_month)
+        except ValueError:
+            continue
+        comparison_data[comparison_key] = merge_all(
+            parse_general_ledger(ledger_path),
+            parse_daily_avg(avg_path),
+        )
+        source_versions.append(f"{comparison_key}:{comparison_month}:{source_version}")
+    return comparison_data, source_versions
+
+
+def _shift_report_month(report_month: str, month_delta: int) -> str | None:
+    if len(report_month) != 6 or not report_month.isdigit():
+        return None
+    year = int(report_month[:4])
+    month = int(report_month[4:])
+    if month < 1 or month > 12:
+        return None
+    month_index = year * 12 + month - 1 + month_delta
+    shifted_year = month_index // 12
+    shifted_month = month_index % 12 + 1
+    return f"{shifted_year:04d}{shifted_month:02d}"
 
 
 def _load_active_adjustments(

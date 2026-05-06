@@ -194,6 +194,15 @@ export default function LedgerPnlPage() {
   const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
   const top11dSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "top_11d");
   const alertsSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "alerts");
+  const segmentBaseScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_base_scale");
+  const segmentScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_scale_compare");
+  const companyScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale");
+  const companyScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale_compare");
+  const financialMarketScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "financial_market_scale");
+  const financialMarketScaleCompareSheet = findAnalysisSheet(
+    monthlyAnalysisWorkbook?.sheets,
+    "financial_market_scale_compare",
+  );
   const industryGapSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "industry_gap");
   const overviewLabelColumn = overviewSheet?.columns[0];
   const overviewValueColumn = overviewSheet?.columns[1];
@@ -392,6 +401,42 @@ export default function LedgerPnlPage() {
             sheet={alertsSheet}
             testId="ledger-pnl-monthly-analysis-alerts"
             columnLimit={5}
+          />
+          <AnalysisTable
+            title="分部基础规模"
+            sheet={segmentBaseScaleSheet}
+            testId="ledger-pnl-monthly-analysis-segment-base-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="分部规模同比环比"
+            sheet={segmentScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-segment-scale-compare"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="公司规模"
+            sheet={companyScaleSheet}
+            testId="ledger-pnl-monthly-analysis-company-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="公司规模同比环比"
+            sheet={companyScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-company-scale-compare"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="金融市场规模"
+            sheet={financialMarketScaleSheet}
+            testId="ledger-pnl-monthly-analysis-financial-market-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="金融市场规模同比环比"
+            sheet={financialMarketScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-financial-market-scale-compare"
+            columnLimit={7}
           />
           <AnalysisTable
             title="行业存贷差"
