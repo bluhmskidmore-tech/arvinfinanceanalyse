@@ -158,14 +158,21 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
   });
 
-  it("keeps news-events and source-preview outside live navigation", () => {
-    for (const key of ["news-events", "source-preview"]) {
-      const section = workbenchNavigation.find((s) => s.key === key);
-      expect(section?.readiness).toBe("placeholder");
-      expect(section?.readinessLabel).toBe("Reserved");
-      expect(primaryWorkbenchNavigation.some((s) => s.key === key)).toBe(false);
-    }
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(true);
+  it("promotes news-events into live primary navigation as a temporary-exception page", () => {
+    const section = workbenchNavigation.find((s) => s.key === "news-events");
+    expect(section?.path).toBe("/news-events");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("临时开放");
+    expect(section?.governanceStatus).toBe("temporary-exception");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(false);
+  });
+
+  it("keeps source-preview outside live primary navigation", () => {
+    const section = workbenchNavigation.find((s) => s.key === "source-preview");
+    expect(section?.readiness).toBe("placeholder");
+    expect(section?.readinessLabel).toBe("Reserved");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "source-preview")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "source-preview")).toBe(false);
   });
 

@@ -359,6 +359,7 @@ export function WorkbenchShell() {
   const currentGroupSections =
     currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
+  const isDashboardCockpitShell = currentSection.key === "dashboard";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
@@ -373,7 +374,10 @@ export function WorkbenchShell() {
     isBalanceMovementAnalysisCompactChrome ||
     isLiabilityAnalyticsCompactChrome;
   const isMinimalMainChrome =
-    isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isPortfolioPageOwnedChrome;
+    isDashboardCockpitShell ||
+    isBondAnalysisMinimalShell ||
+    isCrossAssetImmersiveMain ||
+    isPortfolioPageOwnedChrome;
   const showBalanceAnalysisLightHint = isPortfolioGroup && isBalanceAnalysisCompactChrome;
   const showFullWorkspaceGuidance =
     currentSection.readiness !== "live" &&
@@ -438,7 +442,7 @@ export function WorkbenchShell() {
     <>
     <DataModeRibbon />
     <div
-      className="workbench-shell-grid"
+      className={`workbench-shell-grid${isDashboardCockpitShell ? " workbench-shell-grid--cockpit" : ""}`}
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",
@@ -1450,7 +1454,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isBondAnalysisMinimalShell ? (
+          {!isDashboardCockpitShell && !isBondAnalysisMinimalShell ? (
             <section
               data-testid="workbench-section-subnav"
               style={{

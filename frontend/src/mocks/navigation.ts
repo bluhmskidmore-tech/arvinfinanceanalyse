@@ -403,10 +403,11 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/news-events",
     icon: "decision",
     description: "Choice 新闻事件与回调异常入口",
-    readiness: "placeholder",
-    readinessLabel: "Reserved",
+    readiness: "live",
+    readinessLabel: "临时开放",
+    governanceStatus: "temporary-exception",
     readinessNote:
-      "Reserved by the current boundary. Choice news direct workbench access stays placeholder until promoted.",
+      "已接 Choice 新闻事件只读链路；页面为分析读面（非 formal metric 主链），与壳层「临时例外」横幅一致。",
   },
   {
     key: "product-category-pnl",

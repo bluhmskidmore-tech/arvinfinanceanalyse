@@ -196,12 +196,13 @@ describe("RouteRegistry", () => {
     expect(screen.queryByTestId("source-preview-page-title")).not.toBeInTheDocument();
   });
 
-  it("renders the news-events route as a reserved placeholder", async () => {
+  it("renders the news-events route with NewsEventsPage and governance banner", async () => {
     renderWorkbenchApp(["/news-events"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByTestId("news-events-table")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("news-events-topic-code")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("news-events-page-title")).toHaveTextContent("新闻事件");
+    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("news-events-table")).toBeInTheDocument();
+    expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
 
   it("renders the bond-dashboard route", async () => {

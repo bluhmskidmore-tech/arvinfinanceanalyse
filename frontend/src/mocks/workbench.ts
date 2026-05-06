@@ -261,8 +261,9 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "news-events": {
     title: "新闻事件",
-    summary: "Choice news direct workbench access is reserved in the current cutover boundary.",
-    highlights: ["Route shell retained", "Live news table not promoted", "Backend reserved responses stay explicit"],
+    summary:
+      "工作台路由已接 NewsEventsPage（分析读面）；本占位文案仅保留给 WorkbenchPlaceholderPage 兼容，不代表当前路由仍为壳层。",
+    highlights: ["Choice 事件只读链路", "临时例外治理横幅", "分页与筛选以页面契约为准"],
   },
   "source-preview": {
     title: "Source Preview",

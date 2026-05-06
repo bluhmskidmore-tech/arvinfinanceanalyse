@@ -13,6 +13,7 @@ type SurfaceElement = "div" | "section" | "article";
 export type PageHeaderProps = {
   title: string;
   description: string;
+  density?: "default" | "compact";
   eyebrow?: string;
   titleTestId?: string;
   descriptionTestId?: string;
@@ -49,6 +50,7 @@ function headerBadgeStyle(tone: HeaderBadgeTone) {
 export function PageHeader({
   title,
   description,
+  density = "default",
   eyebrow = "总览",
   titleTestId,
   descriptionTestId,
@@ -60,14 +62,16 @@ export function PageHeader({
   testId,
   style,
 }: PageHeaderProps) {
+  const isCompact = density === "compact";
+
   return (
     <section
       data-testid={testId}
       className={className}
       style={{
         display: "grid",
-        gap: 18,
-        marginBottom: 28,
+        gap: isCompact ? 10 : 18,
+        marginBottom: isCompact ? 0 : 28,
         ...style,
       }}
     >
@@ -76,15 +80,15 @@ export function PageHeader({
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
-          gap: 16,
+          gap: isCompact ? 12 : 16,
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "grid", gap: 10, maxWidth: 920 }}>
+        <div style={{ display: "grid", gap: isCompact ? 6 : 10, maxWidth: isCompact ? 760 : 920 }}>
           <span
             style={{
               color: shellTokens.colorTextMuted,
-              fontSize: 11,
+              fontSize: isCompact ? 10 : 11,
               fontWeight: 700,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -96,9 +100,9 @@ export function PageHeader({
             data-testid={titleTestId}
             style={{
               margin: 0,
-              fontSize: 32,
+              fontSize: isCompact ? 26 : 32,
               fontWeight: 700,
-              letterSpacing: "-0.03em",
+              letterSpacing: isCompact ? "0" : "-0.03em",
               color: shellTokens.colorTextPrimary,
             }}
           >
@@ -109,8 +113,8 @@ export function PageHeader({
             style={{
               margin: 0,
               color: shellTokens.colorTextSecondary,
-              fontSize: 15,
-              lineHeight: 1.8,
+              fontSize: isCompact ? 13 : 15,
+              lineHeight: isCompact ? 1.55 : 1.8,
             }}
           >
             {description}
@@ -121,7 +125,7 @@ export function PageHeader({
           style={{
             display: "grid",
             justifyItems: "end",
-            gap: 12,
+            gap: isCompact ? 8 : 12,
           }}
         >
           {badgeLabel ? (
@@ -130,7 +134,7 @@ export function PageHeader({
                 ...headerBadgeStyle(badgeTone),
                 display: "inline-flex",
                 alignItems: "center",
-                padding: "8px 14px",
+                padding: isCompact ? "6px 12px" : "8px 14px",
                 borderRadius: 999,
                 fontSize: 12,
                 fontWeight: 700,

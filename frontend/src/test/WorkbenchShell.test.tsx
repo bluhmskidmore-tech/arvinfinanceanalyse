@@ -580,16 +580,11 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
-  it("treats /dashboard as the dashboard section inside the current group subnav", async () => {
+  it("lets /dashboard own the cockpit canvas without the group subnav", async () => {
     renderShellAt("/dashboard");
 
     expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
-    const subnav = screen.getByTestId("workbench-section-subnav");
-    const dashLink = within(subnav)
-      .getAllByRole("link")
-      .find((candidate) => candidate.getAttribute("href") === "/");
-    expect(dashLink).toBeDefined();
-    expect(dashLink).toHaveAttribute("href", "/");
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
   });
 
   it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {

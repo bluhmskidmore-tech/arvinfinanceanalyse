@@ -13,8 +13,8 @@ import { AsyncSection } from "../../executive-dashboard/components/AsyncSection"
 import { DashboardBondCounterpartySection } from "../../executive-dashboard/components/DashboardBondCounterpartySection";
 import { DashboardBondHeadlineSection } from "../../executive-dashboard/components/DashboardBondHeadlineSection";
 import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
-import { DashboardMacroSpotSection } from "../../executive-dashboard/components/DashboardMacroSpotSection";
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
+import { BondAnalyticsOverviewMidCharts } from "../../bond-analytics/components/BondAnalyticsOverviewMidCharts";
 import {
   DashboardAlertCenterPanel,
   type DashboardCalendarPanelState,
@@ -27,7 +27,15 @@ import {
   type DashboardAlert,
   type DashboardHeroMetric,
 } from "../dashboard/DashboardOverviewSections";
+import {
+  DashboardAnalysisGrid,
+  DashboardJudgmentBand,
+  DashboardKpiRibbon,
+  DashboardStructureRiskFocus,
+} from "../dashboard/DashboardHomeSections";
+import { DashboardMarketStrip } from "../dashboard/DashboardMarketStrip";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
+import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
 import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
 import { buildDashboardTodoTasksFromAlerts } from "../dashboard/dashboardTodoModel";
 
@@ -132,6 +140,12 @@ function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
   return fallbackLabel;
 }
 
+function heroMetricToneToPillTone(tone: DashboardHeroMetric["tone"]): GovernancePill["tone"] {
+  if (tone === "positive") return "ok";
+  if (tone === "warning" || tone === "negative") return "warning";
+  return "info";
+}
+
 const DASHBOARD_KEY_CALENDAR_LOOKBACK_DAYS = 7;
 const DASHBOARD_KEY_CALENDAR_FORWARD_DAYS = 14;
 
@@ -199,6 +213,7 @@ export default function DashboardPage() {
         verdictPayload: snapshotQuery.data?.result.verdict ?? null,
         snapshotFetchErrorDetail:
           snapshotQuery.error instanceof Error ? snapshotQuery.error.message : undefined,
+        domainsEffectiveDate: snapshotQuery.data?.result.domains_effective_date ?? {},
         productCategoryYtd: snapshotQuery.data?.result.product_category_ytd ?? null,
       }),
     [
@@ -208,6 +223,7 @@ export default function DashboardPage() {
       snapshotQuery.isError,
       snapshotQuery.error,
       snapshotQuery.data?.result.verdict,
+      snapshotQuery.data?.result.domains_effective_date,
       snapshotQuery.data?.result.product_category_ytd,
     ],
   );
@@ -269,9 +285,55 @@ export default function DashboardPage() {
     [adapterOutput.overview.vm?.metrics],
   );
 
-  const heroMetrics = useMemo<DashboardHeroMetric[]>(() => {
-    return sanitizedOverviewMetrics
-      .map((metric) => ({
+  const dashboardHome = useMemo(
+    () =>
+      buildDashboardHomeModel({
+        metrics: sanitizedOverviewMetrics,
+        baseVerdict: adapterOutput.verdict,
+        overviewMeta,
+        attributionMeta,
+        requestedReportDate: reportDate,
+        snapshotReportDate: snapshotResult?.report_date,
+        snapshotMode: snapshotResult?.mode,
+        snapshotDomainsMissing: snapshotResult?.domains_missing,
+        isSnapshotLoading: snapshotQuery.isLoading,
+        calendarEvents: researchCalendarQuery.data,
+        calendarIsLoading:
+          !effectiveReportDate ||
+          (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
+        calendarIsError: researchCalendarQuery.isError,
+        isMockMode: client.mode !== "real",
+      }),
+    [
+      adapterOutput.verdict,
+      attributionMeta,
+      client.mode,
+      effectiveReportDate,
+      overviewMeta,
+      reportDate,
+      researchCalendarQuery.data,
+      researchCalendarQuery.isError,
+      researchCalendarQuery.isLoading,
+      sanitizedOverviewMetrics,
+      snapshotQuery.isLoading,
+      snapshotResult?.domains_missing,
+      snapshotResult?.mode,
+      snapshotResult?.report_date,
+    ],
+  );
+
+  const heroMetrics = useMemo<DashboardHeroMetric[]>(
+    () =>
+      dashboardHome.heroMetrics.map((metric) => ({
+        ...metric,
+        delta: formatHeroDelta(metric.delta, "读链路"),
+      })),
+    [dashboardHome.heroMetrics],
+  );
+
+  const businessBalanceMetrics = useMemo<DashboardHeroMetric[]>(
+    () =>
+      sanitizedOverviewMetrics.map((metric) => ({
         id: metric.id,
         label: metric.label,
         caliberLabel: metric.caliberLabel,
@@ -280,9 +342,21 @@ export default function DashboardPage() {
         delta: formatHeroDelta(metric.delta.display, "读链路"),
         tone: metric.tone,
         history: metric.history,
-      }))
-      .slice(0, 4);
-  }, [sanitizedOverviewMetrics]);
+      })),
+    [sanitizedOverviewMetrics],
+  );
+
+  const homeKpiRibbonItems = useMemo<GovernancePill[]>(() => {
+    const metricItems = heroMetrics.map((metric) => ({
+      id: `metric-${metric.id}`,
+      label: metric.label,
+      value: metric.value,
+      tone: heroMetricToneToPillTone(metric.tone),
+      hint: [metric.caliberLabel, metric.note].filter(Boolean).join(" / "),
+    }));
+
+    return metricItems.length > 0 ? metricItems : dashboardHome.kpiRibbon;
+  }, [dashboardHome.kpiRibbon, heroMetrics]);
 
   const governancePills = useMemo<GovernancePill[]>(() => {
     const dateValue = effectiveReportDate || "最新可用";
@@ -450,31 +524,20 @@ export default function DashboardPage() {
   );
 
   return (
-    <section data-testid="fixed-income-dashboard-page">
+    <section data-testid="fixed-income-dashboard-page" className="dashboard-home-shell">
       <PageHeader
         testId="dashboard-executive-hero"
-        className="dashboard-executive-hero"
+        className="dashboard-executive-hero dashboard-home-topbar"
+        density="compact"
         titleTestId="dashboard-executive-hero-title"
         title="驾驶舱"
         eyebrow="总览驾驶舱"
         description={`观察日期 ${effectiveReportDate || "最新可用"}。首页先做状态判断、风险分流和专题下钻，不在首屏堆叠所有明细。`}
         badgeLabel={client.mode === "real" ? "管理视角" : "演示视角"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
-        style={{
-          padding: `${designTokens.space[5]}px ${designTokens.space[5]}px`,
-          borderRadius: designTokens.radius.md,
-          border: `1px solid ${shellTokens.colorBorderSoft}`,
-          background: shellTokens.colorBgSurface,
-        }}
         actions={
           <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              alignItems: "center",
-              justifyContent: "flex-end",
-            }}
+            className="dashboard-home-actions"
           >
             <label
               style={{
@@ -568,28 +631,15 @@ export default function DashboardPage() {
       >
         <div style={{ display: "grid", gap: designTokens.space[3] }}>
           <GovernancePills pills={governancePills} />
-          <DashboardOverviewHeroStrip metrics={heroMetrics} />
-          <DashboardProductCategoryYtdCards
-            state={adapterOutput.productCategoryYtd.state}
-            vm={adapterOutput.productCategoryYtd.vm}
-            onRetry={() => void snapshotQuery.refetch()}
-          />
         </div>
       </PageHeader>
+
+      <DashboardMarketStrip />
 
       {(client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote) && (
         <section
           data-testid="dashboard-data-warning"
-          className="dashboard-gov-grid"
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: "10px 14px",
-            borderRadius: designTokens.radius.sm,
-            border: `1px solid ${shellTokens.colorBorderWarning}`,
-            background: shellTokens.colorBgWarningSoft,
-            color: shellTokens.colorTextWarning,
-          }}
+          className="dashboard-home-warning"
         >
           <div style={{ fontWeight: 700, fontSize: designTokens.fontSize[12], letterSpacing: "0.04em" }}>
             数据状态 · 需人工复核
@@ -612,58 +662,101 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <div className="dashboard-overview-command-grid">
-        <DashboardGlobalJudgmentPanel
-          verdict={adapterOutput.verdict ?? fallbackVerdict}
-        />
-        <DashboardModuleSnapshotPanel />
-        <DashboardAlertCenterPanel alerts={dashboardAlerts} />
-      </div>
-
-      <div className="dashboard-overview-support-grid">
-        <section
-          data-testid="dashboard-governed-surface"
-          style={{
-            display: "grid",
-            gap: designTokens.space[3],
-            padding: designTokens.space[4],
-            borderRadius: designTokens.radius.md,
-            border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: shellTokens.colorBgSurface,
-          }}
-        >
-          <PageSectionLead
-            eyebrow="经营贡献"
-            title="经营贡献拆解"
-            description="首页保留一个足够快的经营贡献视图，用来判断是否需要继续进入正式损益拆解工作台；不会在这里伪造未接入的业务结论。"
-            style={{ marginTop: 0 }}
-          />
-          <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
-            <PnlAttributionSection
-              attribution={adapterOutput.attribution}
-              onRetry={() => void snapshotQuery.refetch()}
-            />
-          </Suspense>
-        </section>
-
-        <DashboardTasksCalendarPanels
-          tasks={dashboardTasks}
-          calendarItems={dashboardCalendar.items}
-          calendarState={dashboardCalendarState}
-        />
-      </div>
-
-      <div className="dashboard-overview-live-grid">
-        <div className="dashboard-span-wide">
-          <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
+      <DashboardJudgmentBand verdict={dashboardHome.judgment} />
+      <DashboardKpiRibbon items={homeKpiRibbonItems} />
+      <section
+        data-testid="dashboard-business-balance-summary"
+        className="dashboard-business-balance-summary dashboard-home-panel"
+      >
+        <div className="dashboard-business-balance-summary__header">
+          <div className="dashboard-home-section-heading">
+            <span className="dashboard-home-section-eyebrow">经营 / 资产负债</span>
+            <h2 className="dashboard-business-balance-summary__title">经营与资产负债摘要</h2>
+          </div>
+          <p className="dashboard-home-muted">
+            保留原首页小卡片：资产负债类指标来自首页总览，营业收入与中间业务收入来自产品分类年内摘要。
+          </p>
         </div>
-        <DashboardMacroSpotSection />
-        <DashboardNewsDigestSection />
-        <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
-        <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
-      </div>
+        <DashboardOverviewHeroStrip metrics={businessBalanceMetrics} />
+        <DashboardProductCategoryYtdCards
+          state={adapterOutput.productCategoryYtd.state}
+          vm={adapterOutput.productCategoryYtd.vm}
+          onRetry={() => void snapshotQuery.refetch()}
+        />
+      </section>
+      <DashboardAnalysisGrid alerts={dashboardHome.alerts} />
+      <DashboardStructureRiskFocus focus={dashboardHome.focus} />
 
-      <DashboardModuleEntryGrid />
+      <section data-testid="dashboard-detail-drilldown" className="dashboard-detail-drilldown">
+        <div className="dashboard-detail-drilldown__header">
+          <div className="dashboard-home-section-heading">
+            <span className="dashboard-home-section-eyebrow">明细穿透</span>
+            <h2 className="dashboard-detail-drilldown__title">原功能保留</h2>
+          </div>
+          <p className="dashboard-home-muted">
+            首屏只做摘要判断；这里保留原有判断、归因、日历、债券与模块入口，用于继续下钻复核。
+          </p>
+        </div>
+
+        <div className="dashboard-overview-command-grid">
+          <DashboardGlobalJudgmentPanel
+            verdict={adapterOutput.verdict ?? fallbackVerdict}
+          />
+          <DashboardModuleSnapshotPanel />
+          <DashboardAlertCenterPanel alerts={dashboardAlerts} />
+        </div>
+
+        <div className="dashboard-overview-support-grid">
+          <section
+            data-testid="dashboard-governed-surface"
+            style={{
+              display: "grid",
+              gap: designTokens.space[3],
+              padding: designTokens.space[4],
+              borderRadius: designTokens.radius.md,
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
+              background: shellTokens.colorBgSurface,
+            }}
+          >
+            <PageSectionLead
+              eyebrow="经营贡献"
+              title="经营贡献拆解"
+              description="首页保留一个足够快的经营贡献视图，用来判断是否需要继续进入正式损益拆解工作台；不会在这里伪造未接入的业务结论。"
+              style={{ marginTop: 0 }}
+            />
+            <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
+              <PnlAttributionSection
+                attribution={adapterOutput.attribution}
+                onRetry={() => void snapshotQuery.refetch()}
+              />
+            </Suspense>
+          </section>
+
+          <DashboardTasksCalendarPanels
+            tasks={dashboardTasks}
+            calendarItems={dashboardCalendar.items}
+            calendarState={dashboardCalendarState}
+          />
+        </div>
+
+        <BondAnalyticsOverviewMidCharts
+          reportDate={effectiveReportDate}
+          periodType="MoM"
+          assetClass="all"
+          accountingClass="all"
+        />
+
+        <div className="dashboard-overview-live-grid">
+          <div className="dashboard-span-wide">
+            <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
+          </div>
+          <DashboardNewsDigestSection />
+          <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
+          <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
+        </div>
+
+        <DashboardModuleEntryGrid />
+      </section>
 
     </section>
   );

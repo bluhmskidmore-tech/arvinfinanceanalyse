@@ -278,6 +278,28 @@ export function DashboardOverviewHeroStrip({
 }: {
   metrics: DashboardHeroMetric[];
 }) {
+  if (metrics.length === 0) {
+    return (
+      <div
+        data-testid="dashboard-overview-hero-strip"
+        className="dashboard-overview-hero-strip"
+      >
+        <article
+          data-testid="dashboard-overview-hero-empty"
+          className="dashboard-overview-hero-empty"
+        >
+          <span className="dashboard-overview-hero-empty__label">
+            资产负债小卡片
+          </span>
+          <strong>等待首页总览指标</strong>
+          <p>
+            不展示替代数字；快照返回后会恢复原来的资产、负债和经营指标小卡片。
+          </p>
+        </article>
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="dashboard-overview-hero-strip"

@@ -67,6 +67,15 @@ function expectTitlesInOrder(container: HTMLElement, titles: string[]) {
   }
 }
 
+function expectTestIdsInOrder(container: HTMLElement, testIds: string[]) {
+  const nodes = testIds.map((testId) => within(container).getByTestId(testId));
+  for (let index = 0; index < nodes.length - 1; index += 1) {
+    expect(nodes[index].compareDocumentPosition(nodes[index + 1])).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  }
+}
+
 function addDaysToIsoDate(date: string, days: number): string {
   const parsed = new Date(`${date}T00:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() + days);
@@ -99,7 +108,11 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
+    const summary = screen.getByTestId("dashboard-business-balance-summary");
+    expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
+    expect(within(summary).getByTestId("dashboard-overview-hero-empty")).toHaveTextContent(
+      "资产负债小卡片",
+    );
     await waitFor(() => {
       expect(releaseSnapshot).toBeDefined();
     });
@@ -149,6 +162,102 @@ describe("DashboardPage", () => {
     expect(riskCalls).toBe(0);
     expect(contributionCalls).toBe(0);
     expect(alertsCalls).toBe(0);
+  });
+
+  it("renders the redesigned root cockpit structure in order", async () => {
+    renderDashboard();
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const marketStrip = await screen.findByTestId("dashboard-market-strip");
+    const judgmentBand = await screen.findByTestId("dashboard-judgment-band");
+    const kpiRibbon = await screen.findByTestId("dashboard-kpi-ribbon");
+    const businessBalanceSummary = await screen.findByTestId("dashboard-business-balance-summary");
+    const analysisGrid = await screen.findByTestId("dashboard-analysis-grid");
+    const structureRiskFocus = await screen.findByTestId("dashboard-structure-risk-focus");
+
+    expectTestIdsInOrder(page, [
+      "dashboard-market-strip",
+      "dashboard-judgment-band",
+      "dashboard-kpi-ribbon",
+      "dashboard-business-balance-summary",
+      "dashboard-analysis-grid",
+      "dashboard-structure-risk-focus",
+      "dashboard-detail-drilldown",
+    ]);
+
+    const pills = await screen.findByTestId("dashboard-governance-pills");
+    expect(pills).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-report-date")).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-snapshot")).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-attention")).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-source")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-data-warning")).toBeInTheDocument();
+
+    expect(marketStrip).toBeInTheDocument();
+    expect(judgmentBand).toBeInTheDocument();
+    expect(kpiRibbon).toBeInTheDocument();
+    expect(businessBalanceSummary).toBeInTheDocument();
+    expect(analysisGrid).toBeInTheDocument();
+    expect(structureRiskFocus).toBeInTheDocument();
+  });
+
+  it("keeps business income and asset-liability summary cards visible before drilldown", async () => {
+    renderDashboard();
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const summary = await screen.findByTestId("dashboard-business-balance-summary");
+
+    expectTestIdsInOrder(page, [
+      "dashboard-kpi-ribbon",
+      "dashboard-business-balance-summary",
+      "dashboard-analysis-grid",
+    ]);
+    expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
+    expect(within(summary).getByTestId("dashboard-product-category-ytd")).toBeInTheDocument();
+    expect(within(summary).getByText("营业收入与中间业务收入")).toBeInTheDocument();
+  });
+
+  it("keeps the legacy drilldown panels under the summary cockpit", async () => {
+    renderDashboard();
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const detail = await screen.findByTestId("dashboard-detail-drilldown");
+
+    expect(detail).toHaveTextContent("明细穿透");
+    expect(detail).toHaveTextContent("原功能保留");
+    expectTestIdsInOrder(page, ["dashboard-structure-risk-focus", "dashboard-detail-drilldown"]);
+
+    expect(await within(detail).findByTestId("dashboard-global-judgment")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-module-snapshot")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-alert-center")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-governed-surface")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("bond-analytics-overview-mid-charts")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-news-digest-list")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-liability-counterparty-section")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-module-entry-grid")).toBeInTheDocument();
+  });
+
+  it("renders a quiet degraded market strip when macro data is unavailable", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getChoiceMacroLatest: vi.fn(async () => {
+        throw new Error("macro source unavailable");
+      }),
+    };
+
+    renderDashboard(client);
+
+    const strip = await screen.findByTestId("dashboard-market-strip");
+    const unavailable = await within(strip).findByTestId("dashboard-market-strip-unavailable");
+
+    expect(unavailable).toHaveTextContent("市场数据暂不可用");
+    expect(unavailable).toHaveTextContent("下方明细穿透仍可继续查看");
+    expect(within(strip).getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(within(strip).queryByText("数据加载失败")).not.toBeInTheDocument();
   });
 
   it("renders the dashboard overview cockpit sections", async () => {
@@ -387,16 +496,52 @@ describe("DashboardPage", () => {
     expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent("模拟数据源");
   });
 
-  it("uses one selected report date for the home snapshot query", async () => {
+  it("uses current report date for home snapshot and YTD bond counterparty range", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const snapshotOpts: Array<{ reportDate?: string; allowPartial?: boolean } | undefined> = [];
+    const getPositionsCounterpartyBonds = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_test_dashboard_bond_counterparty_range",
+        basis: "formal" as const,
+        result_kind: "positions.counterparty.bonds",
+        formal_use_allowed: true,
+        source_version: "sv_test",
+        vendor_version: "vv_test",
+        rule_version: "rv_test",
+        cache_version: "cv_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-21T08:00:00Z",
+      },
+      result: {
+        start_date: "2026-01-01",
+        end_date: "2026-03-31",
+        num_days: 90,
+        items: [],
+        total_amount: "0",
+        total_avg_daily: "0",
+        total_weighted_rate: null,
+        total_weighted_coupon_rate: null,
+        total_customers: 0,
+      },
+    }));
     const datedClient: ApiClient = {
       ...base,
       getHomeSnapshot: async (options) => {
         snapshotOpts.push(options);
-        return mockSnapshotSource.getHomeSnapshot(options);
+        const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: options?.reportDate || envelope.result.report_date,
+          },
+        };
       },
+      getPositionsCounterpartyBonds,
     };
 
     renderDashboard(datedClient);
@@ -412,7 +557,17 @@ describe("DashboardPage", () => {
 
     const reportDatePill = await screen.findByTestId("governance-pill-report-date");
     await waitFor(() => {
-      expect(reportDatePill).toHaveTextContent("2026-04-18");
+      expect(reportDatePill).toHaveTextContent("2026-03-31");
+    });
+
+    await waitFor(() => {
+      expect(getPositionsCounterpartyBonds).toHaveBeenCalledWith({
+        startDate: "2026-01-01",
+        endDate: "2026-03-31",
+        topN: 5,
+        page: 1,
+        pageSize: 5,
+      });
     });
   });
 
@@ -640,7 +795,7 @@ describe("DashboardPage", () => {
     ]);
   });
 
-  it("renders a dedicated no-high-medium state when only low events are returned", async () => {
+  it("keeps an explicit no-high-medium state when only low events are returned", async () => {
     const base = createApiClient({ mode: "mock" });
     const getResearchCalendarEvents = vi.fn(async () => [
       {
@@ -720,7 +875,7 @@ describe("DashboardPage", () => {
     ]);
   });
 
-  it("renders a dedicated no-data state when the external event feed is empty", async () => {
+  it("keeps an explicit no-data state when the external event feed is empty", async () => {
     const base = createApiClient({ mode: "mock" });
     const getResearchCalendarEvents = vi.fn(async () => []);
     const client: ApiClient = {
@@ -739,7 +894,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders an explicit error state when the external event feed fails", async () => {
+  it("keeps an explicit error state when the external event feed fails", async () => {
     const base = createApiClient({ mode: "mock" });
     const getResearchCalendarEvents = vi.fn(async () => {
       throw new Error("calendar backend unavailable");

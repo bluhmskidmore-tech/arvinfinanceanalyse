@@ -85,6 +85,7 @@ const MacroToolkitPage = lazy(
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
+const NewsEventsPage = lazy(() => import("../features/news-events/NewsEventsPage"));
 
 function routeElement(element: ReactNode) {
   return (
@@ -230,6 +231,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<MacroToolkitPage />),
+      };
+    }
+
+    if (section.path === "/news-events") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<NewsEventsPage />),
       };
     }
 
