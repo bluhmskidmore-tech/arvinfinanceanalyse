@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 import uuid
+from typing import Any
 
 logger = logging.getLogger(__name__)
 from datetime import date, datetime, timedelta, timezone
@@ -182,6 +185,52 @@ BENCHMARK_CURVE_TYPES = {
 }
 IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
+
+
+class _TTLCache:
+    """Thread-safe TTL cache keyed by arbitrary hashable args."""
+
+    def __init__(self, ttl_seconds: int = 300):
+        self._store: dict[tuple, tuple[float, Any]] = {}
+        self._lock = threading.Lock()
+        self._ttl = ttl_seconds
+
+    def get(self, key: tuple) -> tuple[bool, Any]:
+        with self._lock:
+            entry = self._store.get(key)
+            if entry and time.monotonic() - entry[0] < self._ttl:
+                return True, entry[1]
+            return False, None
+
+    def set(self, key: tuple, value: Any) -> None:
+        with self._lock:
+            self._store[key] = (time.monotonic(), value)
+
+    def invalidate(self, key: tuple) -> None:
+        with self._lock:
+            self._store.pop(key, None)
+
+    def invalidate_matching(self, predicate) -> None:
+        with self._lock:
+            for key in list(self._store):
+                if predicate(key):
+                    self._store.pop(key, None)
+
+
+_return_decomposition_cache = _TTLCache(ttl_seconds=300)
+_action_attribution_cache = _TTLCache(ttl_seconds=300)
+
+
+def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> None:
+    report_date_text = str(report_date or "").strip()
+    if not report_date_text:
+        return
+    _return_decomposition_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
+    _action_attribution_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
 
 
 def _benchmark_excess_brinson_sum_matches_explained(summary: dict[str, object]) -> bool:
@@ -574,6 +623,8 @@ def bond_analytics_refresh_status(settings: Settings, *, run_id: str) -> dict[st
         raise ValueError(f"Unknown bond analytics refresh run_id={run_id}")
     latest = records[-1]
     status = str(latest.get("status", "unknown"))
+    if status == "completed":
+        _invalidate_bond_analytics_caches_for_report_date(latest.get("report_date"))
     return {
         **latest,
         "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
@@ -901,11 +952,18 @@ def _compute_return_decomposition_summary(
 
 
 def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
+    _cache_key = (report_date.isoformat(), period_type, asset_class, accounting_class)
+    hit, cached = _return_decomposition_cache.get(_cache_key)
+    if hit:
+        return cached
+
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
     if not rows:
         meta = _meta("bond_analytics.return_decomposition", report_date, rows)
-        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
+        result = _empty_return_response(meta, report_date, period_type, period_start, period_end)
+        _return_decomposition_cache.set(_cache_key, result)
+        return result
 
     curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
     inputs = _fetch_return_decomposition_inputs(
@@ -946,9 +1004,11 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         trading_extra_warnings=trading_extra_warnings,
         warnings_detail=trading_wd,
     )
-    return build_formal_result_envelope(
+    result = build_formal_result_envelope(
         result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
     )
+    _return_decomposition_cache.set(_cache_key, result)
+    return result
 
 
 def _resolve_curve_for_service(
@@ -2051,6 +2111,11 @@ def _build_action_attribution_success_response(
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
+    _cache_key = (report_date.isoformat(), period_type)
+    hit, cached = _action_attribution_cache.get(_cache_key)
+    if hit:
+        return cached
+
     period_start, period_end = resolve_period(report_date, period_type)
     repo = _repo()
     rows_end, rows_start, prior_rd = _fetch_action_attribution_snapshots(
@@ -2086,7 +2151,7 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
             report_date=report_date, period_type=period_type
         )
 
-    return _build_action_attribution_success_response(
+    result = _build_action_attribution_success_response(
         report_date=report_date,
         period_type=period_type,
         raw=raw,
@@ -2095,6 +2160,8 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         pnl_by_key=pnl_by_key,
         pnl_warn_codes=pnl_warn_codes,
     )
+    _action_attribution_cache.set(_cache_key, result)
+    return result
 
 
 def _refresh_trigger_lock(*, report_date: str) -> LockDefinition:
