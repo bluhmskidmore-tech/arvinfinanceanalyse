@@ -4,8 +4,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, get_auth_context
-from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
+from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusinessManualAdjustmentRequest
 
 
 router = APIRouter(prefix="/api")
@@ -194,6 +194,67 @@ def by_business_analysis(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post("/pnl/by-business/manual-adjustments")
+def create_by_business_manual_adjustment(
+    payload: PnlByBusinessManualAdjustmentRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_by_business_adjustment_write_allowed(auth, settings)
+    return _pnl_service().create_pnl_by_business_manual_adjustment(settings, payload)
+
+
+@router.get("/pnl/by-business/manual-adjustments")
+def list_by_business_manual_adjustments(
+    report_date: str = Query(..., description="Report date for PnL by-business manual adjustment audit."),
+) -> dict[str, object]:
+    return _pnl_service().list_pnl_by_business_manual_adjustments(get_settings(), report_date=report_date)
+
+
+@router.post("/pnl/by-business/manual-adjustments/{adjustment_id}/edit")
+def edit_by_business_manual_adjustment(
+    adjustment_id: str,
+    payload: PnlByBusinessManualAdjustmentRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_by_business_adjustment_write_allowed(auth, settings)
+    try:
+        return _pnl_service().update_pnl_by_business_manual_adjustment(
+            settings,
+            adjustment_id=adjustment_id,
+            payload=payload,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/pnl/by-business/manual-adjustments/{adjustment_id}/revoke")
+def revoke_by_business_manual_adjustment(
+    adjustment_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_by_business_adjustment_write_allowed(auth, settings)
+    try:
+        return _pnl_service().revoke_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/pnl/by-business/manual-adjustments/{adjustment_id}/restore")
+def restore_by_business_manual_adjustment(
+    adjustment_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_by_business_adjustment_write_allowed(auth, settings)
+    try:
+        return _pnl_service().restore_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/pnl/yearly-summary")
 def yearly_summary(
     year: int = Query(..., description="Requested calendar year for formal PnL by ZQTZ business type 1."),
@@ -207,6 +268,15 @@ def yearly_summary(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_by_business_adjustment_write_allowed(auth: AuthContext, settings) -> None:
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="pnl_by_business.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

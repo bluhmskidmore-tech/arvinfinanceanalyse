@@ -40,6 +40,10 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/pnl/by-business-ytd" in paths
     assert "/api/pnl/by-business-monthly" in paths
     assert "/api/pnl/by-business-analysis" in paths
+    assert "/api/pnl/by-business/manual-adjustments" in paths
+    assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/edit" in paths
+    assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/revoke" in paths
+    assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/restore" in paths
     assert "/api/pnl/yearly-summary" in paths
     assert "/api/data/refresh_pnl" in paths
     assert "/api/data/import_status/pnl" in paths
@@ -871,6 +875,158 @@ def test_pnl_by_business_ytd_formal_path_classifies_nonstd_prefix_rows(tmp_path,
     assert by_key["asset_zqtz_detail_local_currency_delegated_market_value"]["total_pnl"] == "9.00"
     assert by_key["asset_zqtz_detail_local_currency_special_account_cost"]["total_pnl"] == "4.00"
     assert by_key["asset_zqtz_other_debt_financing"]["total_pnl"] == "10.00"
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_manual_adjustment_audit_tracks_current_and_events(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    create_response = client.post(
+        "/api/pnl/by-business/manual-adjustments",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "政策性金融债",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "125.50",
+            "reason": "补录估值调整",
+        },
+    )
+
+    assert create_response.status_code == 200
+    created = create_response.json()
+    adjustment_id = created["adjustment_id"]
+    assert created["event_type"] == "created"
+    assert created["manual_adjustment"] == "125.50"
+    assert created["stream"] == "pnl_by_business_adjustments"
+
+    edit_response = client.post(
+        f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/edit",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "政策性金融债",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "150.00",
+            "reason": "复核后修正",
+        },
+    )
+    assert edit_response.status_code == 200
+    assert edit_response.json()["event_type"] == "edited"
+
+    list_response = client.get(
+        "/api/pnl/by-business/manual-adjustments",
+        params={"report_date": "2025-12-31"},
+    )
+
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["report_date"] == "2025-12-31"
+    assert payload["adjustment_count"] == 1
+    assert payload["event_total"] == 2
+    assert payload["adjustments"][0]["adjustment_id"] == adjustment_id
+    assert payload["adjustments"][0]["event_type"] == "edited"
+    assert payload["adjustments"][0]["manual_adjustment"] == "150.00"
+    assert [event["event_type"] for event in payload["events"]] == ["edited", "created"]
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
+    get_settings.cache_clear()
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'P001', 'Rate Desk', 'CC-RATE', 'T', 'FVTPL', 'CNY',
+              100.00, 0.00, 25.50, 0.00, 125.50,
+              'fi-policy-adjust-base', 'rv_pnl_phase2_materialize_v1', 'ib-policy-adjust-base', 'trace-policy-adjust-base'
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              '2025-12-31', 'P001', 'policy financial bond', 'Rate Desk', 'CC-RATE',
+              'asset', '政策性金融债', '政策性金融债', '政策性金融债', '政策性金融债',
+              'T', 'FVTPL', 'asset', 'CNY', 'CNY',
+              1000.00000000, 1000.00000000, 0.00000000, false,
+              'sv-policy-adjust-balance', 'rv-policy-adjust-balance', 'ib-policy-adjust-balance', 'trace-policy-adjust-balance'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    create_response = client.post(
+        "/api/pnl/by-business/manual-adjustments",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "政策性金融债",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "25.00",
+            "reason": "补录政策性金融债调整",
+        },
+    )
+    assert create_response.status_code == 200
+
+    ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
+    assert ytd_response.status_code == 200
+    ytd_result = ytd_response.json()["result"]
+    ytd_by_key = {item["row_key"]: item for item in ytd_result["items"]}
+    adjusted_ytd = ytd_by_key["asset_zqtz_policy_financial_bond"]
+    assert adjusted_ytd["manual_adjustment"] == "25.00"
+    assert adjusted_ytd["total_pnl"] == "150.50"
+    assert ytd_result["total_pnl"] == "262.00"
+    assert "pnl_by_business_adjustments" in ytd_result["source_tables"]
+
+    monthly_response = client.get(
+        "/api/pnl/by-business-monthly",
+        params={"year": 2025, "as_of_date": "2025-12-31"},
+    )
+    assert monthly_response.status_code == 200
+    month = monthly_response.json()["result"]["months"][0]
+    monthly_by_key = {item["row_key"]: item for item in month["items"]}
+    assert monthly_by_key["asset_zqtz_policy_financial_bond"]["manual_adjustment"] == "25.00"
+    assert monthly_by_key["asset_zqtz_policy_financial_bond"]["total_pnl"] == "150.50"
+    assert month["summary"]["manual_adjustment"] == "25.00"
+
+    analysis_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "business_key": "asset_zqtz_policy_financial_bond",
+            "dimension": "monthly",
+        },
+    )
+    assert analysis_response.status_code == 200
+    analysis_row = analysis_response.json()["result"]["rows"][0]
+    assert analysis_row["manual_adjustment"] == "25.00"
+    assert analysis_row["total_pnl"] == "150.50"
     get_settings.cache_clear()
 
 

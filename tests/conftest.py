@@ -25,5 +25,6 @@ def seed_wildcard_scope(tmp_path, monkeypatch):
     repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
     repo.grant_scope(user_id="*", role=None, resource="*", action="*")
     repo.grant_scope(user_id="*", role=None, resource="product_category_pnl.adjustment", action="write")
+    repo.grant_scope(user_id="*", role=None, resource="pnl_by_business.adjustment", action="write")
     yield
     get_settings.cache_clear()

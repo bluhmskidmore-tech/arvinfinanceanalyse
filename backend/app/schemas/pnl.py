@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PnlMaterializePayload(BaseModel):
@@ -51,7 +51,7 @@ class PnlNonStdBridgeRow(BaseModel):
     interest_income_514: Decimal
     fair_value_change_516: Decimal
     capital_gain_517: Decimal
-    manual_adjustment: Decimal
+    manual_adjustment: Decimal = Decimal("0")
     total_pnl: Decimal
     source_version: str
     rule_version: str
@@ -161,6 +161,7 @@ class PnlByBusinessYtdItem(BaseModel):
     interest_income: Decimal
     fair_value_change: Decimal
     capital_gain: Decimal
+    manual_adjustment: Decimal
     total_pnl: Decimal
     current_balance: Decimal
     balance_yield_pct: Decimal | None
@@ -181,6 +182,61 @@ class PnlByBusinessYtdPayload(BaseModel):
     total_pnl: Decimal
     source_tables: list[str]
     items: list[PnlByBusinessYtdItem]
+
+
+class PnlByBusinessManualAdjustmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    row_key: str = Field(min_length=1)
+    business_type: str = ""
+    operator: Literal["ADD", "DELTA", "OVERRIDE"] = "DELTA"
+    approval_status: Literal["approved", "pending", "rejected"] = "approved"
+    manual_adjustment: Decimal
+    reason: str = ""
+
+    @field_validator("report_date")
+    @classmethod
+    def validate_report_date(cls, value: str) -> str:
+        parts = value.split("-")
+        if len(parts) != 3 or any(not part.isdigit() for part in parts):
+            raise ValueError("report_date must be YYYY-MM-DD")
+        year, month, day = parts
+        if len(year) != 4 or len(month) != 2 or len(day) != 2:
+            raise ValueError("report_date must be YYYY-MM-DD")
+        return value
+
+    @model_validator(mode="after")
+    def validate_manual_adjustment_nonzero(self) -> "PnlByBusinessManualAdjustmentRequest":
+        if self.manual_adjustment == Decimal("0"):
+            raise ValueError("manual_adjustment must be non-zero.")
+        return self
+
+
+class PnlByBusinessManualAdjustmentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    adjustment_id: str
+    event_type: str
+    created_at: str
+    stream: str
+    report_date: str
+    row_key: str
+    business_type: str
+    operator: str
+    approval_status: str
+    manual_adjustment: Decimal
+    reason: str = ""
+
+
+class PnlByBusinessManualAdjustmentListPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    adjustment_count: int
+    event_total: int
+    adjustments: list[PnlByBusinessManualAdjustmentPayload]
+    events: list[PnlByBusinessManualAdjustmentPayload]
 
 
 class PnlByBusinessMonthlyItem(BaseModel):
