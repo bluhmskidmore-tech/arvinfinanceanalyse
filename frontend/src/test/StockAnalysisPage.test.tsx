@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
@@ -65,7 +66,7 @@ function buildStrategyPayload(
       as_of_date: "2026-04-29",
       formula_version: "rv_livermore_sector_rank_provisional_v1",
       is_provisional: true,
-      sector_count: 1,
+      sector_count: 2,
       excluded_constituent_count: 0,
       excluded_sector_count: 0,
       items: [
@@ -73,11 +74,21 @@ function buildStrategyPayload(
           rank: 1,
           sector_code: "801001",
           sector_name: "AI",
-          score: 1,
+          score: 1.25,
           avg_pctchange: 4.8,
           avg_turn: 3,
           avg_amplitude: 3.5,
           constituent_count: 12,
+        },
+        {
+          rank: 2,
+          sector_code: "801002",
+          sector_name: "新能源车",
+          score: 0.8,
+          avg_pctchange: -1.2,
+          avg_turn: 5.6,
+          avg_amplitude: 2,
+          constituent_count: 24,
         },
       ],
     },
@@ -85,8 +96,8 @@ function buildStrategyPayload(
       as_of_date: "2026-04-29",
       formula_version: "rv_livermore_stock_candidates_bundle_v1",
       market_state: "WARM",
-      input_stock_count: 1,
-      candidate_count: 1,
+      input_stock_count: 2,
+      candidate_count: 2,
       excluded_stock_count: 0,
       insufficient_history_count: 0,
       items: [
@@ -106,6 +117,23 @@ function buildStrategyPayload(
           close_strength: 0.833333,
           gap_norm: -0.114679,
           abnormal_turnover: 1.386294,
+        },
+        {
+          rank: 2,
+          stock_code: "000002.SZ",
+          stock_name: "Beta",
+          sector_code: "801002",
+          sector_name: "新能源车",
+          sector_rank: 2,
+          close: 10,
+          breakout_level: 10,
+          ema10: 9.5,
+          ma20: 9.8,
+          ma60: 9.2,
+          ma120: 8.5,
+          close_strength: 0.5,
+          gap_norm: 0.01,
+          abnormal_turnover: 1.0,
         },
       ],
     },
@@ -183,6 +211,7 @@ function stockClient(options?: {
   strategy?: LivermoreStrategyPayload;
   strategyError?: Error;
   confluenceError?: Error;
+  metaOverrides?: Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
 }): ApiClient {
   return {
     ...createApiClient({ mode: "mock" }),
@@ -199,6 +228,7 @@ function stockClient(options?: {
           source_version: "sv_livermore_test",
           vendor_version: "vv_livermore_test",
           rule_version: "rv_livermore_market_gate_v1",
+          ...options?.metaOverrides,
         },
       );
     },
@@ -221,11 +251,11 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-judgment-strip")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "市场状态" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "行业强弱" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "板块强弱" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "候选股证据卡" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "银行股专题待补证据" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "数据口径与边界" })).toBeInTheDocument();
 
     const candidate = screen.getByTestId("stock-candidate-000001.SZ");
@@ -237,11 +267,43 @@ describe("StockAnalysisPage", () => {
     expect(candidate).toHaveTextContent("10EMA");
   });
 
-  it("shows bank fundamental evidence as pending and avoids forbidden trading copy", async () => {
+  it("shows staleness banner when quality_flag is not ok", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
+    });
+
+    expect(await screen.findByTestId("stock-analysis-stale-banner")).toHaveTextContent(
+      "仅供复核参考",
+    );
+  });
+
+  it("renders refresh control and exposes as-of picker", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
-    expect(await screen.findByText(/PB \/ ROE \/ 分红率 \/ NIM/)).toBeInTheDocument();
-    expect(screen.getByText(/当前仅展示待补字段，不参与候选排序/)).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-refresh")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-as-of-picker")).toBeInTheDocument();
+  });
+
+  it("filters candidates when industry chip clicked", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    expect(await screen.findByTestId("stock-candidate-000001.SZ")).toBeInTheDocument();
+    await user.click(screen.getByTestId("sector-filter-chip-801002"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("stock-candidate-000001.SZ")).not.toBeInTheDocument();
+      expect(screen.getByTestId("stock-candidate-000002.SZ")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "全部行业" }));
+    await screen.findByTestId("stock-candidate-000001.SZ");
+  });
+
+  it("avoids forbidden trading copy", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.queryByText(/买入建议/)).not.toBeInTheDocument();

@@ -6,10 +6,12 @@ import type {
 } from "../api/contracts";
 import {
   buildCandidateEvidenceCards,
+  buildDailyJudgmentStrip,
   buildDataBoundaryNotes,
   buildMarketStateCard,
   buildRiskExitRows,
   buildSectorRows,
+  buildSectorViewModel,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 
 const strategyPayload: LivermoreStrategyPayload = {
@@ -64,7 +66,7 @@ const strategyPayload: LivermoreStrategyPayload = {
     as_of_date: "2026-04-29",
     formula_version: "rv_livermore_sector_rank_provisional_v1",
     is_provisional: true,
-    sector_count: 1,
+    sector_count: 2,
     excluded_constituent_count: 0,
     excluded_sector_count: 0,
     items: [
@@ -77,6 +79,16 @@ const strategyPayload: LivermoreStrategyPayload = {
         avg_turn: 3,
         avg_amplitude: 3.5,
         constituent_count: 12,
+      },
+      {
+        rank: 2,
+        sector_code: "801002",
+        sector_name: "新能源车",
+        score: 0.5,
+        avg_pctchange: -1.2,
+        avg_turn: 5,
+        avg_amplitude: 2,
+        constituent_count: 20,
       },
     ],
   },
@@ -193,6 +205,8 @@ describe("stockAnalysisPageModel", () => {
 
     expect(cards[0].stockCode).toBe("000001.SZ");
     expect(cards[0].headline).toContain("观察候选");
+    expect(cards[0].pattern).toBe("突破");
+    expect(cards[0].distanceToBreakoutPct).toMatch(/%/);
     expect(cards[0].evidence.join(" ")).toContain("行业排名第 1");
     expect(cards[0].evidence.join(" ")).toContain("收盘价 21.90");
     expect(cards[0].evidence.join(" ")).toContain("10EMA 失效观察");
@@ -200,6 +214,7 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].counterEvidence.join(" ")).toContain("新闻、公告、财报事件尚未进入候选卡");
     expect(cards[0].invalidationRules.join(" ")).toContain("10EMA");
     expect(cards[0].invalidationRules.join(" ")).toContain("涨跌停状态");
+    expect(cards[0].rawFields.some((row) => row.key === "gap_norm")).toBe(true);
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
@@ -220,6 +235,9 @@ describe("stockAnalysisPageModel", () => {
       ]),
     );
     expect(rows.map((row) => row.reason).join(" ")).not.toContain("卖出");
+    const watch = rows.find((r) => r.stockCode === "000777.SZ");
+    expect(watch?.distanceToExitPct).toContain("%");
+    expect(watch?.exitDistanceBucket === "triggered" || watch?.exitDistanceBucket === "0-3%").toBe(true);
   });
 
   it("surfaces data boundary notes and missing evidence", () => {
@@ -229,5 +247,31 @@ describe("stockAnalysisPageModel", () => {
     expect(notes.join(" ")).toContain("breadth missing");
     expect(notes.join(" ")).toContain("LIVERMORE_BREADTH_MISSING");
     expect(notes.join(" ")).toContain("rv_livermore_sector_rank_provisional_v1");
+  });
+
+  it("builds daily judgment strip with sector poles", () => {
+    const strip = buildDailyJudgmentStrip(strategyPayload);
+    expect(strip.headline).toContain("今日市场状态");
+    expect(strip.gateChip).toContain("2/4");
+    expect(strip.strongestSectorChip).toContain("AI");
+    expect(strip.weakestSectorChip).toContain("新能源车");
+  });
+
+  it("orders sector view model by selected metric without changing payload", () => {
+    const byScore = buildSectorViewModel(strategyPayload, "score");
+    expect(byScore[0].sectorName).toBe("AI");
+    const byPct = buildSectorViewModel(strategyPayload, "pctchange");
+    expect(byPct[0].sectorName).toBe("AI");
+    const byTurn = buildSectorViewModel(strategyPayload, "turnover");
+    expect(byTurn[0].sectorName).toBe("新能源车");
+  });
+
+  it("flags top and bottom sector rows for charting", () => {
+    const rows = buildSectorRows(strategyPayload);
+    const top = rows.find((r) => r.sectorCode === "801001");
+    const bottom = rows.find((r) => r.sectorCode === "801002");
+    expect(top?.isTop).toBe(true);
+    expect(bottom?.isBottom).toBe(true);
+    expect(typeof top?.scoreNormalized).toBe("number");
   });
 });

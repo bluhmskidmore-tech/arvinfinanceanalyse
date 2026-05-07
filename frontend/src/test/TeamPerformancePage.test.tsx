@@ -6,6 +6,8 @@ import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type {
+  PnlByBusinessMonthlyItem,
+  PnlByBusinessMonthlyPayload,
   PnlByBusinessYtdItem,
   PnlByBusinessYtdPayload,
   PnlDatesPayload,
@@ -81,6 +83,64 @@ function byBusinessRow(
     source_note: partial.source_note ?? null,
     proportion: partial.proportion ?? null,
     assets_count: partial.assets_count ?? 0,
+  };
+}
+
+function monthlyBusinessItem(
+  partial: Partial<PnlByBusinessMonthlyItem> &
+    Pick<PnlByBusinessMonthlyItem, "row_key" | "business_type">,
+): PnlByBusinessMonthlyItem {
+  return {
+    row_key: partial.row_key,
+    sort_order: partial.sort_order ?? 1,
+    business_type: partial.business_type,
+    interest_income: partial.interest_income ?? "0",
+    fair_value_change: partial.fair_value_change ?? "0",
+    capital_gain: partial.capital_gain ?? "0",
+    manual_adjustment: partial.manual_adjustment ?? "0",
+    total_pnl: partial.total_pnl ?? "0",
+    avg_balance: partial.avg_balance ?? "0",
+    current_balance: partial.current_balance ?? "0",
+    annualized_yield_pct: partial.annualized_yield_pct ?? null,
+    ftp_rate_pct: partial.ftp_rate_pct ?? "1.60",
+    ftp_cost: partial.ftp_cost ?? "0",
+    ftp_net_pnl: partial.ftp_net_pnl ?? "0",
+    ftp_net_annualized_yield_pct: partial.ftp_net_annualized_yield_pct ?? null,
+    proportion: partial.proportion ?? null,
+    asset_count: partial.asset_count ?? 0,
+    source_note: partial.source_note ?? null,
+  };
+}
+
+function q1MonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusinessMonthlyPayload {
+  return {
+    year: 2026,
+    as_of_date: "2026-03-31",
+    source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    months: [
+      {
+        month_key: "2026-03",
+        period_start_date: "2026-03-01",
+        period_end_date: "2026-03-31",
+        calendar_days: 31,
+        summary: {
+          interest_income: "0",
+          fair_value_change: "0",
+          capital_gain: "0",
+          manual_adjustment: "0",
+          total_pnl: "0",
+          avg_balance: "0",
+          current_balance: "0",
+          annualized_yield_pct: null,
+          ftp_rate_pct: "1.60",
+          ftp_cost: "0",
+          ftp_net_pnl: "0",
+          ftp_net_annualized_yield_pct: null,
+          asset_count: 0,
+        },
+        items,
+      },
+    ],
   };
 }
 
@@ -226,6 +286,68 @@ describe("TeamPerformancePage", () => {
       } satisfies PnlByBusinessYtdPayload,
     }));
 
+    const getPnlByBusinessMonthly = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.by_business_monthly", "trace-by-business-monthly"),
+      result: q1MonthlyPayload([
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_detail_structured_finance_broker",
+          business_type: "其中：结构化融资（券商）",
+          total_pnl: "3000000",
+          ftp_cost: "500000",
+          ftp_net_pnl: "2500000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_nonfinancial_enterprise_bond",
+          business_type: "非金融企业债券",
+          total_pnl: "2600000",
+          ftp_cost: "400000",
+          ftp_net_pnl: "2200000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_public_fund",
+          business_type: "公募基金",
+          total_pnl: "1800000",
+          ftp_cost: "300000",
+          ftp_net_pnl: "1500000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_policy_financial_bond",
+          business_type: "政策性金融债",
+          total_pnl: "5000000",
+          ftp_cost: "800000",
+          ftp_net_pnl: "4200000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_local_government_bond",
+          business_type: "地方政府债",
+          total_pnl: "3100000",
+          ftp_cost: "500000",
+          ftp_net_pnl: "2600000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_interbank_cd",
+          business_type: "同业存单",
+          total_pnl: "1600000",
+          ftp_cost: "300000",
+          ftp_net_pnl: "1300000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_treasury_bond",
+          business_type: "国债",
+          total_pnl: "2400000",
+          ftp_cost: "300000",
+          ftp_net_pnl: "2100000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_railway_bond",
+          business_type: "铁道债",
+          total_pnl: "900000",
+          ftp_cost: "100000",
+          ftp_net_pnl: "800000",
+        }),
+      ]),
+    }));
+
     const getProductCategoryPnl = vi.fn(async () => ({
       result_meta: buildMeta("product_category_pnl.detail", "trace-product-category", {
         quality_flag: "warning",
@@ -329,6 +451,7 @@ describe("TeamPerformancePage", () => {
       ...base,
       getFormalPnlDates,
       getPnlByBusinessYtd,
+      getPnlByBusinessMonthly,
       getProductCategoryPnl,
     });
 
@@ -344,6 +467,9 @@ describe("TeamPerformancePage", () => {
         reportDate: "2025-12-31",
         view: "ytd",
       });
+    });
+    await waitFor(() => {
+      expect(getPnlByBusinessMonthly).toHaveBeenCalledWith(2026, "2026-03-31");
     });
 
     expect(screen.getByLabelText("team-performance-report-year")).toHaveValue("2025");
@@ -391,6 +517,8 @@ describe("TeamPerformancePage", () => {
     const q1Caliber = await screen.findByTestId("team-performance-q1-caliber");
     expect(q1Caliber).toHaveTextContent("2026 Q1实际口径拆解");
     expect(q1Caliber).toHaveTextContent("只展示实际证据");
+    expect(q1Caliber).toHaveTextContent("FTP后净损益");
+    expect(q1Caliber).toHaveTextContent("ftp_net_pnl");
     expect(q1Caliber).toHaveTextContent("自营中心");
     expect(q1Caliber).toHaveTextContent("债券交易室");
     expect(q1Caliber).toHaveTextContent("外汇与衍生品室");

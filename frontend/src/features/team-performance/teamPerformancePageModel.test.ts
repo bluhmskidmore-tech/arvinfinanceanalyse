@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { PnlByBusinessYtdItem, ProductCategoryPnlRow } from "../../api/contracts";
+import type {
+  PnlByBusinessMonthlyItem,
+  PnlByBusinessMonthlyPayload,
+  PnlByBusinessYtdItem,
+  ProductCategoryPnlRow,
+} from "../../api/contracts";
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
@@ -59,6 +64,64 @@ function byBusinessRow(
     source_note: partial.source_note ?? null,
     proportion: partial.proportion ?? null,
     assets_count: partial.assets_count ?? 0,
+  };
+}
+
+function monthlyBusinessItem(
+  partial: Partial<PnlByBusinessMonthlyItem> &
+    Pick<PnlByBusinessMonthlyItem, "row_key" | "business_type">,
+): PnlByBusinessMonthlyItem {
+  return {
+    row_key: partial.row_key,
+    sort_order: partial.sort_order ?? 1,
+    business_type: partial.business_type,
+    interest_income: partial.interest_income ?? "0",
+    fair_value_change: partial.fair_value_change ?? "0",
+    capital_gain: partial.capital_gain ?? "0",
+    manual_adjustment: partial.manual_adjustment ?? "0",
+    total_pnl: partial.total_pnl ?? "0",
+    avg_balance: partial.avg_balance ?? "0",
+    current_balance: partial.current_balance ?? "0",
+    annualized_yield_pct: partial.annualized_yield_pct ?? null,
+    ftp_rate_pct: partial.ftp_rate_pct ?? "1.60",
+    ftp_cost: partial.ftp_cost ?? "0",
+    ftp_net_pnl: partial.ftp_net_pnl ?? "0",
+    ftp_net_annualized_yield_pct: partial.ftp_net_annualized_yield_pct ?? null,
+    proportion: partial.proportion ?? null,
+    asset_count: partial.asset_count ?? 0,
+    source_note: partial.source_note ?? null,
+  };
+}
+
+function byBusinessMonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusinessMonthlyPayload {
+  return {
+    year: 2026,
+    as_of_date: "2026-03-31",
+    source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    months: [
+      {
+        month_key: "2026-03",
+        period_start_date: "2026-03-01",
+        period_end_date: "2026-03-31",
+        calendar_days: 31,
+        summary: {
+          interest_income: "0",
+          fair_value_change: "0",
+          capital_gain: "0",
+          manual_adjustment: "0",
+          total_pnl: "0",
+          avg_balance: "0",
+          current_balance: "0",
+          annualized_yield_pct: null,
+          ftp_rate_pct: "1.60",
+          ftp_cost: "0",
+          ftp_net_pnl: "0",
+          ftp_net_annualized_yield_pct: null,
+          asset_count: 0,
+        },
+        items,
+      },
+    ],
   };
 }
 
@@ -367,20 +430,45 @@ describe("teamPerformancePageModel", () => {
           total_pnl: "250000000",
         }),
       ],
+      byBusinessMonthly: byBusinessMonthlyPayload([
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_public_fund",
+          business_type: "公募基金",
+          total_pnl: "100000000",
+          ftp_cost: "20000000",
+          ftp_net_pnl: "80000000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_detail_securities_asset_management_plan",
+          business_type: "证券业资管计划",
+          total_pnl: "1000000000",
+          ftp_cost: "150000000",
+          ftp_net_pnl: "850000000",
+        }),
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_detail_structured_finance_broker",
+          business_type: "其中：结构化融资（券商）",
+          total_pnl: "250000000",
+          ftp_cost: "80000000",
+          ftp_net_pnl: "170000000",
+        }),
+      ]),
     });
 
     const selfInvestment = model.centers.find((center) => center.centerId === "self-investment");
     const productMarket = model.centers.find((center) => center.centerId === "product-market");
 
-    expect(selfInvestment?.includedTotalYuan).toBe(850000000);
-    expect(productMarket?.includedTotalYuan).toBe(250000000);
+    expect(selfInvestment?.includedTotalYuan).toBe(760000000);
+    expect(productMarket?.includedTotalYuan).toBe(170000000);
     expect(
       selfInvestment?.rules.find(
         (rule) => rule.rowId === "asset_zqtz_detail_structured_finance_broker",
       ),
     ).toMatchObject({
       allocation: "subtract",
-      contributionYuan: -250000000,
+      amountField: "ftp_net_pnl",
+      sourceEndpoint: "by-business-monthly",
+      contributionYuan: -170000000,
     });
   });
 
@@ -394,6 +482,16 @@ describe("teamPerformancePageModel", () => {
           source_note: "ZQTZSHOW 其中项：instrument_code prefix=J4",
         }),
       ],
+      byBusinessMonthly: byBusinessMonthlyPayload([
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_detail_structured_finance_broker",
+          business_type: "其中：结构化融资（券商）",
+          total_pnl: "30000000",
+          ftp_cost: "5000000",
+          ftp_net_pnl: "25000000",
+          source_note: "ZQTZSHOW 其中项：instrument_code prefix=J4",
+        }),
+      ]),
     });
 
     const productMarket = model.centers.find((center) => center.centerId === "product-market");
@@ -406,8 +504,10 @@ describe("teamPerformancePageModel", () => {
       rowName: "其中：结构化融资（券商）",
       allocation: "include",
       evidenceStatus: "direct",
-      amountYuan: 30000000,
-      contributionYuan: 30000000,
+      amountField: "ftp_net_pnl",
+      sourceEndpoint: "by-business-monthly",
+      amountYuan: 25000000,
+      contributionYuan: 25000000,
     });
     expect(productMarket?.rules[0].note).toContain("J4");
   });
@@ -421,6 +521,15 @@ describe("teamPerformancePageModel", () => {
           total_pnl: "300000000",
         }),
       ],
+      byBusinessMonthly: byBusinessMonthlyPayload([
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_nonfinancial_enterprise_bond",
+          business_type: "非金融企业债券",
+          total_pnl: "300000000",
+          ftp_cost: "60000000",
+          ftp_net_pnl: "240000000",
+        }),
+      ]),
     });
 
     const selfInvestment = model.centers.find((center) => center.centerId === "self-investment");
@@ -428,13 +537,68 @@ describe("teamPerformancePageModel", () => {
       (rule) => rule.rowId === "asset_zqtz_nonfinancial_enterprise_bond",
     );
 
-    expect(selfInvestment?.includedTotalYuan).toBe(300000000);
+    expect(selfInvestment?.includedTotalYuan).toBe(240000000);
     expect(nonfinancialRules?.map((rule) => rule.contributionYuan)).toEqual([
-      300000000,
+      240000000,
       null,
       null,
     ]);
     expect(nonfinancialRules?.[1].note).toContain("前序子项计入汇总");
+  });
+
+  it("uses FTP-net monthly business evidence instead of raw Q1 total_pnl", () => {
+    const model = buildTeamPerformanceQ1CaliberModel({
+      byBusinessItems: [
+        byBusinessRow({
+          row_key: "asset_zqtz_public_fund",
+          business_type: "公募基金",
+          total_pnl: "100000000",
+        }),
+      ],
+      byBusinessMonthly: byBusinessMonthlyPayload([
+        monthlyBusinessItem({
+          row_key: "asset_zqtz_public_fund",
+          business_type: "公募基金",
+          total_pnl: "100000000",
+          ftp_cost: "30000000",
+          ftp_net_pnl: "70000000",
+        }),
+      ]),
+    });
+
+    const publicFund = model.centers
+      .find((center) => center.centerId === "self-investment")
+      ?.rules.find((rule) => rule.rowId === "asset_zqtz_public_fund");
+
+    expect(publicFund).toMatchObject({
+      sourceEndpoint: "by-business-monthly",
+      amountField: "ftp_net_pnl",
+      amountYuan: 70000000,
+      contributionYuan: 70000000,
+    });
+  });
+
+  it("does not silently fall back to raw total_pnl when FTP-net monthly evidence is missing", () => {
+    const model = buildTeamPerformanceQ1CaliberModel({
+      byBusinessItems: [
+        byBusinessRow({
+          row_key: "asset_zqtz_public_fund",
+          business_type: "公募基金",
+          total_pnl: "100000000",
+        }),
+      ],
+    });
+
+    const publicFund = model.centers
+      .find((center) => center.centerId === "self-investment")
+      ?.rules.find((rule) => rule.rowId === "asset_zqtz_public_fund");
+
+    expect(publicFund).toMatchObject({
+      sourceEndpoint: "by-business-monthly",
+      amountField: "ftp_net_pnl",
+      amountYuan: null,
+      contributionYuan: null,
+    });
   });
 
   it("does not encode Excel prediction rows as Q1 actual caliber rules", () => {

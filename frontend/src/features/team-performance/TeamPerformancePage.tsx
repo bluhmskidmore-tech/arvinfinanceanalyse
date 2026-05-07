@@ -270,16 +270,16 @@ export default function TeamPerformancePage() {
     retry: false,
   });
 
-  const q1ByBusinessQuery = useQuery({
+  const q1ByBusinessMonthlyQuery = useQuery({
     queryKey: [
       "team-performance",
       "q1-caliber",
-      "by-business-ytd",
+      "by-business-monthly",
       client.mode,
       Q1_CALIBER_YEAR,
       Q1_CALIBER_AS_OF_DATE,
     ],
-    queryFn: () => client.getPnlByBusinessYtd(Q1_CALIBER_YEAR, Q1_CALIBER_AS_OF_DATE),
+    queryFn: () => client.getPnlByBusinessMonthly(Q1_CALIBER_YEAR, Q1_CALIBER_AS_OF_DATE),
     enabled: canLoadQ1CaliberEvidence,
     retry: false,
   });
@@ -315,10 +315,10 @@ export default function TeamPerformancePage() {
   const q1CaliberModel = useMemo(
     () =>
       buildTeamPerformanceQ1CaliberModel({
-        byBusinessItems: q1ByBusinessQuery.data?.result.items,
+        byBusinessMonthly: q1ByBusinessMonthlyQuery.data?.result,
         productCategoryRows: q1ProductCategoryQuery.data?.result.rows,
       }),
-    [q1ByBusinessQuery.data, q1ProductCategoryQuery.data],
+    [q1ByBusinessMonthlyQuery.data, q1ProductCategoryQuery.data],
   );
 
   const selectedCenter =
@@ -342,9 +342,11 @@ export default function TeamPerformancePage() {
   const showNoSubstitution = !datesQuery.isLoading && !hasDefaultDate;
   const noMappedEvidence = canLoadEvidence && !loading && !error && viewModel.mappedCenterCount === 0;
   const q1CaliberLoading =
-    canLoadQ1CaliberEvidence && (q1ByBusinessQuery.isLoading || q1ProductCategoryQuery.isLoading);
+    canLoadQ1CaliberEvidence &&
+    (q1ByBusinessMonthlyQuery.isLoading || q1ProductCategoryQuery.isLoading);
   const q1CaliberError =
-    canLoadQ1CaliberEvidence && (q1ByBusinessQuery.isError || q1ProductCategoryQuery.isError);
+    canLoadQ1CaliberEvidence &&
+    (q1ByBusinessMonthlyQuery.isError || q1ProductCategoryQuery.isError);
   const resultMetaSections = [
     {
       key: "by-business-ytd",
@@ -480,7 +482,7 @@ export default function TeamPerformancePage() {
                 ? "Q1证据加载中"
                 : q1CaliberError
                   ? "Q1证据加载失败"
-                  : "Q1证据已按现有数据源并排展示"
+                  : "Q1证据已按业务种类FTP后净损益与产品分类净收入展示"
               : "正式日期列表暂未同时满足2025底稿和2026Q1证据"}
           </span>
         </div>

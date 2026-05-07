@@ -1,4 +1,5 @@
 import type {
+  PnlByBusinessMonthlyPayload,
   PnlByBusinessYtdItem,
   ProductCategoryPnlRow,
   ResultMeta,
@@ -23,6 +24,7 @@ export type AssessmentIndicator2025 = {
 };
 
 export type MappingEndpoint = "by-business-ytd" | "product-category-ytd";
+export type Q1CaliberSourceEndpoint = MappingEndpoint | "by-business-monthly";
 export type MappingConfidence = "high" | "medium" | "linked";
 export type ProductCategoryMetricField =
   | "business_net_income"
@@ -42,7 +44,12 @@ export type CenterPnlMapping2025 = {
   additive?: boolean;
 };
 
-export type Q1CaliberAmountField = "total_pnl" | "business_net_income" | "cny_net" | "foreign_net";
+export type Q1CaliberAmountField =
+  | "total_pnl"
+  | "ftp_net_pnl"
+  | "business_net_income"
+  | "cny_net"
+  | "foreign_net";
 export type Q1CaliberAllocation = "include" | "reference" | "subtract" | "pending";
 export type Q1CaliberEvidenceStatus = "direct" | "aggregate" | "split-needed" | "excluded";
 
@@ -50,7 +57,7 @@ export type TeamPerformanceQ1CaliberRule = {
   centerId: string;
   centerName: string;
   businessLabel: string;
-  sourceEndpoint?: MappingEndpoint;
+  sourceEndpoint?: Q1CaliberSourceEndpoint;
   rowId?: string;
   amountField?: Q1CaliberAmountField;
   allocation: Q1CaliberAllocation;
@@ -135,6 +142,7 @@ type BuildViewModelArgs = {
 type BuildQ1CaliberModelArgs = {
   rules?: TeamPerformanceQ1CaliberRule[];
   byBusinessItems?: PnlByBusinessYtdItem[];
+  byBusinessMonthly?: PnlByBusinessMonthlyPayload | null;
   productCategoryRows?: ProductCategoryPnlRow[];
 };
 
@@ -787,7 +795,10 @@ export function formatQ1EvidenceStatusLabel(value: Q1CaliberEvidenceStatus): str
   return "已排除";
 }
 
-function q1SourceLabel(endpoint: MappingEndpoint | undefined): string {
+function q1SourceLabel(endpoint: Q1CaliberSourceEndpoint | undefined): string {
+  if (endpoint === "by-business-monthly") {
+    return "/pnl-by-business（月度FTP后）";
+  }
   if (endpoint === "by-business-ytd") {
     return "/pnl-by-business";
   }
@@ -797,20 +808,65 @@ function q1SourceLabel(endpoint: MappingEndpoint | undefined): string {
   return "现有数据源暂无独立行";
 }
 
+type Q1MonthlyFtpNetEvidence = {
+  rowName: string;
+  amountYuan: number | null;
+};
+
+function buildQ1MonthlyFtpNetEvidence(
+  monthlyPayload: PnlByBusinessMonthlyPayload | null | undefined,
+): Map<string, Q1MonthlyFtpNetEvidence> {
+  const evidence = new Map<string, Q1MonthlyFtpNetEvidence>();
+  for (const month of monthlyPayload?.months ?? []) {
+    for (const item of month.items) {
+      const current = evidence.get(item.row_key) ?? {
+        rowName: item.business_type,
+        amountYuan: null,
+      };
+      const ftpNetPnl = toNumber(item.ftp_net_pnl);
+      evidence.set(item.row_key, {
+        rowName: item.business_type,
+        amountYuan:
+          ftpNetPnl === null
+            ? current.amountYuan
+            : (current.amountYuan ?? 0) + ftpNetPnl,
+      });
+    }
+  }
+  return evidence;
+}
+
 function pickQ1Amount(
   rule: TeamPerformanceQ1CaliberRule,
   byBusinessItems: PnlByBusinessYtdItem[],
+  byBusinessMonthlyFtpNet: Map<string, Q1MonthlyFtpNetEvidence>,
   productCategoryRows: ProductCategoryPnlRow[],
-): { rowName: string; amountYuan: number | null } {
+): {
+  rowName: string;
+  amountYuan: number | null;
+  sourceEndpoint?: Q1CaliberSourceEndpoint;
+  amountField?: Q1CaliberAmountField;
+} {
   if (!rule.sourceEndpoint || !rule.rowId || !rule.amountField) {
     return { rowName: "待补充独立数据行", amountYuan: null };
   }
 
-  if (rule.sourceEndpoint === "by-business-ytd") {
+  if (rule.sourceEndpoint === "by-business-ytd" || rule.sourceEndpoint === "by-business-monthly") {
+    const monthlyEvidence = byBusinessMonthlyFtpNet.get(rule.rowId);
+    if (monthlyEvidence) {
+      return {
+        rowName: monthlyEvidence.rowName,
+        amountYuan: monthlyEvidence.amountYuan,
+        sourceEndpoint: "by-business-monthly",
+        amountField: "ftp_net_pnl",
+      };
+    }
     const row = byBusinessItems.find((item) => item.row_key === rule.rowId);
     return {
-      rowName: row?.business_type ?? "未命中业务种类行",
-      amountYuan: row && rule.amountField === "total_pnl" ? toNumber(row.total_pnl) : null,
+      rowName: row?.business_type ?? "未命中业务种类月度FTP后行",
+      amountYuan: null,
+      sourceEndpoint: "by-business-monthly",
+      amountField: "ftp_net_pnl",
     };
   }
 
@@ -818,21 +874,23 @@ function pickQ1Amount(
   if (!row) {
     return { rowName: "未命中产品分类行", amountYuan: null };
   }
-  if (rule.amountField === "total_pnl") {
+  if (rule.amountField === "total_pnl" || rule.amountField === "ftp_net_pnl") {
     return { rowName: row.category_name, amountYuan: null };
   }
+  const productAmountField = rule.amountField;
   return {
     rowName: row.category_name,
-    amountYuan: toNumber(row[rule.amountField]),
+    amountYuan: toNumber(row[productAmountField]),
   };
 }
 
 function buildQ1RuleResult(
   rule: TeamPerformanceQ1CaliberRule,
   byBusinessItems: PnlByBusinessYtdItem[],
+  byBusinessMonthlyFtpNet: Map<string, Q1MonthlyFtpNetEvidence>,
   productCategoryRows: ProductCategoryPnlRow[],
 ): TeamPerformanceQ1CaliberRuleResult {
-  const amount = pickQ1Amount(rule, byBusinessItems, productCategoryRows);
+  const amount = pickQ1Amount(rule, byBusinessItems, byBusinessMonthlyFtpNet, productCategoryRows);
   const amountYuan = amount.amountYuan;
   const canContribute =
     rule.evidenceStatus !== "excluded" &&
@@ -842,10 +900,12 @@ function buildQ1RuleResult(
 
   return {
     ...rule,
+    sourceEndpoint: amount.sourceEndpoint ?? rule.sourceEndpoint,
+    amountField: amount.amountField ?? rule.amountField,
     rowName: amount.rowName,
     amountYuan,
     contributionYuan: canContribute ? amountYuan * sign : null,
-    sourceLabel: q1SourceLabel(rule.sourceEndpoint),
+    sourceLabel: q1SourceLabel(amount.sourceEndpoint ?? rule.sourceEndpoint),
   };
 }
 
@@ -863,12 +923,18 @@ function buildQ1CenterCaliber(
   centerId: string,
   rules: TeamPerformanceQ1CaliberRule[],
   byBusinessItems: PnlByBusinessYtdItem[],
+  byBusinessMonthlyFtpNet: Map<string, Q1MonthlyFtpNetEvidence>,
   productCategoryRows: ProductCategoryPnlRow[],
 ): TeamPerformanceQ1CenterCaliber {
   const centerRules = rules.filter((rule) => rule.centerId === centerId);
   const seenContributionKeys = new Set<string>();
   const resolvedRules = centerRules.map((rule) => {
-    const resolvedRule = buildQ1RuleResult(rule, byBusinessItems, productCategoryRows);
+    const resolvedRule = buildQ1RuleResult(
+      rule,
+      byBusinessItems,
+      byBusinessMonthlyFtpNet,
+      productCategoryRows,
+    );
     if (resolvedRule.contributionYuan === null) {
       return resolvedRule;
     }
@@ -904,19 +970,28 @@ function buildQ1CenterCaliber(
 export function buildTeamPerformanceQ1CaliberModel({
   rules = Q1_CENTER_CALIBER_RULES,
   byBusinessItems = [],
+  byBusinessMonthly = null,
   productCategoryRows = [],
 }: BuildQ1CaliberModelArgs = {}): TeamPerformanceQ1CaliberModel {
   const centerIds = uniqueBy(rules, (rule) => rule.centerId).map((rule) => rule.centerId);
+  const byBusinessMonthlyFtpNet = buildQ1MonthlyFtpNetEvidence(byBusinessMonthly);
 
   return {
     periodLabel: Q1_PERIOD_LABEL,
     sourceLabel: Q1_SOURCE_LABEL,
     centers: centerIds.map((centerId) =>
-      buildQ1CenterCaliber(centerId, rules, byBusinessItems, productCategoryRows),
+      buildQ1CenterCaliber(
+        centerId,
+        rules,
+        byBusinessItems,
+        byBusinessMonthlyFtpNet,
+        productCategoryRows,
+      ),
     ),
     warnings: [
       "2026年计划尚未发布，本区只展示Q1实际证据和口径拆解。",
       "Excel中的外推值、全年预测和手工汇总不参与本区实际汇总。",
+      "/pnl-by-business 的业务种类行采用月度 ftp_net_pnl 汇总；不再把未扣FTP的 total_pnl 直接归中心。",
       "接口粒度较粗的行只展示聚合证据，不强行分摊到子项。",
     ],
   };

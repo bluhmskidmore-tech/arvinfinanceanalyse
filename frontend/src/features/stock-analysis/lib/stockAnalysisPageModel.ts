@@ -1,5 +1,7 @@
 import type {
+  LivermoreMarketGateState,
   LivermoreSignalConfluencePayload,
+  LivermoreStockCandidateItem,
   LivermoreStrategyPayload,
 } from "../../../api/contracts";
 
@@ -20,6 +22,51 @@ export type StockMarketStateCard = {
   conditions: StockMarketConditionRow[];
 };
 
+export type StockCandidatePattern = "突破" | "回踩" | "缩量盘整" | "待补";
+
+export type StockCandidateEvidenceBullet = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+export type StockCandidateEvidenceCard = {
+  rank: number;
+  stockCode: string;
+  stockName: string;
+  sectorCode: string;
+  sectorName: string;
+  headline: string;
+  /** UI 辅助归类，非正式结论 */
+  pattern: StockCandidatePattern;
+  patternNote: string;
+  distanceToBreakoutPct: string;
+  evidenceBullets: StockCandidateEvidenceBullet[];
+  /** @deprecated for tests — flattened narrative lines */
+  evidence: string[];
+  counterEvidence: string[];
+  invalidationRules: string[];
+  rawFields: { key: string; label: string; value: string }[];
+};
+
+export type StockRiskDistanceBucket =
+  | "triggered"
+  | "0-3%"
+  | "3-6%"
+  | ">6%"
+  | "待补";
+
+export type StockRiskExitRow = {
+  stockCode: string;
+  stockName: string;
+  status: "triggered" | "watch";
+  latestClose: string;
+  exitWatchPrice: string;
+  reason: string;
+  distanceToExitPct: string;
+  exitDistanceBucket: StockRiskDistanceBucket;
+};
+
 export type StockSectorRow = {
   rank: number;
   sectorCode: string;
@@ -29,26 +76,35 @@ export type StockSectorRow = {
   turnover: string;
   amplitude: string;
   constituentCount: number;
+  scoreValue: number | null;
+  pctChangeValue: number | null;
+  turnoverValue: number | null;
+  amplitudeValue: number | null;
+  /** 条形图宽度用，相对本批最高分归一（无业务语义） */
+  scoreNormalized: number;
+  pctChangeBar: number;
+  isTop: boolean;
+  isBottom: boolean;
 };
 
-export type StockCandidateEvidenceCard = {
-  rank: number;
-  stockCode: string;
-  stockName: string;
-  sectorName: string;
+export type StockSectorViewKind = "score" | "pctchange" | "turnover" | "amplitude";
+
+export type StockSectorViewRow = StockSectorRow & {
+  /** 当前视图用于水平条长度的 0–1 归一化 */
+  metricBarNormalized: number;
+};
+
+export type StockDailyJudgmentStrip = {
   headline: string;
-  evidence: string[];
-  counterEvidence: string[];
-  invalidationRules: string[];
+  gateChip: string;
+  exposureChip: string;
+  strongestSectorChip: string;
+  weakestSectorChip: string;
 };
 
-export type StockRiskExitRow = {
-  stockCode: string;
-  stockName: string;
-  status: "triggered" | "watch";
-  latestClose: string;
-  exitWatchPrice: string;
-  reason: string;
+export type StockMetaSegment = {
+  key: string;
+  text: string;
 };
 
 function formatNumber(value: number | null | undefined, digits = 2) {
@@ -86,6 +142,169 @@ function sortedCandidateItems(payload: LivermoreStrategyPayload) {
   return [...(payload.stock_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
 
+function deriveCandidatePattern(item: LivermoreStockCandidateItem): StockCandidatePattern {
+  const close = item.close;
+  const breakout = item.breakout_level;
+  if (close == null || breakout == null || !Number.isFinite(close) || !Number.isFinite(breakout)) {
+    return "待补";
+  }
+  const ratio = close / breakout;
+  const turnover = item.abnormal_turnover;
+  const gap = item.gap_norm;
+  const lowTurn =
+    turnover != null && Number.isFinite(turnover) ? turnover < 1.08 : false;
+  const tightGap =
+    gap != null && Number.isFinite(gap) ? Math.abs(gap) < 0.055 : false;
+  if (ratio > 1.0025) return "突破";
+  if (ratio < 0.985) return "回踩";
+  if (lowTurn && tightGap) return "缩量盘整";
+  return "缩量盘整";
+}
+
+function formatDistanceToBreakoutPct(item: LivermoreStockCandidateItem): string {
+  const close = item.close;
+  const breakout = item.breakout_level;
+  if (
+    close == null ||
+    breakout == null ||
+    !Number.isFinite(close) ||
+    !Number.isFinite(breakout) ||
+    breakout === 0
+  ) {
+    return "待补";
+  }
+  return `${(((close - breakout) / breakout) * 100).toFixed(2)}%`;
+}
+
+function mapGateStateToTone(state: LivermoreMarketGateState): "进攻" | "中性" | "防御" {
+  if (state === "HOT" || state === "WARM") return "进攻";
+  if (
+    state === "OVERHEAT" ||
+    state === "OFF" ||
+    state === "STALE" ||
+    state === "NO_DATA" ||
+    state === "PENDING_DATA"
+  ) {
+    return "防御";
+  }
+  return "中性";
+}
+
+function bucketExitDistance(params: {
+  status: "triggered" | "watch";
+  latest: number | null;
+  exit: number | null;
+}): { distanceToExitPct: string; exitDistanceBucket: StockRiskDistanceBucket } {
+  const { status, latest, exit } = params;
+  if (latest == null || exit == null || !Number.isFinite(latest) || !Number.isFinite(exit)) {
+    return { distanceToExitPct: "待补", exitDistanceBucket: "待补" };
+  }
+  if (exit === 0) {
+    return { distanceToExitPct: "待补", exitDistanceBucket: "待补" };
+  }
+  const pctRaw = ((latest - exit) / exit) * 100;
+  const pctLabel = `${pctRaw >= 0 ? "+" : ""}${pctRaw.toFixed(2)}%`;
+  if (status === "triggered") {
+    return {
+      distanceToExitPct: pctLabel,
+      exitDistanceBucket: "triggered",
+    };
+  }
+  const pct = pctRaw;
+  const bucket: StockRiskDistanceBucket =
+    pct <= 3 ? "0-3%" : pct <= 6 ? "3-6%" : ">6%";
+  return { distanceToExitPct: pctLabel, exitDistanceBucket: bucket };
+}
+
+function numericFromDisplay(formatted: string): number | null {
+  const n = Number.parseFloat(formatted);
+  return Number.isFinite(n) ? n : null;
+}
+
+function metricValueForView(row: StockSectorRow, view: StockSectorViewKind): number | null {
+  switch (view) {
+    case "score":
+      return row.scoreValue;
+    case "pctchange":
+      return row.pctChangeValue;
+    case "turnover":
+      return row.turnoverValue;
+    case "amplitude":
+      return row.amplitudeValue;
+    default:
+      return row.scoreValue;
+  }
+}
+
+export function buildDailyJudgmentStrip(payload: LivermoreStrategyPayload): StockDailyJudgmentStrip {
+  const gate = payload.market_gate;
+  const tone = mapGateStateToTone(gate.state);
+  const headline = `今日市场状态：${tone} — 通过 ${gate.passed_conditions} / ${gate.required_conditions} 条门控`;
+  const gateChip = `门控 ${gate.passed_conditions}/${gate.required_conditions}`;
+  const exposureChip = `暴露 ${formatRatioAsPercent(gate.exposure)}`;
+  const items = [...(payload.sector_rank?.items ?? [])].sort((a, b) => a.rank - b.rank);
+  const strongest = items[0];
+  const weakest = items.length ? items[items.length - 1] : undefined;
+  return {
+    headline,
+    gateChip,
+    exposureChip,
+    strongestSectorChip: strongest
+      ? `最强 ${strongest.sector_name} (${formatPercent(strongest.avg_pctchange)})`
+      : "最强板块：待补",
+    weakestSectorChip: weakest
+      ? `最弱 ${weakest.sector_name} (${formatPercent(weakest.avg_pctchange)})`
+      : "最弱板块：待补",
+  };
+}
+
+export function buildInlineMetaSegments(
+  payload: LivermoreStrategyPayload,
+  extras: Partial<{
+    quality_flag: string;
+    vendor_status: string;
+    source_version: string;
+    rule_version: string;
+  }>,
+): StockMetaSegment[] {
+  const out: StockMetaSegment[] = [
+    { key: "as_of", text: payload.as_of_date ?? "待补日期" },
+    { key: "source_version", text: extras.source_version ?? "待补" },
+    { key: "rule_version", text: extras.rule_version ?? "待补" },
+    { key: "quality_flag", text: extras.quality_flag ?? "待补" },
+    { key: "vendor_status", text: extras.vendor_status ?? "待补" },
+  ];
+  return out;
+}
+
+/** @deprecated Stage 1.5 — 已由 inline meta + Drawer 替代正文列表；保留给需要纯文本的诊断导出 */
+export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): string[] {
+  const notes = [`basis: ${payload.basis}`, `strategy: ${payload.strategy_name}`];
+  for (const diag of payload.diagnostics) {
+    notes.push(`${diag.severity} [${diag.code}]: ${diag.message}`);
+  }
+  if (payload.as_of_date) {
+    notes.push(`as_of_date: ${payload.as_of_date}`);
+  }
+  if (payload.sector_rank?.formula_version) {
+    notes.push(`sector_rank formula: ${payload.sector_rank.formula_version}`);
+  }
+  if (payload.stock_candidates?.formula_version) {
+    notes.push(`stock_candidates formula: ${payload.stock_candidates.formula_version}`);
+  }
+  if (payload.risk_exit?.formula_version) {
+    notes.push(`risk_exit formula: ${payload.risk_exit.formula_version}`);
+  }
+  for (const gap of payload.data_gaps) {
+    notes.push(`${gap.input_family} ${gap.status}: ${gap.evidence}`);
+  }
+  for (const output of payload.unsupported_outputs) {
+    notes.push(`${output.key} unsupported: ${output.reason}`);
+  }
+  notes.push(`supported_outputs: ${payload.supported_outputs.join(", ") || "none"}`);
+  return notes;
+}
+
 export function buildMarketStateCard(
   payload: LivermoreStrategyPayload,
 ): StockMarketStateCard {
@@ -116,47 +335,213 @@ export function buildMarketStateCard(
 }
 
 export function buildSectorRows(payload: LivermoreStrategyPayload): StockSectorRow[] {
-  return [...(payload.sector_rank?.items ?? [])]
-    .sort((left, right) => left.rank - right.rank)
-    .map((item) => ({
+  const items = [...(payload.sector_rank?.items ?? [])].sort((left, right) => left.rank - right.rank);
+  const n = items.length;
+  const scores = items
+    .map((i) => i.score)
+    .filter((s): s is number => s != null && Number.isFinite(s));
+  const maxScore = scores.length ? Math.max(...scores) : 0;
+  const pctAbs = items
+    .map((i) => (i.avg_pctchange != null && Number.isFinite(i.avg_pctchange) ? Math.abs(i.avg_pctchange) : 0))
+    .filter(Boolean);
+  const maxPctAbs = pctAbs.length ? Math.max(...pctAbs) : 0;
+
+  return items.map((item) => {
+    const scoreNum = item.score;
+    const scoreVal = scoreNum != null && Number.isFinite(scoreNum) ? scoreNum : null;
+    const scoreNormalized =
+      maxScore > 0 && scoreVal != null ? Math.min(1, Math.max(0, scoreVal / maxScore)) : 0;
+
+    const pctRaw = item.avg_pctchange;
+    const pctVal = pctRaw != null && Number.isFinite(pctRaw) ? pctRaw : null;
+
+    let pctBar = 0;
+    if (pctVal != null) {
+      if (maxPctAbs > 0) {
+        pctBar = (Math.abs(pctVal) / maxPctAbs) * 100;
+      } else if (pctVal !== 0) {
+        pctBar = 50;
+      }
+    }
+
+    return {
       rank: item.rank,
       sectorCode: item.sector_code,
       sectorName: item.sector_name,
-      score: formatNumber(item.score, 3),
-      pctChange: formatPercent(item.avg_pctchange),
-      turnover: formatNumber(item.avg_turn),
+      score: formatNumber(scoreVal, 3),
+      pctChange: formatPercent(pctVal ?? undefined),
+      turnover: formatNumber(item.avg_turn, 2),
       amplitude: formatPercent(item.avg_amplitude),
       constituentCount: item.constituent_count,
-    }));
+      scoreValue: scoreVal,
+      pctChangeValue: pctVal,
+      turnoverValue: item.avg_turn != null && Number.isFinite(item.avg_turn) ? item.avg_turn : null,
+      amplitudeValue:
+        item.avg_amplitude != null && Number.isFinite(item.avg_amplitude) ? item.avg_amplitude : null,
+      scoreNormalized,
+      pctChangeBar: pctBar,
+      isTop: n > 0 && item.rank <= 5,
+      isBottom: n > 0 && item.rank >= n - 4,
+    };
+  });
+}
+
+export function buildSectorViewModel(
+  payload: LivermoreStrategyPayload,
+  view: StockSectorViewKind,
+): StockSectorViewRow[] {
+  const rows = buildSectorRows(payload);
+  const sorted = [...rows].sort((a, b) => {
+    const av = metricValueForView(a, view);
+    const bv = metricValueForView(b, view);
+    if (av == null && bv == null) return a.rank - b.rank;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (bv !== av) return bv - av;
+    return a.rank - b.rank;
+  });
+  const values = sorted
+    .map((r) => metricValueForView(r, view))
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  let maxMag = values.length ? Math.max(...values.map((v) => Math.abs(v))) : 0;
+  if (!(maxMag > 0)) maxMag = 1;
+  return sorted.map((row) => {
+    const v = metricValueForView(row, view);
+    let metricBarNormalized = 0;
+    if (v != null && Number.isFinite(v)) {
+      metricBarNormalized = Math.min(1, Math.max(0, Math.abs(v) / maxMag));
+    }
+    return {
+      ...row,
+      metricBarNormalized,
+    };
+  });
+}
+
+export function buildSectorTableSortComparator(
+  key: keyof StockSectorRow | "code" | "name",
+  order: "ascend" | "descend",
+) {
+  return (a: StockSectorRow, b: StockSectorRow) => {
+    const sign = order === "ascend" ? 1 : -1;
+    const num = (
+      ai: StockSectorRow,
+      bi: StockSectorRow,
+      pick: (r: StockSectorRow) => number | null | undefined,
+    ) => {
+      const av = pick(ai);
+      const bv = pick(bi);
+      if ((av == null || !Number.isFinite(av)) && (bv == null || !Number.isFinite(bv))) return 0;
+      if (av == null || !Number.isFinite(av)) return 1;
+      if (bv == null || !Number.isFinite(bv)) return -1;
+      if (av === bv) return 0;
+      return av > bv ? sign : -sign;
+    };
+
+    switch (key) {
+      case "rank":
+        return num(a, b, (r) => r.rank);
+      case "sectorCode":
+        return sign * a.sectorCode.localeCompare(b.sectorCode, "zh-Hans-CN");
+      case "sectorName":
+      case "name":
+        return sign * a.sectorName.localeCompare(b.sectorName, "zh-Hans-CN");
+      case "score":
+        return num(a, b, (r) => r.scoreValue ?? numericFromDisplay(r.score));
+      case "pctChange":
+      case "pctchange":
+        return num(a, b, (r) => r.pctChangeValue ?? Number.NaN);
+      case "turnover":
+        return num(a, b, (r) => r.turnoverValue ?? numericFromDisplay(r.turnover));
+      case "amplitude":
+        return num(a, b, (r) => r.amplitudeValue ?? Number.NaN);
+      case "constituentCount":
+        return num(a, b, (r) => r.constituentCount);
+      default:
+        return a.rank - b.rank;
+    }
+  };
 }
 
 export function buildCandidateEvidenceCards(
   payload: LivermoreStrategyPayload,
 ): StockCandidateEvidenceCard[] {
-  return sortedCandidateItems(payload).map((item) => ({
-    rank: item.rank,
-    stockCode: item.stock_code,
-    stockName: item.stock_name,
-    sectorName: item.sector_name,
-    headline: `观察候选 #${item.rank} · ${item.stock_name}`,
-    evidence: [
-      `行业排名第 ${item.sector_rank}：${item.sector_name}`,
-      `收盘价 ${formatNumber(item.close)}，突破观察位 ${formatNumber(item.breakout_level)}。`,
-      `均线结构：MA20 ${formatNumber(item.ma20)} / MA60 ${formatNumber(item.ma60)} / MA120 ${formatNumber(item.ma120)}。`,
-      `收盘强度 ${formatRatioAsPercent(item.close_strength, 2)}，换手放大观察值 ${formatNumber(item.abnormal_turnover, 3)}。`,
-      `10EMA 失效观察：当前 10EMA ${formatNumber(item.ema10)}，用于复核是否降级观察。`,
-    ],
-    counterEvidence: [
-      "基本面与估值证据未接入，不参与当前候选排序。",
-      "新闻、公告、财报事件尚未进入候选卡。",
-      "ATR、真实盘中成交顺序和精确涨跌停状态未在当前只读卡片中完整验证。",
-    ],
-    invalidationRules: [
-      `收盘跌破 10EMA ${formatNumber(item.ema10)} 或突破观察位 ${formatNumber(item.breakout_level)} 后需要降级复核。`,
-      "所属行业强度跌出前列需要重新复核。",
-      "涨跌停状态、停牌状态或数据质量为 stale / missing 时，不得继续解释为有效观察。",
-    ],
-  }));
+  return sortedCandidateItems(payload).map((item) => {
+    const pattern = deriveCandidatePattern(item);
+    const patternNote = "UI 辅助归类标签，不构成正式结论";
+    const distanceToBreakoutPct = formatDistanceToBreakoutPct(item);
+
+    const evidenceBullets: StockCandidateEvidenceBullet[] = [
+      {
+        key: "sector_rank",
+        label: "行业排名",
+        value: `行业排名第 ${item.sector_rank}：${item.sector_name}`,
+      },
+      {
+        key: "close_vs_break",
+        label: "收盘 vs 观察位",
+        value: `收盘价 ${formatNumber(item.close)} · 观察位 ${formatNumber(item.breakout_level)}`,
+      },
+      {
+        key: "ma_curve",
+        label: "均线结构",
+        value: `MA20 ${formatNumber(item.ma20)} · MA60 ${formatNumber(item.ma60)} · MA120 ${formatNumber(item.ma120)}`,
+      },
+      {
+        key: "strength_turnover",
+        label: "强度 / 换手观察",
+        value: `收盘强度 ${formatRatioAsPercent(item.close_strength, 2)} · 换手观察值 ${formatNumber(item.abnormal_turnover, 3)}`,
+      },
+      {
+        key: "gap_norm",
+        label: "跳空归一观察",
+        value:
+          item.gap_norm != null && Number.isFinite(item.gap_norm)
+            ? `${item.gap_norm.toFixed(4)}`
+            : "待补",
+      },
+      {
+        key: "ema10_watch",
+        label: "10EMA 失效观察",
+        value: `当前 10EMA ${formatNumber(item.ema10)}，用于复核是否降级观察。`,
+      },
+    ];
+
+    const evidence = evidenceBullets.map((bullet) => `${bullet.label}：${bullet.value}`);
+
+    return {
+      rank: item.rank,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorCode: item.sector_code,
+      sectorName: item.sector_name,
+      headline: `观察候选 #${item.rank} · ${item.stock_name}`,
+      pattern,
+      patternNote,
+      distanceToBreakoutPct,
+      evidenceBullets,
+      evidence,
+      counterEvidence: [
+        "基本面与估值证据未接入，不参与当前候选排序。",
+        "新闻、公告、财报事件尚未进入候选卡。",
+        "ATR、真实盘中成交顺序和精确涨跌停状态未在当前只读卡片中完整验证。",
+      ],
+      invalidationRules: [
+        `收盘跌破 10EMA ${formatNumber(item.ema10)} 或突破观察位 ${formatNumber(item.breakout_level)} 后需要降级复核。`,
+        "所属行业强度跌出前列需要重新复核。",
+        "涨跌停状态、停牌状态或数据质量为 stale / missing 时，不得继续解释为有效观察。",
+      ],
+      rawFields: [
+        { key: "ema10", label: "ema10", value: formatNumber(item.ema10) },
+        { key: "ma20", label: "ma20", value: formatNumber(item.ma20) },
+        { key: "ma60", label: "ma60", value: formatNumber(item.ma60) },
+        { key: "ma120", label: "ma120", value: formatNumber(item.ma120) },
+        { key: "abnormal_turnover", label: "abnormal_turnover", value: formatNumber(item.abnormal_turnover, 4) },
+        { key: "gap_norm", label: "gap_norm", value: item.gap_norm != null ? String(item.gap_norm) : "待补" },
+        { key: "close_strength", label: "close_strength", value: formatNumber(item.close_strength, 4) },
+      ],
+    };
+  });
 }
 
 export function buildRiskExitRows(
@@ -169,13 +554,24 @@ export function buildRiskExitRows(
   for (const item of payload.risk_exit?.items ?? []) {
     const key = `${item.stock_code}:triggered`;
     seen.add(key);
+    const exit = item.latest_ema10;
+    const latest = item.latest_close;
+    const parsedExit = exit;
+    const parsedLatest = latest;
+    const { distanceToExitPct, exitDistanceBucket } = bucketExitDistance({
+      status: "triggered",
+      latest: parsedLatest,
+      exit: parsedExit,
+    });
     rows.push({
       stockCode: item.stock_code,
       stockName: item.stock_name,
       status: "triggered",
-      latestClose: formatNumber(item.latest_close),
-      exitWatchPrice: formatNumber(item.latest_ema10),
+      latestClose: formatNumber(parsedLatest),
+      exitWatchPrice: formatNumber(parsedExit),
       reason: `触发复核：${item.reason}`,
+      distanceToExitPct,
+      exitDistanceBucket,
     });
   }
 
@@ -186,13 +582,25 @@ export function buildRiskExitRows(
       continue;
     }
     seen.add(key);
+    const latest = item.latest_close;
+    const exit =
+      status === "triggered"
+        ? (item.exit_watch_price ?? item.latest_ema10)
+        : item.exit_watch_price;
+    const { distanceToExitPct, exitDistanceBucket } = bucketExitDistance({
+      status,
+      latest,
+      exit: exit ?? null,
+    });
     rows.push({
       stockCode: item.stock_code,
       stockName: item.stock_name,
       status,
-      latestClose: formatNumber(item.latest_close),
-      exitWatchPrice: formatNumber(item.exit_watch_price),
+      latestClose: formatNumber(latest),
+      exitWatchPrice: formatNumber(exit ?? undefined),
       reason: status === "triggered" ? "触发复核：跌破退出观察价" : "观察中：接近退出观察价",
+      distanceToExitPct,
+      exitDistanceBucket,
     });
   }
 
@@ -206,49 +614,26 @@ export function buildRiskExitRows(
       continue;
     }
     seen.add(key);
+    const latest = item.current_price;
+    const exit = item.exit_watch_price ?? null;
+    const { distanceToExitPct, exitDistanceBucket } = bucketExitDistance({
+      status,
+      latest: latest ?? null,
+      exit,
+    });
     rows.push({
       stockCode: item.stock_code,
       stockName: item.stock_name ?? item.stock_code,
       status,
-      latestClose: formatNumber(item.current_price),
-      exitWatchPrice: formatNumber(item.exit_watch_price),
+      latestClose: formatNumber(latest),
+      exitWatchPrice: formatNumber(exit ?? undefined),
       reason:
         normalizeEvidence(item.evidence)[0] ??
         (status === "triggered" ? "触发复核：联动观察命中" : "观察中：联动观察"),
+      distanceToExitPct,
+      exitDistanceBucket,
     });
   }
 
   return rows;
-}
-
-export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): string[] {
-  const notes = [
-    `basis: ${payload.basis}`,
-    `strategy: ${payload.strategy_name}`,
-  ];
-  for (const diag of payload.diagnostics) {
-    notes.push(`${diag.severity} [${diag.code}]: ${diag.message}`);
-  }
-
-  if (payload.as_of_date) {
-    notes.push(`as_of_date: ${payload.as_of_date}`);
-  }
-  if (payload.sector_rank?.formula_version) {
-    notes.push(`sector_rank formula: ${payload.sector_rank.formula_version}`);
-  }
-  if (payload.stock_candidates?.formula_version) {
-    notes.push(`stock_candidates formula: ${payload.stock_candidates.formula_version}`);
-  }
-  if (payload.risk_exit?.formula_version) {
-    notes.push(`risk_exit formula: ${payload.risk_exit.formula_version}`);
-  }
-  for (const gap of payload.data_gaps) {
-    notes.push(`${gap.input_family} ${gap.status}: ${gap.evidence}`);
-  }
-  for (const output of payload.unsupported_outputs) {
-    notes.push(`${output.key} unsupported: ${output.reason}`);
-  }
-  notes.push(`supported_outputs: ${payload.supported_outputs.join(", ") || "none"}`);
-
-  return notes;
 }
