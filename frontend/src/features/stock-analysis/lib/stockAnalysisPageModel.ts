@@ -82,6 +82,10 @@ function normalizeEvidence(evidence: string[] | string | null | undefined): stri
   return [];
 }
 
+function sortedCandidateItems(payload: LivermoreStrategyPayload) {
+  return [...(payload.stock_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
+}
+
 export function buildMarketStateCard(
   payload: LivermoreStrategyPayload,
 ): StockMarketStateCard {
@@ -99,7 +103,7 @@ export function buildMarketStateCard(
     title: "市场状态",
     state: gate.state,
     exposureLabel: formatRatioAsPercent(gate.exposure),
-    passedLabel: `${gate.passed_conditions} / ${gate.required_conditions} 条条件通过`,
+    passedLabel: `${gate.passed_conditions} / ${gate.required_conditions} 条件通过`,
     basisLabel: `basis: ${payload.basis}`,
     warnings,
     conditions: gate.conditions.map((condition) => ({
@@ -129,31 +133,30 @@ export function buildSectorRows(payload: LivermoreStrategyPayload): StockSectorR
 export function buildCandidateEvidenceCards(
   payload: LivermoreStrategyPayload,
 ): StockCandidateEvidenceCard[] {
-  return [...(payload.stock_candidates?.items ?? [])]
-    .sort((left, right) => left.rank - right.rank)
-    .map((item) => ({
-      rank: item.rank,
-      stockCode: item.stock_code,
-      stockName: item.stock_name,
-      sectorName: item.sector_name,
-      headline: `观察候选 #${item.rank} · ${item.stock_name}`,
-      evidence: [
-        `行业排名第 ${item.sector_rank}：${item.sector_name}`,
-        `收盘价 ${formatNumber(item.close)}，突破观察位 ${formatNumber(item.breakout_level)}。`,
-        `均线结构：MA20 ${formatNumber(item.ma20)} / MA60 ${formatNumber(item.ma60)} / MA120 ${formatNumber(item.ma120)}。`,
-        `收盘强度 ${formatRatioAsPercent(item.close_strength, 2)}。`,
-        `换手放大观察值 ${formatNumber(item.abnormal_turnover, 3)}。`,
-      ],
-      counterEvidence: [
-        "基本面与估值证据未接入，不参与当前候选排序。",
-        "新闻、公告、财报事件尚未进入候选卡。",
-      ],
-      invalidationRules: [
-        `收盘跌破 10EMA ${formatNumber(item.ema10)} 或突破位 ${formatNumber(item.breakout_level)} 后需降级复核。`,
-        "所属行业强度跌出前列需重新复核。",
-        "数据质量为 stale / missing 时不得继续解释为有效观察。",
-      ],
-    }));
+  return sortedCandidateItems(payload).map((item) => ({
+    rank: item.rank,
+    stockCode: item.stock_code,
+    stockName: item.stock_name,
+    sectorName: item.sector_name,
+    headline: `观察候选 #${item.rank} · ${item.stock_name}`,
+    evidence: [
+      `行业排名第 ${item.sector_rank}：${item.sector_name}`,
+      `收盘价 ${formatNumber(item.close)}，突破观察位 ${formatNumber(item.breakout_level)}。`,
+      `均线结构：MA20 ${formatNumber(item.ma20)} / MA60 ${formatNumber(item.ma60)} / MA120 ${formatNumber(item.ma120)}。`,
+      `收盘强度 ${formatRatioAsPercent(item.close_strength, 2)}，换手放大观察值 ${formatNumber(item.abnormal_turnover, 3)}。`,
+      `10EMA 失效观察：当前 10EMA ${formatNumber(item.ema10)}，用于复核是否降级观察。`,
+    ],
+    counterEvidence: [
+      "基本面与估值证据未接入，不参与当前候选排序。",
+      "新闻、公告、财报事件尚未进入候选卡。",
+      "ATR、真实盘中成交顺序和精确涨跌停状态未在当前只读卡片中完整验证。",
+    ],
+    invalidationRules: [
+      `收盘跌破 10EMA ${formatNumber(item.ema10)} 或突破观察位 ${formatNumber(item.breakout_level)} 后需要降级复核。`,
+      "所属行业强度跌出前列需要重新复核。",
+      "涨跌停状态、停牌状态或数据质量为 stale / missing 时，不得继续解释为有效观察。",
+    ],
+  }));
 }
 
 export function buildRiskExitRows(
@@ -223,6 +226,9 @@ export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): strin
     `basis: ${payload.basis}`,
     `strategy: ${payload.strategy_name}`,
   ];
+  for (const diag of payload.diagnostics) {
+    notes.push(`${diag.severity} [${diag.code}]: ${diag.message}`);
+  }
 
   if (payload.as_of_date) {
     notes.push(`as_of_date: ${payload.as_of_date}`);

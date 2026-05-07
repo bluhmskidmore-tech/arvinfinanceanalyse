@@ -167,7 +167,7 @@ const confluencePayload: LivermoreSignalConfluencePayload = {
       current_price: 19.8,
       exit_watch_price: 20.1,
       triggered: false,
-      evidence: ["退出观察价来自 Livermore EMA10。"],
+      evidence: ["风险观察价来自 Livermore EMA10。"],
     },
   ],
   diagnostics: [],
@@ -182,7 +182,7 @@ describe("stockAnalysisPageModel", () => {
     expect(card.title).toBe("市场状态");
     expect(card.state).toBe("WARM");
     expect(card.exposureLabel).toBe("40%");
-    expect(card.passedLabel).toBe("2 / 4 条条件通过");
+    expect(card.passedLabel).toBe("2 / 4 条件通过");
     expect(card.warnings.join(" ")).toContain("Breadth inputs are unavailable");
     expect(sectors[0].sectorName).toBe("AI");
     expect(sectors[0].pctChange).toBe("4.80%");
@@ -195,9 +195,11 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].headline).toContain("观察候选");
     expect(cards[0].evidence.join(" ")).toContain("行业排名第 1");
     expect(cards[0].evidence.join(" ")).toContain("收盘价 21.90");
+    expect(cards[0].evidence.join(" ")).toContain("10EMA 失效观察");
     expect(cards[0].counterEvidence.join(" ")).toContain("基本面与估值证据未接入");
     expect(cards[0].counterEvidence.join(" ")).toContain("新闻、公告、财报事件尚未进入候选卡");
     expect(cards[0].invalidationRules.join(" ")).toContain("10EMA");
+    expect(cards[0].invalidationRules.join(" ")).toContain("涨跌停状态");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
@@ -225,6 +227,7 @@ describe("stockAnalysisPageModel", () => {
 
     expect(notes.join(" ")).toContain("basis: analytical");
     expect(notes.join(" ")).toContain("breadth missing");
+    expect(notes.join(" ")).toContain("LIVERMORE_BREADTH_MISSING");
     expect(notes.join(" ")).toContain("rv_livermore_sector_rank_provisional_v1");
   });
 });

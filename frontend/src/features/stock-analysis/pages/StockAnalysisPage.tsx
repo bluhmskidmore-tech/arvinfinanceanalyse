@@ -73,6 +73,9 @@ export default function StockAnalysisPage() {
     () => (strategyPayload ? buildDataBoundaryNotes(strategyPayload) : []),
     [strategyPayload],
   );
+  const riskExitUnsupported = strategyPayload?.unsupported_outputs.find(
+    (output) => output.key === "risk_exit",
+  );
 
   return (
     <main className="stock-analysis-page" data-testid="stock-analysis-page">
@@ -82,7 +85,8 @@ export default function StockAnalysisPage() {
           <div>
             <h1>股票分析</h1>
             <p>
-              复用 Livermore 与 Choice 股票只读链路，展示市场状态、行业强弱、候选股证据和风险观察；仅供研究复核，不构成交易指令。
+              复用 Livermore 与 Choice 股票只读链路，展示市场状态、行业强弱、候选股证据和风险观察；
+              仅供研究复核，不构成交易指令。
             </p>
           </div>
           <div className="stock-analysis-page__badge">仅观察 / 复核 / 研究</div>
@@ -104,7 +108,7 @@ export default function StockAnalysisPage() {
 
       {marketState ? (
         <>
-          <section className="stock-analysis-page__panel">
+          <section className="stock-analysis-page__panel stock-analysis-page__overview-panel">
             <div className="stock-analysis-page__section-head">
               <div>
                 <h2>{marketState.title}</h2>
@@ -142,7 +146,7 @@ export default function StockAnalysisPage() {
                 </ul>
               </div>
               <div>
-                <h3>需关注边界</h3>
+                <h3>需要关注边界</h3>
                 {marketState.warnings.length > 0 ? (
                   <ul className="stock-analysis-page__notes">
                     {marketState.warnings.map((warning) => (
@@ -156,192 +160,207 @@ export default function StockAnalysisPage() {
             </div>
           </section>
 
-          <section className="stock-analysis-page__panel">
-            <div className="stock-analysis-page__section-head">
-              <div>
-                <h2>行业强弱</h2>
-                <p>来自 Livermore sector_rank，仅显示后端已提供的观察排序。</p>
-              </div>
-              <span className="stock-analysis-page__pill">
-                {strategyPayload?.sector_rank?.formula_version ?? "formula 待补"}
-              </span>
-            </div>
-            {sectorRows.length > 0 ? (
-              <div className="stock-analysis-page__table-wrap">
-                <table className="stock-analysis-page__table">
-                  <thead>
-                    <tr>
-                      <th>排名</th>
-                      <th>行业</th>
-                      <th>分数</th>
-                      <th>涨跌幅</th>
-                      <th>换手</th>
-                      <th>振幅</th>
-                      <th>成分数</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sectorRows.map((row) => (
-                      <tr key={row.sectorCode}>
-                        <td>#{row.rank}</td>
-                        <td>
-                          {row.sectorName}
-                          <small>{row.sectorCode}</small>
-                        </td>
-                        <td>{row.score}</td>
-                        <td>{row.pctChange}</td>
-                        <td>{row.turnover}</td>
-                        <td>{row.amplitude}</td>
-                        <td>{row.constituentCount}</td>
-                      </tr>
+          <div className="stock-analysis-page__workspace">
+            <div className="stock-analysis-page__primary">
+              <section className="stock-analysis-page__panel stock-analysis-page__panel--compact">
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>行业强弱</h2>
+                    <p>来自 Livermore sector_rank，仅展示后端已提供的观察排序。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">
+                    {strategyPayload?.sector_rank?.formula_version ?? "formula 待补"}
+                  </span>
+                </div>
+                {sectorRows.length > 0 ? (
+                  <div className="stock-analysis-page__table-wrap">
+                    <table className="stock-analysis-page__table">
+                      <thead>
+                        <tr>
+                          <th>排名</th>
+                          <th>行业</th>
+                          <th>分数</th>
+                          <th>涨跌幅</th>
+                          <th>换手</th>
+                          <th>振幅</th>
+                          <th>成分数</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sectorRows.map((row) => (
+                          <tr key={row.sectorCode}>
+                            <td>#{row.rank}</td>
+                            <td>
+                              {row.sectorName}
+                              <small>{row.sectorCode}</small>
+                            </td>
+                            <td>{row.score}</td>
+                            <td>{row.pctChange}</td>
+                            <td>{row.turnover}</td>
+                            <td>{row.amplitude}</td>
+                            <td>{row.constituentCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="stock-analysis-page__empty">
+                    当前行业强弱不可用，请检查 Choice 股票目录和当日股票落地覆盖。
+                  </p>
+                )}
+              </section>
+
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
+                data-testid="stock-analysis-candidates-section"
+              >
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>候选股证据卡</h2>
+                    <p>说明为什么进入观察、反证与待补证据，以及失效条件。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">候选 / 复核</span>
+                </div>
+                {candidateCards.length > 0 ? (
+                  <div className="stock-analysis-page__candidate-grid">
+                    {candidateCards.map((card) => (
+                      <article
+                        className="stock-analysis-page__candidate"
+                        data-testid={`stock-candidate-${card.stockCode}`}
+                        key={card.stockCode}
+                      >
+                        <div className="stock-analysis-page__candidate-head">
+                          <div>
+                            <h3>{card.headline}</h3>
+                            <p>
+                              {card.stockCode} · {card.stockName} · {card.sectorName}
+                            </p>
+                          </div>
+                          <span>观察</span>
+                        </div>
+                        <div className="stock-analysis-page__evidence-columns">
+                          <div>
+                            <h4>入选证据</h4>
+                            <ul>
+                              {card.evidence.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4>反证 / 待补证据</h4>
+                            <ul>
+                              {card.counterEvidence.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4>失效条件</h4>
+                            <ul>
+                              {card.invalidationRules.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </article>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="stock-analysis-page__empty">
-                当前行业强弱不可用，请检查 Choice 股票目录和当日股票落地覆盖。
-              </p>
-            )}
-          </section>
-
-          <section
-            className="stock-analysis-page__panel"
-            data-testid="stock-analysis-candidates-section"
-          >
-            <div className="stock-analysis-page__section-head">
-              <div>
-                <h2>候选股证据卡</h2>
-                <p>说明为什么进入观察、反证与待补证据，以及失效条件。</p>
-              </div>
-              <span className="stock-analysis-page__pill">候选 / 复核</span>
+                  </div>
+                ) : (
+                  <p className="stock-analysis-page__empty">当前无候选股证据卡。</p>
+                )}
+              </section>
             </div>
-            {candidateCards.length > 0 ? (
-              <div className="stock-analysis-page__candidate-grid">
-                {candidateCards.map((card) => (
-                  <article
-                    className="stock-analysis-page__candidate"
-                    data-testid={`stock-candidate-${card.stockCode}`}
-                    key={card.stockCode}
-                  >
-                    <div className="stock-analysis-page__candidate-head">
-                      <div>
-                        <h3>{card.headline}</h3>
-                        <p>
-                          {card.stockCode} · {card.stockName} · {card.sectorName}
-                        </p>
-                      </div>
-                      <span>观察</span>
-                    </div>
-                    <h4>入选证据</h4>
-                    <ul>
-                      {card.evidence.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                    <h4>反证 / 待补证据</h4>
-                    <ul>
-                      {card.counterEvidence.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                    <h4>失效条件</h4>
-                    <ul>
-                      {card.invalidationRules.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="stock-analysis-page__empty">当前无候选股证据卡。</p>
-            )}
-          </section>
 
-          <section className="stock-analysis-page__panel">
-            <div className="stock-analysis-page__section-head">
-              <div>
-                <h2>风险退出观察</h2>
-                <p>展示风险退出项、观察项与可用的联动观察，不使用交易动作标签。</p>
-              </div>
-              <span className="stock-analysis-page__pill">退出观察价</span>
-            </div>
-            {confluenceQuery.isError ? (
-              <p className="stock-analysis-page__notice">联动观察暂不可用。</p>
-            ) : null}
-            {riskRows.length > 0 ? (
-              <div className="stock-analysis-page__table-wrap">
-                <table className="stock-analysis-page__table">
-                  <thead>
-                    <tr>
-                      <th>股票</th>
-                      <th>状态</th>
-                      <th>最新收盘</th>
-                      <th>退出观察价</th>
-                      <th>原因</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+            <aside className="stock-analysis-page__rail" aria-label="股票分析辅助信息">
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--rail"
+                data-testid="stock-analysis-risk-section"
+              >
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>风险退出观察</h2>
+                    <p>展示风险退出项、观察项与可用的联动观察，不使用交易动作标签。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">退出观察价</span>
+                </div>
+                {confluenceQuery.isError ? (
+                  <p className="stock-analysis-page__notice">联动观察暂不可用。</p>
+                ) : null}
+                {riskExitUnsupported ? (
+                  <div className="stock-analysis-page__notice-block">
+                    <strong>风险退出观察暂不可用。</strong>
+                    <p>{riskExitUnsupported.reason}</p>
+                  </div>
+                ) : null}
+                {riskRows.length > 0 ? (
+                  <div className="stock-analysis-page__rail-list">
                     {riskRows.map((row) => (
-                      <tr key={`${row.stockCode}:${row.status}:${row.reason}`}>
-                        <td>
-                          {row.stockName}
+                      <div className="stock-analysis-page__rail-row" key={`${row.stockCode}:${row.status}:${row.reason}`}>
+                        <div>
+                          <strong>{row.stockName}</strong>
                           <small>{row.stockCode}</small>
-                        </td>
-                        <td>{riskStatusLabel(row.status)}</td>
-                        <td>{row.latestClose}</td>
-                        <td>{row.exitWatchPrice}</td>
-                        <td>{row.reason}</td>
-                      </tr>
+                        </div>
+                        <span>{riskStatusLabel(row.status)}</span>
+                        <p>
+                          最新收盘 {row.latestClose} · 退出观察价 {row.exitWatchPrice}
+                        </p>
+                        <p>{row.reason}</p>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="stock-analysis-page__empty">当前无风险退出观察项。</p>
-            )}
-          </section>
+                  </div>
+                ) : (
+                  <p className="stock-analysis-page__empty">
+                    {riskExitUnsupported
+                      ? "等待持仓快照接入后生成风险退出观察项。"
+                      : "当前无风险退出观察项。"}
+                  </p>
+                )}
+              </section>
 
-          <section className="stock-analysis-page__panel stock-analysis-page__panel--pending">
-            <div className="stock-analysis-page__section-head">
-              <div>
-                <h2>银行股专题待补证据</h2>
-                <p>不伪造银行股基本面数据，只保留后续接入字段入口。</p>
-              </div>
-              <span className="stock-analysis-page__pill">待补</span>
-            </div>
-            <p>
-              PB / ROE / 分红率 / NIM / 不良率 / 拨备覆盖率 / 资本充足率 / 金融市场业务收益敏感性。
-              当前仅展示待补字段，不参与候选排序；后续接入正式或可追溯数据后再进入证据卡。
-            </p>
-          </section>
+              <section className="stock-analysis-page__panel stock-analysis-page__panel--pending stock-analysis-page__panel--rail">
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>银行股专题待补证据</h2>
+                    <p>不伪造银行股基本面数据，只保留后续接入字段入口。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">待补</span>
+                </div>
+                <p>
+                  PB / ROE / 分红率 / NIM / 不良率 / 拨备覆盖率 / 资本充足率 /
+                  金融市场业务收益敏感性。当前仅展示待补字段，不参与候选排序；后续接入正式或可追溯数据后再进入证据卡。
+                </p>
+              </section>
 
-          <section className="stock-analysis-page__panel">
-            <div className="stock-analysis-page__section-head">
-              <div>
-                <h2>数据口径与边界</h2>
-                <p>保留来源、规则版本、缺口、支持输出与不支持输出的审计线索。</p>
-              </div>
-              <span className="stock-analysis-page__pill">只读链路</span>
-            </div>
-            <ul className="stock-analysis-page__notes">
-              {boundaryNotes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-            {strategyQuery.data?.result_meta ? (
-              <div className="stock-analysis-page__meta-grid">
-                <span>quality_flag: {strategyQuery.data.result_meta.quality_flag}</span>
-                <span>vendor_status: {strategyQuery.data.result_meta.vendor_status}</span>
-                <span>source_version: {strategyQuery.data.result_meta.source_version}</span>
-                <span>rule_version: {strategyQuery.data.result_meta.rule_version}</span>
-                <span>
-                  tables_used: {strategyQuery.data.result_meta.tables_used?.join(", ") || "待补"}
-                </span>
-              </div>
-            ) : null}
-          </section>
+              <section className="stock-analysis-page__panel stock-analysis-page__panel--rail">
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>数据口径与边界</h2>
+                    <p>保留来源、规则版本、缺口、支持输出与不支持输出的审计线索。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">只读链路</span>
+                </div>
+                <ul className="stock-analysis-page__notes">
+                  {boundaryNotes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+                {strategyQuery.data?.result_meta ? (
+                  <div className="stock-analysis-page__meta-grid">
+                    <span>quality_flag: {strategyQuery.data.result_meta.quality_flag}</span>
+                    <span>vendor_status: {strategyQuery.data.result_meta.vendor_status}</span>
+                    <span>source_version: {strategyQuery.data.result_meta.source_version}</span>
+                    <span>rule_version: {strategyQuery.data.result_meta.rule_version}</span>
+                    <span>
+                      tables_used: {strategyQuery.data.result_meta.tables_used?.join(", ") || "待补"}
+                    </span>
+                  </div>
+                ) : null}
+              </section>
+            </aside>
+          </div>
         </>
       ) : null}
     </main>

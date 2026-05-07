@@ -171,7 +171,7 @@ function buildConfluencePayload(): LivermoreSignalConfluencePayload {
         current_price: 19.8,
         exit_watch_price: 20.1,
         triggered: false,
-        evidence: ["退出观察价来自 Livermore EMA10。"],
+        evidence: ["风险观察价来自 Livermore EMA10。"],
       },
     ],
     diagnostics: [],
@@ -217,7 +217,7 @@ function stockClient(options?: {
 }
 
 describe("StockAnalysisPage", () => {
-  it("renders the five core sections and candidate evidence", async () => {
+  it("renders core sections and candidate evidence", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
@@ -231,6 +231,7 @@ describe("StockAnalysisPage", () => {
     const candidate = screen.getByTestId("stock-candidate-000001.SZ");
     expect(candidate).toHaveTextContent("Alpha");
     expect(candidate).toHaveTextContent("行业排名第 1");
+    expect(candidate).toHaveTextContent("10EMA 失效观察");
     expect(candidate).toHaveTextContent("基本面与估值证据未接入");
     expect(candidate).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
     expect(candidate).toHaveTextContent("10EMA");
@@ -266,6 +267,29 @@ describe("StockAnalysisPage", () => {
 
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
     expect(await screen.findByText("联动观察暂不可用。")).toBeInTheDocument();
+  });
+
+  it("shows the risk exit blocker when the strategy marks risk_exit unsupported", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+          unsupported_outputs: [
+            {
+              key: "risk_exit",
+              reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+            },
+          ],
+          risk_exit: undefined,
+        }),
+      }),
+    });
+
+    const section = await screen.findByTestId("stock-analysis-risk-section");
+    expect(within(section).getByText("风险退出观察暂不可用。")).toBeInTheDocument();
+    expect(
+      within(section).getByText("livermore_position_snapshot has no ACTIVE A-share rows."),
+    ).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no candidates", async () => {

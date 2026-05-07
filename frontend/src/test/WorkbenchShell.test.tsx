@@ -78,9 +78,13 @@ describe("WorkbenchShell", () => {
     );
   });
 
-  it("keeps Agent Workbench hidden from visible shell navigation", async () => {
+  it("shows the Hermes Agent workbench in visible shell navigation", async () => {
     renderShellAt("/");
 
+    const agentNav = await screen.findByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentLink).toHaveTextContent("Hermes");
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
@@ -91,7 +95,7 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config"]);
+    expect(hrefs).toEqual(["/platform-config", "/agent"]);
     expect(hrefs).not.toContain("/cube-query");
     expect(hrefs).not.toContain("/reports");
   });
@@ -580,10 +584,14 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
   });
 
-  it("keeps the hidden /agent route outside the visible shell shortcuts", async () => {
+  it("keeps the /agent route reachable from the visible shell shortcuts", async () => {
     renderShellAt("/agent");
 
     expect(await screen.findByText("agent body")).toBeInTheDocument();
+    const agentNav = screen.getByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentLink).toHaveAttribute("data-active", "true");
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 

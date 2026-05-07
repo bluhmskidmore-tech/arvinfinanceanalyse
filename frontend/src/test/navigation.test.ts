@@ -18,14 +18,14 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("keeps the direct agent route live but hidden from primary navigation", () => {
+  it("shows the live Hermes Agent route in primary navigation", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
     expect(agent?.readiness).toBe("live");
-    expect(agent?.readinessLabel).toBe("智能体试用");
-    expect(agent?.navigationVisibility).toBe("hidden");
+    expect(agent?.readinessLabel).toBe("Hermes");
+    expect(agent?.navigationVisibility).toBeUndefined();
     expect(agent?.path).toBe("/agent");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
   });
 
