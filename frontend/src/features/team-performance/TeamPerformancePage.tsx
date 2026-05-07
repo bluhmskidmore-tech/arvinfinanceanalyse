@@ -1,257 +1,845 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import type { ResultMeta } from "../../api/contracts";
 import { useApiClient } from "../../api/client";
-import { designTokens } from "../../theme/designSystem";
-import { displayTokens } from "../../theme/displayTokens";
+import { DataQualityBanner } from "../../components/page/DataQualityBanner";
+import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
 import { SectionLead } from "../../components/page/SectionLead";
-import {
-  modeBadgeStyle,
-  summaryGridStyle,
-  tableShellStyle,
-  tableStyle,
-  tdStyle,
-  thStyle,
-} from "../../components/page/pageStyles";
-import type { DecimalLike, ProductCategoryPnlRow } from "../../api/contracts";
-import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
+import {
+  ASSESSMENT_CENTERS_2025,
+  buildTeamPerformanceViewModel,
+  formatConfidenceLabel,
+  formatRatePct,
+  formatScore,
+  formatWanFromYuan,
+  formatYiFromYuan,
+} from "./teamPerformancePageModel";
+import "./TeamPerformancePage.css";
 
-const thNumericStyle = {
-  ...thStyle,
-  textAlign: "right" as const,
-};
+const DEFAULT_YEAR = 2025;
+const DEFAULT_AS_OF_DATE = "2025-12-31";
 
-const tdNumericStyle = {
-  ...tdStyle,
-  textAlign: "right" as const,
-};
+type CenterId = (typeof ASSESSMENT_CENTERS_2025)[number]["centerId"];
 
-const tableShellStyleWithTop = { ...tableShellStyle, marginTop: 18 } as const;
-
-const selectStyle = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: `1px solid ${shellTokens.colorBorder}`,
-  background: shellTokens.colorBgSurface,
-  color: shellTokens.colorTextPrimary,
-  fontSize: 14,
-} as const;
-
-function cellText(value: DecimalLike | null | undefined) {
-  if (value === null || value === undefined) {
-    return "—";
+function scoreTone(scoreRate: number | null) {
+  if (scoreRate === null) {
+    return "default" as const;
   }
-  return String(value);
+  if (scoreRate >= 1) {
+    return "positive" as const;
+  }
+  if (scoreRate >= 0.85) {
+    return "warning" as const;
+  }
+  return "negative" as const;
+}
+
+function mappingStatusTone(status: string) {
+  if (status === "已映射") {
+    return "positive" as const;
+  }
+  if (status === "挂钩引用") {
+    return "default" as const;
+  }
+  return "warning" as const;
+}
+
+function evidenceHeadline(endpoint: string) {
+  return endpoint === "by-business-ytd" ? "按业务口径" : "按产品口径";
+}
+
+function formatMetaQuality(flag: ResultMeta["quality_flag"]) {
+  if (flag === "warning") {
+    return "预警";
+  }
+  if (flag === "error") {
+    return "错误";
+  }
+  if (flag === "stale") {
+    return "陈旧";
+  }
+  return "正常";
+}
+
+function formatMetaFallback(mode: ResultMeta["fallback_mode"]) {
+  return mode === "latest_snapshot" ? "最新快照降级" : "未降级";
+}
+
+function formatMetaGeneratedAt(value: string) {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(parsed));
+}
+
+function resultMetaTone(meta: ResultMeta) {
+  if (
+    meta.quality_flag === "ok" &&
+    meta.fallback_mode === "none" &&
+    meta.vendor_status === "ok"
+  ) {
+    return "positive" as const;
+  }
+  if (meta.quality_flag === "error" || meta.quality_flag === "stale") {
+    return "negative" as const;
+  }
+  return "warning" as const;
+}
+
+function resultMetaSummaryLabel(meta: ResultMeta) {
+  if (meta.quality_flag === "error") {
+    return "质量错误";
+  }
+  if (meta.quality_flag === "stale") {
+    return "数据陈旧";
+  }
+  if (meta.fallback_mode !== "none") {
+    return "存在降级";
+  }
+  if (meta.quality_flag === "warning") {
+    return "质量预警";
+  }
+  return "链路正常";
+}
+
+type StateTone = "warning" | "error" | "empty";
+
+type StateFact = {
+  label: string;
+  value: string;
+};
+
+type DashboardStatePanelProps = {
+  testId: string;
+  tone: StateTone;
+  badge: string;
+  title: string;
+  description: string;
+  facts: StateFact[];
+  impacts: string[];
+  action?: ReactNode;
+};
+
+function DashboardStatePanel({
+  testId,
+  tone,
+  badge,
+  title,
+  description,
+  facts,
+  impacts,
+  action,
+}: DashboardStatePanelProps) {
+  return (
+    <section
+      data-testid={testId}
+      className={`team-performance-page__state-card team-performance-page__state-card--${tone}`}
+    >
+      <div className="team-performance-page__state-card-header">
+        <div className="team-performance-page__state-card-heading">
+          <span className={`team-performance-page__state-badge team-performance-page__state-badge--${tone}`}>
+            {badge}
+          </span>
+          <h2>{title}</h2>
+        </div>
+        {action ? <div className="team-performance-page__state-card-action">{action}</div> : null}
+      </div>
+
+      <div className="team-performance-page__state-card-layout">
+        <div className="team-performance-page__state-card-main">
+          <p>{description}</p>
+          <dl className="team-performance-page__state-facts">
+            {facts.map((fact) => (
+              <div key={fact.label} className="team-performance-page__state-fact">
+                <dt>{fact.label}</dt>
+                <dd>{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <div className="team-performance-page__state-aside">
+          <h3>当前影响</h3>
+          <ul className="team-performance-page__state-impact-list">
+            {impacts.map((impact) => (
+              <li key={impact}>{impact}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function TeamPerformancePage() {
   const client = useApiClient();
+  const [selectedYear] = useState(DEFAULT_YEAR);
   const [selectedDate, setSelectedDate] = useState("");
+  const [selectedCenterId, setSelectedCenterId] = useState<CenterId>("product-market");
 
   const datesQuery = useQuery({
-    queryKey: ["team-performance", "dates", client.mode],
-    queryFn: () => client.getProductCategoryDates(),
+    queryKey: ["team-performance", "formal-dates", client.mode],
+    queryFn: () => client.getFormalPnlDates(),
     retry: false,
   });
 
-  useEffect(() => {
-    const first = datesQuery.data?.result.report_dates?.[0];
-    if (!selectedDate && first) {
-      setSelectedDate(first);
-    }
-  }, [datesQuery.data?.result.report_dates, selectedDate]);
+  const availableDates = datesQuery.data?.result.report_dates ?? [];
+  const hasDefaultDate = availableDates.includes(DEFAULT_AS_OF_DATE);
 
-  const detailQuery = useQuery({
-    queryKey: ["team-performance", "detail", client.mode, selectedDate],
+  useEffect(() => {
+    if (hasDefaultDate) {
+      setSelectedDate((current) => current || DEFAULT_AS_OF_DATE);
+      return;
+    }
+    if (!datesQuery.isLoading) {
+      setSelectedDate("");
+    }
+  }, [datesQuery.isLoading, hasDefaultDate]);
+
+  const canLoadEvidence = hasDefaultDate && selectedDate === DEFAULT_AS_OF_DATE;
+
+  const byBusinessQuery = useQuery({
+    queryKey: ["team-performance", "by-business-ytd", client.mode, selectedYear, selectedDate],
+    queryFn: () => client.getPnlByBusinessYtd(selectedYear, selectedDate),
+    enabled: canLoadEvidence,
+    retry: false,
+  });
+
+  const productCategoryQuery = useQuery({
+    queryKey: ["team-performance", "product-category-ytd", client.mode, selectedDate],
     queryFn: () =>
       client.getProductCategoryPnl({
         reportDate: selectedDate,
-        view: "monthly",
+        view: "ytd",
       }),
-    enabled: Boolean(selectedDate),
+    enabled: canLoadEvidence,
     retry: false,
   });
 
-  const result = detailQuery.data?.result;
+  const viewModel = useMemo(
+    () =>
+      buildTeamPerformanceViewModel({
+        byBusinessItems: byBusinessQuery.data?.result.items,
+        productCategoryRows: productCategoryQuery.data?.result.rows,
+        byBusinessMeta: byBusinessQuery.data?.result_meta ?? null,
+        productCategoryMeta: productCategoryQuery.data?.result_meta ?? null,
+      }),
+    [byBusinessQuery.data, productCategoryQuery.data],
+  );
 
-  const datesReady = Boolean(datesQuery.data?.result.report_dates?.length);
-  /** Avoid flashing KPI placeholders before selectedDate is synced from dates (detail query still disabled). */
-  const isInitializingSelection = datesReady && !selectedDate;
+  const selectedCenter =
+    viewModel.centers.find((center) => center.centerId === selectedCenterId) ?? viewModel.centers[0];
 
-  const { grandRow, assetRow, liabilityRow, teamRows } = useMemo(() => {
-    const rows = result?.rows ?? [];
-    const teams = rows.filter((r) => r.level === 1 && !r.is_total);
-    return {
-      grandRow: result?.grand_total,
-      assetRow: result?.asset_total,
-      liabilityRow: result?.liability_total,
-      teamRows: teams,
-    };
-  }, [result]);
+  const loading =
+    datesQuery.isLoading ||
+    (canLoadEvidence && (byBusinessQuery.isLoading || productCategoryQuery.isLoading));
+  const error =
+    datesQuery.isError || (canLoadEvidence && (byBusinessQuery.isError || productCategoryQuery.isError));
+  const showNoSubstitution = !datesQuery.isLoading && !hasDefaultDate;
+  const noMappedEvidence = canLoadEvidence && !loading && !error && viewModel.mappedCenterCount === 0;
+  const resultMetaSections = [
+    {
+      key: "by-business-ytd",
+      title: "业务种类损益 YTD",
+      meta: byBusinessQuery.data?.result_meta,
+    },
+    {
+      key: "product-category-ytd",
+      title: "产品分类损益 YTD",
+      meta: productCategoryQuery.data?.result_meta,
+    },
+  ] satisfies Array<{ key: string; title: string; meta: ResultMeta | null | undefined }>;
+  const visibleResultMetaSections = resultMetaSections.filter(
+    (section): section is { key: string; title: string; meta: ResultMeta } => Boolean(section.meta),
+  );
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <h1
-            data-testid="team-performance-page-title"
-            style={{
-              margin: 0,
-              fontSize: 32,
-              fontWeight: 600,
-              letterSpacing: "-0.03em",
-              color: shellTokens.colorTextPrimary,
-            }}
-          >
-            团队绩效
+    <section data-testid="team-performance-page" className="team-performance-page">
+      <div className="team-performance-page__hero">
+        <div className="team-performance-page__hero-copy">
+          <h1 data-testid="team-performance-page-title" className="team-performance-page__title">
+            Team Performance 工作损益分析
           </h1>
-          <p
-            style={{
-              marginTop: 10,
-              marginBottom: 0,
-              maxWidth: 860,
-              color: shellTokens.colorTextSecondary,
-              fontSize: 15,
-              lineHeight: 1.75,
-            }}
-          >
-            按产品类别维度展示各组贡献，数据来源为产品损益读模型。
+          <p className="team-performance-page__subtitle">
+            聚焦回答“2025 年各部室考核得分如何，相关工作损益证据是多少”。Excel
+            仍是方案底稿，页面只并排展示正式接口中可见的 YTD 损益证据。
           </p>
         </div>
         <span
-          style={{
-            ...modeBadgeStyle,
-            background:
-              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-            color:
-              client.mode === "real"
-                ? displayTokens.apiMode.realForeground
-                : displayTokens.apiMode.mockForeground,
-          }}
+          className={
+            client.mode === "real"
+              ? "team-performance-page__mode-badge team-performance-page__mode-badge--real"
+              : "team-performance-page__mode-badge team-performance-page__mode-badge--mock"
+          }
         >
-          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
         </span>
       </div>
 
-      <FilterBar style={{ marginBottom: 22 }}>
-        <div>
-          <label style={{ display: "block", marginBottom: 6, color: shellTokens.colorTextSecondary, fontSize: 14 }}>
-            报表月份
-          </label>
+      <FilterBar className="team-performance-page__filter-bar">
+        <label className="team-performance-page__filter">
+          <span>考核年度</span>
           <select
-            aria-label="团队绩效-报表月份"
+            aria-label="team-performance-report-year"
+            value={String(selectedYear)}
+            className="team-performance-page__select"
+            disabled
+          >
+            <option value="2025">2025</option>
+          </select>
+        </label>
+        <label className="team-performance-page__filter">
+          <span>证据日期</span>
+          <select
+            aria-label="team-performance-report-date"
             value={selectedDate}
             onChange={(event) => setSelectedDate(event.target.value)}
-            style={selectStyle}
+            className="team-performance-page__select"
+            disabled={!hasDefaultDate}
           >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {reportDate}
-              </option>
-            ))}
+            {selectedDate ? null : <option value="">未提供 2025-12-31</option>}
+            {hasDefaultDate ? <option value={DEFAULT_AS_OF_DATE}>{DEFAULT_AS_OF_DATE}</option> : null}
           </select>
-        </div>
+        </label>
       </FilterBar>
 
       <SectionLead
-        eyebrow="总览"
-        title="团队概览"
-        description="先看资产端、负债端和综合净收入，再进入各组贡献表，保持团队绩效页的阅读顺序与标准壳层一致。"
+        eyebrow="Assessment"
+        title="2025 部室考核矩阵"
+        description="首屏先看各部室总分、映射证据覆盖情况和正式读链路状态。所有损益都明确标为“映射分析”，不替代正式中心归属口径。"
       />
 
-      <div data-testid="team-performance-kpi" style={summaryGridStyle}>
+      <div data-testid="team-performance-summary-cards" className="team-performance-page__summary-grid">
         <KpiCard
-          title="资产端净收入"
-          value={cellText(assetRow?.business_net_income)}
-          detail="asset_total 行 business_net_income（后端返回值）。"
-          tone={toneFromSignedDisplayString(cellText(assetRow?.business_net_income))}
+          label="工作簿总得分"
+          value={viewModel.totalWorkbookScore.toFixed(2)}
+          unit="分"
+          detail="直接汇总 Excel 底稿已有得分，不重算评分规则。"
+          tone="positive"
         />
         <KpiCard
-          title="负债端净收入"
-          value={cellText(liabilityRow?.business_net_income)}
-          detail="liability_total 行 business_net_income（后端返回值）。"
-          tone={toneFromSignedDisplayString(cellText(liabilityRow?.business_net_income))}
+          label="部室数量"
+          value={String(viewModel.totalCenterCount)}
+          detail="2025 年度方案涉及的考核部室。"
         />
         <KpiCard
-          title="综合净收入"
-          value={cellText(grandRow?.business_net_income)}
-          detail="grand_total 行 business_net_income（后端返回值）。"
-          tone={toneFromSignedDisplayString(cellText(grandRow?.business_net_income))}
+          label="已映射部室"
+          value={String(viewModel.mappedCenterCount)}
+          detail="至少存在一条正式 YTD 损益映射证据。"
+          tone={viewModel.mappedCenterCount > 0 ? "positive" : "warning"}
         />
         <KpiCard
-          title="组数"
-          value={String(teamRows.length)}
-          detail="level=1 且非合计行的行数。"
-          unit="组"
+          label="证据状态"
+          value={viewModel.visibleEvidenceStatus}
+          detail="用于判断首屏结论是否已有正式接口支撑。"
+          valueVariant="text"
+          tone={viewModel.mappedCenterCount === 0 ? "warning" : "default"}
         />
       </div>
 
-      <SectionLead
-        eyebrow="贡献"
-        title="团队贡献"
-        description="下方表格继续按产品类别读模型展示各组贡献，不改变现有列与数值语义。"
-      />
+      <div data-testid="team-performance-warning-banner" className="team-performance-page__warning-stack">
+        <DataQualityBanner
+          resultMeta={byBusinessQuery.data?.result_meta ?? productCategoryQuery.data?.result_meta ?? null}
+          warnings={viewModel.warnings}
+          degradedReasons={
+            showNoSubstitution
+              ? ["正式日期列表未包含 2025-12-31，当前页面不会自动改用 2026 数据。"]
+              : []
+          }
+        />
+      </div>
+
+      {showNoSubstitution ? (
+        <DashboardStatePanel
+          testId="team-performance-empty"
+          tone="warning"
+          badge="待正式日期"
+          title="2025 证据日期未就绪"
+          description="正式日期列表未包含 2025-12-31，因此当前页面只保留 2025 方案底稿视图，不会 silently substitute 2026。"
+          facts={[
+            { label: "考核年度", value: "锁定 2025" },
+            { label: "目标日期", value: "2025-12-31" },
+            { label: "页面策略", value: "不自动替代为 2026 数据" },
+          ]}
+          impacts={[
+            "首屏仍可查看各部室 Excel 得分、权重和明细指标。",
+            "映射分析证据将在正式日期可用后恢复并排展示。",
+          ]}
+        />
+      ) : null}
+
+      {error ? (
+        <DashboardStatePanel
+          testId="team-performance-error"
+          tone="error"
+          badge="链路异常"
+          title="2025 工作损益证据加载失败"
+          description="请先恢复 `getPnlByBusinessYtd` 与 `getProductCategoryPnl` 的正式读链路，再查看部室映射分析。"
+          facts={[
+            { label: "失败范围", value: "正式 YTD 证据接口" },
+            { label: "目标日期", value: selectedDate || DEFAULT_AS_OF_DATE },
+            { label: "页面策略", value: "保留底稿，不形成映射结论" },
+          ]}
+          impacts={[
+            "工作簿得分和指标底稿仍可继续查看。",
+            "重试成功后会按同一日期重新拉取两条证据链路。",
+          ]}
+          action={
+            <button
+              type="button"
+              className="team-performance-page__retry-button"
+              onClick={() => {
+                void Promise.all([datesQuery.refetch(), byBusinessQuery.refetch(), productCategoryQuery.refetch()]);
+              }}
+            >
+              重试
+            </button>
+          }
+        />
+      ) : null}
+
+      {noMappedEvidence ? (
+        <DashboardStatePanel
+          testId="team-performance-empty"
+          tone="empty"
+          badge="未命中映射"
+          title="暂无可展示证据"
+          description="未找到可展示的部室工作损益证据。考核底稿仍可查看，但首屏不会给出映射损益结论。"
+          facts={[
+            { label: "接口日期", value: selectedDate || DEFAULT_AS_OF_DATE },
+            { label: "映射结果", value: "未命中部室证据行" },
+            { label: "页面策略", value: "不输出正式损益归因结论" },
+          ]}
+          impacts={[
+            "各部室工作簿得分、权重和底稿指标仍可正常浏览。",
+            "如后续补齐映射表或接口数据，页面会直接恢复映射分析展示。",
+          ]}
+        />
+      ) : null}
+
       <AsyncSection
-        title="核心指标与团队贡献"
-        isLoading={
-          datesQuery.isLoading ||
-          isInitializingSelection ||
-          (Boolean(selectedDate) && detailQuery.isLoading)
-        }
-        isError={datesQuery.isError || detailQuery.isError}
-        isEmpty={
-          !datesQuery.isLoading &&
-          !detailQuery.isLoading &&
-          !datesQuery.isError &&
-          !detailQuery.isError &&
-          Boolean(selectedDate) &&
-          !grandRow &&
-          teamRows.length === 0
-        }
+        title="部室工作损益矩阵"
+        isLoading={loading}
+        isError={false}
+        isEmpty={false}
+        fillHeight={false}
         onRetry={() => {
-          void Promise.all([datesQuery.refetch(), detailQuery.refetch()]);
+          void Promise.all([datesQuery.refetch(), byBusinessQuery.refetch(), productCategoryQuery.refetch()]);
         }}
       >
-        <div style={{ display: "grid", gap: 20 }}>
-          <div style={tableShellStyleWithTop}>
-            <table data-testid="team-performance-table" style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>类别名称</th>
-                  <th style={thNumericStyle}>日均规模</th>
-                  <th style={thNumericStyle}>业务净收入</th>
-                  <th style={thNumericStyle}>FTP 成本</th>
-                  <th style={thNumericStyle}>净利差</th>
-                  <th style={thNumericStyle}>完成进度</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teamRows.map((row: ProductCategoryPnlRow) => (
-                  <tr key={row.category_id}>
-                    <td style={tdStyle}>{row.category_name}</td>
-                    <td style={tdNumericStyle}>{cellText(row.cny_scale)}</td>
-                    <td style={tdNumericStyle}>{cellText(row.business_net_income)}</td>
-                    <td style={tdNumericStyle}>{cellText(row.cny_ftp)}</td>
-                    <td style={tdNumericStyle}>{cellText(row.cny_net)}</td>
-                    <td style={tdNumericStyle}>{cellText(row.weighted_yield)}</td>
+        <div className="team-performance-page__section-stack">
+          <section className="team-performance-page__panel">
+            <SectionLead
+              eyebrow="Matrix"
+              title="部室矩阵"
+              description="按部室汇总显示 Excel 得分、映射损益、映射规模和覆盖状态。点击任一部室，下方查看对应的底稿指标和映射证据。"
+            />
+
+            <div className="team-performance-page__table-shell team-performance-page__table-shell--matrix">
+              <table data-testid="team-performance-center-matrix" className="team-performance-page__table">
+                <thead>
+                  <tr>
+                    <th>部室</th>
+                    <th className="team-performance-page__table-cell--numeric">权重</th>
+                    <th className="team-performance-page__table-cell--numeric">工作簿得分</th>
+                    <th className="team-performance-page__table-cell--numeric">得分率</th>
+                    <th className="team-performance-page__table-cell--numeric">映射损益</th>
+                    <th className="team-performance-page__table-cell--numeric">映射规模</th>
+                    <th>映射状态</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {viewModel.centers.map((center) => {
+                    const isActive = center.centerId === selectedCenter.centerId;
+                    return (
+                      <tr
+                        key={center.centerId}
+                        className={isActive ? "team-performance-page__table-row-active" : undefined}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="team-performance-page__matrix-button"
+                            aria-label={center.centerName}
+                            onClick={() => setSelectedCenterId(center.centerId as CenterId)}
+                          >
+                            <span className="team-performance-page__matrix-button-name">{center.centerName}</span>
+                            <span className="team-performance-page__matrix-button-meta" aria-hidden="true">
+                              查看该部室明细
+                            </span>
+                          </button>
+                        </td>
+                        <td className="team-performance-page__table-cell--numeric">{formatScore(center.weightTotal)}</td>
+                        <td className="team-performance-page__table-cell--numeric">{formatScore(center.workbookScore)}</td>
+                        <td className="team-performance-page__table-cell--numeric">{formatRatePct(center.scoreRate)}</td>
+                        <td className="team-performance-page__table-cell--numeric">
+                          {formatWanFromYuan(center.mappedPnlTotalYuan)}
+                        </td>
+                        <td className="team-performance-page__table-cell--numeric">
+                          {formatYiFromYuan(center.mappedScaleTotalYuan)}
+                        </td>
+                        <td>
+                          <span
+                            className={`team-performance-page__status-pill team-performance-page__status-pill--${mappingStatusTone(center.mappingStatus)}`}
+                          >
+                            {center.mappingStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="team-performance-page__matrix-cards" aria-label="部室矩阵卡片">
+              {viewModel.centers.map((center) => {
+                const isActive = center.centerId === selectedCenter.centerId;
+                return (
+                  <article
+                    key={center.centerId}
+                    className={
+                      isActive
+                        ? "team-performance-page__matrix-card team-performance-page__matrix-card--active"
+                        : "team-performance-page__matrix-card"
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="team-performance-page__matrix-card-button"
+                      aria-label={center.centerName}
+                      onClick={() => setSelectedCenterId(center.centerId as CenterId)}
+                    >
+                      <div className="team-performance-page__matrix-card-header">
+                        <div>
+                          <h3 className="team-performance-page__matrix-card-title">{center.centerName}</h3>
+                          <p className="team-performance-page__matrix-card-caption">点击查看该部室明细</p>
+                        </div>
+                        <span
+                          className={`team-performance-page__status-pill team-performance-page__status-pill--${mappingStatusTone(center.mappingStatus)}`}
+                        >
+                          {center.mappingStatus}
+                        </span>
+                      </div>
+
+                      <dl className="team-performance-page__matrix-card-stats">
+                        <div>
+                          <dt>权重</dt>
+                          <dd>{formatScore(center.weightTotal)}</dd>
+                        </div>
+                        <div>
+                          <dt>工作簿得分</dt>
+                          <dd>{formatScore(center.workbookScore)}</dd>
+                        </div>
+                        <div>
+                          <dt>得分率</dt>
+                          <dd>{formatRatePct(center.scoreRate)}</dd>
+                        </div>
+                        <div>
+                          <dt>映射损益</dt>
+                          <dd>{formatWanFromYuan(center.mappedPnlTotalYuan)}</dd>
+                        </div>
+                        <div>
+                          <dt>映射规模</dt>
+                          <dd>{formatYiFromYuan(center.mappedScaleTotalYuan)}</dd>
+                        </div>
+                      </dl>
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section data-testid="team-performance-detail" className="team-performance-page__panel">
+            <SectionLead
+              eyebrow="Detail"
+              title={`${selectedCenter.centerName} 明细`}
+              description="左侧保留 Excel 底稿指标，右侧展示正式接口中的映射分析证据。页面不会重算得分，只显示方案底稿中的分值和完成情况。"
+            />
+
+            <div className="team-performance-page__detail-summary-grid">
+              <KpiCard
+                label="工作簿得分"
+                value={selectedCenter.workbookScore.toFixed(2)}
+                unit="分"
+                detail={`权重 ${selectedCenter.weightTotal} 分`}
+                tone={scoreTone(selectedCenter.scoreRate)}
+              />
+              <KpiCard
+                label="映射损益"
+                value={formatWanFromYuan(selectedCenter.mappedPnlTotalYuan)}
+                detail="API 原值为元，页面统一换算为万元。"
+                valueVariant="text"
+                tone={mappingStatusTone(selectedCenter.mappingStatus)}
+              />
+              <KpiCard
+                label="映射规模"
+                value={formatYiFromYuan(selectedCenter.mappedScaleTotalYuan)}
+                detail="规模类字段统一换算为亿元。"
+                valueVariant="text"
+              />
+            </div>
+
+            <div className="team-performance-page__detail-layout">
+              <section className="team-performance-page__detail-card">
+                <div className="team-performance-page__detail-card-header">
+                  <h3>Excel 考核指标</h3>
+                  <span className="team-performance-page__detail-card-note">
+                    共 {selectedCenter.indicators.length} 项
+                  </span>
+                </div>
+
+                <div className="team-performance-page__indicator-list">
+                  {selectedCenter.indicators.map((indicator) => (
+                    <article
+                      key={`${indicator.centerId}-${indicator.sourceRow}`}
+                      className="team-performance-page__indicator-item"
+                    >
+                      <div className="team-performance-page__indicator-main">
+                        <div className="team-performance-page__indicator-title-row">
+                          <div className="team-performance-page__indicator-heading">
+                            <h4 className="team-performance-page__metric-name">{indicator.metric}</h4>
+                            <div className="team-performance-page__indicator-context">
+                              <span className="team-performance-page__indicator-chip">
+                                底稿行 {indicator.sourceRow}
+                              </span>
+                              {indicator.blockLabel ? (
+                                <span className="team-performance-page__indicator-chip team-performance-page__indicator-chip--muted">
+                                  {indicator.blockLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="team-performance-page__indicator-tags">
+                            <span className="team-performance-page__indicator-tag">
+                              {indicator.indicatorCategory}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="team-performance-page__indicator-target-panel">
+                          <div className="team-performance-page__indicator-target-label">目标 / 说明</div>
+                          <div className="team-performance-page__metric-target">{indicator.target}</div>
+                        </div>
+                      </div>
+
+                      <dl className="team-performance-page__indicator-stats">
+                        <div>
+                          <dt>分值</dt>
+                          <dd>{formatScore(indicator.weight)}</dd>
+                        </div>
+                        <div>
+                          <dt>得分</dt>
+                          <dd>{formatScore(indicator.score)}</dd>
+                        </div>
+                        <div>
+                          <dt>完成情况</dt>
+                          <dd>{indicator.actual}</dd>
+                        </div>
+                        <div>
+                          <dt>进度</dt>
+                          <dd>{indicator.progress}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="team-performance-page__detail-card">
+                <div className="team-performance-page__detail-card-header">
+                  <h3>映射分析证据</h3>
+                  <span className="team-performance-page__detail-card-note">{selectedCenter.mappingStatus}</span>
+                </div>
+                <p className="team-performance-page__detail-copy">
+                  “映射分析”仅用于把部室方案与现有系统正式 YTD 损益证据并排对照，不代表正式中心归因。
+                </p>
+
+                <section className="team-performance-page__evidence-summary">
+                  <div className="team-performance-page__evidence-summary-header">
+                    <div>
+                      <div className="team-performance-page__evidence-summary-label">结论摘要</div>
+                      <h4 className="team-performance-page__evidence-summary-title">
+                        {selectedCenter.mappingStatus === "已映射"
+                          ? "当前部室已有较完整的正式映射证据"
+                          : selectedCenter.mappingStatus === "挂钩引用"
+                            ? "当前部室展示的是挂钩引用证据"
+                            : selectedCenter.mappingStatus === "部分映射"
+                              ? "当前部室仅完成部分映射"
+                              : "当前部室暂未形成正式映射证据"}
+                      </h4>
+                    </div>
+                    <span
+                      className={`team-performance-page__status-pill team-performance-page__status-pill--${mappingStatusTone(selectedCenter.mappingStatus)}`}
+                    >
+                      {selectedCenter.mappingStatus}
+                    </span>
+                  </div>
+
+                  <dl className="team-performance-page__evidence-summary-stats">
+                    <div>
+                      <dt>已命中证据</dt>
+                      <dd>{selectedCenter.evidenceRows.length} 条</dd>
+                    </div>
+                    <div>
+                      <dt>待补确认</dt>
+                      <dd>{selectedCenter.coverageWarnings.length} 项</dd>
+                    </div>
+                  </dl>
+                </section>
+
+                <section className="team-performance-page__evidence-group">
+                  <div className="team-performance-page__evidence-group-header">
+                    <h4>已命中正式证据</h4>
+                    <span className="team-performance-page__detail-card-note">
+                      共 {selectedCenter.evidenceRows.length} 条
+                    </span>
+                  </div>
+
+                  <div className="team-performance-page__evidence-list">
+                    {selectedCenter.evidenceRows.length === 0 ? (
+                      <div className="team-performance-page__evidence-empty">
+                        当前部室暂无正式接口映射证据，仅保留 Excel 底稿分值。
+                      </div>
+                    ) : (
+                      selectedCenter.evidenceRows.map((row) => (
+                        <article
+                          key={`${row.endpoint}-${row.rowId}`}
+                          className="team-performance-page__evidence-item"
+                        >
+                          <div className="team-performance-page__evidence-header">
+                            <div>
+                              <div className="team-performance-page__evidence-title">{row.sourceLabel}</div>
+                              <div className="team-performance-page__metric-meta">{evidenceHeadline(row.endpoint)}</div>
+                            </div>
+                            <div className="team-performance-page__evidence-badges">
+                              <span className="team-performance-page__indicator-tag">
+                                置信度 {formatConfidenceLabel(row.confidence)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="team-performance-page__evidence-row-name">
+                            <code>{row.rowId}</code>
+                            <span>{row.rowName}</span>
+                          </div>
+
+                          <dl className="team-performance-page__evidence-stats">
+                            <div>
+                              <dt>金额</dt>
+                              <dd>{formatWanFromYuan(row.amountYuan)}</dd>
+                            </div>
+                            <div>
+                              <dt>规模</dt>
+                              <dd>{formatYiFromYuan(row.scaleYuan)}</dd>
+                            </div>
+                          </dl>
+
+                          <div className="team-performance-page__evidence-note">
+                            {row.note ?? row.unitLabel}
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                {selectedCenter.coverageWarnings.length > 0 ? (
+                  <section className="team-performance-page__evidence-group team-performance-page__evidence-group--warning">
+                    <div className="team-performance-page__evidence-group-header">
+                      <h4>待补确认项</h4>
+                      <span className="team-performance-page__detail-card-note">
+                        共 {selectedCenter.coverageWarnings.length} 项
+                      </span>
+                    </div>
+
+                    <div className="team-performance-page__coverage-list">
+                      {selectedCenter.coverageWarnings.map((warning) => (
+                        <div key={warning} className="team-performance-page__coverage-item">
+                          {warning}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </section>
+            </div>
+          </section>
         </div>
+
+        {visibleResultMetaSections.length > 0 ? (
+          <section data-testid="team-performance-result-meta" className="team-performance-page__meta-shell">
+            <div className="team-performance-page__meta-header">
+              <div>
+                <div className="team-performance-page__meta-eyebrow">Evidence</div>
+                <h3 className="team-performance-page__meta-title">结果元信息摘要</h3>
+              </div>
+              <p className="team-performance-page__meta-copy">
+                先看两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。
+              </p>
+            </div>
+
+            <div className="team-performance-page__meta-grid">
+              {visibleResultMetaSections.map((section) => (
+                <article key={section.key} className="team-performance-page__meta-card">
+                  <div className="team-performance-page__meta-card-header">
+                    <div>
+                      <div className="team-performance-page__meta-card-label">正式证据链路</div>
+                      <h4 className="team-performance-page__meta-card-title">{section.title}</h4>
+                    </div>
+                    <span
+                      className={`team-performance-page__meta-pill team-performance-page__meta-pill--${resultMetaTone(section.meta)}`}
+                    >
+                      {resultMetaSummaryLabel(section.meta)}
+                    </span>
+                  </div>
+
+                  <dl className="team-performance-page__meta-stats">
+                    <div>
+                      <dt>结果类型</dt>
+                      <dd>{section.meta.result_kind}</dd>
+                    </div>
+                    <div>
+                      <dt>质量</dt>
+                      <dd>{formatMetaQuality(section.meta.quality_flag)}</dd>
+                    </div>
+                    <div>
+                      <dt>降级</dt>
+                      <dd>{formatMetaFallback(section.meta.fallback_mode)}</dd>
+                    </div>
+                    <div>
+                      <dt>更新时间</dt>
+                      <dd>{formatMetaGeneratedAt(section.meta.generated_at)}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="team-performance-page__meta-trace">
+                    追踪编号 <code>{section.meta.trace_id}</code>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <details className="team-performance-page__meta-details">
+              <summary>展开完整结果元信息与溯源字段</summary>
+              <div className="team-performance-page__meta-details-body">
+                <FormalResultMetaPanel sections={resultMetaSections} title="完整结果元信息 / 溯源字段" />
+              </div>
+            </details>
+          </section>
+        ) : null}
       </AsyncSection>
     </section>
   );
