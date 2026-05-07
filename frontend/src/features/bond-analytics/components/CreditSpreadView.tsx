@@ -773,6 +773,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}
@@ -934,6 +935,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-top`}
                   pagination={false}
                   size="small"
+                  scroll={{ y: 400 }}
                 />
               </Card>
             </Col>
@@ -945,6 +947,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-bottom`}
                   pagination={false}
                   size="small"
+                  scroll={{ y: 400 }}
                 />
               </Card>
             </Col>
@@ -977,6 +980,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                         rowKey={(r) => r.name}
                         pagination={false}
                         size="small"
+                        scroll={{ y: 400 }}
                       />
                     </Col>
                     <Col xs={24} md={12}>
@@ -1017,6 +1021,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}

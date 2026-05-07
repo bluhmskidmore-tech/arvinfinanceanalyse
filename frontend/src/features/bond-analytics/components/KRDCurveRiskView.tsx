@@ -130,7 +130,7 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
         rowKey="asset_class"
         pagination={false}
         size="small"
-        scroll={extraKeys.length > 2 ? { x: "max-content" } : undefined}
+        scroll={extraKeys.length > 2 ? { x: "max-content", y: 400 } : { y: 400 }}
       />
     </div>
   );
@@ -387,6 +387,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
             expandable={{ expandedRowRender: renderScenarioAssetClassBreakdown }}
           />
         </Card>
@@ -411,6 +412,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             rowKey="asset_class"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}

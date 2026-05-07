@@ -94,6 +94,7 @@ export function BondAnalyticsViewContent() {
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
       "overview-action-attribution",
+      client.mode,
       effectiveReportDate,
       periodType,
     ],

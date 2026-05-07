@@ -1,4 +1,5 @@
-﻿import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -96,6 +97,22 @@ describe("ActionAttributionView", () => {
     vi.unstubAllGlobals();
   });
 
+  function renderActionAttributionView(client: ReturnType<typeof createApiClient>) {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false },
+      },
+    });
+
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+  }
+
   it("loads action attribution with KPI cards, by_action_type summary, and detail table", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
@@ -105,11 +122,7 @@ describe("ActionAttributionView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+    renderActionAttributionView(client);
 
     await waitFor(() =>
       expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM"),
@@ -126,12 +139,8 @@ describe("ActionAttributionView", () => {
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
       "交易动作归因概览",
     );
-    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent(
-      "汇总",
-    );
-    expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent(
-      "动作明细",
-    );
+    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("汇总");
+    expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent("动作明细");
     expect(await screen.findByText("动作数量")).toBeInTheDocument();
     expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
     expect(screen.getByText("久期变化")).toBeInTheDocument();
@@ -140,7 +149,6 @@ describe("ActionAttributionView", () => {
     expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/均次/).length).toBeGreaterThan(0);
 
-    expect(screen.getByText("Add rate position")).toBeInTheDocument();
     expect(screen.getByText("Add rate position")).toBeInTheDocument();
     expect(screen.getAllByText("涉及债券").length).toBeGreaterThan(0);
     expect(screen.getByText("019547")).toBeInTheDocument();
@@ -164,11 +172,7 @@ describe("ActionAttributionView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+    renderActionAttributionView(client);
 
     expect(await screen.findByTestId("action-attribution-readiness")).toHaveTextContent("partial");
     expect(screen.getByTestId("action-attribution-readiness")).toHaveTextContent("formal_positions");
@@ -186,11 +190,8 @@ describe("ActionAttributionView", () => {
         }),
       })),
     };
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+
+    renderActionAttributionView(client);
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：动作链路未完全接入")).toBeInTheDocument();
@@ -209,11 +210,7 @@ describe("ActionAttributionView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+    renderActionAttributionView(client);
 
     expect(await screen.findByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
       "供应商状态=供应商数据陈旧",

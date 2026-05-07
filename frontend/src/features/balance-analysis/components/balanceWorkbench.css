@@ -186,12 +186,18 @@
 
 .balance-workbench-card__item {
   display: grid;
-  gap: var(--moss-space-1);
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.72fr);
+  align-items: baseline;
+  gap: var(--moss-space-1) var(--moss-space-3);
   padding: var(--moss-space-2) 0;
   border-top: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-800);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.balance-workbench-card__item > strong {
+  min-width: 0;
 }
 
 .balance-workbench-card__item:first-child {
@@ -200,8 +206,11 @@
 }
 
 .balance-workbench-card__item-meta {
+  min-width: 0;
   color: var(--moss-color-text-secondary);
   font-size: 12px;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .balance-workbench-card__empty {
@@ -305,5 +314,15 @@
   .balance-workbench-card--span-8,
   .balance-workbench-card--span-12 {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .balance-workbench-card__item {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-workbench-card__item-meta {
+    text-align: left;
   }
 }
