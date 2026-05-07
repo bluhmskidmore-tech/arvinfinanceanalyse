@@ -14,6 +14,7 @@ from backend.app.services.agent_service import (
     execute_agent_query,
     phase1_disabled_response,
 )
+from backend.app.services.hermes_agent_service import execute_hermes_agent_query
 
 router = APIRouter(prefix="/api/agent")
 
@@ -45,6 +46,12 @@ def query_agent(
         )
 
     try:
+        if str(getattr(settings, "agent_provider", "local")).strip().lower() == "hermes":
+            return execute_hermes_agent_query(
+                request=request,
+                governance_dir=str(settings.governance_path),
+                settings=settings,
+            )
         return execute_agent_query(
             request=request,
             duckdb_path=str(settings.duckdb_path),

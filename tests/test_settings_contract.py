@@ -20,6 +20,11 @@ def test_settings_defaults():
     s = Settings()
     assert s.environment == "development"
     assert s.agent_enabled is False
+    assert s.agent_provider == "local"
+    assert s.agent_hermes_command == "wsl.exe"
+    assert s.agent_hermes_wsl_distro == "HermesUbuntu"
+    assert s.agent_hermes_model == ""
+    assert s.agent_hermes_timeout_seconds == 180.0
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
@@ -32,6 +37,11 @@ def test_settings_env_overrides(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AGENT_PROVIDER", "hermes")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_COMMAND", "custom-hermes")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_WSL_DISTRO", "CustomUbuntu")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_MODEL", "gpt-test")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_TIMEOUT_SECONDS", "12.5")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
     monkeypatch.setenv("MOSS_FTP_RATE_PCT", "2.5")
@@ -42,6 +52,11 @@ def test_settings_env_overrides(monkeypatch):
     s = Settings()
     assert s.environment == "staging"
     assert s.agent_enabled is True
+    assert s.agent_provider == "hermes"
+    assert s.agent_hermes_command == "custom-hermes"
+    assert s.agent_hermes_wsl_distro == "CustomUbuntu"
+    assert s.agent_hermes_model == "gpt-test"
+    assert s.agent_hermes_timeout_seconds == 12.5
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")

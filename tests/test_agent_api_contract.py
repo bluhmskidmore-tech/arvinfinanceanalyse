@@ -180,6 +180,7 @@ def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
             (),
             {
                 "agent_enabled": True,
+                "agent_provider": "local",
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
             },
@@ -217,6 +218,7 @@ def test_agent_query_returns_disabled_when_agent_is_off(monkeypatch, tmp_path):
             (),
             {
                 "agent_enabled": False,
+                "agent_provider": "local",
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
             },
@@ -247,6 +249,7 @@ def test_disabled_agent_query_appends_disabled_audit_log(monkeypatch, tmp_path):
             (),
             {
                 "agent_enabled": False,
+                "agent_provider": "local",
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
             },
@@ -279,6 +282,7 @@ def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch):
             (),
             {
                 "agent_enabled": True,
+                "agent_provider": "local",
                 "duckdb_path": "test.duckdb",
                 "governance_path": "test-governance",
             },
@@ -314,6 +318,7 @@ def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch):
             (),
             {
                 "agent_enabled": True,
+                "agent_provider": "local",
                 "duckdb_path": "test.duckdb",
                 "governance_path": "test-governance",
             },
@@ -334,3 +339,59 @@ def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["detail"] == "DuckDB read path unavailable."
+
+
+def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_wsl_distro": "",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        calls.append((request, governance_dir, settings.agent_hermes_model))
+        return _sample_agent_envelope().model_copy(
+            update={
+                "answer": "Hermes answered.",
+                "result_meta": _sample_agent_envelope().result_meta.model_copy(
+                    update={
+                        "result_kind": "agent.hermes",
+                        "vendor_version": "vv_hermes",
+                        "formal_use_allowed": False,
+                    }
+                ),
+            }
+        )
+
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "请分析当前组合"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Hermes answered."
+    assert payload["result_meta"]["result_kind"] == "agent.hermes"
+    assert payload["result_meta"]["vendor_version"] == "vv_hermes"
+    assert calls
+    assert calls[0][2] == "gpt-test"

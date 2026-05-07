@@ -81,6 +81,12 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     agent_enabled: bool = False
+    agent_provider: str = "local"
+    agent_hermes_command: str = "wsl.exe"
+    agent_hermes_wsl_distro: str = "HermesUbuntu"
+    agent_hermes_model: str = ""
+    agent_hermes_max_turns: int = 20
+    agent_hermes_timeout_seconds: float = 180.0
     postgres_dsn: str = DEFAULT_POSTGRES_DSN
     governance_sql_dsn: str = ""
     governance_backend: str = "jsonl"
