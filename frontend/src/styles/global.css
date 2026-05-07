@@ -2,8 +2,8 @@
   color-scheme: light;
 
   /*
-   * designSystem.ts 对齐的 CSS bridge — token 字面量只允许复用 TS 中已有取值。
-   * 语义别名仅使用 var(...) 指向下方 primitive。
+   * CSS bridge aligned with designSystem.ts.
+   * Literal token values should mirror the TS source; semantic aliases below point back to primitives.
    */
   --moss-color-primary-50: #e8f1fb;
   --moss-color-primary-100: #d0e3f6;
@@ -89,6 +89,8 @@
 
   --moss-shadow-card: 0 10px 24px rgba(22, 35, 46, 0.06);
   --moss-shadow-panel: 0 20px 44px rgba(22, 35, 46, 0.08);
+  --moss-shadow-popover: 0 12px 32px rgba(22, 35, 46, 0.12);
+  --moss-shadow-modal: 0 24px 48px rgba(22, 35, 46, 0.16);
 
   --moss-motion-duration-fast: 150ms;
   --moss-motion-duration-base: 200ms;
@@ -102,7 +104,7 @@
   --moss-font-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
   --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
 
-  /* 语义别名 */
+  /* Semantic aliases */
   --moss-color-surface-base: var(--moss-color-neutral-50);
   --moss-color-card-bg: var(--moss-color-neutral-50);
   --moss-color-border-default: var(--moss-color-neutral-300);
@@ -128,102 +130,6 @@
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "kern" 1, "liga" 1;
   --moss-shell-gap: 14px;
-
-  /* ── Space tokens (4px base) ── */
-  --moss-space-1: 4px;
-  --moss-space-2: 8px;
-  --moss-space-3: 12px;
-  --moss-space-4: 16px;
-  --moss-space-5: 20px;
-  --moss-space-6: 24px;
-  --moss-space-7: 32px;
-  --moss-space-8: 40px;
-  --moss-space-9: 48px;
-  --moss-space-10: 64px;
-
-  /* ── Radius tokens ── */
-  --moss-radius-sm: 6px;
-  --moss-radius-md: 12px;
-  --moss-radius-lg: 18px;
-  --moss-radius-xl: 24px;
-
-  /* ── Shadow tokens ── */
-  --moss-shadow-panel: 0 20px 44px rgba(22, 35, 46, 0.08);
-  --moss-shadow-card: 0 10px 24px rgba(22, 35, 46, 0.06);
-  --moss-shadow-popover: 0 12px 32px rgba(22, 35, 46, 0.12);
-  --moss-shadow-modal: 0 24px 48px rgba(22, 35, 46, 0.16);
-
-  /* ── Color: neutral ── */
-  --moss-color-neutral-50: #f5f7f9;
-  --moss-color-neutral-100: #eceff3;
-  --moss-color-neutral-200: #e2e6ec;
-  --moss-color-neutral-300: #d1d5db;
-  --moss-color-neutral-400: #9ca3af;
-  --moss-color-neutral-500: #8b95a1;
-  --moss-color-neutral-600: #6b7280;
-  --moss-color-neutral-700: #4b5563;
-  --moss-color-neutral-800: #374151;
-  --moss-color-neutral-900: #1f2937;
-
-  /* ── Color: primary ─��� */
-  --moss-color-primary-50: #e8f1fb;
-  --moss-color-primary-100: #d0e3f6;
-  --moss-color-primary-200: #a8c9ec;
-  --moss-color-primary-300: #79a7de;
-  --moss-color-primary-400: #4d84cc;
-  --moss-color-primary-500: #2f68b8;
-  --moss-color-primary-600: #1850a1;
-  --moss-color-primary-700: #144287;
-  --moss-color-primary-800: #10356a;
-  --moss-color-primary-900: #0c2a54;
-
-  /* ── Color: success ── */
-  --moss-color-success-50: #ecf8f2;
-  --moss-color-success-100: #d5efe0;
-  --moss-color-success-200: #aedfc8;
-  --moss-color-success-300: #7fc8a4;
-  --moss-color-success-400: #52ad84;
-  --moss-color-success-500: #2d8a5e;
-  --moss-color-success-600: #25714d;
-  --moss-color-success-700: #1d5c40;
-  --moss-color-success-800: #174833;
-  --moss-color-success-900: #123828;
-
-  /* ── Color: warning ── */
-  --moss-color-warning-50: #fff9eb;
-  --moss-color-warning-100: #fef0d4;
-  --moss-color-warning-200: #fde0a8;
-  --moss-color-warning-300: #fbc874;
-  --moss-color-warning-400: #f8a93a;
-  --moss-color-warning-500: #d97706;
-  --moss-color-warning-600: #b35c05;
-  --moss-color-warning-700: #8f4708;
-  --moss-color-warning-800: #713a0c;
-  --moss-color-warning-900: #5c300e;
-
-  /* ── Color: danger ── */
-  --moss-color-danger-50: #fef2f2;
-  --moss-color-danger-100: #fee2e2;
-  --moss-color-danger-200: #fecaca;
-  --moss-color-danger-300: #fca5a5;
-  --moss-color-danger-400: #f87171;
-  --moss-color-danger-500: #ef4444;
-  --moss-color-danger-600: #dc2626;
-  --moss-color-danger-700: #b91c1c;
-  --moss-color-danger-800: #991b1b;
-  --moss-color-danger-900: #7f1d1d;
-
-  /* ── Color: info ── */
-  --moss-color-info-50: #eff6ff;
-  --moss-color-info-100: #dbeafe;
-  --moss-color-info-200: #bfdbfe;
-  --moss-color-info-300: #93c5fd;
-  --moss-color-info-400: #60a5fa;
-  --moss-color-info-500: #3b82f6;
-  --moss-color-info-600: #2563eb;
-  --moss-color-info-700: #1d4ed8;
-  --moss-color-info-800: #1e40af;
-  --moss-color-info-900: #1e3a8a;
 }
 
 * {
@@ -243,6 +149,25 @@ body {
     radial-gradient(circle at top left, rgba(var(--moss-color-primary-rgb), 0.09), transparent 32%),
     radial-gradient(circle at top right, rgba(var(--moss-color-success-rgb), 0.07), transparent 28%),
     linear-gradient(180deg, var(--moss-color-surface-base) 0%, var(--moss-color-neutral-50) 100%);
+}
+
+.moss-data-mode-ribbon {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  pointer-events: none;
+  color: var(--moss-color-warning-900);
+  background: linear-gradient(90deg, var(--moss-color-warning-50), var(--moss-color-warning-200));
+  border-bottom: 1px solid var(--moss-color-warning-200);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
 a {
@@ -335,7 +260,51 @@ select {
   gap: 6px;
 }
 
-/* WorkbenchShell 壳层版面（RALPLAN Phase 2）：仅抽出重复 surface/layout，不包含业务语义 */
+.workbench-shell-agent-nav {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workbench-shell-agent-nav__link {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: none;
+}
+
+.workbench-shell-agent-nav__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-shell-agent-nav__icon {
+  font-size: 12px;
+}
+
+.workbench-shell-agent-nav__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workbench-shell-agent-nav__badge {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.workbench-shell-agent-nav__hint {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* WorkbenchShell shell layout: shared surface/layout only, no business semantics. */
 .workbench-shell-root {
   min-height: 100vh;
   padding: 14px clamp(14px, 1.6vw, 24px);
@@ -690,7 +659,7 @@ select {
   box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
 }
 
-/* Opt-in layout contract primitives (RALPLAN Phase 1) — unmigrated pages 无此类名 */
+/* Opt-in layout contract primitives (RALPLAN Phase 1); unmigrated pages do not use these classes. */
 .moss-page-v2-decision-hero {
   display: grid;
   gap: 18px;
@@ -937,17 +906,142 @@ select {
   color: var(--moss-color-text-secondary);
 }
 
-.agent-chat-composer {
+.agent-workbench-shell {
   display: grid;
   gap: 14px;
-  margin: 14px 0 22px;
-  padding: 16px;
+  min-width: 0;
+}
+
+.agent-workbench-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.agent-workbench-header h1 {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 30px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.agent-workbench-header p {
+  max-width: 860px;
+  margin: 8px 0 0;
+  color: var(--moss-color-text-secondary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.agent-workbench-header__eyebrow {
+  margin-bottom: 4px;
+  color: var(--moss-color-primary-700);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-workbench-header__cue {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.agent-runtime-strip {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) repeat(5, minmax(96px, 1fr));
+  gap: 6px;
+  align-items: stretch;
+  padding: 6px;
   border: 1px solid #dfe5ee;
   border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.94)),
-    radial-gradient(circle at top left, rgba(var(--moss-color-primary-rgb), 0.11), transparent 36%);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+}
+
+.agent-runtime-strip__state,
+.agent-runtime-strip__item {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #edf1f6;
+  border-radius: 7px;
+  background: #fbfcfe;
+}
+
+.agent-runtime-strip__state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.agent-runtime-strip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--moss-color-success-500);
+  box-shadow: 0 0 0 3px rgba(var(--moss-color-success-rgb), 0.12);
+}
+
+.agent-runtime-strip__dot--active {
+  animation: agentPulse 1s ease-in-out infinite;
+}
+
+.agent-runtime-strip__item {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-runtime-strip__item span {
+  overflow: hidden;
+  color: var(--moss-color-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.agent-runtime-strip__item strong {
+  overflow: hidden;
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes agentPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(var(--moss-color-success-rgb), 0.12);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(var(--moss-color-success-rgb), 0.04);
+    transform: scale(1.08);
+  }
+}
+
+.agent-chat-composer {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 12px;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .agent-chat-composer__header {
@@ -957,18 +1051,9 @@ select {
   gap: 12px;
 }
 
-.agent-chat-composer__eyebrow {
-  color: var(--moss-color-link);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
 .agent-chat-composer__title {
-  margin-top: 2px;
   color: var(--moss-color-text-primary);
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 760;
   letter-spacing: 0;
 }
@@ -977,6 +1062,79 @@ select {
   color: var(--moss-color-text-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.agent-wait-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #cfe0f4;
+  border-radius: 8px;
+  background: #f6faff;
+  color: var(--moss-color-text-secondary);
+}
+
+.agent-wait-status__title {
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.agent-wait-status__detail {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.agent-wait-status__detail span {
+  overflow-wrap: anywhere;
+}
+
+.agent-result-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.agent-result-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.agent-result-main,
+.agent-result-side,
+.agent-result-card-stack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.agent-result-side {
+  position: sticky;
+  top: 12px;
+}
+
+.agent-next-drill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-next-drill-row span {
+  padding: 6px 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  background: #f8fbff;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .agent-chat-composer__quick-row,
@@ -997,7 +1155,7 @@ select {
 }
 
 .agent-chat-composer__quick-button {
-  padding: 9px 12px;
+  padding: 7px 10px;
   border-radius: 8px;
   font-size: 12px;
 }
@@ -1018,8 +1176,8 @@ select {
 
 .agent-chat-composer__input {
   min-width: 0;
-  min-height: 116px;
-  padding: 14px 16px;
+  min-height: 78px;
+  padding: 10px 12px;
   border: 1px solid #cfd8e6;
   border-radius: 8px;
   outline: none;
@@ -1027,7 +1185,7 @@ select {
   background: #fff;
   color: var(--moss-color-text-primary);
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.55;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -1038,7 +1196,8 @@ select {
 
 .agent-chat-composer__send {
   min-width: 92px;
-  padding: 14px 22px;
+  min-height: 42px;
+  padding: 11px 18px;
   border: none;
   border-radius: 8px;
   color: #fff;
@@ -1057,9 +1216,9 @@ select {
 
 .agent-chat-composer__advanced {
   border-top: 1px dashed #d5dce7;
-  padding-top: 10px;
+  padding-top: 8px;
   color: var(--moss-color-text-secondary);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .agent-chat-composer__advanced summary {
@@ -1107,7 +1266,43 @@ select {
   align-items: end;
 }
 
+.agent-callout {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agent-callout strong {
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.agent-callout--error {
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  color: #b42318;
+}
+
 @media (max-width: 720px) {
+  .agent-workbench-header {
+    display: grid;
+  }
+
+  .agent-workbench-header h1 {
+    font-size: 25px;
+  }
+
+  .agent-runtime-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agent-runtime-strip__state {
+    grid-column: 1 / -1;
+  }
+
   .agent-chat-composer__header,
   .agent-chat-composer__form {
     grid-template-columns: 1fr;
@@ -1119,6 +1314,19 @@ select {
 
   .agent-chat-composer__send {
     width: 100%;
+  }
+
+  .agent-wait-status,
+  .agent-result-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-wait-status {
+    display: grid;
+  }
+
+  .agent-result-side {
+    position: static;
   }
 }
 
@@ -1529,9 +1737,10 @@ select {
 
 .dashboard-market-strip__header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
   min-width: 0;
 }
 

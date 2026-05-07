@@ -28,6 +28,7 @@ from backend.app.schemas.executive_dashboard import (
     ExecutiveMetric,
     HomeSnapshotPayload,
     OverviewPayload,
+    ProductCategoryMonthlyHeadlinePayload,
     ProductCategoryYtdHeadlinePayload,
     PnlAttributionPayload,
     RiskOverviewPayload,
@@ -41,6 +42,7 @@ from backend.app.schemas.executive_dashboard import (
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.product_category_pnl_service import (
+    product_category_pnl_envelope,
     resolve_product_category_ytd_payload_for_home_snapshot,
 )
 from backend.app.services.kpi_service import (
@@ -687,7 +689,7 @@ def _fetch_ytd_history(
     current_report_date: str | None,
     n: int = 20,
 ) -> list[float] | None:
-    """逐日取 pnl_repo.sum_formal_total_pnl_through_report_date(date)。"""
+    """逐日取 FI + nonstd bridge 年度累计损益。"""
     try:
         if not report_dates:
             return None
@@ -702,7 +704,7 @@ def _fetch_ytd_history(
         values: list[float] = []
         for d in slice_dates:
             try:
-                v = pnl_repo.sum_formal_total_pnl_through_report_date(d)
+                v = _sum_business_ytd_pnl(pnl_repo, d)
                 if v is not None:
                     values.append(float(v))
             except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
@@ -713,6 +715,14 @@ def _fetch_ytd_history(
         return values
     except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
         return None
+
+
+def _sum_business_ytd_pnl(pnl_repo: PnlRepository, report_date: str):
+    formal = pnl_repo.sum_formal_total_pnl_through_report_date(report_date)
+    nonstd_sum = getattr(pnl_repo, "sum_nonstd_bridge_total_pnl_through_report_date", None)
+    if not callable(nonstd_sum):
+        return formal
+    return formal + nonstd_sum(report_date)
 
 
 def _fetch_nim_history(
@@ -872,9 +882,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         )
         current_pnl_report_date = normalized_report_date or (pnl_report_dates[0] if pnl_report_dates else None)
         if current_pnl_report_date is not None:
-            ytd_raw = float(
-                pnl_repo.sum_formal_total_pnl_through_report_date(current_pnl_report_date)
-            )
+            ytd_raw = float(_sum_business_ytd_pnl(pnl_repo, current_pnl_report_date))
             if governance_dir:
                 current_pnl_lineage = resolve_completed_formal_build_lineage(
                     governance_dir=governance_dir,
@@ -902,7 +910,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     overview_rule_versions.append(previous_pnl_lineage.get("rule_version"))
             ytd_delta = _format_percent_change(
                 ytd_raw,
-                float(pnl_repo.sum_formal_total_pnl_through_report_date(previous_pnl_report_date)),
+                float(_sum_business_ytd_pnl(pnl_repo, previous_pnl_report_date)),
             )
         if ytd_raw is not None:
             ytd_history = _fetch_ytd_history(
@@ -1044,14 +1052,19 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         metrics.append(
             ExecutiveMetric(
                 id="yield",
-                label="年内收益",
+                label="年度损益（不扣FTP）",
+                caliber_label="FI + 非标桥接",
                 value=_fmt_yi_amount(ytd_raw, signed=True),
                 delta=ytd_delta,
                 tone="positive",
                 detail=(
-                    f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
+                    "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge "
+                    f"截至 {normalized_report_date} 的年度累计 total_pnl，不扣减 FTP。"
                     if normalized_report_date is not None
-                    else f"来自 fact_formal_pnl_fi 截至 {current_pnl_report_date} 的年内 total_pnl 合计。"
+                    else (
+                        "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge "
+                        f"截至 {current_pnl_report_date} 的年度累计 total_pnl，不扣减 FTP。"
+                    )
                 ),
                 history=ytd_history,
             )
@@ -1637,14 +1650,16 @@ def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtd
     if pc_payload is None:
         return None
 
-    op_val = float(pc_payload.grand_total.business_net_income)
-    operating = _fmt_yi_amount(op_val, signed=True)
-    operating_detail = (
+    summary_val = float(pc_payload.grand_total.business_net_income)
+    summary_pnl = _fmt_yi_amount(summary_val, signed=True)
+    summary_detail = (
         "与产品分类损益「汇总视图」（view=ytd）页脚「全部市场科目 + 投资收益合计」口径一致："
         f"grand_total.business_net_income；report_date={report_date}；"
         "优先读 product_category_pnl_formal_read_model（view=ytd）；"
         "若缺行则自 product_category_pnl_canonical_fact 重算（与刷数任务同口径）。"
     )
+    operating = summary_pnl
+    operating_detail = summary_detail
 
     intermediate_row = next(
         (r for r in pc_payload.rows if r.category_id == "intermediate_business_income"),
@@ -1665,10 +1680,45 @@ def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtd
 
     return ProductCategoryYtdHeadlinePayload(
         view="ytd",
+        summary_pnl=summary_pnl,
+        summary_pnl_detail=summary_detail,
         operating_income=operating,
         operating_income_detail=operating_detail,
         intermediate_business_income=int_numeric,
         intermediate_business_income_detail=int_detail,
+    )
+
+
+def _build_product_category_monthly_headline(report_date: str) -> ProductCategoryMonthlyHeadlinePayload | None:
+    """与 /product-category-pnl 月度视图页脚 grand_total.business_net_income 对齐。"""
+    settings = get_settings()
+    duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
+    if not duck_path:
+        return None
+    try:
+        envelope = product_category_pnl_envelope(
+            duck_path,
+            report_date=report_date,
+            view="monthly",
+        )
+        result_dict = envelope.get("result")
+        if not isinstance(result_dict, dict):
+            return None
+        from backend.app.schemas.product_category_pnl import ProductCategoryPnlPayload
+
+        pc_payload = ProductCategoryPnlPayload.model_validate(result_dict)
+    except Exception:
+        return None
+
+    monthly_value = float(pc_payload.grand_total.business_net_income)
+    monthly_detail = (
+        "与产品分类损益「月度视图」（view=monthly）页脚"
+        f"「全部市场科目 + 投资收益合计」一致：grand_total.business_net_income；report_date={report_date}。"
+    )
+    return ProductCategoryMonthlyHeadlinePayload(
+        view="monthly",
+        monthly_income=_fmt_yi_amount(monthly_value, signed=True),
+        monthly_income_detail=monthly_detail,
     )
 
 
@@ -1683,6 +1733,7 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
         domains_effective_date={},
         verdict=None,
         product_category_ytd=None,
+        product_category_monthly=None,
     )
 
 
@@ -1793,6 +1844,7 @@ def _compute_home_snapshot_envelope(
         client_mode="real",
     )
     product_category_ytd = _build_product_category_ytd_headline(target_date)
+    product_category_monthly = _build_product_category_monthly_headline(target_date)
     payload = HomeSnapshotPayload(
         report_date=target_date,
         mode="partial" if allow_partial else "strict",
@@ -1803,6 +1855,7 @@ def _compute_home_snapshot_envelope(
         domains_effective_date=effective,
         verdict=verdict,
         product_category_ytd=product_category_ytd,
+        product_category_monthly=product_category_monthly,
     )
 
     quality_flag: Literal["ok", "warning", "error", "stale"] = (

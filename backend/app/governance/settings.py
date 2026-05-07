@@ -84,7 +84,11 @@ class Settings(BaseSettings):
     agent_provider: str = "local"
     agent_hermes_command: str = "wsl.exe"
     agent_hermes_wsl_distro: str = "HermesUbuntu"
+    agent_hermes_home: str = ""
+    agent_hermes_transport: str = "cli"
+    agent_hermes_bridge_url: str = "http://127.0.0.1:7891"
     agent_hermes_model: str = ""
+    agent_hermes_toolsets: str = ""
     agent_hermes_max_turns: int = 20
     agent_hermes_timeout_seconds: float = 180.0
     postgres_dsn: str = DEFAULT_POSTGRES_DSN

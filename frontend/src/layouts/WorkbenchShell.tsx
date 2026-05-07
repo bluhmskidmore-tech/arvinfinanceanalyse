@@ -12,8 +12,7 @@ import {
   TrophyOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Button, Modal } from "antd";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
@@ -33,7 +32,6 @@ import {
 import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
-import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
 import { DataModeRibbon } from "../components/DataModeRibbon";
 
 const iconMap: Record<string, ReactNode> = {
@@ -345,10 +343,13 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 export function WorkbenchShell() {
   const client = useApiClient();
   const location = useLocation();
-  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
   const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
+  const agentWorkbenchActive = agentWorkbenchSection
+    ? pathMatchesWorkbenchSection(agentWorkbenchSection.path, pathnameResolved)
+    : false;
   const currentGroup =
     primaryWorkbenchNavigationGroups.find(
       (group) => group.key === resolveWorkbenchGroupKey(currentSection),
@@ -746,6 +747,53 @@ export function WorkbenchShell() {
           </nav>
         </section>
 
+        {agentWorkbenchSection ? (
+          <section
+            className="workbench-shell-agent-nav"
+            data-testid="workbench-agent-nav"
+          >
+            <span className="workbench-shell-section-label workbench-shell-section-label--rail">
+              Agent
+            </span>
+            <NavLink
+              to={agentWorkbenchSection.path}
+              className="workbench-shell-agent-nav__link"
+              data-active={agentWorkbenchActive ? "true" : "false"}
+              style={{
+                background: agentWorkbenchActive ? shellTokens.railNavActiveBg : "transparent",
+                color: agentWorkbenchActive
+                  ? shellTokens.railTextOnNavActive
+                  : shellTokens.railTextSectionIdle,
+              }}
+            >
+              <div className="workbench-shell-agent-nav__main">
+                <span className="workbench-shell-agent-nav__icon">
+                  {iconMap[agentWorkbenchSection.icon]}
+                </span>
+                <span className="workbench-shell-agent-nav__label">
+                  {agentWorkbenchSection.label}
+                </span>
+                <span
+                  className="workbench-shell-agent-nav__badge"
+                  style={{
+                    ...sectionBadgeStyle(agentWorkbenchSection),
+                  }}
+                >
+                  {agentWorkbenchSection.readinessLabel}
+                </span>
+              </div>
+              <span
+                className="workbench-shell-agent-nav__hint"
+                style={{
+                  color: shellTokens.railTextSupportIdle,
+                }}
+              >
+                Hermes Agent
+              </span>
+            </NavLink>
+          </section>
+        ) : null}
+
         {isBondAnalysisMinimalShell ? null : (
           <section
             style={{
@@ -760,44 +808,6 @@ export function WorkbenchShell() {
             </span>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
-
-              if (item.key === "agent") {
-                return (
-                  <Button
-                    key={item.key}
-                    type="text"
-                    className="workbench-agent-dialog-trigger"
-                    onClick={() => setAgentDialogOpen(true)}
-                    style={{
-                      height: "auto",
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: `1px solid ${shellTokens.railBorder}`,
-                      background: "transparent",
-                      color: shellTokens.railTextOnNavActive,
-                    }}
-                  >
-                    <div className="workbench-agent-dialog-trigger__main">
-                      <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>智能体对话</span>
-                      <span
-                        style={{
-                          ...sectionBadgeStyle(item),
-                          borderRadius: 999,
-                          padding: "1px 6px",
-                          fontSize: 10,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {item.readinessLabel}
-                      </span>
-                    </div>
-                    <span className="workbench-agent-dialog-trigger__hint">
-                      基于当前页面提问
-                    </span>
-                  </Button>
-                );
-              }
 
               return (
                 <NavLink
@@ -1558,17 +1568,6 @@ export function WorkbenchShell() {
           <Outlet />
         </main>
       </div>
-      <Modal
-        title="智能体对话"
-        open={agentDialogOpen}
-        onCancel={() => setAgentDialogOpen(false)}
-        footer={null}
-        width="min(1120px, 92vw)"
-        destroyOnHidden={false}
-        className="workbench-agent-dialog"
-      >
-        <AgentWorkbenchPage />
-      </Modal>
     </div>
     </>
   );

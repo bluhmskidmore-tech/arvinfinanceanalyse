@@ -1787,6 +1787,10 @@ def _build_portfolio_headlines_empty_response(report_date: date) -> dict:
 def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[str, object]:
     """Compute all metrics for portfolio headlines."""
     risk = summarize_portfolio_risk(rows)
+    rate_duration_rows = [
+        row for row in rows if str(row.get("asset_class_std")) in {"rate", "credit"}
+    ]
+    rate_duration_risk = summarize_portfolio_risk(rate_duration_rows)
     credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
     credit_summary = summarize_credit(
         credit_rows,
@@ -1795,11 +1799,12 @@ def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[
         treasury_curve_current=None,
     )
     conc = build_concentration(rows, field_name="issuer_name", dimension="issuer")
-    ytm_dec = weighted_average_by_market_value(rows, "ytm")
+    ytm_dec = weighted_average_by_market_value(rate_duration_rows, "ytm")
     cpn_dec = weighted_average_by_market_value(rows, "coupon_rate")
     by_ac = build_asset_class_risk_summary(rows)
     return {
         "risk": risk,
+        "rate_duration_risk": rate_duration_risk,
         "credit_summary": credit_summary,
         "conc": conc,
         "ytm_dec": ytm_dec,
@@ -1821,7 +1826,7 @@ def get_portfolio_headlines(report_date: date) -> dict:
                 "report_date": report_date,
                 "total_market_value": metrics["risk"]["total_market_value"],
                 "weighted_ytm": metrics["ytm_dec"] * pct,
-                "weighted_duration": metrics["risk"]["portfolio_modified_duration"],
+                "weighted_duration": metrics["rate_duration_risk"]["portfolio_modified_duration"],
                 "weighted_coupon": metrics["cpn_dec"] * pct,
                 "total_dv01": metrics["risk"]["portfolio_dv01"],
                 "bond_count": int(metrics["risk"]["bond_count"]),

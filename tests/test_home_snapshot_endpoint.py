@@ -260,8 +260,82 @@ class TestHomeSnapshotEnvelope:
         )
         headline = getattr(es, "_build_product_category_ytd_headline")("2026-04-08")
         assert headline is not None
+        assert headline.summary_pnl.raw == pytest.approx(1325000000.0)
+        assert headline.summary_pnl.display == "+13.25 亿"
+        assert "grand_total.business_net_income" in headline.summary_pnl_detail
         assert headline.operating_income.raw == pytest.approx(1325000000.0)
         assert headline.intermediate_business_income.raw == pytest.approx(500000000.0)
+
+    def test_build_product_category_monthly_headline_matches_monthly_grand_total(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Parity: homepage monthly headline must echo product_category_pnl_envelope monthly grand_total."""
+        from backend.app.schemas.product_category_pnl import (
+            ProductCategoryPnlPayload,
+            ProductCategoryPnlRow,
+        )
+
+        es = _executive_service()
+
+        def row_dict(cid: str, name: str, side: str, bni: str) -> dict[str, object]:
+            return {
+                "category_id": cid,
+                "category_name": name,
+                "side": side,
+                "level": 0,
+                "view": "monthly",
+                "report_date": "2026-04-08",
+                "baseline_ftp_rate_pct": "1.60",
+                "cnx_scale": "0",
+                "cny_scale": "0",
+                "foreign_scale": "0",
+                "cnx_cash": "0",
+                "cny_cash": "0",
+                "foreign_cash": "0",
+                "cny_ftp": "0",
+                "foreign_ftp": "0",
+                "cny_net": "0",
+                "foreign_net": "0",
+                "business_net_income": bni,
+                "weighted_yield": None,
+                "is_total": True,
+                "children": [],
+                "scenario_rate_pct": None,
+            }
+
+        at = row_dict("asset_total", "资产合计", "asset", "200000000")
+        lt = row_dict("liability_total", "负债合计", "liability", "99181927.65")
+        gt = row_dict("grand_total", "grand_total", "all", "299181927.65")
+        pc_payload = ProductCategoryPnlPayload(
+            report_date="2026-04-08",
+            view="monthly",
+            available_views=["ytd", "monthly"],
+            scenario_rate_pct=None,
+            rows=[
+                ProductCategoryPnlRow.model_validate(at),
+                ProductCategoryPnlRow.model_validate(lt),
+                ProductCategoryPnlRow.model_validate(gt),
+            ],
+            asset_total=ProductCategoryPnlRow.model_validate(at),
+            liability_total=ProductCategoryPnlRow.model_validate(lt),
+            grand_total=ProductCategoryPnlRow.model_validate(gt),
+        )
+
+        def fake_envelope(_duck: str, *, report_date: str, view: str, scenario_rate_pct=None):
+            assert report_date == "2026-04-08"
+            assert view == "monthly"
+            assert scenario_rate_pct is None
+            return {"result": pc_payload.model_dump(mode="json")}
+
+        monkeypatch.setattr(
+            "backend.app.services.executive_service.product_category_pnl_envelope",
+            fake_envelope,
+        )
+        headline = getattr(es, "_build_product_category_monthly_headline")("2026-04-08")
+        assert headline is not None
+        assert headline.monthly_income.raw == pytest.approx(299181927.65)
+        assert headline.monthly_income.display == "+2.99 亿"
+        assert "view=monthly" in headline.monthly_income_detail
 
 
 class TestHomeSnapshotPayloadSchema:

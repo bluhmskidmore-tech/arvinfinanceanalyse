@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "debt:audit": "node ../scripts/audit_frontend_debt.mjs",
     "style:audit": "node ../scripts/audit_frontend_style_diff.mjs",
+    "style:inventory": "node ../scripts/audit_frontend_style_inventory.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

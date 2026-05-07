@@ -408,6 +408,14 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
             }
             return values[report_date]
 
+        def sum_nonstd_bridge_total_pnl_through_report_date(self, report_date: str):
+            calls.append(("nonstd-pnl", report_date))
+            values = {
+                "2025-11-20": 1.25e8,
+                "2025-10-31": 1.0e8,
+            }
+            return values[report_date]
+
     class LiabilityRepo:
         def __init__(self, *_a, **_k):
             pass
@@ -460,6 +468,8 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
     assert calls.count(("aum", "2025-10-31")) == 2
     assert calls.count(("pnl", "2025-11-20")) == 2
     assert calls.count(("pnl", "2025-10-31")) == 2
+    assert calls.count(("nonstd-pnl", "2025-11-20")) == 2
+    assert calls.count(("nonstd-pnl", "2025-10-31")) == 2
     assert calls.count(("liab-z", "2025-11-20")) == 2
     assert calls.count(("liab-t", "2025-11-20")) == 2
     assert calls.count(("liab-z", "2025-10-31")) == 2
@@ -469,13 +479,16 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert metrics["aum"]["label"] == "债券资产规模（zqtz）"
     assert "2025-11-20" in metrics["aum"]["detail"]
+    assert metrics["yield"]["label"] == "年度损益（不扣FTP）"
+    assert metrics["yield"]["value"]["raw"] == pytest.approx(7.75e8)
+    assert "fact_formal_pnl_fi + fact_nonstd_pnl_bridge" in metrics["yield"]["detail"]
     assert "截至 2025-11-20" in metrics["yield"]["detail"]
     assert "2025-11-20" in metrics["nim"]["detail"]
     assert "2025-11-20" in metrics["dv01"]["detail"]
     _assert_numeric_json_shape(metrics["aum"]["delta"])
     assert metrics["aum"]["delta"]["display"] == "+7.00%"
     _assert_numeric_json_shape(metrics["yield"]["delta"])
-    assert metrics["yield"]["delta"]["display"] == "+30.00%"
+    assert metrics["yield"]["delta"]["display"] == "+29.17%"
     _assert_numeric_json_shape(metrics["nim"]["delta"])
     assert metrics["nim"]["delta"]["display"] == "+0.05pp"
     _assert_numeric_json_shape(metrics["dv01"]["delta"])

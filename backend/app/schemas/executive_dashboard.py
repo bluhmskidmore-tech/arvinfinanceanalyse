@@ -218,10 +218,20 @@ class ProductCategoryYtdHeadlinePayload(BaseModel):
     """产品分类损益 ytd 与专题页「汇总视图」对齐的首屏摘要（不含前端自算）。"""
 
     view: Literal["ytd"] = "ytd"
+    summary_pnl: Numeric
+    summary_pnl_detail: str
     operating_income: Numeric
     operating_income_detail: str
     intermediate_business_income: Numeric
     intermediate_business_income_detail: str
+
+
+class ProductCategoryMonthlyHeadlinePayload(BaseModel):
+    """产品分类损益 monthly 与专题页「月度视图」页脚对齐的首屏摘要（不含前端自算）。"""
+
+    view: Literal["monthly"] = "monthly"
+    monthly_income: Numeric
+    monthly_income_detail: str
 
 
 class HomeSnapshotPayload(BaseModel):
@@ -253,3 +263,4 @@ class HomeSnapshotPayload(BaseModel):
     domains_effective_date: dict[str, str]
     verdict: VerdictPayload | None = None
     product_category_ytd: ProductCategoryYtdHeadlinePayload | None = None
+    product_category_monthly: ProductCategoryMonthlyHeadlinePayload | None = None

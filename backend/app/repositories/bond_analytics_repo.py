@@ -20,6 +20,10 @@ SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
 BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
 
 _DASHBOARD_ASSET_GROUP_COLUMNS = frozenset({"bond_type", "rating", "portfolio_name", "tenor_bucket"})
+_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL = "asset_class_std in ('rate', 'credit')"
+_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL = (
+    f"case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then market_value else 0 end"
+)
 
 # Column name constants — single source of truth for row→dict mapping and INSERT ordering.
 
@@ -514,13 +518,17 @@ class BondAnalyticsRepository:
                   portfolio_name,
                   coalesce(sum(market_value), 0) as total_market_value,
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(ytm * market_value) / sum(market_value)
+                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    then sum(
+                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
+                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
                     else 0
                   end as weighted_ytm,
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(modified_duration * market_value) / sum(market_value)
+                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    then sum(
+                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
+                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
                     else 0
                   end as weighted_duration,
                   coalesce(sum(dv01), 0) as total_dv01,
@@ -673,8 +681,10 @@ class BondAnalyticsRepository:
                   coalesce(sum(market_value), 0) as total_market_value,
                   coalesce(sum(dv01), 0) as total_dv01,
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(modified_duration * market_value) / sum(market_value)
+                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    then sum(
+                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
+                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
                     else 0
                   end as weighted_duration,
                   case
@@ -743,16 +753,6 @@ def _fetch_one_period_headline_kpis(
           coalesce(sum(amortized_cost), 0) as total_amortized_cost,
           coalesce(sum(accrued_interest), 0) as total_accrued_interest,
           case
-            when coalesce(sum(market_value), 0) > 0
-            then sum(ytm * market_value) / sum(market_value)
-            else 0
-          end as weighted_ytm,
-          case
-            when coalesce(sum(market_value), 0) > 0
-            then sum(modified_duration * market_value) / sum(market_value)
-            else 0
-          end as weighted_duration,
-          case
             when coalesce(sum(face_value), 0) > 0
             then sum(coupon_rate * face_value) / sum(face_value)
             else 0
@@ -766,6 +766,7 @@ def _fetch_one_period_headline_kpis(
     ).fetchone()
     if row is None:
         return _empty_dashboard_headline_kpis_row()
+    weighted = _fetch_one_period_weighted_rate_duration_kpis(conn, report_date)
     return {
         "bond_count": int(row[0] or 0),
         "total_face_value": _decimal(row[1]),
@@ -773,11 +774,46 @@ def _fetch_one_period_headline_kpis(
         "unrealized_pnl": _decimal(row[3]),
         "total_amortized_cost": _decimal(row[4]),
         "total_accrued_interest": _decimal(row[5]),
-        "weighted_ytm": _decimal(row[6]),
-        "weighted_duration": _decimal(row[7]),
-        "weighted_coupon": _decimal(row[8]),
-        "credit_spread_median": None if row[9] is None else _decimal(row[9]),
-        "total_dv01": _decimal(row[10]),
+        "weighted_ytm": weighted["weighted_ytm"],
+        "weighted_duration": weighted["weighted_duration"],
+        "weighted_coupon": _decimal(row[6]),
+        "credit_spread_median": None if row[7] is None else _decimal(row[7]),
+        "total_dv01": _decimal(row[8]),
+    }
+
+
+def _fetch_one_period_weighted_rate_duration_kpis(
+    conn: duckdb.DuckDBPyConnection,
+    report_date: str,
+) -> dict[str, Decimal]:
+    row = conn.execute(
+        f"""
+        select
+          case
+            when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+            then sum(
+              case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
+            ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
+            else 0
+          end as weighted_ytm,
+          case
+            when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+            then sum(
+              case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
+            ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
+            else 0
+          end as weighted_duration
+        from {FACT_TABLE}
+        where cast(report_date as varchar) = ?
+          and {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL}
+        """,
+        [report_date],
+    ).fetchone()
+    if row is None:
+        return {"weighted_ytm": Decimal("0"), "weighted_duration": Decimal("0")}
+    return {
+        "weighted_ytm": _decimal(row[0]),
+        "weighted_duration": _decimal(row[1]),
     }
 
 

@@ -4,11 +4,36 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import BondDashboardPage from "../features/bond-dashboard/pages/BondDashboardPage";
+import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="bond-dashboard-echarts-stub" />,
 }));
+
+function resultMeta(resultKind: string): ResultMeta {
+  return {
+    trace_id: `tr_${resultKind}`,
+    basis: "formal",
+    result_kind: resultKind,
+    formal_use_allowed: true,
+    source_version: "sv",
+    vendor_version: "vv",
+    rule_version: "rv",
+    cache_version: "cv",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-19T00:00:00Z",
+  };
+}
+
+const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+const pct = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
+const ratio = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+const dv01 = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
 
 describe("BondDashboardPage", () => {
   it("shows title and KPI cards when mock data loads", async () => {
@@ -101,5 +126,72 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-page-state")).toHaveTextContent("暂无可用报告日");
     });
     expect(screen.getByRole("combobox", { name: "bond-dashboard-report-date" })).toBeDisabled();
+  });
+
+  it("uses backend headline numerics for weighted yield and duration in the portfolio table footer", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis"),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(100_000_000_000),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025656206199),
+          weighted_duration: ratio(4.1367831054),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(1000),
+          bond_count: 3,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardPortfolioComparison = async () => ({
+      result_meta: resultMeta("bond_dashboard.portfolio_comparison"),
+      result: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            portfolio_name: "Rate + credit",
+            total_market_value: yuan(40_000_000_000),
+            weighted_ytm: pct(0.035),
+            weighted_duration: ratio(5),
+            total_dv01: dv01(500),
+            bond_count: 2,
+          },
+          {
+            portfolio_name: "Other heavy",
+            total_market_value: yuan(60_000_000_000),
+            weighted_ytm: pct(0),
+            weighted_duration: ratio(0),
+            total_dv01: dv01(0),
+            bond_count: 1,
+          },
+        ],
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "债券总览" });
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
+      expect(screen.getByTestId("bond-dashboard-portfolio-summary-duration")).toHaveTextContent("4.14");
+    });
   });
 });

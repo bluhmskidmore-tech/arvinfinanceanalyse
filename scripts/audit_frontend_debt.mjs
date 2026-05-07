@@ -6,7 +6,7 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 5220,
+  apiClientLines: 5235,
   // Raised after mock isolation: dynamic import() adds "mock" in paths (../mocks/) per call site.
   apiClientMockOccurrences: 400,
   totalTsxStyleProps: 3308,

@@ -18,6 +18,7 @@ import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
+import type { RiskTensorPayload } from "../../api/contracts";
 import {
   formatRatioAsPercent,
   parseDisplayNumber,
@@ -125,6 +126,20 @@ function cellText(value: unknown) {
 /** 仅用于 ECharts 轴值解析，不做组合层面的金融重算。 */
 function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
   return bondChartMagnitude(value);
+}
+
+function regulatoryDv01Display(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return "待接入";
+  }
+  return bondNumericDisplay(value);
+}
+
+function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return "warning";
+  }
+  return toneFromSignedDisplayString(bondNumericDisplay(value));
 }
 
 export default function RiskOverviewPage() {
@@ -350,10 +365,16 @@ export default function RiskOverviewPage() {
             <>
               <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
                 <KpiCard
-                  title="组合 DV01"
+                  title="估值口径 DV01"
                   value={bondNumericDisplay(tensorResult.portfolio_dv01)}
-                  detail="portfolio_dv01，后端字符串口径。"
+                  detail="portfolio_dv01，持仓估值敏感性口径，非监管限额口径。"
                   tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.portfolio_dv01))}
+                />
+                <KpiCard
+                  title="监管口径 DV01"
+                  value={regulatoryDv01Display(tensorResult.regulatory_dv01)}
+                  detail="等待后端监管/限额口径字段接入；不得用估值 DV01 替代。"
+                  tone={regulatoryDv01Tone(tensorResult.regulatory_dv01)}
                 />
                 <KpiCard
                   title="修正久期"
@@ -396,7 +417,7 @@ export default function RiskOverviewPage() {
                   color: designTokens.color.neutral[900],
                 }}
               >
-                KRD 分桶（DV01）
+                KRD 分桶（估值 DV01）
               </h2>
               {krdChartOption ? (
                 <ReactECharts option={krdChartOption} style={{ height: 320 }} />
@@ -555,9 +576,9 @@ export default function RiskOverviewPage() {
               unit="年"
             />
             <KpiCard
-              title="DV01"
+              title="估值口径 DV01"
               value={cellText(krd?.portfolio_dv01)}
-              detail="portfolio_dv01。"
+              detail="portfolio_dv01，债券分析物化口径，非监管限额口径。"
               tone={toneFromSignedDisplayString(cellText(krd?.portfolio_dv01))}
             />
             <KpiCard
@@ -608,7 +629,7 @@ export default function RiskOverviewPage() {
                 当前桶：<strong>{selectedTenorRow.tenor}</strong>
               </div>
               <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
-                KRD：{selectedTenorRow.krd.display} · DV01：{selectedTenorRow.dv01.display} · 市值权重：
+                KRD：{selectedTenorRow.krd.display} · 估值DV01：{selectedTenorRow.dv01.display} · 市值权重：
                 {selectedTenorRow.market_value_weight.display}
               </div>
             </div>
@@ -619,7 +640,7 @@ export default function RiskOverviewPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {["期限", "KRD", "DV01", "市值权重"].map((label) => (
+                  {["期限", "KRD", "DV01（估值）", "市值权重"].map((label) => (
                     <th key={label} style={thStyle}>
                       {label}
                     </th>
@@ -670,7 +691,7 @@ export default function RiskOverviewPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {["资产类别", "市值", "久期", "DV01", "权重"].map((label) => (
+                  {["资产类别", "市值", "久期", "DV01（估值）", "权重"].map((label) => (
                     <th key={label} style={thStyle}>
                       {label}
                     </th>

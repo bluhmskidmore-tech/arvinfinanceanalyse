@@ -232,7 +232,11 @@ export default function BondDashboardPage() {
 
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={8}>
-            <PortfolioTable data={portfolioQuery.data?.result} loading={portfolioQuery.isLoading} />
+            <PortfolioTable
+              data={portfolioQuery.data?.result}
+              headline={headlineQuery.data?.result}
+              loading={portfolioQuery.isLoading}
+            />
           </Col>
           <Col xs={24} lg={8}>
             <SpreadTable data={spreadQuery.data?.result} loading={spreadQuery.isLoading} />

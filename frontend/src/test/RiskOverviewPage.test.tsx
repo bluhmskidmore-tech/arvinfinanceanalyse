@@ -93,10 +93,27 @@ describe("RiskOverviewPage", () => {
     expect(screen.getByText(/\/api\/risk\/tensor/)).toBeInTheDocument();
     expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
     expect(await screen.findByText("120.5")).toBeInTheDocument();
+    expect(screen.getByText("监管口径 DV01")).toBeInTheDocument();
+    expect(screen.getByText("待接入")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("正式风险张量（主数据）")).toBeInTheDocument();
     expect(screen.getByTestId("risk-overview-result-meta-panel")).toHaveTextContent("test_trace");
     expect(screen.getByTestId("risk-overview-result-meta-panel")).toHaveTextContent("sv_test");
+  });
+
+  it("renders backend-provided regulatory DV01 instead of the pending marker", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensor: vi.fn(async () => tensorEnvelope({ regulatory_dv01: "88.8" })),
+    };
+
+    renderRiskOverview(client);
+
+    const kpi = await screen.findByTestId("risk-overview-kpi-grid");
+    expect(kpi).toHaveTextContent("监管口径 DV01");
+    expect(kpi).toHaveTextContent("88.8");
+    expect(kpi).not.toHaveTextContent("待接入");
   });
 
   it("uses backend risk tensor dates for the default report date", async () => {

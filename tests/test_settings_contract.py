@@ -23,7 +23,11 @@ def test_settings_defaults():
     assert s.agent_provider == "local"
     assert s.agent_hermes_command == "wsl.exe"
     assert s.agent_hermes_wsl_distro == "HermesUbuntu"
+    assert s.agent_hermes_home == ""
+    assert s.agent_hermes_transport == "cli"
+    assert s.agent_hermes_bridge_url == "http://127.0.0.1:7891"
     assert s.agent_hermes_model == ""
+    assert s.agent_hermes_toolsets == ""
     assert s.agent_hermes_timeout_seconds == 180.0
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
@@ -40,7 +44,11 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_AGENT_PROVIDER", "hermes")
     monkeypatch.setenv("MOSS_AGENT_HERMES_COMMAND", "custom-hermes")
     monkeypatch.setenv("MOSS_AGENT_HERMES_WSL_DISTRO", "CustomUbuntu")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_HOME", "/home/hermes/.hermes-moss")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_TRANSPORT", "bridge")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_BRIDGE_URL", "http://127.0.0.1:7999")
     monkeypatch.setenv("MOSS_AGENT_HERMES_MODEL", "gpt-test")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_TOOLSETS", "file,terminal")
     monkeypatch.setenv("MOSS_AGENT_HERMES_TIMEOUT_SECONDS", "12.5")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
@@ -55,7 +63,11 @@ def test_settings_env_overrides(monkeypatch):
     assert s.agent_provider == "hermes"
     assert s.agent_hermes_command == "custom-hermes"
     assert s.agent_hermes_wsl_distro == "CustomUbuntu"
+    assert s.agent_hermes_home == "/home/hermes/.hermes-moss"
+    assert s.agent_hermes_transport == "bridge"
+    assert s.agent_hermes_bridge_url == "http://127.0.0.1:7999"
     assert s.agent_hermes_model == "gpt-test"
+    assert s.agent_hermes_toolsets == "file,terminal"
     assert s.agent_hermes_timeout_seconds == 12.5
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"

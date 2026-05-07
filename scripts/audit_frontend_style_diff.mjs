@@ -15,6 +15,12 @@ const EXT_RE = /\.(tsx?|css|module\.css)$/i;
 
 /** @type {RegExp} */
 const HEX_RE = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+const PRIVATE_SHADOW_RE = /\bboxShadow\s*:|box-shadow\s*:/;
+const TOKEN_SHADOW_RE = /designTokens\.shadow|shellTokens\.shadow|var\(--moss-shadow-/;
+const LARGE_RADIUS_RE = /\bborderRadius\s*:\s*(?:1[89]|[2-9]\d)|border-radius\s*:\s*(?:1[89]|[2-9]\d)px/;
+const TOKEN_RADIUS_RE = /designTokens\.radius|shellTokens\.radius|var\(--moss-radius-/;
+const KPI_DISPLAY_RE = /\b(KpiBandMetric|KpiCard|MetricCard|SummaryBlock)\b/;
+const STATE_SURFACE_RE = /\b(PageStateSurface|DataStatusStrip|moss-page-v2-state-surface|moss-page-v2-data-status)\b/;
 
 function git(args, cwd = repoRoot) {
   const r = spawnSync("git", args, {
@@ -126,6 +132,14 @@ function countStylePropsInLine(line) {
   return (line.match(/\bstyle\s*=/g) || []).length;
 }
 
+function hasPrivateShadow(line) {
+  return PRIVATE_SHADOW_RE.test(line) && !TOKEN_SHADOW_RE.test(line);
+}
+
+function hasLargeRadiusWithoutToken(line) {
+  return LARGE_RADIUS_RE.test(line) && !TOKEN_RADIUS_RE.test(line);
+}
+
 /**
  * Parse `git diff` unified format: current file + accumulated + lines.
  * @param {string} diffText
@@ -194,10 +208,19 @@ function auditDiff(diffText, allowlist) {
   const hexFailures = [];
   /** @type {string[]} */
   const styleWarnings = [];
+  /** @type {string[]} */
+  const shadowFailures = [];
+  /** @type {string[]} */
+  const radiusWarnings = [];
+  /** @type {string[]} */
+  const stateWarnings = [];
 
   for (const { path: repoPath, additions } of parsed) {
     const rel = repoPath.replace(/\\/g, "/");
     if (!isUnderFrontendSrc(rel) || isExcludedPath(rel)) continue;
+    const addedText = additions.map(({ line }) => line).join("\n");
+    const addedKpiDisplay = KPI_DISPLAY_RE.test(addedText);
+    const addedStateSurface = STATE_SURFACE_RE.test(addedText);
 
     for (const { line } of additions) {
       if (isCommentOnlyLine(line)) continue;
@@ -210,15 +233,30 @@ function auditDiff(diffText, allowlist) {
         }
       }
       const sc = countStylePropsInLine(line);
+      if (hasPrivateShadow(line)) {
+        shadowFailures.push(
+          `${rel}: private shadow on added line - ${line.trim().slice(0, 120)}`,
+        );
+      }
+      if (hasLargeRadiusWithoutToken(line)) {
+        radiusWarnings.push(
+          `${rel}: large radius should use tokens/classes - ${line.trim().slice(0, 120)}`,
+        );
+      }
       if (sc > 0) {
         styleWarnings.push(
           `${rel}: +${sc} style= on added line — ${line.trim().slice(0, 120)}`,
         );
       }
     }
+    if (addedKpiDisplay && !addedStateSurface) {
+      stateWarnings.push(
+        `${rel}: added KPI/metric display without added DataStatusStrip/PageStateSurface evidence in the same diff`,
+      );
+    }
   }
 
-  return { hexFailures, styleWarnings };
+  return { hexFailures, styleWarnings, shadowFailures, radiusWarnings, stateWarnings };
 }
 
 function die(msg, code = 1) {
@@ -281,6 +319,36 @@ function runSelfTest() {
     die("self-test: expected style= warning", 2);
   }
 
+  const shadowDiff = [
+    "diff --git a/frontend/src/x/Shadow.tsx b/frontend/src/x/Shadow.tsx",
+    "+++ b/frontend/src/x/Shadow.tsx",
+    `+  <section style={{ boxShadow: '0 20px 44px rgba(22, 35, 46, 0.08)' }} />`,
+  ].join("\n");
+  const sh = auditDiff(shadowDiff, allow);
+  if (sh.shadowFailures.length === 0) {
+    die("self-test: expected private shadow failure", 2);
+  }
+
+  const largeRadiusDiff = [
+    "diff --git a/frontend/src/x/Radius.tsx b/frontend/src/x/Radius.tsx",
+    "+++ b/frontend/src/x/Radius.tsx",
+    `+  <section style={{ borderRadius: 24 }} />`,
+  ].join("\n");
+  const lr = auditDiff(largeRadiusDiff, allow);
+  if (lr.radiusWarnings.length === 0) {
+    die("self-test: expected large radius warning", 2);
+  }
+
+  const statusDiff = [
+    "diff --git a/frontend/src/x/Page.tsx b/frontend/src/x/Page.tsx",
+    "+++ b/frontend/src/x/Page.tsx",
+    `+  <KpiBandMetric label="AUM" value={aum} />`,
+  ].join("\n");
+  const st = auditDiff(statusDiff, allow);
+  if (st.stateWarnings.length === 0) {
+    die("self-test: expected KPI/status warning", 2);
+  }
+
   console.log("audit_frontend_style_diff self-test: ok");
 }
 
@@ -307,7 +375,13 @@ function main() {
     return;
   }
 
-  const { hexFailures, styleWarnings } = auditDiff(diffText, allowlist);
+  const {
+    hexFailures,
+    styleWarnings,
+    shadowFailures,
+    radiusWarnings,
+    stateWarnings,
+  } = auditDiff(diffText, allowlist);
 
   if (styleWarnings.length) {
     console.warn(
@@ -316,6 +390,24 @@ function main() {
     for (const w of styleWarnings.slice(0, 50)) console.warn(`  ${w}`);
     if (styleWarnings.length > 50)
       console.warn(`  ... and ${styleWarnings.length - 50} more`);
+  }
+
+  if (radiusWarnings.length) {
+    console.warn(
+      `[style:audit] warning: ${radiusWarnings.length} added large-radius line(s) should use tokens/classes`,
+    );
+    for (const w of radiusWarnings.slice(0, 50)) console.warn(`  ${w}`);
+    if (radiusWarnings.length > 50)
+      console.warn(`  ... and ${radiusWarnings.length - 50} more`);
+  }
+
+  if (stateWarnings.length) {
+    console.warn(
+      `[style:audit] warning: ${stateWarnings.length} added metric display file(s) need visible status evidence review`,
+    );
+    for (const w of stateWarnings.slice(0, 50)) console.warn(`  ${w}`);
+    if (stateWarnings.length > 50)
+      console.warn(`  ... and ${stateWarnings.length - 50} more`);
   }
 
   if (hexFailures.length) {
@@ -329,9 +421,22 @@ function main() {
     process.exit(1);
   }
 
+  if (shadowFailures.length) {
+    console.error(
+      `[style:audit] FAIL: ${shadowFailures.length} private shadow on added line(s)`,
+    );
+    for (const f of shadowFailures) console.error(`  ${f}`);
+    console.error(
+      "  use designTokens.shadow, shellTokens.shadow, or --moss-shadow-* instead of one-off shadows",
+    );
+    process.exit(1);
+  }
+
   console.log(
     `style diff audit: pass (${cached ? "staged" : `vs ${baseRef}`})` +
-      (styleWarnings.length ? ` (${styleWarnings.length} style= warning(s))` : ""),
+      (styleWarnings.length ? ` (${styleWarnings.length} style= warning(s))` : "") +
+      (radiusWarnings.length ? ` (${radiusWarnings.length} radius warning(s))` : "") +
+      (stateWarnings.length ? ` (${stateWarnings.length} state warning(s))` : ""),
   );
 }
 

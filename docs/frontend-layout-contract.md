@@ -163,3 +163,9 @@
 上下文快照：`.omx/context/frontend-layout-system-plan-20260503T055355Z.md`。
 
 **Phase 5 文档收口：** 迁移表与本节（§ 迁移状态 / 下一批候选）与 `RALPLAN` 同步更新时间以 git 履历为准。
+
+## Style Governance Commands
+
+- `npm run style:inventory` (`frontend/`) is the Wave 0 read-only report. Use it to pick the next page/workflow and to record primitive adoption, inline style hotspots, hard-coded color hotspots, gradient usage, and duplicate CSS token definitions.
+- `npm run style:audit` (`frontend/`) is the incremental gate. It blocks newly added non-token hex colors and private shadows, and warns on new inline styles, large-radius literals, and KPI/metric additions that need explicit state-surface review.
+- Page migration remains one page/workflow at a time. Do not change metric definitions, units, API semantics, adapter calculations, or backend behavior as part of layout normalization.

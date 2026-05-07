@@ -123,12 +123,12 @@ export function DashboardBondHeadlineSection({
         {
           label: "加权到期收益率",
           value: formatNumeric(formatRawAsNumeric({ raw: weightedYtm, unit: "pct", sign_aware: false })),
-          detail: "组合收益率中枢",
+          detail: "持仓事实表 YTM，按 rate/credit 债券市值加权；非市场曲线重估。",
         },
         {
           label: "加权久期",
           value: formatNumeric(formatRawAsNumeric({ raw: weightedDuration, unit: "ratio", sign_aware: false })),
-          detail: "利率暴露中枢",
+          detail: "持仓事实表修正久期，按 rate/credit 债券市值加权。",
         },
         {
           label: "加权票息率",

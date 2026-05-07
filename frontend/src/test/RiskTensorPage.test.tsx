@@ -96,6 +96,8 @@ describe("RiskTensorPage", () => {
     expect(await screen.findByRole("heading", { name: "风险张量" })).toBeInTheDocument();
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent("12.34");
+    expect(kpi).toHaveTextContent("监管口径 DV01");
+    expect(kpi).toHaveTextContent("待接入");
     expect(kpi).toHaveTextContent("8.88");
     expect(screen.getByText("集中度")).toBeInTheDocument();
     expect(screen.getByText("流动性缺口（市值）")).toBeInTheDocument();
@@ -155,6 +157,32 @@ describe("RiskTensorPage", () => {
     expect(kpi).toHaveTextContent("1,235 governed");
     expect(screen.getByText("42.0%")).toBeInTheDocument();
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3 governed");
+  });
+
+  it("renders backend-provided regulatory DV01 instead of the pending marker", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_regulatory_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_regulatory_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        regulatory_dv01: "88.8",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
+    expect(kpi).toHaveTextContent("监管口径 DV01");
+    expect(kpi).toHaveTextContent("88.8");
+    expect(kpi).not.toHaveTextContent("待接入");
   });
 
   it("surfaces backend-blocked stale dates without using them as the default", async () => {

@@ -291,6 +291,15 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
   verdict: mockVerdictPayload,
   product_category_ytd: {
     view: "ytd",
+    summary_pnl: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    summary_pnl_detail:
+      "演示：与产品分类损益「汇总视图」（ytd）页脚 grand_total.business_net_income 一致；当前为占位。",
     operating_income: {
       raw: null,
       unit: "yuan",
@@ -309,5 +318,17 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
     },
     intermediate_business_income_detail:
       "演示：与产品分类损益「中间业务收入」ytd 行一致时，此处为该行 business_net_income；当前为占位。",
+  },
+  product_category_monthly: {
+    view: "monthly",
+    monthly_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    monthly_income_detail:
+      "演示：与产品分类损益「月度视图」（monthly）页脚「全部市场科目 + 投资收益合计」一致；当前为占位。",
   },
 };

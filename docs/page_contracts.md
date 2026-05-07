@@ -1107,6 +1107,8 @@
 | 信用占价比等 | `RiskIndicatorsPayload.credit_ratio` 等 | 同上 |
 | 各图 tabular 数据 | `asset-structure` / `industry` / `spread` 等 items | 同上 |
 
+- `weighted_ytm` 与 `weighted_duration` 统一在债券投资范围 `asset_class_std in ('rate', 'credit')` 内按市值加权计算，排除 `other` 分类；`weighted_duration` 指市值加权修正久期，不混入现金流页麦考利久期口径。
+
 ### G. 状态与错误
 
 - **Loading**：`datesQuery` 与分块 `useQuery`；`report_date` 为空时不 enabled 子查询。

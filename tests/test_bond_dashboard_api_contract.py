@@ -26,6 +26,67 @@ _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
 ]
 
 
+def _make_bond_analytics_row(
+    *,
+    report_date: str,
+    instrument_code: str,
+    portfolio_name: str,
+    asset_class_std: str,
+    market_value: Decimal,
+    ytm: Decimal,
+    modified_duration: Decimal,
+) -> Any:
+    from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
+
+    macaulay_duration = modified_duration * Decimal("1.02")
+    return BondAnalyticsRow(
+        report_date=date.fromisoformat(report_date),
+        instrument_code=instrument_code,
+        instrument_name=instrument_code,
+        portfolio_name=portfolio_name,
+        cost_center="C1",
+        asset_class_raw=asset_class_std,
+        asset_class_std=asset_class_std,
+        bond_type=asset_class_std,
+        issuer_name="I",
+        industry_name="bank",
+        rating="AAA",
+        accounting_class="AC",
+        accounting_rule_id="r1",
+        currency_code="CNY",
+        face_value=market_value,
+        market_value_native=market_value,
+        market_value=market_value,
+        amortized_cost=market_value,
+        accrued_interest=Decimal("0"),
+        coupon_rate=Decimal("0.025"),
+        interest_mode="fixed",
+        interest_payment_frequency="annual",
+        interest_rate_style="fixed",
+        ytm=ytm,
+        maturity_date=date(2030, 1, 1),
+        next_call_date=None,
+        years_to_maturity=Decimal("2.5"),
+        tenor_bucket="1-3Y",
+        macaulay_duration=macaulay_duration,
+        modified_duration=modified_duration,
+        convexity=Decimal("0.01"),
+        dv01=market_value * modified_duration / Decimal("10000"),
+        is_credit=asset_class_std == "credit",
+        spread_dv01=market_value * modified_duration / Decimal("10000") if asset_class_std == "credit" else Decimal("0"),
+        source_version="sv",
+        rule_version="rv",
+        ingest_batch_id="ib",
+        trace_id="tr",
+    )
+
+
+def _metric_raw(value: Any) -> Decimal:
+    if isinstance(value, dict):
+        return Decimal(str(value["raw"]))
+    return Decimal(str(value))
+
+
 def _assert_formal_envelope(payload: dict[str, Any]) -> None:
     assert "result_meta" in payload
     assert "result" in payload
@@ -241,4 +302,69 @@ def test_bond_dashboard_headline_kpis_shape_with_seeded_facts(tmp_path, monkeypa
     assert res["prev_kpis"] is not None
     assert res["prev_kpis"]["bond_count"] == 1
     assert res["kpis"]["total_market_value"] != res["prev_kpis"]["total_market_value"]
+    get_settings.cache_clear()
+
+
+def test_bond_dashboard_weighted_yield_and_duration_exclude_other_asset_class(tmp_path, monkeypatch) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    duckdb_path = tmp_path / "dash-eligible.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    rows = [
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="RATE",
+            portfolio_name="P1",
+            asset_class_std="rate",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.02"),
+            modified_duration=Decimal("2"),
+        ),
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="CREDIT",
+            portfolio_name="P1",
+            asset_class_std="credit",
+            market_value=Decimal("300"),
+            ytm=Decimal("0.04"),
+            modified_duration=Decimal("6"),
+        ),
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="OTHER",
+            portfolio_name="P1",
+            asset_class_std="other",
+            market_value=Decimal("600"),
+            ytm=Decimal("0"),
+            modified_duration=Decimal("0"),
+        ),
+    ]
+    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    headline = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": REPORT_DATE})
+    assert headline.status_code == 200, headline.text
+    headline_result = headline.json()["result"]
+    assert headline_result["kpis"]["bond_count"] == 3
+    assert _metric_raw(headline_result["kpis"]["weighted_ytm"]) == Decimal("0.035")
+    assert _metric_raw(headline_result["kpis"]["weighted_duration"]) == Decimal("5")
+
+    yield_distribution = client.get("/api/bond-dashboard/yield-distribution", params={"report_date": REPORT_DATE})
+    assert yield_distribution.status_code == 200, yield_distribution.text
+    assert _metric_raw(yield_distribution.json()["result"]["weighted_ytm"]) == Decimal("0.035")
+
+    portfolio = client.get("/api/bond-dashboard/portfolio-comparison", params={"report_date": REPORT_DATE})
+    assert portfolio.status_code == 200, portfolio.text
+    item = portfolio.json()["result"]["items"][0]
+    assert _metric_raw(item["weighted_ytm"]) == Decimal("0.035")
+    assert _metric_raw(item["weighted_duration"]) == Decimal("5")
+
+    risk = client.get("/api/bond-dashboard/risk-indicators", params={"report_date": REPORT_DATE})
+    assert risk.status_code == 200, risk.text
+    assert _metric_raw(risk.json()["result"]["weighted_duration"]) == Decimal("5")
     get_settings.cache_clear()

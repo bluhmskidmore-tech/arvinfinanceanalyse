@@ -12,23 +12,7 @@ export function DataModeRibbon() {
   return (
     <div
       id="data-mode-ribbon"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 28,
-        zIndex: 9999,
-        background: "linear-gradient(90deg, #ff6b35, #f7c948)",
-        color: "#1a1a1a",
-        fontSize: 12,
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        letterSpacing: "0.05em",
-        pointerEvents: "none",
-      }}
+      className="moss-data-mode-ribbon"
     >
       ⚠️ MOCK 模式 — 所有数据为前端模拟，不可用于业务决策
     </div>
