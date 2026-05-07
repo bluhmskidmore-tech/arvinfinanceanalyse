@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, type CSSProperties, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Collapse } from "antd";
 
 import { useApiClient } from "../../../api/client";
@@ -410,6 +410,7 @@ function MetadataPanel({
 
 export default function MarketDataPage() {
   const client = useApiClient();
+  const queryClient = useQueryClient();
   const [watchDate, setWatchDate] = useState(() => {
     const d = new Date();
     const y = d.getFullYear();
@@ -500,8 +501,12 @@ export default function MarketDataPage() {
       .sort((left, right) => right.localeCompare(left))[0];
   }, [stableSeries]);
   const linkageReportDate = marketDataCategories.linkageReportDate;
+  const macroBondLinkageQueryKey = useMemo(
+    () => ["market-data", "macro-bond-linkage", client.mode, linkageReportDate] as const,
+    [client.mode, linkageReportDate],
+  );
   const macroBondLinkageQuery = useQuery({
-    queryKey: ["market-data", "macro-bond-linkage", client.mode, linkageReportDate],
+    queryKey: macroBondLinkageQueryKey,
     queryFn: () => client.getMacroBondLinkageAnalysis({ reportDate: linkageReportDate }),
     enabled: Boolean(linkageReportDate),
     retry: false,
@@ -562,6 +567,15 @@ export default function MarketDataPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
 
+  const refreshMacroBondLinkage = useCallback(async () => {
+    if (!linkageReportDate) {
+      return;
+    }
+    await queryClient.cancelQueries({ queryKey: macroBondLinkageQueryKey, exact: true });
+    const envelope = await client.getMacroBondLinkageAnalysis({ reportDate: linkageReportDate });
+    queryClient.setQueryData(macroBondLinkageQueryKey, envelope);
+  }, [client, linkageReportDate, macroBondLinkageQueryKey, queryClient]);
+
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setRefreshError("");
@@ -589,9 +603,7 @@ export default function MarketDataPage() {
         latestQuery.refetch(),
         formalRatesQuery.refetch(),
         fxAnalyticalQuery.refetch(),
-        linkageReportDate
-          ? macroBondLinkageQuery.refetch()
-          : Promise.resolve(),
+        refreshMacroBondLinkage(),
         livermoreStrategyQuery.refetch(),
       ]);
     } catch (err) {
@@ -607,8 +619,7 @@ export default function MarketDataPage() {
     latestQuery,
     formalRatesQuery,
     fxAnalyticalQuery,
-    linkageReportDate,
-    macroBondLinkageQuery,
+    refreshMacroBondLinkage,
     livermoreStrategyQuery,
   ]);
 

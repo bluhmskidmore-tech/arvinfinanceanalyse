@@ -64,6 +64,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(screen.getByTestId("workbench-group-nav")).toBeInTheDocument();
     expect(screen.getByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
   });
 
   it("renders a smaller set of grouped workspaces than live route entries", async () => {
@@ -315,7 +316,7 @@ describe("WorkbenchShell", () => {
       getChoiceMacroLatest: async () => ({}),
     } as unknown as ApiClient;
 
-    renderShellAt("/", client);
+    renderShellAt("/bond-analysis", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
     expect(marketTicker).toHaveTextContent("10年国债");

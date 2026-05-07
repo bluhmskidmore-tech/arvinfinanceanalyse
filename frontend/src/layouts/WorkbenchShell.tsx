@@ -361,6 +361,7 @@ export function WorkbenchShell() {
     currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isDashboardCockpitShell = currentSection.key === "dashboard";
+  const showShellMarketTicker = !isDashboardCockpitShell;
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
@@ -405,6 +406,7 @@ export function WorkbenchShell() {
   const shellTickerQuery = useQuery({
     queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
+    enabled: showShellMarketTicker,
     retry: false,
     staleTime: 60_000,
   });
@@ -983,80 +985,82 @@ export function WorkbenchShell() {
             </section>
           </div>
 
-          <section
-            data-testid="workbench-market-ticker"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 10,
-              minWidth: 0,
-              paddingTop: 2,
-            }}
-          >
-            <span
+          {showShellMarketTicker ? (
+            <section
+              data-testid="workbench-market-ticker"
               style={{
-                color: shellTokens.colorTextMuted,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 10,
+                minWidth: 0,
+                paddingTop: 2,
               }}
             >
-              市场快讯
-            </span>
-            {shellTickerItems.map((item, index) => (
-              <div
-                key={item.key}
+              <span
                 style={{
-                  display: "inline-flex",
-                  alignItems: "baseline",
-                  gap: 5,
-                  minWidth: 0,
+                  color: shellTokens.colorTextMuted,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
                 }}
               >
-                <span
+                市场快讯
+              </span>
+              {shellTickerItems.map((item, index) => (
+                <div
+                  key={item.key}
                   style={{
-                    color: shellTokens.colorTextMuted,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    letterSpacing: "0.03em",
+                    display: "inline-flex",
+                    alignItems: "baseline",
+                    gap: 5,
+                    minWidth: 0,
                   }}
                 >
-                  {item.label}
-                </span>
-                <strong
-                  style={{
-                    color: shellTokens.colorTextPrimary,
-                    fontSize: 15,
-                    lineHeight: 1,
-                    fontWeight: 700,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {item.value}
-                </strong>
-                <span
-                  style={{
-                    color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
-                    fontSize: 10,
-                    fontWeight: 700,
-                  }}
-                >
-                  {item.delta}
-                </span>
-                {index < shellTickerItems.length - 1 ? (
                   <span
                     style={{
-                      width: 1,
-                      height: 10,
-                      background: shellTokens.colorBorderSoft,
+                      color: shellTokens.colorTextMuted,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.03em",
                     }}
-                  />
-                ) : null}
-              </div>
-            ))}
-          </section>
+                  >
+                    {item.label}
+                  </span>
+                  <strong
+                    style={{
+                      color: shellTokens.colorTextPrimary,
+                      fontSize: 15,
+                      lineHeight: 1,
+                      fontWeight: 700,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {item.value}
+                  </strong>
+                  <span
+                    style={{
+                      color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
+                      fontSize: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.delta}
+                  </span>
+                  {index < shellTickerItems.length - 1 ? (
+                    <span
+                      style={{
+                        width: 1,
+                        height: 10,
+                        background: shellTokens.colorBorderSoft,
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </section>
+          ) : null}
         </header>
         {showWorkspaceHeroCard ? (
           <header

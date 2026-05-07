@@ -194,6 +194,7 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("dashboard-data-warning")).toBeInTheDocument();
 
     expect(marketStrip).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
     expect(judgmentBand).toBeInTheDocument();
     expect(kpiRibbon).toBeInTheDocument();
     expect(businessBalanceSummary).toBeInTheDocument();
