@@ -8,6 +8,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.tasks.choice_stock_materialize import (
     ChoiceStockMaterializationCoverage,
     load_choice_stock_materialization_coverage,
+    materialize_choice_stock_factor_snapshot,
     materialize_choice_stock_inputs,
 )
 
@@ -29,12 +30,23 @@ def _coverage_payload(coverage: ChoiceStockMaterializationCoverage) -> dict[str,
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run Choice stock input materialization into DuckDB.")
+    parser = argparse.ArgumentParser(description="Run Choice stock materialization into DuckDB.")
     parser.add_argument("--as-of-date", required=True)
     parser.add_argument("--duckdb-path")
     parser.add_argument("--catalog-path")
     parser.add_argument("--verify-coverage", action="store_true")
+    parser.add_argument("--factor-snapshot", action="store_true")
+    parser.add_argument("--factor-max-stock-count", type=int)
     args = parser.parse_args()
+
+    if args.factor_snapshot:
+        payload = materialize_choice_stock_factor_snapshot(
+            as_of_date=args.as_of_date,
+            duckdb_path=args.duckdb_path,
+            max_stock_count=args.factor_max_stock_count,
+        )
+        _emit_json_payload(payload)
+        return
 
     payload = materialize_choice_stock_inputs(
         as_of_date=args.as_of_date,

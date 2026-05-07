@@ -14,6 +14,7 @@ from backend.app.core_finance.macro.toolkit.runner import OMITTED_SOURCE_SCRIPTS
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias, load_system_macro_frame
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
+from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services import cffex_member_rank_service
 
 
@@ -122,6 +123,7 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "missing_table",
         "empty_table",
     }
+    assert payload["result"]["choice_stock_refresh"]["permission"]["mode"] == "identity_only"
     assert "signal_aggregator" in scripts
     assert scripts["signal_aggregator"]["available"] is True
     assert payload["result_meta"]["tables_used"] == [
@@ -132,6 +134,8 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "std_external_macro_daily",
         "fact_cffex_member_rank_daily",
         "vw_cffex_member_rank_daily",
+        "choice_stock_daily_observation",
+        "choice_stock_factor_snapshot",
     ]
 
 
@@ -245,6 +249,234 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     }
     assert strategy_summaries["moving_average"]["status"] == "sample_only"
     assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
+
+
+def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_choice_stock_strategy_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    assert strategies["moving_average"]["status"] == "complete"
+    assert strategies["moving_average"]["warnings"] == []
+    assert strategies["moving_average"]["primary_metric"]["label"] == "真实累计净值"
+    assert strategies["moving_average"]["result"]["data_status"] == "complete"
+    assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
+    assert strategies["moving_average"]["result"]["as_of_date"] == "2026-04-30"
+    assert strategies["moving_average"]["result"]["stock_count"] == 3
+    assert strategies["mean_reversion_momentum"]["status"] == "complete"
+    assert strategies["multi_factor_selection"]["status"] == "degraded"
+    assert "FUNDAMENTAL_FACTORS_NOT_MATERIALIZED" in strategies["multi_factor_selection"]["warnings"]
+    assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
+
+
+def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_factor(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_choice_stock_strategy_db(duckdb_path)
+    _seed_choice_stock_factor_snapshot(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    multi_factor = strategies["multi_factor_selection"]
+    assert multi_factor["status"] == "complete"
+    assert multi_factor["warnings"] == []
+    assert multi_factor["primary_metric"]["label"] == "真实入选数量"
+    assert multi_factor["primary_metric"]["value"] == 1
+    assert multi_factor["result"]["factor_source"] == "choice_stock_factor_snapshot"
+    assert multi_factor["result"]["selected_stock_codes"] == ["000001.SZ"]
+    assert "choice_stock_factor_snapshot" in payload["result_meta"]["tables_used"]
+
+
+def test_macro_toolkit_multi_factor_uses_full_landed_factor_snapshot(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_choice_stock_strategy_db(duckdb_path)
+    _seed_choice_stock_factor_snapshot(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into choice_stock_factor_snapshot values (
+              '2026-04-30', '999999.SH',
+              4.0, 0.4, 0.6,
+              0.35, 0.60,
+              0.40, 0.80,
+              0.08, 0.10,
+              'technology',
+              'sv_factor', 'vv_factor', 'rv_factor', 'run-factor'
+            )
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    multi_factor = strategies["multi_factor_selection"]
+    assert multi_factor["status"] == "complete"
+    assert multi_factor["result"]["factor_row_count"] == 4
+    assert multi_factor["result"]["selected_stock_codes"] == ["999999.SH"]
+
+
+def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapshot(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+
+    route_module = importlib.import_module("backend.app.api.routes.macro_toolkit")
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_materialize_choice_stock_inputs(**kwargs: object) -> dict[str, object]:
+        calls.append(("history", dict(kwargs)))
+        return {
+            "status": "completed",
+            "row_count": 111,
+            "stock_code_count": 5,
+            "source_version": "sv_history",
+            "vendor_version": "vv_history",
+        }
+
+    def fake_materialize_choice_stock_factor_snapshot(**kwargs: object) -> dict[str, object]:
+        calls.append(("factor", dict(kwargs)))
+        return {
+            "status": "completed",
+            "row_count": 222,
+            "stock_code_count": 5,
+            "source_version": "sv_factor",
+            "vendor_version": "vv_factor",
+        }
+
+    monkeypatch.setattr(route_module, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
+    monkeypatch.setattr(
+        route_module,
+        "materialize_choice_stock_factor_snapshot",
+        fake_materialize_choice_stock_factor_snapshot,
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/ui/macro/toolkit/choice-stock/refresh",
+            json={
+                "as_of_date": "2026-04-30",
+                "refresh_history": True,
+                "refresh_factors": True,
+                "factor_max_stock_count": None,
+            },
+            headers={"X-User-Id": "stock-refresh-user"},
+        )
+        payload = response.json()
+        status_response = client.get(
+            "/ui/macro/toolkit/choice-stock/refresh-status",
+            params={"run_id": payload["result"]["refresh"]["run_id"]},
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    refresh = payload["result"]["refresh"]
+    assert refresh["status"] == "queued"
+    assert refresh["trigger_mode"] == "async"
+    assert refresh["permission"]["mode"] == "identity_only"
+    assert refresh["permission"]["user_id"] == "stock-refresh-user"
+    assert calls == [
+        (
+            "history",
+            {
+                "as_of_date": "2026-04-30",
+                "duckdb_path": str(duckdb_path),
+                "catalog_path": str(get_settings().choice_stock_catalog_file),
+            },
+        ),
+        (
+            "factor",
+            {
+                "as_of_date": "2026-04-30",
+                "duckdb_path": str(duckdb_path),
+                "max_stock_count": None,
+            },
+        ),
+    ]
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["result"]["refresh"]["status"] == "completed"
+    assert status_payload["result"]["refresh"]["history_row_count"] == 111
+    assert status_payload["result"]["refresh"]["factor_row_count"] == 222
+    assert status_payload["result"]["refresh"]["trigger_mode"] == "terminal"
+
+
+def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monkeypatch) -> None:
+    governance_path = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+    route_module = importlib.import_module("backend.app.api.routes.macro_toolkit")
+    GovernanceRepository(base_dir=governance_path).append(
+        route_module.CACHE_BUILD_RUN_STREAM,
+        route_module._choice_stock_refresh_run_payload(
+            run_id="choice_stock_refresh:2026-04-30:existing",
+            status="running",
+            as_of_date="2026-04-30",
+            queued_at="2026-05-06T00:00:00+00:00",
+        ),
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/ui/macro/toolkit/choice-stock/refresh",
+            json={
+                "as_of_date": "2026-04-30",
+                "refresh_history": True,
+                "refresh_factors": True,
+            },
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Choice stock refresh already in progress for as_of_date=2026-04-30."
 
 
 def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_path, monkeypatch) -> None:
@@ -622,6 +854,210 @@ def _seed_choice_tushare_macro_db(path) -> None:
                'select * from vw_external_macro_daily where series_id = ''tushare.macro.cn_cpi.monthly''',
                'm2b.tushare_macro.v1', current_timestamp)
             """
+        )
+    finally:
+        conn.close()
+
+
+def _seed_choice_stock_strategy_db(path) -> None:
+    conn = duckdb.connect(str(path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              field_key varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              sw2021 varchar,
+              sw2021code varchar,
+              field_key varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              volume double,
+              amount double,
+              pctchange double,
+              turn double,
+              amplitude double,
+              tradestatus varchar,
+              highlimit varchar,
+              lowlimit varchar,
+              field_keys_json varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-04-30", "000001.SZ", "Alpha Bank", "a_share_universe_sector_001004", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+                ("2026-04-30", "000002.SZ", "Beta Tech", "a_share_universe_sector_001004", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+                ("2026-04-30", "600000.SH", "Gamma Consumer", "a_share_universe_sector_001004", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+            ],
+        )
+        conn.executemany(
+            "insert into choice_stock_sector_membership values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-04-30", "000001.SZ", "Bank", "801780", "sw2021_industry_membership", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+                ("2026-04-30", "000002.SZ", "Technology", "801750", "sw2021_industry_membership", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+                ("2026-04-30", "600000.SH", "Consumer", "801120", "sw2021_industry_membership", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+            ],
+        )
+        dates = pd.date_range("2026-01-01", "2026-04-30", freq="D")
+        rows = []
+        for row_no, trade_date in enumerate(dates):
+            for stock_no, stock_code in enumerate(("000001.SZ", "000002.SZ", "600000.SH")):
+                close = 10.0 + stock_no * 5.0 + row_no * (0.08 + stock_no * 0.01)
+                open_value = close * 0.995
+                high_value = close * 1.01
+                low_value = close * 0.99
+                rows.append(
+                    (
+                        trade_date.date().isoformat(),
+                        stock_code,
+                        open_value,
+                        high_value,
+                        low_value,
+                        close,
+                        100000.0 + stock_no * 1000,
+                        close * 100000.0,
+                        0.8 + stock_no * 0.1,
+                        1.2 + stock_no * 0.1,
+                        2.0,
+                        "Trading",
+                        str(round(close * 1.1, 4)),
+                        str(round(close * 0.9, 4)),
+                        "{}",
+                        "sv_stock",
+                        "vv_stock",
+                        "rv_stock",
+                        "run-stock",
+                    )
+                )
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            rows,
+        )
+    finally:
+        conn.close()
+
+
+def _seed_choice_stock_factor_snapshot(path) -> None:
+    conn = duckdb.connect(str(path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-04-30",
+                    "000001.SZ",
+                    8.0,
+                    0.8,
+                    1.0,
+                    0.22,
+                    0.45,
+                    0.18,
+                    0.42,
+                    0.16,
+                    0.06,
+                    "technology",
+                    "sv_factor",
+                    "vv_factor",
+                    "rv_factor",
+                    "run-factor",
+                ),
+                (
+                    "2026-04-30",
+                    "000002.SZ",
+                    18.0,
+                    2.2,
+                    3.0,
+                    0.12,
+                    0.30,
+                    0.08,
+                    0.10,
+                    0.25,
+                    0.03,
+                    "consumer",
+                    "sv_factor",
+                    "vv_factor",
+                    "rv_factor",
+                    "run-factor",
+                ),
+                (
+                    "2026-04-30",
+                    "600000.SH",
+                    12.0,
+                    1.5,
+                    2.0,
+                    0.18,
+                    0.38,
+                    0.12,
+                    0.24,
+                    0.20,
+                    0.04,
+                    "technology",
+                    "sv_factor",
+                    "vv_factor",
+                    "rv_factor",
+                    "run-factor",
+                ),
+            ],
         )
     finally:
         conn.close()

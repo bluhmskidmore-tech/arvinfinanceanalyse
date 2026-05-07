@@ -285,7 +285,8 @@
   gap: var(--moss-space-2);
 }
 
-.macro-toolkit-cffex-panel {
+.macro-toolkit-cffex-panel,
+.macro-toolkit-stock-refresh-panel {
   display: grid;
   gap: var(--moss-space-2);
   padding: 14px;

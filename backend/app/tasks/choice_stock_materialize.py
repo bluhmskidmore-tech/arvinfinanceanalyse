@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import json
+import logging
+import math
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-
-logger = logging.getLogger(__name__)
-
 from backend.app.config.choice_runtime import _get_em_c
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
@@ -26,6 +24,8 @@ from backend.app.repositories.tushare_adapter import (
     resolve_tushare_token_with_settings_fallback,
 )
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
+
+logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
 
@@ -98,6 +98,9 @@ class _DefaultTushareStockClient:
     def stk_limit(self, **kwargs: object) -> object:
         return self._api().stk_limit(**kwargs)
 
+    def fina_indicator(self, **kwargs: object) -> object:
+        return self._api().fina_indicator(**kwargs)
+
     def _api(self) -> Any:
         if self._pro is None:
             token = resolve_tushare_token_with_settings_fallback(get_settings())
@@ -109,9 +112,10 @@ class _DefaultTushareStockClient:
 
 
 def ensure_choice_stock_schema(conn: duckdb.DuckDBPyConnection) -> None:
-    text = (REGISTRY_DIR / "21_choice_stock.sql").read_text(encoding="utf-8")
-    for statement in parse_registry_sql_text(text):
-        conn.execute(statement)
+    for relative_path in ("21_choice_stock.sql", "27_choice_stock_factor_snapshot.sql"):
+        text = (REGISTRY_DIR / relative_path).read_text(encoding="utf-8")
+        for statement in parse_registry_sql_text(text):
+            conn.execute(statement)
 
 
 def materialize_choice_stock_inputs(
@@ -330,6 +334,88 @@ def materialize_choice_stock_inputs(
     }
 
 
+def materialize_choice_stock_factor_snapshot(
+    *,
+    as_of_date: str | date,
+    duckdb_path: str | None = None,
+    tushare_client: object | None = None,
+    max_stock_count: int | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    resolved_date = _normalize_date(as_of_date)
+    resolved_duckdb_path = str(duckdb_path or settings.duckdb_path)
+    run_id = f"choice_stock_factor_snapshot:{resolved_date}:{uuid.uuid4().hex[:12]}"
+    started_at = datetime.now(UTC).isoformat()
+
+    duckdb_file = Path(resolved_duckdb_path)
+    if not duckdb_file.exists():
+        raise RuntimeError(f"Choice stock DuckDB does not exist: {duckdb_file}")
+
+    conn = duckdb.connect(str(duckdb_file), read_only=False)
+    try:
+        ensure_choice_stock_schema(conn)
+        universe_rows = _load_factor_snapshot_universe(conn, resolved_date, max_stock_count=max_stock_count)
+        if not universe_rows:
+            raise RuntimeError(f"Choice stock universe is not materialized for {resolved_date}.")
+        stock_codes = [str(row["stock_code"]) for row in universe_rows]
+        price_metrics = _load_stock_price_factor_metrics(conn, resolved_date, stock_codes)
+        client = tushare_client or _DefaultTushareStockClient()
+        daily_basic = _load_tushare_daily_basic_factors(client, resolved_date, stock_codes)
+        financial = _load_tushare_financial_factors(client, resolved_date, stock_codes)
+        rows = _build_factor_snapshot_rows(
+            as_of_date=resolved_date,
+            universe_rows=universe_rows,
+            daily_basic=daily_basic,
+            financial=financial,
+            price_metrics=price_metrics,
+        )
+        if not rows:
+            raise RuntimeError(
+                f"No complete stock factor rows could be materialized for {resolved_date}; "
+                "check Tushare daily_basic/fina_indicator coverage."
+            )
+
+        source_version = _build_source_version(
+            {
+                "as_of_date": resolved_date,
+                "rows": rows,
+                "input_tables": ["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
+                "vendor_inputs": ["tushare.daily_basic", "tushare.fina_indicator"],
+            }
+        )
+        vendor_version = f"vv_tushare_stock_factor_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
+        completed_at = datetime.now(UTC).isoformat()
+
+        conn.execute("begin transaction")
+        conn.execute("delete from choice_stock_factor_snapshot where as_of_date = ?", [resolved_date])
+        _insert_factor_snapshot(
+            conn,
+            rows=rows,
+            run_id=run_id,
+            source_version=source_version,
+            vendor_version=vendor_version,
+        )
+        conn.execute("commit")
+    except Exception:
+        _rollback_quietly(conn)
+        raise
+    finally:
+        conn.close()
+
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "as_of_date": resolved_date,
+        "table": "choice_stock_factor_snapshot",
+        "row_count": len(rows),
+        "stock_code_count": len(stock_codes),
+        "source_version": source_version,
+        "vendor_version": vendor_version,
+        "started_at": started_at,
+        "completed_at": completed_at,
+    }
+
+
 def load_choice_stock_materialization_coverage(
     *,
     duckdb_path: str,
@@ -400,6 +486,192 @@ def load_choice_stock_materialization_coverage(
         missing_request_items=[],
         message=f"Choice stock inputs are materialized for {resolved_date}.",
     )
+
+
+def _load_factor_snapshot_universe(
+    conn: duckdb.DuckDBPyConnection,
+    as_of_date: str,
+    *,
+    max_stock_count: int | None,
+) -> list[dict[str, object]]:
+    limit_clause = "" if max_stock_count is None else f"limit {max(1, int(max_stock_count))}"
+    rows = conn.execute(
+        f"""
+        select
+          universe.stock_code,
+          coalesce(nullif(trim(sector.sw2021), ''), '') as industry
+        from choice_stock_universe universe
+        left join choice_stock_sector_membership sector
+          on sector.as_of_date = universe.as_of_date
+         and sector.stock_code = universe.stock_code
+        left join choice_stock_daily_observation daily
+          on daily.trade_date = universe.as_of_date
+         and daily.stock_code = universe.stock_code
+        where universe.as_of_date = ?
+        order by coalesce(daily.amount, 0) desc, universe.stock_code
+        {limit_clause}
+        """,
+        [as_of_date],
+    ).fetchall()
+    return [
+        {"stock_code": _text(row[0]), "industry": _text(row[1])}
+        for row in rows
+        if _text(row[0])
+    ]
+
+
+def _load_stock_price_factor_metrics(
+    conn: duckdb.DuckDBPyConnection,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> dict[str, dict[str, float]]:
+    stock_code_set = set(stock_codes)
+    history_start = (date.fromisoformat(as_of_date) - timedelta(days=380)).isoformat()
+    rows = conn.execute(
+        """
+        select trade_date, stock_code, close_value
+        from choice_stock_daily_observation
+        where cast(trade_date as date) >= cast(? as date)
+          and cast(trade_date as date) <= cast(? as date)
+          and close_value is not null
+          and close_value > 0
+        order by trade_date, stock_code
+        """,
+        [history_start, as_of_date],
+    ).fetchall()
+    by_stock: dict[str, list[tuple[date, float]]] = {stock_code: [] for stock_code in stock_codes}
+    for trade_date_raw, stock_code_raw, close_value_raw in rows:
+        stock_code = _text(stock_code_raw)
+        if stock_code not in stock_code_set:
+            continue
+        close_value = _float_or_none(close_value_raw)
+        if close_value is None or close_value <= 0:
+            continue
+        by_stock.setdefault(stock_code, []).append((_date_from_value(trade_date_raw), close_value))
+
+    as_of = date.fromisoformat(as_of_date)
+    metrics: dict[str, dict[str, float]] = {}
+    for stock_code in stock_codes:
+        points = by_stock.get(stock_code, [])
+        metrics[stock_code] = {
+            "three_month_return": _return_since(points, as_of - timedelta(days=90)),
+            "twelve_month_return": _return_since(points, as_of - timedelta(days=365)),
+            "volatility": _annualized_volatility(points),
+        }
+    return metrics
+
+
+def _load_tushare_daily_basic_factors(
+    client: object,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> dict[str, dict[str, float]]:
+    stock_code_set = set(stock_codes)
+    frame = cast(Any, client).daily_basic(
+        trade_date=_compact_date(as_of_date),
+        fields="ts_code,trade_date,pe,pb,ps,dv_ratio,dv_ttm",
+    )
+    rows: dict[str, dict[str, float]] = {}
+    for record in _records_from_tabular_payload(frame):
+        stock_code = _record_text(record, "ts_code")
+        if stock_code not in stock_code_set:
+            continue
+        rows[stock_code] = {
+            "pe": _positive_float_or_none(_record_float(record, "pe")),
+            "pb": _positive_float_or_none(_record_float(record, "pb")),
+            "ps": _positive_float_or_none(_record_float(record, "ps")),
+            "dividend_yield": _percent_points_to_ratio(
+                _record_float(record, "dv_ttm") if _record_float(record, "dv_ttm") is not None else _record_float(record, "dv_ratio")
+            ),
+        }
+    return rows
+
+
+def _load_tushare_financial_factors(
+    client: object,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> dict[str, dict[str, float]]:
+    start_date = _compact_date((date.fromisoformat(as_of_date) - timedelta(days=730)).isoformat())
+    end_date = _compact_date(as_of_date)
+    rows: dict[str, dict[str, float]] = {}
+    for stock_code in stock_codes:
+        frame = cast(Any, client).fina_indicator(
+            ts_code=stock_code,
+            start_date=start_date,
+            end_date=end_date,
+            fields="ts_code,ann_date,end_date,roe,grossprofit_margin",
+        )
+        selected = _latest_fina_indicator_record(frame, as_of_date=as_of_date)
+        if selected is None:
+            continue
+        rows[stock_code] = {
+            "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
+            "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
+        }
+    return rows
+
+
+def _latest_fina_indicator_record(frame: object, *, as_of_date: str) -> dict[str, object] | None:
+    as_of_compact = _compact_date(as_of_date)
+    records = []
+    for record in _records_from_tabular_payload(frame):
+        ann_date = _compact_or_empty(_record_text(record, "ann_date"))
+        end_date = _compact_or_empty(_record_text(record, "end_date"))
+        effective_date = ann_date or end_date
+        if effective_date and effective_date > as_of_compact:
+            continue
+        records.append((effective_date, record))
+    if not records:
+        return None
+    return sorted(records, key=lambda item: item[0], reverse=True)[0][1]
+
+
+def _build_factor_snapshot_rows(
+    *,
+    as_of_date: str,
+    universe_rows: list[dict[str, object]],
+    daily_basic: dict[str, dict[str, float]],
+    financial: dict[str, dict[str, float]],
+    price_metrics: dict[str, dict[str, float]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for universe_row in universe_rows:
+        stock_code = _text(universe_row["stock_code"])
+        industry = _text(universe_row["industry"])
+        basic_values = daily_basic.get(stock_code, {})
+        financial_values = financial.get(stock_code, {})
+        price_values = price_metrics.get(stock_code, {})
+        row = {
+            "as_of_date": as_of_date,
+            "stock_code": stock_code,
+            "pe": basic_values.get("pe"),
+            "pb": basic_values.get("pb"),
+            "ps": basic_values.get("ps"),
+            "roe": financial_values.get("roe"),
+            "gross_margin": financial_values.get("gross_margin"),
+            "three_month_return": price_values.get("three_month_return", 0.0),
+            "twelve_month_return": price_values.get("twelve_month_return", 0.0),
+            "volatility": price_values.get("volatility", 0.0),
+            "dividend_yield": basic_values.get("dividend_yield"),
+            "industry": industry,
+        }
+        if industry and all(row.get(key) is not None for key in _FACTOR_SNAPSHOT_REQUIRED_NUMERIC_KEYS):
+            rows.append(row)
+    return sorted(rows, key=lambda row: str(row["stock_code"]))
+
+
+_FACTOR_SNAPSHOT_REQUIRED_NUMERIC_KEYS = (
+    "pe",
+    "pb",
+    "ps",
+    "roe",
+    "gross_margin",
+    "three_month_return",
+    "twelve_month_return",
+    "volatility",
+    "dividend_yield",
+)
 
 
 def _find_request(
@@ -1308,6 +1580,40 @@ def _insert_limit_quality(
     )
 
 
+def _insert_factor_snapshot(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    rows: list[dict[str, object]],
+    run_id: str,
+    source_version: str,
+    vendor_version: str,
+) -> None:
+    conn.executemany(
+        "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                row["as_of_date"],
+                row["stock_code"],
+                row["pe"],
+                row["pb"],
+                row["ps"],
+                row["roe"],
+                row["gross_margin"],
+                row["three_month_return"],
+                row["twelve_month_return"],
+                row["volatility"],
+                row["dividend_yield"],
+                row["industry"],
+                source_version,
+                vendor_version,
+                RULE_VERSION,
+                run_id,
+            )
+            for row in rows
+        ],
+    )
+
+
 def _count_rows(conn: duckdb.DuckDBPyConnection, table: str, column: str, value: str) -> int:
     row = conn.execute(f"select count(*) from {table} where {column} = ?", [value]).fetchone()
     return int(row[0]) if row is not None else 0
@@ -1500,6 +1806,12 @@ def _normalize_date(value: object) -> str:
     return date.fromisoformat(text[:10]).isoformat()
 
 
+def _date_from_value(value: object) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(_normalize_date(value))
+
+
 def _normalize_option_date(value: object) -> str:
     return _normalize_date(value)
 
@@ -1510,12 +1822,66 @@ def _text(value: object) -> str:
 
 def _float_or_none(value: object) -> float | None:
     text = _text(value)
-    return None if not text else float(text)
+    if not text:
+        return None
+    number = float(text)
+    return number if math.isfinite(number) else None
+
+
+def _positive_float_or_none(value: object) -> float | None:
+    number = _float_or_none(value)
+    if number is None or number <= 0:
+        return None
+    return number
+
+
+def _percent_points_to_ratio(value: object) -> float | None:
+    number = _float_or_none(value)
+    if number is None:
+        return None
+    if abs(number) > 1:
+        return number / 100
+    return number
 
 
 def _int_or_none(value: object) -> int | None:
     text = _text(value)
     return None if not text else int(float(text))
+
+
+def _compact_or_empty(value: object) -> str:
+    text = _text(value)
+    if not text:
+        return ""
+    return _compact_date(text)
+
+
+def _return_since(points: list[tuple[date, float]], since_date: date) -> float:
+    if len(points) < 2:
+        return 0.0
+    ordered = sorted(points, key=lambda item: item[0])
+    latest_close = ordered[-1][1]
+    start_candidates = [item for item in ordered if item[0] >= since_date]
+    start_close = (start_candidates[0] if start_candidates else ordered[0])[1]
+    if start_close <= 0:
+        return 0.0
+    return latest_close / start_close - 1
+
+
+def _annualized_volatility(points: list[tuple[date, float]]) -> float:
+    if len(points) < 3:
+        return 0.0
+    ordered = sorted(points, key=lambda item: item[0])
+    returns = [
+        current[1] / previous[1] - 1
+        for previous, current in zip(ordered, ordered[1:], strict=False)
+        if previous[1] > 0
+    ]
+    if len(returns) < 2:
+        return 0.0
+    mean = sum(returns) / len(returns)
+    variance = sum((value - mean) ** 2 for value in returns) / len(returns)
+    return math.sqrt(variance) * math.sqrt(252)
 
 
 def _build_source_version(payload: dict[str, object]) -> str:

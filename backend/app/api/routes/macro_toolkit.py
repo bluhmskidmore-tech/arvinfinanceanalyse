@@ -7,8 +7,9 @@ import subprocess
 import sys
 import uuid
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
 import duckdb
 import pandas as pd
@@ -27,6 +28,7 @@ from backend.app.core_finance.macro import (
     moving_average_strategy,
     multi_factor_selection,
 )
+from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
 from backend.app.core_finance.macro.helpers import (
     build_curve_history,
     enrich_wide_with_curve_market_fields,
@@ -45,13 +47,27 @@ from backend.app.core_finance.macro.toolkit.runner import (
     run_toolkit_script,
 )
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
-from fastapi import APIRouter, HTTPException
+from backend.app.tasks.choice_stock_materialize import (
+    materialize_choice_stock_factor_snapshot,
+    materialize_choice_stock_inputs,
+)
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
+
+CHOICE_STOCK_REFRESH_JOB_NAME = "choice_stock_refresh"
+CHOICE_STOCK_REFRESH_CACHE_KEY = "choice_stock.history_and_factor_snapshot"
+CHOICE_STOCK_REFRESH_CACHE_VERSION = "choice_stock_refresh_v1"
+CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
+CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
+_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running"}
 
 _SOURCE_CHECK_ALIASES = (
     "sh000300",
@@ -201,6 +217,13 @@ class CffexMemberRankRefreshRequest(BaseModel):
     sources: list[str] = Field(default_factory=lambda: ["choice", "tushare"])
 
 
+class ChoiceStockRefreshRequest(BaseModel):
+    as_of_date: str | None = None
+    refresh_history: bool = True
+    refresh_factors: bool = True
+    factor_max_stock_count: int | None = Field(default=None, ge=1)
+
+
 @router.get("/scripts")
 def macro_toolkit_scripts() -> dict[str, object]:
     settings = get_settings()
@@ -223,6 +246,10 @@ def macro_toolkit_scripts() -> dict[str, object]:
             "source_checks": source_checks,
             "capabilities": _capability_plan(settings.duckdb_path),
             "cffex_member_rank": cffex_status,
+            "choice_stock_refresh": _choice_stock_refresh_overview(
+                settings.duckdb_path,
+                settings.governance_path,
+            ),
             "warnings": _script_warnings(cffex_status),
         },
     )
@@ -258,13 +285,17 @@ def macro_toolkit_analysis() -> dict[str, object]:
             "indicators": indicators,
             "signal_cards": signal_cards,
             "capability_results": capability_results,
-            "strategy_summaries": _equity_strategy_summaries(),
+            "strategy_summaries": _equity_strategy_summaries(settings.duckdb_path),
             "output_files": output_files,
             "source_checks": _source_checks(settings.duckdb_path),
             "capabilities": _capability_plan(settings.duckdb_path),
             "cffex_member_rank": _cffex_member_rank_status(
                 settings.duckdb_path,
                 reference_date=_latest_indicator_date(indicators),
+            ),
+            "choice_stock_refresh": _choice_stock_refresh_overview(
+                settings.duckdb_path,
+                settings.governance_path,
             ),
             "warnings": _analysis_warnings(coverage),
         },
@@ -288,6 +319,92 @@ def macro_toolkit_refresh_cffex_member_rank(
         {
             "refresh": result,
             "cffex_member_rank": _cffex_member_rank_status(settings.duckdb_path),
+        },
+    )
+
+
+@router.post("/choice-stock/refresh")
+def macro_toolkit_refresh_choice_stock(
+    background_tasks: BackgroundTasks,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    request: ChoiceStockRefreshRequest | None = None,
+) -> dict[str, object]:
+    refresh_request = request or ChoiceStockRefreshRequest()
+    if not refresh_request.refresh_history and not refresh_request.refresh_factors:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of refresh_history or refresh_factors must be true.",
+        )
+
+    settings = get_settings()
+    as_of_date = refresh_request.as_of_date or _default_choice_stock_refresh_as_of_date(settings.duckdb_path)
+    permission = _choice_stock_refresh_permission_payload(auth)
+    try:
+        with acquire_lock(
+            _choice_stock_refresh_trigger_lock(as_of_date=as_of_date),
+            base_dir=settings.governance_path,
+            timeout_seconds=0.1,
+        ):
+            existing = _latest_choice_stock_inflight_refresh(settings.governance_path, as_of_date=as_of_date)
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Choice stock refresh already in progress for as_of_date={as_of_date}.",
+                )
+
+            queued_at = datetime.now(UTC).isoformat()
+            run_id = f"{CHOICE_STOCK_REFRESH_JOB_NAME}:{as_of_date}:{uuid.uuid4().hex[:12]}"
+            queued_payload = _choice_stock_refresh_run_payload(
+                run_id=run_id,
+                status="queued",
+                as_of_date=as_of_date,
+                queued_at=queued_at,
+                refresh_history=refresh_request.refresh_history,
+                refresh_factors=refresh_request.refresh_factors,
+                factor_max_stock_count=refresh_request.factor_max_stock_count,
+                permission=permission,
+            )
+            _append_choice_stock_refresh_run(settings.governance_path, queued_payload)
+            background_tasks.add_task(
+                _run_choice_stock_refresh_job,
+                duckdb_path=str(settings.duckdb_path),
+                catalog_path=str(settings.choice_stock_catalog_file),
+                governance_path=str(settings.governance_path),
+                run_id=run_id,
+                as_of_date=as_of_date,
+                queued_at=queued_at,
+                refresh_history=refresh_request.refresh_history,
+                refresh_factors=refresh_request.refresh_factors,
+                factor_max_stock_count=refresh_request.factor_max_stock_count,
+                permission=permission,
+            )
+            return _envelope(
+                "macro_toolkit.choice_stock_refresh",
+                {
+                    "refresh": queued_payload,
+                    "choice_stock_refresh": _choice_stock_refresh_overview(
+                        settings.duckdb_path,
+                        settings.governance_path,
+                        permission=permission,
+                    ),
+                },
+            )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Choice stock refresh already in progress for as_of_date={as_of_date}.",
+        ) from None
+
+
+@router.get("/choice-stock/refresh-status")
+def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -> dict[str, object]:
+    settings = get_settings()
+    status = _choice_stock_refresh_status(settings.governance_path, run_id=run_id)
+    return _envelope(
+        "macro_toolkit.choice_stock_refresh_status",
+        {
+            "refresh": status,
+            "choice_stock_refresh": _choice_stock_refresh_overview(settings.duckdb_path, settings.governance_path),
         },
     )
 
@@ -484,6 +601,373 @@ def _script_warnings(cffex_status: dict[str, object]) -> list[str]:
     return ["中金所席位排名表尚未初始化；运行 CFFEX refresh 会创建正式表并用 Choice/Tushare 补齐。"]
 
 
+def _run_choice_stock_refresh_job(
+    *,
+    duckdb_path: str,
+    catalog_path: str,
+    governance_path: str,
+    run_id: str,
+    as_of_date: str,
+    queued_at: str,
+    refresh_history: bool,
+    refresh_factors: bool,
+    factor_max_stock_count: int | None,
+    permission: dict[str, object],
+) -> None:
+    started_at = datetime.now(UTC).isoformat()
+    _append_choice_stock_refresh_run(
+        governance_path,
+        _choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status="running",
+            as_of_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            refresh_history=refresh_history,
+            refresh_factors=refresh_factors,
+            factor_max_stock_count=factor_max_stock_count,
+            permission=permission,
+        ),
+    )
+    history_result: dict[str, object] | None = None
+    factor_result: dict[str, object] | None = None
+    try:
+        if refresh_history:
+            history_result = materialize_choice_stock_inputs(
+                as_of_date=as_of_date,
+                duckdb_path=duckdb_path,
+                catalog_path=catalog_path,
+            )
+        if refresh_factors:
+            factor_result = materialize_choice_stock_factor_snapshot(
+                as_of_date=as_of_date,
+                duckdb_path=duckdb_path,
+                max_stock_count=factor_max_stock_count,
+            )
+        finished_at = datetime.now(UTC).isoformat()
+        _append_choice_stock_refresh_run(
+            governance_path,
+            _choice_stock_refresh_run_payload(
+                run_id=run_id,
+                status="completed",
+                as_of_date=as_of_date,
+                queued_at=queued_at,
+                started_at=started_at,
+                finished_at=finished_at,
+                refresh_history=refresh_history,
+                refresh_factors=refresh_factors,
+                factor_max_stock_count=factor_max_stock_count,
+                history_row_count=_result_row_count(history_result),
+                factor_row_count=_result_row_count(factor_result),
+                source_version=_latest_result_field("source_version", factor_result, history_result),
+                vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+                permission=permission,
+            ),
+        )
+    except Exception as exc:
+        finished_at = datetime.now(UTC).isoformat()
+        _append_choice_stock_refresh_run(
+            governance_path,
+            _choice_stock_refresh_run_payload(
+                run_id=run_id,
+                status="failed",
+                as_of_date=as_of_date,
+                queued_at=queued_at,
+                started_at=started_at,
+                finished_at=finished_at,
+                refresh_history=refresh_history,
+                refresh_factors=refresh_factors,
+                factor_max_stock_count=factor_max_stock_count,
+                history_row_count=_result_row_count(history_result),
+                factor_row_count=_result_row_count(factor_result),
+                source_version=_latest_result_field("source_version", factor_result, history_result),
+                vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+                error_message=f"{type(exc).__name__}: {exc}",
+                failure_category=type(exc).__name__,
+                failure_reason=str(exc),
+                permission=permission,
+            ),
+        )
+
+
+def _append_choice_stock_refresh_run(governance_path: str | Path, payload: dict[str, object]) -> None:
+    GovernanceRepository(base_dir=governance_path).append(CACHE_BUILD_RUN_STREAM, payload)
+
+
+def _choice_stock_refresh_run_payload(
+    *,
+    run_id: str,
+    status: str,
+    as_of_date: str,
+    queued_at: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    refresh_history: bool = True,
+    refresh_factors: bool = True,
+    factor_max_stock_count: int | None = None,
+    history_row_count: int | None = None,
+    factor_row_count: int | None = None,
+    source_version: object | None = None,
+    vendor_version: object | None = None,
+    error_message: str | None = None,
+    failure_category: str | None = None,
+    failure_reason: str | None = None,
+    permission: dict[str, object] | None = None,
+) -> dict[str, object]:
+    created_at = datetime.now(UTC).isoformat()
+    return {
+        "run_id": run_id,
+        "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
+        "status": status,
+        "cache_key": CHOICE_STOCK_REFRESH_CACHE_KEY,
+        "cache_version": CHOICE_STOCK_REFRESH_CACHE_VERSION,
+        "lock": CHOICE_STOCK_REFRESH_LOCK,
+        "source_version": _optional_result_text(source_version),
+        "vendor_version": _optional_result_text(vendor_version),
+        "rule_version": CHOICE_STOCK_REFRESH_RULE_VERSION,
+        "report_date": as_of_date,
+        "queued_at": queued_at,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "error_message": error_message,
+        "failure_category": failure_category,
+        "failure_reason": failure_reason,
+        "created_at": created_at,
+        "refresh_history": refresh_history,
+        "refresh_factors": refresh_factors,
+        "factor_max_stock_count": factor_max_stock_count,
+        "history_row_count": history_row_count,
+        "factor_row_count": factor_row_count,
+        "permission": permission or _choice_stock_refresh_permission_payload(),
+        "trigger_mode": _choice_stock_refresh_trigger_mode(status),
+    }
+
+
+def _choice_stock_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str = "",
+) -> dict[str, object]:
+    run_id_text = str(run_id or "").strip()
+    records = _choice_stock_refresh_records(governance_path)
+    if run_id_text:
+        matching = [record for record in records if str(record.get("run_id") or "") == run_id_text]
+        if not matching:
+            raise HTTPException(status_code=404, detail=f"Choice stock refresh run not found: {run_id_text}")
+        return _normalize_choice_stock_refresh_record(matching[-1])
+    if not records:
+        return {
+            "status": "idle",
+            "run_id": None,
+            "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
+            "cache_key": CHOICE_STOCK_REFRESH_CACHE_KEY,
+            "trigger_mode": "idle",
+            "permission": _choice_stock_refresh_permission_payload(),
+        }
+    return _normalize_choice_stock_refresh_record(records[-1])
+
+
+def _choice_stock_refresh_records(governance_path: str | Path) -> list[dict[str, object]]:
+    try:
+        rows = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+    except Exception:
+        return []
+    return [
+        row
+        for row in rows
+        if str(row.get("job_name") or "") == CHOICE_STOCK_REFRESH_JOB_NAME
+        and str(row.get("cache_key") or "") == CHOICE_STOCK_REFRESH_CACHE_KEY
+    ]
+
+
+def _choice_stock_refresh_trigger_lock(*, as_of_date: str) -> LockDefinition:
+    return LockDefinition(
+        key=f"{CHOICE_STOCK_REFRESH_LOCK}:{as_of_date}:trigger",
+        ttl_seconds=30,
+    )
+
+
+def _latest_choice_stock_inflight_refresh(
+    governance_path: str | Path,
+    *,
+    as_of_date: str,
+) -> dict[str, object] | None:
+    by_run_id: dict[str, dict[str, object]] = {}
+    for record in _choice_stock_refresh_records(governance_path):
+        if str(record.get("report_date") or "") != as_of_date:
+            continue
+        by_run_id[str(record.get("run_id") or "")] = record
+    for record in reversed(list(by_run_id.values())):
+        if str(record.get("status") or "") in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES:
+            return record
+    return None
+
+
+def _normalize_choice_stock_refresh_record(record: dict[str, object]) -> dict[str, object]:
+    normalized = dict(record)
+    normalized["trigger_mode"] = _choice_stock_refresh_trigger_mode(str(normalized.get("status") or ""))
+    normalized.setdefault("permission", _choice_stock_refresh_permission_payload())
+    return normalized
+
+
+def _choice_stock_refresh_trigger_mode(status: str) -> str:
+    normalized = str(status or "").strip()
+    if normalized in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES:
+        return "async"
+    if normalized:
+        return "terminal"
+    return "idle"
+
+
+def _choice_stock_refresh_permission_payload(auth: AuthContext | None = None) -> dict[str, object]:
+    return {
+        "mode": "identity_only",
+        "allowed": True,
+        "user_id": auth.user_id if auth else None,
+        "role": auth.role if auth else None,
+        "identity_source": auth.identity_source if auth else None,
+        "resource": "choice_stock.refresh",
+        "actions": ["history", "factor_snapshot"],
+    }
+
+
+def _choice_stock_refresh_overview(
+    duckdb_path: str | Path,
+    governance_path: str | Path,
+    *,
+    permission: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "permission": permission or _choice_stock_refresh_permission_payload(),
+        "refresh": _choice_stock_refresh_status(governance_path),
+        "daily_observation": _choice_stock_daily_observation_status(duckdb_path),
+        "factor_snapshot": _choice_stock_factor_snapshot_status(duckdb_path),
+        "default_factor_max_stock_count": None,
+    }
+
+
+def _choice_stock_daily_observation_status(duckdb_path: str | Path) -> dict[str, object]:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return _choice_stock_table_status("missing_database")
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return _choice_stock_table_status("unreadable_database")
+    try:
+        if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
+            return _choice_stock_table_status("missing_table")
+        row = conn.execute(
+            """
+            select
+              count(*) as row_count,
+              count(distinct stock_code) as stock_count,
+              count(distinct trade_date) as trade_date_count,
+              max(trade_date) as latest_trade_date
+            from choice_stock_daily_observation
+            """
+        ).fetchone()
+    except duckdb.Error:
+        return _choice_stock_table_status("unreadable_table")
+    finally:
+        conn.close()
+    row_count = _int_or_zero(row[0] if row else 0)
+    return {
+        "materialized": row_count > 0,
+        "status": "ok" if row_count > 0 else "empty_table",
+        "row_count": row_count,
+        "stock_count": _int_or_zero(row[1] if row else 0),
+        "trade_date_count": _int_or_zero(row[2] if row else 0),
+        "latest_trade_date": str(row[3])[:10] if row and row[3] is not None else None,
+    }
+
+
+def _choice_stock_factor_snapshot_status(duckdb_path: str | Path) -> dict[str, object]:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return _choice_stock_table_status("missing_database")
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return _choice_stock_table_status("unreadable_database")
+    try:
+        if not _duckdb_table_exists(conn, "choice_stock_factor_snapshot"):
+            return _choice_stock_table_status("missing_table")
+        row = conn.execute(
+            """
+            select
+              count(*) as row_count,
+              count(distinct stock_code) as stock_count,
+              max(as_of_date) as as_of_date
+            from choice_stock_factor_snapshot
+            """
+        ).fetchone()
+    except duckdb.Error:
+        return _choice_stock_table_status("unreadable_table")
+    finally:
+        conn.close()
+    row_count = _int_or_zero(row[0] if row else 0)
+    return {
+        "materialized": row_count > 0,
+        "status": "ok" if row_count > 0 else "empty_table",
+        "row_count": row_count,
+        "stock_count": _int_or_zero(row[1] if row else 0),
+        "as_of_date": str(row[2])[:10] if row and row[2] is not None else None,
+    }
+
+
+def _choice_stock_table_status(status: str) -> dict[str, object]:
+    return {
+        "materialized": False,
+        "status": status,
+        "row_count": 0,
+        "stock_count": 0,
+    }
+
+
+def _default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
+    path = Path(duckdb_path)
+    if path.exists():
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+            try:
+                if _duckdb_table_exists(conn, "choice_stock_daily_observation"):
+                    row = conn.execute("select max(trade_date) from choice_stock_daily_observation").fetchone()
+                    if row and row[0] is not None:
+                        return str(row[0])[:10]
+            finally:
+                conn.close()
+        except duckdb.Error:
+            pass
+    return date.today().isoformat()
+
+
+def _result_row_count(result: dict[str, object] | None) -> int | None:
+    if not result:
+        return None
+    value = result.get("row_count")
+    return None if value is None else int(value)
+
+
+def _latest_result_field(
+    field_name: str,
+    *results: dict[str, object] | None,
+) -> object | None:
+    for result in results:
+        if result and result.get(field_name):
+            return result[field_name]
+    return None
+
+
+def _optional_result_text(value: object | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _int_or_zero(value: object) -> int:
+    return int(value or 0)
+
+
 def _capability_plan(duckdb_path: str | Path) -> list[dict[str, object]]:
     return [_capability_payload(item, duckdb_path) for item in _CAPABILITY_DEFINITIONS]
 
@@ -645,8 +1129,16 @@ def _macro_capability_results(
     return cards
 
 
-def _equity_strategy_summaries() -> list[dict[str, object]]:
+_EQUITY_PRICE_LOOKBACK_DAYS = 260
+_EQUITY_PRICE_MIN_OBSERVATIONS = 80
+_EQUITY_PRICE_MAX_STOCKS = 500
+
+
+def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[dict[str, object]]:
     try:
+        price_context = _load_equity_strategy_price_context(duckdb_path)
+        if price_context is not None:
+            return _real_equity_strategy_summaries(price_context)
         prices = generate_random_prices(num_stocks=4, num_days=180, seed=20260506)
         moving_average = moving_average_strategy(prices)
         mean_reversion = mean_reversion_momentum_strategy(prices)
@@ -720,6 +1212,290 @@ def _equity_strategy_summaries() -> list[dict[str, object]]:
         ]
 
 
+def _real_equity_strategy_summaries(price_context: dict[str, object]) -> list[dict[str, object]]:
+    prices = price_context["prices"]
+    if not isinstance(prices, pd.DataFrame):
+        return []
+
+    moving_average = moving_average_strategy(prices)
+    mean_reversion = mean_reversion_momentum_strategy(prices)
+    financials = price_context.get("financials")
+    common_result = {
+        "data_status": "complete",
+        "price_source": "choice_stock_daily_observation",
+        "as_of_date": price_context["as_of_date"],
+        "stock_count": len(prices.columns),
+        "observation_count": len(prices.index),
+        "tables_used": price_context["tables_used"],
+        "source_versions": price_context["source_versions"],
+        "vendor_versions": price_context["vendor_versions"],
+    }
+    return [
+        _strategy_summary(
+            key="moving_average",
+            label="移动均线策略",
+            metric_label="真实累计净值",
+            metric_value=round(float(moving_average.iloc[-1]), 4),
+            status="complete",
+            warnings=[],
+            evidence=[
+                "短均线上穿长均线时建仓，下穿或触发止损时退出。",
+                f"已接入 choice_stock_daily_observation，样本 {len(prices.columns)} 只股票、{len(prices.index)} 个交易日。",
+            ],
+            result={"final_value": round(float(moving_average.iloc[-1]), 6), **common_result},
+        ),
+        _strategy_summary(
+            key="mean_reversion_momentum",
+            label="均值回归 + 动量",
+            metric_label="真实累计净值",
+            metric_value=round(float(mean_reversion.iloc[-1]), 4),
+            status="complete",
+            warnings=[],
+            evidence=[
+                "低于均值的价格偏离需同时站上趋势均线才进入观察。",
+                f"已接入 choice_stock_daily_observation，最新交易日 {price_context['as_of_date']}。",
+            ],
+            result={"final_value": round(float(mean_reversion.iloc[-1]), 6), **common_result},
+        ),
+        _real_multi_factor_summary(price_context, prices=prices, financials=financials),
+    ]
+
+
+def _real_multi_factor_summary(
+    price_context: dict[str, object],
+    *,
+    prices: pd.DataFrame,
+    financials: object,
+) -> dict[str, object]:
+    if isinstance(financials, pd.DataFrame) and not financials.empty:
+        selected = multi_factor_selection(financials)
+        selected_stock_codes = [str(stock_code) for stock_code in selected.index.tolist()]
+        return {
+            "key": "multi_factor_selection",
+            "label": "多因子选股",
+            "group": "A股策略",
+            "status": "complete",
+            "tone": "neutral",
+            "primary_metric": {"label": "真实入选数量", "value": len(selected), "unit": ""},
+            "evidence": [
+                "已接入 choice_stock_factor_snapshot，按估值、质量、动量、低波动、股息五类因子打分。",
+                f"因子快照日 {price_context['as_of_date']}，可用股票 {len(financials.index)} 只。",
+            ],
+            "warnings": [],
+            "result": {
+                "data_status": "complete",
+                "price_source": "choice_stock_daily_observation",
+                "factor_source": "choice_stock_factor_snapshot",
+                "as_of_date": price_context["as_of_date"],
+                "stock_count": len(prices.columns),
+                "factor_row_count": len(financials.index),
+                "selected_count": len(selected),
+                "selected_stock_codes": selected_stock_codes,
+                "selection_top_pct": 0.1,
+                "tables_used": ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+            },
+        }
+    return {
+        "key": "multi_factor_selection",
+        "label": "多因子选股",
+        "group": "A股策略",
+        "status": "degraded",
+        "tone": "neutral",
+        "primary_metric": None,
+        "evidence": [
+            "A股价格与行业数据已接入系统表，可用于行情类策略。",
+            "PE/PB/ROE/股息率等基本面因子尚未落库，未执行原多因子选股。",
+        ],
+        "warnings": ["FUNDAMENTAL_FACTORS_NOT_MATERIALIZED"],
+        "result": {
+            "data_status": "degraded",
+            "price_source": "choice_stock_daily_observation",
+            "as_of_date": price_context["as_of_date"],
+            "stock_count": len(prices.columns),
+            "missing_factor_inputs": list(REQUIRED_FACTOR_INPUTS),
+            "tables_used": price_context["tables_used"],
+        },
+    }
+
+
+def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
+    if duckdb_path is None:
+        return None
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return None
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        if "choice_stock_daily_observation" not in tables:
+            return None
+        latest_row = conn.execute(
+            """
+            select max(try_cast(trade_date as date))
+            from choice_stock_daily_observation
+            where close_value is not null
+              and close_value > 0
+            """
+        ).fetchone()
+        latest_trade_date = latest_row[0] if latest_row else None
+        if latest_trade_date is None:
+            return None
+        start_date = latest_trade_date - timedelta(days=_EQUITY_PRICE_LOOKBACK_DAYS)
+        rows = conn.execute(
+            f"""
+            with latest_sample as (
+              select stock_code
+              from choice_stock_daily_observation
+              where try_cast(trade_date as date) = ?
+                and close_value is not null
+                and close_value > 0
+              order by coalesce(amount, 0) desc, stock_code asc
+              limit {_EQUITY_PRICE_MAX_STOCKS}
+            )
+            select
+              daily.try_cast_date as trade_date,
+              daily.stock_code,
+              daily.close_value,
+              daily.source_version,
+              daily.vendor_version
+            from (
+              select
+                try_cast(trade_date as date) as try_cast_date,
+                stock_code,
+                close_value,
+                source_version,
+                vendor_version
+              from choice_stock_daily_observation
+            ) daily
+            join latest_sample sample
+              on sample.stock_code = daily.stock_code
+            where daily.try_cast_date > ?
+              and daily.try_cast_date <= ?
+              and daily.close_value is not null
+              and daily.close_value > 0
+            order by daily.try_cast_date asc, daily.stock_code asc
+            """,
+            [latest_trade_date, start_date, latest_trade_date],
+        ).fetchall()
+    except duckdb.Error:
+        return None
+    finally:
+        conn.close()
+
+    if not rows:
+        return None
+    frame = pd.DataFrame(
+        rows,
+        columns=["trade_date", "stock_code", "close_value", "source_version", "vendor_version"],
+    )
+    prices = (
+        frame.pivot_table(index="trade_date", columns="stock_code", values="close_value", aggfunc="last")
+        .sort_index()
+        .apply(pd.to_numeric, errors="coerce")
+    )
+    prices = prices.ffill().dropna(axis=1)
+    prices = prices.loc[:, (prices > 0).all(axis=0)]
+    if len(prices.index) < _EQUITY_PRICE_MIN_OBSERVATIONS or len(prices.columns) == 0:
+        return None
+    financials = _load_equity_strategy_factor_snapshot(path, latest_trade_date.isoformat())
+    return {
+        "prices": prices.astype("float64"),
+        "financials": financials,
+        "as_of_date": latest_trade_date.isoformat(),
+        "tables_used": [
+            "choice_stock_daily_observation",
+            *(["choice_stock_factor_snapshot"] if financials is not None else []),
+        ],
+        "source_versions": _unique_texts(frame["source_version"].tolist()),
+        "vendor_versions": _unique_texts(frame["vendor_version"].tolist()),
+    }
+
+
+def _load_equity_strategy_factor_snapshot(
+    duckdb_path: Path,
+    as_of_date: str,
+    stock_codes: list[str] | None = None,
+) -> pd.DataFrame | None:
+    try:
+        conn = duckdb.connect(str(duckdb_path), read_only=True)
+    except duckdb.Error:
+        return None
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        if "choice_stock_factor_snapshot" not in tables:
+            return None
+        rows = conn.execute(
+            """
+            select
+              stock_code,
+              pe,
+              pb,
+              ps,
+              roe,
+              gross_margin,
+              three_month_return,
+              twelve_month_return,
+              volatility,
+              dividend_yield,
+              industry
+            from choice_stock_factor_snapshot
+            where as_of_date = ?
+            """,
+            [as_of_date],
+        ).fetchall()
+    except duckdb.Error:
+        return None
+    finally:
+        conn.close()
+    if not rows:
+        return None
+    frame = pd.DataFrame(
+        rows,
+        columns=[
+            "stock_code",
+            "pe",
+            "pb",
+            "ps",
+            "roe",
+            "gross_margin",
+            "three_month_return",
+            "twelve_month_return",
+            "volatility",
+            "dividend_yield",
+            "industry",
+        ],
+    )
+    if stock_codes is not None:
+        frame = frame[frame["stock_code"].isin(stock_codes)].copy()
+    else:
+        frame = frame.copy()
+    if frame.empty:
+        return None
+    numeric_columns = list(REQUIRED_FACTOR_INPUTS)
+    frame[numeric_columns] = frame[numeric_columns].apply(pd.to_numeric, errors="coerce")
+    frame["industry"] = frame["industry"].astype(str).str.strip()
+    frame = frame.dropna(subset=numeric_columns + ["industry"])
+    frame = frame[frame["industry"] != ""]
+    if frame.empty:
+        return None
+    return frame.set_index("stock_code").sort_index()
+
+
+def _unique_texts(values: list[object]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+    return output
+
+
 def _strategy_summary(
     *,
     key: str,
@@ -728,17 +1504,21 @@ def _strategy_summary(
     metric_value: int | float,
     evidence: list[str],
     result: dict[str, object],
+    status: str = "sample_only",
+    warnings: list[str] | None = None,
 ) -> dict[str, object]:
+    resolved_warnings = ["SYNTHETIC_SAMPLE_ONLY"] if warnings is None else warnings
+    data_status = str(result.get("data_status") or status)
     return {
         "key": key,
         "label": label,
         "group": "A股策略",
-        "status": "sample_only",
+        "status": status,
         "tone": "neutral",
         "primary_metric": {"label": metric_label, "value": metric_value, "unit": ""},
         "evidence": evidence,
-        "warnings": ["SYNTHETIC_SAMPLE_ONLY"],
-        "result": {"data_status": "sample_only", **result},
+        "warnings": resolved_warnings,
+        "result": {"data_status": data_status, **result},
     }
 
 
@@ -1640,6 +2420,12 @@ def _envelope(result_kind: str, result: dict[str, object]) -> dict[str, object]:
                 "fact_formal_bond_analytics_daily",
             ]
         )
+    if _strategy_summaries_use_choice_stock(result):
+        tables_used.append("choice_stock_daily_observation")
+    if _strategy_summaries_use_stock_factor_snapshot(result):
+        tables_used.append("choice_stock_factor_snapshot")
+    if "choice_stock_refresh" in result:
+        tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
     return {
         "result_meta": {
             "trace_id": f"macro-toolkit-{uuid.uuid4().hex[:12]}",
@@ -1668,3 +2454,29 @@ def _evidence_rows(result: dict[str, object]) -> int | None:
         if isinstance(value, list):
             return len(value)
     return None
+
+
+def _strategy_summaries_use_choice_stock(result: dict[str, object]) -> bool:
+    summaries = result.get("strategy_summaries")
+    if not isinstance(summaries, list):
+        return False
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        detail = summary.get("result")
+        if isinstance(detail, dict) and detail.get("price_source") == "choice_stock_daily_observation":
+            return True
+    return False
+
+
+def _strategy_summaries_use_stock_factor_snapshot(result: dict[str, object]) -> bool:
+    summaries = result.get("strategy_summaries")
+    if not isinstance(summaries, list):
+        return False
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        detail = summary.get("result")
+        if isinstance(detail, dict) and detail.get("factor_source") == "choice_stock_factor_snapshot":
+            return True
+    return False

@@ -108,6 +108,11 @@ REFRESH_ROUTES = [
     ("POST", "/ui/balance-analysis/refresh?report_date=2026-01-01", None),
     ("POST", "/ui/balance-movement-analysis/refresh?report_date=2026-01-01", None),
     ("POST", "/ui/preview/source-foundation/refresh", None),
+    (
+        "POST",
+        "/ui/macro/toolkit/choice-stock/refresh",
+        {"as_of_date": "2026-04-30", "refresh_history": False, "refresh_factors": False},
+    ),
 ]
 
 

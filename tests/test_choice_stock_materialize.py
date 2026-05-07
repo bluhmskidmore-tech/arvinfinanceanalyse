@@ -15,6 +15,7 @@ from backend.app.tasks.choice_stock_materialize import (
     _DefaultChoiceStockClient,
     ensure_choice_stock_schema,
     load_choice_stock_materialization_coverage,
+    materialize_choice_stock_factor_snapshot,
     materialize_choice_stock_inputs,
 )
 
@@ -227,8 +228,26 @@ class FakeTushareStockClient:
         self.calls.append(("daily_basic", kwargs))
         return pd.DataFrame(
             [
-                {"ts_code": "000001.SZ", "trade_date": "20260428", "turnover_rate": 0.9, "turnover_rate_f": 1.4},
-                {"ts_code": "600000.SH", "trade_date": "20260428", "turnover_rate": 0.8, "turnover_rate_f": 1.2},
+                {
+                    "ts_code": "000001.SZ",
+                    "trade_date": "20260428",
+                    "turnover_rate": 0.9,
+                    "turnover_rate_f": 1.4,
+                    "pe": 8.0,
+                    "pb": 0.8,
+                    "ps": 1.2,
+                    "dv_ttm": 3.5,
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260428",
+                    "turnover_rate": 0.8,
+                    "turnover_rate_f": 1.2,
+                    "pe": 12.0,
+                    "pb": 1.1,
+                    "ps": 1.8,
+                    "dv_ttm": 2.5,
+                },
             ]
         )
 
@@ -238,6 +257,24 @@ class FakeTushareStockClient:
             [
                 {"ts_code": "000001.SZ", "trade_date": "20260428", "up_limit": 11.0, "down_limit": 9.0},
                 {"ts_code": "600000.SH", "trade_date": "20260428", "up_limit": 22.0, "down_limit": 18.0},
+            ]
+        )
+
+    def fina_indicator(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("fina_indicator", kwargs))
+        stock_code = str(kwargs["ts_code"])
+        values = {
+            "000001.SZ": {"roe": 18.0, "grossprofit_margin": 42.0},
+            "600000.SH": {"roe": 12.0, "grossprofit_margin": 35.0},
+        }
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": stock_code,
+                    "ann_date": "20260401",
+                    "end_date": "20260331",
+                    **values[stock_code],
+                }
             ]
         )
 
@@ -284,6 +321,11 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
     assert applied == [
         "v21: Choice stock materialization front layer",
         "v22: Livermore position snapshot read model",
+        "v23: Livermore gate supplement daily (breadth/limit-up)",
+        "v24: ZQTZ accounting sub_type on snapshot + formal facts",
+        "v25: CFFEX member-rank daily from Choice/Tushare",
+        "v26: PnL by-business page precompute read model",
+        "v27: Choice stock factor snapshot for equity strategies",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
@@ -292,6 +334,7 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         conn.close()
     assert "choice_stock_materialize_run" in tables
     assert "choice_stock_daily_observation" in tables
+    assert "choice_stock_factor_snapshot" in tables
     assert "livermore_position_snapshot" in tables
 
 
@@ -482,6 +525,129 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_csd_is_denie
         as_of_date="2026-04-28",
     )
     assert coverage.full_coverage is True
+
+
+def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    stock_client = PermissionDeniedCsdChoiceStockClient()
+    tushare_client = FakeTushareStockClient()
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=stock_client,
+        tushare_client=tushare_client,
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                (
+                    trade_date,
+                    stock_code,
+                    close_value,
+                    close_value,
+                    close_value,
+                    close_value,
+                    1000.0,
+                    close_value * 1000,
+                    0.0,
+                    1.0,
+                    0.0,
+                    "Trading",
+                    "",
+                    "",
+                    '["daily_ohlcv_amount"]',
+                    "sv_history",
+                    "vv_history",
+                    "rv_history",
+                    "run-history",
+                )
+                for trade_date, close_a, close_b in [
+                    ("2025-04-28", 5.25, 10.5),
+                    ("2026-01-28", 7.0, 14.0),
+                ]
+                for stock_code, close_value in (("000001.SZ", close_a), ("600000.SH", close_b))
+            ],
+        )
+    finally:
+        conn.close()
+
+    result = materialize_choice_stock_factor_snapshot(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        tushare_client=tushare_client,
+    )
+
+    assert result["status"] == "completed"
+    assert result["row_count"] == 2
+    assert result["table"] == "choice_stock_factor_snapshot"
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select stock_code, industry, pe, pb, ps, roe, gross_margin,
+                   three_month_return, twelve_month_return, volatility, dividend_yield
+            from choice_stock_factor_snapshot
+            order by stock_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows[0][:7] == ("000001.SZ", "Bank", 8.0, 0.8, 1.2, 0.18, 0.42)
+    assert rows[0][7] == pytest.approx(0.5)
+    assert rows[0][8] == pytest.approx(1.0)
+    assert rows[0][9] > 0
+    assert rows[0][10] == 0.035
+    assert rows[1][:7] == ("600000.SH", "Bank", 12.0, 1.1, 1.8, 0.12, 0.35)
+    assert rows[1][7] == pytest.approx(0.5)
+    assert rows[1][8] == pytest.approx(1.0)
+    assert rows[1][9] > 0
+    assert rows[1][10] == 0.025
+
+
+def test_choice_stock_factor_snapshot_skips_nan_vendor_factor_values(tmp_path: Path) -> None:
+    class NanDividendTushareStockClient(FakeTushareStockClient):
+        def daily_basic(self, **kwargs: object) -> pd.DataFrame:
+            frame = super().daily_basic(**kwargs)
+            frame.loc[frame["ts_code"] == "000001.SZ", "dv_ttm"] = float("nan")
+            return frame
+
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    tushare_client = NanDividendTushareStockClient()
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=PermissionDeniedCsdChoiceStockClient(),
+        tushare_client=tushare_client,
+    )
+
+    result = materialize_choice_stock_factor_snapshot(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        tushare_client=tushare_client,
+    )
+
+    assert result["row_count"] == 1
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            "select stock_code from choice_stock_factor_snapshot order by stock_code"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [("600000.SH",)]
 
 
 def test_choice_stock_materialize_accepts_choice_sector_flat_codes_payload(tmp_path: Path) -> None:

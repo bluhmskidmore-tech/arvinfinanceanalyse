@@ -70,6 +70,59 @@ export type MacroToolkitCffexMemberRankStatus = {
   stale_days?: number | null;
 };
 
+export type MacroToolkitChoiceStockRefreshPermission = {
+  mode: "identity_only" | string;
+  allowed?: boolean;
+  user_id?: string | null;
+  role?: string | null;
+  identity_source?: string | null;
+  resource?: string;
+  actions?: string[];
+};
+
+export type MacroToolkitChoiceStockRefreshRun = {
+  status: string;
+  run_id?: string;
+  job_name?: string;
+  cache_key?: string;
+  trigger_mode?: "idle" | "async" | "terminal" | string;
+  report_date?: string;
+  error_message?: string | null;
+  failure_category?: string | null;
+  failure_reason?: string | null;
+  history_row_count?: number | null;
+  factor_row_count?: number | null;
+  source_version?: string;
+  vendor_version?: string | null;
+  refresh_history?: boolean;
+  refresh_factors?: boolean;
+  factor_max_stock_count?: number | null;
+  permission?: MacroToolkitChoiceStockRefreshPermission;
+};
+
+export type MacroToolkitChoiceStockTableStatus = {
+  materialized: boolean;
+  status: string;
+  row_count: number;
+  stock_count: number;
+  trade_date_count?: number;
+  latest_trade_date?: string | null;
+  as_of_date?: string | null;
+};
+
+export type MacroToolkitChoiceStockRefreshStatus = {
+  permission: MacroToolkitChoiceStockRefreshPermission;
+  refresh?: MacroToolkitChoiceStockRefreshRun;
+  daily_observation?: MacroToolkitChoiceStockTableStatus;
+  factor_snapshot?: MacroToolkitChoiceStockTableStatus;
+  default_factor_max_stock_count?: number | null;
+};
+
+export type MacroToolkitChoiceStockRefreshResponse = ApiEnvelope<{
+  refresh: MacroToolkitChoiceStockRefreshRun;
+  choice_stock_refresh: MacroToolkitChoiceStockRefreshStatus;
+}>;
+
 export type MacroToolkitPayload = {
   default_data_sources: string[];
   toolkit_root: string;
@@ -81,6 +134,7 @@ export type MacroToolkitPayload = {
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
   cffex_member_rank?: MacroToolkitCffexMemberRankStatus;
+  choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   warnings: string[];
 };
 
@@ -169,6 +223,7 @@ export type MacroToolkitAnalysisPayload = {
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
   cffex_member_rank?: MacroToolkitPayload["cffex_member_rank"];
+  choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   warnings: string[];
 };
 
@@ -199,6 +254,13 @@ export type MacroToolkitClientMethods = {
     contracts?: string[];
     sources?: string[];
   }) => Promise<MacroToolkitCffexRefreshResponse>;
+  refreshChoiceStock: (options?: {
+    asOfDate?: string;
+    refreshHistory?: boolean;
+    refreshFactors?: boolean;
+    factorMaxStockCount?: number | null;
+  }) => Promise<MacroToolkitChoiceStockRefreshResponse>;
+  getChoiceStockRefreshStatus: (runId: string) => Promise<MacroToolkitChoiceStockRefreshResponse>;
 };
 
 const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
@@ -267,6 +329,36 @@ const MOCK_STRATEGY_SUMMARIES: MacroToolkitStrategySummary[] = [
     result: { data_status: "sample_only", selected_symbols: ["AAA"] },
   },
 ];
+
+const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
+  permission: {
+    mode: "identity_only",
+    allowed: true,
+    resource: "choice_stock.refresh",
+    actions: ["history", "factor_snapshot"],
+  },
+  refresh: {
+    status: "idle",
+    trigger_mode: "idle",
+    permission: { mode: "identity_only", allowed: true },
+  },
+  daily_observation: {
+    materialized: true,
+    status: "ok",
+    row_count: 64300,
+    stock_count: 1000,
+    trade_date_count: 260,
+    latest_trade_date: "2026-04-30",
+  },
+  factor_snapshot: {
+    materialized: true,
+    status: "ok",
+    row_count: 643,
+    stock_count: 1000,
+    as_of_date: "2026-04-30",
+  },
+  default_factor_max_stock_count: null,
+};
 
 const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   default_data_sources: ["choice", "tushare"],
@@ -384,6 +476,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
     reference_date: "2026-04-30",
     stale_days: 0,
   },
+  choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
   warnings: [],
 };
 
@@ -509,6 +602,7 @@ const MOCK_PAYLOAD: MacroToolkitPayload = {
     reference_date: "2026-04-30",
     stale_days: 0,
   },
+  choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
   warnings: [],
 };
 
@@ -562,6 +656,52 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         },
       );
     },
+    async refreshChoiceStock() {
+      return buildMockApiEnvelope(
+        "macro_toolkit.choice_stock_refresh",
+        {
+          refresh: {
+            status: "queued",
+            run_id: "choice_stock_refresh:mock",
+            trigger_mode: "async",
+            permission: MOCK_CHOICE_STOCK_REFRESH.permission,
+          },
+          choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
+    async getChoiceStockRefreshStatus() {
+      return buildMockApiEnvelope(
+        "macro_toolkit.choice_stock_refresh_status",
+        {
+          refresh: {
+            status: "completed",
+            run_id: "choice_stock_refresh:mock",
+            trigger_mode: "terminal",
+            history_row_count: MOCK_CHOICE_STOCK_REFRESH.daily_observation?.row_count ?? null,
+            factor_row_count: MOCK_CHOICE_STOCK_REFRESH.factor_snapshot?.row_count ?? null,
+            permission: MOCK_CHOICE_STOCK_REFRESH.permission,
+          },
+          choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
   };
 }
 
@@ -602,6 +742,28 @@ export function createRealMacroToolkitClient({
             sources: options?.sources ?? ["choice", "tushare"],
           }),
         },
+      ),
+    refreshChoiceStock: (options) =>
+      requestActionJson<MacroToolkitChoiceStockRefreshResponse>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/choice-stock/refresh",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            as_of_date: options?.asOfDate ?? null,
+            refresh_history: options?.refreshHistory ?? true,
+            refresh_factors: options?.refreshFactors ?? true,
+            factor_max_stock_count: options?.factorMaxStockCount ?? null,
+          }),
+        },
+      ),
+    getChoiceStockRefreshStatus: (runId) =>
+      requestJson<MacroToolkitChoiceStockRefreshResponse["result"]>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/toolkit/choice-stock/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
   };
 }

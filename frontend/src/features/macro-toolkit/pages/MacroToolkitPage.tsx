@@ -4,10 +4,12 @@ import { Alert, Button, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useQuery } from "@tanstack/react-query";
 
+import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
+  MacroToolkitChoiceStockRefreshRun,
   MacroToolkitIndicator,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
@@ -132,6 +134,9 @@ export default function MacroToolkitPage() {
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isRefreshingCffex, setIsRefreshingCffex] = useState(false);
+  const [stockRefreshResult, setStockRefreshResult] = useState<string | null>(null);
+  const [stockRefreshError, setStockRefreshError] = useState<string | null>(null);
+  const [isRefreshingChoiceStock, setIsRefreshingChoiceStock] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
   const analysisQuery = useQuery({
@@ -151,6 +156,15 @@ export default function MacroToolkitPage() {
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
   const capabilityResults = analysis?.capability_results ?? [];
   const strategySummaries = analysis?.strategy_summaries ?? [];
+  const hasRealStrategyData = strategySummaries.some(
+    (strategy) =>
+      strategy.status === "complete" &&
+      (strategy.result.price_source === "choice_stock_daily_observation" ||
+        strategy.result.factor_source === "choice_stock_factor_snapshot"),
+  );
+  const strategyDescription = hasRealStrategyData
+    ? "展示已合入宏观模块的 A股策略能力；已接入股票行情与因子快照，不作为正式投资信号。"
+    : "展示已合入宏观模块的 A股策略能力；当前为合成样例和模块可用性检查，不作为正式投资信号。";
   const groupOptions = useMemo(
     () => [
       { value: "all", label: "全部分组" },
@@ -184,6 +198,7 @@ export default function MacroToolkitPage() {
     ? `${payload.output_files[0]!.name} · ${formatSize(payload.output_files[0]!.size_bytes)}`
     : payload?.output_dir ?? "data/macro_toolkit/output";
   const cffexStatus = payload?.cffex_member_rank ?? analysis?.cffex_member_rank ?? null;
+  const choiceStockRefresh = payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
 
   const runSelectedScript = useCallback(async () => {
@@ -221,6 +236,50 @@ export default function MacroToolkitPage() {
       setIsRefreshingCffex(false);
     }
   }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery]);
+
+  const refreshChoiceStock = useCallback(async () => {
+    setIsRefreshingChoiceStock(true);
+    setStockRefreshError(null);
+    setStockRefreshResult("正在刷新股票历史数据和完整因子");
+    try {
+      const refresh = await runPollingTask<MacroToolkitChoiceStockRefreshRun>({
+        start: async () => {
+          const response = await client.refreshChoiceStock({
+            asOfDate: analysis?.as_of_date ?? undefined,
+            refreshHistory: true,
+            refreshFactors: true,
+            factorMaxStockCount: null,
+          });
+          return response.result.refresh;
+        },
+        getStatus: async (runId) => {
+          const response = await client.getChoiceStockRefreshStatus(runId);
+          return response.result.refresh;
+        },
+        intervalMs: 5_000,
+        maxAttempts: 240,
+        onUpdate: (payload) => {
+          setStockRefreshResult(
+            payload.status === "completed"
+              ? `刷新完成：历史 ${payload.history_row_count ?? "-"} 行，因子 ${payload.factor_row_count ?? "-"} 行`
+              : `刷新状态：${payload.status}`,
+          );
+        },
+      });
+      if (refresh.status !== "completed") {
+        throw new Error(refresh.error_message ?? `股票刷新未完成：${refresh.status}`);
+      }
+      setStockRefreshResult(
+        `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,
+      );
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+    } catch (error) {
+      setStockRefreshError(error instanceof Error ? error.message : "刷新股票数据失败");
+      setStockRefreshResult(null);
+    } finally {
+      setIsRefreshingChoiceStock(false);
+    }
+  }, [analysis?.as_of_date, analysisQuery, client, scriptsQuery]);
 
   const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     {
@@ -521,8 +580,38 @@ export default function MacroToolkitPage() {
             <PageSectionLead
               eyebrow="strategies"
               title="策略展示"
-              description="展示已合入宏观模块的 A股策略能力；当前为合成样例和模块可用性检查，不作为正式投资信号。"
+              description={strategyDescription}
             />
+            <div className="macro-toolkit-stock-refresh-panel">
+              <div className="macro-toolkit-cffex-metrics">
+                <MetricTile
+                  label="股票历史"
+                  value={choiceStockRefresh?.daily_observation?.stock_count ?? 0}
+                  detail={`行数 ${choiceStockRefresh?.daily_observation?.row_count ?? 0} · ${choiceStockRefresh?.daily_observation?.latest_trade_date ?? "缺失"}`}
+                />
+                <MetricTile
+                  label="完整因子"
+                  value={choiceStockRefresh?.factor_snapshot?.stock_count ?? 0}
+                  detail={`行数 ${choiceStockRefresh?.factor_snapshot?.row_count ?? 0} · ${choiceStockRefresh?.factor_snapshot?.as_of_date ?? "缺失"}`}
+                />
+                <MetricTile
+                  label="刷新权限"
+                  value={choiceStockRefresh?.permission?.mode === "identity_only" ? "已开放" : "待确认"}
+                  detail={choiceStockRefresh?.permission?.resource ?? "choice_stock.refresh"}
+                />
+              </div>
+              <div className="macro-toolkit-cffex-actions">
+                <Button
+                  icon={<ReloadOutlined />}
+                  loading={isRefreshingChoiceStock}
+                  onClick={() => void refreshChoiceStock()}
+                >
+                  刷新股票数据
+                </Button>
+                {stockRefreshResult ? <Alert type="success" showIcon message={stockRefreshResult} /> : null}
+                {stockRefreshError ? <Alert type="error" showIcon message={stockRefreshError} /> : null}
+              </div>
+            </div>
             {strategySummaries.length ? (
               <div className="macro-toolkit-strategy-grid">
                 {strategySummaries.map((strategy) => (
