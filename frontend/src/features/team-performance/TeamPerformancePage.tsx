@@ -11,8 +11,11 @@ import { SectionLead } from "../../components/page/SectionLead";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import {
   ASSESSMENT_CENTERS_2025,
+  buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
   formatConfidenceLabel,
+  formatQ1AllocationLabel,
+  formatQ1EvidenceStatusLabel,
   formatRatePct,
   formatScore,
   formatWanFromYuan,
@@ -22,6 +25,8 @@ import "./TeamPerformancePage.css";
 
 const DEFAULT_YEAR = 2025;
 const DEFAULT_AS_OF_DATE = "2025-12-31";
+const Q1_CALIBER_YEAR = 2026;
+const Q1_CALIBER_AS_OF_DATE = "2026-03-31";
 
 type CenterId = (typeof ASSESSMENT_CENTERS_2025)[number]["centerId"];
 
@@ -43,6 +48,16 @@ function mappingStatusTone(status: string) {
     return "positive" as const;
   }
   if (status === "挂钩引用") {
+    return "default" as const;
+  }
+  return "warning" as const;
+}
+
+function q1StatusTone(status: string) {
+  if (status === "direct") {
+    return "positive" as const;
+  }
+  if (status === "excluded") {
     return "default" as const;
   }
   return "warning" as const;
@@ -197,6 +212,7 @@ export default function TeamPerformancePage() {
 
   const availableDates = datesQuery.data?.result.report_dates ?? [];
   const hasDefaultDate = availableDates.includes(DEFAULT_AS_OF_DATE);
+  const hasQ1CaliberDate = availableDates.includes(Q1_CALIBER_AS_OF_DATE);
 
   useEffect(() => {
     if (hasDefaultDate) {
@@ -209,6 +225,7 @@ export default function TeamPerformancePage() {
   }, [datesQuery.isLoading, hasDefaultDate]);
 
   const canLoadEvidence = hasDefaultDate && selectedDate === DEFAULT_AS_OF_DATE;
+  const canLoadQ1CaliberEvidence = canLoadEvidence && hasQ1CaliberDate;
 
   const byBusinessQuery = useQuery({
     queryKey: ["team-performance", "by-business-ytd", client.mode, selectedYear, selectedDate],
@@ -228,6 +245,37 @@ export default function TeamPerformancePage() {
     retry: false,
   });
 
+  const q1ByBusinessQuery = useQuery({
+    queryKey: [
+      "team-performance",
+      "q1-caliber",
+      "by-business-ytd",
+      client.mode,
+      Q1_CALIBER_YEAR,
+      Q1_CALIBER_AS_OF_DATE,
+    ],
+    queryFn: () => client.getPnlByBusinessYtd(Q1_CALIBER_YEAR, Q1_CALIBER_AS_OF_DATE),
+    enabled: canLoadQ1CaliberEvidence,
+    retry: false,
+  });
+
+  const q1ProductCategoryQuery = useQuery({
+    queryKey: [
+      "team-performance",
+      "q1-caliber",
+      "product-category-ytd",
+      client.mode,
+      Q1_CALIBER_AS_OF_DATE,
+    ],
+    queryFn: () =>
+      client.getProductCategoryPnl({
+        reportDate: Q1_CALIBER_AS_OF_DATE,
+        view: "ytd",
+      }),
+    enabled: canLoadQ1CaliberEvidence,
+    retry: false,
+  });
+
   const viewModel = useMemo(
     () =>
       buildTeamPerformanceViewModel({
@@ -237,6 +285,15 @@ export default function TeamPerformancePage() {
         productCategoryMeta: productCategoryQuery.data?.result_meta ?? null,
       }),
     [byBusinessQuery.data, productCategoryQuery.data],
+  );
+
+  const q1CaliberModel = useMemo(
+    () =>
+      buildTeamPerformanceQ1CaliberModel({
+        byBusinessItems: q1ByBusinessQuery.data?.result.items,
+        productCategoryRows: q1ProductCategoryQuery.data?.result.rows,
+      }),
+    [q1ByBusinessQuery.data, q1ProductCategoryQuery.data],
   );
 
   const selectedCenter =
@@ -249,6 +306,10 @@ export default function TeamPerformancePage() {
     datesQuery.isError || (canLoadEvidence && (byBusinessQuery.isError || productCategoryQuery.isError));
   const showNoSubstitution = !datesQuery.isLoading && !hasDefaultDate;
   const noMappedEvidence = canLoadEvidence && !loading && !error && viewModel.mappedCenterCount === 0;
+  const q1CaliberLoading =
+    canLoadQ1CaliberEvidence && (q1ByBusinessQuery.isLoading || q1ProductCategoryQuery.isLoading);
+  const q1CaliberError =
+    canLoadQ1CaliberEvidence && (q1ByBusinessQuery.isError || q1ProductCategoryQuery.isError);
   const resultMetaSections = [
     {
       key: "by-business-ytd",
@@ -360,6 +421,101 @@ export default function TeamPerformancePage() {
           }
         />
       </div>
+
+      <section data-testid="team-performance-q1-caliber" className="team-performance-page__q1-panel">
+        <div className="team-performance-page__q1-header">
+          <div>
+            <div className="team-performance-page__meta-eyebrow">Q1 Actual</div>
+            <h2 className="team-performance-page__q1-title">2026 Q1实际口径拆解</h2>
+            <p className="team-performance-page__q1-copy">
+              只展示实际证据、来源行和口径状态；年度目标、达成判断和 Excel 外推数均不进入本区汇总。
+            </p>
+          </div>
+          <div className="team-performance-page__q1-date-card">
+            <span>证据期间</span>
+            <strong>{q1CaliberModel.periodLabel}</strong>
+          </div>
+        </div>
+
+        <div className="team-performance-page__q1-source-row">
+          <span>{q1CaliberModel.sourceLabel}</span>
+          <span>
+            {canLoadQ1CaliberEvidence
+              ? q1CaliberLoading
+                ? "Q1证据加载中"
+                : q1CaliberError
+                  ? "Q1证据加载失败"
+                  : "Q1证据已按现有数据源并排展示"
+              : "正式日期列表暂未同时满足2025底稿和2026Q1证据"}
+          </span>
+        </div>
+
+        <div className="team-performance-page__q1-warning-list">
+          {q1CaliberModel.warnings.map((warning) => (
+            <span key={warning}>{warning}</span>
+          ))}
+        </div>
+
+        <div className="team-performance-page__q1-grid">
+          {q1CaliberModel.centers.map((center) => (
+            <article key={center.centerId} className="team-performance-page__q1-card">
+              <div className="team-performance-page__q1-card-header">
+                <div>
+                  <h3>{center.centerName}</h3>
+                  <p>
+                    纳入 {center.includedRuleCount} 项，待拆 {center.pendingRuleCount} 项
+                  </p>
+                </div>
+                <div className="team-performance-page__q1-total">
+                  <span>实际汇总</span>
+                  <strong>{formatYiFromYuan(center.includedTotalYuan)}</strong>
+                </div>
+              </div>
+
+              <div className="team-performance-page__q1-rule-list">
+                {center.rules.map((rule) => (
+                  <div
+                    key={`${rule.centerId}-${rule.businessLabel}-${rule.rowId ?? "pending"}-${rule.amountField ?? "none"}`}
+                    className="team-performance-page__q1-rule"
+                  >
+                    <div className="team-performance-page__q1-rule-main">
+                      <div className="team-performance-page__q1-rule-title-row">
+                        <strong>{rule.businessLabel}</strong>
+                        <span
+                          className={`team-performance-page__status-pill team-performance-page__status-pill--${q1StatusTone(rule.evidenceStatus)}`}
+                        >
+                          {formatQ1EvidenceStatusLabel(rule.evidenceStatus)}
+                        </span>
+                      </div>
+                      <div className="team-performance-page__q1-rule-meta">
+                        <span>{rule.sourceLabel}</span>
+                        <code>{rule.rowId ?? "暂无独立行"}</code>
+                        <span>{rule.amountField ?? "-"}</span>
+                      </div>
+                      {rule.note ? <p>{rule.note}</p> : null}
+                    </div>
+
+                    <dl className="team-performance-page__q1-rule-stats">
+                      <div>
+                        <dt>口径动作</dt>
+                        <dd>{formatQ1AllocationLabel(rule.allocation)}</dd>
+                      </div>
+                      <div>
+                        <dt>来源金额</dt>
+                        <dd>{formatYiFromYuan(rule.amountYuan)}</dd>
+                      </div>
+                      <div>
+                        <dt>汇总贡献</dt>
+                        <dd>{formatYiFromYuan(rule.contributionYuan)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {showNoSubstitution ? (
         <DashboardStatePanel

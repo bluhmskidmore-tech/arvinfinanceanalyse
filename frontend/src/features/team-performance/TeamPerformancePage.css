@@ -903,6 +903,222 @@
   margin-top: 0 !important;
 }
 
+.team-performance-page__q1-panel {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.team-performance-page__q1-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.team-performance-page__q1-title {
+  margin: 6px 0 0;
+  color: #1f2937;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.team-performance-page__q1-copy {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: #617086;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.team-performance-page__q1-date-card {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 12px 14px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.team-performance-page__q1-date-card span,
+.team-performance-page__q1-total span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.team-performance-page__q1-date-card strong,
+.team-performance-page__q1-total strong {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.team-performance-page__q1-source-row,
+.team-performance-page__q1-warning-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.team-performance-page__q1-source-row span,
+.team-performance-page__q1-warning-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f3f6fa;
+  color: #516075;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.team-performance-page__q1-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.team-performance-page__q1-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-performance-page__q1-card h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.team-performance-page__q1-card p {
+  margin: 4px 0 0;
+  color: #617086;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.team-performance-page__q1-total {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  flex-shrink: 0;
+}
+
+.team-performance-page__q1-rule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.team-performance-page__q1-rule {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.team-performance-page__q1-rule-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-rule-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.team-performance-page__q1-rule-title-row strong {
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.team-performance-page__q1-rule-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  color: #617086;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.team-performance-page__q1-rule-meta > * {
+  min-width: 0;
+}
+
+.team-performance-page__q1-rule-meta code {
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #eef4fb;
+  color: #28517b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.team-performance-page__q1-rule-main p {
+  margin: 0;
+  color: #617086;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.team-performance-page__q1-rule-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.team-performance-page__q1-rule-stats div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-rule-stats dt {
+  color: #7b8797;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.team-performance-page__q1-rule-stats dd {
+  margin: 0;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1080px) {
   .team-performance-page__detail-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -920,6 +1136,16 @@
 
   .team-performance-page__meta-header {
     flex-direction: column;
+  }
+
+  .team-performance-page__q1-header,
+  .team-performance-page__q1-card-header {
+    flex-direction: column;
+  }
+
+  .team-performance-page__q1-date-card {
+    width: 100%;
+    min-width: 0;
   }
 
   .team-performance-page__detail-summary-grid {
@@ -951,6 +1177,14 @@
 
   .team-performance-page__meta-shell {
     padding: 16px;
+  }
+
+  .team-performance-page__q1-panel {
+    padding: 16px;
+  }
+
+  .team-performance-page__q1-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .team-performance-page__meta-card-header {
@@ -1078,6 +1312,14 @@
   }
 
   .team-performance-page__evidence-summary-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-performance-page__q1-rule-title-row {
+    flex-direction: column;
+  }
+
+  .team-performance-page__q1-rule-stats {
     grid-template-columns: minmax(0, 1fr);
   }
 }

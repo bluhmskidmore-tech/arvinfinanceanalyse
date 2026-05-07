@@ -216,6 +216,12 @@ describe("TeamPerformancePage", () => {
             total_pnl: "2400000",
             current_balance: "730000000",
           }),
+          byBusinessRow({
+            row_key: "asset_zqtz_railway_bond",
+            business_type: "铁道债",
+            total_pnl: "900000",
+            current_balance: "220000000",
+          }),
         ],
       } satisfies PnlByBusinessYtdPayload,
     }));
@@ -240,7 +246,18 @@ describe("TeamPerformancePage", () => {
             level: 1,
             is_total: false,
             business_net_income: "2200000",
+            cny_net: "1500000",
+            foreign_net: "700000",
             cny_scale: "900000000",
+            foreign_scale: "120000000",
+          }),
+          productRow({
+            category_id: "bond_investment",
+            category_name: "债券投资",
+            level: 1,
+            is_total: false,
+            foreign_net: "1100000",
+            foreign_scale: "300000000",
           }),
           productRow({
             category_id: "interbank_deposits",
@@ -249,6 +266,8 @@ describe("TeamPerformancePage", () => {
             level: 1,
             is_total: false,
             business_net_income: "600000",
+            cny_net: "550000",
+            foreign_net: "50000",
             cny_scale: "300000000",
           }),
           productRow({
@@ -258,6 +277,8 @@ describe("TeamPerformancePage", () => {
             level: 1,
             is_total: false,
             business_net_income: "800000",
+            cny_net: "600000",
+            foreign_net: "200000",
             cny_scale: "200000000",
           }),
           productRow({
@@ -267,6 +288,8 @@ describe("TeamPerformancePage", () => {
             level: 1,
             is_total: false,
             business_net_income: "700000",
+            cny_net: "650000",
+            foreign_net: "50000",
             cny_scale: "500000000",
           }),
           productRow({
@@ -276,6 +299,8 @@ describe("TeamPerformancePage", () => {
             level: 1,
             is_total: false,
             business_net_income: "500000",
+            cny_net: "510000",
+            foreign_net: "-10000",
             cny_scale: "180000000",
           }),
           productRow({
@@ -285,7 +310,16 @@ describe("TeamPerformancePage", () => {
             level: 1,
             is_total: false,
             business_net_income: "400000",
+            cny_net: "400000",
+            foreign_net: "0",
             cny_scale: "100000000",
+          }),
+          productRow({
+            category_id: "derivatives",
+            category_name: "衍生品",
+            level: 1,
+            is_total: false,
+            business_net_income: "-300000",
           }),
         ],
       } satisfies ProductCategoryPnlPayload,
@@ -353,6 +387,16 @@ describe("TeamPerformancePage", () => {
     const meta = await screen.findByTestId("team-performance-result-meta");
     expect(meta).toHaveTextContent("pnl.by_business_ytd");
     expect(meta).toHaveTextContent("product_category_pnl.detail");
+
+    const q1Caliber = await screen.findByTestId("team-performance-q1-caliber");
+    expect(q1Caliber).toHaveTextContent("2026 Q1实际口径拆解");
+    expect(q1Caliber).toHaveTextContent("只展示实际证据");
+    expect(q1Caliber).toHaveTextContent("自营中心");
+    expect(q1Caliber).toHaveTextContent("债券交易室");
+    expect(q1Caliber).toHaveTextContent("外汇与衍生品室");
+    expect(q1Caliber).toHaveTextContent("外汇远期/掉期归代客交易");
+    expect(q1Caliber).not.toHaveTextContent("2026计划");
+    expect(q1Caliber).not.toHaveTextContent("完成率");
   });
 
   it("shows a no-substitution warning when 2025-12-31 is unavailable", async () => {
