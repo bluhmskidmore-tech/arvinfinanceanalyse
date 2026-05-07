@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 import xlrd
 
@@ -16,6 +19,7 @@ ZQTZ_BOND_NAME = "债券名称"
 ZQTZ_DATE = "日期"
 ZQTZ_BUSINESS_KIND = "业务种类"
 ZQTZ_BUSINESS_TYPE1 = "业务种类1"
+ZQTZ_SUB_TYPE = "子类型"
 ZQTZ_ACCOUNT_CATEGORY = "账户类别"
 ZQTZ_PORTFOLIO = "投资组合"
 ZQTZ_COST_CENTER = "成本中心"
@@ -95,7 +99,8 @@ def _decimal(value: object) -> Decimal | None:
         return None
     try:
         return Decimal(text)
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("_decimal: failed to convert %r", type(value).__name__)
         return None
 
 
@@ -131,6 +136,8 @@ def parse_zqtz_snapshot_rows_from_bytes(
 
         business_kind = _text(raw_row, ZQTZ_BUSINESS_KIND)
         business_one = _text(raw_row, ZQTZ_BUSINESS_TYPE1)
+        sub_type_cell = _text(raw_row, ZQTZ_SUB_TYPE)
+        sub_type_value = (sub_type_cell or business_one).strip()
         account_category = _text(raw_row, ZQTZ_ACCOUNT_CATEGORY)
         asset_class = _text(raw_row, ZQTZ_ASSET_CLASS)
         issuance_markers = (business_kind, business_one, account_category, asset_class)
@@ -150,6 +157,7 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "asset_class": asset_class,
                 "bond_type": business_kind or business_one,
                 "business_type_primary": business_one,
+                "sub_type": sub_type_value,
                 "issuer_name": _text(raw_row, ZQTZ_ISSUER) or None,
                 "industry_name": _text(raw_row, ZQTZ_INDUSTRY) or None,
                 "rating": _text(raw_row, ZQTZ_RATING) or None,

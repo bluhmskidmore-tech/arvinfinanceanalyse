@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import router as api_router
 from backend.app.governance.settings import get_settings
+from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured
 from backend.app.storage_bootstrap import run_startup_storage_migrations
 
 
@@ -14,6 +15,7 @@ async def lifespan(_app: FastAPI):
     # Blocking Postgres/DuckDB bootstrap off the event loop (Windows uvicorn + sync
     # drivers can otherwise stall startup indefinitely).
     await asyncio.to_thread(run_startup_storage_migrations)
+    warm_hermes_bridge_if_configured(get_settings())
     yield
 
 

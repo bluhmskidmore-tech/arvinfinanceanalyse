@@ -1107,6 +1107,8 @@
 | 信用占价比等 | `RiskIndicatorsPayload.credit_ratio` 等 | 同上 |
 | 各图 tabular 数据 | `asset-structure` / `industry` / `spread` 等 items | 同上 |
 
+- `weighted_ytm` 与 `weighted_duration` 统一在债券投资范围 `asset_class_std in ('rate', 'credit')` 内按市值加权计算，排除 `other` 分类；`weighted_duration` 指市值加权修正久期，不混入现金流页麦考利久期口径。
+
 ### G. 状态与错误
 
 - **Loading**：`datesQuery` 与分块 `useQuery`；`report_date` 为空时不 enabled 子查询。
@@ -1182,7 +1184,7 @@
 - 页面 ID：`PAGE-MKT-001`
 - 页面名称：`市场数据`
 - 路由：前端 `/market-data`；别名重定向见 `frontend/src/router/routes.tsx`（`/market`→`/market-data` 等，见 `RouteRegistry.test.tsx`）
-- 页面状态：`mixed-source`（**formal 片段** e.g. `fx/formal-status` + **preview/analytical** macro + vendor Choice + 结构化代理 `ncd-funding-proxy` + `api/macro-bond-linkage` 分析，与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
+- 页面状态：`mixed-source`（**formal 片段**：`GET /ui/market-data/rates`（`getMarketDataRates` / 前端 `formalRatesQuery`）在接线一致时可为 **formal basis** 的利率主表片段；**preview/analytical**：Choice 宏观目录/最新点、vendor、外汇分析 `getFxAnalytical`、结构化代理 `ncd-funding-proxy`、`api/macro-bond-linkage`、**Livermore**（`/ui/market-data/livermore/*`，门控/板块/候选/风险退出等，均为 analytical）。与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
 
 ### B. 业务问题与不回答
 
@@ -1193,7 +1195,7 @@
 
 - `market-data-page-title`、**catalog/series 统计**（`market-data-*-count` 等，见 `MarketDataPage.test.tsx`）
 - 利率/曲线：rate quote、money market、rate trend、NCD 矩阵、信用成交等 `data-testid` 以 `market-data-` 前缀
-- 外汇：`getFxAnalytical` + `getFxFormalStatus` 分组与 **formal** vs **analytical** 分栏/计数
+- 外汇：本页已挂载 `getFxAnalytical`（**analytical**）；`getFxFormalStatus` 见 §E「实现核对」（domain 具备，本页当前未独立 query）；概览 KPI 另与 `getMarketDataRates` 的 formal 片段协同展示
 - `NewsAndCalendar` / 宏观联动（`getMacroBondLinkageAnalysis` 等，**analytical/专题**)
 - 运维区：Choice refresh + `getChoiceMacroRefreshStatus`、refresh tier / policy 文案
 - 折叠说明中声明 **未暴露** 的 V1 `api/macro` 决策端点不实现（见 `MarketDataPage` 中注释性描述）
@@ -1210,11 +1212,13 @@
 | --- | --- | --- |
 | `getMacroFoundation()` | `GET /ui/preview/macro-foundation` | catalog/preview，**analytical** |
 | `getChoiceMacroLatest()` | `GET /ui/macro/choice-series/latest` | 最新点 + `recent_points` |
-| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表** |
+| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表**（domain client 具备；**本页当前未挂载 query**，见上「实现核对」） |
 | `getFxAnalytical()` | `GET /ui/market-data/fx/analytical` | **analytical** |
 | `getNcdFundingProxy()` | `GET /ui/market-data/ncd-funding-proxy` | 结构化代理 |
 | `getMacroBondLinkageAnalysis` | `GET /api/macro-bond-linkage/analysis?report_date=` | 债券-宏观联动 **analytical** 读面 |
 | `getChoiceMacroRefreshStatus` / refresh POST | vendor 运维 | 非主值 |
+
+> **实现核对（仓库当前 `MarketDataPage.tsx`）**：本页已挂载查询的上表方法为 `getMacroFoundation`、`getChoiceMacroLatest`、`getFxAnalytical`、`getNcdFundingProxy`、`getMacroBondLinkageAnalysis`、`getChoiceMacroRefreshStatus`（及刷新 POST）、`getMarketDataRates`、`getLivermoreStrategy`。`getFxFormalStatus` 在 `marketDataClient` 存在，但本页**未**发起独立 `useQuery`；若其他路由消费该端点，以对应页面契约为准。
 
 ### F. 指标映射
 
@@ -1232,6 +1236,14 @@
 ### I. 显式待确认
 
 - 与全仓 `Phase 2` cutover 声明对齐后，本页是否拆分为「formal 子面」+「preview 子应用」的导航或强提示（当前为 **同页 mixed-source**）。
+
+### J. 实施边界与已知 GAP（文档事实，非业务指标定义）
+
+- **`GAP-MKT-DATA`**（与 `docs/metric_dictionary.md` §12.5、`docs/golden_sample_catalog.md` §5.2 一致）：市场页**尚无**本字典可冻结的 `MTR-*` 行与 capture-ready **golden sample**；页面契约不替代指标字典主表。
+- **硬编码行情/成交示意**：`RateQuoteTable`、`MoneyMarketTable`、`BondFuturesTable`、`BondTradeDetail`、`CreditBondTradesTable` 等组件内仍为**前端常量表**（占位式 UI），**非**后端逐笔真行情；实施边界为：应改为真实读面，或在无来源时整表 **no-data / source-pending**，不得呈现易被误读为已接线的真实市场数字（见 `docs/plans/market-workbench-cursor-prompts.md` Cursor 分工说明）。
+- **NCD 读面**：`ncd-funding-proxy` 为 **Shibor/资金利率类 proxy**（默认文案与 `payload.proxy_label` 对齐，如 Tushare Shibor funding proxy），**不是**「实际同业存单期限 × 评级」全矩阵真值；页内 `NcdMatrix` 已声明 proxy 语义。
+- **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。
+- **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。
 
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 

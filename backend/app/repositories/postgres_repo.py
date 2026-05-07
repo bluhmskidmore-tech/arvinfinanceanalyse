@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 try:
     import psycopg
-except Exception:  # pragma: no cover - exercised via monkeypatch
+except ImportError:  # pragma: no cover - exercised via monkeypatch
     psycopg = None
 
 

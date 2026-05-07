@@ -425,13 +425,13 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
     assert payload["result"]["position_scope"] == "all"
     assert payload["result"]["currency_basis"] == "CNY"
     assert payload["result"]["columns"] == [
-        {"key": "title", "label": "Title"},
-        {"key": "action_label", "label": "Action"},
-        {"key": "severity", "label": "Severity"},
-        {"key": "reason", "label": "Reason"},
-        {"key": "source_section", "label": "Source Section"},
-        {"key": "rule_id", "label": "Rule Id"},
-        {"key": "rule_version", "label": "Rule Version"},
+        {"key": "title", "label": "标题"},
+        {"key": "action_label", "label": "动作"},
+        {"key": "severity", "label": "等级"},
+        {"key": "reason", "label": "原因"},
+        {"key": "source_section", "label": "来源区块"},
+        {"key": "rule_id", "label": "规则编号"},
+        {"key": "rule_version", "label": "规则版本"},
     ]
     assert payload["result"]["rows"][0]["decision_key"]
     assert payload["result"]["rows"][0]["latest_status"] == {

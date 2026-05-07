@@ -3,11 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import { modeBadgeStyle, summaryGridStyle, tableStyle } from "../../../components/page/pageStyles";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
+import { shellTokens } from "../../../theme/tokens";
 import { FilterBar } from "../../../components/FilterBar";
-import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import type { LedgerMoneyValue } from "../../../api/contracts";
+import type { LedgerMoneyValue, QdbGlMonthlyAnalysisSheet } from "../../../api/contracts";
+import "./LedgerPnlPage.css";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -21,40 +24,24 @@ const pageSubtitleStyle = {
   marginTop: 10,
   marginBottom: 0,
   maxWidth: 860,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
 } as const;
 
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-  marginBottom: 20,
-} as const;
+const summaryGridStyleWithBottom = { ...summaryGridStyle, marginBottom: designTokens.space[5] } as const;
 
 const summaryCardStyle = {
-  border: "1px solid #d7dfea",
-  borderRadius: 16,
-  padding: 16,
-  background: "#ffffff",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  borderRadius: designTokens.radius.lg,
+  padding: designTokens.space[4],
+  background: shellTokens.colorBgSurface,
 } as const;
 
 const tableWrapStyle = {
-  border: "1px solid #d7dfea",
-  borderRadius: 16,
-  background: "#ffffff",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  borderRadius: designTokens.radius.lg,
+  background: shellTokens.colorBgSurface,
   overflow: "auto",
 } as const;
 
@@ -64,6 +51,76 @@ function formatMoney(value: LedgerMoneyValue | null | undefined) {
   }
   const yuan = Number(value?.yuan);
   return `${Number.isFinite(yuan) ? (yuan / 100_000_000).toFixed(2) : "0.00"} 亿元`;
+}
+
+function reportDateToMonth(reportDate: string) {
+  const match = /^(\d{4})-(\d{2})/.exec(reportDate.trim());
+  return match ? `${match[1]}${match[2]}` : "";
+}
+
+function formatAnalysisValue(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  if (typeof value === "number") {
+    return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+  }
+  return String(value);
+}
+
+function findAnalysisSheet(
+  sheets: QdbGlMonthlyAnalysisSheet[] | undefined,
+  key: string,
+) {
+  return sheets?.find((sheet) => sheet.key === key);
+}
+
+function pickDisplayColumns(sheet: QdbGlMonthlyAnalysisSheet | undefined, limit = 4) {
+  return (sheet?.columns ?? []).slice(0, limit);
+}
+
+function AnalysisTable(props: {
+  title: string;
+  sheet: QdbGlMonthlyAnalysisSheet | undefined;
+  testId: string;
+  columnLimit?: number;
+  rowLimit?: number;
+}) {
+  const columns = pickDisplayColumns(props.sheet, props.columnLimit ?? 4);
+  const rows = props.sheet?.rows.slice(0, props.rowLimit ?? 5) ?? [];
+  return (
+    <section data-testid={props.testId} className="ledger-pnl-analysis__table">
+      <div className="ledger-pnl-analysis__table-title">
+        {props.title}
+      </div>
+      {columns.length > 0 && rows.length > 0 ? (
+        <table style={tableStyle}>
+          <thead>
+            <tr className="ledger-pnl-analysis__table-head-row">
+              {columns.map((column) => (
+                <th key={column} className="ledger-pnl-analysis__th">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={`${props.testId}-${rowIndex}`} className="ledger-pnl-analysis__tr">
+                {columns.map((column) => (
+                  <td key={column} className="ledger-pnl-analysis__td">
+                    {formatAnalysisValue(row[column])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="ledger-pnl-analysis__empty">暂无可展示数据</div>
+      )}
+    </section>
+  );
 }
 
 export default function LedgerPnlPage() {
@@ -112,8 +169,59 @@ export default function LedgerPnlPage() {
     retry: false,
   });
 
+  const monthlyAnalysisDatesQuery = useQuery({
+    queryKey: ["ledger-pnl", "monthly-analysis", "dates", client.mode],
+    queryFn: () => client.getQdbGlMonthlyAnalysisDates(),
+    retry: false,
+  });
+
   const summary = summaryQuery.data?.result;
   const data = dataQuery.data?.result;
+  const monthlyAnalysisMonths = monthlyAnalysisDatesQuery.data?.result.report_months ?? [];
+  const requestedAnalysisMonth = reportDateToMonth(selectedReportDate) || reportDateToMonth(reportDateFromQuery);
+  const hasMatchingAnalysisMonth =
+    Boolean(requestedAnalysisMonth) && monthlyAnalysisMonths.includes(requestedAnalysisMonth);
+  const selectedAnalysisMonth = hasMatchingAnalysisMonth ? requestedAnalysisMonth : "";
+
+  const monthlyAnalysisWorkbookQuery = useQuery({
+    queryKey: ["ledger-pnl", "monthly-analysis", "workbook", client.mode, selectedAnalysisMonth],
+    enabled: hasMatchingAnalysisMonth,
+    queryFn: () => client.getQdbGlMonthlyAnalysisWorkbook({ reportMonth: selectedAnalysisMonth }),
+    retry: false,
+  });
+
+  const monthlyAnalysisWorkbook = monthlyAnalysisWorkbookQuery.data?.result;
+  const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
+  const top11dSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "top_11d");
+  const alertsSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "alerts");
+  const segmentBaseScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_base_scale");
+  const segmentScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_scale_compare");
+  const companyScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale");
+  const companyScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale_compare");
+  const retailScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "retail_scale");
+  const retailScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "retail_scale_compare");
+  const financialMarketScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "financial_market_scale");
+  const financialMarketScaleCompareSheet = findAnalysisSheet(
+    monthlyAnalysisWorkbook?.sheets,
+    "financial_market_scale_compare",
+  );
+  const incomeRateAnalysisSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "income_rate_analysis");
+  const incomeRateAttributionSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "income_rate_attribution");
+  const depositInterestSplitSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "deposit_interest_split");
+  const parentCompanyRevenueSheet = findAnalysisSheet(
+    monthlyAnalysisWorkbook?.sheets,
+    "parent_company_revenue_components",
+  );
+  const industryGapSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "industry_gap");
+  const overviewLabelColumn = overviewSheet?.columns[0];
+  const overviewValueColumn = overviewSheet?.columns[1];
+  const overviewRows =
+    overviewLabelColumn && overviewValueColumn
+      ? overviewSheet.rows.slice(0, 8).map((row) => ({
+          label: formatAnalysisValue(row[overviewLabelColumn]),
+          value: formatAnalysisValue(row[overviewValueColumn]),
+        }))
+      : [];
 
   const currencyOptions = useMemo(() => {
     const seen = new Set(["ALL"]);
@@ -169,7 +277,7 @@ export default function LedgerPnlPage() {
         <div>
           <h1
             data-testid="ledger-pnl-page-title"
-            style={{ margin: 0, fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em" }}
+            style={{ margin: 0, fontSize: 32, fontWeight: 600, letterSpacing: 0 }}
           >
             总账损益
           </h1>
@@ -195,13 +303,18 @@ export default function LedgerPnlPage() {
 
       <FilterBar style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             aria-label="ledger-pnl-report-date"
             value={selectedReportDate}
             onChange={(event) => setSelectedReportDate(event.target.value)}
             disabled={reportDates.length === 0}
-            style={{ minWidth: 180, padding: "10px 12px", borderRadius: 12, border: "1px solid #d7dfea" }}
+            style={{
+              minWidth: 180,
+              padding: "10px 12px",
+              borderRadius: designTokens.radius.md,
+              border: `1px solid ${designTokens.color.neutral[200]}`,
+            }}
           >
             {reportDates.length === 0 ? <option value="">暂无可选报告日</option> : null}
             {reportDates.map((reportDate) => (
@@ -212,12 +325,17 @@ export default function LedgerPnlPage() {
           </select>
         </label>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>币种</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>币种</span>
           <select
             aria-label="ledger-pnl-currency"
             value={currency}
             onChange={(event) => setCurrency(event.target.value)}
-            style={{ minWidth: 140, padding: "10px 12px", borderRadius: 12, border: "1px solid #d7dfea" }}
+            style={{
+              minWidth: 140,
+              padding: "10px 12px",
+              borderRadius: designTokens.radius.md,
+              border: `1px solid ${designTokens.color.neutral[200]}`,
+            }}
           >
             {currencyOptions.map((option) => (
               <option key={option} value={option}>
@@ -228,7 +346,155 @@ export default function LedgerPnlPage() {
         </label>
       </FilterBar>
 
-      <div data-testid="ledger-pnl-summary-cards" style={summaryGridStyle}>
+      <section data-testid="ledger-pnl-monthly-analysis-panel" className="ledger-pnl-analysis">
+        <div className="ledger-pnl-analysis__header">
+          <div>
+            <h2 className="ledger-pnl-analysis__title">
+              总账对账 + 日均分析
+            </h2>
+            <div className="ledger-pnl-analysis__subtitle">
+              月度工作簿口径，直接展示后端已重建的分析结果。
+            </div>
+          </div>
+          <span data-testid="ledger-pnl-monthly-analysis-month" className="ledger-pnl-analysis__month">
+            {selectedAnalysisMonth || (requestedAnalysisMonth ? `${requestedAnalysisMonth} 无匹配` : "暂无月份")}
+          </span>
+        </div>
+
+        {!hasMatchingAnalysisMonth && !monthlyAnalysisDatesQuery.isLoading ? (
+          <div data-testid="ledger-pnl-monthly-analysis-missing-month" className="ledger-pnl-analysis__empty">
+            当前报告日没有对应月度分析工作簿
+          </div>
+        ) : null}
+
+        {monthlyAnalysisDatesQuery.isError ? (
+          <div data-testid="ledger-pnl-monthly-analysis-error" className="ledger-pnl-analysis__empty">
+            月度分析月份读取失败
+          </div>
+        ) : null}
+
+        {monthlyAnalysisWorkbookQuery.isError ? (
+          <div data-testid="ledger-pnl-monthly-analysis-error" className="ledger-pnl-analysis__empty">
+            月度分析工作簿读取失败
+          </div>
+        ) : null}
+
+        {overviewRows.length > 0 ? (
+          <div data-testid="ledger-pnl-monthly-analysis-overview" className="ledger-pnl-analysis__kpis">
+            {overviewRows.map((row) => (
+              <div key={row.label} className="ledger-pnl-analysis__kpi">
+                <div className="ledger-pnl-analysis__kpi-label">
+                  {row.label}
+                </div>
+                <div className="ledger-pnl-analysis__kpi-value">
+                  {row.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div data-testid="ledger-pnl-monthly-analysis-overview" className="ledger-pnl-analysis__empty">
+            暂无经营概览数据
+          </div>
+        )}
+
+        <div className="ledger-pnl-analysis__tables">
+          <AnalysisTable
+            title="11位偏离TOP"
+            sheet={top11dSheet}
+            testId="ledger-pnl-monthly-analysis-top-11d"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="异动预警"
+            sheet={alertsSheet}
+            testId="ledger-pnl-monthly-analysis-alerts"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="分部基础规模"
+            sheet={segmentBaseScaleSheet}
+            testId="ledger-pnl-monthly-analysis-segment-base-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="分部规模同比环比"
+            sheet={segmentScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-segment-scale-compare"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="公司规模"
+            sheet={companyScaleSheet}
+            testId="ledger-pnl-monthly-analysis-company-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="公司规模同比环比"
+            sheet={companyScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-company-scale-compare"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="零售规模"
+            sheet={retailScaleSheet}
+            testId="ledger-pnl-monthly-analysis-retail-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="零售规模同比环比"
+            sheet={retailScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-retail-scale-compare"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="金融市场规模"
+            sheet={financialMarketScaleSheet}
+            testId="ledger-pnl-monthly-analysis-financial-market-scale"
+            columnLimit={5}
+          />
+          <AnalysisTable
+            title="金融市场规模同比环比"
+            sheet={financialMarketScaleCompareSheet}
+            testId="ledger-pnl-monthly-analysis-financial-market-scale-compare"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="收益率分析（总账可复算）"
+            sheet={incomeRateAnalysisSheet}
+            testId="ledger-pnl-monthly-analysis-income-rate"
+            columnLimit={7}
+          />
+          <AnalysisTable
+            title="收益量价归因（年累计同比）"
+            sheet={incomeRateAttributionSheet}
+            testId="ledger-pnl-monthly-analysis-income-rate-attribution"
+            columnLimit={9}
+          />
+          <AnalysisTable
+            title="存款利息拆分"
+            sheet={depositInterestSplitSheet}
+            testId="ledger-pnl-monthly-analysis-deposit-interest-split"
+            columnLimit={11}
+            rowLimit={9}
+          />
+          <AnalysisTable
+            title="母公司营收分项"
+            sheet={parentCompanyRevenueSheet}
+            testId="ledger-pnl-monthly-analysis-parent-company-revenue"
+            columnLimit={11}
+            rowLimit={17}
+          />
+          <AnalysisTable
+            title="行业存贷差"
+            sheet={industryGapSheet}
+            testId="ledger-pnl-monthly-analysis-industry-gap"
+            columnLimit={5}
+          />
+        </div>
+      </section>
+
+      <div data-testid="ledger-pnl-summary-cards" style={summaryGridStyleWithBottom}>
         {[
           ["核心损益", formatMoney(summary?.ledger_monthly_pnl_core)],
           ["全量损益", formatMoney(summary?.ledger_monthly_pnl_all)],
@@ -237,27 +503,44 @@ export default function LedgerPnlPage() {
           ["净资产", formatMoney(summary?.ledger_net_assets)],
         ].map(([title, value]) => (
           <div key={title} style={summaryCardStyle}>
-            <div style={{ fontSize: 12, color: "#5c6b82" }}>{title}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#162033", marginTop: 10 }}>{value}</div>
+            <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{title}</div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                color: designTokens.color.neutral[900],
+                marginTop: 10,
+              }}
+            >
+              {value}
+            </div>
           </div>
         ))}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
         <div style={tableWrapStyle}>
-          <div style={{ padding: 16, fontWeight: 600, borderBottom: "1px solid #eef2f7" }}>币种汇总</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div
+            style={{
+              padding: designTokens.space[4],
+              fontWeight: 600,
+              borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+            }}
+          >
+            币种汇总
+          </div>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: "#f7f9fc" }}>
-                <th style={{ textAlign: "left", padding: 12 }}>币种</th>
-                <th style={{ textAlign: "right", padding: 12 }}>损益</th>
+              <tr style={{ background: designTokens.color.neutral[50] }}>
+                <th style={{ textAlign: "left", padding: designTokens.space[3] }}>币种</th>
+                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>损益</th>
               </tr>
             </thead>
             <tbody>
               {(summary?.by_currency ?? []).map((item) => (
-                <tr key={item.currency} style={{ borderTop: "1px solid #eef2f7" }}>
-                  <td style={{ padding: 12 }}>{item.currency}</td>
-                  <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                <tr key={item.currency} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                  <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
                 </tr>
               ))}
             </tbody>
@@ -265,24 +548,34 @@ export default function LedgerPnlPage() {
         </div>
 
         <div style={tableWrapStyle}>
-          <div style={{ padding: 16, fontWeight: 600, borderBottom: "1px solid #eef2f7" }}>科目汇总</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div
+            style={{
+              padding: designTokens.space[4],
+              fontWeight: 600,
+              borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+            }}
+          >
+            科目汇总
+          </div>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: "#f7f9fc" }}>
-                <th style={{ textAlign: "left", padding: 12 }}>科目</th>
-                <th style={{ textAlign: "right", padding: 12 }}>损益</th>
-                <th style={{ textAlign: "right", padding: 12 }}>笔数</th>
+              <tr style={{ background: designTokens.color.neutral[50] }}>
+                <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目</th>
+                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>损益</th>
+                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>笔数</th>
               </tr>
             </thead>
             <tbody>
               {(summary?.by_account ?? []).map((item) => (
-                <tr key={item.account_code} style={{ borderTop: "1px solid #eef2f7" }}>
-                  <td style={{ padding: 12 }}>
+                <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                  <td style={{ padding: designTokens.space[3] }}>
                     <div>{item.account_code}</div>
-                    <div style={{ color: "#5c6b82", fontSize: 12 }}>{item.account_name}</div>
+                    <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
+                      {item.account_name}
+                    </div>
                   </td>
-                  <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
-                  <td style={{ padding: 12, textAlign: "right" }}>{item.count}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
                 </tr>
               ))}
             </tbody>
@@ -291,31 +584,39 @@ export default function LedgerPnlPage() {
       </div>
 
       <div data-testid="ledger-pnl-detail-table" style={tableWrapStyle}>
-        <div style={{ padding: 16, fontWeight: 600, borderBottom: "1px solid #eef2f7" }}>科目明细</div>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div
+          style={{
+            padding: designTokens.space[4],
+            fontWeight: 600,
+            borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+          }}
+        >
+          科目明细
+        </div>
+        <table style={tableStyle}>
           <thead>
-            <tr style={{ background: "#f7f9fc" }}>
-              <th style={{ textAlign: "left", padding: 12 }}>科目代码</th>
-              <th style={{ textAlign: "left", padding: 12 }}>科目名称</th>
-              <th style={{ textAlign: "left", padding: 12 }}>币种</th>
-              <th style={{ textAlign: "right", padding: 12 }}>期初</th>
-              <th style={{ textAlign: "right", padding: 12 }}>期末</th>
-              <th style={{ textAlign: "right", padding: 12 }}>月损益</th>
-              <th style={{ textAlign: "right", padding: 12 }}>月日均</th>
-              <th style={{ textAlign: "right", padding: 12 }}>天数</th>
+            <tr style={{ background: designTokens.color.neutral[50] }}>
+              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目代码</th>
+              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目名称</th>
+              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>币种</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>期初</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>期末</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>月损益</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>月日均</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>天数</th>
             </tr>
           </thead>
           <tbody>
             {(data?.items ?? []).map((item) => (
-              <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: "1px solid #eef2f7" }}>
-                <td style={{ padding: 12 }}>{item.account_code}</td>
-                <td style={{ padding: 12 }}>{item.account_name}</td>
-                <td style={{ padding: 12 }}>{item.currency}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{item.days_in_period}</td>
+              <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
+                <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
+                <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
               </tr>
             ))}
           </tbody>
@@ -328,6 +629,12 @@ export default function LedgerPnlPage() {
           { key: "dates", title: "Ledger 报告日", meta: datesQuery.data?.result_meta },
           { key: "summary", title: "Ledger 汇总", meta: summaryQuery.data?.result_meta },
           { key: "data", title: "Ledger 明细", meta: dataQuery.data?.result_meta },
+          { key: "monthly-analysis-dates", title: "月度分析月份", meta: monthlyAnalysisDatesQuery.data?.result_meta },
+          {
+            key: "monthly-analysis-workbook",
+            title: "月度分析工作簿",
+            meta: monthlyAnalysisWorkbookQuery.data?.result_meta,
+          },
         ]}
       />
     </section>

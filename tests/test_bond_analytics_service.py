@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
@@ -112,6 +113,58 @@ def test_bond_analytics_service_returns_available_report_dates(tmp_path, monkeyp
     assert payload["result"]["report_dates"] == [REPORT_DATE]
     assert payload["result_meta"]["source_version"]
     assert payload["result_meta"]["rule_version"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    settings = get_settings()
+
+    return_key = ("2026-03-31", "MoM", "all", "all")
+    other_return_key = ("2026-04-30", "MoM", "all", "all")
+    action_key = ("2026-03-31", "MoM")
+    other_action_key = ("2026-04-30", "MoM")
+    service_mod._return_decomposition_cache.set(return_key, {"value": "stale-return"})
+    service_mod._return_decomposition_cache.set(other_return_key, {"value": "keep-return"})
+    service_mod._action_attribution_cache.set(action_key, {"value": "stale-action"})
+    service_mod._action_attribution_cache.set(other_action_key, {"value": "keep-action"})
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "bond-cache-invalidate",
+            "job_name": service_mod.JOB_NAME,
+            "status": "completed",
+            "cache_key": service_mod.CACHE_KEY,
+            "report_date": "2026-03-31",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    payload = service_mod.bond_analytics_refresh_status(
+        settings,
+        run_id="bond-cache-invalidate",
+    )
+
+    assert payload["status"] == "completed"
+    assert service_mod._return_decomposition_cache.get(return_key) == (False, None)
+    assert service_mod._action_attribution_cache.get(action_key) == (False, None)
+    assert service_mod._return_decomposition_cache.get(other_return_key) == (
+        True,
+        {"value": "keep-return"},
+    )
+    assert service_mod._action_attribution_cache.get(other_action_key) == (
+        True,
+        {"value": "keep-action"},
+    )
     get_settings.cache_clear()
 
 

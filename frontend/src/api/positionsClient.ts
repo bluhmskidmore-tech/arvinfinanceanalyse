@@ -5,9 +5,12 @@
 import type {
   ApiEnvelope,
   AdbComparisonResponse,
+  AdbCoveragePayload,
   AdbMonthlyResponse,
   AdbPayload,
   BondPositionItem,
+  CockpitWarningsPayload,
+  ContributionSplitPayload,
   CounterpartyStatsResponse,
   CustomerBalanceTrendResponse,
   CustomerBondDetailsResponse,
@@ -20,6 +23,7 @@ import type {
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
   PageResponse,
+  YieldByPeriodPayload,
   PositionDirection,
   ProductTypesResponse,
   RatingStatsResponse,
@@ -83,11 +87,17 @@ export type PositionsClientMethods = {
   }) => Promise<ApiEnvelope<CustomerBalanceTrendResponse>>;
   getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsPayload>;
   getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsPayload>;
+  getYieldByPeriod: (options: {
+    year: number;
+    periodType?: "monthly" | "quarterly" | "yearly";
+  }) => Promise<YieldByPeriodPayload>;
   getLiabilityCounterparty: (options: {
     reportDate?: string | null;
     topN?: number;
   }) => Promise<LiabilityCounterpartyPayload>;
   getLiabilityKnowledgeBrief: () => Promise<ApiEnvelope<LiabilityKnowledgeBriefPayload>>;
+  getCockpitWarnings: (reportDate?: string | null) => Promise<ApiEnvelope<CockpitWarningsPayload>>;
+  getContributionSplit: (reportDate?: string | null) => Promise<ApiEnvelope<ContributionSplitPayload>>;
   getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyPayload>;
   getLiabilityAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   getAdb: (params: { startDate: string; endDate: string }) => Promise<AdbPayload>;
@@ -99,4 +109,5 @@ export type PositionsClientMethods = {
     },
   ) => Promise<AdbComparisonResponse>;
   getAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
+  getAdbCoverage: (startDate: string, endDate: string) => Promise<AdbCoveragePayload>;
 };

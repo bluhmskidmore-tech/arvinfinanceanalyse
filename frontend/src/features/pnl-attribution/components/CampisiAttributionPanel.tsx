@@ -17,6 +17,10 @@ function formatYi(value: number): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
+function formatOptionalYi(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? formatYi(value) : "不可用";
+}
+
 type NormalizedCampisiData = {
   total_income: number;
   total_treasury_effect: number;
@@ -27,6 +31,7 @@ type NormalizedCampisiData = {
   spread_contribution_pct: number;
   selection_contribution_pct: number;
   interpretation: string;
+  formal_closure?: CampisiFourEffectsPayload["formal_closure"];
   items: Array<{
     category: string;
     income_return: number;
@@ -62,6 +67,7 @@ function normalizeCampisiData(
       spread_contribution_pct: pct(data.totals.spread_effect),
       selection_contribution_pct: pct(data.totals.selection_effect),
       interpretation: `期间 ${data.period_start} 至 ${data.period_end} 的四效应归因拆解。`,
+      formal_closure: data.formal_closure,
       items: data.by_asset_class.map((row) => ({
         category: row.asset_class,
         income_return: row.income_return,
@@ -82,6 +88,7 @@ function normalizeCampisiData(
     spread_contribution_pct: data.spread_contribution_pct.raw ?? 0,
     selection_contribution_pct: data.selection_contribution_pct.raw ?? 0,
     interpretation: data.interpretation,
+    formal_closure: undefined,
     items: data.items.map((row) => ({
       category: row.category,
       income_return: row.income_return.raw ?? 0,
@@ -164,6 +171,27 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           >
             {normalized.interpretation}
           </p>
+          {normalized.formal_closure && normalized.formal_closure.status !== "closed" ? (
+            <div
+              data-testid="campisi-formal-closure-warning"
+              style={{
+                marginBottom: designTokens.space[4],
+                padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
+                borderLeft: `4px solid ${designTokens.color.neutral[600]}`,
+                background: "#fff7ed",
+                color: designTokens.color.neutral[800],
+                fontSize: designTokens.fontSize[12],
+                lineHeight: designTokens.lineHeight.normal,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: designTokens.space[1] }}>未闭合到正式 PnL</div>
+              <div>
+                Campisi {formatOptionalYi(normalized.formal_closure.campisi_total_return)}，正式 PnL{" "}
+                {formatOptionalYi(normalized.formal_closure.formal_actual_pnl)}，需要残差{" "}
+                {formatOptionalYi(normalized.formal_closure.residual_to_formal_pnl)} 才能闭合。
+              </div>
+            </div>
+          ) : null}
           <div
             style={{
               display: "grid",

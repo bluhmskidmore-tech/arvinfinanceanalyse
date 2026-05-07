@@ -7,7 +7,7 @@ import { displayTokens } from "../../theme/displayTokens";
 import { FilterBar } from "../../components/FilterBar";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 
 const NEWS_EVENTS_PAGE_SIZE = 50;
 
@@ -200,7 +200,7 @@ export default function NewsEventsPage() {
               lineHeight: 1.75,
             }}
           >
-            查看 Choice 新闻回调事件流水，可按专题与错误筛选，数据来自服务端最新事件接口。
+            查看 Choice 新闻回调事件流水，可按专题与错误筛选；数据来自服务端最新事件接口。本页为分析读面（临时例外路由，非正式指标主链）。
           </p>
         </div>
         <span

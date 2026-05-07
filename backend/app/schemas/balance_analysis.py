@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -265,3 +265,13 @@ class BalanceAnalysisWorkbookPayload(BaseModel):
         | BalanceAnalysisEventCalendarSection
         | BalanceAnalysisRiskAlertsSection
     ]
+
+
+class BalanceRelatedApiEnvelope(BaseModel):
+    """Top-level JSON for balance / ADB endpoints that return result_meta + result (+ optional calibration)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, Any]
+    result: dict[str, Any]
+    calibration: dict[str, Any] | None = None

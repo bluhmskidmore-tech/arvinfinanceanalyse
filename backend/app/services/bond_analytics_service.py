@@ -1,7 +1,13 @@
 """Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
 from __future__ import annotations
 
+import logging
+import threading
+import time
 import uuid
+from typing import Any
+
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -181,6 +187,52 @@ IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 
 
+class _TTLCache:
+    """Thread-safe TTL cache keyed by arbitrary hashable args."""
+
+    def __init__(self, ttl_seconds: int = 300):
+        self._store: dict[tuple, tuple[float, Any]] = {}
+        self._lock = threading.Lock()
+        self._ttl = ttl_seconds
+
+    def get(self, key: tuple) -> tuple[bool, Any]:
+        with self._lock:
+            entry = self._store.get(key)
+            if entry and time.monotonic() - entry[0] < self._ttl:
+                return True, entry[1]
+            return False, None
+
+    def set(self, key: tuple, value: Any) -> None:
+        with self._lock:
+            self._store[key] = (time.monotonic(), value)
+
+    def invalidate(self, key: tuple) -> None:
+        with self._lock:
+            self._store.pop(key, None)
+
+    def invalidate_matching(self, predicate) -> None:
+        with self._lock:
+            for key in list(self._store):
+                if predicate(key):
+                    self._store.pop(key, None)
+
+
+_return_decomposition_cache = _TTLCache(ttl_seconds=300)
+_action_attribution_cache = _TTLCache(ttl_seconds=300)
+
+
+def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> None:
+    report_date_text = str(report_date or "").strip()
+    if not report_date_text:
+        return
+    _return_decomposition_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
+    _action_attribution_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
+
+
 def _benchmark_excess_brinson_sum_matches_explained(summary: dict[str, object]) -> bool:
     s = (
         safe_decimal(summary["duration_effect"])
@@ -351,9 +403,18 @@ def _overlay_return_decomposition_trading_pnl517(
 
     summary["bond_details"] = bond_rows
     summary["trading_total"] = sum((safe_decimal(r.get("trading")) for r in bond_rows if isinstance(r, dict)), ZERO)
-    by_ac, by_acc = rebucket_return_decomposition(bond_rows)
-    summary["by_asset_class"] = by_ac
-    summary["by_accounting_class"] = by_acc
+    matched_coverage_pct = float(matched_mv / total_mv * 100) if total_mv > ZERO else 0.0
+    summary["matched_coverage_pct"] = round(matched_coverage_pct, 2)
+    try:
+        by_ac, by_acc = rebucket_return_decomposition(bond_rows)
+        summary["by_asset_class"] = by_ac
+        summary["by_accounting_class"] = by_acc
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+        logger.exception(
+            "rebucket_return_decomposition failed after trading overlay; "
+            "by_asset_class / by_accounting_class unchanged: %s",
+            exc,
+        )
 
     if not pnl_map:
         extra_warnings.append(
@@ -372,6 +433,12 @@ def _overlay_return_decomposition_trading_pnl517(
             "capital_gain_517 matched for a subset of positions (instrument+book); others show trading 0."
         )
         details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_PARTIAL_DETAIL.items()})
+        if matched_coverage_pct < 80.0:
+            details.append({
+                "code": "return_decomposition_trading_pnl517_low_coverage",
+                "level": "warning",
+                "message": f"matched_coverage_pct={matched_coverage_pct:.1f}%_below_80pct_threshold",
+            })
     return summary, extra_warnings, details
 
 
@@ -556,6 +623,8 @@ def bond_analytics_refresh_status(settings: Settings, *, run_id: str) -> dict[st
         raise ValueError(f"Unknown bond analytics refresh run_id={run_id}")
     latest = records[-1]
     status = str(latest.get("status", "unknown"))
+    if status == "completed":
+        _invalidate_bond_analytics_caches_for_report_date(latest.get("report_date"))
     return {
         **latest,
         "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
@@ -883,11 +952,18 @@ def _compute_return_decomposition_summary(
 
 
 def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
+    _cache_key = (report_date.isoformat(), period_type, asset_class, accounting_class)
+    hit, cached = _return_decomposition_cache.get(_cache_key)
+    if hit:
+        return cached
+
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
     if not rows:
         meta = _meta("bond_analytics.return_decomposition", report_date, rows)
-        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
+        result = _empty_return_response(meta, report_date, period_type, period_start, period_end)
+        _return_decomposition_cache.set(_cache_key, result)
+        return result
 
     curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
     inputs = _fetch_return_decomposition_inputs(
@@ -928,9 +1004,11 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         trading_extra_warnings=trading_extra_warnings,
         warnings_detail=trading_wd,
     )
-    return build_formal_result_envelope(
+    result = build_formal_result_envelope(
         result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
     )
+    _return_decomposition_cache.set(_cache_key, result)
+    return result
 
 
 def _resolve_curve_for_service(
@@ -1709,6 +1787,10 @@ def _build_portfolio_headlines_empty_response(report_date: date) -> dict:
 def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[str, object]:
     """Compute all metrics for portfolio headlines."""
     risk = summarize_portfolio_risk(rows)
+    rate_duration_rows = [
+        row for row in rows if str(row.get("asset_class_std")) in {"rate", "credit"}
+    ]
+    rate_duration_risk = summarize_portfolio_risk(rate_duration_rows)
     credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
     credit_summary = summarize_credit(
         credit_rows,
@@ -1717,11 +1799,12 @@ def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[
         treasury_curve_current=None,
     )
     conc = build_concentration(rows, field_name="issuer_name", dimension="issuer")
-    ytm_dec = weighted_average_by_market_value(rows, "ytm")
+    ytm_dec = weighted_average_by_market_value(rate_duration_rows, "ytm")
     cpn_dec = weighted_average_by_market_value(rows, "coupon_rate")
     by_ac = build_asset_class_risk_summary(rows)
     return {
         "risk": risk,
+        "rate_duration_risk": rate_duration_risk,
         "credit_summary": credit_summary,
         "conc": conc,
         "ytm_dec": ytm_dec,
@@ -1743,7 +1826,7 @@ def get_portfolio_headlines(report_date: date) -> dict:
                 "report_date": report_date,
                 "total_market_value": metrics["risk"]["total_market_value"],
                 "weighted_ytm": metrics["ytm_dec"] * pct,
-                "weighted_duration": metrics["risk"]["portfolio_modified_duration"],
+                "weighted_duration": metrics["rate_duration_risk"]["portfolio_modified_duration"],
                 "weighted_coupon": metrics["cpn_dec"] * pct,
                 "total_dv01": metrics["risk"]["portfolio_dv01"],
                 "bond_count": int(metrics["risk"]["bond_count"]),
@@ -2033,6 +2116,11 @@ def _build_action_attribution_success_response(
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
+    _cache_key = (report_date.isoformat(), period_type)
+    hit, cached = _action_attribution_cache.get(_cache_key)
+    if hit:
+        return cached
+
     period_start, period_end = resolve_period(report_date, period_type)
     repo = _repo()
     rows_end, rows_start, prior_rd = _fetch_action_attribution_snapshots(
@@ -2060,11 +2148,15 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
             pnl_by_key=pnl_by_key,
         )
     except Exception:
+        logger.exception(
+            "Action attribution computation failed for report_date=%s period_type=%s, returning placeholder",
+            report_date, period_type,
+        )
         return _build_action_attribution_placeholder_response(
             report_date=report_date, period_type=period_type
         )
 
-    return _build_action_attribution_success_response(
+    result = _build_action_attribution_success_response(
         report_date=report_date,
         period_type=period_type,
         raw=raw,
@@ -2073,6 +2165,8 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         pnl_by_key=pnl_by_key,
         pnl_warn_codes=pnl_warn_codes,
     )
+    _action_attribution_cache.set(_cache_key, result)
+    return result
 
 
 def _refresh_trigger_lock(*, report_date: str) -> LockDefinition:

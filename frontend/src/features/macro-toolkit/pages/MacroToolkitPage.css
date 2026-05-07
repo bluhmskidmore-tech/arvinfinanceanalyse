@@ -1,0 +1,448 @@
+.macro-toolkit-page {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+.macro-toolkit-page .moss-page-v2-decision-hero {
+  padding: 18px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 3px solid var(--moss-color-primary-600);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(22, 35, 46, 0.06);
+}
+
+.macro-toolkit-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+  width: 100%;
+}
+
+.macro-toolkit-analysis-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) repeat(2, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+  width: 100%;
+}
+
+.macro-toolkit-stance-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-radius-sm);
+  background: #f8fbff;
+}
+
+.macro-toolkit-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.macro-toolkit-metric span,
+.macro-toolkit-stance-card span,
+.macro-toolkit-source-item span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.macro-toolkit-stance-card strong,
+.macro-toolkit-metric strong {
+  color: var(--moss-color-text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-metric small,
+.macro-toolkit-stance-card small,
+.macro-toolkit-source-item small,
+.macro-toolkit-script-file {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-signal-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 3px solid var(--moss-color-neutral-400);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-signal-card--positive {
+  border-left-color: #16a34a;
+}
+
+.macro-toolkit-signal-card--negative {
+  border-left-color: #dc2626;
+}
+
+.macro-toolkit-signal-card--neutral {
+  border-left-color: var(--moss-color-primary-500);
+}
+
+.macro-toolkit-signal-card--missing {
+  border-left-color: var(--moss-color-neutral-400);
+}
+
+.macro-toolkit-signal-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.macro-toolkit-signal-head span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.macro-toolkit-signal-card strong {
+  color: var(--moss-color-text-primary);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.macro-toolkit-signal-card small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-capability-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-strategy-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  min-height: 168px;
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 3px solid var(--moss-color-primary-500);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-strategy-card strong {
+  color: var(--moss-color-text-primary);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.macro-toolkit-strategy-card small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-strategy-metric {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.macro-toolkit-strategy-metric span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.macro-toolkit-strategy-metric b {
+  color: var(--moss-color-primary-700);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.macro-toolkit-capability-result {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  min-height: 154px;
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 3px solid var(--moss-color-neutral-400);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-capability-result--positive {
+  border-left-color: #16a34a;
+}
+
+.macro-toolkit-capability-result--negative {
+  border-left-color: #dc2626;
+}
+
+.macro-toolkit-capability-result--neutral {
+  border-left-color: var(--moss-color-primary-500);
+}
+
+.macro-toolkit-capability-result--missing {
+  border-left-color: var(--moss-color-neutral-400);
+}
+
+.macro-toolkit-capability-result-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.macro-toolkit-capability-result-head span {
+  min-width: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-capability-result strong {
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-capability-result p {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-capability-result small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.macro-toolkit-section {
+  display: grid;
+  gap: var(--moss-space-2);
+  min-width: 0;
+}
+
+.macro-toolkit-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-cffex-panel,
+.macro-toolkit-stock-refresh-panel {
+  display: grid;
+  gap: var(--moss-space-2);
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-cffex-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.macro-toolkit-cffex-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+  align-items: center;
+}
+
+.macro-toolkit-empty-output {
+  padding: 16px;
+  border: 1px dashed var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.macro-toolkit-omitted-list {
+  display: grid;
+  gap: 8px;
+}
+
+.macro-toolkit-omitted-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-omitted-item span {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.macro-toolkit-omitted-item small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.macro-toolkit-source-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-source-item strong {
+  color: var(--moss-color-primary-700);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.macro-toolkit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-toolbar .ant-select {
+  min-width: 180px;
+}
+
+.macro-toolkit-script-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.macro-toolkit-script-name {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.macro-toolkit-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.macro-toolkit-row--selected td {
+  background: var(--moss-color-primary-50) !important;
+}
+
+.macro-toolkit-page .ant-table-wrapper {
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-run-panel {
+  display: grid;
+  gap: var(--moss-space-2);
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.macro-toolkit-run-title {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.macro-toolkit-console {
+  min-height: 140px;
+  max-height: 360px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #101820;
+  color: #d8e2ea;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .macro-toolkit-analysis-hero,
+  .macro-toolkit-cffex-metrics,
+  .macro-toolkit-signal-grid,
+  .macro-toolkit-hero-grid {
+    grid-template-columns: 1fr;
+  }
+}

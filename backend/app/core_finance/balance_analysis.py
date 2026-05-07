@@ -47,6 +47,7 @@ class ZqtzSnapshotRow:
     ingest_batch_id: str = ""
     trace_id: str = ""
     business_type_primary: str = ""
+    sub_type: str = ""
 
 
 @dataclass(slots=True, frozen=True)
@@ -106,6 +107,7 @@ class FormalZqtzBalanceFactRow:
     ingest_batch_id: str = ""
     trace_id: str = ""
     business_type_primary: str = ""
+    sub_type: str = ""
 
 
 @dataclass(slots=True, frozen=True)
@@ -248,6 +250,7 @@ def project_zqtz_formal_balance_row(
         ingest_batch_id=row.ingest_batch_id,
         trace_id=row.trace_id,
         business_type_primary=row.business_type_primary,
+        sub_type=str(row.sub_type or "").strip(),
     )
 
 

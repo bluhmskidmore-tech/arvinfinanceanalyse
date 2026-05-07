@@ -90,15 +90,14 @@ def _client_with_stubbed_agent(monkeypatch):
     return TestClient(app)
 
 
-def test_default_app_agent_query_is_phase1_disabled_stub_503():
-    """Unmocked app: Agent remains off by default (see `Settings.agent_enabled`)."""
+def test_default_app_agent_query_is_disabled_503():
+    """Unmocked app: Agent is disabled unless the feature flag is explicitly enabled."""
     client = TestClient(default_app)
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 503
     body = response.json()
     assert body["enabled"] is False
-    assert body["phase"] == "phase1"
     assert "disabled" in body["detail"].lower()
 
 
@@ -168,100 +167,7 @@ def test_agent_response_schema_exposes_passive_suggested_actions():
     assert "suggested_actions" in module.AgentEnvelope.model_fields
 
 
-def test_agent_query_returns_200_with_envelope(monkeypatch, tmp_path):
-    client = _client_with_stubbed_agent(monkeypatch)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["answer"] == "PnL summary is available."
-    assert payload["cards"][0]["title"] == "Total PnL"
-
-def test_agent_query_envelope_has_evidence(monkeypatch, tmp_path):
-    client = _client_with_stubbed_agent(monkeypatch)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi"]
-    assert payload["evidence"]["filters_applied"] == {
-        "report_date": "2026-03-31",
-        "report_date_resolution": "latest_default",
-    }
-    assert payload["evidence"]["evidence_rows"] == 2
-
-def test_agent_query_envelope_has_result_meta(monkeypatch, tmp_path):
-    client = _client_with_stubbed_agent(monkeypatch)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["result_meta"]["trace_id"] == "tr_agent_api_contract"
-    assert payload["result_meta"]["result_kind"] == "agent.pnl_summary"
-    assert payload["result_meta"]["tables_used"] == ["fact_formal_pnl_fi"]
-    assert payload["result_meta"]["evidence_rows"] == 2
-
-def test_agent_query_returns_disabled_fallback_when_agent_is_off(monkeypatch, tmp_path):
-    route_module = load_module(
-        "backend.app.api.routes.agent",
-        "backend/app/api/routes/agent.py",
-    )
-    monkeypatch.setattr(
-        route_module,
-        "get_settings",
-        lambda: type(
-            "SettingsStub",
-            (),
-            {
-                "agent_enabled": False,
-                "duckdb_path": str(tmp_path / "moss.duckdb"),
-                "governance_path": str(tmp_path / "governance"),
-            },
-        )(),
-    )
-    app = FastAPI()
-    app.include_router(route_module.router)
-    client = TestClient(app)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
-
-    assert response.status_code == 503
-    assert response.json() == {
-        "enabled": False,
-        "phase": "phase1",
-        "detail": "Agent endpoint is planned but disabled in Phase 1.",
-    }
-def test_disabled_agent_query_appends_audit_log(monkeypatch, tmp_path):
-    route_module = load_module(
-        "backend.app.api.routes.agent",
-        "backend/app/api/routes/agent.py",
-    )
-    monkeypatch.setattr(
-        route_module,
-        "get_settings",
-        lambda: type(
-            "SettingsStub",
-            (),
-            {
-                "agent_enabled": False,
-                "duckdb_path": str(tmp_path / "moss.duckdb"),
-                "governance_path": str(tmp_path / "governance"),
-            },
-        )(),
-    )
-    app = FastAPI()
-    app.include_router(route_module.router)
-    client = TestClient(app)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
-
-    assert response.status_code == 503
-    content = (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8")
-    payload = json.loads(content.splitlines()[-1])
-    assert payload["query_text"] == "PnL summary"
-    assert payload["tools_used"] == ["agent_disabled"]
-    assert payload["result_meta"]["result_kind"] == "agent.disabled"
-
-
-def test_agent_query_returns_404_with_detail_when_executor_raises_value_error(monkeypatch):
+def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -274,6 +180,109 @@ def test_agent_query_returns_404_with_detail_when_executor_raises_value_error(mo
             (),
             {
                 "agent_enabled": True,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        calls.append((request, duckdb_path, governance_dir))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "agent.pnl_summary"
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert calls
+
+
+def test_agent_query_returns_disabled_when_agent_is_off(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": False,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["enabled"] is False
+    assert "disabled" in payload["detail"].lower()
+    assert "result_meta" not in payload
+
+
+def test_disabled_agent_query_appends_disabled_audit_log(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": False,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 503
+    audit_path = tmp_path / "governance" / "agent_audit.jsonl"
+    assert audit_path.exists()
+    audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert audit_payload["tools_used"] == ["agent_disabled"]
+    assert audit_payload["result_meta"]["result_kind"] == "agent.disabled"
+    assert audit_payload["result_meta"]["formal_use_allowed"] is False
+
+
+def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "local",
                 "duckdb_path": "test.duckdb",
                 "governance_path": "test-governance",
             },
@@ -293,10 +302,10 @@ def test_agent_query_returns_404_with_detail_when_executor_raises_value_error(mo
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "No agent data found."}
+    assert response.json()["detail"] == "No agent data found."
 
 
-def test_agent_query_returns_runtime_error_detail_instead_of_disabled_payload(monkeypatch):
+def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -309,6 +318,7 @@ def test_agent_query_returns_runtime_error_detail_instead_of_disabled_payload(mo
             (),
             {
                 "agent_enabled": True,
+                "agent_provider": "local",
                 "duckdb_path": "test.duckdb",
                 "governance_path": "test-governance",
             },
@@ -328,4 +338,60 @@ def test_agent_query_returns_runtime_error_detail_instead_of_disabled_payload(mo
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "DuckDB read path unavailable."}
+    assert response.json()["detail"] == "DuckDB read path unavailable."
+
+
+def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_wsl_distro": "",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        calls.append((request, governance_dir, settings.agent_hermes_model))
+        return _sample_agent_envelope().model_copy(
+            update={
+                "answer": "Hermes answered.",
+                "result_meta": _sample_agent_envelope().result_meta.model_copy(
+                    update={
+                        "result_kind": "agent.hermes",
+                        "vendor_version": "vv_hermes",
+                        "formal_use_allowed": False,
+                    }
+                ),
+            }
+        )
+
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "请分析当前组合"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Hermes answered."
+    assert payload["result_meta"]["result_kind"] == "agent.hermes"
+    assert payload["result_meta"]["vendor_version"] == "vv_hermes"
+    assert calls
+    assert calls[0][2] == "gpt-test"

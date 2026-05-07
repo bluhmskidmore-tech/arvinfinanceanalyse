@@ -55,6 +55,7 @@ NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS = frozenset({"advanced_attribution_bundle"})
 
 POLICY_BOND = "\u653f\u7b56\u6027\u91d1\u878d\u503a"
 OTHER_BOND = "\u5176\u4ed6"
+ZQTZ_CLASSIFIER_OTHER = "\u5176\u5b83"
 UNRATED = "\u65e0\u8bc4\u7ea7(\u5229\u7387\u503a\u7b49)"
 FIXED = "\u56fa\u5b9a"
 ISSUANCE_ASSET_CLASS = "\u53d1\u884c\u7c7b\u503a\u52b5"
@@ -378,7 +379,9 @@ def test_workbook_weighted_term_years_matches_365_25_day_basis():
     ) / Decimal("10")
 
     table = workbook_module._build_bond_business_type_table(rows)
-    other_row = next(row for row in table["rows"] if row["bond_type"] == OTHER_BOND)
+    other_row = next(
+        row for row in table["rows"] if row["bond_type"] == ZQTZ_CLASSIFIER_OTHER
+    )
     assert Decimal(str(other_row["weighted_term_years"])) == expected
 
 
@@ -477,8 +480,205 @@ def test_workbook_business_type_duration_ignores_rows_without_or_past_maturity()
     ]
 
     table = workbook_module._build_bond_business_type_table(rows)
-    other_row = next(row for row in table["rows"] if row["bond_type"] == OTHER_BOND)
+    other_row = next(
+        row for row in table["rows"] if row["bond_type"] == ZQTZ_CLASSIFIER_OTHER
+    )
     assert Decimal(str(other_row["weighted_term_years"])) > Decimal("4")
+
+
+def test_workbook_bond_rating_and_industry_analysis_share_movement_dimension_rules():
+    workbook_module = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    balance_module = load_module(
+        "backend.app.core_finance.balance_analysis",
+        "backend/app/core_finance/balance_analysis.py",
+    )
+
+    rows = [
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="P",
+            instrument_name="Policy",
+            portfolio_name="P",
+            cost_center="C",
+            account_category="",
+            asset_class="\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7",
+            bond_type=POLICY_BOND,
+            issuer_name="I",
+            industry_name="\u91d1\u878d\u4e1a",
+            rating="",
+            invest_type_std="H",
+            accounting_basis="AC",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("900000"),
+            market_value_amount=Decimal("900000"),
+            amortized_cost_amount=Decimal("900000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2027, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="US0001",
+            instrument_name="Foreign",
+            portfolio_name="P",
+            cost_center="C",
+            account_category="",
+            asset_class="\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
+            bond_type="\u5916\u56fd\u503a\u5238",
+            issuer_name="I",
+            industry_name="",
+            rating="",
+            invest_type_std="A",
+            accounting_basis="FVOCI",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("100000"),
+            market_value_amount=Decimal("100000"),
+            amortized_cost_amount=Decimal("100000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("3.0"),
+            ytm_value=None,
+            maturity_date=date(2028, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="C",
+            instrument_name="Credit",
+            portfolio_name="P",
+            cost_center="C",
+            account_category="",
+            asset_class="\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
+            bond_type="\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a",
+            issuer_name="I",
+            industry_name="\u5236\u9020\u4e1a",
+            rating="AA+",
+            invest_type_std="A",
+            accounting_basis="FVOCI",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("50000"),
+            market_value_amount=Decimal("50000"),
+            amortized_cost_amount=Decimal("50000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("4.0"),
+            ytm_value=None,
+            maturity_date=date(2029, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+    ]
+
+    table = workbook_module._build_rating_table(rows)
+    row_map = {row["rating"]: row for row in table["rows"]}
+
+    assert set(row_map) == {"AAA", "AA+", "\u672a\u6620\u5c04"}
+    assert Decimal(str(row_map["AAA"]["balance_amount"])) == Decimal("90")
+    assert Decimal(str(row_map["AA+"]["balance_amount"])) == Decimal("5")
+    assert Decimal(str(row_map["\u672a\u6620\u5c04"]["balance_amount"])) == Decimal("10")
+
+    industry_table = workbook_module._build_industry_table(rows)
+    industry_map = {row["industry_name"]: row for row in industry_table["rows"]}
+
+    assert industry_table["rows"][0]["industry_name"] == "\u91d1\u878d\u4e1a"
+    assert Decimal(str(industry_map["\u672a\u6620\u5c04"]["balance_amount"])) == Decimal("10")
+
+    bond_table = workbook_module._build_bond_business_type_table(rows)
+    bond_map = {row["bond_type"]: row for row in bond_table["rows"]}
+
+    assert bond_table["rows"][0]["bond_type"] == POLICY_BOND
+    assert Decimal(str(bond_map[POLICY_BOND]["balance_amount"])) == Decimal("90")
+    assert Decimal(str(bond_map["\u5916\u56fd\u503a\u5238"]["balance_amount"])) == Decimal("10")
+    assert Decimal(str(bond_map["\u975e\u91d1\u878d\u4f01\u4e1a\u503a\u5238"]["balance_amount"])) == Decimal("5")
+
+
+def test_workbook_decision_and_risk_items_use_full_scope_maturity_gap_amount():
+    workbook_module = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    balance_module = load_module(
+        "backend.app.core_finance.balance_analysis",
+        "backend/app/core_finance/balance_analysis.py",
+    )
+    report_date = date(2025, 12, 31)
+
+    def zqtz_row(
+        *,
+        code: str,
+        position_scope: str,
+        face_value_amount: Decimal,
+        maturity_date: date,
+        is_issuance_like: bool,
+    ):
+        return balance_module.FormalZqtzBalanceFactRow(
+            report_date=report_date,
+            instrument_code=code,
+            instrument_name=code,
+            portfolio_name="P",
+            cost_center="C",
+            account_category=ISSUANCE_ASSET_CLASS if is_issuance_like else "",
+            asset_class=ISSUANCE_ASSET_CLASS if is_issuance_like else "\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7",
+            bond_type="\u540c\u4e1a\u5b58\u5355" if is_issuance_like else POLICY_BOND,
+            issuer_name="I",
+            industry_name="\u91d1\u878d\u4e1a",
+            rating="AAA",
+            invest_type_std="H",
+            accounting_basis="AC",
+            position_scope=position_scope,
+            currency_basis="CNY",
+            currency_code="CNY",
+            face_value_amount=face_value_amount,
+            market_value_amount=face_value_amount,
+            amortized_cost_amount=face_value_amount,
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=maturity_date,
+            interest_mode=FIXED,
+            is_issuance_like=is_issuance_like,
+        )
+
+    rows = [
+        zqtz_row(
+            code="ASSET",
+            position_scope="asset",
+            face_value_amount=Decimal("1000000"),
+            maturity_date=date(2026, 6, 30),
+            is_issuance_like=False,
+        ),
+        zqtz_row(
+            code="ISSUE",
+            position_scope="liability",
+            face_value_amount=Decimal("900000"),
+            maturity_date=date(2026, 6, 30),
+            is_issuance_like=True,
+        ),
+    ]
+
+    decision_section = workbook_module._build_decision_items_table(report_date, rows, [])
+    gap_decision = next(
+        row for row in decision_section["rows"] if row["rule_id"] == "bal_wb_decision_gap_001"
+    )
+
+    assert gap_decision["severity"] == "medium"
+    assert gap_decision["reason"] == "全口径期限桶缺口为 10 万元。"
+
+    risk_section = workbook_module._build_risk_alerts_table(report_date, rows[1:], [])
+    gap_risk = next(row for row in risk_section["rows"] if row["rule_id"] == "bal_wb_risk_gap_001")
+
+    assert gap_risk["reason"] == "Full-scope gap dropped to -90 wan yuan."
 
 
 def test_workbook_interest_mode_table_normalizes_fixed_floating_and_unknown_labels():
@@ -774,8 +974,8 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     bond_rows = table_map["bond_business_types"]["rows"]
     policy_row = next(row for row in bond_rows if row["bond_type"] == POLICY_BOND)
     assert Decimal(str(policy_row["balance_amount"])) < Decimal("1")
-    other_row = next(row for row in bond_rows if row["bond_type"] == OTHER_BOND)
-    assert Decimal(str(other_row["balance_amount"])) == Decimal("0.005")
+    delegated_row = next(row for row in bond_rows if row["bond_type"] == "\u5176\u4e2d\uff1a\u5916\u5e01\u59d4\u5916")
+    assert Decimal(str(delegated_row["balance_amount"])) == Decimal("0.005")
 
     get_settings.cache_clear()
 

@@ -101,13 +101,32 @@ def test_fetch_macro_snapshot_unknown_series_raises():
         adapter.fetch_macro_snapshot("unknown.series.id")
 
 
-def test_fetch_macro_snapshot_skeleton_unchanged():
-    """M1 fixture path remains for offline tests and backward compatibility."""
-    adapter = VendorAdapter()
-    s = adapter.fetch_macro_snapshot_skeleton()
+def test_fetch_macro_snapshot_skeleton_delegates_to_live_seed(monkeypatch):
+    """Skeleton compatibility now returns the first live seed when available."""
+    expected = {
+        "vendor_kind": "tushare_macro",
+        "series_id": _SERIES,
+        "fetched_at": "2026-01-01T00:00:00+00:00",
+        "rows": [{"trade_date": "2024-01-01", "value": 1.2}],
+    }
+    monkeypatch.setattr(VendorAdapter, "fetch_macro_snapshot", lambda self, series_id: expected)
+
+    s = VendorAdapter().fetch_macro_snapshot_skeleton()
+
+    assert s == expected
+
+
+def test_fetch_macro_snapshot_skeleton_returns_empty_when_live_seed_unavailable(monkeypatch):
+    def _raise(_self, _series_id):
+        raise RuntimeError("missing token")
+
+    monkeypatch.setattr(VendorAdapter, "fetch_macro_snapshot", _raise)
+
+    s = VendorAdapter().fetch_macro_snapshot_skeleton()
+
     assert s["vendor_kind"] == "tushare_macro"
-    assert s["rows"]
-    assert "Fixture" in s.get("note", "") or "fixture" in str(s).lower()
+    assert s["rows"] == []
+    assert "failed" in s["note"]
 
 
 class _FakePro:

@@ -1,22 +1,49 @@
+from typing import Annotated
+
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
+from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.macro_vendor_service import (
+    choice_macro_formal_envelope,
     choice_macro_latest_envelope,
     fx_analytical_envelope,
     fx_formal_status_envelope,
+    macro_foundation_formal_envelope,
     macro_vendor_envelope,
 )
 from backend.app.tasks.choice_macro import (
     refresh_choice_macro_snapshot,
     refresh_public_cross_asset_headlines,
 )
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter()
+
+CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
+
+
+# ── Formal market-data endpoints (Phase 1 promotion) ───────────────
+
+@router.get("/ui/market-data/rates")
+def market_data_rates() -> dict[str, object]:
+    """Formal-basis rates for the market-data page (stable series only)."""
+    settings = get_settings()
+    return choice_macro_formal_envelope(settings.duckdb_path)
+
+
+@router.get("/ui/market-data/catalog")
+def market_data_catalog() -> dict[str, object]:
+    """Formal-basis macro catalog for the market-data page."""
+    settings = get_settings()
+    return macro_foundation_formal_envelope(settings.duckdb_path)
+
+
+# ── Analytical / preview endpoints (unlocked from 503) ─────────────
 
 @router.get("/ui/preview/macro-foundation")
 def macro_foundation() -> dict[str, object]:
@@ -44,19 +71,14 @@ def fx_analytical() -> dict[str, object]:
 
 @router.post("/ui/macro/choice-series/refresh")
 def choice_series_refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
-    try:
-        choice_payload = refresh_choice_macro_snapshot.fn(backfill_days=backfill_days)
-    except RuntimeError as exc:
-        error_text = str(exc)
-        normalized_error = error_text.lower()
-        if "no access for this api" in normalized_error:
-            raise HTTPException(
-                status_code=424,
-                detail="Choice API permission denied for current account. Refresh cannot run until API entitlement is enabled.",
-            ) from exc
-        raise
+    settings = get_settings()
+    choice_payload = refresh_choice_macro_snapshot(
+        duckdb_path=settings.duckdb_path,
+        backfill_days=backfill_days,
+    )
     public_payload = _run_public_cross_asset_headline_refresh()
     return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload)
 
@@ -96,18 +118,26 @@ def choice_series_refresh_status(
     run_id: str = Query(default=""),
 ) -> dict[str, object]:
     settings = get_settings()
-    repo = GovernanceRepository(base_dir=settings.governance_path)
-    records = repo.read_all(CACHE_BUILD_RUN_STREAM)
-    macro_records = [
-        r for r in records if r.get("job_name") == "choice_macro_refresh"
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name")) == CHOICE_MACRO_REFRESH_JOB_NAME
+        and str(record.get("cache_key")) == CHOICE_MACRO_REFRESH_CACHE_KEY
     ]
     if run_id:
-        macro_records = [r for r in macro_records if r.get("run_id") == run_id]
-    if not macro_records:
-        return {"status": "unknown", "run_id": run_id}
-    latest = macro_records[-1]
+        records = [record for record in records if str(record.get("run_id")) == run_id]
+        if not records:
+            raise HTTPException(status_code=404, detail=f"Unknown choice macro refresh run_id={run_id}")
+    if not records:
+        return {
+            "status": "idle",
+            "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
+            "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
+            "trigger_mode": "idle",
+        }
+    latest = records[-1]
+    status = str(latest.get("status", "unknown"))
     return {
-        "status": str(latest.get("status", "unknown")),
-        "run_id": str(latest.get("run_id", "")),
-        "error_message": latest.get("error_message"),
+        **latest,
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
     }

@@ -382,6 +382,7 @@
 - 绑定只使用本文件 **已定义** 且语义可追溯的 `metric_id`。
 - `BondDashboardPage.tsx` 的 Headline / `RiskIndicatorsPanel` 所用 DTO 字段名可能与 balance / risk tensor **字面相似**。`docs/page_contracts.md` 已有 **`PAGE-BOND-001`**（§13.6），但在字典主表建立与正式余额 / 风险张量等的 **可审计同源**、且 `GS-BOND-HEADLINE-A` 仍为 candidate 前，**不得**将债券驾驶舱展示字段 **升格**为新 `MTR-*` 行，也不得宣称与 `GS-RISK-A` / `GS-BOND-HEADLINE-A` 自动等价。
 - `GS-BOND-HEADLINE-A` 在 **metric 映射齐套**、存在 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前 **保持 blocked**（与 `docs/golden_sample_catalog.md` 一致）；本表不将其提升为 capture-ready。
+- **`PAGE-MKT-001` / `GAP-MKT-DATA` 补充（文档事实）**：`/market-data` 除 `getMarketDataRates` 等接线片段外，仍存在**硬编码**利率/资金/期货/成交表示意表（见 `docs/page_contracts.md` §13.8.J）；`ncd-funding-proxy` 为 **Shibor funding proxy** 而非全量 NCD 矩阵；Livermore `risk_exit` 以前端展示的后端 `unsupported_outputs` / 缺口为准；**不**在本文件新增未审批的 `MTR-*`、数值或 golden 断言。
 
 | 前端路由 | page_id | 页面 / API 证据 | 可绑定 `metric_id` | `sample_id` | 测试文件（golden gate 含 `tests/test_golden_samples_capture_ready.py` 时单列） |
 | --- | --- | --- | --- | --- | --- |

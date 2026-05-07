@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 
 from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_asset_structure,
+    get_bond_dashboard_business_type_metrics,
     get_bond_dashboard_dates,
     get_bond_dashboard_headline_kpis,
     get_bond_dashboard_industry_distribution,
@@ -72,3 +73,8 @@ def industry_distribution(
 @router.get("/risk-indicators")
 def risk_indicators(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
     return get_bond_dashboard_risk_indicators(report_date)
+
+
+@router.get("/business-type-metrics")
+def business_type_metrics(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
+    return get_bond_dashboard_business_type_metrics(report_date)

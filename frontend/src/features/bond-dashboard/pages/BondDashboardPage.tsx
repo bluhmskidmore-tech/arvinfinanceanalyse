@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Col, Row, Select, Space, Typography } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type { BondDashboardHeadlinePayload, RiskIndicatorsPayload } from "../../../api/contracts";
@@ -118,6 +119,14 @@ export default function BondDashboardPage() {
     enabled: Boolean(rd),
   });
 
+  const businessTypeMetricsQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "business-type-metrics", rd],
+    queryFn: () => client.getBondBusinessTypeMetrics({ reportDate: rd }),
+    enabled: Boolean(rd),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const dateOptions = datesQuery.data?.result.report_dates ?? [];
   const conclusion =
     headlineQuery.data?.result && riskQuery.data?.result
@@ -129,9 +138,19 @@ export default function BondDashboardPage() {
     <div data-testid="bond-dashboard-page" style={{ background: "#f5f7fa", minHeight: "100%", padding: 16 }}>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            债券总览
-          </Typography.Title>
+          <Space align="center" size={8}>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              债券总览
+            </Typography.Title>
+            {datesQuery.data?.data_source === "bond_analytics_facts" ? (
+              <Tooltip title="数据来源：债券分析事实表（与余额分析页可能存在口径差异）">
+                <InfoCircleOutlined
+                  aria-label="债券驾驶舱数据来源说明"
+                  style={{ color: "rgba(0,0,0,0.45)", fontSize: 16, cursor: "help" }}
+                />
+              </Tooltip>
+            ) : null}
+          </Space>
           <Space>
             <span style={{ color: "rgba(0,0,0,0.55)" }}>报告日</span>
             <Select
@@ -197,6 +216,51 @@ export default function BondDashboardPage() {
 
         <HeadlineKpis data={headlineQuery.data?.result} loading={headlineQuery.isLoading} />
 
+        <Card
+          data-testid="bond-dashboard-business-type-metrics"
+          size="small"
+          title="业务类型加权指标"
+        >
+          {businessTypeMetricsQuery.isLoading ? (
+            <Typography.Text type="secondary">载入中…</Typography.Text>
+          ) : businessTypeMetricsQuery.isError ? (
+            <Typography.Text type="danger">指标暂不可用</Typography.Text>
+          ) : !(businessTypeMetricsQuery.data?.result.items.length ?? 0) ? (
+            <Typography.Text type="secondary">暂无数据</Typography.Text>
+          ) : (
+            <Table
+              size="small"
+              pagination={false}
+              scroll={{ x: "max-content" }}
+              dataSource={businessTypeMetricsQuery.data!.result.items.map((row) => ({
+                key: row.name,
+                ...row,
+              }))}
+              columns={[
+                { title: "业务类型", dataIndex: "name", ellipsis: true },
+                {
+                  title: "市值（亿）",
+                  dataIndex: "market_value",
+                  align: "right",
+                  render: (v: string) => formatYi(Number(v)),
+                },
+                {
+                  title: "加权 YTM",
+                  dataIndex: "weighted_avg_ytm_pct",
+                  align: "right",
+                  render: (v: string) => formatRatePercent(Number(v) / 100),
+                },
+                {
+                  title: "加权久期",
+                  dataIndex: "weighted_avg_duration",
+                  align: "right",
+                  render: (v: string) => formatYears(Number(v)),
+                },
+              ]}
+            />
+          )}
+        </Card>
+
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={8}>
             <AssetStructurePie
@@ -221,7 +285,11 @@ export default function BondDashboardPage() {
 
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={8}>
-            <PortfolioTable data={portfolioQuery.data?.result} loading={portfolioQuery.isLoading} />
+            <PortfolioTable
+              data={portfolioQuery.data?.result}
+              headline={headlineQuery.data?.result}
+              loading={portfolioQuery.isLoading}
+            />
           </Col>
           <Col xs={24} lg={8}>
             <SpreadTable data={spreadQuery.data?.result} loading={spreadQuery.isLoading} />

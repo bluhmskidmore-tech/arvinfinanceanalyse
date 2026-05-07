@@ -14,6 +14,7 @@ SourceSurface = Literal[
     "risk_tensor",
     "cashflow",
     "pnl_bridge",
+    "market_data",
 ]
 
 _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
@@ -26,6 +27,7 @@ _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
     ("risk.tensor", "risk_tensor"),
     ("cashflow_projection.", "cashflow"),
     ("pnl.bridge", "pnl_bridge"),
+    ("market_data.", "market_data"),
 ]
 
 _GOVERNED_RESULT_KIND_PREFIXES = tuple(
@@ -42,7 +44,7 @@ def infer_source_surface_for_result_kind(result_kind: str) -> SourceSurface | No
 
 class ResultMeta(BaseModel):
     trace_id: str = Field(..., description="Trace identifier for governance and audit.")
-    basis: Literal["formal", "scenario", "analytical"] = "formal"
+    basis: Literal["formal", "scenario", "analytical", "ledger"] = "formal"
     result_kind: str = "analysis_view"
     formal_use_allowed: bool = True
     source_version: str

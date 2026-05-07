@@ -108,9 +108,9 @@ tests/golden_samples/
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py`（warning profile） | `warning-profile` 样本 |
 | `GS-RISK-A` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`、`tests/test_risk_tensor_service.py` | 正常样本 |
 | `GS-RISK-WARN-B` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`（degraded） | `warning-profile` 样本 |
-| `GS-EXEC-OVERVIEW-A` | `/ui/home/overview` | `capture-ready` | `2026-02-28` | `tests/test_executive_service_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
-| `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | `capture-ready` | `2026-02-28` | `tests/test_executive_service_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
-| `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | `capture-ready` | `2026-02-28` | `tests/test_executive_service_contract.py` + `tests/test_executive_dashboard_endpoints.py` | narrative 样本 |
+| `GS-EXEC-OVERVIEW-A` | `/ui/home/overview` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
+| `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
+| `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | narrative 样本 |
 
 ## 5.1 已在计划中、但本批延后的样本
 
@@ -120,7 +120,7 @@ tests/golden_samples/
 
 ## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
 
-与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。
+与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。`/market-data` 的 **GAP-MKT-DATA**、NCD proxy、Livermore blocked、宏观联动警示等文档化边界见 `docs/page_contracts.md` §13.8.J 与 `docs/plans/market-workbench-cursor-prompts.md`（执行拆分，非权威定义）。
 
 | 前端路由 | `page_id` | 可钉 `metric_id`（字典已批） | `sample_id` | 测试锚点 |
 | --- | --- | --- | --- | --- |
@@ -366,8 +366,9 @@ tests/golden_samples/
   - `yield` / `nim` / `dv01` 当前固定为 `null`。
   - 该形状与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 的当前契约一致。
 - 证据：
-  - `tests/test_executive_service_contract.py::test_executive_overview_aum_uses_combined_formal_balance_scope`
+  - `tests/test_executive_release_contract.py::test_gs_exec_overview_release_contract`
   - `tests/test_executive_dashboard_endpoints.py` 已证明该 route 为 in-scope analytical envelope
+  - `tests/test_executive_service_contract.py::test_executive_overview_aum_uses_combined_formal_balance_scope` 提供更宽的服务侧补充证据
   - `backend/app/api/routes/executive.py` 已证明 route 接受显式 `report_date`
 - 说明：
   - 当前样本使用 deterministic stub-backed route capture，冻结 `report_date=2026-02-28` 的 analytical overlay 语义。
@@ -386,7 +387,7 @@ tests/golden_samples/
     - `MTR-EXEC-004`
   - `MTR-EXEC-001 == "3,572.76 亿"`
   - `MTR-EXEC-002 == "+4.69 亿"`
-  - `MTR-EXEC-003 == "+0.01%"`
+  - `MTR-EXEC-003 == "+1.00%"`
   - `MTR-EXEC-004 == "13,826,218"`
 
 ### 6.8 `GS-EXEC-PNL-ATTR-A`
@@ -402,8 +403,9 @@ tests/golden_samples/
 
 - 状态：`capture-ready`
 - 证据：
-  - `tests/test_executive_service_contract.py::test_executive_pnl_attribution_repo_aggregation_contract`
+  - `tests/test_executive_release_contract.py::test_gs_exec_pnl_attr_release_contract`
   - `tests/test_executive_dashboard_endpoints.py` 已证明 route 为 in-scope analytical envelope
+  - `tests/test_executive_service_contract.py::test_executive_pnl_attribution_repo_aggregation_contract` 提供更宽的服务侧补充证据
   - `backend/app/api/routes/executive.py` 已证明 route 接受显式 `report_date`
 - 说明：
   - 当前样本使用 deterministic stub-backed route capture，冻结 `report_date=2026-02-28` 的 analytical composition 语义。
@@ -435,8 +437,9 @@ tests/golden_samples/
 
 - 状态：`capture-ready`
 - 证据：
-  - `tests/test_executive_service_contract.py::test_executive_summary_uses_requested_report_date`
+  - `tests/test_executive_release_contract.py::test_gs_exec_summary_release_contract`
   - `tests/test_executive_dashboard_endpoints.py`
+  - `tests/test_executive_service_contract.py::test_executive_summary_uses_requested_report_date` 提供更宽的服务侧补充证据
   - `backend/app/api/routes/executive.py` 现在接受显式 `report_date`
 - 首批建议断言：
   - `result_meta.basis == "analytical"`

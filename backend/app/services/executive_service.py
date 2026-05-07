@@ -28,6 +28,8 @@ from backend.app.schemas.executive_dashboard import (
     ExecutiveMetric,
     HomeSnapshotPayload,
     OverviewPayload,
+    ProductCategoryMonthlyHeadlinePayload,
+    ProductCategoryYtdHeadlinePayload,
     PnlAttributionPayload,
     RiskOverviewPayload,
     RiskSignal,
@@ -39,6 +41,10 @@ from backend.app.schemas.executive_dashboard import (
     VerdictTone,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.product_category_pnl_service import (
+    product_category_pnl_envelope,
+    resolve_product_category_ytd_payload_for_home_snapshot,
+)
 from backend.app.services.kpi_service import (
     resolve_executive_kpi_metrics,
     resolve_kpi_authority_gate,
@@ -51,6 +57,9 @@ _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
 _CACHE_VERSION = "cv_exec_dashboard_v1"
+
+# Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
+_YUAN_PER_YI: float = 1e8
 
 
 def _normalize_report_date(report_date: str | None) -> str | None:
@@ -112,7 +121,7 @@ def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> Numeric:
             sign_aware=signed,
         )
     v = float(value)
-    yi = v / 1e8
+    yi = v / _YUAN_PER_YI
     if signed:
         sign = "+" if yi >= 0 else ""
         display = f"{sign}{yi:,.2f} 亿"
@@ -130,7 +139,7 @@ def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> Numeric:
 def _fmt_signed_segment_yi(yi: float) -> Numeric:
     sign = "+" if yi >= 0 else ""
     return Numeric(
-        raw=float(yi) * 1e8,
+        raw=float(yi) * _YUAN_PER_YI,
         unit="yuan",
         display=f"{sign}{yi:.2f} 亿",
         precision=2,
@@ -152,13 +161,15 @@ def _fmt_signed_percent(value: float | None) -> Numeric:
 
 
 def _normalize_ratio_percent_input(value: float | None) -> float:
-    """Normalize legacy percent inputs onto decimal-ratio semantics."""
+    """Treat input as decimal-ratio (e.g. 0.035 = 3.5%).
+
+    Upstream callers (compute_liability_yield_metrics → weighted_rate) all
+    return decimal ratios.  The previous heuristic threshold ``abs(v) >= 0.1``
+    caused a 100× error for NIM values at or above 10 bp decimal (0.001).
+    """
     if value is None:
         return 0.0
-    normalized = float(value)
-    if abs(normalized) >= 0.1:
-        return normalized / 100.0
-    return normalized
+    return float(value)
 
 
 def _fmt_signed_ratio_percent(value: float | None) -> Numeric:
@@ -341,6 +352,11 @@ def _tone_for_signed(yi: float) -> str:
 
 
 _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT: dict[str, str] = {
+    # Only level-1 category_ids reach _aggregate_attribution_segments (via
+    # _level1_monthly_rows L380-384).  Currently only ``bond_investment``
+    # defines children at level 1 in product_category_mapping.py; other
+    # product categories (interbank, repo, NCD, etc.) are all level 0 and
+    # flow entirely into the ``other`` bucket by design.
     "bond_tpl": "trading",
     "bond_ac": "carry",
     "bond_fvoci": "carry",
@@ -382,7 +398,7 @@ def _aggregate_attribution_segments(rows: list[dict[str, object]]) -> dict[str, 
         except (TypeError, ValueError):
             val = 0.0
         seg = _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT.get(cid, "other")
-        totals[seg] += val / 1e8
+        totals[seg] += val / _YUAN_PER_YI
     return totals
 
 
@@ -673,7 +689,7 @@ def _fetch_ytd_history(
     current_report_date: str | None,
     n: int = 20,
 ) -> list[float] | None:
-    """逐日取 pnl_repo.sum_formal_total_pnl_through_report_date(date)。"""
+    """逐日取 FI + nonstd bridge 年度累计损益。"""
     try:
         if not report_dates:
             return None
@@ -688,7 +704,7 @@ def _fetch_ytd_history(
         values: list[float] = []
         for d in slice_dates:
             try:
-                v = pnl_repo.sum_formal_total_pnl_through_report_date(d)
+                v = _sum_business_ytd_pnl(pnl_repo, d)
                 if v is not None:
                     values.append(float(v))
             except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
@@ -699,6 +715,14 @@ def _fetch_ytd_history(
         return values
     except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
         return None
+
+
+def _sum_business_ytd_pnl(pnl_repo: PnlRepository, report_date: str):
+    formal = pnl_repo.sum_formal_total_pnl_through_report_date(report_date)
+    nonstd_sum = getattr(pnl_repo, "sum_nonstd_bridge_total_pnl_through_report_date", None)
+    if not callable(nonstd_sum):
+        return formal
+    return formal + nonstd_sum(report_date)
 
 
 def _fetch_nim_history(
@@ -858,9 +882,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         )
         current_pnl_report_date = normalized_report_date or (pnl_report_dates[0] if pnl_report_dates else None)
         if current_pnl_report_date is not None:
-            ytd_raw = float(
-                pnl_repo.sum_formal_total_pnl_through_report_date(current_pnl_report_date)
-            )
+            ytd_raw = float(_sum_business_ytd_pnl(pnl_repo, current_pnl_report_date))
             if governance_dir:
                 current_pnl_lineage = resolve_completed_formal_build_lineage(
                     governance_dir=governance_dir,
@@ -888,7 +910,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     overview_rule_versions.append(previous_pnl_lineage.get("rule_version"))
             ytd_delta = _format_percent_change(
                 ytd_raw,
-                float(pnl_repo.sum_formal_total_pnl_through_report_date(previous_pnl_report_date)),
+                float(_sum_business_ytd_pnl(pnl_repo, previous_pnl_report_date)),
             )
         if ytd_raw is not None:
             ytd_history = _fetch_ytd_history(
@@ -1030,14 +1052,19 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         metrics.append(
             ExecutiveMetric(
                 id="yield",
-                label="年内收益",
+                label="年度损益（不扣FTP）",
+                caliber_label="FI + 非标桥接",
                 value=_fmt_yi_amount(ytd_raw, signed=True),
                 delta=ytd_delta,
                 tone="positive",
                 detail=(
-                    f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
+                    "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge "
+                    f"截至 {normalized_report_date} 的年度累计 total_pnl，不扣减 FTP。"
                     if normalized_report_date is not None
-                    else f"来自 fact_formal_pnl_fi 截至 {current_pnl_report_date} 的年内 total_pnl 合计。"
+                    else (
+                        "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge "
+                        f"截至 {current_pnl_report_date} 的年度累计 total_pnl，不扣减 FTP。"
+                    )
                 ),
                 history=ytd_history,
             )
@@ -1411,38 +1438,64 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
         return _fallback_executive_alerts()
 
 
-_HOME_SNAPSHOT_DOMAINS = ("balance", "pnl", "liability", "bond")
+_HOME_SNAPSHOT_CALIBERS = ("balance_sheet", "pnl")
+"""Business calibers for the home snapshot.
+
+- ``balance_sheet``: AUM + NIM + DV01 — all from the same T+1 daily pipeline.
+  Available dates = intersection(balance, liability, bond).
+- ``pnl``: YTD P&L — independent formal build cycle.
+- Market/macro data is excluded; it is real-time and not bound to report date.
+"""
 
 
 def _list_domain_dates() -> dict[str, set[str]]:
-    """Return the set of available report_dates per domain."""
+    """Return the set of available report_dates per caliber.
+
+    ``balance_sheet`` = intersection of balance, liability, bond dates.
+    ``pnl`` = formal fixed-income P&L dates.
+    """
     settings = get_settings()
-    dates: dict[str, set[str]] = {d: set() for d in _HOME_SNAPSHOT_DOMAINS}
+
+    balance_dates: set[str] = set()
+    liability_dates: set[str] = set()
+    bond_dates: set[str] = set()
+    pnl_dates: set[str] = set()
+
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
-        dates["balance"] = set(_list_executive_aum_report_dates(balance_repo, currency_basis="CNY"))
+        balance_dates = set(_list_executive_aum_report_dates(balance_repo, currency_basis="CNY"))
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["balance"] = set()
+        pass
 
     try:
         pnl_repo = PnlRepository(str(settings.duckdb_path))
-        dates["pnl"] = set(pnl_repo.list_formal_fi_report_dates())
+        pnl_dates = set(pnl_repo.list_formal_fi_report_dates())
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["pnl"] = set()
+        pass
 
     try:
         liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
-        dates["liability"] = set(liability_repo.list_report_dates())
+        liability_dates = set(liability_repo.list_report_dates())
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["liability"] = set()
+        pass
 
     try:
         bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
-        dates["bond"] = set(bond_repo.list_report_dates())
+        bond_dates = set(bond_repo.list_report_dates())
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
-        dates["bond"] = set()
+        pass
 
-    return dates
+    # balance_sheet caliber: a date is available only when ALL THREE
+    # sub-sources (balance, liability, bond) have data for that date.
+    bs_components = [balance_dates, liability_dates, bond_dates]
+    balance_sheet_dates = (
+        set.intersection(*bs_components) if all(bs_components) else set()
+    )
+
+    return {
+        "balance_sheet": balance_sheet_dates,
+        "pnl": pnl_dates,
+    }
 
 
 def _compute_unified_report_date(
@@ -1470,16 +1523,16 @@ def _compute_unified_report_date(
                 return (
                     requested,
                     [],
-                    {domain: requested for domain in _HOME_SNAPSHOT_DOMAINS},
+                    {domain: requested for domain in _HOME_SNAPSHOT_CALIBERS},
                 )
-            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
         if not intersection:
-            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
         top_date = max(intersection)
         return (
             top_date,
             [],
-            {domain: top_date for domain in _HOME_SNAPSHOT_DOMAINS},
+            {domain: top_date for domain in _HOME_SNAPSHOT_CALIBERS},
         )
 
     # partial: accept any requested or fall back to union max
@@ -1488,14 +1541,14 @@ def _compute_unified_report_date(
     else:
         union = set.union(*domain_dates.values()) if domain_dates.values() else set()
         if not union:
-            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+            return (None, list(_HOME_SNAPSHOT_CALIBERS), {})
         target = max(union)
 
     missing = [
-        domain for domain in _HOME_SNAPSHOT_DOMAINS if target not in domain_dates[domain]
+        domain for domain in _HOME_SNAPSHOT_CALIBERS if target not in domain_dates[domain]
     ]
     effective: dict[str, str] = {}
-    for domain in _HOME_SNAPSHOT_DOMAINS:
+    for domain in _HOME_SNAPSHOT_CALIBERS:
         if target in domain_dates[domain]:
             effective[domain] = target
         elif domain_dates[domain]:
@@ -1578,6 +1631,97 @@ def executive_verdict(
     )
 
 
+def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtdHeadlinePayload | None:
+    """与 /product-category-pnl「汇总视图」（ytd）一致：grand_total + intermediate_business_income。"""
+    settings = get_settings()
+    duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
+    if not duck_path:
+        return None
+    try:
+        pc_payload = resolve_product_category_ytd_payload_for_home_snapshot(
+            duck_path,
+            str(settings.governance_path),
+            report_date,
+            float(settings.ftp_rate_pct),
+        )
+    except Exception:
+        return None
+
+    if pc_payload is None:
+        return None
+
+    summary_val = float(pc_payload.grand_total.business_net_income)
+    summary_pnl = _fmt_yi_amount(summary_val, signed=True)
+    summary_detail = (
+        "与产品分类损益「汇总视图」（view=ytd）页脚「全部市场科目 + 投资收益合计」口径一致："
+        f"grand_total.business_net_income；report_date={report_date}；"
+        "优先读 product_category_pnl_formal_read_model（view=ytd）；"
+        "若缺行则自 product_category_pnl_canonical_fact 重算（与刷数任务同口径）。"
+    )
+    operating = summary_pnl
+    operating_detail = summary_detail
+
+    intermediate_row = next(
+        (r for r in pc_payload.rows if r.category_id == "intermediate_business_income"),
+        None,
+    )
+    if intermediate_row is None:
+        int_numeric = _fmt_yi_amount(None, signed=True)
+        int_detail = (
+            "未找到 intermediate_business_income 分类行（product_category ytd, "
+            f"report_date={report_date}）。"
+        )
+    else:
+        int_numeric = _fmt_yi_amount(float(intermediate_row.business_net_income), signed=True)
+        int_detail = (
+            "与产品分类损益「中间业务收入」（intermediate_business_income）ytd 行一致；"
+            f"report_date={report_date}。"
+        )
+
+    return ProductCategoryYtdHeadlinePayload(
+        view="ytd",
+        summary_pnl=summary_pnl,
+        summary_pnl_detail=summary_detail,
+        operating_income=operating,
+        operating_income_detail=operating_detail,
+        intermediate_business_income=int_numeric,
+        intermediate_business_income_detail=int_detail,
+    )
+
+
+def _build_product_category_monthly_headline(report_date: str) -> ProductCategoryMonthlyHeadlinePayload | None:
+    """与 /product-category-pnl 月度视图页脚 grand_total.business_net_income 对齐。"""
+    settings = get_settings()
+    duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
+    if not duck_path:
+        return None
+    try:
+        envelope = product_category_pnl_envelope(
+            duck_path,
+            report_date=report_date,
+            view="monthly",
+        )
+        result_dict = envelope.get("result")
+        if not isinstance(result_dict, dict):
+            return None
+        from backend.app.schemas.product_category_pnl import ProductCategoryPnlPayload
+
+        pc_payload = ProductCategoryPnlPayload.model_validate(result_dict)
+    except Exception:
+        return None
+
+    monthly_value = float(pc_payload.grand_total.business_net_income)
+    monthly_detail = (
+        "与产品分类损益「月度视图」（view=monthly）页脚"
+        f"「全部市场科目 + 投资收益合计」一致：grand_total.business_net_income；report_date={report_date}。"
+    )
+    return ProductCategoryMonthlyHeadlinePayload(
+        view="monthly",
+        monthly_income=_fmt_yi_amount(monthly_value, signed=True),
+        monthly_income_detail=monthly_detail,
+    )
+
+
 def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
     return HomeSnapshotPayload(
         report_date="",
@@ -1585,9 +1729,11 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
         source_surface="executive_analytical",
         overview=OverviewPayload(title="经营总览", metrics=[]),
         attribution=_pnl_attribution_unavailable_payload(),
-        domains_missing=list(_HOME_SNAPSHOT_DOMAINS),
+        domains_missing=list(_HOME_SNAPSHOT_CALIBERS),
         domains_effective_date={},
         verdict=None,
+        product_category_ytd=None,
+        product_category_monthly=None,
     )
 
 
@@ -1679,7 +1825,7 @@ def _compute_home_snapshot_envelope(
                 "requested_report_date": normalized,
                 "allow_partial": allow_partial,
                 "effective_report_dates": {},
-                "domains_missing": list(_HOME_SNAPSHOT_DOMAINS),
+                "domains_missing": list(_HOME_SNAPSHOT_CALIBERS),
             },
         )
 
@@ -1697,6 +1843,8 @@ def _compute_home_snapshot_envelope(
         partial_note=partial_note,
         client_mode="real",
     )
+    product_category_ytd = _build_product_category_ytd_headline(target_date)
+    product_category_monthly = _build_product_category_monthly_headline(target_date)
     payload = HomeSnapshotPayload(
         report_date=target_date,
         mode="partial" if allow_partial else "strict",
@@ -1706,6 +1854,8 @@ def _compute_home_snapshot_envelope(
         domains_missing=domains_missing,
         domains_effective_date=effective,
         verdict=verdict,
+        product_category_ytd=product_category_ytd,
+        product_category_monthly=product_category_monthly,
     )
 
     quality_flag: Literal["ok", "warning", "error", "stale"] = (

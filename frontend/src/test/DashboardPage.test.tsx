@@ -4,12 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="dashboard-echarts-stub" />,
+}));
+
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { formatRawAsNumeric } from "../utils/format";
 
-vi.mock("../features/executive-dashboard/components/PnlAttributionSection", () => ({
-  default: () => null,
-}));
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -66,6 +67,15 @@ function expectTitlesInOrder(container: HTMLElement, titles: string[]) {
   }
 }
 
+function expectTestIdsInOrder(container: HTMLElement, testIds: string[]) {
+  const nodes = testIds.map((testId) => within(container).getByTestId(testId));
+  for (let index = 0; index < nodes.length - 1; index += 1) {
+    expect(nodes[index].compareDocumentPosition(nodes[index + 1])).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  }
+}
+
 function addDaysToIsoDate(date: string, days: number): string {
   const parsed = new Date(`${date}T00:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() + days);
@@ -98,7 +108,11 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
+    const summary = screen.getByTestId("dashboard-business-balance-summary");
+    expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
+    expect(within(summary).getByTestId("dashboard-overview-hero-empty")).toHaveTextContent(
+      "资产负债小卡片",
+    );
     await waitFor(() => {
       expect(releaseSnapshot).toBeDefined();
     });
@@ -150,10 +164,142 @@ describe("DashboardPage", () => {
     expect(alertsCalls).toBe(0);
   });
 
+  it("renders the redesigned root cockpit structure in order", async () => {
+    renderDashboard();
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const marketStrip = await screen.findByTestId("dashboard-market-strip");
+    const judgmentBand = await screen.findByTestId("dashboard-judgment-band");
+    const kpiRibbon = await screen.findByTestId("dashboard-kpi-ribbon");
+    const businessBalanceSummary = await screen.findByTestId("dashboard-business-balance-summary");
+    const analysisGrid = await screen.findByTestId("dashboard-analysis-grid");
+    const structureRiskFocus = await screen.findByTestId("dashboard-structure-risk-focus");
+
+    expectTestIdsInOrder(page, [
+      "dashboard-market-strip",
+      "dashboard-judgment-band",
+      "dashboard-kpi-ribbon",
+      "dashboard-business-balance-summary",
+      "dashboard-analysis-grid",
+      "dashboard-structure-risk-focus",
+      "dashboard-detail-drilldown",
+    ]);
+
+    const pills = await screen.findByTestId("dashboard-governance-pills");
+    expect(pills).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-report-date")).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-snapshot")).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-attention")).toBeInTheDocument();
+    expect(within(pills).getByTestId("governance-pill-source")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-data-warning")).toBeInTheDocument();
+
+    expect(marketStrip).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
+    expect(judgmentBand).toBeInTheDocument();
+    expect(kpiRibbon).toBeInTheDocument();
+    expect(businessBalanceSummary).toBeInTheDocument();
+    expect(analysisGrid).toBeInTheDocument();
+    expect(structureRiskFocus).toBeInTheDocument();
+  });
+
+  it("keeps business income and asset-liability summary cards visible before drilldown", async () => {
+    renderDashboard();
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const summary = await screen.findByTestId("dashboard-business-balance-summary");
+
+    expectTestIdsInOrder(page, [
+      "dashboard-kpi-ribbon",
+      "dashboard-business-balance-summary",
+      "dashboard-analysis-grid",
+    ]);
+    expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
+    expect(within(summary).getByTestId("dashboard-product-category-ytd")).toBeInTheDocument();
+    expect(within(summary).getByText("汇总损益与月度损益")).toBeInTheDocument();
+  });
+
+  it("turns the drilldown area into a review workspace under the summary cockpit", async () => {
+    renderDashboard();
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const detail = await screen.findByTestId("dashboard-detail-drilldown");
+
+    expect(detail).toHaveTextContent("明细穿透");
+    expect(detail).toHaveTextContent("下钻复核区");
+    expect(detail).toHaveTextContent("解释首屏结论");
+    expect(detail).toHaveTextContent("定位数据证据");
+    expect(detail).toHaveTextContent("进入专题页复核");
+    expectTestIdsInOrder(page, ["dashboard-structure-risk-focus", "dashboard-detail-drilldown"]);
+
+    expect(await within(detail).findByTestId("dashboard-global-judgment")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-module-snapshot")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-alert-center")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-governed-surface")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("bond-analytics-overview-mid-charts")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-news-digest-list")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-liability-counterparty-section")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("dashboard-module-entry-grid")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("agent-panel")).toBeInTheDocument();
+  });
+
+  it("fills drilldown review cards with status, evidence, and valid actions", async () => {
+    renderDashboard();
+
+    const detail = await screen.findByTestId("dashboard-detail-drilldown");
+    const judgment = await within(detail).findByTestId("dashboard-global-judgment");
+    const modules = await within(detail).findByTestId("dashboard-module-snapshot");
+    const alerts = await within(detail).findByTestId("dashboard-alert-center");
+
+    expect(within(judgment).getByText("报告日")).toBeInTheDocument();
+    expect(within(judgment).getByText("快照")).toBeInTheDocument();
+    expect(within(judgment).getByText("读链路")).toBeInTheDocument();
+    expect(within(judgment).getByText("口径/证据")).toBeInTheDocument();
+
+    expect(within(modules).getAllByText("回答什么").length).toBeGreaterThan(0);
+    expect(within(modules).getAllByText("进去先看").length).toBeGreaterThan(0);
+    expect(within(modules).getAllByText("可用状态").length).toBeGreaterThan(0);
+    expect(within(modules).getAllByText("复核信号").length).toBeGreaterThan(0);
+    expect(within(modules).getByText("债券分析")).toBeInTheDocument();
+    expect(within(modules).getAllByText("临时开放").length).toBeGreaterThan(0);
+    expect(within(modules).getByText("DV01 / NIM / 久期与利差")).toBeInTheDocument();
+
+    expect(within(alerts).getByText("待复核事项")).toBeInTheDocument();
+    expect(within(alerts).getByText("来源")).toBeInTheDocument();
+    expect(within(alerts).getByText("处理入口")).toBeInTheDocument();
+    expect(within(alerts).getByRole("link", { name: "打开中台配置" })).toHaveAttribute(
+      "href",
+      "/platform-config",
+    );
+  });
+
+  it("renders a quiet degraded market strip when macro data is unavailable", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getChoiceMacroLatest: vi.fn(async () => {
+        throw new Error("macro source unavailable");
+      }),
+    };
+
+    renderDashboard(client);
+
+    const strip = await screen.findByTestId("dashboard-market-strip");
+    const unavailable = await within(strip).findByTestId("dashboard-market-strip-unavailable");
+
+    expect(unavailable).toHaveTextContent("市场数据暂不可用");
+    expect(unavailable).toHaveTextContent("下方明细穿透仍可继续查看");
+    expect(within(strip).getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(within(strip).queryByText("数据加载失败")).not.toBeInTheDocument();
+  });
+
   it("renders the dashboard overview cockpit sections", async () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-executive-hero")).toHaveClass("dashboard-executive-hero");
     expect(screen.getByTestId("dashboard-bank-ledger-header-link")).toHaveAttribute(
       "href",
       "/bank-ledger-dashboard",
@@ -181,8 +327,8 @@ describe("DashboardPage", () => {
       within(moduleSnapshot).getByRole("link", { name: /产品损益/ }),
     ).toHaveAttribute("href", "/product-category-pnl");
     expect(
-      within(moduleSnapshot).getByRole("link", { name: /风险总览/ }),
-    ).toHaveAttribute("href", "/risk-overview");
+      within(moduleSnapshot).getByRole("link", { name: /风险复核/ }),
+    ).toHaveAttribute("href", "/risk-tensor");
     expect(
       within(moduleSnapshot).queryByRole("link", { name: /决策事项/ }),
     ).not.toBeInTheDocument();
@@ -385,16 +531,52 @@ describe("DashboardPage", () => {
     expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent("模拟数据源");
   });
 
-  it("uses one selected report date for the home snapshot query", async () => {
+  it("uses current report date for home snapshot and YTD bond counterparty range", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const snapshotOpts: Array<{ reportDate?: string; allowPartial?: boolean } | undefined> = [];
+    const getPositionsCounterpartyBonds = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_test_dashboard_bond_counterparty_range",
+        basis: "formal" as const,
+        result_kind: "positions.counterparty.bonds",
+        formal_use_allowed: true,
+        source_version: "sv_test",
+        vendor_version: "vv_test",
+        rule_version: "rv_test",
+        cache_version: "cv_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-21T08:00:00Z",
+      },
+      result: {
+        start_date: "2026-01-01",
+        end_date: "2026-03-31",
+        num_days: 90,
+        items: [],
+        total_amount: "0",
+        total_avg_daily: "0",
+        total_weighted_rate: null,
+        total_weighted_coupon_rate: null,
+        total_customers: 0,
+      },
+    }));
     const datedClient: ApiClient = {
       ...base,
       getHomeSnapshot: async (options) => {
         snapshotOpts.push(options);
-        return mockSnapshotSource.getHomeSnapshot(options);
+        const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: options?.reportDate || envelope.result.report_date,
+          },
+        };
       },
+      getPositionsCounterpartyBonds,
     };
 
     renderDashboard(datedClient);
@@ -410,7 +592,17 @@ describe("DashboardPage", () => {
 
     const reportDatePill = await screen.findByTestId("governance-pill-report-date");
     await waitFor(() => {
-      expect(reportDatePill).toHaveTextContent("2026-04-18");
+      expect(reportDatePill).toHaveTextContent("2026-03-31");
+    });
+
+    await waitFor(() => {
+      expect(getPositionsCounterpartyBonds).toHaveBeenCalledWith({
+        startDate: "2026-01-01",
+        endDate: "2026-03-31",
+        topN: 5,
+        page: 1,
+        pageSize: 5,
+      });
     });
   });
 
@@ -535,6 +727,72 @@ describe("DashboardPage", () => {
     expect(await within(heroStrip).findByText("总资产规模")).toBeInTheDocument();
     expect(await within(heroStrip).findByText("本币资产口径")).toBeInTheDocument();
   });
+
+  it("links homepage PnL metrics to the governed annual and monthly PnL pages", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const governedClient: ApiClient = {
+      ...base,
+      mode: "real",
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            overview: {
+              ...envelope.result.overview,
+              metrics: [
+                {
+                  id: "yield",
+                  label: "年度损益（不扣FTP）",
+                  caliber_label: "FI + 非标桥接",
+                  value: formatRawAsNumeric({ raw: 2_665_696_545.67, unit: "yuan", sign_aware: true }),
+                  delta: formatRawAsNumeric({ raw: 0.1, unit: "pct", sign_aware: true }),
+                  tone: "positive",
+                  detail:
+                    "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge，截至 2026-04-30 的年度累计 total_pnl，不扣减 FTP。",
+                },
+              ],
+            },
+            product_category_ytd: {
+              view: "ytd",
+              summary_pnl: formatRawAsNumeric({ raw: 1_325_482_375.99, unit: "yuan", sign_aware: true }),
+              summary_pnl_detail:
+                "与产品分类损益「汇总视图」（view=ytd）页脚 grand_total.business_net_income 一致。",
+              operating_income: formatRawAsNumeric({ raw: 1_325_482_375.99, unit: "yuan", sign_aware: true }),
+              operating_income_detail:
+                "兼容字段：与产品分类损益「汇总视图」（view=ytd）页脚 grand_total.business_net_income 一致。",
+              intermediate_business_income: formatRawAsNumeric({ raw: 75_149_887.09, unit: "yuan", sign_aware: true }),
+              intermediate_business_income_detail:
+                "与产品分类损益「中间业务收入」（intermediate_business_income）ytd 行一致。",
+            },
+            product_category_monthly: {
+              view: "monthly",
+              monthly_income: formatRawAsNumeric({ raw: 299_181_927.65, unit: "yuan", sign_aware: true }),
+              monthly_income_detail:
+                "与产品分类损益「月度视图」（view=monthly）页脚「全部市场科目 + 投资收益合计」一致。",
+            },
+          },
+        };
+      },
+    };
+
+    renderDashboard(governedClient);
+
+    const heroStrip = await screen.findByTestId("dashboard-overview-hero-strip");
+    const annualLink = await within(heroStrip).findByRole("link", { name: /年度损益（不扣FTP）/ });
+    expect(annualLink).toHaveAttribute("href", "/pnl-by-business");
+
+    const productCategorySummary = await screen.findByTestId("dashboard-product-category-ytd");
+    expect(await within(productCategorySummary).findByText("汇总损益")).toBeInTheDocument();
+    expect(await within(productCategorySummary).findByText("+13.25 亿")).toBeInTheDocument();
+    expect(await within(productCategorySummary).findByText("月度损益")).toBeInTheDocument();
+    expect(await within(productCategorySummary).findByText("+2.99 亿")).toBeInTheDocument();
+    expect(
+      within(productCategorySummary).getByRole("link", { name: /月度损益/ }),
+    ).toHaveAttribute("href", "/product-category-pnl");
+  });
+
   it("renders supply and auction calendar items from the research calendar feed", async () => {
     const base = createApiClient({ mode: "mock" });
     const researchCalendarCalls: Array<{
@@ -638,7 +896,7 @@ describe("DashboardPage", () => {
     ]);
   });
 
-  it("renders a dedicated no-high-medium state when only low events are returned", async () => {
+  it("keeps an explicit no-high-medium state when only low events are returned", async () => {
     const base = createApiClient({ mode: "mock" });
     const getResearchCalendarEvents = vi.fn(async () => [
       {
@@ -718,7 +976,7 @@ describe("DashboardPage", () => {
     ]);
   });
 
-  it("renders a dedicated no-data state when the external event feed is empty", async () => {
+  it("keeps an explicit no-data state when the external event feed is empty", async () => {
     const base = createApiClient({ mode: "mock" });
     const getResearchCalendarEvents = vi.fn(async () => []);
     const client: ApiClient = {
@@ -737,7 +995,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders an explicit error state when the external event feed fails", async () => {
+  it("keeps an explicit error state when the external event feed fails", async () => {
     const base = createApiClient({ mode: "mock" });
     const getResearchCalendarEvents = vi.fn(async () => {
       throw new Error("calendar backend unavailable");
@@ -756,5 +1014,27 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(calendar).toHaveTextContent("关键日历外部事件加载失败。");
     });
+  });
+
+  it("shows reserved-surface guidance when home snapshot fails with executive reserved detail", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const reservedDetail =
+      "Executive route home_snapshot is reserved by the current boundary.";
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot: vi.fn(async () => {
+        throw new Error(reservedDetail);
+      }),
+    };
+
+    renderDashboard(client);
+
+    await screen.findByTestId("fixed-income-dashboard-page");
+    await screen.findByTestId("dashboard-governed-surface");
+    const errorSection = await screen.findByTestId("data-section-error");
+    expect(errorSection).toHaveTextContent("保留面");
+    expect(errorSection).not.toHaveTextContent(
+      "当前页面保留重试入口，不在浏览器端自行拼接正式口径。",
+    );
   });
 });

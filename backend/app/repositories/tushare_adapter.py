@@ -133,6 +133,38 @@ def _rows_from_cn_gdp(df: Any) -> list[dict[str, object]]:
     return rows
 
 
+def _rows_from_cn_ppi(df: Any) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in df.to_dict(orient="records"):
+        month = record.get("month")
+        value = record.get("ppi_yoy")
+        if value is None:
+            continue
+        rows.append(
+            {
+                "trade_date": _month_to_trade_date(str(month)),
+                "value": float(value),
+            }
+        )
+    return rows
+
+
+def _rows_from_cn_money(df: Any) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in df.to_dict(orient="records"):
+        month = record.get("month")
+        value = record.get("m2_yoy")
+        if value is None:
+            continue
+        rows.append(
+            {
+                "trade_date": _month_to_trade_date(str(month)),
+                "value": float(value),
+            }
+        )
+    return rows
+
+
 @dataclass
 class VendorAdapter(VendorAdapterBase):
     vendor_name: str = "tushare"
@@ -149,7 +181,7 @@ class VendorAdapter(VendorAdapterBase):
             )
         try:
             __import__("tushare")
-        except Exception:
+        except ImportError:
             return VendorPreflightResult(
                 vendor_name=self.vendor_name,
                 ok=False,
@@ -172,14 +204,23 @@ class VendorAdapter(VendorAdapterBase):
         )
 
     def fetch_macro_snapshot_skeleton(self) -> dict[str, object]:
-        """Fixture-shaped payload for M1; live Tushare macro fetch remains TODO."""
-        return {
-            "vendor_kind": "tushare_macro",
-            "rows": [
-                {"trade_date": "2026-01-01", "series_id": "GDP.Y", "value": 5.2},
-            ],
-            "note": "Fixture only; real Tushare API not implemented.",
-        }
+        """Delegate to live fetch for the first registered seed series.
+
+        Falls back to an empty payload if the token is missing or import fails.
+        """
+        from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES  # noqa: PLC0415
+
+        first_id = TUSHARE_M2A_SERIES[0]["series_id"] if TUSHARE_M2A_SERIES else None
+        if first_id is None:
+            return {"vendor_kind": "tushare_macro", "rows": [], "note": "No seed series registered."}
+        try:
+            return self.fetch_macro_snapshot(first_id)
+        except (RuntimeError, ValueError):
+            return {
+                "vendor_kind": "tushare_macro",
+                "rows": [],
+                "note": f"Live Tushare fetch for {first_id!r} failed; token or package may be missing.",
+            }
 
     def fetch_macro_snapshot(self, series_id: str) -> dict[str, object]:
         """Call Tushare pro API for a registered M2a series; returns JSON-serializable payload."""
@@ -192,20 +233,29 @@ class VendorAdapter(VendorAdapterBase):
         ts = _import_tushare_pro()
         pro = ts.pro_api(token)
         api = cfg["tushare_api"]
-        if api == "cn_cpi":
-            frame = pro.cn_cpi()
-        elif api == "cn_gdp":
-            frame = pro.cn_gdp()
-        else:
+        _FETCH_DISPATCH: dict[str, Any] = {
+            "cn_cpi": lambda: pro.cn_cpi(),
+            "cn_gdp": lambda: pro.cn_gdp(),
+            "cn_ppi": lambda: pro.cn_ppi(),
+            "cn_money": lambda: pro.cn_money(),
+        }
+        _PARSE_DISPATCH: dict[str, Any] = {
+            "cn_cpi": _rows_from_cn_cpi,
+            "cn_gdp": _rows_from_cn_gdp,
+            "cn_ppi": _rows_from_cn_ppi,
+            "cn_money": _rows_from_cn_money,
+        }
+        fetcher = _FETCH_DISPATCH.get(api)
+        parser = _PARSE_DISPATCH.get(api)
+        if fetcher is None or parser is None:
             msg = f"Unsupported tushare_api {api!r} for {series_id}"
             raise ValueError(msg)
 
+        frame = fetcher()
         if frame is None or len(frame) == 0:
             rows: list[dict[str, object]] = []
-        elif api == "cn_cpi":
-            rows = _rows_from_cn_cpi(frame)
         else:
-            rows = _rows_from_cn_gdp(frame)
+            rows = parser(frame)
 
         return {
             "vendor_kind": "tushare_macro",

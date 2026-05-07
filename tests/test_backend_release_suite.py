@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from tests.helpers import load_module
@@ -32,6 +33,13 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_result_meta_on_all_ui_endpoints.py",
         "tests/test_governance_doc_contract.py",
         "tests/test_golden_samples_capture_ready.py",
+        "tests/test_executive_release_contract.py",
+        "tests/test_golden_sample_release_matrix.py",
+    ]
+    assert module.EXECUTIVE_RELEASE_SAMPLE_IDS == [
+        "GS-EXEC-OVERVIEW-A",
+        "GS-EXEC-PNL-ATTR-A",
+        "GS-EXEC-SUMMARY-A",
     ]
 
 
@@ -48,6 +56,7 @@ def test_backend_release_suite_dry_run_emits_expected_plan(capsys):
     assert report["suite_name"] == "governed-phase2-backend-release-suite"
     assert report["governance_dir"] == "data/governance"
     assert report["pytest_args"] == ["-m", "pytest", "-q", *module.RELEASE_SUITE_TESTS]
+    assert report["executive_release_sample_ids"] == module.EXECUTIVE_RELEASE_SAMPLE_IDS
     assert report["env"]["MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS"] == "1"
     assert report["env"]["MOSS_SKIP_POSTGRES_MIGRATIONS"] == "1"
 
@@ -131,7 +140,7 @@ def test_backend_release_suite_runs_fixed_pytest_matrix_when_governance_is_clean
 
     assert exit_code == 0
     assert len(calls) == 1
-    assert calls[0]["args"] == ["python", "-m", "pytest", "-q", *module.RELEASE_SUITE_TESTS]
+    assert calls[0]["args"] == [sys.executable, "-m", "pytest", "-q", *module.RELEASE_SUITE_TESTS]
     assert calls[0]["cwd"] == str(ROOT)
     for key, value in module._release_suite_env().items():
         assert calls[0]["env"][key] == value

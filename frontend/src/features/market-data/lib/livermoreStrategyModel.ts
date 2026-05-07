@@ -56,6 +56,53 @@ export type LivermoreStrategyModel = {
     key: LivermoreOutputKey;
     label: string;
   }>;
+  sectorRank: null | {
+    formulaVersion: string;
+    isProvisional: boolean;
+    items: Array<{
+      rank: number;
+      sectorCode: string;
+      sectorName: string;
+      score: string;
+      constituentCount: number;
+    }>;
+  };
+  stockCandidates: null | {
+    formulaVersion: string;
+    marketState: LivermoreStrategyPayload["market_gate"]["state"];
+    items: Array<{
+      rank: number;
+      stockCode: string;
+      stockName: string;
+      sectorName: string;
+      sectorRank: number;
+      close: string;
+      breakoutLevel: string;
+      ma20: string;
+      ma60: string;
+      ma120: string;
+      entryTrigger: string;
+      pullbackWatch: string;
+      defenseLine: string;
+      closeStrength: string;
+      gapNorm: string;
+      abnormalTurnover: string;
+    }>;
+  };
+  riskExit: null | {
+    formulaVersion: string;
+    positionCount: number;
+    signalCount: number;
+    items: Array<{
+      stockCode: string;
+      stockName: string;
+      reason: string;
+      entryCost: string;
+      barsSinceEntry: number;
+      latestClose: string;
+      latestEma10: string;
+    }>;
+  };
   unsupportedOutputs: Array<{
     key: LivermoreOutputKey;
     label: string;
@@ -95,6 +142,7 @@ const gapStatusLabels: Record<LivermoreStrategyPayload["data_gaps"][number]["sta
   missing: "缺失",
   partial: "部分",
   stale: "陈旧",
+  ready: "就绪",
 };
 
 function fallbackLabel(value: ResultMeta["fallback_mode"]) {
@@ -125,6 +173,10 @@ function buildStatusNotes(
     notes.push(`当前结果使用${fallbackLabel(meta.fallback_mode)}。`);
   }
   return notes;
+}
+
+function formatMetric(value: number, digits = 3) {
+  return value.toFixed(digits);
 }
 
 export function buildLivermoreStrategyModel(input: {
@@ -180,6 +232,59 @@ export function buildLivermoreStrategyModel(input: {
       key,
       label: outputLabels[key],
     })),
+    sectorRank: payload.sector_rank
+      ? {
+          formulaVersion: payload.sector_rank.formula_version,
+          isProvisional: payload.sector_rank.is_provisional,
+          items: payload.sector_rank.items.map((item) => ({
+            rank: item.rank,
+            sectorCode: item.sector_code,
+            sectorName: item.sector_name,
+            score: formatMetric(item.score),
+            constituentCount: item.constituent_count,
+          })),
+        }
+      : null,
+    stockCandidates: payload.stock_candidates
+      ? {
+          formulaVersion: payload.stock_candidates.formula_version,
+          marketState: payload.stock_candidates.market_state,
+          items: payload.stock_candidates.items.map((item) => ({
+            rank: item.rank,
+            stockCode: item.stock_code,
+            stockName: item.stock_name,
+            sectorName: item.sector_name,
+            sectorRank: item.sector_rank,
+            close: formatMetric(item.close),
+            breakoutLevel: formatMetric(item.breakout_level),
+            ma20: formatMetric(item.ma20),
+            ma60: formatMetric(item.ma60),
+            ma120: formatMetric(item.ma120),
+            entryTrigger: formatMetric(item.breakout_level),
+            pullbackWatch: formatMetric(item.ma20),
+            defenseLine: formatMetric(item.ma60),
+            closeStrength: formatMetric(item.close_strength),
+            gapNorm: formatMetric(item.gap_norm),
+            abnormalTurnover: formatMetric(item.abnormal_turnover),
+          })),
+        }
+      : null,
+    riskExit: payload.risk_exit
+      ? {
+          formulaVersion: payload.risk_exit.formula_version,
+          positionCount: payload.risk_exit.position_count,
+          signalCount: payload.risk_exit.signal_count,
+          items: payload.risk_exit.items.map((item) => ({
+            stockCode: item.stock_code,
+            stockName: item.stock_name,
+            reason: item.reason,
+            entryCost: formatMetric(item.entry_cost),
+            barsSinceEntry: item.bars_since_entry,
+            latestClose: formatMetric(item.latest_close),
+            latestEma10: formatMetric(item.latest_ema10),
+          })),
+        }
+      : null,
     unsupportedOutputs: payload.unsupported_outputs.map((item) => ({
       key: item.key,
       label: outputLabels[item.key],

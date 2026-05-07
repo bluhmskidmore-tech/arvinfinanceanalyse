@@ -457,12 +457,19 @@ def _seed_runtime_governance_from_repo_if_needed(config: DevPostgresClusterConfi
 
 
 def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:
-    if _duckdb_has_seed_data(config.runtime_duckdb_path):
-        return config.runtime_root
+    """Pick DuckDB + sidecar dir for MOSS_* paths.
 
+    Prefer ``data/moss.duckdb`` whenever it already carries seed rows so local
+    materialization scripts (which default to ``data/``) match ``dev-api`` / ``dev-env``.
+
+    If the repo db is empty but ``runtime-clean`` was populated (smoke copy), use runtime.
+    """
     repo_data_root = config.repo_root / "data"
     if _duckdb_has_seed_data(repo_data_root / "moss.duckdb"):
         return repo_data_root
+
+    if _duckdb_has_seed_data(config.runtime_duckdb_path):
+        return config.runtime_root
 
     return config.runtime_root
 

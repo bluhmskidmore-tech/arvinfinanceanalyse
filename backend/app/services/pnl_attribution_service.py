@@ -144,8 +144,7 @@ def _mv_tpl_scale(
     for r in pnl_rows:
         if not pa_wb.is_tpl_accounting(str(r.get("accounting_basis") or "")):
             continue
-        k = (str(r.get("instrument_code") or ""), str(r.get("portfolio_name") or ""))
-        s += mv_by.get(k, 0.0)
+        s += mv_by.get(pa_wb.position_key(r), 0.0)
     return s
 
 
@@ -173,8 +172,30 @@ _LIST_FIELD_ITEM_CLASS: dict[tuple[type, str], type] = {
 }
 
 
+def _signed_number(
+    value: float,
+    *,
+    precision: int,
+    sign_aware: bool,
+    suffix: str = "",
+) -> str:
+    if sign_aware and value >= 0:
+        return f"+{value:,.{precision}f}{suffix}"
+    return f"{value:,.{precision}f}{suffix}"
+
+
 def _numeric_dict(raw: float | None, unit: NumericUnit, sign_aware: bool) -> dict[str, Any]:
-    return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+    if raw is None or unit != "pct":
+        return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+
+    percent_points = float(raw)
+    return Numeric(
+        raw=percent_points / 100.0,
+        unit=unit,
+        display=_signed_number(percent_points, precision=2, sign_aware=sign_aware, suffix="%"),
+        precision=2,
+        sign_aware=sign_aware,
+    ).model_dump(mode="json")
 
 
 def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]:
@@ -329,7 +350,7 @@ def tpl_market_correlation_envelope(*, months: int = 12) -> dict[str, object]:
                 "tpl_scale": tpl_scale,
                 "treasury_10y": tsy,
                 "treasury_10y_change": dtsy,
-                "dr007": None,
+                "dr007": None,  # Placeholder — DR007 series requires external data integration (Phase 3).
             }
         )
 

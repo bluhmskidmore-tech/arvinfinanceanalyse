@@ -23,7 +23,7 @@ function buildAllocationChartOption(model: BalanceStageSummaryModel): EChartsOpt
     : [{ label: "无真实数据", value: 0, color: "#94a3b8" }];
   return {
     title: {
-      text: "收益成本分配（真实数据）",
+      text: "资产负债净头寸（真实数据）",
       left: 0,
       top: 0,
       textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
@@ -80,7 +80,7 @@ export function BalanceSummaryRow({ model }: BalanceSummaryRowProps) {
       >
         <ReactECharts option={allocationChartOption} style={{ height: 240 }} opts={{ renderer: "canvas" }} />
         <div style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "#15803d" }}>
-          净值: {model.allocationNetValue}
+          净头寸: {model.allocationNetValue}
         </div>
       </div>
       <div

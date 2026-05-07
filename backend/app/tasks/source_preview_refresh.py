@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from backend.app.governance.locks import acquire_lock
 from backend.app.governance.settings import get_settings
@@ -113,7 +116,7 @@ def _refresh_source_preview_cache(
             try:
                 cleanup_preview_backups(str(duckdb_file))
             except Exception:
-                pass
+                logger.warning("cleanup_preview_backups failed after successful materialize", exc_info=True)
     except Exception as exc:
         if snapshot_ready:
             try:
@@ -122,7 +125,7 @@ def _refresh_source_preview_cache(
                 try:
                     cleanup_preview_backups(str(duckdb_file))
                 except Exception:
-                    pass
+                    logger.warning("cleanup_preview_backups failed during error recovery", exc_info=True)
 
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,

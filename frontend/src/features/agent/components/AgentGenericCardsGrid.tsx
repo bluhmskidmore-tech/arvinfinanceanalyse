@@ -2,10 +2,10 @@ import { shellTokens as t } from "../../../theme/tokens";
 
 type AgentGenericCard = {
   title: string;
-  value?: string;
+  value?: string | null;
   type: string;
-  data?: Record<string, unknown>[] | Record<string, unknown>;
-  spec?: Record<string, unknown>;
+  data?: Record<string, unknown>[] | Record<string, unknown> | null;
+  spec?: Record<string, unknown> | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
@@ -42,11 +41,13 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "dashboard", element: <div>dashboard alias body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
           { path: "cross-asset", element: <div>cross-asset body</div> },
+          { path: "stock-analysis", element: <div>stock-analysis body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
           { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
           { path: "liability-analytics", element: <div>liability-analytics body</div> },
           { path: "pnl", element: <div>pnl body</div> },
+          { path: "reports", element: <div>reports body</div> },
           { path: "platform-config", element: <div>platform body</div> },
           { path: "agent", element: <div>agent body</div> },
         ],
@@ -63,6 +64,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(screen.getByTestId("workbench-group-nav")).toBeInTheDocument();
     expect(screen.getByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
   });
 
   it("renders a smaller set of grouped workspaces than live route entries", async () => {
@@ -77,23 +79,14 @@ describe("WorkbenchShell", () => {
     );
   });
 
-  it("shows Agent Workbench as a reserved module entry", async () => {
+  it("shows the Hermes Agent workbench in visible shell navigation", async () => {
     renderShellAt("/");
 
-    expect(
-      await screen.findByRole("button", { name: /智能体对话/ }),
-    ).toBeInTheDocument();
-  });
-
-  it("opens Agent Workbench in a dialog from the system shell", async () => {
-    renderShellAt("/");
-
-    const [agentTrigger] = await screen.findAllByRole("button", { name: /智能体对话/ });
-    await userEvent.click(agentTrigger);
-
-    expect(await screen.findByRole("dialog", { name: "智能体对话" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "智能体对话" })).toBeInTheDocument();
-    expect(screen.getAllByText("基于当前页面提问").length).toBeGreaterThan(0);
+    const agentNav = await screen.findByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentLink).toHaveTextContent("Hermes");
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -103,32 +96,25 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config"]);
+    expect(hrefs).toEqual(["/platform-config", "/agent"]);
     expect(hrefs).not.toContain("/cube-query");
     expect(hrefs).not.toContain("/reports");
   });
 
-  it("renders a portfolio-specific decision surface when browsing the portfolio workbench", async () => {
+  it("keeps live portfolio pages focused on page content instead of shell guidance", async () => {
     renderShellAt("/pnl");
 
-    const lead = await screen.findByTestId("portfolio-workbench-lead");
-    expect(lead).toHaveTextContent("组合状态先看错配，再看损益，最后定位仓位与归因");
-    expect(lead).toHaveTextContent("资产负债分析");
+    expect(await screen.findByText("pnl body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
 
-    const flow = screen.getByTestId("portfolio-workbench-flow");
-    expect(flow).toHaveTextContent("先看资产负债");
-    expect(flow).toHaveTextContent("最后做原因解释");
-
-    const board = screen.getByTestId("portfolio-workbench-board");
-    expect(board).toHaveTextContent("状态判断");
-    expect(board).toHaveTextContent("仓位与结构");
-    expect(board).toHaveTextContent("原因解释");
-    expect(board).toHaveTextContent("债券总览");
-    expect(board).toHaveTextContent("持仓透视");
-    expect(board).toHaveTextContent("损益桥接");
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    expect(subnav).toHaveTextContent("全部已开放页面");
+    expect(within(subnav).getByRole("link", { name: /收益分析/ })).toHaveAttribute("href", "/pnl");
   });
 
-  it("keeps portfolio page selection with a compact hint on balance-analysis", async () => {
+  it("keeps live balance-analysis focused on page content with its compact hint", async () => {
     renderShellAt("/balance-analysis");
 
     expect(await screen.findByText("balance-analysis body")).toBeInTheDocument();
@@ -145,6 +131,14 @@ describe("WorkbenchShell", () => {
       .map((link) => link.getAttribute("href"));
     expect(hrefs).toContain("/balance-analysis");
     expect(hrefs).toContain("/balance-movement-analysis");
+  });
+
+  it("retains shell guidance and readiness warning for placeholder routes", async () => {
+    renderShellAt("/reports");
+
+    expect(await screen.findByText("reports body")).toBeInTheDocument();
+    expect(screen.getByText("当前只突出可验证的真实读链路")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-readiness-banner")).toHaveTextContent("当前页面仍是占位壳层");
   });
 
   it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
@@ -194,9 +188,21 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     const subnav = await screen.findByTestId("workbench-section-subnav");
     const sectionLinks = within(subnav).getAllByRole("link");
-    expect(sectionLinks.length).toBeGreaterThanOrEqual(1);
     const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/cross-asset");
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/market-data",
+        "/macro-toolkit",
+        "/cross-asset",
+        "/stock-analysis",
+        "/news-events",
+      ]),
+    );
+    expect(subnav).toHaveTextContent("市场数据");
+    expect(subnav).toHaveTextContent("宏观工具");
+    expect(subnav).toHaveTextContent("跨资产驱动");
+    expect(subnav).toHaveTextContent("股票分析");
+    expect(subnav).toHaveTextContent("新闻事件");
   });
 
   it("renders a global terminal bar that separates page context from shell market ticker", async () => {
@@ -310,7 +316,7 @@ describe("WorkbenchShell", () => {
       getChoiceMacroLatest: async () => ({}),
     } as unknown as ApiClient;
 
-    renderShellAt("/", client);
+    renderShellAt("/bond-analysis", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
     expect(marketTicker).toHaveTextContent("10年国债");
@@ -561,16 +567,6 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("保留模块")).toBeInTheDocument();
     for (const section of secondaryWorkbenchNavigation) {
-      if (section.key === "agent") {
-        const expectedLabel = "智能体对话";
-        const button = screen
-          .getAllByRole("button")
-          .find((candidate) => candidate.textContent?.includes(expectedLabel));
-        expect(button).toBeDefined();
-        expect(button).toHaveTextContent(expectedLabel);
-        continue;
-      }
-
       const link = screen
         .getAllByRole("link")
         .find((candidate) => candidate.getAttribute("href") === section.path);
@@ -578,6 +574,7 @@ describe("WorkbenchShell", () => {
       expect(link).toBeDefined();
       expect(link).toHaveTextContent(section.label);
     }
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("does not render the overview hero card on the root dashboard route", async () => {
@@ -588,26 +585,22 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
   });
 
-  it("shows the Agent MVP route with its specific readiness note", async () => {
+  it("keeps the /agent route reachable from the visible shell shortcuts", async () => {
     renderShellAt("/agent");
 
     expect(await screen.findByText("agent body")).toBeInTheDocument();
-    const banner = screen.getByTestId("workbench-readiness-banner");
-    expect(banner).toHaveTextContent("当前页面仍是占位壳层");
-    expect(banner).toHaveTextContent("已开放前端入口；/api/agent/query 仍按后端开关与只读证据边界执行。");
-    expect(screen.queryByText("当前页面尚未物化真实数据链路")).not.toBeInTheDocument();
+    const agentNav = screen.getByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentLink).toHaveAttribute("data-active", "true");
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
-  it("treats /dashboard as the dashboard section inside the current group subnav", async () => {
+  it("lets /dashboard own the cockpit canvas without the group subnav", async () => {
     renderShellAt("/dashboard");
 
     expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
-    const subnav = screen.getByTestId("workbench-section-subnav");
-    const dashLink = within(subnav)
-      .getAllByRole("link")
-      .find((candidate) => candidate.getAttribute("href") === "/");
-    expect(dashLink).toBeDefined();
-    expect(dashLink).toHaveAttribute("href", "/");
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
   });
 
   it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {

@@ -6,7 +6,9 @@ from decimal import Decimal
 from tests.helpers import load_module
 
 
-def test_bond_action_attribution_service_returns_explicit_unavailable_contract():
+def test_bond_action_attribution_service_returns_explicit_unavailable_contract(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "empty.duckdb"))
+
     service_module = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",

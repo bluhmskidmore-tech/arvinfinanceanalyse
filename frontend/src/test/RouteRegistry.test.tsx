@@ -117,11 +117,11 @@ vi.mock("../features/risk-tensor/RiskTensorPage", () => ({
 
 vi.mock("../features/pnl/PnlPage", () => ({
   default: () => (
-    <section data-testid="pnl-page">
-      <h1>损益明细</h1>
+    <section data-testid="yield-analysis-page">
+      <h1>收益分析</h1>
       <label>
-        报告日
-        <select aria-label="pnl-report-date" defaultValue="2026-03-31">
+        选择报表月份
+        <select aria-label="选择报表月份" defaultValue="2026-03-31">
           <option value="2026-03-31">2026-03-31</option>
         </select>
       </label>
@@ -156,6 +156,22 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
 
+vi.mock("../features/market-data/pages/MarketDataPage", () => ({
+  default: () => (
+    <section data-testid="market-data-page">
+      <h1 data-testid="market-data-page-title">市场数据</h1>
+    </section>
+  ),
+}));
+
+vi.mock("../features/stock-analysis/pages/StockAnalysisPage", () => ({
+  default: () => (
+    <section data-testid="stock-analysis-page">
+      <h1>股票分析</h1>
+    </section>
+  ),
+}));
+
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
 
@@ -181,16 +197,18 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
   });
 
-  it("renders the source-preview route", async () => {
+  it("renders the source-preview route as a hidden reserved placeholder", async () => {
     renderWorkbenchApp(["/source-preview"], { client: mockClient });
 
-    expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(await screen.findByRole("navigation")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-preview-page-title")).not.toBeInTheDocument();
   });
 
-  it("renders the news-events route", async () => {
+  it("renders the news-events route with NewsEventsPage and governance banner", async () => {
     renderWorkbenchApp(["/news-events"], { client: mockClient });
 
+    expect(await screen.findByTestId("news-events-page-title")).toHaveTextContent("新闻事件");
+    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
     expect(await screen.findByTestId("news-events-table")).toBeInTheDocument();
     expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
@@ -261,16 +279,24 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("审计-报表月份")).toBeInTheDocument();
   });
 
-  it("renders the market-data route", async () => {
+  it("renders the market-data route as a live page", async () => {
     renderWorkbenchApp(["/market-data"], { client: mockClient });
 
-    expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(await screen.findByRole("navigation")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
   });
 
-  it("redirects V1 bookmark /market to market-data", async () => {
+  it("renders the stock-analysis route", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: mockClient });
+
+    expect(await screen.findByTestId("stock-analysis-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
+  });
+
+  it("redirects V1 bookmark /market to the live market-data page", async () => {
     renderWorkbenchApp(["/market"], { client: mockClient });
 
+    expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
   });
 
@@ -286,9 +312,10 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("average-balance-page")).toBeInTheDocument();
   });
 
-  it("redirects legacy /macro-analysis to the market-data page", async () => {
+  it("redirects legacy /macro-analysis to the live market-data page", async () => {
     renderWorkbenchApp(["/macro-analysis"], { client: mockClient });
 
+    expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
   });
 
@@ -310,10 +337,10 @@ describe("RouteRegistry", () => {
   it("renders the pnl route", async () => {
     renderWorkbenchApp(["/pnl"], { client: mockClient });
 
-    expect(await screen.findByTestId("pnl-page")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "损益明细" })).toBeInTheDocument();
+    expect(await screen.findByTestId("yield-analysis-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "收益分析" })).toBeInTheDocument();
     expect(await screen.findByTestId("pnl-overview-cards")).toBeInTheDocument();
-    expect(await screen.findByLabelText("pnl-report-date")).toBeInTheDocument();
+    expect(await screen.findByLabelText("选择报表月份")).toBeInTheDocument();
   });
 
   it("renders the pnl-attribution route", async () => {
@@ -332,11 +359,11 @@ describe("RouteRegistry", () => {
     });
   });
 
-  it("renders the risk-overview route as a real page", async () => {
+  it("renders the risk-overview route as a reserved placeholder page", async () => {
     renderWorkbenchApp(["/risk-overview"], { client: mockClient });
 
-    expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "风险总览" })).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("risk-overview-kpi-grid")).not.toBeInTheDocument();
   });
 
   it("renders the risk-tensor route", async () => {
@@ -371,10 +398,17 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/cube-query"], { client: mockClient });
 
     expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
+    expect(screen.queryByTestId("cube-query-page")).not.toBeInTheDocument();
     const banner = screen.getByTestId("workbench-readiness-banner");
     expect(
       within(banner).getByText(/入口保留；自由聚合查询尚未作为二期主消费面晋升/),
     ).toBeInTheDocument();
+  });
+
+  it("renders the hidden /agent route as the live workbench", async () => {
+    renderWorkbenchApp(["/agent"], { client: mockClient });
+
+    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

@@ -1,0 +1,19 @@
+[mcp_servers.gitnexus]
+command = "node"
+args = ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+
+[mcp_servers.moss-metric-contracts]
+command = "cmd.exe"
+args = ["/d", "/s", "/c", "scripts\\mcp\\moss_contracts.cmd"]
+
+[mcp_servers.moss-lineage-evidence]
+command = "cmd.exe"
+args = ["/d", "/s", "/c", "scripts\\mcp\\moss_lineage.cmd"]
+
+[mcp_servers.moss-data-catalog]
+command = "cmd.exe"
+args = ["/d", "/s", "/c", "scripts\\mcp\\moss_catalog.cmd"]
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest"]

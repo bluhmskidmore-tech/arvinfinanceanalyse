@@ -8,61 +8,15 @@ import { displayTokens } from "../../../theme/displayTokens";
 import type { Numeric } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import { FilterBar } from "../../../components/FilterBar";
+import { KpiCard } from "../../../components/KpiCard";
+import { SectionLead } from "../../../components/page/SectionLead";
+import { modeBadgeStyle, summaryGridStyle } from "../../../components/page/pageStyles";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { KpiCard } from "../../workbench/components/KpiCard";
 import { shellTokens as t } from "../../../theme/tokens";
 import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
 import { selectCashflowMonthlyProjectionSeries } from "./cashflowProjectionPageModel";
 
 const pageStyle = { maxWidth: 1280, margin: "0 auto" } as const;
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 860,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
-}
 
 function buildConclusion(durationGap: Numeric | undefined) {
   const raw = durationGap?.raw;
@@ -133,7 +87,7 @@ export default function CashflowProjectionPage() {
       legend: { data: ["资产流入", "负债流出", "累计净现金流"] },
       xAxis: { type: "category", data: monthlySeries.categories, axisLabel: { rotate: 30 } },
       yAxis: [
-        { type: "value", name: "当月流量", splitLine: { lineStyle: { color: "#eef2f7" } } },
+        { type: "value", name: "当月流量", splitLine: { lineStyle: { color: designTokens.color.neutral[100] } } },
         { type: "value", name: "累计", splitLine: { show: false } },
       ],
       series: [
@@ -187,20 +141,13 @@ export default function CashflowProjectionPage() {
         </div>
         <span
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
+            ...modeBadgeStyle,
             background:
               client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
             color:
               client.mode === "real"
                 ? displayTokens.apiMode.realForeground
                 : displayTokens.apiMode.mockForeground,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
           }}
         >
           {client.mode === "real" ? "真实只读链路" : "本地演示数据"}

@@ -214,17 +214,42 @@ class VerdictPayload(BaseModel):
     suggestions: list[VerdictSuggestion]
 
 
+class ProductCategoryYtdHeadlinePayload(BaseModel):
+    """产品分类损益 ytd 与专题页「汇总视图」对齐的首屏摘要（不含前端自算）。"""
+
+    view: Literal["ytd"] = "ytd"
+    summary_pnl: Numeric
+    summary_pnl_detail: str
+    operating_income: Numeric
+    operating_income_detail: str
+    intermediate_business_income: Numeric
+    intermediate_business_income_detail: str
+
+
+class ProductCategoryMonthlyHeadlinePayload(BaseModel):
+    """产品分类损益 monthly 与专题页「月度视图」页脚对齐的首屏摘要（不含前端自算）。"""
+
+    view: Literal["monthly"] = "monthly"
+    monthly_income: Numeric
+    monthly_income_detail: str
+
+
 class HomeSnapshotPayload(BaseModel):
     """Authoritative unified home snapshot payload.
 
-    `mode="strict"`: `report_date` is the most recent day where **all four**
-    governed business domains (balance / pnl / liability / bond) are
-    available. `domains_missing=[]` and all four entries in
-    `domains_effective_date` equal `report_date`.
+    `mode="strict"`: `report_date` is the most recent day where **both**
+    business calibers (balance_sheet / pnl) are available.
+    `domains_missing=[]` and both entries in `domains_effective_date`
+    equal `report_date`.
 
     `mode="partial"`: user-requested or latest historical day; missing
-    business domains listed in `domains_missing`; per-domain effective_date
-    in `domains_effective_date` may diverge.
+    calibers listed in `domains_missing`; per-caliber effective_date in
+    `domains_effective_date` may diverge.
+
+    Calibers:
+      - ``balance_sheet``: AUM + NIM + DV01 — intersection of balance,
+        liability, and bond sub-source dates (same T+1 pipeline).
+      - ``pnl``: YTD P&L — independent formal build cycle.
 
     Design reference: docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md § 4.
     """
@@ -237,3 +262,5 @@ class HomeSnapshotPayload(BaseModel):
     domains_missing: list[str]
     domains_effective_date: dict[str, str]
     verdict: VerdictPayload | None = None
+    product_category_ytd: ProductCategoryYtdHeadlinePayload | None = None
+    product_category_monthly: ProductCategoryMonthlyHeadlinePayload | None = None

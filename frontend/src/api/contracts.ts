@@ -58,6 +58,8 @@ export type ResultMeta = {
 export type ApiEnvelope<T> = {
   result_meta: ResultMeta;
   result: T;
+  /** 可选：标识本响应依赖的正式事实表族（如 bond_analytics vs balance_analysis）。 */
+  data_source?: string;
 };
 
 /** `/ui/home/*`, `/ui/pnl/attribution`, `/ui/risk/overview`, `/ui/home/alerts` payloads. */
@@ -120,6 +122,24 @@ export type VerdictPayload = {
   suggestions: VerdictSuggestion[];
 };
 
+/** 与 /product-category-pnl「汇总视图」（ytd）页脚口径一致的首屏摘要（后端算、前端只展示）。 */
+export type ProductCategoryYtdHeadlinePayload = {
+  view: "ytd";
+  summary_pnl: Numeric;
+  summary_pnl_detail: string;
+  operating_income: Numeric;
+  operating_income_detail: string;
+  intermediate_business_income: Numeric;
+  intermediate_business_income_detail: string;
+};
+
+/** 与 /product-category-pnl「月度视图」（monthly）页脚口径一致的首屏摘要（后端算、前端只展示）。 */
+export type ProductCategoryMonthlyHeadlinePayload = {
+  view: "monthly";
+  monthly_income: Numeric;
+  monthly_income_detail: string;
+};
+
 export type HomeSnapshotPayload = {
   report_date: string;
   mode: "strict" | "partial";
@@ -129,6 +149,8 @@ export type HomeSnapshotPayload = {
   domains_missing: string[];
   domains_effective_date: Record<string, string>;
   verdict?: VerdictPayload | null;
+  product_category_ytd?: ProductCategoryYtdHeadlinePayload | null;
+  product_category_monthly?: ProductCategoryMonthlyHeadlinePayload | null;
 };
 
 export type GetHomeSnapshotOptions = {
@@ -594,6 +616,7 @@ export type RiskTensorScalar = string | Numeric;
 export type RiskTensorPayload = {
   report_date: string;
   portfolio_dv01: RiskTensorScalar;
+  regulatory_dv01?: RiskTensorScalar | null;
   krd_1y: RiskTensorScalar;
   krd_3y: RiskTensorScalar;
   krd_5y: RiskTensorScalar;
@@ -971,7 +994,7 @@ export type LivermoreRuleReadinessStatus =
   | "blocked"
   | "stale";
 export type LivermoreDiagnosticSeverity = "info" | "warning" | "error";
-export type LivermoreDataGapStatus = "missing" | "partial" | "stale";
+export type LivermoreDataGapStatus = "missing" | "partial" | "stale" | "ready";
 export type LivermoreOutputKey =
   | "market_gate"
   | "sector_rank"
@@ -1052,6 +1075,7 @@ export type LivermoreStockCandidateItem = {
   sector_rank: number;
   close: number;
   breakout_level: number;
+  ema10?: number | null;
   ma20: number;
   ma60: number;
   ma120: number;
@@ -1083,6 +1107,19 @@ export type LivermoreRiskExitItem = {
   prior_ema10: number;
 };
 
+export type LivermoreRiskExitWatchItem = {
+  stock_code: string;
+  stock_name: string;
+  entry_cost: number;
+  bars_since_entry: number;
+  latest_close: number;
+  latest_ema10: number;
+  prior_close: number;
+  prior_ema10: number;
+  exit_watch_price: number;
+  triggered: boolean;
+};
+
 export type LivermoreRiskExitPayload = {
   as_of_date: string;
   formula_version: string;
@@ -1091,6 +1128,7 @@ export type LivermoreRiskExitPayload = {
   excluded_position_count: number;
   insufficient_history_count: number;
   items: LivermoreRiskExitItem[];
+  watch_items?: LivermoreRiskExitWatchItem[];
 };
 
 export type LivermoreStrategyPayload = {
@@ -1107,6 +1145,102 @@ export type LivermoreStrategyPayload = {
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
   risk_exit?: LivermoreRiskExitPayload;
+};
+
+export type LivermoreSignalConfluenceMacroStatus =
+  | "supportive"
+  | "neutral"
+  | "restrictive"
+  | "unknown";
+
+export type LivermoreSignalConfluenceMacroContext = {
+  status: LivermoreSignalConfluenceMacroStatus;
+  composite_score: number | null;
+  multiplier: number;
+  description?: string | null;
+};
+
+export type LivermoreSignalConfluenceStrategyContext = {
+  market_gate_state: string;
+  market_gate_exposure: number;
+  allows_new_entry_observations: boolean;
+  new_entry_observation_allowed?: boolean | null;
+  position_size_hint?: number | null;
+};
+
+export type LivermoreSignalConfluenceEntryObservationAction =
+  | "observe_entry_setup"
+  | "observe_only";
+
+export type LivermoreSignalConfluenceEntryObservation = {
+  stock_code: string | null;
+  stock_name: string | null;
+  action: LivermoreSignalConfluenceEntryObservationAction;
+  trigger_price: number | null;
+  buy_trigger_price?: number | null;
+  current_price: number | null;
+  invalidation_reference_price: number | null;
+  position_size_hint?: number | null;
+  evidence?: string[] | string | null;
+};
+
+export type LivermoreSignalConfluenceExitObservationAction =
+  | "observe_exit_watch"
+  | "exit_triggered";
+
+export type LivermoreSignalConfluenceExitObservation = {
+  stock_code: string | null;
+  stock_name: string | null;
+  action: LivermoreSignalConfluenceExitObservationAction;
+  current_price: number | null;
+  exit_watch_price: number | null;
+  triggered?: boolean | null;
+  evidence?: string[] | string | null;
+};
+
+export type LivermoreSignalConfluenceDiagnostic =
+  | string
+  | {
+      severity?: string | null;
+      code?: string | null;
+      message?: string | null;
+    };
+
+export type LivermoreSignalConfluencePayload = {
+  as_of_date: string;
+  macro_context: LivermoreSignalConfluenceMacroContext;
+  strategy_context: LivermoreSignalConfluenceStrategyContext;
+  position_size_hint: number;
+  entry_observations: LivermoreSignalConfluenceEntryObservation[];
+  exit_observations: LivermoreSignalConfluenceExitObservation[];
+  diagnostics: LivermoreSignalConfluenceDiagnostic[];
+  disclaimer: string;
+};
+
+export type LivermorePositionSnapshotPayload = {
+  status: string;
+  fact_source: string;
+  input_mode?: "csv" | "manual";
+  as_of_date: string;
+  row_count: number;
+  run_id: string;
+  source_file_hash: string;
+  source_systems: string[];
+  source_version: string;
+  vendor_version: string;
+  csv_path: string | null;
+  risk_exit_input_status: "ready" | "blocked";
+  risk_exit_input_block_reason: string;
+};
+
+export type LivermoreManualPositionInput = {
+  stockCode: string;
+  stockName?: string;
+  entryCost: number;
+  barsSinceEntry?: number;
+  entryDate?: string;
+  positionQuantity?: number;
+  positionStatus?: "ACTIVE" | "CLOSED" | "EXITED";
 };
 
 export type ResearchCalendarEventKind = "macro" | "supply" | "auction" | "internal";
@@ -1214,6 +1348,228 @@ export type PnlOverviewPayload = {
   capital_gain_517: string;
   manual_adjustment: string;
   total_pnl: string;
+};
+
+export type PnlV1DetailRow = {
+  report_date: string;
+  source: "FI" | "NonStd" | string;
+  asset_code: string;
+  bond_name: string;
+  portfolio: string;
+  asset_type: string;
+  asset_class: string;
+  market_value: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  total_pnl: string;
+  source_version: string;
+  trace_id: string;
+};
+
+export type PnlV1DataPayload = {
+  report_date: string;
+  source_tables: string[];
+  rows: PnlV1DetailRow[];
+};
+
+export type PnlByBusinessRow = {
+  report_date: string;
+  business_type_primary: string;
+  business_type: string;
+  currency_basis: string;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  scale_amount: string;
+  yield_pct: string | null;
+  pnl_row_count: number;
+  balance_row_count: number;
+};
+
+export type PnlByBusinessPayload = {
+  report_date: string;
+  source_tables: string[];
+  summary: {
+    business_count: number;
+    total_pnl: string;
+    total_scale_amount: string;
+    traced_pnl_row_count: number;
+    untraced_pnl_row_count: number;
+  };
+  rows: PnlByBusinessRow[];
+};
+
+export type PnlByBusinessYtdItem = {
+  row_key: string;
+  sort_order: number;
+  business_type: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  current_balance: string;
+  balance_yield_pct: string | null;
+  source_kind?: string | null;
+  source_note?: string | null;
+  proportion: string | null;
+  assets_count: number;
+};
+
+export type PnlByBusinessYtdPayload = {
+  year: number;
+  period_type: "yearly";
+  period_label: string;
+  period_start_date: string;
+  period_end_date: string;
+  total_pnl: string;
+  source_tables: string[];
+  items: PnlByBusinessYtdItem[];
+};
+
+export type PnlByBusinessManualAdjustmentRequest = {
+  report_date: string;
+  row_key: string;
+  business_type?: string;
+  operator: "ADD" | "DELTA" | "OVERRIDE";
+  approval_status: "approved" | "pending" | "rejected";
+  manual_adjustment: string;
+  reason?: string;
+};
+
+export type PnlByBusinessManualAdjustmentPayload = {
+  adjustment_id: string;
+  event_type: string;
+  created_at: string;
+  stream: string;
+  report_date: string;
+  row_key: string;
+  business_type: string;
+  operator: string;
+  approval_status: string;
+  manual_adjustment: string;
+  reason: string;
+};
+
+export type PnlByBusinessManualAdjustmentListPayload = {
+  report_date: string;
+  adjustment_count: number;
+  event_total: number;
+  adjustments: PnlByBusinessManualAdjustmentPayload[];
+  events: PnlByBusinessManualAdjustmentPayload[];
+};
+
+export type PnlByBusinessMonthlyItem = {
+  row_key: string;
+  sort_order: number;
+  business_type: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  proportion: string | null;
+  asset_count: number;
+  source_note?: string | null;
+};
+
+export type PnlByBusinessMonthlySummary = {
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  asset_count: number;
+};
+
+export type PnlByBusinessMonthlyBucket = {
+  month_key: string;
+  period_start_date: string;
+  period_end_date: string;
+  calendar_days: number;
+  summary: PnlByBusinessMonthlySummary;
+  items: PnlByBusinessMonthlyItem[];
+};
+
+export type PnlByBusinessMonthlyPayload = {
+  year: number;
+  as_of_date: string;
+  source_tables: string[];
+  months: PnlByBusinessMonthlyBucket[];
+};
+
+export type PnlByBusinessAnalysisDimension =
+  | "monthly"
+  | "portfolio"
+  | "accounting"
+  | "cost_center"
+  | "instrument"
+  | "bond_bucket"
+  | "bond_bucket_monthly";
+
+export type PnlByBusinessAnalysisRow = {
+  dimension_key: string;
+  dimension_label: string;
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  asset_count: number;
+};
+
+export type PnlByBusinessAnalysisPayload = {
+  year: number;
+  as_of_date: string;
+  business_key: string | null;
+  dimension: PnlByBusinessAnalysisDimension;
+  period_start_date: string;
+  period_end_date: string;
+  source_tables: string[];
+  rows: PnlByBusinessAnalysisRow[];
+};
+
+export type PnlYearlyBusinessSummaryRow = {
+  year: number;
+  report_month: string;
+  report_date: string;
+  business_type_primary: string;
+  business_type: string;
+  currency_basis: string;
+  total_pnl: string;
+  scale_amount: string;
+  yield_pct: string | null;
+  pnl_row_count: number;
+};
+
+export type PnlYearlyBusinessSummaryPayload = {
+  year: number;
+  source_tables: string[];
+  rows: PnlYearlyBusinessSummaryRow[];
 };
 
 export type PnlBridgeQuality = "ok" | "warning" | "error";
@@ -1624,6 +1980,16 @@ export type BalanceZqtzConcentrationAnalysis = {
   dimensions: BalanceZqtzConcentrationDimension[];
 };
 
+/** 余额类页面可选返回的口径说明快照（后端未部署时字段可缺失）。 */
+export type BalancePageCalibration = {
+  position_scope: string;
+  currency_basis: string;
+  source_families: string[];
+  tyw_amount_semantics?: string;
+  data_basis: string;
+  calibration_note: string;
+};
+
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
@@ -1639,6 +2005,7 @@ export type BalanceMovementPayload = {
   zqtz_concentration_analysis?: BalanceZqtzConcentrationAnalysis | null;
   accounting_controls: string[];
   excluded_controls: string[];
+  calibration?: BalancePageCalibration | null;
 };
 
 export type BalanceMovementDatesPayload = {
@@ -1709,6 +2076,7 @@ export type BalanceAnalysisOverviewPayload = {
   liability_total_amortized_cost_amount: DecimalLike;
   asset_total_accrued_interest_amount: DecimalLike;
   liability_total_accrued_interest_amount: DecimalLike;
+  calibration?: BalancePageCalibration | null;
 };
 
 export type BalanceAnalysisTableRow = {
@@ -2084,13 +2452,14 @@ export type AgentPageContext = {
   context_note?: string | null;
 };
 
+/** POST /api/agent/query — 字段缺省时由后端填入默认值（见 backend AgentQueryRequest）。 */
 export type AgentQueryRequest = {
   question: string;
-  basis: "formal" | "scenario" | "analytical";
-  filters: Record<string, unknown>;
-  position_scope: string;
-  currency_basis: string;
-  context: Record<string, unknown>;
+  basis?: "formal" | "scenario" | "analytical";
+  filters?: Record<string, unknown>;
+  position_scope?: string;
+  currency_basis?: string;
+  context?: Record<string, unknown>;
   page_context?: AgentPageContext | null;
 };
 
@@ -2195,6 +2564,8 @@ export type CounterpartyStatsResponse = {
   total_weighted_rate: string | null;
   total_weighted_coupon_rate?: string | null;
   total_customers: number;
+  /** CR10 集中度等指标；后端可按日返回 */
+  cr10_ratio?: string | null;
 };
 
 export type SubTypesResponse = { sub_types: string[] };
@@ -2558,10 +2929,10 @@ export type VolumeRateAttributionItem = {
   level: number;
   current_scale: Numeric;
   current_pnl: Numeric;
-  current_yield: Numeric | null;
+  current_yield_pct: Numeric | null;
   previous_scale: Numeric | null;
   previous_pnl: Numeric | null;
-  previous_yield: Numeric | null;
+  previous_yield_pct: Numeric | null;
   pnl_change: Numeric | null;
   pnl_change_pct: Numeric | null;
   volume_effect: Numeric | null;
@@ -2606,7 +2977,7 @@ export type TPLMarketCorrelationPayload = {
   correlation_interpretation: string;
   total_tpl_fv_change: Numeric;
   avg_treasury_10y_change: Numeric | null;
-  treasury_10y_total_change: Numeric | null;
+  treasury_10y_total_change_bp: Numeric | null;
   data_points: TPLMarketDataPoint[];
   analysis_summary: string;
 };
@@ -2874,6 +3245,20 @@ export type CampisiEnhancedTotals = CampisiFourEffectsTotals & {
   reinvestment_effect: number;
 };
 
+export type CampisiFormalClosure = {
+  basis: "pnl.bridge.total_actual_pnl";
+  report_date: string;
+  status: "closed" | "warning" | "unavailable";
+  campisi_total_return: number | null;
+  formal_actual_pnl: number | null;
+  residual_to_formal_pnl: number | null;
+  residual_ratio: number | null;
+  bridge_quality_flag?: string | null;
+  bridge_vendor_status?: string | null;
+  bridge_fallback_mode?: string | null;
+  message: string;
+};
+
 export type CampisiFourEffectsRow = {
   asset_class: string;
   market_value_start: number;
@@ -2919,6 +3304,8 @@ export type CampisiFourEffectsPayload = {
   totals: CampisiFourEffectsTotals;
   by_asset_class: CampisiFourEffectsRow[];
   by_bond: CampisiFourEffectsBondRow[];
+  formal_closure?: CampisiFormalClosure;
+  warnings?: string[];
 };
 
 export type CampisiEnhancedPayload = {
@@ -3173,9 +3560,48 @@ export type LiabilityYieldKpi = {
   nim: Numeric | null;
 };
 
+export type LiabilityYieldHistoryPoint = {
+  date: string;
+  asset_yield: number | null;
+  liability_cost: number | null;
+  market_liability_cost: number | null;
+  nim: number | null;
+};
+
+export type LiabilityYieldScatterPoint = {
+  x: number;
+  y: number;
+  z: number;
+  name: string;
+};
+
 export type LiabilityYieldMetricsPayload = {
   report_date: string;
   kpi: LiabilityYieldKpi;
+  history?: LiabilityYieldHistoryPoint[];
+  scatter?: LiabilityYieldScatterPoint[];
+};
+
+/** V1-compatible `/api/analysis/yield-by-period` payload (periods empty when the year has no PnL rollups). */
+export type YieldByPeriodSummary = {
+  period: string;
+  period_type: string;
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  total_avg_balance: number;
+  total_pnl: number;
+  overall_yield: number | null;
+  overall_annualized_yield: number | null;
+  weighted_portfolio_yield: number | null;
+  weighted_portfolio_annualized_yield: number | null;
+  items: unknown[];
+};
+
+export type YieldByPeriodPayload = {
+  period_type: string;
+  year: number;
+  periods: YieldByPeriodSummary[];
 };
 
 export type LiabilityCounterpartyItem = {
@@ -3256,6 +3682,40 @@ export type LiabilitiesMonthlyPayload = {
   ytd_avg_liability_cost: Numeric | null;
 };
 
+export type CockpitWatchItem = {
+  id: string;
+  label: string;
+  level: "watch" | "warning";
+  detail: string;
+};
+
+export type CockpitAlertEvent = {
+  id: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  occurred_at: string;
+  detail: string;
+};
+
+export type CockpitWarningsPayload = {
+  report_date: string;
+  watch_items: CockpitWatchItem[];
+  alert_events: CockpitAlertEvent[];
+};
+
+export type ContributionSplitRow = {
+  category: string;
+  side: "asset" | "liability";
+  amount_yi: number | null;
+  yield_or_cost: number | null;
+  contribution_yi: number | null;
+};
+
+export type ContributionSplitPayload = {
+  report_date: string;
+  contributions: ContributionSplitRow[];
+};
+
 /** ADB 日均分析 — 与 V1 `/api/analysis/adb` 对齐 */
 export type AdbSummary = {
   total_avg_assets: number;
@@ -3316,12 +3776,35 @@ export type AdbComparisonResponse = {
   report_date: string;
   start_date: string;
   end_date: string;
+  /** 用户选择的起止日期对应的日历天数（含首尾），不因 ledger 加权而改变 */
+  calendar_days_inclusive: number;
+  /**
+   * formal_calendar：数据来自 fact_formal_*（CNY 物化）；日均对比分母仍为查询区间日历天数。
+   * snapshot_calendar：无 formal 表时回退快照；与页面“7日/30日/年初至今”观察窗口一致。
+   * snapshot_distinct_days / ledger_weighted：历史兼容值。
+   */
+  adb_denominator_basis:
+    | "formal_calendar"
+    | "snapshot_distinct_days"
+    | "snapshot_calendar"
+    | "ledger_weighted";
+  /** 与区间日均口径一致的分母：有快照时为上述不重复日期数；无数据时为 0 */
   num_days: number;
+  /** 正式表中实际覆盖的不重复日期数（可能 < num_days）；未覆盖日由 sample_fill 补全 */
+  coverage_days?: number;
+  /** 是否触发了 sample_fill（coverage < calendar 时自动放大） */
+  sample_filled?: boolean;
+  /** sample_fill 补全方法标识 */
+  sample_fill_method?: string;
   simulated: boolean;
   total_spot_assets: number;
   total_avg_assets: number;
   total_spot_liabilities: number;
   total_avg_liabilities: number;
+  /** 同业（TYW）区间日均资产（元）；分母与 num_days（快照 distinct 日数）一致 */
+  total_avg_interbank_assets: number;
+  /** 同业（TYW）区间日均负债（元） */
+  total_avg_interbank_liabilities: number;
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
@@ -3331,6 +3814,7 @@ export type AdbComparisonResponse = {
   /** 区间内每个 report_date 的 AC/OCI/TPL 日均结构（与月度接口中 trend 项结构一致） */
   accounting_basis_daily_avg_trend?: AdbAccountingBasisDailyAvgTrendItem[];
   detail?: string;
+  calibration?: BalancePageCalibration | null;
 };
 
 export type AdbMonthlyBreakdownItem = {
@@ -3370,6 +3854,80 @@ export type AdbMonthlyResponse = {
   unit?: string;
 };
 
+/** `GET /api/analysis/adb/coverage` 只读诊断（快照 vs formal 日期覆盖） */
+export type AdbCoverageTableBlock = {
+  dates_count: number;
+  dates: string[];
+  error?: string;
+};
+
+export type AdbCoveragePayload = {
+  start_date: string;
+  end_date: string;
+  calendar_days: number;
+  snapshot_tables: Record<string, AdbCoverageTableBlock>;
+  formal_tables: Record<string, AdbCoverageTableBlock>;
+  snapshot_date_count: number;
+  formal_date_count: number;
+  missing_dates: string[];
+  missing_count: number;
+  coverage_pct: number;
+};
+
 /** @deprecated 使用 AdbMonthlyItem — 保留别名供旧代码类型引用 */
 
 /** @deprecated 使用 AdbMonthlyPayload */
+
+// ── Dashboard core metrics ──────────────────────────────────────────────────
+
+export type CoreMetricsCardData = {
+  total_amount: Numeric;
+  weighted_avg_rate: Numeric;
+  change_amount: Numeric;
+  change_pct: Numeric;
+  top_3_details: Array<{ name: string; amount: string; rate: string }>;
+};
+
+export type CoreMetricsResult = {
+  report_date: string;
+  bond_investments: CoreMetricsCardData;
+  interbank_assets: CoreMetricsCardData;
+  interbank_liabilities: CoreMetricsCardData;
+};
+
+export type CoreMetricsPayload = ApiEnvelope<CoreMetricsResult>;
+
+// ── Dashboard daily changes ─────────────────────────────────────────────────
+
+export type DailyChangePeriod = {
+  period: "day" | "week" | "month";
+  bond_investments_change: Numeric;
+  interbank_assets_change: Numeric;
+  interbank_liabilities_change: Numeric;
+  net_change: Numeric;
+};
+
+export type DailyChangesResult = {
+  report_date: string;
+  periods: DailyChangePeriod[];
+};
+
+export type DailyChangesPayload = ApiEnvelope<DailyChangesResult>;
+
+// ── Bond dashboard business type metrics ────────────────────────────────────
+
+export type BondBusinessTypeMetricItem = {
+  name: string;
+  market_value: string;
+  weighted_avg_ytm_pct: string;
+  weighted_avg_duration: string;
+  duration_source: string;
+};
+
+export type BondBusinessTypeMetricsResult = {
+  report_date: string;
+  items: BondBusinessTypeMetricItem[];
+};
+
+export type BondBusinessTypeMetricsPayload = ApiEnvelope<BondBusinessTypeMetricsResult>;
+

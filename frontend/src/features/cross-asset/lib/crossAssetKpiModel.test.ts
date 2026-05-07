@@ -93,6 +93,26 @@ describe("crossAssetKpiModel", () => {
     expect(kpis.find((k) => k.key === "mega_cap_top5_weight")?.valueLabel).toBe("15.53%");
   });
 
+  it("resolves governed copper and aluminum supplement slots", () => {
+    const series = [
+      macroPoint("CA.COPPER", 101030, [
+        ["2026-04-29", 101630],
+        ["2026-04-30", 101030],
+      ], { unit: "CNY/t", latest_change: -600, vendor_name: "tushare" }),
+      macroPoint("CA.ALUMINUM", 24430, [
+        ["2026-04-29", 24615],
+        ["2026-04-30", 24430],
+      ], { unit: "CNY/t", latest_change: -185, vendor_name: "tushare" }),
+    ];
+
+    const kpis = resolveCrossAssetKpis(series);
+
+    expect(kpis.find((k) => k.key === "copper")?.resolvedSeriesId).toBe("CA.COPPER");
+    expect(kpis.find((k) => k.key === "copper")?.valueLabel).toBe("101,030");
+    expect(kpis.find((k) => k.key === "aluminum")?.resolvedSeriesId).toBe("CA.ALUMINUM");
+    expect(kpis.find((k) => k.key === "aluminum")?.valueLabel).toBe("24,430");
+  });
+
   it("keeps raw-point change labels unitless for index and valuation evidence", () => {
     const kpis = resolveCrossAssetKpis([
       macroPoint("CA.CSI300", 4102.25, [

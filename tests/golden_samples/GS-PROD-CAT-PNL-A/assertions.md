@@ -28,6 +28,25 @@
   - `bond_valuation_spread`
 - `asset_total.business_net_income + liability_total.business_net_income == grand_total.business_net_income`.
 
+## Companion scenario probe
+
+The companion scenario probe is `GET /ui/pnl/product-category?report_date=2026-02-28&view=monthly&scenario_rate_pct=2.5`.
+
+Required scenario assertions:
+
+- HTTP status is `200`.
+- `result_meta.basis == "scenario"`.
+- `result_meta.scenario_flag == true`.
+- `result.report_date == "2026-02-28"`.
+- `result.view == "monthly"`.
+- `result.scenario_rate_pct == 2.5`.
+- scenario-owned FTP fields change versus the formal baseline, including `asset_total.cny_ftp`.
+- baseline row identity and category tree are preserved:
+  - baseline and scenario row `category_id` sequences match.
+  - `bond_investment.children` remains exactly `bond_tpl/bond_ac/bond_ac_other/bond_fvoci/bond_valuation_spread`.
+
+This is page/sample truth for the existing companion probe, not an approved `metric_id` binding and not a second full golden matrix sample.
+
 ## Reconciliation
 
 - Reconcile this page-level sample with `docs/pnl/product-category-golden-sample-a.md`.

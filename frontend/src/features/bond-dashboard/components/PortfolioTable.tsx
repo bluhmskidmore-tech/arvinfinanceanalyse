@@ -1,30 +1,22 @@
 import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import type { Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
+import type { BondDashboardHeadlinePayload, Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
 import { formatDv01Wan, formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
 
 export function PortfolioTable({
   data,
+  headline,
   loading,
 }: {
   data: PortfolioComparisonPayload | undefined;
+  headline: BondDashboardHeadlinePayload | undefined;
   loading: boolean;
 }) {
   const rows = data?.items ?? [];
   const totalMv = rows.reduce((s, r) => s + nativeToNumber(r.total_market_value), 0);
   const totalDv01 = rows.reduce((s, r) => s + nativeToNumber(r.total_dv01), 0);
   const totalBonds = rows.reduce((s, r) => s + r.bond_count, 0);
-
-  let wYtm = 0;
-  let wDur = 0;
-  if (totalMv > 0) {
-    for (const r of rows) {
-      const w = nativeToNumber(r.total_market_value) / totalMv;
-      wYtm += w * nativeToNumber(r.weighted_ytm);
-      wDur += w * nativeToNumber(r.weighted_duration);
-    }
-  }
 
   const columns: ColumnsType<PortfolioComparisonItem> = [
     { title: "组合名称", dataIndex: "portfolio_name", key: "portfolio_name" },
@@ -77,16 +69,20 @@ export function PortfolioTable({
           <Table.Summary fixed>
             <Table.Summary.Row>
               <Table.Summary.Cell index={0}>
-                <strong>合计 / 加权</strong>
+                <strong>合计 / 后端加权</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
                 <strong>{formatYi(totalMv)}</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
-                <strong>{formatRatePercent(wYtm)}</strong>
+                <strong data-testid="bond-dashboard-portfolio-summary-ytm">
+                  {headline ? formatRatePercent(headline.kpis.weighted_ytm) : "—"}
+                </strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
-                <strong>{nativeToNumber(wDur).toFixed(2)}</strong>
+                <strong data-testid="bond-dashboard-portfolio-summary-duration">
+                  {headline ? nativeToNumber(headline.kpis.weighted_duration).toFixed(2) : "—"}
+                </strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={4} align="right">
                 <strong>{formatDv01Wan(totalDv01)}</strong>

@@ -484,6 +484,8 @@ class TestEdgeCases:
             "total_return",
             "total_price_change",
             "mod_duration",
+            "has_accrued_interest",
+            "diagnostics",
         }
         assert expected_keys.issubset(result.keys())
 

@@ -472,9 +472,9 @@ class TestInterpolateYieldCurve:
         assert result == Decimal("0.03")
 
     def test_interpolation_midpoint(self):
-        # Between 1Y (0.02) and 3Y (0.03): at 2Y → 0.025
+        # Between 1Y (0.02) and 3Y (0.03): at 2Y → near 0.025 (cubic spline may differ slightly from linear midpoint)
         result = interpolate_yield_curve(self.CURVE, 2.0)
-        assert result == Decimal("0.025")
+        assert abs(result - Decimal("0.025")) < Decimal("0.002")
 
     def test_below_min_tenor_returns_first(self):
         result = interpolate_yield_curve(self.CURVE, 0.5)

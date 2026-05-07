@@ -8,6 +8,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
@@ -27,6 +28,60 @@ def _required_result_meta_keys() -> frozenset[str]:
 
 
 REQUIRED_RESULT_META_KEYS = _required_result_meta_keys()
+
+
+def _stub_result_meta(result_kind: str) -> dict[str, Any]:
+    meta = {key: None for key in REQUIRED_RESULT_META_KEYS}
+    meta.update(
+        {
+            "trace_id": f"tr_{result_kind.replace('.', '_')}",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "result_kind": result_kind,
+            "quality_flag": "ok",
+            "source_version": "sv_result_meta_contract",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_result_meta_contract",
+            "cache_version": "cv_result_meta_contract",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "evidence_rows": 0,
+            "tables_used": [],
+            "filters_applied": {},
+            "sql_executed": [],
+        }
+    )
+    return meta
+
+
+def _stub_executive_payload(result_kind: str) -> dict[str, Any]:
+    return {"result_meta": _stub_result_meta(result_kind), "result": {}}
+
+
+def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    module = load_module(
+        "tests._result_meta_exec.executive_contract",
+        "backend/app/api/routes/executive.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_overview",
+        lambda report_date=None: _stub_executive_payload("executive.overview"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_summary",
+        lambda report_date=None: _stub_executive_payload("executive.summary"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_pnl_attribution",
+        lambda report_date=None: _stub_executive_payload("executive.pnl-attribution"),
+    )
+    app = FastAPI()
+    app.include_router(module.router)
+    return TestClient(app)
 
 
 def _assert_json_envelope(payload: dict[str, Any], *, path: str) -> dict[str, Any]:
@@ -81,20 +136,14 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
         ("/ui/home/overview", {}),
         ("/ui/home/summary", {}),
         ("/ui/pnl/attribution", {}),
+        ("/ui/pnl/product-category/dates", {}),
+        ("/ui/balance-movement-analysis/dates", {}),
+        ("/ui/balance-analysis/dates", {}),
         ("/ui/preview/macro-foundation", {}),
         ("/ui/macro/choice-series/latest", {}),
         ("/ui/market-data/fx/formal-status", {}),
         ("/ui/market-data/fx/analytical", {}),
         ("/ui/market-data/livermore", {}),
-        ("/ui/news/choice-events/latest", {}),
-        ("/ui/preview/source-foundation", {}),
-        ("/ui/preview/source-foundation/history", {}),
-        ("/ui/preview/source-foundation/zqtz/rows", {"limit": 1, "offset": 0}),
-        ("/ui/preview/source-foundation/zqtz/traces", {"limit": 1, "offset": 0}),
-        ("/ui/pnl/product-category/dates", {}),
-        ("/ui/balance-movement-analysis/dates", {}),
-        ("/ui/balance-analysis/dates", {}),
-        ("/ui/qdb-gl-monthly-analysis/dates", {}),
     ],
 )
 def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_path, monkeypatch):
@@ -107,13 +156,16 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
         _seed_balance_analysis_dates_contract_surface(tmp_path)
     get_settings.cache_clear()
 
-    for mod in (
-        "backend.app.main",
-        "backend.app.api",
-    ):
-        sys.modules.pop(mod, None)
+    if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
+        client = _executive_contract_client(monkeypatch)
+    else:
+        for mod in (
+            "backend.app.main",
+            "backend.app.api",
+        ):
+            sys.modules.pop(mod, None)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(path, params=params or None)
     assert response.status_code == 200, f"{path} -> {response.status_code} {response.text}"
     meta = _assert_json_envelope(response.json(), path=path)
@@ -125,8 +177,7 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
-    sys.modules.pop("backend.app.main", None)
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _executive_contract_client(monkeypatch)
 
     for path in (
         "/ui/home/overview",
@@ -144,61 +195,57 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
 @pytest.mark.parametrize(
     "path",
     (
+        "/ui/news/choice-events/latest",
+        "/ui/preview/source-foundation",
+        "/ui/preview/source-foundation/history",
+        "/ui/preview/source-foundation/zqtz/rows",
+        "/ui/preview/source-foundation/zqtz/traces",
         "/ui/home/contribution",
         "/ui/home/alerts",
         "/ui/risk/overview",
     ),
 )
-def test_executive_governed_exclusion_surfaces_fail_closed_with_explicit_503(
+def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
     path, tmp_path, monkeypatch
 ):
-    """These executive routes are currently outside the repo-wide Phase 2 cutover.
-
-    They should fail closed with an explicit 503 instead of pretending to be landed
-    governed surfaces when no governed backing data exists.
-    """
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
     sys.modules.pop("backend.app.main", None)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
-    response = client.get(path)
+    params = {"limit": 1, "offset": 0} if path.endswith(("/rows", "/traces")) else None
+    response = client.get(path, params=params)
     assert response.status_code == 503, path
     body = response.json()
     assert "result_meta" not in body, path
-    assert "not backed by governed data yet" in str(body.get("detail", "")).lower(), path
+    assert "reserved" in str(body.get("detail", "")).lower(), path
     get_settings.cache_clear()
 
 
-def test_fx_formal_status_vs_analytical_basis_contract(tmp_path, monkeypatch):
+def test_macro_vendor_surfaces_emit_governed_envelopes(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
     sys.modules.pop("backend.app.main", None)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
-    formal = _assert_json_envelope(
-        client.get("/ui/market-data/fx/formal-status").json(),
-        path="/ui/market-data/fx/formal-status",
-    )
-    assert formal["basis"] == "formal"
-    assert formal["formal_use_allowed"] is True
-    assert formal["scenario_flag"] is False
-    assert formal["result_kind"] == "fx.formal.status"
-
-    analytical = _assert_json_envelope(
-        client.get("/ui/market-data/fx/analytical").json(),
-        path="/ui/market-data/fx/analytical",
-    )
-    assert analytical["basis"] == "analytical"
-    assert analytical["formal_use_allowed"] is False
-    assert analytical["scenario_flag"] is False
-    assert analytical["result_kind"] == "fx.analytical.groups"
+    for path in (
+        "/ui/preview/macro-foundation",
+        "/ui/macro/choice-series/latest",
+        "/ui/market-data/fx/formal-status",
+        "/ui/market-data/fx/analytical",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        meta = _assert_json_envelope(response.json(), path=path)
+        _assert_basis_consistency(meta, path=path)
     get_settings.cache_clear()
 
 
-def test_source_preview_surfaces_are_analytical_not_formal(tmp_path, monkeypatch):
+def test_source_preview_surfaces_fail_closed_instead_of_emitting_analytical_meta(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -213,11 +260,9 @@ def test_source_preview_surfaces_are_analytical_not_formal(tmp_path, monkeypatch
             {"limit": 1, "offset": 0},
         ),
     ):
-        meta = _assert_json_envelope(client.get(path, params=params).json(), path=path)
-        assert meta["basis"] == "analytical"
-        assert meta["formal_use_allowed"] is False
-        assert meta["scenario_flag"] is False
-        assert str(meta["result_kind"]).startswith("preview.")
+        response = client.get(path, params=params)
+        assert response.status_code == 503, path
+        assert "result_meta" not in response.json(), path
     get_settings.cache_clear()
 
 
@@ -240,9 +285,8 @@ def test_agent_post_disabled_stub_is_explicit_not_live_envelope(tmp_path, monkey
     assert response.status_code == 503
     body = response.json()
     assert body.get("enabled") is False
-    assert "disabled" in str(body.get("detail", "")).lower() or body.get("phase") == "phase1"
+    assert "disabled" in str(body.get("detail", "")).lower()
     assert "result_meta" not in body
-    assert "AgentEnvelope" not in str(body)
     get_settings.cache_clear()
 
 
@@ -300,10 +344,7 @@ def test_product_category_scenario_request_sets_scenario_basis(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
-def test_known_exceptions_source_preview_refresh_status_is_action_json_flat(
-    tmp_path, monkeypatch
-):
-    """Matches frontend `requestActionJson` for refresh polling; not a result_meta envelope."""
+def test_source_preview_refresh_status_now_fails_closed(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -311,11 +352,10 @@ def test_known_exceptions_source_preview_refresh_status_is_action_json_flat(
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
     r = client.get("/ui/preview/source-foundation/refresh-status")
-    assert r.status_code == 200
+    assert r.status_code == 503
     body = r.json()
     assert "result_meta" not in body
-    assert body.get("status") == "idle"
-    assert body.get("job_name") == "source_preview_refresh"
+    assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
 
 

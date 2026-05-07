@@ -18,14 +18,15 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("includes an agent entry outside the live primary navigation", () => {
+  it("shows the live Hermes Agent route in primary navigation", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
-    expect(agent?.readiness).toBe("placeholder");
-    expect(agent?.readinessLabel).toBe("智能体试用");
+    expect(agent?.readiness).toBe("live");
+    expect(agent?.readinessLabel).toBe("Hermes");
+    expect(agent?.navigationVisibility).toBeUndefined();
     expect(agent?.path).toBe("/agent");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
   });
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {
@@ -55,9 +56,9 @@ describe("workbench navigation mocks", () => {
       "operations-analysis",
       "bond-analysis",
       "cross-asset",
+      "macro-toolkit",
       "decision-items",
       "team-performance",
-      "market-data",
       "platform-config",
       "bond-dashboard",
       "positions",
@@ -67,8 +68,8 @@ describe("workbench navigation mocks", () => {
       "concentration-monitor",
       "cashflow-projection",
       "kpi-performance",
-      "news-events",
       "product-category-pnl",
+      "pnl-by-business",
     ];
 
     for (const key of temporaryExceptionKeys) {
@@ -79,11 +80,11 @@ describe("workbench navigation mocks", () => {
     }
   });
 
-  it("keeps risk-overview in the live primary navigation", () => {
+  it("keeps risk-overview outside the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
-    expect(riskOverview?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(riskOverview?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
   });
 
   it("promotes bond-dashboard into the live primary navigation", () => {
@@ -155,6 +156,42 @@ describe("workbench navigation mocks", () => {
     expect(cube?.readiness).toBe("placeholder");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
+  });
+
+  it("promotes news-events into live primary navigation as a temporary-exception page", () => {
+    const section = workbenchNavigation.find((s) => s.key === "news-events");
+    expect(section?.path).toBe("/news-events");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("临时开放");
+    expect(section?.governanceStatus).toBe("temporary-exception");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(false);
+  });
+
+  it("keeps source-preview outside live primary navigation", () => {
+    const section = workbenchNavigation.find((s) => s.key === "source-preview");
+    expect(section?.readiness).toBe("placeholder");
+    expect(section?.readinessLabel).toBe("Reserved");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "source-preview")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "source-preview")).toBe(false);
+  });
+
+  it("promotes market-data into the live primary navigation as a formally open page", () => {
+    const section = workbenchNavigation.find((s) => s.key === "market-data");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("已开放");
+    expect(section?.governanceStatus).toBeUndefined();
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(false);
+  });
+
+  it("promotes macro-toolkit into the live primary navigation", () => {
+    const section = workbenchNavigation.find((s) => s.key === "macro-toolkit");
+    expect(section?.path).toBe("/macro-toolkit");
+    expect(section?.readiness).toBe("live");
+    expect(section?.governanceStatus).toBe("temporary-exception");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "macro-toolkit")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "macro-toolkit")).toBe(false);
   });
 
   it("promotes decision-items into the live primary navigation as a temporary exception", () => {
@@ -257,7 +294,7 @@ describe("workbench navigation mocks", () => {
   it("resolves MOSS-V1-style paths to the canonical V3 workbench routes", () => {
     expect(resolveWorkbenchPathAlias("/adb")).toBe("/average-balance");
     expect(resolveWorkbenchPathAlias("/macro-analysis")).toBe("/market-data");
-    expect(resolveWorkbenchPathAlias("/pnl-by-business")).toBe("/ledger-pnl");
+    expect(resolveWorkbenchPathAlias("/pnl-by-business")).toBe("/pnl-by-business");
     expect(resolveWorkbenchPathAlias("/liabilities")).toBe("/liability-analytics");
     expect(resolveWorkbenchPathAlias("/bonds")).toBe("/bond-dashboard");
     expect(resolveWorkbenchPathAlias("/bond-analytics-advanced")).toBe("/bond-analysis");

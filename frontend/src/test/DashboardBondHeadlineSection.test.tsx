@@ -55,6 +55,12 @@ describe("DashboardBondHeadlineSection", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("dashboard-bond-headline-kpi")).toHaveLength(8));
     expect(screen.getByText("利率敏感度合计")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent(
+      "持仓事实表 YTM，按 rate/credit 债券市值加权；非市场曲线重估。",
+    );
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent(
+      "持仓事实表修正久期，按 rate/credit 债券市值加权。",
+    );
     expect(screen.queryByText(/DV01/i)).not.toBeInTheDocument();
   });
 

@@ -12,8 +12,7 @@ import {
   TrophyOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Button, Modal } from "antd";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
@@ -27,15 +26,13 @@ import {
   resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   type WorkbenchSection,
+  visibleWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
 import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
-import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
-
-/** 左侧主导航整块统一底色（无渐变、不在侧栏内再铺明显第二色层） */
-const WORKBENCH_RAIL_SOLID_BACKGROUND = "#121d2a";
+import { DataModeRibbon } from "../components/DataModeRibbon";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -62,9 +59,9 @@ function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
 
   if (kind === "placeholder") {
     return {
-      background: "#f2edf8",
-      color: "#654594",
-      border: "1px solid #ddd2ee",
+      background: shellTokens.readinessBadgePlaceholderBg,
+      color: shellTokens.readinessBadgePlaceholderFg,
+      border: `1px solid ${shellTokens.readinessBadgePlaceholderBorder}`,
     } as const;
   }
 
@@ -94,8 +91,8 @@ function groupButtonStyle(active: boolean) {
     gap: 10,
     padding: "10px 12px",
     borderRadius: 12,
-    background: active ? "rgba(255,255,255,0.06)" : "transparent",
-    color: active ? "#f4f7fb" : "rgba(220,228,236,0.88)",
+    background: active ? shellTokens.railNavActiveBg : "transparent",
+    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextNavIdle,
     border: "none",
     boxShadow: active ? `inset 4px 0 0 ${designTokens.color.primary[400]}` : "none",
     transition:
@@ -130,8 +127,8 @@ function supportLinkStyle(active: boolean) {
     gap: 8,
     padding: "7px 10px",
     borderRadius: 10,
-    background: active ? "rgba(255,255,255,0.06)" : "transparent",
-    color: active ? "#f4f7fb" : "rgba(184,197,210,0.82)",
+    background: active ? shellTokens.railNavActiveBg : "transparent",
+    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextSupportIdle,
     border: "none",
     fontSize: 11,
     fontWeight: 600,
@@ -346,16 +343,25 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 export function WorkbenchShell() {
   const client = useApiClient();
   const location = useLocation();
-  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
   const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
+  const agentWorkbenchActive = agentWorkbenchSection
+    ? pathMatchesWorkbenchSection(agentWorkbenchSection.path, pathnameResolved)
+    : false;
   const currentGroup =
     primaryWorkbenchNavigationGroups.find(
       (group) => group.key === resolveWorkbenchGroupKey(currentSection),
     ) ?? primaryWorkbenchNavigationGroups[0];
-  const currentGroupSections = currentGroup.sections;
+  const currentGroupVisibleSections = visibleWorkbenchNavigation.filter(
+    (section) => resolveWorkbenchGroupKey(section) === currentGroup.key,
+  );
+  const currentGroupSections =
+    currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
+  const isDashboardCockpitShell = currentSection.key === "dashboard";
+  const showShellMarketTicker = !isDashboardCockpitShell;
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
@@ -370,13 +376,24 @@ export function WorkbenchShell() {
     isBalanceMovementAnalysisCompactChrome ||
     isLiabilityAnalyticsCompactChrome;
   const isMinimalMainChrome =
-    isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isPortfolioPageOwnedChrome;
-  const showWorkspaceHeroCard =
+    isDashboardCockpitShell ||
+    isBondAnalysisMinimalShell ||
+    isCrossAssetImmersiveMain ||
+    isPortfolioPageOwnedChrome;
+  const showBalanceAnalysisLightHint = isPortfolioGroup && isBalanceAnalysisCompactChrome;
+  const showFullWorkspaceGuidance =
+    currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
     !isBalanceMovementAnalysisCompactChrome &&
     !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
+  const showWorkspaceHeroCard = showBalanceAnalysisLightHint || showFullWorkspaceGuidance;
+  const showPortfolioDecisionBoard =
+    isPortfolioGroup &&
+    currentSection.readiness !== "live" &&
+    !isBondAnalysisMinimalShell &&
+    !isPortfolioPageOwnedChrome;
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
   const bondAnalyticsDatesQuery = useQuery({
@@ -389,6 +406,7 @@ export function WorkbenchShell() {
   const shellTickerQuery = useQuery({
     queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
+    enabled: showShellMarketTicker,
     retry: false,
     staleTime: 60_000,
   });
@@ -421,13 +439,13 @@ export function WorkbenchShell() {
         .filter((section): section is WorkbenchSection => Boolean(section)),
     }))
     .filter((stage) => stage.sections.length > 0);
-  /** 深色主导航轨分割线（与参照图侧栏一致） */
-  const railDividerColor = "rgba(255,255,255,0.08)";
   const contentSurfaceShadow = "0 16px 34px rgba(15, 23, 42, 0.08)";
 
   return (
+    <>
+    <DataModeRibbon />
     <div
-      className="workbench-shell-grid"
+      className={`workbench-shell-grid${isDashboardCockpitShell ? " workbench-shell-grid--cockpit" : ""}`}
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",
@@ -442,10 +460,10 @@ export function WorkbenchShell() {
           alignContent: "start",
           gap: 12,
           padding: isMinimalMainChrome ? "12px" : "14px",
-          border: `1px solid ${railDividerColor}`,
+          border: `1px solid ${shellTokens.railBorder}`,
           borderRadius: 20,
           boxShadow: "0 22px 48px rgba(10, 21, 33, 0.16)",
-          background: WORKBENCH_RAIL_SOLID_BACKGROUND,
+          background: shellTokens.railBg,
         }}
       >
         <div
@@ -453,7 +471,7 @@ export function WorkbenchShell() {
             display: "grid",
             gap: 6,
             padding: "4px 2px 12px",
-            borderBottom: `1px solid ${railDividerColor}`,
+            borderBottom: `1px solid ${shellTokens.railBorder}`,
           }}
         >
           <div
@@ -470,8 +488,8 @@ export function WorkbenchShell() {
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                background: "rgba(255,255,255,0.1)",
-                color: "#f5f7fa",
+                background: shellTokens.railSurfaceTint,
+                color: shellTokens.railBrandText,
                 fontWeight: 700,
                 boxShadow: "none",
               }}
@@ -481,7 +499,7 @@ export function WorkbenchShell() {
             <div style={{ display: "grid", gap: 0, minWidth: 0 }}>
               <span
                 style={{
-                  color: "#f5f7fa",
+                  color: shellTokens.railBrandText,
                   fontWeight: 700,
                   fontSize: 16,
                   letterSpacing: "-0.02em",
@@ -580,7 +598,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 6,
               paddingTop: 6,
-              borderTop: `1px solid ${railDividerColor}`,
+              borderTop: `1px solid ${shellTokens.railBorder}`,
             }}
           >
             <span
@@ -614,7 +632,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 10,
               paddingTop: 4,
-              borderTop: `1px solid ${railDividerColor}`,
+              borderTop: `1px solid ${shellTokens.railBorder}`,
             }}
           >
             <div
@@ -696,10 +714,10 @@ export function WorkbenchShell() {
                       width: 18,
                       height: 18,
                       borderRadius: 999,
-                      border: active ? `1px solid rgba(255,255,255,0.22)` : "none",
-                      color: active ? "#ffffff" : "rgba(184,197,210,0.76)",
+                      border: active ? `1px solid ${shellTokens.railIconBorderActive}` : "none",
+                      color: active ? shellTokens.railIconFgActive : shellTokens.railIconFgIdle,
                       fontSize: 10,
-                      background: active ? "rgba(255,255,255,0.1)" : "transparent",
+                      background: active ? shellTokens.railSurfaceTint : "transparent",
                     }}
                   >
                     {iconMap[group.icon]}
@@ -717,7 +735,7 @@ export function WorkbenchShell() {
                   </span>
                   <span
                     style={{
-                      color: active ? "rgba(223,235,255,0.94)" : "rgba(184,197,210,0.62)",
+                      color: active ? shellTokens.railCountFgActive : shellTokens.railCountFgIdle,
                       fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: "0.06em",
@@ -731,13 +749,60 @@ export function WorkbenchShell() {
           </nav>
         </section>
 
+        {agentWorkbenchSection ? (
+          <section
+            className="workbench-shell-agent-nav"
+            data-testid="workbench-agent-nav"
+          >
+            <span className="workbench-shell-section-label workbench-shell-section-label--rail">
+              Agent
+            </span>
+            <NavLink
+              to={agentWorkbenchSection.path}
+              className="workbench-shell-agent-nav__link"
+              data-active={agentWorkbenchActive ? "true" : "false"}
+              style={{
+                background: agentWorkbenchActive ? shellTokens.railNavActiveBg : "transparent",
+                color: agentWorkbenchActive
+                  ? shellTokens.railTextOnNavActive
+                  : shellTokens.railTextSectionIdle,
+              }}
+            >
+              <div className="workbench-shell-agent-nav__main">
+                <span className="workbench-shell-agent-nav__icon">
+                  {iconMap[agentWorkbenchSection.icon]}
+                </span>
+                <span className="workbench-shell-agent-nav__label">
+                  {agentWorkbenchSection.label}
+                </span>
+                <span
+                  className="workbench-shell-agent-nav__badge"
+                  style={{
+                    ...sectionBadgeStyle(agentWorkbenchSection),
+                  }}
+                >
+                  {agentWorkbenchSection.readinessLabel}
+                </span>
+              </div>
+              <span
+                className="workbench-shell-agent-nav__hint"
+                style={{
+                  color: shellTokens.railTextSupportIdle,
+                }}
+              >
+                Hermes Agent
+              </span>
+            </NavLink>
+          </section>
+        ) : null}
+
         {isBondAnalysisMinimalShell ? null : (
           <section
             style={{
               display: "grid",
               gap: 6,
               paddingTop: 8,
-              borderTop: `1px solid ${railDividerColor}`,
+              borderTop: `1px solid ${shellTokens.railBorder}`,
             }}
           >
             <span className="workbench-shell-section-label workbench-shell-section-label--rail">
@@ -745,44 +810,6 @@ export function WorkbenchShell() {
             </span>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
-
-              if (item.key === "agent") {
-                return (
-                  <Button
-                    key={item.key}
-                    type="text"
-                    className="workbench-agent-dialog-trigger"
-                    onClick={() => setAgentDialogOpen(true)}
-                    style={{
-                      height: "auto",
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: `1px solid ${railDividerColor}`,
-                      background: "transparent",
-                      color: "#f4f7fb",
-                    }}
-                  >
-                    <div className="workbench-agent-dialog-trigger__main">
-                      <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>智能体对话</span>
-                      <span
-                        style={{
-                          ...sectionBadgeStyle(item),
-                          borderRadius: 999,
-                          padding: "1px 6px",
-                          fontSize: 10,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {item.readinessLabel}
-                      </span>
-                    </div>
-                    <span className="workbench-agent-dialog-trigger__hint">
-                      基于当前页面提问
-                    </span>
-                  </Button>
-                );
-              }
 
               return (
                 <NavLink
@@ -793,8 +820,8 @@ export function WorkbenchShell() {
                     gap: 2,
                     padding: "8px 10px",
                     borderRadius: 12,
-                    background: active ? "rgba(255,255,255,0.06)" : "transparent",
-                    color: active ? "#f4f7fb" : "rgba(205,215,224,0.88)",
+                    background: active ? shellTokens.railNavActiveBg : "transparent",
+                    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextSectionIdle,
                     border: "none",
                   }}
                 >
@@ -825,7 +852,7 @@ export function WorkbenchShell() {
             display: "grid",
             gap: 4,
             paddingTop: 8,
-            borderTop: `1px solid ${railDividerColor}`,
+            borderTop: `1px solid ${shellTokens.railBorder}`,
           }}
         >
           <span className="workbench-shell-section-label workbench-shell-section-label--rail">
@@ -958,80 +985,82 @@ export function WorkbenchShell() {
             </section>
           </div>
 
-          <section
-            data-testid="workbench-market-ticker"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 10,
-              minWidth: 0,
-              paddingTop: 2,
-            }}
-          >
-            <span
+          {showShellMarketTicker ? (
+            <section
+              data-testid="workbench-market-ticker"
               style={{
-                color: shellTokens.colorTextMuted,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 10,
+                minWidth: 0,
+                paddingTop: 2,
               }}
             >
-              市场快讯
-            </span>
-            {shellTickerItems.map((item, index) => (
-              <div
-                key={item.key}
+              <span
                 style={{
-                  display: "inline-flex",
-                  alignItems: "baseline",
-                  gap: 5,
-                  minWidth: 0,
+                  color: shellTokens.colorTextMuted,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
                 }}
               >
-                <span
+                市场快讯
+              </span>
+              {shellTickerItems.map((item, index) => (
+                <div
+                  key={item.key}
                   style={{
-                    color: shellTokens.colorTextMuted,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    letterSpacing: "0.03em",
+                    display: "inline-flex",
+                    alignItems: "baseline",
+                    gap: 5,
+                    minWidth: 0,
                   }}
                 >
-                  {item.label}
-                </span>
-                <strong
-                  style={{
-                    color: shellTokens.colorTextPrimary,
-                    fontSize: 15,
-                    lineHeight: 1,
-                    fontWeight: 700,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {item.value}
-                </strong>
-                <span
-                  style={{
-                    color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
-                    fontSize: 10,
-                    fontWeight: 700,
-                  }}
-                >
-                  {item.delta}
-                </span>
-                {index < shellTickerItems.length - 1 ? (
                   <span
                     style={{
-                      width: 1,
-                      height: 10,
-                      background: shellTokens.colorBorderSoft,
+                      color: shellTokens.colorTextMuted,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.03em",
                     }}
-                  />
-                ) : null}
-              </div>
-            ))}
-          </section>
+                  >
+                    {item.label}
+                  </span>
+                  <strong
+                    style={{
+                      color: shellTokens.colorTextPrimary,
+                      fontSize: 15,
+                      lineHeight: 1,
+                      fontWeight: 700,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {item.value}
+                  </strong>
+                  <span
+                    style={{
+                      color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
+                      fontSize: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.delta}
+                  </span>
+                  {index < shellTickerItems.length - 1 ? (
+                    <span
+                      style={{
+                        width: 1,
+                        height: 10,
+                        background: shellTokens.colorBorderSoft,
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </section>
+          ) : null}
         </header>
         {showWorkspaceHeroCard ? (
           <header
@@ -1351,7 +1380,7 @@ export function WorkbenchShell() {
             gap: 18,
           }}
         >
-          {isPortfolioGroup && !isBondAnalysisMinimalShell && !isPortfolioPageOwnedChrome ? (
+          {showPortfolioDecisionBoard ? (
             <section
               data-testid="portfolio-workbench-board"
               style={{
@@ -1439,7 +1468,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isBondAnalysisMinimalShell ? (
+          {!isDashboardCockpitShell && !isBondAnalysisMinimalShell ? (
             <section
               data-testid="workbench-section-subnav"
               style={{
@@ -1543,17 +1572,7 @@ export function WorkbenchShell() {
           <Outlet />
         </main>
       </div>
-      <Modal
-        title="智能体对话"
-        open={agentDialogOpen}
-        onCancel={() => setAgentDialogOpen(false)}
-        footer={null}
-        width="min(1120px, 92vw)"
-        destroyOnHidden={false}
-        className="workbench-agent-dialog"
-      >
-        <AgentWorkbenchPage />
-      </Modal>
     </div>
+    </>
   );
 }

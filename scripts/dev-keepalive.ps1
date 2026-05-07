@@ -14,6 +14,11 @@ $logRoot = Join-Path $root "tmp-governance\runtime-clean\logs"
 New-Item -ItemType Directory -Force $logRoot | Out-Null
 $keepaliveLog = Join-Path $logRoot "dev-keepalive.log"
 $script:ProcessInspectionAvailable = $true
+$apiScriptName = if ([string]::IsNullOrWhiteSpace($env:MOSS_DEV_API_SCRIPT)) {
+  "dev-api.ps1"
+} else {
+  [string]$env:MOSS_DEV_API_SCRIPT
+}
 
 function Write-KeepaliveLog {
   param(
@@ -329,7 +334,7 @@ function Invoke-KeepaliveCycle {
   if (-not (Test-HttpEndpoint -Url "http://127.0.0.1:7888/health")) {
     Restart-HttpService `
       -ServiceName "api" `
-      -ScriptName "dev-api.ps1" `
+      -ScriptName $apiScriptName `
       -Url "http://127.0.0.1:7888/health" `
       -Port 7888
   }
@@ -357,7 +362,7 @@ function Write-HeartbeatIfDue {
   Write-KeepaliveLog "heartbeat api=$apiOk frontend=$frontendOk processInspection=$script:ProcessInspectionAvailable"
 }
 
-Write-KeepaliveLog "dev keepalive started (interval=${IntervalSeconds}s, once=$Once)"
+Write-KeepaliveLog "dev keepalive started (interval=${IntervalSeconds}s, once=$Once, apiScript=$apiScriptName)"
 
 do {
   try {

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -9,6 +9,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
+import type { LivermoreOutputKey } from "../api/contracts";
 import CrossAssetPage from "../features/cross-asset/pages/CrossAssetPage";
 
 function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
@@ -263,6 +264,372 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-analysis-options-commodity_options")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-options-rates_bond_options")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-options")).not.toHaveTextContent("Evidence:");
+  });
+
+  it("surfaces incomplete A-share Livermore strategy status on the cross-asset page", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const livermorePayload = await client.getLivermoreStrategy({ asOfDate: "2026-04-30" });
+    const resultWithoutRiskExit = {
+      ...livermorePayload.result,
+      rule_readiness: livermorePayload.result.rule_readiness.map((rule) =>
+        rule.key === "risk_exit"
+          ? {
+              ...rule,
+              status: "blocked" as const,
+              summary: "Risk and exit output is blocked because the position snapshot has no ACTIVE rows.",
+              missing_inputs: ["positions", "entry_cost", "bars_since_entry", "close_history"],
+            }
+          : rule,
+      ),
+      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"] as LivermoreOutputKey[],
+      unsupported_outputs: [
+        {
+          key: "risk_exit" as const,
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows for as_of_date 2026-04-30.",
+        },
+      ],
+    };
+    delete resultWithoutRiskExit.risk_exit;
+    vi.spyOn(client, "getLivermoreStrategy").mockResolvedValue({
+      ...livermorePayload,
+      result: resultWithoutRiskExit,
+    });
+
+    renderPage(client);
+
+    const panel = await screen.findByTestId("cross-asset-livermore-status");
+    await waitFor(() => {
+      expect(client.getLivermoreStrategy).toHaveBeenCalled();
+      expect(panel).toHaveTextContent("市场门控");
+    });
+    expect(panel).toHaveTextContent("A股策略状态");
+    expect(panel).toHaveTextContent("个股候选");
+    expect(panel).toHaveTextContent("风险退出");
+    expect(panel).toHaveTextContent("缺持仓快照");
+    expect(panel).toHaveTextContent("position snapshot");
+    expect(screen.getByTestId("cross-asset-livermore-risk-exit")).toHaveTextContent("未闭环");
+  });
+
+  it("submits manually entered Livermore positions from the cross-asset page", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const livermorePayload = await client.getLivermoreStrategy({ asOfDate: "2026-04-30" });
+    const blockedResult = {
+      ...livermorePayload.result,
+      as_of_date: "2026-04-30",
+      rule_readiness: livermorePayload.result.rule_readiness.map((rule) =>
+        rule.key === "risk_exit"
+          ? {
+              ...rule,
+              status: "blocked" as const,
+              summary: "Position snapshot is missing.",
+              missing_inputs: ["positions"],
+            }
+          : rule,
+      ),
+      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"] as LivermoreOutputKey[],
+      unsupported_outputs: [{ key: "risk_exit" as const, reason: "position snapshot is missing." }],
+    };
+    delete blockedResult.risk_exit;
+    vi.spyOn(client, "getLivermoreStrategy").mockResolvedValue({
+      ...livermorePayload,
+      result: blockedResult,
+    });
+    const confluenceSpy = vi.spyOn(client, "getLivermoreSignalConfluence");
+    const manualSpy = vi.spyOn(client, "materializeLivermoreManualPositionSnapshot").mockResolvedValue({
+      status: "completed",
+      fact_source: "livermore_position_snapshot",
+      input_mode: "manual",
+      as_of_date: "2026-04-30",
+      row_count: 1,
+      run_id: "livermore_position_snapshot:2026-04-30:test",
+      source_file_hash: "sha256:test",
+      source_systems: ["livermore_position_snapshot_manual"],
+      source_version: "sv_livermore_position_test",
+      vendor_version: "vv_livermore_position_manual_test",
+      csv_path: null,
+      risk_exit_input_status: "ready",
+      risk_exit_input_block_reason: "",
+    });
+
+    renderPage(client);
+    await screen.findByTestId("cross-asset-livermore-status");
+    await waitFor(() => {
+      expect(confluenceSpy).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("cross-asset-livermore-confluence")).toHaveTextContent("Alpha");
+    });
+    fireEvent.change(await screen.findByLabelText("股票代码"), { target: { value: "000001.SZ" } });
+    fireEvent.change(screen.getByLabelText("股票名称"), { target: { value: "Alpha" } });
+    fireEvent.change(screen.getByLabelText("入场成本"), { target: { value: "10.5" } });
+    fireEvent.change(screen.getByLabelText("持有天数"), { target: { value: "6" } });
+    fireEvent.change(screen.getByLabelText("持仓数量"), { target: { value: "10000" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存持仓" }));
+
+    await waitFor(() => {
+      expect(manualSpy).toHaveBeenCalledWith({
+        asOfDate: "2026-04-30",
+        positions: [
+          {
+            stockCode: "000001.SZ",
+            stockName: "Alpha",
+            entryCost: 10.5,
+            barsSinceEntry: 6,
+            positionQuantity: 10000,
+          },
+        ],
+      });
+    });
+    expect(await screen.findByText("已写入 1 条持仓快照。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(confluenceSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(confluenceSpy.mock.calls[0]?.[0]).toEqual({ asOfDate: "2026-04-30" });
+    expect(confluenceSpy.mock.calls.at(-1)?.[0]).toEqual({ asOfDate: "2026-04-30" });
+  });
+
+  it("renders observation-only Livermore confluence rows with the same strategy date", async () => {
+    type SignalConfluenceClient = ApiClient & {
+      getLivermoreSignalConfluence: (options?: { asOfDate?: string }) => Promise<{
+        result: {
+          as_of_date: string;
+          macro_context: {
+            status: string;
+            composite_score: number | null;
+            description?: string;
+          };
+          strategy_context: {
+            market_gate_state: string;
+            position_size_hint: number | null;
+            new_entry_observation_allowed: boolean;
+          };
+          entry_observations: Array<{
+            action: string;
+            stock_code: string;
+            stock_name: string;
+            current_price: number;
+            buy_trigger_price: number | null;
+            invalidation_reference_price: number | null;
+            position_size_hint: number | null;
+            evidence: string[];
+          }>;
+          exit_observations: Array<{
+            action: string;
+            stock_code: string;
+            stock_name: string;
+            current_price: number;
+            exit_watch_price: number | null;
+            triggered: boolean;
+            evidence: string[];
+          }>;
+          diagnostics: Array<{
+            severity: string;
+            code: string;
+            message: string;
+          }>;
+        };
+      }>;
+    };
+
+    const client = createApiClient({ mode: "mock" }) as SignalConfluenceClient;
+    const livermoreSpy = vi.spyOn(client, "getLivermoreStrategy");
+    const confluenceSpy = vi.fn().mockResolvedValue({
+      result: {
+        as_of_date: "2026-04-30",
+        macro_context: {
+          status: "supportive",
+          composite_score: -0.35,
+          description: "宏观环境偏支持，但该面板仅供观察。",
+        },
+        strategy_context: {
+          market_gate_state: "HOT",
+          position_size_hint: 0.75,
+          new_entry_observation_allowed: true,
+        },
+        entry_observations: [
+          {
+            action: "observe_entry_setup",
+            stock_code: "000001.SZ",
+            stock_name: "Alpha",
+            current_price: 21.9,
+            buy_trigger_price: 21.8,
+            invalidation_reference_price: 20.6,
+            position_size_hint: 0.5,
+            evidence: ["突破位贴近买点", "量价配合待确认"],
+          },
+        ],
+        exit_observations: [
+          {
+            action: "observe_exit_watch",
+            stock_code: "000777.SZ",
+            stock_name: "Watch Alpha",
+            current_price: 19.8,
+            exit_watch_price: 20.1,
+            triggered: false,
+            evidence: ["EMA10 失守前先观察"],
+          },
+        ],
+        diagnostics: [
+          "No risk exit watch items or triggered exit items available.",
+          "Observation-only output. This service does not generate trading instructions.",
+          {
+            severity: "info",
+            code: "observation_only",
+            message: "仅供观察，不构成交易指令。",
+          },
+        ],
+      },
+    });
+    client.getLivermoreSignalConfluence = confluenceSpy;
+
+    renderPage(client);
+
+    const panel = await screen.findByTestId("cross-asset-livermore-confluence");
+    await waitFor(() => {
+      expect(livermoreSpy).toHaveBeenCalled();
+      expect(confluenceSpy).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(panel).toHaveTextContent("Alpha");
+    });
+    expect(confluenceSpy.mock.calls[0]?.[0]).toEqual(livermoreSpy.mock.calls[0]?.[0]);
+    expect(panel).toHaveTextContent("宏观 × 策略观察点位");
+    expect(panel).toHaveTextContent("仅供观察，不构成交易指令。");
+    expect(panel).not.toHaveTextContent("message-0");
+    expect(panel).not.toHaveTextContent("Observation-only output. This service does not generate trading instructions.");
+    expect(panel).not.toHaveTextContent("No risk exit watch items or triggered exit items available.");
+    expect(panel).toHaveTextContent("当前没有可展示的退出观察点位。");
+    expect(panel).toHaveTextContent("候选触发价");
+    expect(panel).toHaveTextContent("21.80");
+    expect(panel).toHaveTextContent("退出观察价");
+    expect(panel).toHaveTextContent("20.10");
+    expect(panel).toHaveTextContent("突破位贴近买点");
+    expect(panel).toHaveTextContent("EMA10 失守前先观察");
+  });
+
+  it("renders Livermore confluence diagnostics and empty observations when no rows are available", async () => {
+    type SignalConfluenceClient = ApiClient & {
+      getLivermoreSignalConfluence: (options?: { asOfDate?: string }) => Promise<{
+        result: {
+          as_of_date: string;
+          macro_context: {
+            status: string;
+            composite_score: number | null;
+          };
+          strategy_context: {
+            market_gate_state: string;
+            position_size_hint: number | null;
+            new_entry_observation_allowed: boolean;
+          };
+          entry_observations: unknown[];
+          exit_observations: unknown[];
+          diagnostics: Array<{
+            severity: string;
+            code: string;
+            message: string;
+          }>;
+        };
+      }>;
+    };
+
+    const client = createApiClient({ mode: "mock" }) as SignalConfluenceClient;
+    client.getLivermoreSignalConfluence = vi.fn().mockResolvedValue({
+      result: {
+        as_of_date: "2026-04-30",
+        macro_context: {
+          status: "unknown",
+          composite_score: null,
+        },
+        strategy_context: {
+          market_gate_state: "UNKNOWN",
+          position_size_hint: 0,
+          new_entry_observation_allowed: false,
+        },
+        entry_observations: [],
+        exit_observations: [],
+        diagnostics: [
+          {
+            severity: "warning",
+            code: "missing_macro_score",
+            message: "缺少宏观综合分，当前只能保留观察口径。",
+          },
+          {
+            severity: "info",
+            code: "no_observations",
+            message: "当前没有可展示的入场或退出观察点位。",
+          },
+        ],
+      },
+    });
+
+    renderPage(client);
+
+    const panel = await screen.findByTestId("cross-asset-livermore-confluence");
+    await waitFor(() => {
+      expect(client.getLivermoreSignalConfluence).toHaveBeenCalled();
+      expect(panel).toHaveTextContent("暂无可观察点位");
+    });
+    expect(panel).toHaveTextContent("暂无可观察点位");
+    expect(panel).toHaveTextContent("缺少宏观综合分，当前只能保留观察口径。");
+    expect(panel).toHaveTextContent("当前没有可展示的入场或退出观察点位。");
+    expect(panel).not.toHaveTextContent("message-");
+    expect(panel).toHaveTextContent("宏观缺数");
+    expect(panel).toHaveTextContent("暂无点位");
+  });
+
+  it("keeps restrictive Livermore confluence entries in observe-only mode and marks triggered exits", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getLivermoreSignalConfluence = vi.fn().mockResolvedValue({
+      result: {
+        as_of_date: "2026-04-30",
+        macro_context: {
+          status: "restrictive",
+          composite_score: 0.42,
+          multiplier: 0,
+        },
+        strategy_context: {
+          market_gate_state: "OVERHEAT",
+          market_gate_exposure: 1,
+          allows_new_entry_observations: false,
+        },
+        position_size_hint: 0,
+        entry_observations: [
+          {
+            action: "observe_only",
+            stock_code: "000002.SZ",
+            stock_name: "Beta",
+            current_price: 12.1,
+            trigger_price: 12.4,
+            invalidation_reference_price: null,
+            evidence: ["候选触发价来自 Livermore breakout_level。"],
+          },
+        ],
+        exit_observations: [
+          {
+            action: "exit_triggered",
+            stock_code: "000003.SZ",
+            stock_name: "Gamma",
+            current_price: 9.1,
+            exit_watch_price: 9.8,
+            triggered: true,
+            evidence: ["退出观察价来自 Livermore EMA10。"],
+          },
+        ],
+        diagnostics: ["Observation-only output. This service does not generate trading instructions."],
+        disclaimer: "Observation-only output. This service does not generate trading instructions.",
+      },
+    });
+
+    renderPage(client);
+
+    const panel = await screen.findByTestId("cross-asset-livermore-confluence");
+    await waitFor(() => {
+      expect(panel).toHaveTextContent("偏收敛");
+      expect(panel).toHaveTextContent("仅保留观察，不追加新动作");
+      expect(panel).toHaveTextContent("仅观察");
+      expect(panel).toHaveTextContent("退出观察已触发");
+      expect(panel).toHaveTextContent("0%");
+    });
   });
 
   it("surfaces the data-driven cockpit sections and provenance flags", async () => {

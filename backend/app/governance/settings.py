@@ -81,6 +81,16 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     agent_enabled: bool = False
+    agent_provider: str = "local"
+    agent_hermes_command: str = "wsl.exe"
+    agent_hermes_wsl_distro: str = "HermesUbuntu"
+    agent_hermes_home: str = ""
+    agent_hermes_transport: str = "cli"
+    agent_hermes_bridge_url: str = "http://127.0.0.1:7891"
+    agent_hermes_model: str = ""
+    agent_hermes_toolsets: str = ""
+    agent_hermes_max_turns: int = 20
+    agent_hermes_timeout_seconds: float = 180.0
     postgres_dsn: str = DEFAULT_POSTGRES_DSN
     governance_sql_dsn: str = ""
     governance_backend: str = "jsonl"
@@ -116,6 +126,8 @@ class Settings(BaseSettings):
     ftp_rate_pct: Decimal = Decimal("1.75")
     formal_pnl_enabled: bool = True
     formal_pnl_scope_json: str = '["*"]'
+    #: 为 True 时，/api/pnl/by-business-ytd 优先用 fact_formal_pnl_fi + fact_nonstd_pnl_bridge 按年累计聚合（与物化正式口径一致）；为 False 时沿用刷新包 + V1 兼容变换（供契约测试与排障）。
+    pnl_by_business_ytd_prefer_formal_facts: bool = True
     cors_origins: str = (
         "http://localhost:5888,http://127.0.0.1:5888,http://[::1]:5888,"
         "http://localhost:5173,http://127.0.0.1:5173,http://[::1]:5173"

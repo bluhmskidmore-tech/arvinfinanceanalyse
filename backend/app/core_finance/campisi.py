@@ -45,24 +45,34 @@ def _coerce_percent_curve(m: dict[str, Any] | None) -> dict[str, float]:
 
 
 def interpolate_treasury_yield_pct(market: dict[str, Any] | None, maturity_years: float) -> float:
-    """在国债关键期限（年）间线性插值，输入/输出均为收益率百分数。"""
+    """在国债关键期限（年）间插值，输入/输出均为收益率百分数。
+
+    Delegates to ``curve_engine`` cubic spline for ≥ 3 tenor points;
+    falls back to piecewise linear otherwise.  Signature unchanged.
+    """
     curve = _coerce_percent_curve(market)
     if not curve:
         return 0.0
+
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
+
     yields = [curve.get(k, 0.0) for k in _TREASURY_KEYS]
-    y = float(maturity_years)
-    if y <= _TENORS[0]:
-        return yields[0]
-    if y >= _TENORS[-1]:
-        return yields[-1]
-    for i in range(len(_TENORS) - 1):
-        if _TENORS[i] <= y <= _TENORS[i + 1]:
-            t0, t1 = _TENORS[i], _TENORS[i + 1]
-            y0, y1 = yields[i], yields[i + 1]
-            if t1 == t0:
-                return y0
-            return y0 + (y1 - y0) * (y - t0) / (t1 - t0)
-    return yields[-1]
+    points = [CurvePoint(years=float(t), rate=Decimal(str(y))) for t, y in zip(_TENORS, yields)]
+    points.sort(key=lambda p: p.years)
+
+    if len(points) >= 3:
+        fitted = _build_spline(points)
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(points))
+    return float(_engine_interpolate(fitted, float(maturity_years)))
 
 
 def benchmark_yield_change_decimal(
@@ -147,6 +157,7 @@ class CampisiResult:
     totals: dict[str, float]
     by_asset_class: list[dict[str, Any]] = field(default_factory=list)
     by_bond: list[dict[str, Any]] = field(default_factory=list)
+    diagnostics: list[str] = field(default_factory=list)
 
 
 def _aggregate_by_class(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -233,6 +244,7 @@ def campisi_attribution(
     """
     num_days = max((end_date - start_date).days, 1)
     by_bond: list[dict[str, Any]] = []
+    accrued_diagnostics: list[str] = []
     for row in positions_merged:
         mat = row.get("maturity_date_start")
         if hasattr(mat, "date"):
@@ -259,6 +271,9 @@ def campisi_attribution(
             "accrued_interest_end": row.get("accrued_interest_end"),
         }
         fx = compute_bond_four_effects(bond, num_days, bench_dec, spread_dec, start_date, coupon_frequency=cf)
+        bond_label = str(bond.get("bond_code") or bond.get("instrument_id") or "UNKNOWN")
+        for d in fx.get("diagnostics") or []:
+            accrued_diagnostics.append(f"{bond_label}: {d}")
         rec = {
             "bond_code": bond["bond_code"],
             "asset_class": row.get("asset_class_start"),
@@ -270,6 +285,7 @@ def campisi_attribution(
             "selection_effect": float(fx["selection_effect"]),
             "total_return": float(fx["total_return"]),
             "mod_duration": float(fx["mod_duration"]),
+            "has_accrued_interest": bool(fx["has_accrued_interest"]),
         }
         by_bond.append(rec)
 
@@ -282,7 +298,13 @@ def campisi_attribution(
         "market_value_start": sum(r["market_value_start"] for r in by_bond),
     }
     by_class = _aggregate_by_class(by_bond)
-    return CampisiResult(num_days=num_days, totals=totals, by_asset_class=by_class, by_bond=by_bond)
+    return CampisiResult(
+        num_days=num_days,
+        totals=totals,
+        by_asset_class=by_class,
+        by_bond=by_bond,
+        diagnostics=accrued_diagnostics,
+    )
 
 
 def campisi_enhanced(
@@ -300,6 +322,7 @@ def campisi_enhanced(
     """
     num_days = max((end_date - start_date).days, 1)
     by_bond: list[dict[str, Any]] = []
+    accrued_diagnostics: list[str] = []
     for row in positions_merged:
         mat = row.get("maturity_date_start")
         if hasattr(mat, "date"):
@@ -326,6 +349,9 @@ def campisi_enhanced(
             "accrued_interest_end": row.get("accrued_interest_end"),
         }
         sx = compute_bond_six_effects(bond, num_days, bench_dec, spread_dec, start_date, coupon_frequency=cf)
+        bond_label = str(bond.get("bond_code") or bond.get("instrument_id") or "UNKNOWN")
+        for d in sx.get("diagnostics") or []:
+            accrued_diagnostics.append(f"{bond_label}: {d}")
         rec = {
             "bond_code": bond["bond_code"],
             "asset_class": row.get("asset_class_start"),
@@ -340,6 +366,7 @@ def campisi_enhanced(
             "selection_effect": float(sx["selection_effect"]),
             "total_return": float(sx["total_return"]),
             "mod_duration": float(sx["mod_duration"]),
+            "has_accrued_interest": bool(sx["has_accrued_interest"]),
         }
         by_bond.append(rec)
 
@@ -360,6 +387,7 @@ def campisi_enhanced(
         "totals": totals,
         "by_asset_class": by_class,
         "by_bond": by_bond,
+        "diagnostics": accrued_diagnostics,
     }
 
 

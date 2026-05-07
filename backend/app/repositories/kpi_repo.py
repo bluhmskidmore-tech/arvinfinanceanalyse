@@ -70,8 +70,11 @@ class KpiRepository:
                 ],
             )
 
+    def session(self):
+        return self._session_factory()
+
     def list_owners(self, *, year: int | None = None, is_active: bool | None = None) -> list[dict[str, object]]:
-        with self._session_factory() as session:
+        with self.session() as session:
             stmt = select(KpiOwner)
             if year is not None:
                 stmt = stmt.where(KpiOwner.year == int(year))
@@ -108,7 +111,7 @@ class KpiRepository:
             period_type=period_type,
             period_value=period_value,
         )
-        with self._session_factory() as session:
+        with self.session() as session:
             owner = session.get(KpiOwner, int(owner_id))
             if owner is None:
                 raise ValueError(f"Unknown KPI owner_id={owner_id}")

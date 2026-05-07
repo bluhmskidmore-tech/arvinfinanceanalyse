@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
+import duckdb
+
+from backend.app.config.product_category_mapping import build_product_category_config_for_report_date
+from backend.app.core_finance.product_category_pnl import (
+    CanonicalFactRow,
+    apply_manual_adjustments,
+    calculate_read_model,
+)
 from backend.app.core_finance.product_category_pnl_attribution import (
     build_incomplete_product_category_attribution_payload,
     build_product_category_attribution_payload,
@@ -47,6 +60,7 @@ from backend.app.services.product_category_source_service import discover_source
 from backend.app.tasks.product_category_pnl import (
     PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
     PRODUCT_CATEGORY_PNL_LOCK,
+    _load_manual_adjustments,
     materialize_product_category_pnl,
 )
 
@@ -118,6 +132,10 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                     run_id=run_id,
                 )
             except Exception:
+                logger.warning(
+                    "Async dispatch for product-category refresh failed, falling back to sync",
+                    exc_info=True,
+                )
                 try:
                     payload = materialize_product_category_pnl.fn(
                         duckdb_path=str(settings.duckdb_path),
@@ -617,6 +635,140 @@ def product_category_pnl_envelope(
     return build_formal_result_envelope(
         result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def product_category_pnl_payload_from_canonical_ytd_anchor(
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    ftp_rate_pct: float,
+) -> ProductCategoryPnlPayload | None:
+    """Rebuild formal YTD rows from ``product_category_pnl_canonical_fact`` when persisted
+    ``product_category_pnl_formal_read_model`` rows for ``view='ytd'`` are missing.
+
+    Uses the same ``calculate_read_model`` + governance manual adjustments as
+    ``materialize_product_category_pnl`` for the ytd slice.
+    """
+    try:
+        anchor = date.fromisoformat(report_date)
+    except ValueError:
+        return None
+
+    gov_path = Path(governance_dir)
+    fallback_rate = Decimal(str(ftp_rate_pct))
+
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
+    except (OSError, duckdb.Error):
+        return None
+
+    try:
+        dates_rows = conn.execute(
+            """
+            select distinct report_date
+            from product_category_pnl_canonical_fact
+            where report_date <= ? and substr(report_date, 1, 4) = ?
+            order by report_date
+            """,
+            [report_date, str(anchor.year)],
+        ).fetchall()
+
+        date_strings = [str(row[0]) for row in dates_rows]
+        if report_date not in date_strings:
+            return None
+
+        facts_by: dict[date, list[CanonicalFactRow]] = {}
+        for ds in date_strings:
+            d_obj = date.fromisoformat(ds)
+            rows = conn.execute(
+                """
+                select report_date, account_code, currency, account_name,
+                       beginning_balance, ending_balance, monthly_pnl,
+                       daily_avg_balance, annual_avg_balance, days_in_period
+                from product_category_pnl_canonical_fact
+                where report_date = ?
+                order by account_code, currency
+                """,
+                [ds],
+            ).fetchall()
+            raw: list[CanonicalFactRow] = []
+            for tup in rows:
+                rd = date.fromisoformat(str(tup[0]))
+                raw.append(
+                    CanonicalFactRow(
+                        report_date=rd,
+                        account_code=str(tup[1]),
+                        currency=str(tup[2]),
+                        account_name=str(tup[3]),
+                        beginning_balance=Decimal(str(tup[4])),
+                        ending_balance=Decimal(str(tup[5])),
+                        monthly_pnl=Decimal(str(tup[6])),
+                        daily_avg_balance=Decimal(str(tup[7])),
+                        annual_avg_balance=Decimal(str(tup[8])),
+                        days_in_period=int(tup[9]),
+                    )
+                )
+            facts_by[d_obj] = apply_manual_adjustments(
+                raw,
+                _load_manual_adjustments(gov_path, d_obj),
+            )
+    except duckdb.Error:
+        return None
+    finally:
+        conn.close()
+
+    if anchor not in facts_by:
+        return None
+
+    try:
+        config = build_product_category_config_for_report_date(anchor, fallback_rate)
+        calc_out = calculate_read_model(facts_by, anchor, "ytd", config)
+    except (KeyError, ValueError, TypeError, ArithmeticError):
+        return None
+
+    typed_rows = [ProductCategoryPnlRow.model_validate(row) for row in calc_out["rows"]]
+    asset_total = ProductCategoryPnlRow.model_validate(calc_out["asset_total"])
+    liability_total = ProductCategoryPnlRow.model_validate(calc_out["liability_total"])
+    grand_total = ProductCategoryPnlRow.model_validate(calc_out["grand_total"])
+    return ProductCategoryPnlPayload(
+        report_date=report_date,
+        view="ytd",
+        available_views=list(AVAILABLE_VIEWS),
+        scenario_rate_pct=None,
+        rows=typed_rows,
+        asset_total=asset_total,
+        liability_total=liability_total,
+        grand_total=grand_total,
+    )
+
+
+def resolve_product_category_ytd_payload_for_home_snapshot(
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    ftp_rate_pct: float,
+) -> ProductCategoryPnlPayload | None:
+    """Prefer persisted read-model ytd; fall back to canonical-facts recompute for home headline."""
+    try:
+        envelope = product_category_pnl_envelope(duckdb_path, report_date, "ytd")
+    except (
+        ProductCategoryReadModelNotFoundError,
+        ProductCategoryReadModelUnavailableError,
+        OSError,
+    ):
+        return product_category_pnl_payload_from_canonical_ytd_anchor(
+            duckdb_path, governance_dir, report_date, ftp_rate_pct
+        )
+
+    result_dict = envelope.get("result")
+    if isinstance(result_dict, dict):
+        try:
+            return ProductCategoryPnlPayload.model_validate(result_dict)
+        except Exception:
+            pass
+    return product_category_pnl_payload_from_canonical_ytd_anchor(
+        duckdb_path, governance_dir, report_date, ftp_rate_pct
     )
 
 

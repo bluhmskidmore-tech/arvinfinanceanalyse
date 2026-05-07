@@ -9,13 +9,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import xlrd
-from openpyxl import load_workbook
-
 from backend.app.core_finance.field_normalization import resolve_pnl_source_currency
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.services.source_rules import describe_source_file
-
+from openpyxl import load_workbook
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
@@ -104,6 +102,16 @@ def load_latest_pnl_refresh_input(
     )
 
 
+def list_pnl_refresh_report_dates(
+    *,
+    governance_dir: str | Path,
+    data_root: str | Path | None = None,
+) -> list[str]:
+    resolved_data_root = Path(data_root) if data_root is not None else resolve_pnl_data_input_root()
+    candidates = [*_manifest_candidates(governance_dir), *_direct_candidates(resolved_data_root)]
+    return sorted({candidate.report_date for candidate in candidates}, reverse=True)
+
+
 def _merge_candidates_for_report_date(
     *,
     manifest_candidates: list[PnlSourceSnapshot],
@@ -126,7 +134,61 @@ def _merge_candidates_for_report_date(
             merged.extend(family_manifest)
         elif family_direct:
             merged.extend(family_direct)
+        elif family != "pnl":
+            family_manifest = _covered_range_candidates_for_report_date(
+                manifest_candidates,
+                family=family,
+                report_date=report_date,
+            )
+            family_direct = _covered_range_candidates_for_report_date(
+                direct_candidates,
+                family=family,
+                report_date=report_date,
+            )
+            if family_manifest:
+                merged.extend(family_manifest)
+            elif family_direct:
+                merged.extend(family_direct)
     return merged
+
+
+def _covered_range_candidates_for_report_date(
+    candidates: list[PnlSourceSnapshot],
+    *,
+    family: str,
+    report_date: str,
+) -> list[PnlSourceSnapshot]:
+    target_day = date.fromisoformat(report_date)
+    covered: list[tuple[date, PnlSourceSnapshot]] = []
+    for candidate in candidates:
+        if candidate.source_family != family:
+            continue
+        metadata = describe_source_file(candidate.path.name)
+        if metadata.report_granularity != "range":
+            continue
+        if metadata.report_start_date is None or metadata.report_end_date is None:
+            continue
+        start_day = date.fromisoformat(metadata.report_start_date)
+        end_day = date.fromisoformat(metadata.report_end_date)
+        if start_day <= target_day <= end_day:
+            covered.append((end_day, candidate))
+
+    if not covered:
+        return []
+
+    nearest_end_day = min(end_day for end_day, _candidate in covered)
+    return [
+        PnlSourceSnapshot(
+            source_family=candidate.source_family,
+            report_date=report_date,
+            path=candidate.path,
+            source_version=candidate.source_version,
+            ingest_batch_id=candidate.ingest_batch_id,
+            created_at=candidate.created_at,
+        )
+        for end_day, candidate in covered
+        if end_day == nearest_end_day
+    ]
 
 
 def _manifest_candidates(governance_dir: str | Path) -> list[PnlSourceSnapshot]:
@@ -177,6 +239,8 @@ def _direct_candidates(data_root: Path) -> list[PnlSourceSnapshot]:
         metadata = describe_source_file(path.name)
         if metadata.report_date is None or metadata.source_family not in SUPPORTED_PNL_SOURCE_FAMILIES:
             return
+        if _is_processed_path(path) and metadata.report_granularity not in {"month", "range"}:
+            return
         seen.add(key)
         stat = path.stat()
         candidates.append(
@@ -206,10 +270,11 @@ def _direct_candidates(data_root: Path) -> list[PnlSourceSnapshot]:
 
     for _family, (directory_name, pattern) in directory_specs.items():
         source_dir = data_root / directory_name
-        if not source_dir.exists():
-            continue
-        for path in sorted(source_dir.glob(pattern)):
-            _append(path)
+        for candidate_dir in (source_dir, source_dir / "processed"):
+            if not candidate_dir.exists():
+                continue
+            for path in sorted(candidate_dir.glob(pattern)):
+                _append(path)
     return candidates
 
 
@@ -302,9 +367,11 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
         parsed_row = {
             "report_date": report_date,
             "instrument_code": instrument_code,
+            "instrument_name": _cell_text(raw_row.get("债券名称")),
             "portfolio_name": _cell_text(raw_row.get("投资组合")),
             "cost_center": _cell_text(raw_row.get("成本中心")),
             "invest_type_raw": _cell_text(raw_row.get("投资类型")),
+            "asset_class": _cell_text(raw_row.get("债券分类")),
             "interest_income_514": _to_decimal(raw_row.get("利息514")),
             "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
             "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),

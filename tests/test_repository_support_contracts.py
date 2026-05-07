@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -469,9 +470,15 @@ def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_p
         "currency_basis": "CNY",
         "detail_row_count": 2,
         "summary_row_count": 2,
-        "total_market_value_amount": 130,
-        "total_amortized_cost_amount": 130,
-        "total_accrued_interest_amount": 0,
+        "total_market_value_amount": Decimal("130.00000000"),
+        "total_amortized_cost_amount": Decimal("130.00000000"),
+        "total_accrued_interest_amount": Decimal("0E-8"),
+        "asset_total_market_value_amount": Decimal("130.00000000"),
+        "liability_total_market_value_amount": 0,
+        "asset_total_amortized_cost_amount": Decimal("130.00000000"),
+        "liability_total_amortized_cost_amount": 0,
+        "asset_total_accrued_interest_amount": Decimal("0E-8"),
+        "liability_total_accrued_interest_amount": 0,
         "source_version": "sv_t_1__sv_z_1",
         "rule_version": "rv_t_1__rv_z_1",
     }

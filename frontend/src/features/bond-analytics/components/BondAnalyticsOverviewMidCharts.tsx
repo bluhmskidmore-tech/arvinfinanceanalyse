@@ -33,7 +33,7 @@ export function BondAnalyticsOverviewMidCharts({
   const rdQuery = useQuery({
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
-      "return-decomposition-overview",
+      "return-decomposition",
       client.mode,
       reportDate,
       periodType,

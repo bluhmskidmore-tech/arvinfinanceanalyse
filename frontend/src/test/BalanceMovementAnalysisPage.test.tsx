@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -254,6 +254,31 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("+194.80").length).toBe(2);
     expect(within(trendTable).getAllByText("-85.00").length).toBe(2);
     expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
+  });
+
+  it("hydrates report date and currency from query parameters", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getMovementSpy = vi.fn(baseClient.getBalanceMovementAnalysis);
+
+    renderWorkbenchApp(["/balance-movement-analysis?report_date=2026-01-31&currency_basis=CNX"], {
+      client: {
+        ...baseClient,
+        getBalanceMovementDates: vi.fn(async (currencyBasis = "CNX") =>
+          buildMockApiEnvelope("balance-analysis.movement.dates", {
+            report_dates: ["2026-02-28", "2026-01-31"],
+            currency_basis: currencyBasis,
+          }),
+        ),
+        getBalanceMovementAnalysis: getMovementSpy,
+      },
+    });
+
+    await waitFor(() => {
+      expect(getMovementSpy).toHaveBeenCalledWith({
+        reportDate: "2026-01-31",
+        currencyBasis: "CNX",
+      });
+    });
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {

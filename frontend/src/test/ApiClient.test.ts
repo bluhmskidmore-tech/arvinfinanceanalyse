@@ -278,26 +278,13 @@ describe("createApiClient", () => {
           total_avg_assets: 175000000,
           total_spot_liabilities: 0,
           total_avg_liabilities: 0,
+          total_avg_interbank_assets: 25000000,
+          total_avg_interbank_liabilities: 0,
           asset_yield: 3.3571,
           liability_cost: null,
           net_interest_margin: null,
           assets_breakdown: [],
           liabilities_breakdown: [],
-          accounting_basis_daily_avg: {
-            report_date: "2025-06-03",
-            currency_basis: "CNX",
-            daily_avg_total: "500000000",
-            accounting_controls: ["142%", "143%", "1440101%", "141%"],
-            excluded_controls: ["144020%"],
-            rows: [
-              {
-                basis_bucket: "AC",
-                daily_avg_balance: "220000000",
-                daily_avg_pct: "44",
-                source_account_patterns: ["142%", "143%"],
-              },
-            ],
-          },
         },
       }),
     }));
@@ -314,14 +301,7 @@ describe("createApiClient", () => {
     expect(payload).not.toHaveProperty("liabilities");
     expect(payload.result_meta?.result_kind).toBe("adb.comparison");
     expect(payload.result_meta?.source_version).toBe("sv_adb");
-    expect(payload.accounting_basis_daily_avg?.daily_avg_total).toBe(500000000);
-    expect(payload.accounting_basis_daily_avg?.rows[0]).toMatchObject({
-      basis_bucket: "AC",
-      daily_avg_balance: 220000000,
-      daily_avg_pct: 44,
-      source_account_patterns: ["142%", "143%"],
-    });
-    expect(payload.accounting_basis_daily_avg?.excluded_controls).toEqual(["144020%"]);
+    expect(payload.accounting_basis_daily_avg).toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
@@ -1705,6 +1685,33 @@ describe("createApiClient", () => {
           }),
         };
       }
+      if (url.includes("/api/pnl/v1-data?date=2026-02-28")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_v1_data",
+              basis: "formal",
+              result_kind: "pnl.v1_data",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_date: "2026-02-28",
+              source_tables: ["data_input/pnl"],
+              rows: [],
+            },
+          }),
+        };
+      }
       return {
         ok: true,
         json: async () => ({
@@ -1745,7 +1752,11 @@ describe("createApiClient", () => {
 
     await client.getFormalPnlDates();
     await client.getFormalPnlData("2026-02-28");
+    await client.getPnlV1Data("2026-02-28");
     await client.getFormalPnlOverview("2026-02-28");
+    await client.getPnlByBusiness("2026-02-28");
+    await client.getPnlByBusinessYtd(2026, "2026-03-31");
+    await client.getPnlYearlyBusinessSummary(2026);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1767,7 +1778,43 @@ describe("createApiClient", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
+      "http://localhost:8000/api/pnl/v1-data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       "http://localhost:8000/api/pnl/overview?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/pnl/by-business?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/pnl/by-business-ytd?year=2026&as_of_date=2026-03-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/pnl/yearly-summary?year=2026",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
@@ -3316,8 +3363,16 @@ describe("createApiClient", () => {
     expect(envelope.result_meta.basis).toBe("analytical");
     expect(envelope.result.basis).toBe("analytical");
     expect(envelope.result.requested_as_of_date).toBe("2026-04-29");
-    expect(envelope.result.supported_outputs).toEqual(["market_gate"]);
-    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(true);
+    expect(envelope.result.supported_outputs).toEqual([
+      "market_gate",
+      "sector_rank",
+      "stock_candidates",
+      "risk_exit",
+    ]);
+    expect(envelope.result.stock_candidates?.candidate_count).toBe(2);
+    expect(envelope.result.risk_exit?.signal_count).toBe(1);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(false);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "risk_exit")).toBe(false);
   });
 
   it("uses real mode to fetch Livermore strategy with and without as_of_date", async () => {
@@ -3423,6 +3478,187 @@ describe("createApiClient", () => {
       "http://localhost:8000/ui/market-data/livermore",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch Livermore signal confluence", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_livermore_signal_confluence",
+          basis: "analytical",
+          result_kind: "market_data.livermore.signal_confluence",
+          formal_use_allowed: false,
+          source_version: "sv_livermore__sv_macro",
+          vendor_version: "vv_livermore__vv_macro",
+          rule_version: "rv_livermore_signal_confluence_v1",
+          cache_version: "cv_livermore_signal_confluence_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+          scenario_flag: false,
+          generated_at: "2026-04-29T00:00:00Z",
+        },
+        result: {
+          as_of_date: "2026-04-29",
+          macro_context: {
+            status: "neutral",
+            composite_score: 0,
+            multiplier: 0.5,
+          },
+          strategy_context: {
+            market_gate_state: "WARM",
+            market_gate_exposure: 0.4,
+            allows_new_entry_observations: true,
+          },
+          position_size_hint: 0.2,
+          entry_observations: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              action: "observe_entry_setup",
+              trigger_price: 21.8,
+              current_price: 21.9,
+              invalidation_reference_price: 20.6,
+            },
+          ],
+          exit_observations: [],
+          diagnostics: [
+            "Observation-only output. This service does not generate trading instructions.",
+          ],
+          disclaimer: "Observation-only output. This service does not generate trading instructions.",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getLivermoreSignalConfluence({ asOfDate: "2026-04-29" });
+
+    expect(envelope.result.as_of_date).toBe("2026-04-29");
+    expect(envelope.result.strategy_context.market_gate_state).toBe("WARM");
+    expect(envelope.result.entry_observations[0]?.action).toBe("observe_entry_setup");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/signal-confluence?as_of_date=2026-04-29",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["unit_test_position_book"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_csv_test",
+        csv_path: "livermore/positions.csv",
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermorePositionSnapshot({
+      asOfDate: "2026-04-30",
+      csvPath: "livermore/positions.csv",
+    });
+
+    expect(payload.risk_exit_input_status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          csv_path: "livermore/positions.csv",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize manual Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        input_mode: "manual",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["livermore_position_snapshot_manual"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_manual_test",
+        csv_path: null,
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermoreManualPositionSnapshot({
+      asOfDate: "2026-04-30",
+      positions: [
+        {
+          stockCode: "000001.SZ",
+          stockName: "Alpha",
+          entryCost: 10.5,
+          barsSinceEntry: 6,
+          positionQuantity: 10000,
+        },
+      ],
+    });
+
+    expect(payload.input_mode).toBe("manual");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot/manual",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          positions: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              entry_cost: 10.5,
+              bars_since_entry: 6,
+              position_quantity: 10000,
+            },
+          ],
+        }),
       }),
     );
   });

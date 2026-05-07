@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import calendar
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.cashflow_projection import (
     project_bond_cashflows,
@@ -27,6 +30,18 @@ SUPPORTED_KRD_BUCKETS = {
     "30Y": "krd_30y",
 }
 
+# Non-standard tenors mapped to nearest supported KRD bucket.
+KRD_BUCKET_FALLBACK: dict[str, str] = {
+    "2Y": "krd_3y",
+    "4Y": "krd_5y",
+    "6Y": "krd_7y",
+    "8Y": "krd_10y",
+    "9Y": "krd_10y",
+    "15Y": "krd_10y",
+    "20Y": "krd_30y",
+    "25Y": "krd_30y",
+}
+
 
 def _safe_decimal(value: object) -> Decimal:
     if value is None:
@@ -35,7 +50,8 @@ def _safe_decimal(value: object) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("_safe_decimal: failed to convert %r", type(value).__name__)
         return ZERO
 
 
@@ -144,19 +160,37 @@ def _aggregate_krd_values(
     rows: list[dict[str, Any]],
     warnings: list[str],
 ) -> dict[str, Decimal]:
+    """Aggregate per-row DV01 into the 6 standard KRD buckets.
+
+    Non-standard tenor buckets (2Y, 15Y, 20Y, etc.) are remapped to the nearest
+    supported bucket via ``KRD_BUCKET_FALLBACK``.  Truly unknown buckets with
+    non-zero DV01 are excluded and reported in ``warnings``.
+    """
     krd_values = {field_name: ZERO for field_name in SUPPORTED_KRD_BUCKETS.values()}
     unsupported_buckets: set[str] = set()
+    remapped_buckets: set[str] = set()
 
     for row in rows:
         tenor_bucket = str(row.get("tenor_bucket") or "")
         dv01 = _safe_decimal(row.get("dv01"))
         field_name = SUPPORTED_KRD_BUCKETS.get(tenor_bucket)
         if field_name is None:
-            if tenor_bucket and dv01 != ZERO:
+            # Try fallback mapping before discarding.
+            field_name = KRD_BUCKET_FALLBACK.get(tenor_bucket)
+            if field_name is not None:
+                remapped_buckets.add(tenor_bucket)
+            elif tenor_bucket and dv01 != ZERO:
                 unsupported_buckets.add(tenor_bucket)
-            continue
+                continue
+            else:
+                continue
         krd_values[field_name] += dv01
 
+    if remapped_buckets:
+        warnings.append(
+            "Non-standard tenor buckets remapped to nearest KRD bucket: "
+            + ", ".join(sorted(remapped_buckets))
+        )
     if unsupported_buckets:
         warnings.append(
             "Unsupported tenor buckets excluded from minimal KRD tensor: "
@@ -167,6 +201,13 @@ def _aggregate_krd_values(
 
 
 def _resolve_face_value(row: dict[str, Any]) -> Decimal:
+    """Return face_value for coupon cashflow projection, falling back to market_value.
+
+    When the source bond analytics fact row lacks an explicit ``face_value`` column
+    (e.g. imported from legacy balance snapshots that only carry MV), market_value is
+    used as an approximation.  This is acceptable for near-par bonds but may overstate
+    coupon cashflows for deep-discount or premium positions.
+    """
     if row.get("face_value") is not None:
         return _safe_decimal(row.get("face_value"))
     return _safe_decimal(row.get("market_value"))

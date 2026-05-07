@@ -213,8 +213,8 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.current_yield != null
-                            ? `${(item.current_yield.raw ?? 0).toFixed(2)}%`
+                          {item.current_yield_pct != null
+                            ? item.current_yield_pct.display
                             : "—"}
                         </td>
                         <td
@@ -224,7 +224,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.previous_yield != null ? `${(item.previous_yield.raw ?? 0).toFixed(2)}%` : "—"}
+                          {item.previous_yield_pct != null ? item.previous_yield_pct.display : "—"}
                         </td>
                         <td
                           style={{
@@ -361,7 +361,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.current_yield != null ? `${(item.current_yield.raw ?? 0).toFixed(2)}%` : "—"}
+                          {item.current_yield_pct != null ? item.current_yield_pct.display : "—"}
                         </td>
                         <td
                           style={{
@@ -370,7 +370,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.previous_yield != null ? `${(item.previous_yield.raw ?? 0).toFixed(2)}%` : "—"}
+                          {item.previous_yield_pct != null ? item.previous_yield_pct.display : "—"}
                         </td>
                         <td
                           style={{

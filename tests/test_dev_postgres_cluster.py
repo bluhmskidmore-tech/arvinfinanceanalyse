@@ -51,6 +51,35 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
+def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(tmp_path):
+    """Regression: avoid stale runtime-clean/moss.duckdb shadowing a fuller data/moss.duckdb."""
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(repo_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
+
+    runtime_root = repo_root / "tmp-governance" / "runtime-clean"
+    runtime_duckdb = runtime_root / "moss.duckdb"
+    runtime_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(runtime_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-01-02')")
+
+    config = module.build_cluster_config(repo_root)
+    env = module.build_env_mapping(config)
+
+    assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
+    assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
+    assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
+
+
 def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp_path):
     module = load_module(
         "scripts.dev_postgres_cluster",

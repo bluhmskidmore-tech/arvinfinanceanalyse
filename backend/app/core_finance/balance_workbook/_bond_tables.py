@@ -9,6 +9,7 @@ from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
 )
+from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
 from backend.app.core_finance.balance_workbook._utils import (
     _ZERO,
     _MATURITY_BUCKETS,
@@ -60,9 +61,12 @@ def _build_cards(
 def _build_bond_business_type_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     total_balance = _sum_decimal(asset_rows, lambda row: row.face_value_amount)
-    grouped = _group_rows(asset_rows, lambda row: row.bond_type or "未分类")
+    grouped = _group_rows(asset_rows, _bond_business_type_label)
     rows = []
-    for bond_type, entries in sorted(grouped.items()):
+    for bond_type, entries in sorted(
+        grouped.items(),
+        key=lambda item: (-_sum_decimal(item[1], lambda row: row.face_value_amount), item[0]),
+    ):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
         rows.append(
             {
@@ -95,6 +99,22 @@ def _build_bond_business_type_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -
             ("floating_pnl_amount", "浮盈浮亏"),
         ],
         rows,
+    )
+
+
+def _bond_business_type_label(row: FormalZqtzBalanceFactRow) -> str:
+    return classify_zqtz_asset_bond_label(
+        {
+            "sub_type": row.sub_type,
+            "business_type_primary": row.business_type_primary,
+            "business_type_final": "",
+            "bond_type": row.bond_type,
+            "instrument_name": row.instrument_name,
+            "asset_class": row.asset_class,
+            "instrument_code": row.instrument_code,
+            "accounting_basis": row.accounting_basis,
+            "currency_code": row.currency_code,
+        }
     )
 
 

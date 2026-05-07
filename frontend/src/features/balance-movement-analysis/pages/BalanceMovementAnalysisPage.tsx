@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -17,6 +18,7 @@ import type {
 import AccountingBasisStackedShareChart, {
   type AccountingBasisStackedSharePoint,
 } from "../../../components/charts/AccountingBasisStackedShareChart";
+import { CalibrationBadge } from "../../../components/CalibrationBadge";
 import { FilterBar } from "../../../components/FilterBar";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -81,6 +83,10 @@ const bucketColors: Record<BalanceMovementRow["basis_bucket"], string> = {
   TPL: "#d2a03f",
 };
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
+
+function normalizeMovementCurrencyBasis(value: string | null): string {
+  return value === "CNY" || value === "CNX" ? value : "CNX";
+}
 
 function formatPct(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
@@ -1175,8 +1181,11 @@ function ZqtzConcentrationAnalysisPanel({
 
 export default function BalanceMovementAnalysisPage() {
   const client = useApiClient();
+  const [searchParams] = useSearchParams();
+  const queryReportDate = searchParams.get("report_date")?.trim() || "";
+  const queryCurrencyBasis = normalizeMovementCurrencyBasis(searchParams.get("currency_basis"));
   const [selectedDate, setSelectedDate] = useState("");
-  const [currencyBasis, setCurrencyBasis] = useState("CNX");
+  const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
@@ -1204,10 +1213,26 @@ export default function BalanceMovementAnalysisPage() {
       : null;
 
   useEffect(() => {
-    if (!selectedDate && reportDates.length) {
+    if (currencyBasis !== queryCurrencyBasis) {
+      setCurrencyBasis(queryCurrencyBasis);
+      setSelectedDate("");
+    }
+  }, [currencyBasis, queryCurrencyBasis]);
+
+  useEffect(() => {
+    if (!reportDates.length) {
+      return;
+    }
+    if (queryReportDate && reportDates.includes(queryReportDate)) {
+      if (selectedDate !== queryReportDate) {
+        setSelectedDate(queryReportDate);
+      }
+      return;
+    }
+    if (!selectedDate || !reportDates.includes(selectedDate)) {
       setSelectedDate(reportDates[0] ?? "");
     }
-  }, [reportDates, selectedDate]);
+  }, [queryReportDate, reportDates, selectedDate]);
 
   const detailQuery = useQuery({
     queryKey: ["balance-movement-analysis", "detail", client.mode, selectedDate, currencyBasis],
@@ -1526,12 +1551,15 @@ export default function BalanceMovementAnalysisPage() {
     <section data-testid="balance-movement-analysis-page">
       <div style={pageHeaderStyle}>
         <div>
-          <h1
-            data-testid="balance-movement-analysis-title"
-            style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
-          >
-            余额变动分析
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h1
+              data-testid="balance-movement-analysis-title"
+              style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
+            >
+              余额变动分析
+            </h1>
+            <CalibrationBadge calibration={detailQuery.data?.result.calibration} />
+          </div>
           <p
             data-testid="balance-movement-analysis-subtitle"
             style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}

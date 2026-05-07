@@ -297,7 +297,7 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
                 "asset_yield": 2.45,
                 "liability_cost": 2.07,
                 "market_liability_cost": 2.07,
-                "nim": 0.38 if report_date == "2030-03-15" else 0.33,
+                "nim": 0.0038 if report_date == "2030-03-15" else 0.0033,
             },
         },
     )
@@ -408,6 +408,14 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
             }
             return values[report_date]
 
+        def sum_nonstd_bridge_total_pnl_through_report_date(self, report_date: str):
+            calls.append(("nonstd-pnl", report_date))
+            values = {
+                "2025-11-20": 1.25e8,
+                "2025-10-31": 1.0e8,
+            }
+            return values[report_date]
+
     class LiabilityRepo:
         def __init__(self, *_a, **_k):
             pass
@@ -447,7 +455,7 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
             "kpi": {
-                "nim": 0.25 if report_date == "2025-11-20" else 0.20,
+                "nim": 0.0025 if report_date == "2025-11-20" else 0.0020,
             },
         },
     )
@@ -460,6 +468,8 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
     assert calls.count(("aum", "2025-10-31")) == 2
     assert calls.count(("pnl", "2025-11-20")) == 2
     assert calls.count(("pnl", "2025-10-31")) == 2
+    assert calls.count(("nonstd-pnl", "2025-11-20")) == 2
+    assert calls.count(("nonstd-pnl", "2025-10-31")) == 2
     assert calls.count(("liab-z", "2025-11-20")) == 2
     assert calls.count(("liab-t", "2025-11-20")) == 2
     assert calls.count(("liab-z", "2025-10-31")) == 2
@@ -469,13 +479,16 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert metrics["aum"]["label"] == "债券资产规模（zqtz）"
     assert "2025-11-20" in metrics["aum"]["detail"]
+    assert metrics["yield"]["label"] == "年度损益（不扣FTP）"
+    assert metrics["yield"]["value"]["raw"] == pytest.approx(7.75e8)
+    assert "fact_formal_pnl_fi + fact_nonstd_pnl_bridge" in metrics["yield"]["detail"]
     assert "截至 2025-11-20" in metrics["yield"]["detail"]
     assert "2025-11-20" in metrics["nim"]["detail"]
     assert "2025-11-20" in metrics["dv01"]["detail"]
     _assert_numeric_json_shape(metrics["aum"]["delta"])
     assert metrics["aum"]["delta"]["display"] == "+7.00%"
     _assert_numeric_json_shape(metrics["yield"]["delta"])
-    assert metrics["yield"]["delta"]["display"] == "+30.00%"
+    assert metrics["yield"]["delta"]["display"] == "+29.17%"
     _assert_numeric_json_shape(metrics["nim"]["delta"])
     assert metrics["nim"]["delta"]["display"] == "+0.05pp"
     _assert_numeric_json_shape(metrics["dv01"]["delta"])
@@ -574,7 +587,7 @@ def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
             "kpi": {
-                "nim": 0.25 if report_date == "2025-12-31" else 0.20,
+                "nim": 0.0025 if report_date == "2025-12-31" else 0.0020,
             },
         },
     )
@@ -658,7 +671,7 @@ def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(
     monkeypatch.setattr(
         exec_mod,
         "compute_liability_yield_metrics",
-        lambda report_date, zqtz_rows, tyw_rows: {"report_date": report_date, "kpi": {"nim": 0.25}},
+        lambda report_date, zqtz_rows, tyw_rows: {"report_date": report_date, "kpi": {"nim": 0.0025}},
     )
 
     out = exec_mod.executive_overview()
@@ -1283,7 +1296,7 @@ def test_executive_overview_latest_governed_ytd_uses_latest_report_date(monkeypa
         "compute_liability_yield_metrics",
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
-            "kpi": {"nim": 0.42 if report_date == "2024-12-31" else 0.40},
+            "kpi": {"nim": 0.0042 if report_date == "2024-12-31" else 0.0040},
         },
     )
     monkeypatch.setattr(exec_mod, "date", FixedDate)

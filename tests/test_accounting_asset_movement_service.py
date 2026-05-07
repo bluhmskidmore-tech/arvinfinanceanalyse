@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import duckdb
+import pytest
 
 from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
@@ -98,8 +99,9 @@ def test_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
         formal_fx_paths.append(kwargs.get("fx_source_path"))
         return {"status": "completed", "report_date": kwargs["report_date"]}
 
-    def fake_movement_window(*, duckdb_path, report_dates, currency_basis):
+    def fake_movement_window(*, duckdb_path, governance_dir, report_dates, currency_basis, **_kwargs):
         del duckdb_path
+        del governance_dir
         movement_dates.extend(report_dates)
         return {
             report_date: {
@@ -255,8 +257,9 @@ def test_refresh_materializes_missing_product_category_before_movement(monkeypat
         formal_dates.append(str(kwargs["report_date"]))
         return {"status": "completed", "report_date": kwargs["report_date"]}
 
-    def fake_movement_window(*, duckdb_path, report_dates, currency_basis):
+    def fake_movement_window(*, duckdb_path, governance_dir, report_dates, currency_basis, **_kwargs):
         del duckdb_path
+        del governance_dir
         movement_dates.extend(report_dates)
         return {
             report_date: {
@@ -321,6 +324,184 @@ def test_refresh_materializes_missing_product_category_before_movement(monkeypat
         "2026-01-31",
         "2026-02-28",
     ]
+
+
+def test_refresh_service_delegates_window_materialization_to_task_and_hides_internal_fields(
+    monkeypatch,
+):
+    settings = Settings(
+        duckdb_path="test-output/movement.duckdb",
+        governance_path=Path("test-output/governance"),
+        data_input_root=Path("test-output/data"),
+        local_archive_path=Path("test-output/archive"),
+    )
+    task_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        movement_service,
+        "_recent_report_dates_for_refresh",
+        lambda *_args, **_kwargs: ["2026-01-31", "2026-02-28"],
+    )
+    monkeypatch.setattr(
+        movement_service,
+        "_refresh_missing_product_category_dates",
+        lambda *_args, **_kwargs: ["2026-01-31"],
+    )
+    monkeypatch.setattr(
+        movement_service,
+        "_refresh_formal_zqtz_dates",
+        lambda *_args, **_kwargs: ["2026-02-28"],
+    )
+
+    def fake_task_refresh(**kwargs):
+        task_calls.append(kwargs)
+        return {
+            "status": "completed",
+            "cache_key": "accounting_asset_movement.monthly",
+            "cache_version": "cv_accounting_asset_movement_v1",
+            "run_id": "run-movement",
+            "job_name": "accounting_asset_movement_refresh",
+            "report_date": "2026-02-28",
+            "currency_basis": "CNX",
+            "payloads_by_date": {
+                "2026-01-31": {
+                    "status": "completed",
+                    "cache_key": "accounting_asset_movement.monthly",
+                    "report_date": "2026-01-31",
+                    "currency_basis": "CNX",
+                    "row_count": 3,
+                    "source_version": "sv-old",
+                    "rule_version": "rv_accounting_asset_movement_v2",
+                },
+                "2026-02-28": {
+                    "status": "completed",
+                    "cache_key": "accounting_asset_movement.monthly",
+                    "report_date": "2026-02-28",
+                    "currency_basis": "CNX",
+                    "row_count": 4,
+                    "source_version": "sv-new",
+                    "rule_version": "rv_accounting_asset_movement_v2",
+                },
+            },
+            "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
+            "product_category_refreshed_dates": ["2026-01-31"],
+            "formal_balance_refreshed_dates": ["2026-02-28"],
+        }
+
+    monkeypatch.setattr(
+        movement_service.refresh_accounting_asset_movement_window,
+        "fn",
+        fake_task_refresh,
+    )
+
+    payload = movement_service.refresh_accounting_asset_movement(
+        settings,
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert task_calls == [
+        {
+            "duckdb_path": str(Path("test-output/movement.duckdb").resolve()),
+            "governance_dir": str(Path("test-output/governance").resolve()),
+            "report_dates": ["2026-01-31", "2026-02-28"],
+            "anchor_report_date": "2026-02-28",
+            "currency_basis": "CNX",
+            "product_category_refreshed_dates": ["2026-01-31"],
+            "formal_balance_refreshed_dates": ["2026-02-28"],
+        }
+    ]
+    assert payload == {
+        "status": "completed",
+        "cache_key": "accounting_asset_movement.monthly",
+        "report_date": "2026-02-28",
+        "currency_basis": "CNX",
+        "row_count": 4,
+        "source_version": "sv-new",
+        "rule_version": "rv_accounting_asset_movement_v2",
+        "product_category_refreshed_dates": ["2026-01-31"],
+        "formal_balance_refreshed_dates": ["2026-02-28"],
+        "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
+    }
+
+
+def test_refresh_service_stops_before_task_when_product_category_refresh_fails(
+    monkeypatch,
+):
+    settings = Settings(
+        duckdb_path="test-output/movement.duckdb",
+        governance_path=Path("test-output/governance"),
+        data_input_root=Path("test-output/data"),
+        local_archive_path=Path("test-output/archive"),
+    )
+    task_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        movement_service,
+        "_recent_report_dates_for_refresh",
+        lambda *_args, **_kwargs: ["2026-02-28"],
+    )
+    monkeypatch.setattr(
+        movement_service,
+        "_refresh_missing_product_category_dates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("product category failed")),
+    )
+    monkeypatch.setattr(
+        movement_service.refresh_accounting_asset_movement_window,
+        "fn",
+        lambda **kwargs: task_calls.append(kwargs),
+    )
+
+    with pytest.raises(RuntimeError, match="product category failed"):
+        movement_service.refresh_accounting_asset_movement(
+            settings,
+            report_date="2026-02-28",
+            currency_basis="CNX",
+        )
+
+    assert task_calls == []
+
+
+def test_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
+    monkeypatch,
+):
+    settings = Settings(
+        duckdb_path="test-output/movement.duckdb",
+        governance_path=Path("test-output/governance"),
+        data_input_root=Path("test-output/data"),
+        local_archive_path=Path("test-output/archive"),
+    )
+    task_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        movement_service,
+        "_recent_report_dates_for_refresh",
+        lambda *_args, **_kwargs: ["2026-02-28"],
+    )
+    monkeypatch.setattr(
+        movement_service,
+        "_refresh_missing_product_category_dates",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        movement_service,
+        "_refresh_formal_zqtz_dates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("formal balance failed")),
+    )
+    monkeypatch.setattr(
+        movement_service.refresh_accounting_asset_movement_window,
+        "fn",
+        lambda **kwargs: task_calls.append(kwargs),
+    )
+
+    with pytest.raises(RuntimeError, match="formal balance failed"):
+        movement_service.refresh_accounting_asset_movement(
+            settings,
+            report_date="2026-02-28",
+            currency_basis="CNX",
+        )
+
+    assert task_calls == []
 
 
 def test_refresh_zqtz_source_detection_requires_every_report_date():

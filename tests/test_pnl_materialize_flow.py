@@ -96,6 +96,7 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
     assert payload["report_date"] == "2025-12-31"
     assert payload["formal_fi_rows"] == 1
     assert payload["nonstd_bridge_rows"] == 1
+    assert payload["pnl_by_business_precompute_records"] > 0
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -111,11 +112,20 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
             from fact_nonstd_pnl_bridge
             """
         ).fetchall()
+        precompute_count = conn.execute(
+            """
+            select count(*)
+            from fact_pnl_by_business_precompute
+            where year = 2025
+              and as_of_date = '2025-12-31'
+            """
+        ).fetchone()[0]
     finally:
         conn.close()
 
     assert fi_rows == [("2025-12-31", "240001.IB", Decimal("11.50"), "src-v1")]
     assert bridge_rows == [("2025-12-31", "BOND-001", Decimal("100.00"), "trace-001,trace-002")]
+    assert precompute_count == payload["pnl_by_business_precompute_records"]
 
     repo = repo_module.PnlRepository(str(duckdb_path))
     assert repo.list_formal_fi_report_dates() == ["2025-12-31"]

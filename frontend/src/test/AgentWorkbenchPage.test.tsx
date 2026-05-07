@@ -13,6 +13,7 @@ const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
 const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
+const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
 const MAX_PINNED_REPO_PATHS = 5;
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -20,6 +21,39 @@ function buildJsonResponse(payload: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function buildManagedRunPayload(result: unknown, runId = "agent_run:test") {
+  return {
+    run_id: runId,
+    status: "completed",
+    provider: "hermes",
+    model: "gpt-5.5",
+    transport: "bridge",
+    toolsets: "file",
+    elapsed_seconds: 1,
+    result,
+  };
+}
+
+function mockManagedRunResult(
+  fetchMock: ReturnType<typeof vi.fn>,
+  result: unknown,
+  runId = "agent_run:test",
+) {
+  fetchMock
+    .mockResolvedValueOnce(
+      buildJsonResponse({
+        run_id: runId,
+        status: "queued",
+        provider: "hermes",
+        model: "gpt-5.5",
+        transport: "bridge",
+        toolsets: "file",
+        queued_at: "2026-05-07T08:00:00Z",
+      }),
+    )
+    .mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(result, runId)));
 }
 
 describe("AgentWorkbenchPage", () => {
@@ -225,8 +259,7 @@ describe("AgentWorkbenchPage", () => {
 
   it("includes page_context when provided by the mounting page", async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+    mockManagedRunResult(fetchMock, {
         answer: "已使用页面上下文。",
         cards: [],
         evidence: {
@@ -241,8 +274,7 @@ describe("AgentWorkbenchPage", () => {
           generated_at: "2026-04-12T09:00:00Z",
         },
         next_drill: [],
-      }),
-    );
+      });
 
     render(
       <AgentWorkbenchPage
@@ -264,7 +296,10 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/runs",
+        expect.objectContaining({ method: "POST" }),
+      );
     });
     const [, options] = fetchMock.mock.calls[0] ?? [];
     expect(JSON.parse(String(options?.body))).toMatchObject({
@@ -592,7 +627,7 @@ describe("AgentWorkbenchPage", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/query",
+        "/api/agent/runs",
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({
@@ -961,6 +996,28 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("network down")).toBeInTheDocument();
   });
 
+  it("explains browser fetch failures without showing raw network text", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(
+      screen.getByPlaceholderText(
+        AGENT_PLACEHOLDER,
+      ),
+      "q",
+    );
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(
+      await screen.findByText(
+        "无法连接 Agent 后端。请确认 7888 后端、5888 前端代理和 Hermes 桥接服务正在运行。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+
   it("shows format error when response is 200 but body is not AgentQueryResult", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
@@ -980,6 +1037,151 @@ describe("AgentWorkbenchPage", () => {
     expect(
       await screen.findByText("智能体返回结果格式无效。"),
     ).toBeInTheDocument();
+  });
+
+  it("starts a managed Hermes run and polls until the result is ready", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:test",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:test",
+          status: "running",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+          started_at: "2026-05-07T08:00:01Z",
+          elapsed_seconds: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:test",
+          status: "completed",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          elapsed_seconds: 2,
+          result: {
+            answer: "Hermes 托管任务完成。",
+            cards: [],
+            evidence: {
+              tables_used: ["hermes_cli"],
+              filters_applied: {
+                provider: "hermes",
+                model: "gpt-5.5",
+                transport: "bridge",
+                toolsets: "file",
+              },
+              evidence_rows: 1,
+              quality_flag: "ok",
+            },
+            result_meta: {
+              trace_id: "tr_agent_run",
+              basis: "formal",
+              result_kind: "agent.hermes",
+            },
+            next_drill: [],
+            suggested_actions: [],
+          },
+        }),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("Hermes 托管任务完成。")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("agent_run:test");
+    expect(screen.getByRole("status")).toHaveTextContent("已完成");
+    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("gpt-5.5");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/agent/runs",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/agent/runs/agent_run%3Atest",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("restores the latest managed Hermes run after a refresh", async () => {
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore");
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(
+        buildManagedRunPayload(
+          {
+            answer: "刷新后恢复的 Hermes 结果。",
+            cards: [],
+            evidence: {
+              tables_used: ["hermes_cli"],
+              filters_applied: {
+                provider: "hermes",
+                model: "gpt-5.5",
+                transport: "bridge",
+                toolsets: "file",
+              },
+              evidence_rows: 1,
+              quality_flag: "ok",
+            },
+            result_meta: {
+              trace_id: "tr_agent_restore",
+              basis: "formal",
+              result_kind: "agent.hermes",
+            },
+            next_drill: [],
+            suggested_actions: [],
+          },
+          "agent_run:restore",
+        ),
+      ),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    expect(await screen.findByText("刷新后恢复的 Hermes 结果。")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("agent_run:restore");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/runs/agent_run%3Arestore",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("shows elapsed Hermes wait status while the agent request is still running", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockReturnValue(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    fireEvent.change(screen.getByPlaceholderText(AGENT_PLACEHOLDER), {
+      target: { value: "ping" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Hermes 正在分析");
+    expect(screen.getByRole("status")).toHaveTextContent("已等待 0 秒");
+
+    act(() => {
+      vi.advanceTimersByTime(12_000);
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("已等待 12 秒");
   });
 
   it("renders answer, cards, evidence, next_drill, and result_meta on success", async () => {
@@ -1084,10 +1286,90 @@ describe("AgentWorkbenchPage", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/query",
+        "/api/agent/runs",
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  it("accepts Hermes cards with nullable data and spec fields", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        answer: "pong",
+        cards: [
+          { title: "Hermes Agent", value: "pong", type: "text", data: null, spec: null },
+          { title: "Provider", value: "hermes", type: "metric", data: null, spec: null },
+        ],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: { provider: "hermes", model: "default" },
+          sql_executed: [],
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_agent_hermes",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "在吗");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await screen.findByText("Hermes Agent");
+    expect(screen.getAllByText("pong").length).toBeGreaterThan(0);
+    expect(screen.getByText("Hermes Agent")).toBeInTheDocument();
+    expect(screen.getByText("Provider")).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === "结果类型: agent.hermes")).toBeInTheDocument();
+    expect(screen.queryByText("智能体返回结果格式无效。")).not.toBeInTheDocument();
+  });
+
+  it("surfaces Hermes runtime status from evidence filters", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        answer: "pong",
+        cards: [
+          { title: "Hermes Agent", value: "pong", type: "text", data: null, spec: null },
+        ],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            toolsets: "file",
+            transport: "bridge",
+          },
+          sql_executed: [],
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_agent_hermes",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping{Enter}");
+
+    const runtimeStatus = await screen.findByLabelText("agent-runtime-status");
+    expect(runtimeStatus).toHaveTextContent("Hermes");
+    expect(runtimeStatus).toHaveTextContent("bridge");
+    expect(runtimeStatus).toHaveTextContent("gpt-5.5");
+    expect(runtimeStatus).toHaveTextContent("file");
   });
 
   it("shows empty-renderable fallback when payload is valid but nothing to display", async () => {

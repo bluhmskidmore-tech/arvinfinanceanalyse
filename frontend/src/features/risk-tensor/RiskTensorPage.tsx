@@ -8,7 +8,8 @@ import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPan
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
+import type { RiskTensorPayload } from "../../api/contracts";
 import {
   formatRatioAsPercent,
   parseDisplayNumber,
@@ -23,7 +24,7 @@ import {
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
 const RADAR_META = [
   { key: "duration" as const, name: "久期", max: 10 },
-  { key: "dv01" as const, name: "DV01", max: "dynamic_dv01" as const },
+  { key: "dv01" as const, name: "估值DV01", max: "dynamic_dv01" as const },
   { key: "convexity" as const, name: "凸性", max: 200 },
   { key: "cs01" as const, name: "CS01", max: "dynamic_cs01" as const },
   { key: "hhi" as const, name: "集中度", max: 1 },
@@ -110,6 +111,20 @@ function dynamicAxisMax(raw: number, fallback: number) {
     return fallback;
   }
   return base;
+}
+
+function regulatoryDv01Display(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return "待接入";
+  }
+  return displayStr(value);
+}
+
+function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return "warning";
+  }
+  return toneFromSignedDisplayString(displayStr(value));
 }
 
 export default function RiskTensorPage() {
@@ -382,10 +397,16 @@ export default function RiskTensorPage() {
           <>
             <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
               <KpiCard
-                title="组合 DV01"
+                title="估值口径 DV01"
                 value={displayStr(result.portfolio_dv01)}
-                detail="portfolio_dv01，后端字符串口径。"
+                detail="portfolio_dv01，持仓估值敏感性口径，非监管限额口径。"
                 tone={toneFromSignedDisplayString(displayStr(result.portfolio_dv01))}
+              />
+              <KpiCard
+                title="监管口径 DV01"
+                value={regulatoryDv01Display(result.regulatory_dv01)}
+                detail="等待后端监管/限额口径字段接入；不得用估值 DV01 替代。"
+                tone={regulatoryDv01Tone(result.regulatory_dv01)}
               />
               <KpiCard
                 title="修正久期"
@@ -450,7 +471,7 @@ export default function RiskTensorPage() {
                     color: "#162033",
                   }}
                 >
-                  KRD 分档（DV01）
+                  KRD 分档（估值 DV01）
                 </h2>
               {krdChartOption ? (
                 <ReactECharts option={krdChartOption} style={{ height: 320, width: "100%" }} />

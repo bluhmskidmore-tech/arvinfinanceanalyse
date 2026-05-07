@@ -147,7 +147,7 @@ class TPLMarketDataPoint(BaseModel):
         "tpl_total_pnl": ("yuan", True),
         "tpl_scale": ("yuan", False),
         "treasury_10y": ("pct", True),
-        "treasury_10y_change": ("pct", True),
+        "treasury_10y_change": ("bp", True),
         "dr007": ("pct", True),
     }
 
@@ -172,7 +172,7 @@ class TPLMarketCorrelationPayload(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "correlation_coefficient": ("ratio", True),
         "total_tpl_fv_change": ("yuan", True),
-        "avg_treasury_10y_change": ("pct", True),
+        "avg_treasury_10y_change": ("bp", True),
         "treasury_10y_total_change_bp": ("bp", True),
     }
 

@@ -19,23 +19,26 @@ import type { ColumnsType } from "antd/es/table";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { CalibrationBadge } from "../../../components/CalibrationBadge";
+import { SectionLead } from "../../../components/page/SectionLead";
 import { FilterBar } from "../../../components/FilterBar";
-import AccountingBasisStackedShareChart, {
-  type AccountingBasisStackedSharePoint,
-} from "../../../components/charts/AccountingBasisStackedShareChart";
 import type {
-  AdbAccountingBasisDailyAvgItem,
-  AdbAccountingBasisDailyAvgTrendItem,
   AdbCategoryItem,
+  AdbComparisonResponse,
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
   ResultMeta,
 } from "../../../api/contracts";
 import AdbComparisonChart, { type AdbComparisonChartRow } from "./AdbComparisonChart";
+import AdbDailyTrendChart from "./AdbDailyTrendChart";
+import AdbDenominatorSummary from "./AdbDenominatorSummary";
+import AdbAccountingBasisSection from "./AdbAccountingBasisSection";
+import AdbCoverageDiagnostics from "./AdbCoverageDiagnostics";
 import AdbMonthlyHorizontalChart, {
   type AdbMonthlyHorizontalChartRow,
 } from "./AdbMonthlyHorizontalChart";
 import AdbMonthlyBreakdownTable from "./AdbMonthlyBreakdownTable";
+import AdbNimTrendChart from "./AdbNimTrendChart";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 
@@ -46,7 +49,6 @@ type RangeKey = "7d" | "30d" | "ytd" | "custom";
 type PageTab = "daily" | "monthly";
 type BreakdownKind = "asset" | "liability";
 type MonthlyBarRow = AdbMonthlyHorizontalChartRow;
-type AccountingBasisBucket = "AC" | "OCI" | "TPL";
 type MonthlyMatrixValueKind = "amount" | "pct";
 type MonthlyMatrixRow = {
   rowKey: string;
@@ -54,8 +56,6 @@ type MonthlyMatrixRow = {
   valueKind: MonthlyMatrixValueKind;
   values: Record<string, number | null | undefined>;
 };
-
-const accountingBasisBuckets: AccountingBasisBucket[] = ["AC", "OCI", "TPL"];
 
 const pageHeaderStyle = {
   display: "flex",
@@ -77,35 +77,6 @@ const pageSubtitleStyle = {
 const analysisBriefStyle = {
   marginTop: 14,
   maxWidth: 920,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 4,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -142,6 +113,103 @@ function buildPresetRange(reportDate: string, rangeKey: Exclude<RangeKey, "custo
   return { startDate: toDateInput(start), endDate: toDateInput(end) };
 }
 
+/** 日历同比平移整年；2/29 等非法日自动夹到目标年对应月末同日序。 */
+export function shiftIsoDateByYears(iso: string, deltaYears: number): string {
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  const ys = Number(parts[0]);
+  const ms = Number(parts[1]);
+  const ds = Number(parts[2]);
+  if (!Number.isFinite(ys) || !Number.isFinite(ms) || !Number.isFinite(ds)) return iso;
+  const y = ys + deltaYears;
+  const lastDay = new Date(y, ms, 0).getDate();
+  const d = Math.min(ds, lastDay);
+  return `${y}-${String(ms).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+type AdbYoYAmountRow = {
+  key: string;
+  label: string;
+  current: number;
+  prior: number;
+};
+
+function computeYoyPct(current: number, prior: number): number | null {
+  if (!Number.isFinite(current) || !Number.isFinite(prior) || prior === 0) return null;
+  return ((current - prior) / prior) * 100;
+}
+
+function buildCategoryYoyRows(
+  side: "asset" | "liability",
+  current: AdbCategoryItem[],
+  prior: AdbCategoryItem[] | undefined,
+): AdbYoYAmountRow[] {
+  const priorMap = new Map((prior ?? []).map((r) => [r.category, r]));
+  return current.map((item) => ({
+    key: `${side}-${item.category}`,
+    label: `${side === "asset" ? "资产" : "负债"} · ${item.category}`,
+    current: item.avg_balance,
+    prior: priorMap.get(item.category)?.avg_balance ?? 0,
+  }));
+}
+
+function buildAdbYoYAdbScaleRows(
+  dailyData: AdbComparisonResponse,
+  priorData: AdbComparisonResponse,
+): AdbYoYAmountRow[] {
+  return [
+    {
+      key: "avg-assets",
+      label: "区间日均总资产",
+      current: dailyData.total_avg_assets,
+      prior: priorData.total_avg_assets,
+    },
+    {
+      key: "avg-liabilities",
+      label: "区间日均总负债",
+      current: dailyData.total_avg_liabilities,
+      prior: priorData.total_avg_liabilities,
+    },
+  ];
+}
+
+function formatSignedYiBillions(deltaYuan: number): string {
+  if (!Number.isFinite(deltaYuan)) return "—";
+  const yi = deltaYuan / YI;
+  const sign = yi > 0 ? "+" : "";
+  return `${sign}${yi.toFixed(2)}`;
+}
+
+function buildYoYAmountColumns(): ColumnsType<AdbYoYAmountRow> {
+  return [
+    { title: "项目", dataIndex: "label", key: "label", ellipsis: true },
+    {
+      title: "本期（亿元）",
+      key: "cur",
+      align: "right",
+      render: (_: unknown, row: AdbYoYAmountRow) => (row.current / YI).toFixed(2),
+    },
+    {
+      title: "去年同期（亿元）",
+      key: "pri",
+      align: "right",
+      render: (_: unknown, row: AdbYoYAmountRow) => (row.prior / YI).toFixed(2),
+    },
+    {
+      title: "增减（亿元）",
+      key: "delta",
+      align: "right",
+      render: (_: unknown, row: AdbYoYAmountRow) => formatSignedYiBillions(row.current - row.prior),
+    },
+    {
+      title: "同比（%）",
+      key: "yoy",
+      align: "right",
+      render: (_: unknown, row: AdbYoYAmountRow) => formatSignedPct(computeYoyPct(row.current, row.prior)),
+    },
+  ];
+}
+
 function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
   return [
     { title: "分类", dataIndex: "category", key: "category" },
@@ -149,33 +217,6 @@ function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
-  ];
-}
-
-function buildAccountingBasisColumns(): ColumnsType<AdbAccountingBasisDailyAvgItem> {
-  return [
-    { title: "分类", dataIndex: "basis_bucket", key: "basis_bucket" },
-    {
-      title: "日均余额(亿元)",
-      dataIndex: "daily_avg_balance",
-      key: "daily_avg_balance",
-      align: "right",
-      render: (value: number) => (value / YI).toFixed(2),
-    },
-    {
-      title: "占比(%)",
-      dataIndex: "daily_avg_pct",
-      key: "daily_avg_pct",
-      align: "right",
-      render: (value: number | null | undefined) =>
-        value === null || value === undefined ? "—" : value.toFixed(2),
-    },
-    {
-      title: "控制科目",
-      dataIndex: "source_account_patterns",
-      key: "source_account_patterns",
-      render: (value: string[]) => value.join(" / "),
-    },
   ];
 }
 
@@ -302,9 +343,9 @@ function buildMonthlyProjectMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMat
   const rows: MonthlyMatrixRow[] = [
     { rowKey: "avg-assets", label: "日均资产", valueKind: "amount", values: {} },
     { rowKey: "avg-liabilities", label: "日均负债", valueKind: "amount", values: {} },
-    { rowKey: "asset-yield", label: "资产收益率", valueKind: "pct", values: {} },
-    { rowKey: "liability-cost", label: "负债付息率", valueKind: "pct", values: {} },
-    { rowKey: "nim", label: "NIM", valueKind: "pct", values: {} },
+    { rowKey: "asset-yield", label: "加权YTM", valueKind: "pct", values: {} },
+    { rowKey: "liability-cost", label: "加权票息", valueKind: "pct", values: {} },
+    { rowKey: "nim", label: "利差", valueKind: "pct", values: {} },
   ];
   for (const month of months) {
     rows[0].values[month.month] = month.avg_assets;
@@ -314,108 +355,6 @@ function buildMonthlyProjectMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMat
     rows[4].values[month.month] = month.net_interest_margin;
   }
   return rows;
-}
-
-function formatAccountingBasisTrendMonth(reportMonth: string) {
-  const [year, month] = reportMonth.split("-");
-  const monthNumber = Number(month);
-  if (!year || !Number.isFinite(monthNumber)) {
-    return reportMonth;
-  }
-  return `${year.slice(2)}-${String(monthNumber).padStart(2, "0")}`;
-}
-
-/** 按日序列图横轴标签（yy-mm-dd），避免同月多日使用 report_month 撞键 */
-function formatAccountingBasisTrendDayLabel(reportDate: string) {
-  const [y, m, d] = reportDate.split("-");
-  if (!y || !m || !d) return reportDate;
-  return `${y.slice(2)}-${m}-${d}`;
-}
-
-function buildAccountingBasisSharePoint(
-  axisLabel: string,
-  dailyAvgTotal: number,
-  rows: AdbAccountingBasisDailyAvgItem[],
-): AccountingBasisStackedSharePoint {
-  const point: AccountingBasisStackedSharePoint = {
-    monthLabel: axisLabel,
-    AC: 0,
-    OCI: 0,
-    TPL: 0,
-    totalValueYi: dailyAvgTotal / YI,
-  };
-  for (const bucket of accountingBasisBuckets) {
-    const row = rows.find((item) => item.basis_bucket === bucket);
-    const balance = row?.daily_avg_balance ?? 0;
-    const share =
-      row?.daily_avg_pct ?? (dailyAvgTotal > 0 ? (balance / dailyAvgTotal) * 100 : 0);
-    point[bucket] = Number.isFinite(share) ? share : 0;
-    if (bucket === "AC") point.acValueYi = balance / YI;
-    if (bucket === "OCI") point.ociValueYi = balance / YI;
-    if (bucket === "TPL") point.tplValueYi = balance / YI;
-  }
-  return point;
-}
-
-function buildAccountingBasisTrendRows(
-  trend: AdbAccountingBasisDailyAvgTrendItem[] | undefined,
-): AccountingBasisStackedSharePoint[] {
-  return (trend ?? [])
-    .slice()
-    .sort((left, right) => left.report_month.localeCompare(right.report_month))
-    .map((item) =>
-      buildAccountingBasisSharePoint(
-        formatAccountingBasisTrendMonth(item.report_month),
-        item.daily_avg_total,
-        item.rows,
-      ),
-    );
-}
-
-/** 日均分析页「区间」AC/OCI/TPL 堆叠图：按自然日排序 */
-function buildAccountingBasisComparisonTrendRows(
-  trend: AdbAccountingBasisDailyAvgTrendItem[] | undefined,
-): AccountingBasisStackedSharePoint[] {
-  return (trend ?? [])
-    .slice()
-    .sort((left, right) => left.report_date.localeCompare(right.report_date))
-    .map((item) =>
-      buildAccountingBasisSharePoint(
-        formatAccountingBasisTrendDayLabel(item.report_date),
-        item.daily_avg_total,
-        item.rows,
-      ),
-    );
-}
-
-function formatSignedPoint(value: number) {
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}pp`;
-}
-
-function buildShareInsight(rows: AccountingBasisStackedSharePoint[]) {
-  const first = rows[0];
-  const latest = rows[rows.length - 1];
-  if (!first || !latest || first.monthLabel === latest.monthLabel) {
-    return null;
-  }
-  return `AC占比较首月 ${formatSignedPoint(latest.AC - first.AC)}，OCI ${formatSignedPoint(
-    latest.OCI - first.OCI,
-  )}，TPL ${formatSignedPoint(latest.TPL - first.TPL)}。`;
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
 }
 
 function ResultMetaNotice(props: {
@@ -469,6 +408,7 @@ export default function AverageBalanceView() {
   const [endDate, setEndDate] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [adbTopN, setAdbTopN] = useState(20);
 
   const datesQuery = useQuery({
     queryKey: ["average-balance", "balance-analysis-dates", client.mode],
@@ -509,9 +449,59 @@ export default function AverageBalanceView() {
   }, [reportDate]);
 
   const comparisonQuery = useQuery({
-    queryKey: ["average-balance", "comparison", client.mode, startDate, endDate],
-    queryFn: () => client.getAdbComparison(startDate, endDate),
+    queryKey: ["average-balance", "comparison", client.mode, startDate, endDate, adbTopN],
+    queryFn: () => client.getAdbComparison(startDate, endDate, { topN: adbTopN }),
     enabled: activeTab === "daily" && Boolean(startDate && endDate),
+    retry: false,
+  });
+
+  const trendQuery = useQuery({
+    queryKey: ["average-balance", "trend", client.mode, startDate, endDate],
+    queryFn: () => client.getAdb({ startDate, endDate }),
+    enabled: activeTab === "daily" && Boolean(startDate && endDate && comparisonQuery.data),
+    retry: false,
+  });
+
+  const priorYearRange = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    return {
+      startDate: shiftIsoDateByYears(startDate, -1),
+      endDate: shiftIsoDateByYears(endDate, -1),
+    };
+  }, [startDate, endDate]);
+
+  const priorYearComparisonQuery = useQuery({
+    queryKey: [
+      "average-balance",
+      "comparison-prior-year",
+      client.mode,
+      priorYearRange?.startDate ?? "",
+      priorYearRange?.endDate ?? "",
+      adbTopN,
+    ],
+    queryFn: () =>
+      client.getAdbComparison(priorYearRange!.startDate, priorYearRange!.endDate, {
+        topN: adbTopN,
+      }),
+    enabled:
+      activeTab === "daily" &&
+      Boolean(comparisonQuery.data && priorYearRange?.startDate && priorYearRange?.endDate),
+    retry: false,
+  });
+
+  const lowCoverageWarning = useMemo(() => {
+    const d = comparisonQuery.data;
+    if (!d) return false;
+    if (d.num_days <= 1) return false;
+    const cov = d.coverage_days;
+    if (cov === undefined || cov === null) return false;
+    return cov < d.num_days * 0.5;
+  }, [comparisonQuery.data]);
+
+  const coverageQuery = useQuery({
+    queryKey: ["average-balance", "adb-coverage", client.mode, startDate, endDate],
+    queryFn: () => client.getAdbCoverage(startDate, endDate),
+    enabled: activeTab === "daily" && Boolean(startDate && endDate) && lowCoverageWarning,
     retry: false,
   });
 
@@ -545,16 +535,21 @@ export default function AverageBalanceView() {
       ? ((dailyData.total_spot_liabilities - dailyData.total_avg_liabilities) / dailyData.total_avg_liabilities) * 100
       : 0;
 
-  const comparisonRows = useMemo<AdbComparisonChartRow[]>(() => {
-    if (!dailyData) return [];
-    const mapRows = (items: AdbCategoryItem[], prefix: string) =>
+  const { comparisonAssetRows, comparisonLiabilityRows } = useMemo(() => {
+    if (!dailyData) {
+      return { comparisonAssetRows: [] as AdbComparisonChartRow[], comparisonLiabilityRows: [] as AdbComparisonChartRow[] };
+    }
+    const mapRows = (items: AdbCategoryItem[], prefix: string): AdbComparisonChartRow[] =>
       items.map((item) => ({
         label: `${prefix} · ${item.category}`,
         spot: item.spot_balance,
         avg: item.avg_balance,
         deviationPct: item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
       }));
-    return [...mapRows(dailyData.assets_breakdown, "资产"), ...mapRows(dailyData.liabilities_breakdown, "负债")];
+    return {
+      comparisonAssetRows: mapRows(dailyData.assets_breakdown, "资产"),
+      comparisonLiabilityRows: mapRows(dailyData.liabilities_breakdown, "负债"),
+    };
   }, [dailyData]);
 
   const monthlyData = monthlyQuery.data;
@@ -581,31 +576,33 @@ export default function AverageBalanceView() {
     () => buildMonthlyMatrixColumns(monthlyMatrixMonths, "项目"),
     [monthlyMatrixMonths],
   );
-  const dailyAccountingBasisRows = useMemo<AccountingBasisStackedSharePoint[]>(() => {
-    const trendPoints = buildAccountingBasisComparisonTrendRows(dailyData?.accounting_basis_daily_avg_trend);
-    if (trendPoints.length > 0) return trendPoints;
-    const basis = dailyData?.accounting_basis_daily_avg;
-    if (!basis) return [];
-    return [
-      buildAccountingBasisSharePoint(
-        formatAccountingBasisTrendMonth(basis.report_month ?? basis.report_date.slice(0, 7)),
-        basis.daily_avg_total,
-        basis.rows,
+  const yoyAdbRows = useMemo(() => {
+    const prior = priorYearComparisonQuery.data;
+    if (!dailyData || !prior) return [];
+    return buildAdbYoYAdbScaleRows(dailyData, prior);
+  }, [dailyData, priorYearComparisonQuery.data]);
+  const yoyAssetCategoryRows = useMemo(
+    () =>
+      buildCategoryYoyRows(
+        "asset",
+        dailyData?.assets_breakdown ?? [],
+        priorYearComparisonQuery.data?.assets_breakdown,
       ),
-    ];
-  }, [dailyData?.accounting_basis_daily_avg_trend, dailyData?.accounting_basis_daily_avg]);
-  const monthlyAccountingBasisTrendRows = useMemo(
-    () => buildAccountingBasisTrendRows(monthlyData?.accounting_basis_daily_avg_trend),
-    [monthlyData?.accounting_basis_daily_avg_trend],
+    [dailyData?.assets_breakdown, priorYearComparisonQuery.data?.assets_breakdown],
   );
-  const monthlyAccountingBasisInsight = useMemo(
-    () => buildShareInsight(monthlyAccountingBasisTrendRows),
-    [monthlyAccountingBasisTrendRows],
+  const yoyLiabilityCategoryRows = useMemo(
+    () =>
+      buildCategoryYoyRows(
+        "liability",
+        dailyData?.liabilities_breakdown ?? [],
+        priorYearComparisonQuery.data?.liabilities_breakdown,
+      ),
+    [dailyData?.liabilities_breakdown, priorYearComparisonQuery.data?.liabilities_breakdown],
   );
+  const yoyAmountColumns = useMemo(() => buildYoYAmountColumns(), []);
 
   const dailyAssetColumns = useMemo(() => buildDetailColumns("asset"), []);
   const dailyLiabilityColumns = useMemo(() => buildDetailColumns("liability"), []);
-  const accountingBasisColumns = useMemo(() => buildAccountingBasisColumns(), []);
   const monthlyAssetColumns = useMemo(() => buildMonthlyBreakdownColumns("asset"), []);
   const monthlyLiabilityColumns = useMemo(() => buildMonthlyBreakdownColumns("liability"), []);
 
@@ -615,10 +612,10 @@ export default function AverageBalanceView() {
       { title: "天数", dataIndex: "num_days", key: "num_days", align: "right" },
       { title: "日均资产(亿元)", dataIndex: "avg_assets", key: "avg_assets", align: "right", render: (value: number) => (value / YI).toFixed(2) },
       { title: "日均负债(亿元)", dataIndex: "avg_liabilities", key: "avg_liabilities", align: "right", render: (value: number) => (value / YI).toFixed(2) },
-      { title: "资产收益率", dataIndex: "asset_yield", key: "asset_yield", align: "right", render: (value: number | null) => formatPct(value) },
-      { title: "负债付息率", dataIndex: "liability_cost", key: "liability_cost", align: "right", render: (value: number | null) => formatPct(value) },
+      { title: "加权YTM", dataIndex: "asset_yield", key: "asset_yield", align: "right", render: (value: number | null) => formatPct(value) },
+      { title: "加权票息", dataIndex: "liability_cost", key: "liability_cost", align: "right", render: (value: number | null) => formatPct(value) },
       {
-        title: "NIM",
+        title: "利差",
         dataIndex: "net_interest_margin",
         key: "net_interest_margin",
         align: "right",
@@ -629,14 +626,32 @@ export default function AverageBalanceView() {
         dataIndex: "mom_change_pct_assets",
         key: "mom_change_pct_assets",
         align: "right",
-        render: (_value: number | null, row) => formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets),
+        render: (_value: number | null, row: AdbMonthlyDataItem) => (
+          <Space direction="vertical" size={0}>
+            <Text>{formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets)}</Text>
+            {row.mom_change_assets != null ? (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                额 {formatSignedYiBillions(row.mom_change_assets)} 亿元
+              </Text>
+            ) : null}
+          </Space>
+        ),
       },
       {
         title: "负债环比",
         dataIndex: "mom_change_pct_liabilities",
         key: "mom_change_pct_liabilities",
         align: "right",
-        render: (_value: number | null, row) => formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities),
+        render: (_value: number | null, row: AdbMonthlyDataItem) => (
+          <Space direction="vertical" size={0}>
+            <Text>{formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities)}</Text>
+            {row.mom_change_liabilities != null ? (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                额 {formatSignedYiBillions(row.mom_change_liabilities)} 亿元
+              </Text>
+            ) : null}
+          </Space>
+        ),
       },
     ],
     [],
@@ -683,9 +698,12 @@ export default function AverageBalanceView() {
     <section data-testid="average-balance-page">
       <div style={pageHeaderStyle}>
         <div>
-          <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
-            日均分析
-          </Title>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
+              日均分析
+            </Title>
+            <CalibrationBadge calibration={comparisonQuery.data?.calibration} />
+          </div>
           <Paragraph data-testid="average-balance-page-subtitle" style={pageSubtitleStyle}>
             围绕期末是否偏离日均、偏离主因、区间日均结构与月度 NIM 变化展开。页面只消费后端返回结果，
             不在前端补算正式金融口径，正式资产负债分析仍从专用正式页面进入。
@@ -759,18 +777,55 @@ export default function AverageBalanceView() {
                         <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>年初至今</Button>
                         <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} style={{ width: 160 }} />
                         <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} style={{ width: 160 }} />
+                        <Text type="secondary">明细条数</Text>
+                        <Select
+                          aria-label="adb-top-n"
+                          data-testid="adb-top-n-select"
+                          style={{ width: 100 }}
+                          value={adbTopN}
+                          options={[20, 50, 100, 200].map((n) => ({ label: String(n), value: n }))}
+                          onChange={(v) => setAdbTopN(v)}
+                        />
                       </FilterBar>
                     </Col>
                     <Col>
-                      <Text strong>有效天数：{dailyData?.num_days ?? "—"} 天</Text>
+                      <Text strong>区间天数：{dailyData?.num_days ?? "—"} 天</Text>
+                      {dailyData?.coverage_days != null && dailyData.coverage_days !== dailyData.num_days ? (
+                        <Text type="secondary" style={{ marginLeft: 8 }}>
+                          （实际有数据 {dailyData.coverage_days} 天）
+                        </Text>
+                      ) : null}
                     </Col>
                   </Row>
                   {dailyData?.simulated ? (
                     <Alert style={{ marginTop: 16 }} type="info" showIcon message="当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑" />
                   ) : null}
+                  {dailyData != null &&
+                   dailyData.coverage_days != null &&
+                   dailyData.num_days > 1 &&
+                   dailyData.coverage_days < dailyData.num_days * 0.5 ? (
+                    <Alert
+                      style={{ marginTop: 16 }}
+                      type="warning"
+                      showIcon
+                      message={`数据覆盖不足：区间 ${dailyData.num_days} 天中仅 ${dailyData.coverage_days} 天有正式表数据`}
+                      description="覆盖不足时日均余额会退化为有数据日的均值（极端情况等于期末时点），请确认 fact_formal 表已对区间内每个日期执行物化。"
+                    />
+                  ) : null}
+                  {lowCoverageWarning && startDate && endDate ? (
+                    <div style={{ marginTop: 16 }}>
+                      <AdbCoverageDiagnostics
+                        loading={coverageQuery.isLoading}
+                        isError={coverageQuery.isError}
+                        data={coverageQuery.data}
+                      />
+                    </div>
+                  ) : null}
                 </Card>
 
-                {datesQuery.isLoading || comparisonQuery.isLoading ? <Spin /> : null}
+                {datesQuery.isLoading || comparisonQuery.isLoading ? (
+                  <Spin />
+                ) : null}
                 {dailyErrorMessage ? <Alert type="error" showIcon message={dailyErrorMessage} /> : null}
                 {!datesQuery.isLoading &&
                 !datesQuery.isError &&
@@ -786,34 +841,77 @@ export default function AverageBalanceView() {
                       meta={dailyData.result_meta}
                       testId="adb-daily-result-meta"
                     />
+                    <AdbDenominatorSummary data={dailyData} />
+                    <AdbAccountingBasisSection
+                      snapshot={dailyData.accounting_basis_daily_avg}
+                      trend={dailyData.accounting_basis_daily_avg_trend}
+                      titleSuffix="日度区间"
+                    />
                     {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
-
-                    {dailyData.accounting_basis_daily_avg ? (
-                      <Card
-                        data-testid="adb-accounting-basis-daily-avg"
-                        title="AC / OCI / TPL 日均口径"
-                        size="small"
-                      >
+                    {priorYearRange ? (
+                      <Card data-testid="adb-daily-yoy-summary" title="区间同比（去年同期对齐）" size="small">
                         <Space direction="vertical" size="small" style={{ width: "100%" }}>
                           <Text type="secondary">
-                            数据源：日均表 daily_avg_balance；控制科目{" "}
-                            {dailyData.accounting_basis_daily_avg.accounting_controls.join(" / ")}
-                            ；排除{" "}
-                            {dailyData.accounting_basis_daily_avg.excluded_controls.join(" / ")}
-                            股权 OCI。
+                            本期 {startDate}～{endDate} 与去年同期 {priorYearRange.startDate}～{priorYearRange.endDate}{" "}
+                            日历对齐。同比% =（本期−去年）/ 去年（分母为 0 时显示为「—」）。
                           </Text>
-                          <AccountingBasisStackedShareChart
-                            rows={dailyAccountingBasisRows}
-                            title="金融投资账户结构演变：日均口径"
-                            height={300}
+                          <Alert
+                            type="info"
+                            showIcon
+                            message="两段表格不可加总、也不与彼此对账"
+                            description="「区间日均总资/负债」与下方分类明细均来自债券投资（ZQTZ）与同业（TYW）读模型；明细占比为占上方日均总规模之比。"
                           />
-                          <Table<AdbAccountingBasisDailyAvgItem>
-                            size="small"
-                            pagination={false}
-                            rowKey={(row) => row.basis_bucket}
-                            columns={accountingBasisColumns}
-                            dataSource={dailyData.accounting_basis_daily_avg.rows}
-                          />
+                          {priorYearComparisonQuery.isError ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              message="去年同期区间加载失败，同比表不可用。"
+                            />
+                          ) : null}
+                          {yoyAdbRows.length > 0 ? (
+                            <div>
+                              <Text strong>债券与同业 · 区间日均总规模</Text>
+                              <Table<AdbYoYAmountRow>
+                                style={{ marginTop: 8 }}
+                                size="small"
+                                pagination={false}
+                                rowKey={(row) => row.key}
+                                columns={yoyAmountColumns}
+                                dataSource={yoyAdbRows}
+                              />
+                            </div>
+                          ) : null}
+                          {!priorYearComparisonQuery.isError &&
+                          (yoyAssetCategoryRows.length > 0 || yoyLiabilityCategoryRows.length > 0) ? (
+                            <div data-testid="adb-daily-yoy-category">
+                              {yoyAssetCategoryRows.length > 0 ? (
+                                <div>
+                                  <Text strong>资产端分类 · 区间日均同比</Text>
+                                  <Table<AdbYoYAmountRow>
+                                    style={{ marginTop: 8 }}
+                                    size="small"
+                                    pagination={false}
+                                    rowKey={(row) => row.key}
+                                    columns={yoyAmountColumns}
+                                    dataSource={yoyAssetCategoryRows}
+                                  />
+                                </div>
+                              ) : null}
+                              {yoyLiabilityCategoryRows.length > 0 ? (
+                                <div style={{ marginTop: 16 }}>
+                                  <Text strong>负债端分类 · 区间日均同比</Text>
+                                  <Table<AdbYoYAmountRow>
+                                    style={{ marginTop: 8 }}
+                                    size="small"
+                                    pagination={false}
+                                    rowKey={(row) => row.key}
+                                    columns={yoyAmountColumns}
+                                    dataSource={yoyLiabilityCategoryRows}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </Space>
                       </Card>
                     ) : null}
@@ -843,9 +941,40 @@ export default function AverageBalanceView() {
 
                     <Row gutter={[16, 16]}>
                       {[
-                        { title: "资产收益率（年化）", value: formatPct(dailyData.asset_yield) },
-                        { title: "负债付息率（年化）", value: formatPct(dailyData.liability_cost) },
-                        { title: "NIM（年化）", value: formatPct(dailyData.net_interest_margin), danger: dailyData.net_interest_margin !== null && dailyData.net_interest_margin < 0 },
+                        {
+                          title: "同业日均资产",
+                          subtitle: "TYW 正式余额·区间日均",
+                          value: formatYi(dailyData.total_avg_interbank_assets),
+                        },
+                        {
+                          title: "同业日均负债",
+                          subtitle: "TYW 正式余额·区间日均",
+                          value: formatYi(dailyData.total_avg_interbank_liabilities),
+                        },
+                      ].map((item) => (
+                        <Col xs={24} sm={12} md={12} key={item.title}>
+                          <Card size="small">
+                            <Text type="secondary">{item.title}</Text>
+                            {item.subtitle ? (
+                              <div style={{ marginTop: 4 }}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {item.subtitle}
+                                </Text>
+                              </div>
+                            ) : null}
+                            <Title level={4} style={{ marginTop: 10, marginBottom: 0 }}>
+                              {item.value}
+                            </Title>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+
+                    <Row gutter={[16, 16]}>
+                      {[
+                        { title: "资产加权平均YTM", value: formatPct(dailyData.asset_yield) },
+                        { title: "负债加权平均票息", value: formatPct(dailyData.liability_cost) },
+                        { title: "利差（YTM−票息）", value: formatPct(dailyData.net_interest_margin), danger: dailyData.net_interest_margin !== null && dailyData.net_interest_margin < 0 },
                       ].map((item) => (
                         <Col xs={24} md={8} key={item.title}>
                           <Card size="small">
@@ -858,18 +987,52 @@ export default function AverageBalanceView() {
                       ))}
                     </Row>
 
-                    <Card title="期末时点与日均偏离对比" size="small">
-                      <AdbComparisonChart rows={comparisonRows} />
+                    <Card title="期末时点与日均偏离对比 · 资产" size="small">
+                      <AdbComparisonChart rows={comparisonAssetRows} />
                     </Card>
+                    <Card title="期末时点与日均偏离对比 · 负债" size="small">
+                      <AdbComparisonChart rows={comparisonLiabilityRows} />
+                    </Card>
+
+                    {trendQuery.data?.trend && trendQuery.data.trend.length > 0 ? (
+                      <Card
+                        data-testid="adb-daily-trend-chart"
+                        title="区间日均余额走势"
+                        size="small"
+                        extra={
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            蓝色区域为日余额，深蓝线为 30 日移动均线；用于识别区间内规模异常波动
+                          </Text>
+                        }
+                      >
+                        <AdbDailyTrendChart trend={trendQuery.data.trend} />
+                      </Card>
+                    ) : null}
 
                     <Row gutter={[16, 16]}>
                       <Col xs={24} xl={12}>
-                        <Card title="资产端分类明细" size="small">
+                        <Card
+                          title="资产端分类明细"
+                          size="small"
+                          extra={
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              债券投资（ZQTZ）与同业资产（TYW）；按日均规模降序；占比为占上方「日均总资产」比例；默认至多 20 类
+                            </Text>
+                          }
+                        >
                           <Table size="small" pagination={false} rowKey={(row) => `asset-${row.category}`} columns={dailyAssetColumns} dataSource={dailyData.assets_breakdown} locale={{ emptyText: "暂无数据" }} />
                         </Card>
                       </Col>
                       <Col xs={24} xl={12}>
-                        <Card title="负债端分类明细" size="small">
+                        <Card
+                          title="负债端分类明细"
+                          size="small"
+                          extra={
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              发行类债券与同业负债（ZQTZ/TYW）；按日均规模降序；占比为占上方「日均总负债」比例；默认至多 20 类
+                            </Text>
+                          }
+                        >
                           <Table size="small" pagination={false} rowKey={(row) => `liability-${row.category}`} columns={dailyLiabilityColumns} dataSource={dailyData.liabilities_breakdown} locale={{ emptyText: "暂无数据" }} />
                         </Card>
                       </Col>
@@ -905,13 +1068,17 @@ export default function AverageBalanceView() {
                       meta={monthlyData.result_meta}
                       testId="adb-monthly-result-meta"
                     />
+                    <AdbAccountingBasisSection
+                      trend={monthlyData.accounting_basis_daily_avg_trend}
+                      titleSuffix={`${monthlyData.year} 月度`}
+                    />
                     <Row gutter={[16, 16]}>
                       {[
                         { title: "年初至今日均资产", value: formatYi(monthlyData.ytd_avg_assets) },
                         { title: "年初至今日均负债", value: formatYi(monthlyData.ytd_avg_liabilities) },
-                        { title: "年初至今资产收益率", value: formatPct(monthlyData.ytd_asset_yield) },
-                        { title: "年初至今负债付息率", value: formatPct(monthlyData.ytd_liability_cost) },
-                        { title: "年初至今净息差", value: formatPct(monthlyData.ytd_nim) },
+                        { title: "年初至今加权YTM", value: formatPct(monthlyData.ytd_asset_yield) },
+                        { title: "年初至今加权票息", value: formatPct(monthlyData.ytd_liability_cost) },
+                        { title: "年初至今利差", value: formatPct(monthlyData.ytd_nim) },
                       ].map((item) => (
                         <Col xs={24} sm={12} xl={4} key={item.title}>
                           <Card size="small">
@@ -922,25 +1089,18 @@ export default function AverageBalanceView() {
                       ))}
                     </Row>
 
-                    {monthlyAccountingBasisTrendRows.length > 0 ? (
+                    {monthlyMatrixMonths.length > 1 ? (
                       <Card
-                        data-testid="adb-accounting-basis-monthly-trend"
-                        title="AC / OCI / TPL 月度日均趋势"
+                        data-testid="adb-monthly-nim-trend"
+                        title="月度利差走势"
                         size="small"
-                      >
-                        <Space direction="vertical" size="small" style={{ width: "100%" }}>
-                          <Text type="secondary">
-                            数据源：日均表 daily_avg_balance；控制科目 141 / 142 / 143 /
-                            1440101，排除 144020 股权 OCI。
+                        extra={
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            加权YTM vs 加权票息 vs NIM利差；用于跟踪利差边际变化方向
                           </Text>
-                          <AccountingBasisStackedShareChart
-                            rows={monthlyAccountingBasisTrendRows}
-                            title="金融投资账户结构演变：月度日均口径"
-                          />
-                          {monthlyAccountingBasisInsight ? (
-                            <Text strong>{monthlyAccountingBasisInsight}</Text>
-                          ) : null}
-                        </Space>
+                        }
+                      >
+                        <AdbNimTrendChart months={monthlyMatrixMonths} />
                       </Card>
                     ) : null}
 

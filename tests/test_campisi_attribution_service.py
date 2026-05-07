@@ -7,6 +7,7 @@ import duckdb
 from backend.app.repositories.yield_curve_repo import FORMAL_FACT_TABLE, YieldCurveRepository, ensure_yield_curve_tables
 from backend.app.services.campisi_attribution_service import (
     _add_market_curve_quality,
+    _build_formal_closure,
     _build_input_quality,
     _fetch_spread_data,
     _merge_positions,
@@ -160,6 +161,41 @@ def test_input_quality_reports_missing_credit_spread_curve_coverage():
     assert missing[0]["missing_sides"] == ["start", "end"]
     assert missing[1]["field"] == "credit_spread_aa_3y"
     assert "AA+, AA" in quality["warnings"][-1]
+
+
+def test_build_formal_closure_reports_residual_to_actual_pnl():
+    closure = _build_formal_closure(
+        report_date="2026-04-30",
+        campisi_total_return=Decimal("7776186475.628492"),
+        bridge_envelope={
+            "result_meta": {
+                "quality_flag": "ok",
+                "vendor_status": "vendor_stale",
+                "fallback_mode": "latest_snapshot",
+            },
+            "result": {
+                "summary": {
+                    "total_actual_pnl": {
+                        "raw": 535945018.042292,
+                    },
+                },
+            },
+        },
+    )
+
+    assert closure["status"] == "warning"
+    assert closure["basis"] == "pnl.bridge.total_actual_pnl"
+    assert closure["formal_actual_pnl"] == 535945018.042292
+    assert closure["campisi_total_return"] == 7776186475.628492
+    assert closure["residual_to_formal_pnl"] == -7240241457.5862
+    assert closure["bridge_quality_flag"] == "ok"
+    assert closure["bridge_vendor_status"] == "vendor_stale"
+    assert closure["bridge_fallback_mode"] == "latest_snapshot"
+    assert abs(
+        closure["campisi_total_return"]
+        + closure["residual_to_formal_pnl"]
+        - closure["formal_actual_pnl"]
+    ) < 0.01
 
 
 def _seed_formal_curve(duckdb_path, rows: list[tuple[object, ...]]) -> None:

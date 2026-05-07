@@ -8,7 +8,7 @@ import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type { SourcePreviewColumn } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import { KpiCard } from "../../../components/KpiCard";
 import {
   buildSourcePreviewHistoryQuery,
   buildSourcePreviewRowsQuery,

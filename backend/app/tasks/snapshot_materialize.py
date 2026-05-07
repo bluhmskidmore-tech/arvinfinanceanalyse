@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import uuid
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -39,6 +40,7 @@ from backend.app.tasks.build_runs import BuildRunRecord
 logger = logging.getLogger(__name__)
 
 SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v1"
+TYW_LOCF_RULE_VERSION = f"{SNAPSHOT_RULE_VERSION}__locf"
 SNAPSHOT_SCHEMA_VERSION = "snapshot.schema.v1"
 CANONICAL_GRAIN_VERSION = "cgv_v1"
 SNAPSHOT_KEY = "snapshot.zqtz_tyw.standardized"
@@ -51,6 +53,115 @@ def resolve_snapshot_lock(duckdb_file: Path) -> LockDefinition:
         key=f"lock:duckdb:snapshot-materialize:{digest}",
         ttl_seconds=900,
     )
+
+
+def _locf_tyw_snapshot_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+) -> dict[str, object] | None:
+    target_date = date.fromisoformat(report_date)
+    prior_row = conn.execute(
+        """
+        select report_date
+        from tyw_interbank_daily_snapshot
+        where report_date < ?::date
+        group by report_date
+        having count(*) > 0
+        order by report_date desc
+        limit 1
+        """,
+        [target_date.isoformat()],
+    ).fetchone()
+    if prior_row is None:
+        return None
+
+    prior_date = prior_row[0]
+    prior_date_text = prior_date.isoformat()
+    source_versions = [
+        str(row[0])
+        for row in conn.execute(
+            """
+            select distinct source_version
+            from tyw_interbank_daily_snapshot
+            where report_date = ?::date
+              and coalesce(trim(source_version), '') <> ''
+            order by source_version
+            """,
+            [prior_date_text],
+        ).fetchall()
+    ]
+    digest = hashlib.sha256(
+        "|".join([target_date.isoformat(), prior_date_text, *source_versions]).encode("utf-8")
+    ).hexdigest()[:12]
+    locf_source_version = f"sv_tyw_locf_{digest}"
+    locf_ingest_batch_id = f"locf:{prior_date_text}"
+
+    conn.execute(
+        "delete from tyw_interbank_daily_snapshot where report_date = ?::date",
+        [target_date.isoformat()],
+    )
+    row_count = conn.execute(
+        """
+        insert into tyw_interbank_daily_snapshot (
+          report_date,
+          position_id,
+          product_type,
+          position_side,
+          counterparty_name,
+          account_type,
+          special_account_type,
+          core_customer_type,
+          currency_code,
+          principal_native,
+          accrued_interest_native,
+          funding_cost_rate,
+          maturity_date,
+          pledged_bond_code,
+          source_version,
+          rule_version,
+          ingest_batch_id,
+          trace_id
+        )
+        select
+          ?::date as report_date,
+          position_id,
+          product_type,
+          position_side,
+          counterparty_name,
+          account_type,
+          special_account_type,
+          core_customer_type,
+          currency_code,
+          principal_native,
+          accrued_interest_native,
+          funding_cost_rate,
+          maturity_date,
+          pledged_bond_code,
+          ? as source_version,
+          ? as rule_version,
+          ? as ingest_batch_id,
+          concat('locf:', ?, ':from:', ?,
+                 case when coalesce(trim(trace_id), '') = '' then '' else concat(':', trace_id) end) as trace_id
+        from tyw_interbank_daily_snapshot
+        where report_date = ?::date
+        """,
+        [
+            target_date.isoformat(),
+            locf_source_version,
+            TYW_LOCF_RULE_VERSION,
+            locf_ingest_batch_id,
+            target_date.isoformat(),
+            prior_date_text,
+            prior_date_text,
+        ],
+    ).fetchone()[0]
+    return {
+        "row_count": int(row_count or 0),
+        "source_version": locf_source_version,
+        "prior_report_date": prior_date_text,
+        "ingest_batch_id": locf_ingest_batch_id,
+    }
 
 
 def _materialize_standard_snapshots(
@@ -120,9 +231,13 @@ def _materialize_standard_snapshots(
             "lock": lock.key,
         }
 
-    combined_sv = "__".join(
-        sorted({str(row.get("source_version", "")) for row in selected if row.get("source_version")})
-    ) or "sv_snapshot_empty"
+    selected_source_versions = {
+        str(row.get("source_version", ""))
+        for row in selected
+        if row.get("source_version")
+    }
+    extra_source_versions: set[str] = set()
+    combined_sv = "__".join(sorted(selected_source_versions)) or "sv_snapshot_empty"
 
     zqtz_manifests = [row for row in selected if str(row.get("source_family")) == "zqtz"]
     tyw_manifests = [row for row in selected if str(row.get("source_family")) == "tyw"]
@@ -263,6 +378,37 @@ def _materialize_standard_snapshots(
                             "Fail closed: tyw manifest rows matched this materialization run but standardized "
                             f"snapshot wrote 0 rows (report_dates={t_report_dates!r}, ingest_batch_ids={t_batches!r})."
                         )
+                elif report_date and zqtz_manifests and (
+                    source_families is None or "tyw" in set(source_families)
+                ):
+                    locf_payload = _locf_tyw_snapshot_rows(conn, report_date=report_date)
+                    if locf_payload is not None:
+                        tyw_total = int(locf_payload["row_count"])
+                        extra_source_versions.add(str(locf_payload["source_version"]))
+                        manifest_payloads.append(
+                            (
+                                "tyw_interbank_daily_snapshot",
+                                SnapshotManifestRecord(
+                                    snapshot_run_id=snapshot_run_id,
+                                    target_table="tyw_interbank_daily_snapshot",
+                                    schema_version=SNAPSHOT_SCHEMA_VERSION,
+                                    canonical_grain_version=CANONICAL_GRAIN_VERSION,
+                                    source_linkage=SourceLinkage(
+                                        ingest_batch_id=str(locf_payload["ingest_batch_id"]),
+                                        source_family="tyw",
+                                        source_file=f"locf:TYWLSHOW:{report_date}",
+                                        source_version=str(locf_payload["source_version"]),
+                                        archived_path=(
+                                            "locf://tyw_interbank_daily_snapshot/"
+                                            f"{locf_payload['prior_report_date']}"
+                                        ),
+                                    ),
+                                    rule_version=TYW_LOCF_RULE_VERSION,
+                                    produced_row_count=tyw_total,
+                                    status="completed",
+                                ).model_dump(mode="json"),
+                            )
+                        )
 
                 conn.execute("commit")
             except Exception:
@@ -271,6 +417,7 @@ def _materialize_standard_snapshots(
             finally:
                 conn.close()
 
+        combined_sv = "__".join(sorted(selected_source_versions | extra_source_versions)) or "sv_snapshot_empty"
         build_completed = SnapshotBuildRunRecord(
             run_id=run_id,
             job_name=run.job_name,

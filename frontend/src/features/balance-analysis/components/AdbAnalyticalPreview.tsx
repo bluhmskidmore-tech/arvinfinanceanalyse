@@ -57,26 +57,20 @@ export default function AdbAnalyticalPreview({
   comparison,
   href,
 }: AdbAnalyticalPreviewProps) {
-  const comparisonRows: AdbComparisonChartRow[] = [
-    ...comparison.assets_breakdown.map((item) => ({
-      avg: item.avg_balance,
-      deviationPct:
-        item.avg_balance > 0
-          ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100
-          : 0,
-      label: `资产 ${item.category}`,
-      spot: item.spot_balance,
-    })),
-    ...comparison.liabilities_breakdown.map((item) => ({
-      avg: item.avg_balance,
-      deviationPct:
-        item.avg_balance > 0
-          ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100
-          : 0,
-      label: `负债 ${item.category}`,
-      spot: item.spot_balance,
-    })),
-  ];
+  const comparisonAssetRows: AdbComparisonChartRow[] = comparison.assets_breakdown.map((item) => ({
+    avg: item.avg_balance,
+    deviationPct:
+      item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
+    label: `资产 ${item.category}`,
+    spot: item.spot_balance,
+  }));
+  const comparisonLiabilityRows: AdbComparisonChartRow[] = comparison.liabilities_breakdown.map((item) => ({
+    avg: item.avg_balance,
+    deviationPct:
+      item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
+    label: `负债 ${item.category}`,
+    spot: item.spot_balance,
+  }));
 
   const monthlyRows = [
     {
@@ -158,7 +152,10 @@ export default function AdbAnalyticalPreview({
         <div style={{ color: "#162033", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
           期末时点与日均偏离对比
         </div>
-        <AdbComparisonChart height={320} rows={comparisonRows} />
+        <div style={{ color: "#5c6b82", fontSize: 12, marginBottom: 6 }}>资产</div>
+        <AdbComparisonChart height={280} rows={comparisonAssetRows} />
+        <div style={{ color: "#5c6b82", fontSize: 12, margin: "12px 0 6px" }}>负债</div>
+        <AdbComparisonChart height={280} rows={comparisonLiabilityRows} />
       </div>
       <div>
         <div style={{ color: "#162033", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>

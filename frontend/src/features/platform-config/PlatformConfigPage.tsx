@@ -12,7 +12,7 @@ import type {
 } from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 
 const summaryGridStyle = {
   display: "grid",

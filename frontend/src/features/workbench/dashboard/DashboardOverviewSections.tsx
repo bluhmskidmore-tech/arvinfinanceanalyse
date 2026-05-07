@@ -2,6 +2,11 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import type { VerdictPayload } from "../../../api/contracts";
+import type { DataSectionState } from "../../../components/DataSection.types";
+import type {
+  DashboardProductCategoryMonthlyVM,
+  DashboardProductCategoryYtdVM,
+} from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { TONE_COLOR, type Tone } from "../../../utils/tone";
@@ -36,6 +41,9 @@ export type DashboardHeroMetric = {
   delta: string;
   tone: Tone;
   history: number[] | null;
+  /** Optional data-date attribution, e.g. "资产 2026-04-18". */
+  domainDate?: string | null;
+  linkTo?: string | null;
 };
 
 export type DashboardAlert = {
@@ -43,6 +51,32 @@ export type DashboardAlert = {
   title: string;
   detail: string;
   severity: "high" | "medium" | "low";
+};
+
+export type DashboardReviewAlert = DashboardAlert & {
+  sourceLabel: string;
+  actionLabel: string;
+  actionTo: string;
+};
+
+export type DashboardReviewMetaItem = {
+  id: string;
+  label: string;
+  value: string;
+  tone: "ok" | "warning" | "info";
+};
+
+export type DashboardModuleSnapshotItem = {
+  id: string;
+  to: string;
+  title: string;
+  eyebrow: string;
+  question: string;
+  output: string;
+  readiness: string;
+  sourceHint: string;
+  reviewSignals: string;
+  spotlight: boolean;
 };
 
 const sectionTitleFont = designTokens.fontFamily.sans;
@@ -53,7 +87,7 @@ const panelStyle: CSSProperties = {
   padding: `${designTokens.space[4]}px ${designTokens.space[4]}px`,
   borderRadius: designTokens.radius.md,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
 };
 
 const sectionLabelStyle: CSSProperties = {
@@ -191,9 +225,9 @@ const moduleEntries = [
     spotlight: true,
   },
   {
-    id: "risk-overview",
-    to: "/risk-overview",
-    title: "风险总览",
+    id: "risk-tensor",
+    to: "/risk-tensor",
+    title: "风险复核",
     eyebrow: "看 DV01、张量和下钻证据",
     question: "组合风险暴露、估值压力和重点下钻现在集中在哪些维度？",
     output: "进入后先看风险张量、KRD 曲线与信用利差迁移。",
@@ -274,6 +308,28 @@ export function DashboardOverviewHeroStrip({
 }: {
   metrics: DashboardHeroMetric[];
 }) {
+  if (metrics.length === 0) {
+    return (
+      <div
+        data-testid="dashboard-overview-hero-strip"
+        className="dashboard-overview-hero-strip"
+      >
+        <article
+          data-testid="dashboard-overview-hero-empty"
+          className="dashboard-overview-hero-empty"
+        >
+          <span className="dashboard-overview-hero-empty__label">
+            资产负债小卡片
+          </span>
+          <strong>等待首页总览指标</strong>
+          <p>
+            不展示替代数字；快照返回后会恢复原来的资产、负债和经营指标小卡片。
+          </p>
+        </article>
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="dashboard-overview-hero-strip"
@@ -296,7 +352,7 @@ export function DashboardOverviewHeroStrip({
               minHeight: 116,
               borderRadius: designTokens.radius.md,
               border: `1px solid ${shellTokens.colorBorderSoft}`,
-              background: "#ffffff",
+              background: shellTokens.colorBgSurface,
             }}
           >
             <span
@@ -329,21 +385,41 @@ export function DashboardOverviewHeroStrip({
                   flex: 1,
                 }}
               >
-                <span
-                  style={{
-                    fontSize: designTokens.fontSize[12],
-                    color: shellTokens.colorTextMuted,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    minWidth: 0,
-                  }}
-                  title={metric.label}
-                >
-                  {metric.label}
-                </span>
+                {metric.linkTo ? (
+                  <Link
+                    to={metric.linkTo}
+                    style={{
+                      fontSize: designTokens.fontSize[12],
+                      color: shellTokens.colorTextSecondary,
+                      fontWeight: 700,
+                      letterSpacing: "0.02em",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      minWidth: 0,
+                      textDecoration: "none",
+                    }}
+                    title={metric.label}
+                  >
+                    {metric.label}
+                  </Link>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: designTokens.fontSize[12],
+                      color: shellTokens.colorTextMuted,
+                      fontWeight: 600,
+                      letterSpacing: "0.02em",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      minWidth: 0,
+                    }}
+                    title={metric.label}
+                  >
+                    {metric.label}
+                  </span>
+                )}
                 {metric.caliberLabel ? (
                   <span style={metricCaliberTagStyle}>{metric.caliberLabel}</span>
                 ) : null}
@@ -418,6 +494,20 @@ export function DashboardOverviewHeroStrip({
             >
               {metric.note}
             </span>
+            {metric.domainDate ? (
+              <span
+                data-testid={`hero-domain-date-${metric.id}`}
+                style={{
+                  color: shellTokens.colorTextMuted,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {metric.domainDate}
+              </span>
+            ) : null}
           </article>
         );
       })}
@@ -432,7 +522,109 @@ const suggestionEyebrowStyle: CSSProperties = {
   color: shellTokens.colorTextMuted,
 };
 
-export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayload }) {
+const reviewLabelStyle: CSSProperties = {
+  color: shellTokens.colorTextMuted,
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+};
+
+const reviewInsetStyle: CSSProperties = {
+  display: "grid",
+  gap: designTokens.space[1],
+  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
+  borderRadius: designTokens.radius.sm,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: shellTokens.colorBgMuted,
+};
+
+function reviewMetaToneStyle(tone: DashboardReviewMetaItem["tone"]): CSSProperties {
+  if (tone === "warning") {
+    return {
+      borderColor: designTokens.color.warning[200],
+      background: designTokens.color.warning[50],
+      color: designTokens.color.warning[700],
+    };
+  }
+  if (tone === "ok") {
+    return {
+      borderColor: designTokens.color.success[200],
+      background: designTokens.color.success[50],
+      color: designTokens.color.success[700],
+    };
+  }
+  return {
+    borderColor: designTokens.color.info[200],
+    background: designTokens.color.info[50],
+    color: designTokens.color.info[700],
+  };
+}
+
+function DashboardReviewMetaStrip({ items }: { items: DashboardReviewMetaItem[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: designTokens.space[2],
+        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      }}
+    >
+      {items.map((item) => (
+        <div
+          key={item.id}
+          style={{
+            ...reviewInsetStyle,
+            ...reviewMetaToneStyle(item.tone),
+          }}
+        >
+          <span style={{ ...reviewLabelStyle, color: "inherit", opacity: 0.72 }}>
+            {item.label}
+          </span>
+          <strong
+            style={{
+              color: "inherit",
+              fontSize: designTokens.fontSize[12],
+              fontWeight: 800,
+              lineHeight: 1.35,
+              ...tabularNumsStyle,
+            }}
+          >
+            {item.value}
+          </strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DashboardSuggestionLink({ to }: { to: string }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        fontWeight: 700,
+        color: shellTokens.colorAccent,
+        textDecoration: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      → 下钻
+    </Link>
+  );
+}
+
+export function DashboardGlobalJudgmentPanel({
+  verdict,
+  metaItems = [],
+  evidenceLabel,
+}: {
+  verdict: VerdictPayload;
+  metaItems?: DashboardReviewMetaItem[];
+  evidenceLabel?: string | null;
+}) {
   const badgeTone = verdict.tone as Tone;
   return (
     <section data-testid="dashboard-global-judgment" style={panelStyle}>
@@ -467,6 +659,7 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
       >
         {verdict.conclusion}
       </strong>
+      <DashboardReviewMetaStrip items={metaItems} />
       {verdict.reasons.length > 0 ? (
         <div
           style={{
@@ -516,6 +709,25 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
                   </strong>
                   <span style={{ color: shellTokens.colorTextSecondary }}> — {reason.detail}</span>
                 </div>
+                {evidenceLabel ? (
+                  <div
+                    style={{
+                      marginTop: designTokens.space[2],
+                      ...reviewInsetStyle,
+                    }}
+                  >
+                    <span style={reviewLabelStyle}>口径/证据</span>
+                    <span
+                      style={{
+                        color: shellTokens.colorTextSecondary,
+                        fontSize: 11,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {evidenceLabel}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -540,17 +752,7 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
               {s.link ? (
                 <>
                   {" "}
-                  <Link
-                    to={s.link}
-                    style={{
-                      fontWeight: 700,
-                      color: shellTokens.colorAccent,
-                      textDecoration: "none",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    → 下钻
-                  </Link>
+                  <DashboardSuggestionLink to={s.link} />
                 </>
               ) : null}
             </li>
@@ -561,7 +763,42 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
   );
 }
 
-export function DashboardModuleSnapshotPanel() {
+function ModuleSnapshotField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 2 }}>
+      <span style={reviewLabelStyle}>{label}</span>
+      <span
+        style={{
+          color: shellTokens.colorTextSecondary,
+          fontSize: 11,
+          lineHeight: 1.45,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+export function DashboardModuleSnapshotPanel({
+  items,
+}: {
+  items?: DashboardModuleSnapshotItem[];
+}) {
+  const snapshotItems: DashboardModuleSnapshotItem[] =
+    items ??
+    moduleEntries.map((entry) => ({
+      ...entry,
+      readiness: "待接入",
+      sourceHint: "来源待确认",
+      reviewSignals: "不作为正式指标",
+    }));
   return (
     <section data-testid="dashboard-module-snapshot" style={panelStyle}>
       <DashboardSectionHeader eyebrow="模块快照" title="模块快照" />
@@ -572,7 +809,7 @@ export function DashboardModuleSnapshotPanel() {
           gap: designTokens.space[3],
         }}
       >
-        {moduleEntries
+        {snapshotItems
           .filter((entry) => entry.spotlight)
           .map((entry, index) => {
             const palette = modulePalette[index % modulePalette.length];
@@ -588,7 +825,7 @@ export function DashboardModuleSnapshotPanel() {
                   padding: designTokens.space[3] + 2,
                   borderRadius: designTokens.radius.md,
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "#ffffff",
+                  background: shellTokens.colorBgSurface,
                   overflow: "hidden",
                   textDecoration: "none",
                 }}
@@ -607,19 +844,39 @@ export function DashboardModuleSnapshotPanel() {
                 />
                 <span
                   style={{
-                    display: "inline-flex",
-                    width: "fit-content",
+                    display: "flex",
                     alignItems: "center",
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    background: palette.bg,
-                    color: palette.fg,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.02em",
+                    justifyContent: "space-between",
+                    gap: designTokens.space[2],
+                    minWidth: 0,
                   }}
                 >
-                  {entry.title}
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      width: "fit-content",
+                      alignItems: "center",
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      background: palette.bg,
+                      color: palette.fg,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    {entry.title}
+                  </span>
+                  <span
+                    style={{
+                      color: shellTokens.colorTextMuted,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.readiness}
+                  </span>
                 </span>
                 <span
                   style={{
@@ -631,15 +888,10 @@ export function DashboardModuleSnapshotPanel() {
                 >
                   {entry.eyebrow}
                 </span>
-                <span
-                  style={{
-                    color: shellTokens.colorTextSecondary,
-                    fontSize: 11,
-                    lineHeight: 1.45,
-                  }}
-                >
-                  {entry.output}
-                </span>
+                <ModuleSnapshotField label="回答什么" value={entry.question} />
+                <ModuleSnapshotField label="进去先看" value={entry.output} />
+                <ModuleSnapshotField label="可用状态" value={entry.sourceHint} />
+                <ModuleSnapshotField label="复核信号" value={entry.reviewSignals} />
               </Link>
             );
           })}
@@ -651,11 +903,11 @@ export function DashboardModuleSnapshotPanel() {
 export function DashboardAlertCenterPanel({
   alerts,
 }: {
-  alerts: DashboardAlert[];
+  alerts: DashboardReviewAlert[];
 }) {
   return (
     <section data-testid="dashboard-alert-center" style={panelStyle}>
-      <DashboardSectionHeader eyebrow="优先关注" title="预警中心" />
+      <DashboardSectionHeader eyebrow="优先关注" title="待复核事项" />
       <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {alerts.map((alert) => {
           const palette = severityPalette[alert.severity];
@@ -720,6 +972,51 @@ export function DashboardAlertCenterPanel({
               >
                 {alert.detail}
               </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: designTokens.space[2],
+                  alignItems: "center",
+                  marginLeft: designTokens.space[5] + designTokens.space[2],
+                }}
+              >
+                <div style={{ ...reviewInsetStyle, background: shellTokens.colorBgSurface }}>
+                  <span style={reviewLabelStyle}>来源</span>
+                  <span
+                    style={{
+                      color: shellTokens.colorTextSecondary,
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {alert.sourceLabel}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gap: 2, justifyItems: "end" }}>
+                  <span style={reviewLabelStyle}>处理入口</span>
+                  <Link
+                    to={alert.actionTo}
+                    aria-label={alert.actionLabel}
+                    style={{
+                      height: 28,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "0 10px",
+                      borderRadius: 4,
+                      border: `1px solid ${shellTokens.colorBorderSoft}`,
+                      color: shellTokens.colorAccent,
+                      background: shellTokens.colorBgSurface,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {alert.actionLabel}
+                  </Link>
+                </div>
+              </div>
             </article>
           );
         })}
@@ -877,6 +1174,196 @@ function CalendarPanel({
   );
 }
 
+export function DashboardProductCategoryYtdCards({
+  state,
+  vm,
+  monthlyState,
+  monthlyVm,
+  onRetry,
+}: {
+  state: DataSectionState;
+  vm: DashboardProductCategoryYtdVM | null;
+  monthlyState?: DataSectionState;
+  monthlyVm?: DashboardProductCategoryMonthlyVM | null;
+  onRetry: () => void;
+}) {
+  const retryButtonStyle: CSSProperties = {
+    marginTop: designTokens.space[2],
+    padding: "6px 12px",
+    borderRadius: designTokens.radius.sm,
+    border: `1px solid ${shellTokens.colorBorderSoft}`,
+    background: shellTokens.colorBgSurface,
+    color: shellTokens.colorTextPrimary,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+
+  const cardShell: CSSProperties = {
+    display: "grid",
+    gap: designTokens.space[2],
+    padding: designTokens.space[4],
+    borderRadius: designTokens.radius.md,
+    border: `1px solid ${shellTokens.colorBorderSoft}`,
+    background: shellTokens.colorBgSurface,
+  };
+
+  const showValues = state.kind === "ok" && vm !== null;
+  const showMonthlyValue = monthlyState?.kind === "ok" && monthlyVm !== null && monthlyVm !== undefined;
+  const summaryPnlDisplay = showValues
+    ? vm.summaryPnlDisplay
+    : state.kind === "loading"
+      ? "…"
+      : "—";
+  const intermediateDisplay = showValues
+    ? vm.intermediateDisplay
+    : state.kind === "loading"
+      ? "…"
+      : "—";
+  const statusHint =
+    state.kind === "loading"
+      ? "快照载入中，数值就绪后自动刷新。"
+      : state.kind === "error"
+        ? state.message ?? "快照请求失败。"
+        : state.kind === "empty"
+          ? state.hint ??
+            "后端未返回产品分类 ytd 摘要：请确认已部署含 product_category_ytd 的快照接口，且读模型可用。"
+          : null;
+  const monthlyDisplay = showMonthlyValue
+    ? monthlyVm.monthlyIncomeDisplay
+    : monthlyState?.kind === "loading"
+      ? "—"
+      : "—";
+  const monthlyDetail = showMonthlyValue
+    ? monthlyVm.monthlyIncomeDetail
+    : monthlyState?.kind === "error"
+      ? monthlyState.message ?? "月度产品分类损益快照请求失败。"
+      : monthlyState?.kind === "empty"
+        ? monthlyState.hint ??
+          "当前快照未包含产品分类损益 monthly 摘要；请进入产品分类损益页核验月度视图。"
+        : "与产品分类损益「月度视图」（monthly）页脚「全部市场科目 + 投资收益合计」口径一致。";
+
+  const summaryPnlDetail = showValues
+    ? vm.summaryPnlDetail
+    : "与产品分类损益「汇总视图」（ytd）页脚「全部市场科目 + 投资收益合计」口径一致。";
+  const intermediateDetail = showValues
+    ? vm.intermediateDetail
+    : "与产品分类损益「中间业务收入」分类行（ytd）一致。";
+
+  return (
+    <section data-testid="dashboard-product-category-ytd" style={panelStyle}>
+      <DashboardSectionHeader eyebrow="产品经营" title="汇总损益与月度损益" />
+      {statusHint ? (
+        <p
+          style={{
+            ...bodyTextStyle,
+            marginTop: designTokens.space[1],
+            color:
+              state.kind === "error"
+                ? designTokens.color.danger[600]
+                : shellTokens.colorTextMuted,
+            fontSize: designTokens.fontSize[12],
+          }}
+        >
+          {statusHint}
+        </p>
+      ) : (
+        <p style={{ ...bodyTextStyle, marginTop: designTokens.space[1] }}>
+          汇总损益与「产品分类损益」汇总视图页脚对拍；月度损益与月度视图页脚对拍。
+        </p>
+      )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: designTokens.space[3],
+          marginTop: designTokens.space[3],
+        }}
+      >
+        <article style={cardShell}>
+          <span style={sectionLabelStyle}>
+            {showMonthlyValue ? monthlyVm.monthlyIncomeLabel : "月度损益"}
+          </span>
+          <div
+            style={{
+              fontSize: designTokens.fontSize[20],
+              fontWeight: 800,
+              color: shellTokens.colorTextPrimary,
+              ...tabularNumsStyle,
+            }}
+          >
+            {monthlyDisplay}
+          </div>
+          <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[11], margin: 0 }}>
+            {monthlyDetail}
+          </p>
+        </article>
+        <article style={cardShell}>
+          <span style={sectionLabelStyle}>
+            {showValues ? vm.summaryPnlLabel : "汇总损益"}
+          </span>
+          <div
+            style={{
+              fontSize: designTokens.fontSize[20],
+              fontWeight: 800,
+              color: shellTokens.colorTextPrimary,
+              ...tabularNumsStyle,
+            }}
+          >
+            {summaryPnlDisplay}
+          </div>
+          <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[11], margin: 0 }}>
+            {summaryPnlDetail}
+          </p>
+        </article>
+        <article style={cardShell}>
+          <span style={sectionLabelStyle}>
+            {showValues ? vm.intermediateLabel : "中间业务收入"}
+          </span>
+          <div
+            style={{
+              fontSize: designTokens.fontSize[20],
+              fontWeight: 800,
+              color: shellTokens.colorTextPrimary,
+              ...tabularNumsStyle,
+            }}
+          >
+            {intermediateDisplay}
+          </div>
+          <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[11], margin: 0 }}>
+            {intermediateDetail}
+          </p>
+        </article>
+      </div>
+      <div
+        style={{
+          marginTop: designTokens.space[3],
+          display: "flex",
+          flexWrap: "wrap",
+          gap: designTokens.space[3],
+          alignItems: "center",
+        }}
+      >
+        <Link
+          to="/product-category-pnl"
+          style={{
+            fontSize: designTokens.fontSize[12],
+            fontWeight: 700,
+            color: designTokens.color.info[600],
+          }}
+        >
+          前往产品分类损益（月度损益）
+        </Link>
+        {state.kind === "error" ? (
+          <button type="button" onClick={onRetry} style={retryButtonStyle}>
+            重试
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardTasksCalendarPanels({
   tasks = [],
   calendarItems = [],
@@ -927,7 +1414,7 @@ export function DashboardModuleEntryGrid() {
                 padding: designTokens.space[4],
                 borderRadius: designTokens.radius.md,
                 border: `1px solid ${shellTokens.colorBorderSoft}`,
-                background: "#ffffff",
+                background: shellTokens.colorBgSurface,
                 overflow: "hidden",
                 textDecoration: "none",
               }}

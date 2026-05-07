@@ -21,64 +21,31 @@ import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type { PositionDirection } from "../../../api/contracts";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import {
+  DataStatusStrip,
+  KpiBand,
+  KpiBandMetric,
+  PageDecisionHero,
+  PageFilterTray,
+  PageSectionLead,
+} from "../../../components/page/PagePrimitives";
 import CustomerDetailModal from "./CustomerDetailModal";
 import IndustryDistributionCard from "./IndustryDistributionCard";
 import RatingDistributionCard from "./RatingDistributionCard";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
+import "./PositionsView.css";
 
 const PAGE_SIZE = 20;
 
 type TabKey = "bonds" | "interbank";
 type InterbankDirectionFilter = PositionDirection | "ALL";
 
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 860,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
 function SectionLead(props: {
   eyebrow: string;
   title: string;
   description: string;
 }) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
+  return <PageSectionLead {...props} />;
 }
 
 export default function PositionsView() {
@@ -299,100 +266,118 @@ export default function PositionsView() {
     !datesQuery.isLoading &&
     !datesBlockingError &&
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
+  const activeScopeLabel =
+    tab === "bonds"
+      ? selectedSubType || "未选择业务种类"
+      : selectedProductType || "未选择产品类型";
+  const activePeerFilterLabel =
+    tab === "bonds"
+      ? searchText || "未输入客户"
+      : `${direction === "ALL" ? "全部方向" : direction === "Asset" ? "资产端" : "负债端"} · ${
+          searchText || "未输入对手方"
+        }`;
+  const dataModeLabel = client.mode === "real" ? "真实只读链路" : "本地演示数据";
+  const dataModeStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "7px 12px",
+    borderRadius: 999,
+    background: client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+    color:
+      client.mode === "real"
+        ? displayTokens.apiMode.realForeground
+        : displayTokens.apiMode.mockForeground,
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 0,
+  } as const;
 
   return (
     <section data-testid="positions-page">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 24,
-        }}
+      <PageDecisionHero
+        testId="positions-decision-hero"
+        title="持仓透视"
+        titleTestId="positions-page-title"
+        eyebrow="组合工作台"
+        businessQuestion="先锁定报告日和观察区间，再判断债券评级收益率、行业分布和客户集中度是否需要下钻。"
+        actions={<span style={dataModeStyle}>{dataModeLabel}</span>}
+        reportDateSlot={
+          <span>
+            报表日：{reportDate || "—"} · 区间：{startDate || "—"} ~ {endDate || "—"} ·
+            数据来源：ZQTZ + TYWL
+          </span>
+        }
+        conclusion={
+          <DataStatusStrip testId="positions-data-status">
+            <span>日均分母=有数据 report_date 数</span>
+            <span>{tab === "bonds" ? "当前：债券持仓" : "当前：同业持仓"}</span>
+            <span>{activeScopeLabel}</span>
+          </DataStatusStrip>
+        }
       >
-        <div>
-          <Typography.Title level={2} style={{ margin: 0 }} data-testid="positions-page-title">
-            持仓透视
-          </Typography.Title>
-          <Typography.Paragraph
-            style={{ marginTop: 8, marginBottom: 0, maxWidth: 900, color: "#5c6b82" }}
-          >
-            报表日：{reportDate || "—"}，区间：{startDate || "—"} ~ {endDate || "—"}
-            （日均分母=有数据 report_date 数）。数据来源：ZQTZ + TYWL
-          </Typography.Paragraph>
-        </div>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
-            background:
-              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-            color:
-              client.mode === "real"
-                ? displayTokens.apiMode.realForeground
-                : displayTokens.apiMode.mockForeground,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
-        </span>
-      </div>
+        <KpiBand testId="positions-kpi-band">
+          <KpiBandMetric label="区间起" value={startDate || "—"} footer="当前查询起始日" />
+          <KpiBandMetric label="区间止" value={endDate || "—"} footer="当前查询结束日" />
+          <KpiBandMetric
+            label={tab === "bonds" ? "业务种类" : "产品类型"}
+            value={activeScopeLabel}
+            footer={tab === "bonds" ? "债券主筛选" : "同业主筛选"}
+          />
+          <KpiBandMetric label={tab === "bonds" ? "客户搜索" : "方向/对手方"} value={activePeerFilterLabel} />
+        </KpiBand>
+      </PageDecisionHero>
 
-      <FilterBar style={{ marginBottom: 16 }} >
-        <div>
-          <Typography.Text type="secondary">报告日</Typography.Text>
+      <PageFilterTray testId="positions-filter-tray" style={{ marginBottom: 16 }}>
+        <FilterBar>
           <div>
-            <Select
-              aria-label="positions-report-date"
-              style={{ minWidth: 160 }}
-              value={reportDate || undefined}
-              placeholder="选择报告日"
-              disabled={Boolean(explicitReportDate) || datesBlockingError}
-              options={dateOptions.map((d) => ({ value: d, label: d }))}
-              onChange={(v) => setSelectedReportDate(v)}
-            />
+            <Typography.Text type="secondary">报告日</Typography.Text>
+            <div>
+              <Select
+                aria-label="positions-report-date"
+                style={{ minWidth: 160 }}
+                value={reportDate || undefined}
+                placeholder="选择报告日"
+                disabled={Boolean(explicitReportDate) || datesBlockingError}
+                options={dateOptions.map((d) => ({ value: d, label: d }))}
+                onChange={(v) => setSelectedReportDate(v)}
+              />
+            </div>
           </div>
-        </div>
-        <div>
-          <Typography.Text type="secondary">区间起</Typography.Text>
           <div>
-            <Input
-              type="date"
-              value={rangeFrom}
-              onChange={(e) => {
-                setRangeTouched(true);
-                setRangeFrom(e.target.value);
-              }}
-              disabled={!reportDate}
-            />
+            <Typography.Text type="secondary">区间起</Typography.Text>
+            <div>
+              <Input
+                type="date"
+                value={rangeFrom}
+                onChange={(e) => {
+                  setRangeTouched(true);
+                  setRangeFrom(e.target.value);
+                }}
+                disabled={!reportDate}
+              />
+            </div>
           </div>
-        </div>
-        <div>
-          <Typography.Text type="secondary">区间止</Typography.Text>
           <div>
-            <Input
-              type="date"
-              value={rangeTo}
-              onChange={(e) => {
-                setRangeTouched(true);
-                setRangeTo(e.target.value);
-              }}
-              disabled={!reportDate}
-            />
+            <Typography.Text type="secondary">区间止</Typography.Text>
+            <div>
+              <Input
+                type="date"
+                value={rangeTo}
+                onChange={(e) => {
+                  setRangeTouched(true);
+                  setRangeTo(e.target.value);
+                }}
+                disabled={!reportDate}
+              />
+            </div>
           </div>
-        </div>
-        {explicitReportDate ? (
-          <Typography.Text type="secondary" style={{ alignSelf: "flex-end" }}>
-            已由地址栏报告日参数固定
-          </Typography.Text>
-        ) : null}
-      </FilterBar>
+          {explicitReportDate ? (
+            <Typography.Text type="secondary" style={{ alignSelf: "flex-end" }}>
+              已由地址栏报告日参数固定
+            </Typography.Text>
+          ) : null}
+        </FilterBar>
+      </PageFilterTray>
 
       {datesBlockingError ? (
         <Typography.Text type="danger">无法加载资产负债可用日期，请稍后重试。</Typography.Text>
@@ -424,34 +409,6 @@ export default function PositionsView() {
             description="债券侧继续保留业务种类筛选、主表、评级/行业分布和授信主体视图，不改现有查询与分页逻辑。"
           />
           <Row gutter={[16, 16]}>
-            <Col xs={24}>
-              <div style={summaryGridStyle}>
-                <KpiCard
-                  title="区间起始"
-                  value={startDate || "—"}
-                  detail="当前查询起始日"
-                  valueVariant="text"
-                />
-                <KpiCard
-                  title="区间结束"
-                  value={endDate || "—"}
-                  detail="当前查询结束日"
-                  valueVariant="text"
-                />
-                <KpiCard
-                  title="业务种类"
-                  value={selectedSubType || "未选择"}
-                  detail="债券侧主筛选"
-                  valueVariant="text"
-                />
-                <KpiCard
-                  title="客户搜索"
-                  value={searchText || "未输入"}
-                  detail="影响右侧客户表"
-                  valueVariant="text"
-                />
-              </div>
-            </Col>
           <Col xs={24} xl={16}>
             <Card size="small" style={{ marginBottom: 16 }}>
               <Space wrap style={{ width: "100%" }} align="end">
@@ -490,6 +447,7 @@ export default function PositionsView() {
                   <Table
                     size="small"
                     pagination={false}
+                    scroll={{ x: "max-content" }}
                     dataSource={bondsListQuery.data.items.map((row) => ({
                       key: row.bond_code,
                       ...row,
@@ -499,7 +457,7 @@ export default function PositionsView() {
                       { title: "授信主体", dataIndex: "credit_name", render: (v: string | null) => v || "—" },
                       { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
                       {
-                        title: "市值(亿元)",
+                        title: "市值",
                         dataIndex: "market_value",
                         align: "right",
                         render: (v: string | null) => formatAmountYi(v),
@@ -511,7 +469,7 @@ export default function PositionsView() {
                         render: (v: string | null) => (v ? `${v}` : "—"),
                       },
                       {
-                        title: "利率",
+                        title: "收益率",
                         dataIndex: "yield_rate",
                         align: "right",
                         render: (v: string | null) => formatRatePercent(v),
@@ -556,6 +514,11 @@ export default function PositionsView() {
                 <Typography.Text type="secondary">Top 50，点击查看明细</Typography.Text>
                 <div style={{ marginTop: 8 }}>
                   <Typography.Text>分母：{bondsCp?.num_days ?? "—"} 天</Typography.Text>
+                  {bondsCp?.cr10_ratio ? (
+                    <span className="positions-view__cr10">
+                      CR10 集中度：{bondsCp.cr10_ratio}
+                    </span>
+                  ) : null}
                 </div>
                 <Row gutter={16} style={{ marginTop: 12 }}>
                   <Col span={12}>
@@ -593,6 +556,7 @@ export default function PositionsView() {
                   <Table
                     size="small"
                     pagination={false}
+                    scroll={{ x: "max-content" }}
                     dataSource={filteredBondsCpItems.map((row) => ({
                       key: row.customer_name,
                       ...row,
@@ -608,12 +572,13 @@ export default function PositionsView() {
                       {
                         title: "客户",
                         dataIndex: "customer_name",
+                        ellipsis: true,
                         render: (v: string) => (
                           <Typography.Link>{v}</Typography.Link>
                         ),
                       },
                       {
-                        title: "日均(亿元)",
+                        title: "日均",
                         dataIndex: "avg_daily_balance",
                         align: "right",
                         render: (v: string) => formatAmountYi(v),
@@ -648,32 +613,6 @@ export default function PositionsView() {
             title="同业持仓"
             description="同业侧继续保留产品类型、方向筛选、主表与资产/负债端客户排名，只做壳层层级收敛。"
           />
-          <div style={summaryGridStyle}>
-            <KpiCard
-              title="区间起始"
-              value={startDate || "—"}
-              detail="当前查询起始日"
-              valueVariant="text"
-            />
-            <KpiCard
-              title="区间结束"
-              value={endDate || "—"}
-              detail="当前查询结束日"
-              valueVariant="text"
-            />
-            <KpiCard
-              title="产品类型"
-              value={selectedProductType || "未选择"}
-              detail="同业侧主筛选"
-              valueVariant="text"
-            />
-            <KpiCard
-              title="方向"
-              value={direction}
-              detail="同业方向筛选"
-              valueVariant="text"
-            />
-          </div>
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16}>
               <Card size="small" style={{ marginBottom: 16 }}>
@@ -717,17 +656,18 @@ export default function PositionsView() {
                     <Table
                       size="small"
                       pagination={false}
+                      scroll={{ x: "max-content" }}
                       dataSource={interbankListQuery.data.items.map((row) => ({
                         key: row.deal_id,
                         ...row,
                       }))}
                       columns={[
                         { title: "交易ID", dataIndex: "deal_id" },
-                        { title: "对手方", dataIndex: "counterparty", render: (v: string | null) => v || "—" },
+                        { title: "对手方", dataIndex: "counterparty", ellipsis: true, render: (v: string | null) => v || "—" },
                         { title: "产品类型", dataIndex: "product_type", render: (v: string | null) => v || "—" },
                         { title: "方向", dataIndex: "direction", render: (v: string | null) => v || "—" },
                         {
-                          title: "金额(亿元)",
+                          title: "金额",
                           dataIndex: "amount",
                           align: "right",
                           render: (v: string) => formatAmountYi(v),
@@ -819,7 +759,7 @@ export default function PositionsView() {
                     <Table
                       size="small"
                       pagination={false}
-                      scroll={{ y: 240 }}
+                      scroll={{ x: "max-content", y: 240 }}
                       dataSource={filteredAssetItems.map((row) => ({
                         key: row.customer_name,
                         ...row,
@@ -827,7 +767,7 @@ export default function PositionsView() {
                       columns={[
                         { title: "对手方", dataIndex: "customer_name", ellipsis: true },
                         {
-                          title: "日均(亿)",
+                          title: "日均",
                           dataIndex: "avg_daily_balance",
                           align: "right",
                           render: (v: string) => formatAmountYi(v),
@@ -894,7 +834,7 @@ export default function PositionsView() {
                     <Table
                       size="small"
                       pagination={false}
-                      scroll={{ y: 240 }}
+                      scroll={{ x: "max-content", y: 240 }}
                       dataSource={filteredLiabilityItems.map((row) => ({
                         key: row.customer_name,
                         ...row,
@@ -902,7 +842,7 @@ export default function PositionsView() {
                       columns={[
                         { title: "对手方", dataIndex: "customer_name", ellipsis: true },
                         {
-                          title: "日均(亿)",
+                          title: "日均",
                           dataIndex: "avg_daily_balance",
                           align: "right",
                           render: (v: string) => formatAmountYi(v),
