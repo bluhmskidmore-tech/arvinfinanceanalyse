@@ -980,35 +980,266 @@
   line-height: 1.4;
 }
 
-.team-performance-page__q1-summary-strip {
+.team-performance-page__q1-map {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  align-items: start;
   min-width: 0;
 }
 
-.team-performance-page__q1-summary-item {
+.team-performance-page__q1-center-stack {
   display: grid;
-  gap: 3px;
   min-width: 0;
-  padding: 10px 12px;
+  overflow: hidden;
   border: 1px solid #dbe4ee;
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.team-performance-page__q1-center-band {
+  display: grid;
+  grid-template-columns: minmax(132px, 180px) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border-bottom: 1px solid #e6edf5;
+}
+
+.team-performance-page__q1-center-band:nth-child(even) {
   background: #fbfcfe;
 }
 
-.team-performance-page__q1-summary-item span,
-.team-performance-page__q1-summary-item em {
-  color: #617086;
+.team-performance-page__q1-center-band:last-child {
+  border-bottom: 0;
+}
+
+.team-performance-page__q1-center-head {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-center-head span {
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.team-performance-page__q1-center-head strong {
+  color: #0f766e;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.team-performance-page__q1-center-head em {
+  color: #64748b;
   font-size: 12px;
   font-style: normal;
   line-height: 1.45;
 }
 
-.team-performance-page__q1-summary-item strong {
+.team-performance-page__q1-lane-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-lane {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-lane-title {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.team-performance-page__q1-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.team-performance-page__q1-rule-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #ffffff;
   color: #1f2937;
-  font-size: 16px;
+  font-size: 12px;
   line-height: 1.35;
+}
+
+.team-performance-page__q1-rule-pill span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.team-performance-page__q1-rule-pill em {
+  flex-shrink: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.team-performance-page__q1-rule-pill--include {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.team-performance-page__q1-rule-pill--include em {
+  color: #15803d;
+}
+
+.team-performance-page__q1-rule-pill--aggregate {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.team-performance-page__q1-rule-pill--aggregate em {
+  color: #c2410c;
+}
+
+.team-performance-page__q1-rule-pill--pending,
+.team-performance-page__q1-rule-pill--reference {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.team-performance-page__q1-rule-pill--pending em,
+.team-performance-page__q1-rule-pill--reference em {
+  color: #1d4ed8;
+}
+
+.team-performance-page__q1-rule-pill--subtract {
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+.team-performance-page__q1-rule-pill--subtract em {
+  color: #be123c;
+}
+
+.team-performance-page__q1-empty {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.team-performance-page__q1-guide-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dbe4ee;
+  border-left: 4px solid #2563eb;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.team-performance-page__q1-guide-panel > span {
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.team-performance-page__q1-guide-panel ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-performance-page__q1-guide-panel li {
+  position: relative;
+  padding-left: 12px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.team-performance-page__q1-guide-panel li::before {
+  position: absolute;
+  top: 0.72em;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #2563eb;
+  content: "";
+}
+
+.team-performance-page__q1-ledger {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.team-performance-page__q1-ledger summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #1f2937;
+  cursor: pointer;
+  list-style: none;
+}
+
+.team-performance-page__q1-ledger summary::-webkit-details-marker {
+  display: none;
+}
+
+.team-performance-page__q1-ledger summary::after {
+  flex-shrink: 0;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+  content: "展开";
+}
+
+.team-performance-page__q1-ledger[open] summary::after {
+  content: "收起";
+}
+
+.team-performance-page__q1-ledger summary span {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.team-performance-page__q1-ledger summary strong {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.team-performance-page__q1-ledger[open] .team-performance-page__q1-table-shell {
+  margin-top: 10px;
 }
 
 .team-performance-page__q1-table-shell {
@@ -1086,6 +1317,11 @@
   background: #f8fbff;
 }
 
+.team-performance-page__q1-table .team-performance-page__status-pill {
+  width: fit-content;
+  max-width: 100%;
+}
+
 .team-performance-page__q1-business-name {
   display: block;
   color: #1f2937;
@@ -1128,6 +1364,15 @@
 }
 
 @media (max-width: 1080px) {
+  .team-performance-page__q1-map {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-performance-page__q1-guide-panel {
+    border-left-width: 1px;
+    border-top: 4px solid #2563eb;
+  }
+
   .team-performance-page__detail-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1190,8 +1435,24 @@
     padding: 16px;
   }
 
-  .team-performance-page__q1-summary-strip {
+  .team-performance-page__q1-center-band,
+  .team-performance-page__q1-lane-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-performance-page__q1-center-band {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .team-performance-page__q1-center-head strong {
+    font-size: 18px;
+  }
+
+  .team-performance-page__q1-guide-panel li,
+  .team-performance-page__q1-rule-pill,
+  .team-performance-page__q1-empty {
+    font-size: 13px;
   }
 
   .team-performance-page__q1-table-shell {
@@ -1211,6 +1472,16 @@
   .team-performance-page__q1-table tr,
   .team-performance-page__q1-table td {
     display: block;
+    width: 100%;
+  }
+
+  .team-performance-page__q1-table td:nth-child(1),
+  .team-performance-page__q1-table td:nth-child(2),
+  .team-performance-page__q1-table td:nth-child(3),
+  .team-performance-page__q1-table td:nth-child(4),
+  .team-performance-page__q1-table td:nth-child(5),
+  .team-performance-page__q1-table td:nth-child(6),
+  .team-performance-page__q1-table td:nth-child(7) {
     width: 100%;
   }
 
@@ -1239,6 +1510,10 @@
 
   .team-performance-page__q1-table .team-performance-page__table-cell--numeric {
     text-align: left;
+  }
+
+  .team-performance-page__q1-table .team-performance-page__status-pill {
+    justify-self: start;
   }
 
   .team-performance-page__q1-table tbody tr:hover td {
