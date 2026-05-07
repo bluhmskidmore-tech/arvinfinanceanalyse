@@ -456,6 +456,47 @@ class BondAnalyticsRepository:
         finally:
             conn.close()
 
+    def fetch_business_type_metrics(self, report_date: str) -> list[dict[str, object]]:
+        """Aggregate by bond_type: market_value, YTM and modified_duration (market-value weighted)."""
+        ytm_norm = (
+            "(case when ytm is null then null "
+            "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
+        )
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return []
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return []
+            rows = conn.execute(
+                f"""
+                select
+                  cast(bond_type as varchar) as name,
+                  coalesce(sum(market_value), 0) as market_value,
+                  sum(({ytm_norm}) * market_value) / nullif(sum(market_value), 0) as weighted_avg_ytm,
+                  sum(coalesce(modified_duration, 0) * market_value)
+                    / nullif(sum(market_value), 0) as weighted_avg_duration
+                from {FACT_TABLE}
+                where cast(report_date as varchar) = ?
+                  and bond_type is not null
+                  and trim(cast(bond_type as varchar)) <> ''
+                group by bond_type
+                order by market_value desc
+                """,
+                [report_date],
+            ).fetchall()
+            return [
+                {
+                    "name": str(row[0]) if row[0] is not None else "",
+                    "market_value": row[1],
+                    "weighted_avg_ytm": row[2],
+                    "weighted_avg_duration": row[3],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
     def fetch_dashboard_yield_distribution(self, report_date: str) -> list[dict[str, object]]:
         conn = _connect_read_only(self.path)
         if conn is None:

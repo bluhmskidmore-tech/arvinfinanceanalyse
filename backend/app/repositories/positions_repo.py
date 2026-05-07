@@ -407,6 +407,15 @@ class PositionsRepository(DuckDBRepository):
         limit = max(page_size, 1)
         page_items = capped[offset : offset + limit]
 
+        mv_by_issuer = [Decimal(str(row[1] or 0)) for row in agg_rows]
+        top10_mv = sum(mv_by_issuer[:10], Decimal("0"))
+        portfolio_mv = sum(mv_by_issuer, Decimal("0"))
+        cr10_ratio = (
+            f"{(top10_mv / portfolio_mv * ONE_HUNDRED).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}%"
+            if portfolio_mv > 0
+            else None
+        )
+
         return {
             "start_date": start_date,
             "end_date": end_date,
@@ -417,6 +426,7 @@ class PositionsRepository(DuckDBRepository):
             "total_weighted_rate": tw_r,
             "total_weighted_coupon_rate": tw_c,
             "total_customers": len(items_all),
+            "cr10_ratio": cr10_ratio,
         }
 
     def _empty_counterparty_bonds(self, start_date: str, end_date: str) -> dict[str, object]:
@@ -430,6 +440,7 @@ class PositionsRepository(DuckDBRepository):
             "total_weighted_rate": None,
             "total_weighted_coupon_rate": None,
             "total_customers": 0,
+            "cr10_ratio": None,
         }
 
     def _rows_to_counterparty_items(

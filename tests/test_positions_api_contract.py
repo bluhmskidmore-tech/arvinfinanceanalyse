@@ -299,6 +299,7 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
     assert body["num_days"] == 2
     assert body["total_customers"] == 1
     assert len(body["items"]) == 1
+    assert body["cr10_ratio"] == "100.00%"
 
     pt = client.get("/api/positions/interbank/product_types", params={"report_date": "2026-01-10"})
     assert pt.status_code == 200
@@ -356,6 +357,7 @@ def test_positions_counterparty_bonds_excludes_issuance_like_from_asset_scope(tm
     assert items_by_customer["鍙戣浜虹敳"]["total_amount"] == "220.00000000"
     assert items_by_customer["鍙戣浜轰箼"]["total_amount"] == "50.00000000"
     assert items_by_customer["鍙戣浜轰箼"]["avg_daily_balance"] == "25.00000000"
+    assert body["cr10_ratio"] == "100.00%"
 
 
 def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None:

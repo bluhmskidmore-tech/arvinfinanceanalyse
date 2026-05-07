@@ -10,6 +10,7 @@ from backend.app.api.routes.choice_news import router as choice_news_router
 from backend.app.api.routes.choice_news import router_api_news as choice_news_api_router
 from backend.app.api.routes.credit_spread_analysis import router as credit_spread_analysis_router
 from backend.app.api.routes.cube_query import router as cube_query_router
+from backend.app.api.routes.dashboard import router as dashboard_router
 from backend.app.api.routes.executive import router as executive_router
 from backend.app.api.routes.external_data import router as external_data_router
 from backend.app.api.routes.health import router as health_router
@@ -44,6 +45,7 @@ router.include_router(choice_news_router, tags=["choice-news"])
 router.include_router(choice_news_api_router, tags=["choice-news"])
 router.include_router(credit_spread_analysis_router, tags=["credit-spread"])
 router.include_router(cube_query_router, tags=["cube"])
+router.include_router(dashboard_router, tags=["dashboard"])
 router.include_router(health_router, tags=["health"])
 router.include_router(liability_analytics_router, tags=["liability-analytics"])
 router.include_router(macro_vendor_router, tags=["macro-preview"])

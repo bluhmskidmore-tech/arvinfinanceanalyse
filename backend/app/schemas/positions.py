@@ -66,6 +66,7 @@ class CounterpartyStatsResponse(BaseModel):
     total_weighted_rate: str | None = None
     total_weighted_coupon_rate: str | None = None
     total_customers: int
+    cr10_ratio: str | None = None  # top-10 对手方市值 / 总市值，如 "68.50%"
 
 
 class RatingStatItem(BaseModel):

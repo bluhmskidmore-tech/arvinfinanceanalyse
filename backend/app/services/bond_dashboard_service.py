@@ -176,6 +176,44 @@ def get_bond_dashboard_headline_kpis(report_date: date) -> dict[str, object]:
     )
 
 
+def get_bond_dashboard_business_type_metrics(report_date: date) -> dict[str, object]:
+    """Formal envelope: weighted metrics by bond_type / business bucket."""
+    rd = report_date.isoformat()
+    rows = _repo().fetch_business_type_metrics(rd)
+    fact_rows = _repo().fetch_bond_analytics_rows(report_date=rd)
+    lineage = _facts_lineage(rd, fact_rows)
+    items: list[dict[str, object]] = []
+    for r in rows:
+        mv = r.get("market_value")
+        w_ytm = r.get("weighted_avg_ytm")
+        w_dur = r.get("weighted_avg_duration")
+        ytm_pct_str = (
+            format((_to_dec(w_ytm) * Decimal("100")).quantize(Q8, rounding=ROUND_HALF_UP), "f")
+            if w_ytm is not None
+            else "0.00000000"
+        )
+        items.append(
+            {
+                "name": str(r.get("name") or ""),
+                "market_value": _amt(mv),
+                "weighted_avg_ytm_pct": ytm_pct_str,
+                "weighted_avg_duration": _rate(w_dur) if w_dur is not None else "0.00000000",
+                "duration_source": "",
+            }
+        )
+    payload: dict[str, object] = {"report_date": rd, "items": items}
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_dashboard.business_type_metrics",
+            lineage=lineage,
+            default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=payload,
+        )
+    )
+
+
 def get_bond_dashboard_asset_structure(
     report_date: date,
     group_by: _GROUP_BY_LITERAL,

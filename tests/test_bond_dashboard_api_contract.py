@@ -23,6 +23,7 @@ _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
     ("/api/bond-dashboard/maturity-structure", {"report_date": REPORT_DATE}),
     ("/api/bond-dashboard/industry-distribution", {"report_date": REPORT_DATE, "top_n": 10}),
     ("/api/bond-dashboard/risk-indicators", {"report_date": REPORT_DATE}),
+    ("/api/bond-dashboard/business-type-metrics", {"report_date": REPORT_DATE}),
 ]
 
 
@@ -35,6 +36,7 @@ def _make_bond_analytics_row(
     market_value: Decimal,
     ytm: Decimal,
     modified_duration: Decimal,
+    bond_type_label: str | None = None,
 ) -> Any:
     from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 
@@ -47,7 +49,7 @@ def _make_bond_analytics_row(
         cost_center="C1",
         asset_class_raw=asset_class_std,
         asset_class_std=asset_class_std,
-        bond_type=asset_class_std,
+        bond_type=bond_type_label if bond_type_label is not None else asset_class_std,
         issuer_name="I",
         industry_name="bank",
         rating="AAA",
@@ -126,6 +128,9 @@ def _check_all_on_empty_db() -> None:
             assert result.get("items") == []
         elif path.endswith("/risk-indicators"):
             assert result.get("total_market_value") == "0.00000000"
+        elif path.endswith("/business-type-metrics"):
+            assert result.get("report_date") == REPORT_DATE
+            assert result.get("items") == []
         else:
             assert result.get("items") == []
 
@@ -367,4 +372,51 @@ def test_bond_dashboard_weighted_yield_and_duration_exclude_other_asset_class(tm
     risk = client.get("/api/bond-dashboard/risk-indicators", params={"report_date": REPORT_DATE})
     assert risk.status_code == 200, risk.text
     assert _metric_raw(risk.json()["result"]["weighted_duration"]) == Decimal("5")
+    get_settings.cache_clear()
+
+
+def test_business_type_metrics_returns_envelope(tmp_path, monkeypatch) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    duckdb_path = tmp_path / "dash-btm.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    rows = [
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="B1",
+            portfolio_name="P1",
+            asset_class_std="rate",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.02"),
+            modified_duration=Decimal("2"),
+            bond_type_label="国债",
+        ),
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="B2",
+            portfolio_name="P1",
+            asset_class_std="credit",
+            market_value=Decimal("300"),
+            ytm=Decimal("0.04"),
+            modified_duration=Decimal("6"),
+            bond_type_label="政金债",
+        ),
+    ]
+    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    rsp = client.get("/api/bond-dashboard/business-type-metrics", params={"report_date": REPORT_DATE})
+    assert rsp.status_code == 200, rsp.text
+    payload = rsp.json()
+    _assert_formal_envelope(payload)
+    items = payload["result"]["items"]
+    assert len(items) >= 2
+    names = {it["name"] for it in items}
+    assert "国债" in names and "政金债" in names
+    assert all("weighted_avg_ytm_pct" in it for it in items)
+    assert all("market_value" in it for it in items)
     get_settings.cache_clear()
