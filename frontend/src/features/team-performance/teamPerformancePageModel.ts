@@ -526,13 +526,13 @@ export const Q1_CENTER_CALIBER_RULES: TeamPerformanceQ1CaliberRule[] = [
   {
     centerId: "self-investment",
     centerName: "自营中心",
-    businessLabel: "结构化融资扣除",
+    businessLabel: "产业基金（J4资产）扣除",
     sourceEndpoint: "by-business-ytd",
     rowId: "asset_zqtz_detail_structured_finance_broker",
     amountField: "total_pnl",
     allocation: "subtract",
     evidenceStatus: "direct",
-    note: "结构化融资归产品与市场室，自营中心人民币资管产品中扣除，避免重复。",
+    note: "J4开头资产归产品与市场室，自营中心人民币资管产品中扣除，避免重复；来源页面仍使用现有行名。",
   },
   {
     centerId: "self-investment",
@@ -751,20 +751,13 @@ export const Q1_CENTER_CALIBER_RULES: TeamPerformanceQ1CaliberRule[] = [
   {
     centerId: "product-market",
     centerName: "产品与市场室",
-    businessLabel: "结构化融资",
+    businessLabel: "产业基金",
     sourceEndpoint: "by-business-ytd",
     rowId: "asset_zqtz_detail_structured_finance_broker",
     amountField: "total_pnl",
     allocation: "include",
     evidenceStatus: "direct",
-  },
-  {
-    centerId: "product-market",
-    centerName: "产品与市场室",
-    businessLabel: "产业基金",
-    allocation: "pending",
-    evidenceStatus: "split-needed",
-    note: "现有两个页面没有独立产业基金行，先不从资管父级硬拆。",
+    note: "映射规则：产业基金为J4开头资产；来源页面不改名，仍引用现有业务种类行。",
   },
 ];
 

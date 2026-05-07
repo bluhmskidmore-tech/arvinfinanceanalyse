@@ -395,6 +395,8 @@ describe("TeamPerformancePage", () => {
     expect(q1Caliber).toHaveTextContent("债券交易室");
     expect(q1Caliber).toHaveTextContent("外汇与衍生品室");
     expect(q1Caliber).toHaveTextContent("外汇远期/掉期归代客交易");
+    expect(q1Caliber).toHaveTextContent("产业基金");
+    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化融资（券商）");
     expect(q1Caliber).not.toHaveTextContent("2026计划");
     expect(q1Caliber).not.toHaveTextContent("完成率");
   });
