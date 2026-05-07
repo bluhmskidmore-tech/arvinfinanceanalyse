@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
@@ -172,6 +173,7 @@ function buildPnlClient(): ApiClient {
         interest_income: "100000.00",
         fair_value_change: "10000.00",
         capital_gain: "20000.00",
+        manual_adjustment: "0.00",
         total_pnl: "130000.00",
         current_balance: "100000000.00",
         balance_yield_pct: "0.0013",
@@ -408,6 +410,98 @@ function buildPnlClient(): ApiClient {
         period_end_date: options.asOfDate ?? "2025-12-31",
       },
     })),
+    getPnlByBusinessManualAdjustments: vi.fn(async (reportDate: string) => ({
+      report_date: reportDate,
+      adjustment_count: 1,
+      event_total: 2,
+      adjustments: [
+        {
+          adjustment_id: "pba-route-smoke-1",
+          event_type: "edited",
+          created_at: "2026-04-12T08:30:00Z",
+          stream: "pnl_by_business_adjustments",
+          report_date: reportDate,
+          row_key: "asset_zqtz_policy_financial_bond",
+          business_type: "政策性金融债",
+          operator: "DELTA",
+          approval_status: "approved",
+          manual_adjustment: "2500.00",
+          reason: "复核后补录",
+        },
+      ],
+      events: [
+        {
+          adjustment_id: "pba-route-smoke-1",
+          event_type: "edited",
+          created_at: "2026-04-12T08:30:00Z",
+          stream: "pnl_by_business_adjustments",
+          report_date: reportDate,
+          row_key: "asset_zqtz_policy_financial_bond",
+          business_type: "政策性金融债",
+          operator: "DELTA",
+          approval_status: "approved",
+          manual_adjustment: "2500.00",
+          reason: "复核后补录",
+        },
+        {
+          adjustment_id: "pba-route-smoke-1",
+          event_type: "created",
+          created_at: "2026-04-12T08:00:00Z",
+          stream: "pnl_by_business_adjustments",
+          report_date: reportDate,
+          row_key: "asset_zqtz_policy_financial_bond",
+          business_type: "政策性金融债",
+          operator: "DELTA",
+          approval_status: "approved",
+          manual_adjustment: "2000.00",
+          reason: "初始补录",
+        },
+      ],
+    })),
+    createPnlByBusinessManualAdjustment: vi.fn(async (payload) => ({
+      adjustment_id: "pba-route-smoke-created",
+      event_type: "created",
+      created_at: "2026-04-12T09:00:00Z",
+      stream: "pnl_by_business_adjustments",
+      business_type: payload.business_type ?? "",
+      reason: payload.reason ?? "",
+      ...payload,
+    })),
+    updatePnlByBusinessManualAdjustment: vi.fn(async (adjustmentId, payload) => ({
+      adjustment_id: adjustmentId,
+      event_type: "edited",
+      created_at: "2026-04-12T09:00:00Z",
+      stream: "pnl_by_business_adjustments",
+      business_type: payload.business_type ?? "",
+      reason: payload.reason ?? "",
+      ...payload,
+    })),
+    revokePnlByBusinessManualAdjustment: vi.fn(async (adjustmentId) => ({
+      adjustment_id: adjustmentId,
+      event_type: "revoked",
+      created_at: "2026-04-12T09:00:00Z",
+      stream: "pnl_by_business_adjustments",
+      report_date: "2025-12-31",
+      row_key: "asset_zqtz_policy_financial_bond",
+      business_type: "政策性金融债",
+      operator: "DELTA",
+      approval_status: "rejected",
+      manual_adjustment: "2500.00",
+      reason: "撤销",
+    })),
+    restorePnlByBusinessManualAdjustment: vi.fn(async (adjustmentId) => ({
+      adjustment_id: adjustmentId,
+      event_type: "restored",
+      created_at: "2026-04-12T09:00:00Z",
+      stream: "pnl_by_business_adjustments",
+      report_date: "2025-12-31",
+      row_key: "asset_zqtz_policy_financial_bond",
+      business_type: "政策性金融债",
+      operator: "DELTA",
+      approval_status: "approved",
+      manual_adjustment: "2500.00",
+      reason: "恢复",
+    })),
     getPnlYearlyBusinessSummary: vi.fn(async () => ({
       result_meta: buildMeta("pnl.yearly_summary", "tr_route_business_year"),
       result: yearlyBusiness,
@@ -560,6 +654,7 @@ describe("pnl routed pages smoke", () => {
     fireEvent.click(screen.getByRole("button", { name: /2025-12/ }));
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("手工调整（万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("-0.59");
     });
@@ -600,6 +695,40 @@ describe("pnl routed pages smoke", () => {
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
     expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");
     expect(screen.getByTestId("pnl-by-business-formal-table-footer")).toHaveTextContent("全表合计");
+  });
+
+  it("records and displays manual adjustment audit history on /pnl-by-business", async () => {
+    const user = userEvent.setup();
+    const client = buildPnlClient();
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(client.getPnlByBusinessManualAdjustments).toHaveBeenCalledWith("2025-12-31");
+    });
+
+    const adjustmentPanel = await screen.findByTestId("pnl-by-business-manual-adjustments");
+    expect(adjustmentPanel).toHaveTextContent("手工调整");
+    expect(adjustmentPanel).toHaveTextContent("复核后补录");
+    expect(adjustmentPanel).toHaveTextContent("历史事件");
+    expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("手工调整（万元）");
+
+    await user.clear(screen.getByLabelText("pnl-by-business-adjustment-amount"));
+    await user.type(screen.getByLabelText("pnl-by-business-adjustment-amount"), "2500");
+    await user.type(screen.getByLabelText("pnl-by-business-adjustment-reason"), "补录政策性金融债损益");
+    await user.click(screen.getByRole("button", { name: "保存调整" }));
+
+    await waitFor(() => {
+      expect(client.createPnlByBusinessManualAdjustment).toHaveBeenCalledWith({
+        report_date: "2025-12-31",
+        row_key: "asset_zqtz_policy_financial_bond",
+        business_type: "政策性金融债",
+        operator: "DELTA",
+        approval_status: "approved",
+        manual_adjustment: "2500",
+        reason: "补录政策性金融债损益",
+      });
+    });
   });
 
   it("queues heavy /pnl-by-business analysis until base YTD data is ready", async () => {

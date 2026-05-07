@@ -22,6 +22,9 @@ import type {
   PnlBasis,
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisPayload,
+  PnlByBusinessManualAdjustmentListPayload,
+  PnlByBusinessManualAdjustmentPayload,
+  PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyPayload,
   PnlByBusinessPayload,
   PnlByBusinessYtdPayload,
@@ -87,6 +90,22 @@ export type PnlClientMethods = {
     businessKey?: string;
     dimension: PnlByBusinessAnalysisDimension;
   }) => Promise<ApiEnvelope<PnlByBusinessAnalysisPayload>>;
+  createPnlByBusinessManualAdjustment: (
+    payload: PnlByBusinessManualAdjustmentRequest,
+  ) => Promise<PnlByBusinessManualAdjustmentPayload>;
+  updatePnlByBusinessManualAdjustment: (
+    adjustmentId: string,
+    payload: PnlByBusinessManualAdjustmentRequest,
+  ) => Promise<PnlByBusinessManualAdjustmentPayload>;
+  revokePnlByBusinessManualAdjustment: (
+    adjustmentId: string,
+  ) => Promise<PnlByBusinessManualAdjustmentPayload>;
+  restorePnlByBusinessManualAdjustment: (
+    adjustmentId: string,
+  ) => Promise<PnlByBusinessManualAdjustmentPayload>;
+  getPnlByBusinessManualAdjustments: (
+    reportDate: string,
+  ) => Promise<PnlByBusinessManualAdjustmentListPayload>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
@@ -218,6 +237,11 @@ type PnlBusinessClientMethods = Pick<
   | "getPnlByBusinessYtd"
   | "getPnlByBusinessMonthly"
   | "getPnlByBusinessAnalysis"
+  | "createPnlByBusinessManualAdjustment"
+  | "updatePnlByBusinessManualAdjustment"
+  | "revokePnlByBusinessManualAdjustment"
+  | "restorePnlByBusinessManualAdjustment"
+  | "getPnlByBusinessManualAdjustments"
   | "getPnlYearlyBusinessSummary"
 >;
 
@@ -272,6 +296,72 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
         },
         { basis: "formal", formal_use_allowed: true },
       );
+    },
+    async createPnlByBusinessManualAdjustment(payload) {
+      await delay();
+      return {
+        adjustment_id: "pba-mock-1",
+        event_type: "created",
+        created_at: new Date().toISOString(),
+        stream: "pnl_by_business_adjustments",
+        business_type: payload.business_type ?? "",
+        reason: payload.reason ?? "",
+        ...payload,
+      };
+    },
+    async updatePnlByBusinessManualAdjustment(adjustmentId, payload) {
+      await delay();
+      return {
+        adjustment_id: adjustmentId,
+        event_type: "edited",
+        created_at: new Date().toISOString(),
+        stream: "pnl_by_business_adjustments",
+        business_type: payload.business_type ?? "",
+        reason: payload.reason ?? "",
+        ...payload,
+      };
+    },
+    async revokePnlByBusinessManualAdjustment(adjustmentId) {
+      await delay();
+      return {
+        adjustment_id: adjustmentId,
+        event_type: "revoked",
+        created_at: new Date().toISOString(),
+        stream: "pnl_by_business_adjustments",
+        report_date: "",
+        row_key: "",
+        business_type: "",
+        operator: "DELTA",
+        approval_status: "rejected",
+        manual_adjustment: "0",
+        reason: "",
+      };
+    },
+    async restorePnlByBusinessManualAdjustment(adjustmentId) {
+      await delay();
+      return {
+        adjustment_id: adjustmentId,
+        event_type: "restored",
+        created_at: new Date().toISOString(),
+        stream: "pnl_by_business_adjustments",
+        report_date: "",
+        row_key: "",
+        business_type: "",
+        operator: "DELTA",
+        approval_status: "approved",
+        manual_adjustment: "0",
+        reason: "",
+      };
+    },
+    async getPnlByBusinessManualAdjustments(reportDate) {
+      await delay();
+      return {
+        report_date: reportDate,
+        adjustment_count: 0,
+        event_total: 0,
+        adjustments: [],
+        events: [],
+      };
     },
     async getPnlByBusinessMonthly(year: number, _asOfDate?: string) {
       await delay();
@@ -356,6 +446,40 @@ export function createRealPnlBusinessClient({
         `/api/pnl/by-business-ytd?${query.toString()}`,
       );
     },
+    createPnlByBusinessManualAdjustment: (payload) =>
+      requestActionWithBody<PnlByBusinessManualAdjustmentPayload, PnlByBusinessManualAdjustmentRequest>(
+        fetchImpl,
+        baseUrl,
+        "/api/pnl/by-business/manual-adjustments",
+        payload,
+      ),
+    updatePnlByBusinessManualAdjustment: (adjustmentId, payload) =>
+      requestActionWithBody<PnlByBusinessManualAdjustmentPayload, PnlByBusinessManualAdjustmentRequest>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/manual-adjustments/${encodeURIComponent(adjustmentId)}/edit`,
+        payload,
+      ),
+    revokePnlByBusinessManualAdjustment: (adjustmentId) =>
+      requestActionJson<PnlByBusinessManualAdjustmentPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/manual-adjustments/${encodeURIComponent(adjustmentId)}/revoke`,
+        { method: "POST" },
+      ),
+    restorePnlByBusinessManualAdjustment: (adjustmentId) =>
+      requestActionJson<PnlByBusinessManualAdjustmentPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/manual-adjustments/${encodeURIComponent(adjustmentId)}/restore`,
+        { method: "POST" },
+      ),
+    getPnlByBusinessManualAdjustments: (reportDate) =>
+      requestActionJson<PnlByBusinessManualAdjustmentListPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/manual-adjustments?report_date=${encodeURIComponent(reportDate)}`,
+      ),
     getPnlByBusinessMonthly: (year: number, asOfDate?: string) => {
       const query = new URLSearchParams({ year: String(year) });
       if (asOfDate) {
@@ -406,4 +530,37 @@ async function requestJson<TData>(
     throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
   return (await response.json()) as ApiEnvelope<TData>;
+}
+
+async function requestActionJson<T>(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!response.ok) {
+    const detail = await readHttpJsonDetail(response);
+    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
+  }
+  return (await response.json()) as T;
+}
+
+async function requestActionWithBody<TResponse, TBody>(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+  body: TBody,
+): Promise<TResponse> {
+  return requestActionJson<TResponse>(fetchImpl, baseUrl, path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }

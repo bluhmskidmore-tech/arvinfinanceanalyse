@@ -264,6 +264,124 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
     assert payload["result"] == cached_payload
 
 
+def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exists(tmp_path, monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
+        pnl_service._clear_pnl_by_business_analysis_cache()
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    GovernanceRepository(base_dir=governance_dir).append(
+        "pnl_by_business_adjustments",
+        {
+            "adjustment_id": "pba-precompute-bypass-1",
+            "event_type": "created",
+            "created_at": "2026-04-12T08:00:00+00:00",
+            "stream": "pnl_by_business_adjustments",
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "Policy Financial Bond",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "25.00",
+            "reason": "manual override should bypass stale precompute",
+        },
+    )
+
+    cached_payload = {
+        "year": 2025,
+        "as_of_date": "2025-12-31",
+        "source_tables": ["fact_pnl_by_business_precompute"],
+        "months": [],
+    }
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap in {None, "2025-12-31"}
+            return "2025-12-31"
+
+        def fetch_pnl_by_business_precompute(self, *, year, as_of_date, result_kind, dimension, business_key):
+            assert (year, as_of_date, result_kind, dimension, business_key) == (
+                2025,
+                "2025-12-31",
+                "monthly",
+                "",
+                "",
+            )
+            return cached_payload
+
+        def list_union_report_dates(self):
+            return ["2025-12-31"]
+
+        def fetch_by_business_analysis_pnl_rows(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-12-31")
+            return [
+                {
+                    "report_date": "2025-12-31",
+                    "source_kind": "formal_fi",
+                    "instrument_code": "P001",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "currency_basis": "CNY",
+                    "invest_type_std": "T",
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("100.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("25.50"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("125.50"),
+                },
+            ]
+
+        def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
+            assert (start_date, end_date) == ("2025-12-01", "2025-12-31")
+            return [
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "P001",
+                    "instrument_name": "policy financial bond",
+                    "portfolio_name": "Rate Desk",
+                    "cost_center": "CC-RATE",
+                    "account_category": "asset",
+                    "asset_class": "政策性金融债",
+                    "bond_type": "政策性金融债",
+                    "sub_type": "政策性金融债",
+                    "business_type_primary": "政策性金融债",
+                    "business_type_final": "政策性金融债",
+                    "invest_type_std": "T",
+                    "accounting_basis": "FVTPL",
+                    "currency_code": "CNY",
+                    "avg_amount": Decimal("1000.00"),
+                    "current_amount": Decimal("1000.00"),
+                },
+            ]
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result_meta": {"result_kind": kwargs["result_kind"]}, "result": kwargs["result_payload"]},
+    )
+
+    payload = pnl_service.pnl_by_business_monthly_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir=str(governance_dir),
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_monthly"
+    assert payload["result"]["source_tables"][-1] == "pnl_by_business_adjustments"
+    by_key = {item["row_key"]: item for item in payload["result"]["months"][0]["items"]}
+    assert by_key["asset_zqtz_policy_financial_bond"]["manual_adjustment"] == "25.00"
+    assert by_key["asset_zqtz_policy_financial_bond"]["total_pnl"] == "150.50"
+    get_settings.cache_clear()
+
+
 def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):

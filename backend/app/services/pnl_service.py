@@ -674,6 +674,22 @@ def _source_tables_with_manual_adjustments(source_tables: list[str], *, settings
     return source_tables
 
 
+def _has_pnl_by_business_manual_adjustments_in_period(
+    settings: Settings,
+    *,
+    year: int,
+    period_end: str,
+) -> bool:
+    return any(
+        str(record.get("report_date") or "").startswith(f"{year:04d}-")
+        and str(record.get("report_date") or "") <= period_end
+        and is_approved_status(str(record.get("approval_status") or ""))
+        for record in _reduce_latest_pnl_by_business_manual_adjustments(
+            _load_pnl_by_business_manual_adjustment_events(settings)
+        )
+    )
+
+
 def _parse_created_at(value: str) -> datetime:
     raw_value = str(value or "").strip()
     if not raw_value:
@@ -1151,6 +1167,12 @@ def pnl_by_business_analysis_envelope(
     period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
     if period_end is None:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    settings = get_settings()
+    has_manual_adjustments = _has_pnl_by_business_manual_adjustments_in_period(
+        settings,
+        year=year,
+        period_end=period_end,
+    )
     precomputed = _fetch_pnl_by_business_precompute(
         repo,
         year=year,
@@ -1159,7 +1181,7 @@ def pnl_by_business_analysis_envelope(
         dimension=dimension,
         business_key=str(business_key or "").strip(),
     )
-    if precomputed is not None:
+    if precomputed is not None and not has_manual_adjustments:
         payload = PnlByBusinessAnalysisPayload.model_validate(precomputed)
         return _build_pnl_formal_result_envelope_from_lineage(
             governance_dir=governance_dir,
@@ -1175,6 +1197,7 @@ def pnl_by_business_analysis_envelope(
     )
     if not loaded_dates:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    loaded_date_list = list(loaded_dates)
 
     period_start = f"{min(loaded_dates)[:7]}-01"
     pnl_rows, balance_rows = _cached_pnl_by_business_analysis_inputs(
@@ -1186,8 +1209,6 @@ def pnl_by_business_analysis_envelope(
     if not pnl_rows:
         raise ValueError(f"No aggregated pnl positions for year={year} through as_of_date={period_end}.")
 
-    settings = get_settings()
-    loaded_date_list = list(loaded_dates)
     pnl_rows = _append_pnl_by_business_manual_adjustments_to_rows(
         settings=settings,
         pnl_rows=tuple(pnl_rows),
@@ -1247,6 +1268,12 @@ def pnl_by_business_monthly_envelope(
     period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
     if period_end is None:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    settings = get_settings()
+    has_manual_adjustments = _has_pnl_by_business_manual_adjustments_in_period(
+        settings,
+        year=year,
+        period_end=period_end,
+    )
     precomputed = _fetch_pnl_by_business_precompute(
         repo,
         year=year,
@@ -1255,7 +1282,7 @@ def pnl_by_business_monthly_envelope(
         dimension="",
         business_key="",
     )
-    if precomputed is not None:
+    if precomputed is not None and not has_manual_adjustments:
         payload = PnlByBusinessMonthlyPayload.model_validate(precomputed)
         return _build_pnl_formal_result_envelope_from_lineage(
             governance_dir=governance_dir,
@@ -1271,6 +1298,7 @@ def pnl_by_business_monthly_envelope(
     )
     if not loaded_dates:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    loaded_date_list = list(loaded_dates)
 
     period_start = f"{min(loaded_dates)[:7]}-01"
     pnl_rows, balance_rows = _cached_pnl_by_business_analysis_inputs(
@@ -1282,8 +1310,6 @@ def pnl_by_business_monthly_envelope(
     if not pnl_rows:
         raise ValueError(f"No aggregated pnl positions for year={year} through as_of_date={period_end}.")
 
-    settings = get_settings()
-    loaded_date_list = list(loaded_dates)
     pnl_rows = _append_pnl_by_business_manual_adjustments_to_rows(
         settings=settings,
         pnl_rows=tuple(pnl_rows),

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
 import type {
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisRow,
+  PnlByBusinessManualAdjustmentPayload,
+  PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyBucket,
   PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
@@ -33,6 +35,17 @@ const YUAN_PER_WAN = 10_000;
 const FTP_RATE_PCT = 1.6;
 const FTP_RATE_RATIO = 0.016;
 const ANALYSIS_QUERY_STALE_MS = 5 * 60 * 1000;
+
+type ManualAdjustmentDraft = Pick<
+  PnlByBusinessManualAdjustmentRequest,
+  "manual_adjustment" | "approval_status" | "reason"
+>;
+
+const EMPTY_MANUAL_ADJUSTMENT_DRAFT: ManualAdjustmentDraft = {
+  manual_adjustment: "",
+  approval_status: "approved",
+  reason: "",
+};
 
 /** 损益金额：接口为元，本页统一按万元展示 */
 function formatPnlWan(raw: string | number | null | undefined) {
@@ -82,6 +95,42 @@ function formatAnalysisYieldPct(raw: string | number | null | undefined): string
     return "-";
   }
   return `${value.toFixed(2)}%`;
+}
+
+function formatAdjustmentStatus(status: string): string {
+  if (status === "approved") {
+    return "已批准";
+  }
+  if (status === "pending") {
+    return "待确认";
+  }
+  if (status === "rejected") {
+    return "已撤销";
+  }
+  return status || "-";
+}
+
+function formatAdjustmentEvent(eventType: string): string {
+  if (eventType === "created") {
+    return "新增";
+  }
+  if (eventType === "edited") {
+    return "编辑";
+  }
+  if (eventType === "revoked") {
+    return "撤销";
+  }
+  if (eventType === "restored") {
+    return "恢复";
+  }
+  return eventType || "-";
+}
+
+function normalizeAdjustmentStatus(status: string): PnlByBusinessManualAdjustmentRequest["approval_status"] {
+  if (status === "pending" || status === "rejected") {
+    return status;
+  }
+  return "approved";
 }
 
 function annualizedYieldPctValue(
@@ -199,6 +248,7 @@ function BusinessRowsTable({
     let interest = 0;
     let fairValue = 0;
     let capital = 0;
+    let manual = 0;
     let totalPnl = 0;
     let assets = 0;
     let adbSum = 0;
@@ -206,6 +256,7 @@ function BusinessRowsTable({
       interest += numeric(row.interest_income) ?? 0;
       fairValue += numeric(row.fair_value_change) ?? 0;
       capital += numeric(row.capital_gain) ?? 0;
+      manual += numeric(row.manual_adjustment) ?? 0;
       totalPnl += numeric(row.total_pnl) ?? 0;
       assets += row.assets_count;
       const adb = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
@@ -219,6 +270,7 @@ function BusinessRowsTable({
       interest,
       fairValue,
       capital,
+      manual,
       totalPnl,
       assets,
       adbSum,
@@ -239,6 +291,7 @@ function BusinessRowsTable({
             <th>利息收入（万元）</th>
             <th>公允价值变动（万元）</th>
             <th>资本利得（万元）</th>
+            <th>手工调整（万元）</th>
             <th>合计损益（万元）</th>
             <th>年化收益率</th>
             <th>FTP后收益（万元）</th>
@@ -272,6 +325,7 @@ function BusinessRowsTable({
                 <td>{formatPnlWan(row.interest_income)}</td>
                 <td>{formatPnlWan(row.fair_value_change)}</td>
                 <td>{formatPnlWan(row.capital_gain)}</td>
+                <td>{formatPnlWan(row.manual_adjustment)}</td>
                 <td>{formatPnlWan(row.total_pnl)}</td>
                 <td>
                   {formatAnnualizedYieldPctDisplay(numeric(row.total_pnl), adbAvg, ytdCalendarDays)}
@@ -292,6 +346,7 @@ function BusinessRowsTable({
               <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.interest)}</td>
               <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.fairValue)}</td>
               <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.capital)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.manual)}</td>
               <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.totalPnl)}</td>
               <td className="pnl-by-business-table-footer-cell">{parentFooter.yieldPct}</td>
               <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.ftpNetPnl)}</td>
@@ -321,6 +376,7 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
             <th>利息收入（万元）</th>
             <th>公允价值变动（万元）</th>
             <th>资本利得（万元）</th>
+            <th>手工调整（万元）</th>
             <th>合计损益（万元）</th>
             <th>年化收益率</th>
             <th>FTP后收益（万元）</th>
@@ -338,6 +394,7 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
               <td>{formatPnlWan(row.interest_income)}</td>
               <td>{formatPnlWan(row.fair_value_change)}</td>
               <td>{formatPnlWan(row.capital_gain)}</td>
+              <td>{formatPnlWan(row.manual_adjustment)}</td>
               <td>{formatPnlWan(row.total_pnl)}</td>
               <td>{formatAnalysisYieldPct(row.annualized_yield_pct)}</td>
               <td>{formatPnlWan(row.ftp_net_pnl)}</td>
@@ -355,6 +412,7 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
             <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.interest_income)}</td>
             <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.fair_value_change)}</td>
             <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.capital_gain)}</td>
+            <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.manual_adjustment)}</td>
             <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.total_pnl)}</td>
             <td className="pnl-by-business-table-footer-cell">{formatAnalysisYieldPct(month.summary.annualized_yield_pct)}</td>
             <td className="pnl-by-business-table-footer-cell">{formatPnlWan(month.summary.ftp_net_pnl)}</td>
@@ -462,6 +520,241 @@ function MonthlyBusinessBreakdownPanel({
           })}
         </div>
       )}
+    </section>
+  );
+}
+
+function PnlByBusinessManualAdjustmentPanel({
+  rows,
+  selectedReportDate,
+  selectedBusinessRow,
+  selectedRowKey,
+  draft,
+  editingAdjustmentId,
+  adjustmentError,
+  isLoading,
+  isSaving,
+  isActionBusy,
+  adjustments,
+  events,
+  onSelectRowKey,
+  onDraftChange,
+  onSubmit,
+  onEdit,
+  onCancelEdit,
+  onRevoke,
+  onRestore,
+}: {
+  rows: PnlByBusinessYtdItem[];
+  selectedReportDate: string;
+  selectedBusinessRow: PnlByBusinessYtdItem | undefined;
+  selectedRowKey: string;
+  draft: ManualAdjustmentDraft;
+  editingAdjustmentId: string | null;
+  adjustmentError: string;
+  isLoading: boolean;
+  isSaving: boolean;
+  isActionBusy: boolean;
+  adjustments: PnlByBusinessManualAdjustmentPayload[];
+  events: PnlByBusinessManualAdjustmentPayload[];
+  onSelectRowKey: (rowKey: string) => void;
+  onDraftChange: <K extends keyof ManualAdjustmentDraft>(key: K, value: ManualAdjustmentDraft[K]) => void;
+  onSubmit: () => void;
+  onEdit: (item: PnlByBusinessManualAdjustmentPayload) => void;
+  onCancelEdit: () => void;
+  onRevoke: (adjustmentId: string) => void;
+  onRestore: (adjustmentId: string) => void;
+}) {
+  return (
+    <section
+      className="pnl-by-business-analysis-block pnl-by-business-adjustment-panel"
+      data-testid="pnl-by-business-manual-adjustments"
+    >
+      <div className="pnl-by-business-analysis-heading">
+        <div>
+          <h2>手工调整</h2>
+          <p>
+            {selectedReportDate} · {selectedBusinessRow?.business_type ?? "-"}
+          </p>
+        </div>
+        <span className="pnl-by-business-section-pill">{adjustments.length} 当前</span>
+      </div>
+
+      <div className="pnl-by-business-adjustment-form">
+        <label className="pnl-by-business-filter-label">
+          业务种类
+          <select
+            aria-label="pnl-by-business-adjustment-row"
+            className="pnl-by-business-control"
+            value={selectedRowKey}
+            onChange={(event) => onSelectRowKey(event.target.value)}
+          >
+            {rows.map((row) => (
+              <option key={row.row_key} value={row.row_key}>
+                {row.business_type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="pnl-by-business-filter-label">
+          调整金额（元）
+          <input
+            aria-label="pnl-by-business-adjustment-amount"
+            className="pnl-by-business-control"
+            inputMode="decimal"
+            value={draft.manual_adjustment}
+            onChange={(event) => onDraftChange("manual_adjustment", event.target.value)}
+          />
+        </label>
+        <label className="pnl-by-business-filter-label">
+          审批状态
+          <select
+            aria-label="pnl-by-business-adjustment-status"
+            className="pnl-by-business-control"
+            value={draft.approval_status}
+            onChange={(event) =>
+              onDraftChange(
+                "approval_status",
+                event.target.value as PnlByBusinessManualAdjustmentRequest["approval_status"],
+              )
+            }
+          >
+            <option value="approved">已批准</option>
+            <option value="pending">待确认</option>
+            <option value="rejected">已撤销</option>
+          </select>
+        </label>
+        <label className="pnl-by-business-filter-label pnl-by-business-adjustment-reason-field">
+          原因
+          <input
+            aria-label="pnl-by-business-adjustment-reason"
+            className="pnl-by-business-control"
+            value={draft.reason ?? ""}
+            onChange={(event) => onDraftChange("reason", event.target.value)}
+          />
+        </label>
+        <div className="pnl-by-business-adjustment-actions">
+          <button
+            type="button"
+            className="pnl-by-business-action-button pnl-by-business-action-button-primary"
+            disabled={isSaving || !selectedReportDate || !selectedRowKey}
+            onClick={onSubmit}
+          >
+            {editingAdjustmentId ? "保存编辑" : "保存调整"}
+          </button>
+          {editingAdjustmentId ? (
+            <button
+              type="button"
+              className="pnl-by-business-action-button"
+              disabled={isSaving}
+              onClick={onCancelEdit}
+            >
+              取消
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {adjustmentError ? <div className="pnl-by-business-adjustment-error">{adjustmentError}</div> : null}
+
+      <div className="pnl-by-business-adjustment-columns">
+        <div className="pnl-by-business-adjustment-list">
+          <div className="pnl-by-business-adjustment-list-heading">
+            <strong>当前调整</strong>
+            <span>{isLoading ? "读取中" : `${adjustments.length} 条`}</span>
+          </div>
+          {isLoading ? (
+            <div className="pnl-by-business-analysis-state">加载中</div>
+          ) : adjustments.length === 0 ? (
+            <div className="pnl-by-business-analysis-state">暂无手工调整</div>
+          ) : (
+            <div className="pnl-by-business-table-shell pnl-by-business-adjustment-table-shell">
+              <table className="pnl-by-business-table pnl-by-business-adjustment-table">
+                <thead>
+                  <tr>
+                    <th>业务种类</th>
+                    <th>金额（万元）</th>
+                    <th>状态</th>
+                    <th>原因</th>
+                    <th>最近事件</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adjustments.map((item) => (
+                    <tr key={`adjustment-current-${item.adjustment_id}`}>
+                      <td>{item.business_type || item.row_key}</td>
+                      <td>{formatPnlWan(item.manual_adjustment)}</td>
+                      <td>{formatAdjustmentStatus(item.approval_status)}</td>
+                      <td>{item.reason || "-"}</td>
+                      <td>{formatAdjustmentEvent(item.event_type)}</td>
+                      <td>
+                        <div className="pnl-by-business-row-actions">
+                          <button type="button" onClick={() => onEdit(item)} disabled={isActionBusy}>
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRevoke(item.adjustment_id)}
+                            disabled={isActionBusy || item.approval_status !== "approved"}
+                          >
+                            撤销
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRestore(item.adjustment_id)}
+                            disabled={isActionBusy || item.approval_status !== "rejected"}
+                          >
+                            恢复
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="pnl-by-business-adjustment-list">
+          <div className="pnl-by-business-adjustment-list-heading">
+            <strong>历史事件</strong>
+            <span>{isLoading ? "读取中" : `${events.length} 条`}</span>
+          </div>
+          {isLoading ? (
+            <div className="pnl-by-business-analysis-state">加载中</div>
+          ) : events.length === 0 ? (
+            <div className="pnl-by-business-analysis-state">暂无历史事件</div>
+          ) : (
+            <div className="pnl-by-business-table-shell pnl-by-business-adjustment-table-shell">
+              <table className="pnl-by-business-table pnl-by-business-adjustment-table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>事件</th>
+                    <th>业务种类</th>
+                    <th>金额（万元）</th>
+                    <th>状态</th>
+                    <th>原因</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((item) => (
+                    <tr key={`adjustment-event-${item.adjustment_id}-${item.event_type}-${item.created_at}`}>
+                      <td>{item.created_at}</td>
+                      <td>{formatAdjustmentEvent(item.event_type)}</td>
+                      <td>{item.business_type || item.row_key}</td>
+                      <td>{formatPnlWan(item.manual_adjustment)}</td>
+                      <td>{formatAdjustmentStatus(item.approval_status)}</td>
+                      <td>{item.reason || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -880,12 +1173,18 @@ function NegativeFtpListPanel({
 
 export default function PnlByBusinessPage() {
   const client = useApiClient();
+  const queryClient = useQueryClient();
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [viewMode, setViewMode] = useState<PnlByBusinessViewMode>("ytd");
   const [selectedBusinessKey, setSelectedBusinessKey] = useState<string | null>(null);
   const [analysisDimension, setAnalysisDimension] = useState<PnlByBusinessAnalysisDimension>("monthly");
   const [analysisLoadStage, setAnalysisLoadStage] = useState(0);
   const [openMonthlyKeys, setOpenMonthlyKeys] = useState<Set<string>>(() => new Set());
+  const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
+  const [adjustmentDraft, setAdjustmentDraft] = useState<ManualAdjustmentDraft>(() => ({
+    ...EMPTY_MANUAL_ADJUSTMENT_DRAFT,
+  }));
+  const [adjustmentError, setAdjustmentError] = useState("");
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business", "dates", client.mode],
@@ -1079,6 +1378,55 @@ export default function PnlByBusinessPage() {
   });
   const negativeFtpInstrumentRows = negativeFtpInstrumentQuery.data?.result.rows ?? [];
 
+  const manualAdjustmentQuery = useQuery({
+    queryKey: ["pnl-by-business", "manual-adjustments", client.mode, selectedReportDate],
+    enabled: Boolean(selectedReportDate && viewMode === "ytd"),
+    queryFn: () => client.getPnlByBusinessManualAdjustments(selectedReportDate),
+    retry: false,
+  });
+  const currentAdjustments = manualAdjustmentQuery.data?.adjustments ?? [];
+  const adjustmentEvents = manualAdjustmentQuery.data?.events ?? [];
+
+  const invalidatePnlByBusinessQueries = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["pnl-by-business"] });
+  };
+
+  const resetAdjustmentDraft = () => {
+    setEditingAdjustmentId(null);
+    setAdjustmentDraft({ ...EMPTY_MANUAL_ADJUSTMENT_DRAFT });
+  };
+
+  const saveAdjustmentMutation = useMutation({
+    mutationFn: (payload: PnlByBusinessManualAdjustmentRequest) =>
+      editingAdjustmentId
+        ? client.updatePnlByBusinessManualAdjustment(editingAdjustmentId, payload)
+        : client.createPnlByBusinessManualAdjustment(payload),
+    onSuccess: async () => {
+      setAdjustmentError("");
+      resetAdjustmentDraft();
+      setAnalysisLoadStage(0);
+      await invalidatePnlByBusinessQueries();
+    },
+    onError: (error) => {
+      setAdjustmentError(error instanceof Error ? error.message : "保存手工调整失败");
+    },
+  });
+
+  const adjustmentActionMutation = useMutation({
+    mutationFn: ({ adjustmentId, action }: { adjustmentId: string; action: "revoke" | "restore" }) =>
+      action === "revoke"
+        ? client.revokePnlByBusinessManualAdjustment(adjustmentId)
+        : client.restorePnlByBusinessManualAdjustment(adjustmentId),
+    onSuccess: async () => {
+      setAdjustmentError("");
+      setAnalysisLoadStage(0);
+      await invalidatePnlByBusinessQueries();
+    },
+    onError: (error) => {
+      setAdjustmentError(error instanceof Error ? error.message : "更新手工调整状态失败");
+    },
+  });
+
   useEffect(() => {
     if (analysisLoadStage === 1 && (monthlyBusinessQuery.isSuccess || monthlyBusinessQuery.isError)) {
       setAnalysisLoadStage(2);
@@ -1112,6 +1460,55 @@ export default function PnlByBusinessPage() {
         next.add(monthKey);
       }
       return next;
+    });
+  };
+
+  const updateAdjustmentDraft = <K extends keyof ManualAdjustmentDraft>(
+    key: K,
+    value: ManualAdjustmentDraft[K],
+  ) => {
+    setAdjustmentDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const handleSubmitAdjustment = () => {
+    setAdjustmentError("");
+    const targetRow = selectedBusinessRow;
+    if (!selectedReportDate || !targetRow?.row_key) {
+      setAdjustmentError("请选择报表日和业务种类。");
+      return;
+    }
+    const amount = adjustmentDraft.manual_adjustment.trim();
+    if (!amount) {
+      setAdjustmentError("请填写调整金额。");
+      return;
+    }
+    if (!Number.isFinite(Number(amount))) {
+      setAdjustmentError("调整金额必须是数字。");
+      return;
+    }
+
+    saveAdjustmentMutation.mutate({
+      report_date: selectedReportDate,
+      row_key: targetRow.row_key,
+      business_type: targetRow.business_type,
+      operator: "DELTA",
+      approval_status: adjustmentDraft.approval_status,
+      manual_adjustment: amount,
+      reason: adjustmentDraft.reason?.trim() ?? "",
+    });
+  };
+
+  const handleEditAdjustment = (item: PnlByBusinessManualAdjustmentPayload) => {
+    setAdjustmentError("");
+    setEditingAdjustmentId(item.adjustment_id);
+    setSelectedBusinessKey(item.row_key);
+    setAdjustmentDraft({
+      manual_adjustment: item.manual_adjustment,
+      approval_status: normalizeAdjustmentStatus(item.approval_status),
+      reason: item.reason ?? "",
     });
   };
 
@@ -1194,6 +1591,7 @@ export default function PnlByBusinessPage() {
             businessQuery.refetch(),
             formalBusinessQuery.refetch(),
             adbComparisonQuery.refetch(),
+            manualAdjustmentQuery.refetch(),
           ];
           void Promise.all(chain);
         }}
@@ -1285,6 +1683,27 @@ export default function PnlByBusinessPage() {
                 ytdCalendarDays={ytdCalendarDays}
                 selectedRowKey={selectedBusinessRow?.row_key ?? null}
                 onSelectRow={(row) => setSelectedBusinessKey(row.row_key)}
+              />
+              <PnlByBusinessManualAdjustmentPanel
+                rows={ytdRows}
+                selectedReportDate={selectedReportDate}
+                selectedBusinessRow={selectedBusinessRow}
+                selectedRowKey={selectedBusinessRow?.row_key ?? ""}
+                draft={adjustmentDraft}
+                editingAdjustmentId={editingAdjustmentId}
+                adjustmentError={adjustmentError}
+                isLoading={manualAdjustmentQuery.isLoading || manualAdjustmentQuery.isFetching}
+                isSaving={saveAdjustmentMutation.isPending}
+                isActionBusy={adjustmentActionMutation.isPending}
+                adjustments={currentAdjustments}
+                events={adjustmentEvents}
+                onSelectRowKey={(rowKey) => setSelectedBusinessKey(rowKey)}
+                onDraftChange={updateAdjustmentDraft}
+                onSubmit={handleSubmitAdjustment}
+                onEdit={handleEditAdjustment}
+                onCancelEdit={resetAdjustmentDraft}
+                onRevoke={(adjustmentId) => adjustmentActionMutation.mutate({ adjustmentId, action: "revoke" })}
+                onRestore={(adjustmentId) => adjustmentActionMutation.mutate({ adjustmentId, action: "restore" })}
               />
               <MonthlyBusinessBreakdownPanel
                 months={monthlyBusinessMonths}

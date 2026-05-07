@@ -1398,6 +1398,7 @@ export type PnlByBusinessYtdItem = {
   interest_income: string;
   fair_value_change: string;
   capital_gain: string;
+  manual_adjustment: string;
   total_pnl: string;
   current_balance: string;
   balance_yield_pct: string | null;
@@ -1416,6 +1417,38 @@ export type PnlByBusinessYtdPayload = {
   total_pnl: string;
   source_tables: string[];
   items: PnlByBusinessYtdItem[];
+};
+
+export type PnlByBusinessManualAdjustmentRequest = {
+  report_date: string;
+  row_key: string;
+  business_type?: string;
+  operator: "ADD" | "DELTA" | "OVERRIDE";
+  approval_status: "approved" | "pending" | "rejected";
+  manual_adjustment: string;
+  reason?: string;
+};
+
+export type PnlByBusinessManualAdjustmentPayload = {
+  adjustment_id: string;
+  event_type: string;
+  created_at: string;
+  stream: string;
+  report_date: string;
+  row_key: string;
+  business_type: string;
+  operator: string;
+  approval_status: string;
+  manual_adjustment: string;
+  reason: string;
+};
+
+export type PnlByBusinessManualAdjustmentListPayload = {
+  report_date: string;
+  adjustment_count: number;
+  event_total: number;
+  adjustments: PnlByBusinessManualAdjustmentPayload[];
+  events: PnlByBusinessManualAdjustmentPayload[];
 };
 
 export type PnlByBusinessMonthlyItem = {
