@@ -165,6 +165,11 @@ import {
   createRealCubeClient,
   type CubeClientMethods,
 } from "./cubeClient";
+import {
+  buildStableDemoAgentEnvelope,
+  createRealAgentClient,
+  type AgentClientMethods,
+} from "./agentClient";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -179,6 +184,7 @@ export type { PositionsClientMethods } from "./positionsClient";
 export type { LedgerClientMethods } from "./ledgerClient";
 export type { KpiClientMethods } from "./kpiClient";
 export type { CubeClientMethods } from "./cubeClient";
+export type { AgentClientMethods } from "./agentClient";
 
 export type ApiClient = {
   mode: DataSourceMode;
@@ -193,6 +199,7 @@ export type ApiClient = {
   & LedgerClientMethods
   & KpiClientMethods
   & CubeClientMethods
+  & AgentClientMethods
   & {
   getHealthLive: () => Promise<HealthStatusResponse>;
   getHealthSummary: () => Promise<HealthStatusResponse>;
@@ -2228,6 +2235,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return { status: "ok" };
     },
+    async queryAgent(_request) {
+      await delay();
+      return buildStableDemoAgentEnvelope();
+    },
     async getOverview(_reportDate?: string) {
       await delay();
       return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.overview", (await ensureMockClientBundle()).overviewPayload);
@@ -4016,6 +4027,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealKpiClient({ fetchImpl, baseUrl }),
     ...createRealCubeClient({ fetchImpl, baseUrl }),
     ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
+    ...createRealAgentClient({ fetchImpl, baseUrl }),
     async getHealth() {
       const response = await fetchImpl(`${baseUrl}/health/ready`, {
         headers: { Accept: "application/json" },

@@ -153,6 +153,7 @@ export function buildDashboardHomeHeroMetrics(input: {
     delta: formatDashboardHomeDelta(metric.delta?.display, input.fallbackDelta ?? "N/A"),
     tone: metric.tone,
     history: metric.history ?? null,
+    linkTo: metric.id === "yield" ? "/pnl-by-business" : null,
   }));
 }
 

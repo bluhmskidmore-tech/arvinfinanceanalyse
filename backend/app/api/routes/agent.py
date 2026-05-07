@@ -7,8 +7,16 @@ from fastapi.responses import JSONResponse
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
+from backend.app.agent.schemas.agent_run import (
+    AgentRunCreateResponse,
+    AgentRunStatusResponse,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.services.agent_run_service import (
+    create_agent_run,
+    get_agent_run_status,
+)
 from backend.app.services.agent_service import (
     audit_disabled_agent_query,
     execute_agent_query,
@@ -19,12 +27,11 @@ from backend.app.services.hermes_agent_service import execute_hermes_agent_query
 router = APIRouter(prefix="/api/agent")
 
 
-@router.post("/query", response_model=AgentEnvelope | AgentDisabledResponse)
-def query_agent(
+def _apply_auth_context(
     request: AgentQueryRequest,
-    auth: Annotated[AuthContext, Depends(get_auth_context)],
-) -> AgentEnvelope | JSONResponse:
-    request = request.model_copy(
+    auth: AuthContext,
+) -> AgentQueryRequest:
+    return request.model_copy(
         update={
             "context": {
                 **request.context,
@@ -34,6 +41,14 @@ def query_agent(
             }
         }
     )
+
+
+@router.post("/query", response_model=AgentEnvelope | AgentDisabledResponse)
+def query_agent(
+    request: AgentQueryRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AgentEnvelope | JSONResponse:
+    request = _apply_auth_context(request, auth)
     settings = get_settings()
     if not settings.agent_enabled:
         audit_disabled_agent_query(
@@ -61,3 +76,41 @@ def query_agent(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/runs", response_model=AgentRunCreateResponse)
+def create_agent_run_endpoint(
+    request: AgentQueryRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AgentRunCreateResponse | JSONResponse:
+    request = _apply_auth_context(request, auth)
+    settings = get_settings()
+    if not settings.agent_enabled:
+        audit_disabled_agent_query(
+            request=request,
+            governance_dir=str(settings.governance_path),
+        )
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=phase1_disabled_response().model_dump(mode="json"),
+        )
+    if str(getattr(settings, "agent_provider", "local")).strip().lower() != "hermes":
+        raise HTTPException(status_code=400, detail="Agent runs require MOSS_AGENT_PROVIDER=hermes.")
+
+    return create_agent_run(
+        request=request,
+        settings=settings,
+        executor=execute_hermes_agent_query,
+    )
+
+
+@router.get(
+    "/runs/{run_id}",
+    response_model=AgentRunStatusResponse,
+    response_model_exclude_none=True,
+)
+def get_agent_run_endpoint(run_id: str) -> AgentRunStatusResponse:
+    try:
+        return get_agent_run_status(run_id=run_id, settings=get_settings())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

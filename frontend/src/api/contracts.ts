@@ -125,10 +125,19 @@ export type VerdictPayload = {
 /** 与 /product-category-pnl「汇总视图」（ytd）页脚口径一致的首屏摘要（后端算、前端只展示）。 */
 export type ProductCategoryYtdHeadlinePayload = {
   view: "ytd";
+  summary_pnl: Numeric;
+  summary_pnl_detail: string;
   operating_income: Numeric;
   operating_income_detail: string;
   intermediate_business_income: Numeric;
   intermediate_business_income_detail: string;
+};
+
+/** 与 /product-category-pnl「月度视图」（monthly）页脚口径一致的首屏摘要（后端算、前端只展示）。 */
+export type ProductCategoryMonthlyHeadlinePayload = {
+  view: "monthly";
+  monthly_income: Numeric;
+  monthly_income_detail: string;
 };
 
 export type HomeSnapshotPayload = {
@@ -141,6 +150,7 @@ export type HomeSnapshotPayload = {
   domains_effective_date: Record<string, string>;
   verdict?: VerdictPayload | null;
   product_category_ytd?: ProductCategoryYtdHeadlinePayload | null;
+  product_category_monthly?: ProductCategoryMonthlyHeadlinePayload | null;
 };
 
 export type GetHomeSnapshotOptions = {
@@ -606,6 +616,7 @@ export type RiskTensorScalar = string | Numeric;
 export type RiskTensorPayload = {
   report_date: string;
   portfolio_dv01: RiskTensorScalar;
+  regulatory_dv01?: RiskTensorScalar | null;
   krd_1y: RiskTensorScalar;
   krd_3y: RiskTensorScalar;
   krd_5y: RiskTensorScalar;
@@ -2441,13 +2452,14 @@ export type AgentPageContext = {
   context_note?: string | null;
 };
 
+/** POST /api/agent/query — 字段缺省时由后端填入默认值（见 backend AgentQueryRequest）。 */
 export type AgentQueryRequest = {
   question: string;
-  basis: "formal" | "scenario" | "analytical";
-  filters: Record<string, unknown>;
-  position_scope: string;
-  currency_basis: string;
-  context: Record<string, unknown>;
+  basis?: "formal" | "scenario" | "analytical";
+  filters?: Record<string, unknown>;
+  position_scope?: string;
+  currency_basis?: string;
+  context?: Record<string, unknown>;
   page_context?: AgentPageContext | null;
 };
 

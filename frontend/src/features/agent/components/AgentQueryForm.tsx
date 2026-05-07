@@ -43,7 +43,7 @@ function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   return event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
 }
 
-const primaryQuickExampleCount = 4;
+const primaryQuickExampleCount = 2;
 
 export function AgentQueryForm({
   pageContext,
@@ -74,10 +74,7 @@ export function AgentQueryForm({
     <div className="agent-chat-composer">
       <div className="agent-chat-composer__header">
         <div>
-          <div className="agent-chat-composer__eyebrow">对话助手</div>
-          <div className="agent-chat-composer__title">
-            先问结论，再看证据和下钻建议
-          </div>
+          <div className="agent-chat-composer__title">问 Agent</div>
         </div>
         <div className="agent-chat-composer__hint">Enter 发送 · Shift+Enter 换行</div>
       </div>
@@ -99,7 +96,7 @@ export function AgentQueryForm({
         <textarea
           aria-label="agent-question-input"
           className="agent-chat-composer__input"
-          rows={4}
+          rows={3}
           placeholder={buildPromptPlaceholder(pageContext)}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}

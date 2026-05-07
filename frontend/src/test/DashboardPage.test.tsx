@@ -214,17 +214,20 @@ describe("DashboardPage", () => {
     ]);
     expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
     expect(within(summary).getByTestId("dashboard-product-category-ytd")).toBeInTheDocument();
-    expect(within(summary).getByText("营业收入与中间业务收入")).toBeInTheDocument();
+    expect(within(summary).getByText("汇总损益与月度损益")).toBeInTheDocument();
   });
 
-  it("keeps the legacy drilldown panels under the summary cockpit", async () => {
+  it("turns the drilldown area into a review workspace under the summary cockpit", async () => {
     renderDashboard();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     const detail = await screen.findByTestId("dashboard-detail-drilldown");
 
     expect(detail).toHaveTextContent("明细穿透");
-    expect(detail).toHaveTextContent("原功能保留");
+    expect(detail).toHaveTextContent("下钻复核区");
+    expect(detail).toHaveTextContent("解释首屏结论");
+    expect(detail).toHaveTextContent("定位数据证据");
+    expect(detail).toHaveTextContent("进入专题页复核");
     expectTestIdsInOrder(page, ["dashboard-structure-risk-focus", "dashboard-detail-drilldown"]);
 
     expect(await within(detail).findByTestId("dashboard-global-judgment")).toBeInTheDocument();
@@ -238,6 +241,37 @@ describe("DashboardPage", () => {
     expect(await within(detail).findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
     expect(await within(detail).findByTestId("dashboard-liability-counterparty-section")).toBeInTheDocument();
     expect(await within(detail).findByTestId("dashboard-module-entry-grid")).toBeInTheDocument();
+    expect(await within(detail).findByTestId("agent-panel")).toBeInTheDocument();
+  });
+
+  it("fills drilldown review cards with status, evidence, and valid actions", async () => {
+    renderDashboard();
+
+    const detail = await screen.findByTestId("dashboard-detail-drilldown");
+    const judgment = await within(detail).findByTestId("dashboard-global-judgment");
+    const modules = await within(detail).findByTestId("dashboard-module-snapshot");
+    const alerts = await within(detail).findByTestId("dashboard-alert-center");
+
+    expect(within(judgment).getByText("报告日")).toBeInTheDocument();
+    expect(within(judgment).getByText("快照")).toBeInTheDocument();
+    expect(within(judgment).getByText("读链路")).toBeInTheDocument();
+    expect(within(judgment).getByText("口径/证据")).toBeInTheDocument();
+
+    expect(within(modules).getAllByText("回答什么").length).toBeGreaterThan(0);
+    expect(within(modules).getAllByText("进去先看").length).toBeGreaterThan(0);
+    expect(within(modules).getAllByText("可用状态").length).toBeGreaterThan(0);
+    expect(within(modules).getAllByText("复核信号").length).toBeGreaterThan(0);
+    expect(within(modules).getByText("债券分析")).toBeInTheDocument();
+    expect(within(modules).getAllByText("临时开放").length).toBeGreaterThan(0);
+    expect(within(modules).getByText("DV01 / NIM / 久期与利差")).toBeInTheDocument();
+
+    expect(within(alerts).getByText("待复核事项")).toBeInTheDocument();
+    expect(within(alerts).getByText("来源")).toBeInTheDocument();
+    expect(within(alerts).getByText("处理入口")).toBeInTheDocument();
+    expect(within(alerts).getByRole("link", { name: "打开中台配置" })).toHaveAttribute(
+      "href",
+      "/platform-config",
+    );
   });
 
   it("renders a quiet degraded market strip when macro data is unavailable", async () => {
@@ -292,8 +326,8 @@ describe("DashboardPage", () => {
       within(moduleSnapshot).getByRole("link", { name: /产品损益/ }),
     ).toHaveAttribute("href", "/product-category-pnl");
     expect(
-      within(moduleSnapshot).getByRole("link", { name: /风险总览/ }),
-    ).toHaveAttribute("href", "/risk-overview");
+      within(moduleSnapshot).getByRole("link", { name: /风险复核/ }),
+    ).toHaveAttribute("href", "/risk-tensor");
     expect(
       within(moduleSnapshot).queryByRole("link", { name: /决策事项/ }),
     ).not.toBeInTheDocument();
@@ -692,6 +726,72 @@ describe("DashboardPage", () => {
     expect(await within(heroStrip).findByText("总资产规模")).toBeInTheDocument();
     expect(await within(heroStrip).findByText("本币资产口径")).toBeInTheDocument();
   });
+
+  it("links homepage PnL metrics to the governed annual and monthly PnL pages", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const governedClient: ApiClient = {
+      ...base,
+      mode: "real",
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            overview: {
+              ...envelope.result.overview,
+              metrics: [
+                {
+                  id: "yield",
+                  label: "年度损益（不扣FTP）",
+                  caliber_label: "FI + 非标桥接",
+                  value: formatRawAsNumeric({ raw: 2_665_696_545.67, unit: "yuan", sign_aware: true }),
+                  delta: formatRawAsNumeric({ raw: 0.1, unit: "pct", sign_aware: true }),
+                  tone: "positive",
+                  detail:
+                    "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge，截至 2026-04-30 的年度累计 total_pnl，不扣减 FTP。",
+                },
+              ],
+            },
+            product_category_ytd: {
+              view: "ytd",
+              summary_pnl: formatRawAsNumeric({ raw: 1_325_482_375.99, unit: "yuan", sign_aware: true }),
+              summary_pnl_detail:
+                "与产品分类损益「汇总视图」（view=ytd）页脚 grand_total.business_net_income 一致。",
+              operating_income: formatRawAsNumeric({ raw: 1_325_482_375.99, unit: "yuan", sign_aware: true }),
+              operating_income_detail:
+                "兼容字段：与产品分类损益「汇总视图」（view=ytd）页脚 grand_total.business_net_income 一致。",
+              intermediate_business_income: formatRawAsNumeric({ raw: 75_149_887.09, unit: "yuan", sign_aware: true }),
+              intermediate_business_income_detail:
+                "与产品分类损益「中间业务收入」（intermediate_business_income）ytd 行一致。",
+            },
+            product_category_monthly: {
+              view: "monthly",
+              monthly_income: formatRawAsNumeric({ raw: 299_181_927.65, unit: "yuan", sign_aware: true }),
+              monthly_income_detail:
+                "与产品分类损益「月度视图」（view=monthly）页脚「全部市场科目 + 投资收益合计」一致。",
+            },
+          },
+        };
+      },
+    };
+
+    renderDashboard(governedClient);
+
+    const heroStrip = await screen.findByTestId("dashboard-overview-hero-strip");
+    const annualLink = await within(heroStrip).findByRole("link", { name: /年度损益（不扣FTP）/ });
+    expect(annualLink).toHaveAttribute("href", "/pnl-by-business");
+
+    const productCategorySummary = await screen.findByTestId("dashboard-product-category-ytd");
+    expect(await within(productCategorySummary).findByText("汇总损益")).toBeInTheDocument();
+    expect(await within(productCategorySummary).findByText("+13.25 亿")).toBeInTheDocument();
+    expect(await within(productCategorySummary).findByText("月度损益")).toBeInTheDocument();
+    expect(await within(productCategorySummary).findByText("+2.99 亿")).toBeInTheDocument();
+    expect(
+      within(productCategorySummary).getByRole("link", { name: /月度损益/ }),
+    ).toHaveAttribute("href", "/product-category-pnl");
+  });
+
   it("renders supply and auction calendar items from the research calendar feed", async () => {
     const base = createApiClient({ mode: "mock" });
     const researchCalendarCalls: Array<{
