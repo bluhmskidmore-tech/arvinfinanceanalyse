@@ -63,6 +63,31 @@ function q1StatusTone(status: string) {
   return "warning" as const;
 }
 
+function q1RulePillTone(allocation: string, evidenceStatus: string) {
+  if (allocation === "subtract") {
+    return "subtract";
+  }
+  if (allocation === "reference") {
+    return "reference";
+  }
+  if (evidenceStatus === "split-needed" || allocation === "pending") {
+    return "pending";
+  }
+  if (evidenceStatus === "aggregate") {
+    return "aggregate";
+  }
+  return "include";
+}
+
+const Q1_CALIBER_DECISION_LINES = [
+  "自营中心：10项投资口径纳入，人民币资管产品扣除J4产业基金。",
+  "债券交易室：只接政策性金融债、同业存单、地方债、国债、铁道债。",
+  "金融同业部：人民币拆放同业和人民币同业负债，外币剥离。",
+  "外汇与衍生品室：只接外币债、外币拆放和外币负债；derivatives不进。",
+  "代客交易：外汇远期/掉期归这里，当前聚合行只作待拆证据。",
+  "产品与市场室：产业基金按J4开头资产映射，来源页面名保持现状。",
+];
+
 function evidenceHeadline(endpoint: string) {
   return endpoint === "by-business-ytd" ? "按业务口径" : "按产品口径";
 }
@@ -301,6 +326,13 @@ export default function TeamPerformancePage() {
   const q1CaliberRows = q1CaliberModel.centers.flatMap((center) =>
     center.rules.map((rule) => ({ center, rule })),
   );
+  const q1CaliberSummaries = q1CaliberModel.centers.map((center) => ({
+    center,
+    includedRules: center.rules.filter((rule) => rule.allocation === "include"),
+    exceptionRules: center.rules.filter(
+      (rule) => rule.allocation !== "include" || rule.evidenceStatus === "split-needed",
+    ),
+  }));
 
   const loading =
     datesQuery.isLoading ||
@@ -459,66 +491,137 @@ export default function TeamPerformancePage() {
           ))}
         </div>
 
-        <div className="team-performance-page__q1-summary-strip">
-          {q1CaliberModel.centers.map((center) => (
-            <div key={center.centerId} className="team-performance-page__q1-summary-item">
-              <span>{center.centerName}</span>
-              <strong>{formatYiFromYuan(center.includedTotalYuan)}</strong>
-              <em>
-                纳入 {center.includedRuleCount} 项 · 待拆 {center.pendingRuleCount} 项
-              </em>
-            </div>
-          ))}
+        <div className="team-performance-page__q1-map">
+          <div className="team-performance-page__q1-center-stack">
+            {q1CaliberSummaries.map(
+              ({ center, includedRules, exceptionRules }) => (
+                <section key={center.centerId} className="team-performance-page__q1-center-band">
+                  <div className="team-performance-page__q1-center-head">
+                    <span>{center.centerName}</span>
+                    <strong>{formatYiFromYuan(center.includedTotalYuan)}</strong>
+                    <em>
+                      纳入 {center.includedRuleCount} · 另列 {exceptionRules.length} · 待拆 {center.pendingRuleCount}
+                    </em>
+                  </div>
+                  <div className="team-performance-page__q1-lane-grid">
+                    <div className="team-performance-page__q1-lane">
+                      <span className="team-performance-page__q1-lane-title">纳入汇总</span>
+                      {includedRules.length > 0 ? (
+                        <div className="team-performance-page__q1-pill-row">
+                          {includedRules.map((rule) => (
+                            <span
+                              key={`${rule.businessLabel}-${rule.rowId ?? "pending"}-${rule.amountField ?? "none"}`}
+                              className={`team-performance-page__q1-rule-pill team-performance-page__q1-rule-pill--${q1RulePillTone(
+                                rule.allocation,
+                                rule.evidenceStatus,
+                              )}`}
+                              title={`${formatQ1AllocationLabel(rule.allocation)} · ${formatQ1EvidenceStatusLabel(
+                                rule.evidenceStatus,
+                              )}`}
+                            >
+                              <span>{rule.businessLabel}</span>
+                              <em>{formatQ1EvidenceStatusLabel(rule.evidenceStatus)}</em>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="team-performance-page__q1-empty">无纳入项</span>
+                      )}
+                    </div>
+                    <div className="team-performance-page__q1-lane team-performance-page__q1-lane--attention">
+                      <span className="team-performance-page__q1-lane-title">待拆 / 扣除 / 参考</span>
+                      {exceptionRules.length > 0 ? (
+                        <div className="team-performance-page__q1-pill-row">
+                          {exceptionRules.map((rule) => (
+                            <span
+                              key={`${rule.businessLabel}-${rule.rowId ?? "pending"}-${rule.amountField ?? "none"}`}
+                              className={`team-performance-page__q1-rule-pill team-performance-page__q1-rule-pill--${q1RulePillTone(
+                                rule.allocation,
+                                rule.evidenceStatus,
+                              )}`}
+                              title={`${formatQ1AllocationLabel(rule.allocation)} · ${formatQ1EvidenceStatusLabel(
+                                rule.evidenceStatus,
+                              )}`}
+                            >
+                              <span>{rule.businessLabel}</span>
+                              <em>{formatQ1AllocationLabel(rule.allocation)}</em>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="team-performance-page__q1-empty">无待拆或扣除项</span>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              ),
+            )}
+          </div>
+
+          <aside className="team-performance-page__q1-guide-panel" aria-label="Q1口径锚点">
+            <span>口径锚点</span>
+            <ul>
+              {Q1_CALIBER_DECISION_LINES.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </aside>
         </div>
 
-        <div className="team-performance-page__q1-table-shell">
-          <table className="team-performance-page__q1-table">
-            <thead>
-              <tr>
-                <th>中心</th>
-                <th>口径</th>
-                <th>来源</th>
-                <th>动作</th>
-                <th className="team-performance-page__table-cell--numeric">来源金额</th>
-                <th className="team-performance-page__table-cell--numeric">汇总贡献</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {q1CaliberRows.map(({ center, rule }) => (
-                <tr key={`${rule.centerId}-${rule.businessLabel}-${rule.rowId ?? "pending"}-${rule.amountField ?? "none"}`}>
-                  <td data-label="中心">{center.centerName}</td>
-                  <td data-label="口径">
-                    <strong className="team-performance-page__q1-business-name">{rule.businessLabel}</strong>
-                    {rule.note ? <span className="team-performance-page__q1-note">{rule.note}</span> : null}
-                  </td>
-                  <td data-label="来源">
-                    <div className="team-performance-page__q1-source-cell">
-                      <span>{rule.sourceLabel}</span>
-                      <code>{rule.rowId ?? "暂无独立行"}</code>
-                      <span>{rule.amountField ?? "-"}</span>
-                      <span>来源行：{rule.rowName}</span>
-                    </div>
-                  </td>
-                  <td data-label="动作">{formatQ1AllocationLabel(rule.allocation)}</td>
-                  <td data-label="来源金额" className="team-performance-page__table-cell--numeric">
-                    {formatYiFromYuan(rule.amountYuan)}
-                  </td>
-                  <td data-label="汇总贡献" className="team-performance-page__table-cell--numeric">
-                    {formatYiFromYuan(rule.contributionYuan)}
-                  </td>
-                  <td data-label="状态">
-                    <span
-                      className={`team-performance-page__status-pill team-performance-page__status-pill--${q1StatusTone(rule.evidenceStatus)}`}
-                    >
-                      {formatQ1EvidenceStatusLabel(rule.evidenceStatus)}
-                    </span>
-                  </td>
+        <details className="team-performance-page__q1-ledger">
+          <summary>
+            <span>来源行明细</span>
+            <strong>{q1CaliberRows.length} 条</strong>
+          </summary>
+          <div className="team-performance-page__q1-table-shell">
+            <table className="team-performance-page__q1-table">
+              <thead>
+                <tr>
+                  <th>中心</th>
+                  <th>口径</th>
+                  <th>来源</th>
+                  <th>动作</th>
+                  <th className="team-performance-page__table-cell--numeric">来源金额</th>
+                  <th className="team-performance-page__table-cell--numeric">汇总贡献</th>
+                  <th>状态</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {q1CaliberRows.map(({ center, rule }) => (
+                  <tr key={`${rule.centerId}-${rule.businessLabel}-${rule.rowId ?? "pending"}-${rule.amountField ?? "none"}`}>
+                    <td data-label="中心">{center.centerName}</td>
+                    <td data-label="口径">
+                      <strong className="team-performance-page__q1-business-name">{rule.businessLabel}</strong>
+                      {rule.note ? <span className="team-performance-page__q1-note">{rule.note}</span> : null}
+                    </td>
+                    <td data-label="来源">
+                      <div className="team-performance-page__q1-source-cell">
+                        <span>{rule.sourceLabel}</span>
+                        <code>{rule.rowId ?? "暂无独立行"}</code>
+                        <span>{rule.amountField ?? "-"}</span>
+                        <span>来源行：{rule.rowName}</span>
+                      </div>
+                    </td>
+                    <td data-label="动作">{formatQ1AllocationLabel(rule.allocation)}</td>
+                    <td data-label="来源金额" className="team-performance-page__table-cell--numeric">
+                      {formatYiFromYuan(rule.amountYuan)}
+                    </td>
+                    <td data-label="汇总贡献" className="team-performance-page__table-cell--numeric">
+                      {formatYiFromYuan(rule.contributionYuan)}
+                    </td>
+                    <td data-label="状态">
+                      <span
+                        className={`team-performance-page__status-pill team-performance-page__status-pill--${q1StatusTone(rule.evidenceStatus)}`}
+                      >
+                        {formatQ1EvidenceStatusLabel(rule.evidenceStatus)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </section>
 
       {showNoSubstitution ? (
