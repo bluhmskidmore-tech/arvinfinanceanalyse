@@ -384,6 +384,34 @@ describe("teamPerformancePageModel", () => {
     });
   });
 
+  it("uses J4 asset evidence as the Q1 product-market industry fund caliber", () => {
+    const model = buildTeamPerformanceQ1CaliberModel({
+      byBusinessItems: [
+        byBusinessRow({
+          row_key: "asset_zqtz_detail_structured_finance_broker",
+          business_type: "其中：结构化融资（券商）",
+          total_pnl: "30000000",
+          source_note: "ZQTZSHOW 其中项：instrument_code prefix=J4",
+        }),
+      ],
+    });
+
+    const productMarket = model.centers.find((center) => center.centerId === "product-market");
+
+    expect(productMarket?.pendingRuleCount).toBe(0);
+    expect(productMarket?.rules).toHaveLength(1);
+    expect(productMarket?.rules[0]).toMatchObject({
+      businessLabel: "产业基金",
+      rowId: "asset_zqtz_detail_structured_finance_broker",
+      rowName: "其中：结构化融资（券商）",
+      allocation: "include",
+      evidenceStatus: "direct",
+      amountYuan: 30000000,
+      contributionYuan: 30000000,
+    });
+    expect(productMarket?.rules[0].note).toContain("J4");
+  });
+
   it("counts each Q1 aggregate source row only once inside a center", () => {
     const model = buildTeamPerformanceQ1CaliberModel({
       byBusinessItems: [
