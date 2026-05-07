@@ -42,7 +42,7 @@ class SurfaceCase:
 
 
 BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
-    SurfaceCase("agent.query", "/api/agent/query", "POST", json={"question": "ping"}, side_effect_target="audit_disabled_agent_query", side_effect_module="backend.app.api.routes.agent", side_effect_file="backend/app/api/routes/agent.py"),
+    SurfaceCase("agent.query", "/api/agent/query", "POST", json={"question": "ping"}, detail_substring="disabled"),
     SurfaceCase("preview.source-foundation", "/ui/preview/source-foundation", "GET"),
     SurfaceCase("preview.source-foundation.history", "/ui/preview/source-foundation/history", "GET", params={"limit": 5, "offset": 0}),
     SurfaceCase("preview.source-foundation.rows", "/ui/preview/source-foundation/zqtz/rows", "GET", params={"limit": 1, "offset": 0}),
@@ -60,7 +60,6 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
 FRONTEND_RESERVED_KEYS = (
     "cube-query",
     "risk-overview",
-    "agent",
     "market-data",
     "news-events",
     "source-preview",
@@ -122,7 +121,6 @@ def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> N
     assert set(FRONTEND_RESERVED_KEYS) == {
         "cube-query",
         "risk-overview",
-        "agent",
         "market-data",
         "news-events",
         "source-preview",

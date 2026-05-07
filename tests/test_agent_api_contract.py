@@ -90,14 +90,15 @@ def _client_with_stubbed_agent(monkeypatch):
     return TestClient(app)
 
 
-def test_default_app_agent_query_is_reserved_503():
-    """Unmocked app: Agent is reserved by the current boundary."""
+def test_default_app_agent_query_is_disabled_503():
+    """Unmocked app: Agent is disabled unless the feature flag is explicitly enabled."""
     client = TestClient(default_app)
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 503
     body = response.json()
-    assert "reserved" in body["detail"].lower()
+    assert body["enabled"] is False
+    assert "disabled" in body["detail"].lower()
 
 
 def test_agent_request_schema_defines_phase1_contract():
@@ -166,7 +167,7 @@ def test_agent_response_schema_exposes_passive_suggested_actions():
     assert "suggested_actions" in module.AgentEnvelope.model_fields
 
 
-def test_agent_query_stays_reserved_even_if_agent_setting_is_on(monkeypatch, tmp_path):
+def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -184,25 +185,26 @@ def test_agent_query_stays_reserved_even_if_agent_setting_is_on(monkeypatch, tmp
             },
         )(),
     )
-    monkeypatch.setattr(
-        route_module,
-        "execute_agent_query",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("reserved Agent route must not execute agent service")
-        ),
-    )
+    calls = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        calls.append((request, duckdb_path, governance_dir))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
     app = FastAPI()
     app.include_router(route_module.router)
     client = TestClient(app)
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
-    assert response.status_code == 503
+    assert response.status_code == 200
     payload = response.json()
-    assert "reserved" in payload["detail"].lower()
-    assert "result_meta" not in payload
+    assert payload["result_meta"]["result_kind"] == "agent.pnl_summary"
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert calls
 
 
-def test_agent_query_returns_reserved_when_agent_is_off(monkeypatch, tmp_path):
+def test_agent_query_returns_disabled_when_agent_is_off(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -227,11 +229,12 @@ def test_agent_query_returns_reserved_when_agent_is_off(monkeypatch, tmp_path):
 
     assert response.status_code == 503
     payload = response.json()
-    assert "reserved" in payload["detail"].lower()
+    assert payload["enabled"] is False
+    assert "disabled" in payload["detail"].lower()
     assert "result_meta" not in payload
 
 
-def test_reserved_agent_query_does_not_append_audit_log(monkeypatch, tmp_path):
+def test_disabled_agent_query_appends_disabled_audit_log(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -255,10 +258,15 @@ def test_reserved_agent_query_does_not_append_audit_log(monkeypatch, tmp_path):
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 503
-    assert not (tmp_path / "governance" / "agent_audit.jsonl").exists()
+    audit_path = tmp_path / "governance" / "agent_audit.jsonl"
+    assert audit_path.exists()
+    audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert audit_payload["tools_used"] == ["agent_disabled"]
+    assert audit_payload["result_meta"]["result_kind"] == "agent.disabled"
+    assert audit_payload["result_meta"]["formal_use_allowed"] is False
 
 
-def test_reserved_agent_query_does_not_call_executor_error_path(monkeypatch):
+def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -289,11 +297,11 @@ def test_reserved_agent_query_does_not_call_executor_error_path(monkeypatch):
 
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
-    assert response.status_code == 503
-    assert "reserved" in response.json()["detail"].lower()
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No agent data found."
 
 
-def test_reserved_agent_query_does_not_call_executor_runtime_error_path(monkeypatch):
+def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -325,4 +333,4 @@ def test_reserved_agent_query_does_not_call_executor_runtime_error_path(monkeypa
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 503
-    assert "reserved" in response.json()["detail"].lower()
+    assert response.json()["detail"] == "DuckDB read path unavailable."

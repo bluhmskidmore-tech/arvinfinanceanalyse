@@ -89,6 +89,7 @@ const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
 const NewsEventsPage = lazy(() => import("../features/news-events/NewsEventsPage"));
+const AgentWorkbenchPage = lazy(() => import("../features/agent/AgentWorkbenchPage"));
 
 function routeElement(element: ReactNode) {
   return (
@@ -248,6 +249,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<NewsEventsPage />),
+      };
+    }
+
+    if (section.path === "/agent") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<AgentWorkbenchPage />),
       };
     }
 

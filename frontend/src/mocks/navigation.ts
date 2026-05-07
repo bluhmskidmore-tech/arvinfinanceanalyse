@@ -490,10 +490,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/agent",
     icon: "agent",
     description: "智能体分析工作台：面向证据问答、GitNexus 仓库图谱和后续页面助手。",
-    readiness: "placeholder",
+    readiness: "live",
     readinessLabel: "智能体试用",
     readinessNote:
-      "Hidden reserved route. Keep the placeholder shell only; the real Agent workbench is outside the current boundary.",
+      "MOSS_AGENT_ENABLED=false keeps an explicit disabled banner; MOSS_AGENT_ENABLED=true enables read-only evidence Agent queries.",
     navigationVisibility: "hidden",
   },
 ];

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
@@ -43,21 +43,17 @@ describe("/agent route", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the reserved placeholder instead of the live Agent workbench", async () => {
+  it("renders the live Agent workbench on direct route access", async () => {
     const client = buildAgentPlaceholderClient();
 
     renderWorkbenchApp(["/agent"], { client });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Agent reserved" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("agent-question-input")).not.toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(client.getPlaceholderSnapshot).toHaveBeenCalledWith("agent");
-    });
+    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+    expect(client.getPlaceholderSnapshot).not.toHaveBeenCalled();
   });
 
-  it("does not call the live Agent endpoint on direct route access", async () => {
+  it("does not call the Agent endpoint until the user submits a query", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({}), {
         headers: { "Content-Type": "application/json" },
@@ -66,7 +62,7 @@ describe("/agent route", () => {
 
     renderWorkbenchApp(["/agent"], { client: buildAgentPlaceholderClient() });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

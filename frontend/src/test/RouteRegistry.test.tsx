@@ -405,10 +405,10 @@ describe("RouteRegistry", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the hidden /agent route as a placeholder instead of the live workbench", async () => {
+  it("renders the hidden /agent route as the live workbench", async () => {
     renderWorkbenchApp(["/agent"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByLabelText("agent-question-input")).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

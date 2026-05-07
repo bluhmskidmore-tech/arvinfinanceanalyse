@@ -18,10 +18,10 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("includes an agent entry outside the live primary navigation", () => {
+  it("keeps the direct agent route live but hidden from primary navigation", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
-    expect(agent?.readiness).toBe("placeholder");
+    expect(agent?.readiness).toBe("live");
     expect(agent?.readinessLabel).toBe("智能体试用");
     expect(agent?.navigationVisibility).toBe("hidden");
     expect(agent?.path).toBe("/agent");
