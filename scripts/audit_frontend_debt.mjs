@@ -6,9 +6,9 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 5235,
-  // Raised after mock isolation: dynamic import() adds "mock" in paths (../mocks/) per call site.
-  apiClientMockOccurrences: 400,
+  apiClientLines: 5248,
+  // Phase 2 dashboard signals + fixture imports; demos split to workbenchDashboardApi / bondDashboardWorkbenchEndpoints.
+  apiClientMockOccurrences: 401,
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

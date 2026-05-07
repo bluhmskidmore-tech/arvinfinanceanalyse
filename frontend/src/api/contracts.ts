@@ -2564,6 +2564,8 @@ export type CounterpartyStatsResponse = {
   total_weighted_rate: string | null;
   total_weighted_coupon_rate?: string | null;
   total_customers: number;
+  /** CR10 集中度等指标；后端可按日返回 */
+  cr10_ratio?: string | null;
 };
 
 export type SubTypesResponse = { sub_types: string[] };
@@ -3875,3 +3877,57 @@ export type AdbCoveragePayload = {
 /** @deprecated 使用 AdbMonthlyItem — 保留别名供旧代码类型引用 */
 
 /** @deprecated 使用 AdbMonthlyPayload */
+
+// ── Dashboard core metrics ──────────────────────────────────────────────────
+
+export type CoreMetricsCardData = {
+  total_amount: Numeric;
+  weighted_avg_rate: Numeric;
+  change_amount: Numeric;
+  change_pct: Numeric;
+  top_3_details: Array<{ name: string; amount: string; rate: string }>;
+};
+
+export type CoreMetricsResult = {
+  report_date: string;
+  bond_investments: CoreMetricsCardData;
+  interbank_assets: CoreMetricsCardData;
+  interbank_liabilities: CoreMetricsCardData;
+};
+
+export type CoreMetricsPayload = ApiEnvelope<CoreMetricsResult>;
+
+// ── Dashboard daily changes ─────────────────────────────────────────────────
+
+export type DailyChangePeriod = {
+  period: "day" | "week" | "month";
+  bond_investments_change: Numeric;
+  interbank_assets_change: Numeric;
+  interbank_liabilities_change: Numeric;
+  net_change: Numeric;
+};
+
+export type DailyChangesResult = {
+  report_date: string;
+  periods: DailyChangePeriod[];
+};
+
+export type DailyChangesPayload = ApiEnvelope<DailyChangesResult>;
+
+// ── Bond dashboard business type metrics ────────────────────────────────────
+
+export type BondBusinessTypeMetricItem = {
+  name: string;
+  market_value: string;
+  weighted_avg_ytm_pct: string;
+  weighted_avg_duration: string;
+  duration_source: string;
+};
+
+export type BondBusinessTypeMetricsResult = {
+  report_date: string;
+  items: BondBusinessTypeMetricItem[];
+};
+
+export type BondBusinessTypeMetricsPayload = ApiEnvelope<BondBusinessTypeMetricsResult>;
+

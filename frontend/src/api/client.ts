@@ -170,12 +170,22 @@ import {
   createRealAgentClient,
   type AgentClientMethods,
 } from "./agentClient";
+import {
+  dashboardWorkbenchDemoEndpoints,
+  dashboardWorkbenchLiveEndpoints,
+  type DashboardClientMethods,
+} from "./workbenchDashboardApi";
+import {
+  bondDashboardDemoEndpoints,
+  bondDashboardLiveEndpoints,
+} from "./bondDashboardWorkbenchEndpoints";
 
 export type DataSourceMode = "mock" | "real";
 
 // Re-export domain method types for consumers who want fine-grained imports
 export type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 export type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
+export type { DashboardClientMethods } from "./workbenchDashboardApi";
 export type { ExecutiveClientMethods } from "./executiveClient";
 export type { MarketDataClientMethods } from "./marketDataClient";
 export type { MacroToolkitClientMethods } from "./macroToolkitClient";
@@ -189,6 +199,7 @@ export type { AgentClientMethods } from "./agentClient";
 export type ApiClient = {
   mode: DataSourceMode;
 } & ExecutiveClientMethods
+  & DashboardClientMethods
   & PnlClientMethods
   & BalanceMovementClientMethods
   & BondAnalyticsClientMethods
@@ -2223,6 +2234,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createMockKpiClient(),
     ...createMockCubeClient(),
     ...createMockPnlBusinessClient(),
+    ...dashboardWorkbenchDemoEndpoints(delay, ensureMockClientBundle),
+    ...bondDashboardDemoEndpoints(delay, ensureMockClientBundle),
     async getHealth() {
       await delay();
       return { status: "ok" };
@@ -3644,6 +3657,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           total_weighted_rate: null,
           total_weighted_coupon_rate: null,
           total_customers: 0,
+          cr10_ratio: "62.34%",
         },
         { basis: "formal", formal_use_allowed: true },
       );
@@ -4028,6 +4042,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealCubeClient({ fetchImpl, baseUrl }),
     ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
     ...createRealAgentClient({ fetchImpl, baseUrl }),
+    ...dashboardWorkbenchLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
+    ...bondDashboardLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     async getHealth() {
       const response = await fetchImpl(`${baseUrl}/health/ready`, {
         headers: { Accept: "application/json" },

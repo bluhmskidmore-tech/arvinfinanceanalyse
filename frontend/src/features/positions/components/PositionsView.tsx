@@ -33,6 +33,7 @@ import CustomerDetailModal from "./CustomerDetailModal";
 import IndustryDistributionCard from "./IndustryDistributionCard";
 import RatingDistributionCard from "./RatingDistributionCard";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
+import "./PositionsView.css";
 
 const PAGE_SIZE = 20;
 
@@ -513,6 +514,11 @@ export default function PositionsView() {
                 <Typography.Text type="secondary">Top 50，点击查看明细</Typography.Text>
                 <div style={{ marginTop: 8 }}>
                   <Typography.Text>分母：{bondsCp?.num_days ?? "—"} 天</Typography.Text>
+                  {bondsCp?.cr10_ratio ? (
+                    <span className="positions-view__cr10">
+                      CR10 集中度：{bondsCp.cr10_ratio}
+                    </span>
+                  ) : null}
                 </div>
                 <Row gutter={16} style={{ marginTop: 12 }}>
                   <Col span={12}>

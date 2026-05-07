@@ -37,6 +37,8 @@ import {
   DashboardStructureRiskFocus,
 } from "../dashboard/DashboardHomeSections";
 import { DashboardMarketStrip } from "../dashboard/DashboardMarketStrip";
+import { DashboardCoreMetricsSection } from "../dashboard/DashboardCoreMetricsSection";
+import { DashboardDailyChangesSection } from "../dashboard/DashboardDailyChangesSection";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
 import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
 import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
@@ -337,6 +339,20 @@ export default function DashboardPage() {
         allowPartial,
       }),
     retry: false,
+  });
+
+  const coreMetricsQuery = useQuery({
+    queryKey: ["dashboard", "core-metrics", client.mode, reportDate],
+    queryFn: () => client.getCoreMetrics({ reportDate: reportDate || undefined }),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const dailyChangesQuery = useQuery({
+    queryKey: ["dashboard", "daily-changes", client.mode, reportDate],
+    queryFn: () => client.getDailyChanges({ reportDate: reportDate || undefined }),
+    retry: false,
+    staleTime: 60_000,
   });
 
   const { overviewEnv, attributionEnv } = useMemo(() => {
@@ -1001,6 +1017,8 @@ export default function DashboardPage() {
           onRetry={() => void snapshotQuery.refetch()}
         />
       </section>
+      <DashboardCoreMetricsSection query={coreMetricsQuery} reportDate={reportDate} />
+      <DashboardDailyChangesSection query={dailyChangesQuery} />
       <DashboardAnalysisGrid alerts={dashboardHome.alerts} />
       <DashboardStructureRiskFocus focus={dashboardHome.focus} />
 

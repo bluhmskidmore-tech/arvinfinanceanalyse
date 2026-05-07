@@ -1,0 +1,99 @@
+.dashboard-core-metrics__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.dashboard-core-metrics__card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* 驾驶舱工作台 — 仪表盘补充区块 */
+.dashboard-metric-shell {
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e6ec;
+  background: #ffffff;
+}
+
+.dashboard-metric-shell--spaced {
+  margin-top: 16px;
+}
+
+.dashboard-metric-header {
+  margin-bottom: 12px;
+}
+
+.dashboard-metric-eyebrow-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+
+.dashboard-metric-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dashboard-metric-section-title {
+  margin: 0;
+}
+
+.dashboard-metric-date-caption {
+  font-size: 12px;
+}
+
+.dashboard-muted-line {
+  margin-bottom: 0;
+}
+
+.dashboard-core-metric-card.ant-card {
+  border-radius: 8px;
+}
+
+.dashboard-core-metrics__card-label {
+  font-size: 13px;
+}
+
+.dashboard-core-metric-amount {
+  margin-bottom: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-core-metric-rate-line {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+.dashboard-core-metric-change-row {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-core-metric-caption {
+  display: block;
+  margin-top: 10px;
+  font-size: 11px;
+}
+
+.dashboard-core-metric-detail-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-daily-num {
+  font-variant-numeric: tabular-nums;
+}

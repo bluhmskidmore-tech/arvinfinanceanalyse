@@ -6,6 +6,7 @@ import type {
   ApiEnvelope,
   BondAnalyticsDatesPayload,
   BondAnalyticsRefreshPayload,
+  BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
   BenchmarkExcessPayload,
@@ -54,6 +55,9 @@ export type BondAnalyticsClientMethods = {
   getBondDashboardIndustryDistribution: (
     reportDate: string,
   ) => Promise<ApiEnvelope<IndustryDistPayload>>;
+  getBondBusinessTypeMetrics: (params: {
+    reportDate: string;
+  }) => Promise<BondBusinessTypeMetricsPayload>;
   getBondDashboardRiskIndicators: (
     reportDate: string,
   ) => Promise<ApiEnvelope<RiskIndicatorsPayload>>;
