@@ -8,6 +8,7 @@ import type {
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   LivermoreManualPositionInput,
+  LivermoreCandidateHistoryPayload,
   LivermorePositionSnapshotPayload,
   LivermoreSignalConfluencePayload,
   LivermoreStockDetailPayload,
@@ -78,6 +79,12 @@ export type MarketDataClientMethods = {
     asOfDate?: string;
     lookback?: number;
   }) => Promise<ApiEnvelope<LivermoreStockDetailPayload>>;
+  getLivermoreCandidateHistory: (options?: {
+    stockCode?: string;
+    snapshotFrom?: string;
+    snapshotTo?: string;
+    limit?: number;
+  }) => Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>>;
   getLivermoreSignalConfluence: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreSignalConfluencePayload>>;
@@ -1108,6 +1115,32 @@ function buildStockDetailQuery(options: { stockCode: string; asOfDate?: string; 
   return `?${params.toString()}`;
 }
 
+function buildCandidateHistoryQuery(options?: {
+  stockCode?: string;
+  snapshotFrom?: string;
+  snapshotTo?: string;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  const code = options?.stockCode?.trim();
+  if (code) {
+    params.set("stock_code", code);
+  }
+  const sf = options?.snapshotFrom?.trim();
+  if (sf) {
+    params.set("snapshot_from", sf);
+  }
+  const st = options?.snapshotTo?.trim();
+  if (st) {
+    params.set("snapshot_to", st);
+  }
+  if (options?.limit != null) {
+    params.set("limit", String(options.limit));
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
 class ActionRequestError extends Error {
   readonly status: number;
   readonly runId?: string;
@@ -1496,6 +1529,80 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getLivermoreCandidateHistory(options?: {
+      stockCode?: string;
+      snapshotFrom?: string;
+      snapshotTo?: string;
+      limit?: number;
+    }) {
+      await delay();
+      const limit = options?.limit ?? 100;
+      const code = options?.stockCode?.trim() ?? "";
+      return buildMockApiEnvelope(
+        "market_data.livermore.candidate_history",
+        {
+          stock_code: code || null,
+          snapshot_from: options?.snapshotFrom?.trim() ?? null,
+          snapshot_to: options?.snapshotTo?.trim() ?? null,
+          limit,
+          items: [
+            {
+              snapshot_as_of_date: "2026-04-10",
+              stock_code: code || "000001.SZ",
+              stock_name: "MockHist",
+              candidate_rank: 1,
+              sector_code: "MOCK",
+              sector_name: "样例板块",
+              selection_close: 10.5,
+              forward_trade_date_1d: "2026-04-11",
+              forward_trade_date_5d: "2026-04-16",
+              forward_trade_date_20d: "2026-05-15",
+              return_1d: 0.01,
+              return_5d: -0.02,
+              return_20d: 0.08,
+              data_status: "complete",
+              formula_version: "fv_mock",
+              source_version: "sv_candidate_mock",
+              vendor_version: "vv_candidate_mock",
+              rule_version: "rv_livermore_candidate_history_v1",
+              run_id: "mock",
+            },
+            {
+              snapshot_as_of_date: "2026-04-03",
+              stock_code: code || "000001.SZ",
+              stock_name: "MockHist",
+              candidate_rank: 2,
+              sector_code: null,
+              sector_name: null,
+              selection_close: 10.4,
+              forward_trade_date_1d: "2026-04-04",
+              forward_trade_date_5d: "2026-04-09",
+              forward_trade_date_20d: null,
+              return_1d: 0.009,
+              return_5d: null,
+              return_20d: null,
+              data_status: "pending",
+              formula_version: "fv_mock",
+              source_version: "sv_candidate_mock",
+              vendor_version: "vv_candidate_mock",
+              rule_version: "rv_livermore_candidate_history_v1",
+              run_id: "mock_b",
+            },
+          ],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_candidate_history_mock",
+          vendor_version: "vv_candidate_history_mock",
+          rule_version: "rv_livermore_candidate_history_v1",
+          cache_version: "cv_livermore_candidate_history_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getLivermoreSignalConfluence(options?: { asOfDate?: string }) {
       await delay();
       return buildMockApiEnvelope(
@@ -1715,6 +1822,17 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore/stock-detail${buildStockDetailQuery(options)}`,
+      ),
+    getLivermoreCandidateHistory: (options?: {
+      stockCode?: string;
+      snapshotFrom?: string;
+      snapshotTo?: string;
+      limit?: number;
+    }) =>
+      requestJson<LivermoreCandidateHistoryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/candidate-history${buildCandidateHistoryQuery(options)}`,
       ),
     getLivermoreSignalConfluence: (options?: { asOfDate?: string }) =>
       requestJson<LivermoreSignalConfluencePayload>(

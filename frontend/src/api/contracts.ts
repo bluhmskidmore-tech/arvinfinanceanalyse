@@ -1184,6 +1184,31 @@ export type LivermoreStockDetailPayload = {
   factor: LivermoreStockDetailFactor;
 };
 
+export type LivermoreCandidateHistoryRow = {
+  snapshot_as_of_date: string;
+  stock_code: string;
+  stock_name?: string | null;
+  candidate_rank: number;
+  sector_code?: string | null;
+  sector_name?: string | null;
+  selection_close: number | null;
+  forward_trade_date_1d: string | null;
+  forward_trade_date_5d: string | null;
+  forward_trade_date_20d: string | null;
+  return_1d: number | null;
+  return_5d: number | null;
+  return_20d: number | null;
+  data_status: "complete" | "partial_halt" | "pending" | string;
+};
+
+export type LivermoreCandidateHistoryPayload = {
+  stock_code: string | null;
+  snapshot_from: string | null;
+  snapshot_to: string | null;
+  limit: number;
+  items: LivermoreCandidateHistoryRow[];
+};
+
 export type LivermoreSignalConfluenceMacroStatus =
   | "supportive"
   | "neutral"

@@ -115,6 +115,17 @@ function truncateChoiceNewsText(text: string | null, maxLen: number): string {
   return `${s.slice(0, maxLen)}…`;
 }
 
+function formatCandidateHistoryReturn(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function candidateHistoryRowClass(status: string): string {
+  if (status === "pending") return "stock-detail-drawer__history-row--pending";
+  if (status === "partial_halt") return "stock-detail-drawer__history-row--halt";
+  return "";
+}
+
 export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: StockDetailDrawerProps) {
   const client = useApiClient();
   const [lookback, setLookback] = useState<number>(60);
@@ -135,6 +146,16 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: S
   const choiceNewsQuery = useQuery({
     queryKey: ["stock-analysis", "choice-news-latest-global", open ? 10 : 0] as const,
     queryFn: () => client.getChoiceNewsEvents({ limit: 10, offset: 0 }),
+    enabled: open,
+  });
+
+  const candidateHistoryQuery = useQuery({
+    queryKey: ["stock-analysis", "livermore-candidate-history", stockCode, 10] as const,
+    queryFn: () =>
+      client.getLivermoreCandidateHistory({
+        stockCode: stockCode ?? undefined,
+        limit: 10,
+      }),
     enabled: open,
   });
 
@@ -241,6 +262,72 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: S
                   </div>
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {!detailQuery.isError ? (
+            <section className="stock-detail-drawer__candidate-history" data-testid="stock-detail-candidate-history" aria-label="入选历史">
+              <Text strong>入选历史</Text>
+              <p className="stock-detail-drawer__candidate-history-note">
+                价格回报口径，不含分红/复权（P1 扩展）；首期不做历史 backfill，仅展示上线后累积的快照
+              </p>
+              {candidateHistoryQuery.isLoading ? (
+                <p className="stock-detail-drawer__candidate-history-loading" data-testid="stock-detail-candidate-history-loading">
+                  入选历史加载中…
+                </p>
+              ) : null}
+              {candidateHistoryQuery.isError ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="入选历史加载失败"
+                  description={
+                    candidateHistoryQuery.error instanceof Error
+                      ? candidateHistoryQuery.error.message
+                      : String(candidateHistoryQuery.error)
+                  }
+                  data-testid="stock-detail-candidate-history-error"
+                />
+              ) : null}
+              {candidateHistoryQuery.isSuccess && (candidateHistoryQuery.data?.result?.items?.length ?? 0) === 0 ? (
+                <p className="stock-detail-drawer__candidate-history-empty" data-testid="stock-detail-candidate-history-empty">
+                  暂无入选快照记录（服务端尚未累积或未跑任务）
+                </p>
+              ) : null}
+              {candidateHistoryQuery.isSuccess && (candidateHistoryQuery.data?.result?.items?.length ?? 0) > 0 ? (
+                <div className="stock-detail-drawer__history-table-wrap">
+                  <table className="stock-detail-drawer__history-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">入选日</th>
+                        <th scope="col">排名</th>
+                        <th scope="col">入选收盘</th>
+                        <th scope="col">T+1</th>
+                        <th scope="col">T+5</th>
+                        <th scope="col">T+20</th>
+                        <th scope="col">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(candidateHistoryQuery.data?.result?.items ?? []).map((row) => (
+                        <tr
+                          key={`${row.snapshot_as_of_date}-${row.candidate_rank}-${row.stock_code}`}
+                          className={candidateHistoryRowClass(row.data_status)}
+                          data-testid={`stock-detail-candidate-history-row-${row.snapshot_as_of_date}-${row.candidate_rank}`}
+                        >
+                          <td className="stock-detail-drawer__tabular">{row.snapshot_as_of_date}</td>
+                          <td className="stock-detail-drawer__tabular">{row.candidate_rank}</td>
+                          <td className="stock-detail-drawer__tabular">{row.selection_close ?? "—"}</td>
+                          <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_1d ?? null)}</td>
+                          <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_5d ?? null)}</td>
+                          <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_20d ?? null)}</td>
+                          <td>{row.data_status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </section>
           ) : null}
 

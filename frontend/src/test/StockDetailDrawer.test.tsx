@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../app/providers";
 import { createApiClient } from "../api/client";
+import type { LivermoreCandidateHistoryRow } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
 
@@ -45,6 +46,28 @@ function buildStockDetailEnvelope(overrides: { factor?: { pe: number | null } } 
       basis: "analytical",
       source_version: "sv_test",
       rule_version: "rv_test",
+      quality_flag: "ok",
+      vendor_status: "ok",
+    },
+  );
+}
+
+function buildCandidateHistoryEnvelope(items: LivermoreCandidateHistoryRow[]) {
+  return buildMockApiEnvelope(
+    "market_data.livermore.candidate_history",
+    {
+      stock_code: "000001.SZ",
+      snapshot_from: null,
+      snapshot_to: null,
+      limit: 10,
+      items,
+    },
+    {
+      basis: "analytical",
+      source_version: "sv_hist_test",
+      vendor_version: "vv_hist_test",
+      rule_version: "rv_livermore_candidate_history_v1",
+      cache_version: "cv_livermore_candidate_history_v1",
       quality_flag: "ok",
       vendor_status: "ok",
     },
@@ -260,5 +283,114 @@ describe("StockDetailDrawer", () => {
     await screen.findByTestId("stock-detail-chart");
     await user.click(screen.getByRole("button", { name: "关闭抽屉" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("fetches candidate history and renders table with returns and data_status", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const histItems: LivermoreCandidateHistoryRow[] = [
+      {
+        snapshot_as_of_date: "2026-04-10",
+        stock_code: "000001.SZ",
+        stock_name: "H1",
+        candidate_rank: 1,
+        sector_code: null,
+        sector_name: null,
+        selection_close: 10.5,
+        forward_trade_date_1d: "2026-04-11",
+        forward_trade_date_5d: "2026-04-16",
+        forward_trade_date_20d: "2026-05-15",
+        return_1d: 0.01,
+        return_5d: -0.02,
+        return_20d: 0.08,
+        data_status: "complete",
+      },
+      {
+        snapshot_as_of_date: "2026-04-03",
+        stock_code: "000001.SZ",
+        stock_name: "H2",
+        candidate_rank: 2,
+        selection_close: 10.4,
+        forward_trade_date_1d: "2026-04-04",
+        forward_trade_date_5d: null,
+        forward_trade_date_20d: null,
+        return_1d: 0.009,
+        return_5d: null,
+        return_20d: null,
+        data_status: "pending",
+      },
+    ];
+    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    await waitFor(() =>
+      expect(histSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        limit: 10,
+      }),
+    );
+    expect(await screen.findByTestId("stock-detail-candidate-history")).toBeInTheDocument();
+    expect(screen.getByText("1.00%")).toBeInTheDocument();
+    expect(screen.getByText("-2.00%")).toBeInTheDocument();
+    expect(screen.getByText("8.00%")).toBeInTheDocument();
+    const pendingRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-03-2");
+    expect(pendingRow).toHaveTextContent("pending");
+    expect(within(pendingRow).getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows candidate history error without breaking chart or factors", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockRejectedValue(new Error("candidate history down"));
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-detail-candidate-history-error")).toHaveTextContent("candidate history down");
+  });
+
+  it("shows empty state when candidate history has no rows", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByTestId("stock-detail-candidate-history-empty")).toHaveTextContent("暂无入选快照记录");
   });
 });

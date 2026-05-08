@@ -16,6 +16,7 @@ from backend.app.services.livermore_signal_confluence_service import (
     build_livermore_signal_confluence,
 )
 from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
+from backend.app.services.livermore_candidate_history_service import livermore_candidate_history_envelope
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
@@ -305,6 +306,42 @@ def livermore_stock_detail(
         stock_code=cleaned,
         as_of_date=parsed_as_of,
         lookback=lookback,
+    )
+
+
+@router.get("/livermore/candidate-history")
+def livermore_candidate_history(
+    stock_code: str | None = Query(default=None, max_length=16),
+    snapshot_from: str | None = Query(default=None),
+    snapshot_to: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, object]:
+    if stock_code is not None and stock_code.strip():
+        cleaned_code = stock_code.strip()
+        if not _STOCK_CODE_LIVERMORE_PATTERN.fullmatch(cleaned_code):
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
+            )
+    for label, value in (("snapshot_from", snapshot_from), ("snapshot_to", snapshot_to)):
+        if value is None or not str(value).strip():
+            continue
+        text = str(value).strip()
+        try:
+            date.fromisoformat(text[:10])
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {label}. Expected YYYY-MM-DD.",
+            ) from exc
+
+    settings = get_settings()
+    return livermore_candidate_history_envelope(
+        duckdb_path=str(settings.duckdb_path),
+        stock_code=stock_code,
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+        limit=limit,
     )
 
 

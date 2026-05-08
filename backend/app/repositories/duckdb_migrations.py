@@ -122,6 +122,10 @@ def _v27_choice_stock_factor_snapshot(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "27_choice_stock_factor_snapshot.sql")
 
 
+def _v28_livermore_candidate_history(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "28_livermore_candidate_history.sql")
+
+
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "01_snapshot.sql")
 
@@ -219,6 +223,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(25, "CFFEX member-rank daily from Choice/Tushare", _v25_cffex_member_rank)
     registry.register(26, "PnL by-business page precompute read model", _v26_pnl_by_business_precompute)
     registry.register(27, "Choice stock factor snapshot for equity strategies", _v27_choice_stock_factor_snapshot)
+    registry.register(28, "Livermore candidate history analytical replay", _v28_livermore_candidate_history)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

@@ -126,6 +126,11 @@
       "path": "25_pnl_by_business_precompute.sql",
       "ensure_module": "backend.app.tasks.pnl_materialize",
       "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "28_livermore_candidate_history.sql",
+      "ensure_module": "backend.app.tasks.livermore_candidate_history_materialize",
+      "ensure_symbol": "ensure_livermore_candidate_history_schema"
     }
   ]
 }
