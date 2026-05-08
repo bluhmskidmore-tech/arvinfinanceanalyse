@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Collapse, DatePicker, Drawer, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
 
-import { ApiClientProvider, useApiClient } from "../../../api/client";
-import type { AgentQueryRequest, LivermoreSignalConfluencePayload } from "../../../api/contracts";
+import { useApiClient } from "../../../api/client";
+import type { LivermoreSignalConfluencePayload } from "../../../api/contracts";
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateEvidenceCards,
@@ -210,21 +210,16 @@ export default function StockAnalysisPage() {
 
   const effectiveAsOf = asOfOverride ?? strategyPayload?.as_of_date ?? null;
 
-  const stockAnalysisBridgeClient = useMemo(() => {
-    return {
-      ...client,
-      queryAgent: async (request: AgentQueryRequest) =>
-        client.queryAgent({
-          ...request,
-          page_context: buildStockAnalysisAgentPageContext({
-            asOfDate: effectiveAsOf,
-            sectorFilterSectorCode,
-            sectorView,
-            detailSelection,
-          }),
-        }),
-    };
-  }, [client, detailSelection, effectiveAsOf, sectorFilterSectorCode, sectorView]);
+  const stockAnalysisAgentPageContext = useMemo(
+    () =>
+      buildStockAnalysisAgentPageContext({
+        asOfDate: effectiveAsOf,
+        sectorFilterSectorCode,
+        sectorView,
+        detailSelection,
+      }),
+    [detailSelection, effectiveAsOf, sectorFilterSectorCode, sectorView],
+  );
 
   return (
     <main
@@ -878,17 +873,12 @@ export default function StockAnalysisPage() {
         maskClosable
       >
         <div style={stockAnalysisPageCssVars} className="stock-analysis-page__agent-drawer-body">
-          <ApiClientProvider client={stockAnalysisBridgeClient}>
-            <AgentPanel
-              pageId="stock-analysis"
-              reportDate={effectiveAsOf ?? null}
-              currentFilters={{
-                ...(effectiveAsOf ? { as_of_date: effectiveAsOf } : {}),
-                sector_filter: sectorFilterSectorCode ?? null,
-                sector_view: sectorView,
-              }}
-            />
-          </ApiClientProvider>
+          <AgentPanel
+            pageId="stock-analysis"
+            currentFilters={stockAnalysisAgentPageContext.current_filters}
+            selectedRows={stockAnalysisAgentPageContext.selected_rows}
+            contextNote={stockAnalysisAgentPageContext.context_note ?? null}
+          />
         </div>
       </Drawer>
     </main>

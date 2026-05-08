@@ -117,7 +117,7 @@ describe("AgentPanel", () => {
     });
   });
 
-  it("passes page context fields into queryAgent context", async () => {
+  it("passes page_context into queryAgent (no legacy context)", async () => {
     const base = createApiClient({ mode: "mock" });
     const queryAgent = vi.fn(async (): Promise<AgentEnvelope> => base.queryAgent({ question: "noop" }));
     const client: ApiClient = {
@@ -131,10 +131,12 @@ describe("AgentPanel", () => {
     fireEvent.click(screen.getByTestId("agent-panel-submit"));
     await waitFor(() => expect(queryAgent).toHaveBeenCalled());
     const arg = queryAgent.mock.calls[0]?.[0];
-    expect(arg?.context).toMatchObject({
+    expect(arg?.context).toBeUndefined();
+    expect(arg?.page_context).toMatchObject({
       page_id: "test-page",
-      report_date: "2026-03-31",
-      current_filters: { k: 1 },
+      current_filters: { k: 1, report_date: "2026-03-31" },
+      selected_rows: [],
+      context_note: null,
     });
   });
 });

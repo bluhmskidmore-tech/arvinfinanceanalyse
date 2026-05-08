@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 
+import type { AgentPageContext } from "../../api/contracts";
 import { useApiClient } from "../../api/client";
 import { AgentDisabledError } from "../../api/agentClient";
 
@@ -9,6 +10,8 @@ export type AgentPanelProps = {
   pageId: string;
   reportDate?: string | null;
   currentFilters?: Record<string, unknown>;
+  selectedRows?: Array<Record<string, unknown>>;
+  contextNote?: string | null;
   defaultQuestion?: string;
 };
 
@@ -16,6 +19,8 @@ export function AgentPanel({
   pageId,
   reportDate = null,
   currentFilters = {},
+  selectedRows,
+  contextNote = null,
   defaultQuestion = "",
 }: AgentPanelProps) {
   const client = useApiClient();
@@ -28,13 +33,15 @@ export function AgentPanel({
   const [disabledBanner, setDisabledBanner] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const contextPayload = useMemo(
+  const pageContextPayload = useMemo<AgentPageContext>(
     () => ({
       page_id: pageId,
-      report_date: reportDate,
-      current_filters: currentFilters,
+      current_filters:
+        reportDate != null ? { ...currentFilters, report_date: reportDate } : { ...currentFilters },
+      selected_rows: selectedRows ?? [],
+      context_note: contextNote ?? null,
     }),
-    [pageId, reportDate, currentFilters],
+    [pageId, reportDate, currentFilters, selectedRows, contextNote],
   );
 
   async function handleSubmit(event: FormEvent) {
@@ -54,7 +61,7 @@ export function AgentPanel({
       const envelope = await client.queryAgent({
         question: trimmed,
         basis: "formal",
-        context: contextPayload,
+        page_context: pageContextPayload,
       });
       setAnswer(envelope.answer);
       setQualityFlag(envelope.evidence.quality_flag);

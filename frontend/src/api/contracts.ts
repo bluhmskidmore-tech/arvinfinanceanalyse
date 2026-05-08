@@ -2490,6 +2490,7 @@ export type AgentQueryRequest = {
   filters?: Record<string, unknown>;
   position_scope?: string;
   currency_basis?: string;
+  /** @deprecated Prefer `page_context`. Frontend AgentPanel no longer sends this field. */
   context?: Record<string, unknown>;
   page_context?: AgentPageContext | null;
 };
