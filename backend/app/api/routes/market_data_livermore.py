@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -15,6 +16,7 @@ from backend.app.services.livermore_signal_confluence_service import (
     build_livermore_signal_confluence,
 )
 from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
+from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
     livermore_strategy_envelope,
@@ -23,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
+_STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
 LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND = "market_data.livermore.signal_confluence"
 LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION = "rv_livermore_signal_confluence_v1"
 LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION = "cv_livermore_signal_confluence_v1"
@@ -272,6 +275,37 @@ def refresh_gate_supplement(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return result
+
+
+@router.get("/livermore/stock-detail")
+def livermore_stock_detail(
+    stock_code: str = Query(..., min_length=1, max_length=16),
+    as_of_date: str | None = Query(None),
+    lookback: int = Query(60, ge=5, le=250),
+) -> dict[str, object]:
+    cleaned = stock_code.strip()
+    if not _STOCK_CODE_LIVERMORE_PATTERN.fullmatch(cleaned):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
+        )
+    parsed_as_of: date | None = None
+    if as_of_date is not None:
+        text = as_of_date.strip()
+        if not text:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.")
+        try:
+            parsed_as_of = date.fromisoformat(text)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    return livermore_stock_detail_envelope(
+        duckdb_path=str(settings.duckdb_path),
+        stock_code=cleaned,
+        as_of_date=parsed_as_of,
+        lookback=lookback,
+    )
 
 
 def _mapping(value: object) -> dict[str, object]:

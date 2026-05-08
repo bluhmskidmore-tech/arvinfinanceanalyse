@@ -16,7 +16,7 @@ export type Numeric = {
 
 export type ApiBasis = "formal" | "scenario" | "analytical" | "mock";
 export type PnlBasis = "formal" | "analytical";
-export type ApiQuality = "ok" | "warning" | "error" | "stale";
+export type ApiQuality = "ok" | "warning" | "error" | "stale" | "missing";
 
 export type ResultNextDrill = string | Record<string, unknown>;
 
@@ -1145,6 +1145,37 @@ export type LivermoreStrategyPayload = {
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
   risk_exit?: LivermoreRiskExitPayload;
+};
+
+export type LivermoreStockDetailCandle = {
+  trade_date: string;
+  open_value: number | null;
+  high_value: number | null;
+  low_value: number | null;
+  close_value: number | null;
+  volume: number | null;
+  amount: number | null;
+};
+
+export type LivermoreStockDetailFactor = {
+  as_of_date: string | null;
+  pe: number | null;
+  pb: number | null;
+  roe: number | null;
+  dividend_yield: number | null;
+};
+
+export type LivermoreStockDetailState = "ok" | "missing";
+
+export type LivermoreStockDetailPayload = {
+  basis: "analytical";
+  state: LivermoreStockDetailState;
+  stock_code: string;
+  requested_as_of_date: string | null;
+  as_of_date: string | null;
+  lookback: number;
+  candles: LivermoreStockDetailCandle[];
+  factor: LivermoreStockDetailFactor;
 };
 
 export type LivermoreSignalConfluenceMacroStatus =

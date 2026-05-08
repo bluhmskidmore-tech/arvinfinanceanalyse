@@ -10,6 +10,7 @@ import type {
   LivermoreManualPositionInput,
   LivermorePositionSnapshotPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStockDetailPayload,
   LivermoreStrategyPayload,
   MacroBondLinkagePayload,
   MacroVendorPayload,
@@ -72,6 +73,11 @@ export type MarketDataClientMethods = {
   getLivermoreStrategy: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreStrategyPayload>>;
+  getLivermoreStockDetail: (options: {
+    stockCode: string;
+    asOfDate?: string;
+    lookback?: number;
+  }) => Promise<ApiEnvelope<LivermoreStockDetailPayload>>;
   getLivermoreSignalConfluence: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreSignalConfluencePayload>>;
@@ -1089,6 +1095,19 @@ function buildLivermoreQuery(options?: { asOfDate?: string }) {
   return `?as_of_date=${encodeURIComponent(asOfDate)}`;
 }
 
+function buildStockDetailQuery(options: { stockCode: string; asOfDate?: string; lookback?: number }) {
+  const params = new URLSearchParams();
+  params.set("stock_code", options.stockCode.trim());
+  const asOf = options.asOfDate?.trim();
+  if (asOf) {
+    params.set("as_of_date", asOf);
+  }
+  if (options.lookback != null) {
+    params.set("lookback", String(options.lookback));
+  }
+  return `?${params.toString()}`;
+}
+
 class ActionRequestError extends Error {
   readonly status: number;
   readonly runId?: string;
@@ -1424,6 +1443,59 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getLivermoreStockDetail(options: { stockCode: string; asOfDate?: string; lookback?: number }) {
+      await delay();
+      const lookback = options.lookback ?? 60;
+      const candles = [
+        {
+          trade_date: "2026-04-08",
+          open_value: 10.0,
+          high_value: 10.4,
+          low_value: 9.9,
+          close_value: 10.2,
+          volume: 1_200_000,
+          amount: 12_000_000,
+        },
+        {
+          trade_date: "2026-04-09",
+          open_value: 10.2,
+          high_value: 10.5,
+          low_value: 10.1,
+          close_value: 10.35,
+          volume: 1_100_000,
+          amount: 11_500_000,
+        },
+      ].slice(-lookback);
+      return buildMockApiEnvelope(
+        "market_data.livermore.stock_detail",
+        {
+          basis: "analytical",
+          stock_code: options.stockCode.trim(),
+          requested_as_of_date: options.asOfDate ?? null,
+          as_of_date: options.asOfDate ?? "2026-04-09",
+          lookback,
+          candles,
+          factor: {
+            as_of_date: options.asOfDate ?? "2026-04-09",
+            pe: 18.2,
+            pb: 2.1,
+            roe: 0.09,
+            dividend_yield: 0.02,
+          },
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_stock_detail_mock",
+          vendor_version: "vv_livermore_stock_detail_mock",
+          rule_version: "rv_livermore_stock_detail_v1",
+          cache_version: "cv_livermore_stock_detail_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getLivermoreSignalConfluence(options?: { asOfDate?: string }) {
       await delay();
       return buildMockApiEnvelope(
@@ -1637,6 +1709,12 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore${buildLivermoreQuery(options)}`,
+      ),
+    getLivermoreStockDetail: (options: { stockCode: string; asOfDate?: string; lookback?: number }) =>
+      requestJson<LivermoreStockDetailPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/stock-detail${buildStockDetailQuery(options)}`,
       ),
     getLivermoreSignalConfluence: (options?: { asOfDate?: string }) =>
       requestJson<LivermoreSignalConfluencePayload>(
