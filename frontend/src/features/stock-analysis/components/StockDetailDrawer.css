@@ -74,3 +74,63 @@
   border-top: 1px solid var(--sa-color-border-subtle, #e5e7eb);
   padding-top: 10px;
 }
+
+.stock-detail-drawer__market-events {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stock-detail-drawer__market-events-banner {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.stock-detail-drawer__market-events-loading,
+.stock-detail-drawer__market-events-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sa-color-muted, #6b7280);
+}
+
+.stock-detail-drawer__market-events-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stock-detail-drawer__market-events-item {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 100px) minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid var(--sa-color-border-subtle, #eee);
+  border-radius: 6px;
+  background: var(--sa-color-surface-subtle, #fafafa);
+}
+
+.stock-detail-drawer__market-events-time {
+  color: var(--sa-color-muted, #6b7280);
+}
+
+.stock-detail-drawer__market-events-topic {
+  font-weight: 600;
+  color: var(--sa-color-text, #111827);
+  word-break: break-all;
+}
+
+.stock-detail-drawer__market-events-text {
+  color: var(--sa-color-text, #374151);
+  word-break: break-word;
+}

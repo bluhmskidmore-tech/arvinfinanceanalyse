@@ -102,6 +102,19 @@ export type StockDetailDrawerProps = {
   onClose: () => void;
 };
 
+function formatChoiceNewsReceivedAt(iso: string): string {
+  const t = iso.trim();
+  if (t.length >= 16) return t.slice(0, 16).replace("T", " ");
+  return t || "—";
+}
+
+function truncateChoiceNewsText(text: string | null, maxLen: number): string {
+  if (text == null || text === "") return "—";
+  const s = text.trim();
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}…`;
+}
+
 export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: StockDetailDrawerProps) {
   const client = useApiClient();
   const [lookback, setLookback] = useState<number>(60);
@@ -116,6 +129,12 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: S
         asOfDate,
         lookback,
       }),
+    enabled: open,
+  });
+
+  const choiceNewsQuery = useQuery({
+    queryKey: ["stock-analysis", "choice-news-latest-global", open ? 10 : 0] as const,
+    queryFn: () => client.getChoiceNewsEvents({ limit: 10, offset: 0 }),
     enabled: open,
   });
 
@@ -222,6 +241,57 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: S
                   </div>
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {!detailQuery.isError ? (
+            <section className="stock-detail-drawer__market-events" aria-label="市场最近事件" data-testid="stock-detail-market-events">
+              <Text strong>市场最近事件</Text>
+              <div
+                className="stock-detail-drawer__market-events-banner"
+                role="note"
+                data-testid="stock-detail-market-events-banner"
+              >
+                当前为全市场最新事件，未按本股过滤（按股过滤需后端补 payload 解析）
+              </div>
+              {choiceNewsQuery.isLoading ? (
+                <p className="stock-detail-drawer__market-events-loading" data-testid="stock-detail-market-events-loading">
+                  市场事件加载中…
+                </p>
+              ) : null}
+              {choiceNewsQuery.isError ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="市场事件加载失败"
+                  description={
+                    choiceNewsQuery.error instanceof Error
+                      ? choiceNewsQuery.error.message
+                      : String(choiceNewsQuery.error)
+                  }
+                  data-testid="stock-detail-market-events-error"
+                />
+              ) : null}
+              {choiceNewsQuery.isSuccess && !choiceNewsQuery.data?.result?.events?.length ? (
+                <p className="stock-detail-drawer__market-events-empty" data-testid="stock-detail-market-events-empty">
+                  暂无市场事件数据（或库表尚无写入）
+                </p>
+              ) : null}
+              {choiceNewsQuery.isSuccess && (choiceNewsQuery.data?.result?.events?.length ?? 0) > 0 ? (
+                <ul className="stock-detail-drawer__market-events-list" data-testid="stock-detail-market-events-list">
+                  {(choiceNewsQuery.data?.result?.events ?? []).map((ev) => (
+                    <li key={ev.event_key} className="stock-detail-drawer__market-events-item">
+                      <span className="stock-detail-drawer__market-events-time stock-detail-drawer__tabular">
+                        {formatChoiceNewsReceivedAt(ev.received_at)}
+                      </span>
+                      <span className="stock-detail-drawer__market-events-topic">{ev.topic_code}</span>
+                      <span className="stock-detail-drawer__market-events-text">
+                        {truncateChoiceNewsText(ev.payload_text, 100)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </section>
           ) : null}
 

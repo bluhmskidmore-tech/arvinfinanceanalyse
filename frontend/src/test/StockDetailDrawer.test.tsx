@@ -55,6 +55,7 @@ describe("StockDetailDrawer", () => {
   it("fetches stock detail and shows chart + factor grid", async () => {
     const client = createApiClient({ mode: "mock" });
     const spy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    const newsSpy = vi.spyOn(client, "getChoiceNewsEvents");
 
     render(
       <AppProviders client={client}>
@@ -68,6 +69,107 @@ describe("StockDetailDrawer", () => {
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factor-pe")).toHaveTextContent("9.70");
     expect(screen.getByTestId("stock-detail-footer-meta")).toHaveTextContent("sv_test");
+    await waitFor(() =>
+      expect(newsSpy).toHaveBeenCalledWith({
+        limit: 10,
+        offset: 0,
+      }),
+    );
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("未按本股过滤");
+  });
+
+  it("renders market event rows from getChoiceNewsEvents", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        {
+          total_rows: 2,
+          limit: 10,
+          offset: 0,
+          events: [
+            {
+              event_key: "e1",
+              received_at: "2026-05-08T09:30:00Z",
+              group_id: "g1",
+              content_type: "sectornews",
+              serial_id: 1,
+              request_id: 1,
+              error_code: 0,
+              error_msg: "",
+              topic_code: "TOPIC_ONE",
+              item_index: 0,
+              payload_text: "Brief headline about macro conditions".repeat(3),
+              payload_json: null,
+            },
+            {
+              event_key: "e2",
+              received_at: "2026-05-08T10:15:00Z",
+              group_id: "g1",
+              content_type: "sectornews",
+              serial_id: 2,
+              request_id: 1,
+              error_code: 0,
+              error_msg: "",
+              topic_code: "TOPIC_TWO",
+              item_index: 0,
+              payload_text: "Second row body text",
+              payload_json: null,
+            },
+          ],
+        },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    const list = await screen.findByTestId("stock-detail-market-events-list");
+    expect(list.querySelectorAll("li")).toHaveLength(2);
+    expect(screen.getByText("TOPIC_ONE")).toBeInTheDocument();
+    expect(screen.getByText("TOPIC_TWO")).toBeInTheDocument();
+    expect(screen.getByText(/Brief headline about macro conditions/)).toBeInTheDocument();
+  });
+
+  it("shows choice news error in isolation while chart and factors still render", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getChoiceNewsEvents").mockRejectedValue(new Error("news feed unavailable"));
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-detail-market-events-error")).toHaveTextContent("news feed unavailable");
+  });
+
+  it("shows empty state when choice news returns no events", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByTestId("stock-detail-market-events-empty")).toHaveTextContent("暂无市场事件数据");
   });
 
   it("refetches when lookback segment changes", async () => {

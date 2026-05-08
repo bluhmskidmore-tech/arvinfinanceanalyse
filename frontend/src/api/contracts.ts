@@ -953,6 +953,12 @@ export type ChoiceNewsEventsPayload = {
   events: ChoiceNewsEvent[];
 };
 
+/** 与 `GET /ui/news/choice-events/latest` 返回的 `result.events[]` 单行一致（后端 payload_rows）。 */
+export type ChoiceNewsLatestEvent = ChoiceNewsEvent;
+
+/** 与 `GET /ui/news/choice-events/latest` 的 `result` 对象一致。 */
+export type ChoiceNewsLatestPayload = ChoiceNewsEventsPayload;
+
 export type NcdFundingProxyRow = {
   row_key: string;
   label: string;

@@ -195,7 +195,6 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
 @pytest.mark.parametrize(
     "path",
     (
-        "/ui/news/choice-events/latest",
         "/ui/preview/source-foundation",
         "/ui/preview/source-foundation/history",
         "/ui/preview/source-foundation/zqtz/rows",

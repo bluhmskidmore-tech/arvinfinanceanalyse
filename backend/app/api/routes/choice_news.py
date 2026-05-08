@@ -21,6 +21,7 @@ def _raise_choice_news_reserved_surface() -> None:
 
 @router.get("/choice-events/latest")
 def choice_events_latest(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     group_id: str | None = None,
@@ -29,7 +30,26 @@ def choice_events_latest(
     received_from: str | None = None,
     received_to: str | None = None,
 ) -> dict[str, object]:
-    _raise_choice_news_reserved_surface()
+    settings = get_settings()
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="choice_news.data",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return choice_news_latest_envelope(
+        duckdb_path=str(settings.duckdb_path),
+        limit=limit,
+        offset=offset,
+        group_id=group_id,
+        topic_code=topic_code,
+        error_only=error_only,
+        received_from=received_from,
+        received_to=received_to,
+    )
 
 
 def _tushare_npr_ingest_handler(limit: int, auth: AuthContext) -> dict[str, object]:

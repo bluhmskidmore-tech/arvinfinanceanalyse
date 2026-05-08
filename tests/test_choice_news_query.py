@@ -5,7 +5,19 @@ import sys
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
+
+
+def _grant_choice_news_read_scope(tmp_path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="choice_news.data",
+        action="read",
+    )
 
 
 def _append_choice_news_events(repo) -> None:
@@ -317,6 +329,7 @@ def test_choice_news_pull_snapshot_fetches_recent_sectornews_and_materializes(tm
 def test_choice_news_latest_api_returns_result_meta_and_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    _grant_choice_news_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.choice_news")
@@ -353,6 +366,7 @@ def test_choice_news_latest_api_returns_result_meta_and_rows(tmp_path, monkeypat
 def test_choice_news_latest_api_supports_pagination_and_group_filter(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    _grant_choice_news_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.choice_news")
@@ -390,6 +404,7 @@ def test_choice_news_latest_api_supports_pagination_and_group_filter(tmp_path, m
 def test_choice_news_latest_api_supports_topic_time_and_error_filters(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    _grant_choice_news_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.choice_news")
