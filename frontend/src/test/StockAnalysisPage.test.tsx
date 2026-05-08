@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
@@ -10,6 +10,12 @@ import type {
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+vi.mock("../components/charts/BaseChart", () => ({
+  BaseChart: function MockBaseChart() {
+    return <div data-testid="stock-detail-chart-canvas-stub" />;
+  },
+}));
 
 function buildStrategyPayload(
   overrides: Partial<LivermoreStrategyPayload> = {},
@@ -354,25 +360,79 @@ describe("StockAnalysisPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows an empty state when there are no candidates", async () => {
-    renderWorkbenchApp(["/stock-analysis"], {
-      client: stockClient({
-        strategy: buildStrategyPayload({
-          stock_candidates: {
-            as_of_date: "2026-04-29",
-            formula_version: "rv_livermore_stock_candidates_bundle_v1",
-            market_state: "WARM",
-            input_stock_count: 0,
-            candidate_count: 0,
-            excluded_stock_count: 0,
-            insufficient_history_count: 0,
-            items: [],
-          },
-        }),
-      }),
-    });
+  it("opens stock detail drawer when 复核 K 线 is clicked", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const spy = vi.spyOn(client, "getLivermoreStockDetail");
 
-    const section = await screen.findByTestId("stock-analysis-candidates-section");
-    expect(within(section).getByText("当前无候选股证据卡。")).toBeInTheDocument();
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await screen.findByTestId("stock-candidate-000001.SZ");
+    await user.click(screen.getByTestId("stock-candidate-review-chart-000001.SZ"));
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ stockCode: "000001.SZ" }),
+      ),
+    );
+    expect(await screen.findByTestId("stock-detail-drawer")).toBeInTheDocument();
+  });
+
+  it("opens Agent drawer and submits page_context.page_id stock-analysis + filters", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const queryAgentSpy = vi.spyOn(client, "queryAgent");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await screen.findByTestId("stock-candidate-000001.SZ");
+    await user.click(screen.getByTestId("stock-analysis-agent-open"));
+
+    expect(await screen.findByTestId("stock-analysis-agent-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-panel")).toBeInTheDocument();
+
+    await user.type(screen.getByTestId("agent-panel-question"), "请简述当前快照门控摘要");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    await waitFor(() => expect(queryAgentSpy).toHaveBeenCalled());
+    const submitted = queryAgentSpy.mock.calls[0]?.[0];
+    expect(submitted?.page_context?.page_id).toBe("stock-analysis");
+    expect(submitted?.page_context?.current_filters).toMatchObject({
+      as_of_date: "2026-04-29",
+      sector_filter: null,
+      sector_view: "score",
+    });
+    expect(Array.isArray(submitted?.page_context?.selected_rows)).toBe(true);
+    expect(submitted?.page_context?.selected_rows ?? []).toEqual([]);
+    queryAgentSpy.mockRestore();
+  });
+
+  it("reflects sector filter and drawer selection in Agent page_context", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const queryAgentSpy = vi.spyOn(client, "queryAgent");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await screen.findByTestId("stock-candidate-000001.SZ");
+
+    await user.click(screen.getByTestId("sector-filter-chip-801002"));
+    await screen.findByTestId("stock-candidate-000002.SZ");
+
+    await user.click(screen.getByTestId("stock-candidate-review-chart-000002.SZ"));
+    await screen.findByTestId("stock-detail-drawer");
+
+    await user.click(screen.getByTestId("stock-analysis-agent-open"));
+    await user.type(screen.getByTestId("agent-panel-question"), "复核当前截面数据质量");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    await waitFor(() => expect(queryAgentSpy).toHaveBeenCalled());
+    const submitted = queryAgentSpy.mock.calls[0]?.[0];
+    expect(submitted?.page_context?.current_filters?.sector_filter).toBe("801002");
+    expect(submitted?.page_context?.current_filters?.sector_view).toBe("score");
+    expect(submitted?.page_context?.selected_rows).toEqual([
+      { stock_code: "000002.SZ", stock_name: "Beta" },
+    ]);
+    queryAgentSpy.mockRestore();
   });
 });

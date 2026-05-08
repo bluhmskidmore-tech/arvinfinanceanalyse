@@ -39,6 +39,10 @@
   gap: var(--sa-space-2, 8px);
 }
 
+.stock-analysis-page__agent-drawer-body {
+  min-height: 200px;
+}
+
 .stock-analysis-page__tabular {
   font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
   font-variant-numeric: tabular-nums;
@@ -521,6 +525,14 @@
   border-radius: var(--sa-radius-md, 12px);
   padding: 14px;
   background: var(--sa-color-card, #ffffff);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.stock-analysis-page__candidate:hover {
+  border-color: var(--sa-accent-border);
+  box-shadow: 0 0 0 1px var(--sa-accent-border);
 }
 
 .stock-analysis-page__evidence-columns {
@@ -535,6 +547,14 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.stock-analysis-page__candidate-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .stock-analysis-page__candidate h3 {
@@ -621,6 +641,23 @@
   border-radius: var(--sa-radius-md, 12px);
   padding: 10px 12px;
   background: var(--sa-table-header-bg);
+}
+
+.stock-analysis-page__rail-row--interactive {
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.stock-analysis-page__rail-row--interactive:hover {
+  border-color: var(--sa-accent-border);
+  box-shadow: 0 0 0 1px var(--sa-accent-border);
+}
+
+.stock-analysis-page__rail-row--interactive:focus-visible {
+  outline: 2px solid var(--sa-accent-line);
+  outline-offset: 2px;
 }
 
 .stock-analysis-page__rail-row > div {

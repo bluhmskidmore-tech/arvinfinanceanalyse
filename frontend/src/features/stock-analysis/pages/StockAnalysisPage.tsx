@@ -3,8 +3,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Collapse, DatePicker, Drawer, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
 
-import { useApiClient } from "../../../api/client";
-import type { LivermoreSignalConfluencePayload } from "../../../api/contracts";
+import { ApiClientProvider, useApiClient } from "../../../api/client";
+import type { AgentQueryRequest, LivermoreSignalConfluencePayload } from "../../../api/contracts";
+import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateEvidenceCards,
   buildDailyJudgmentStrip,
@@ -16,6 +17,8 @@ import {
   buildSectorViewModel,
 } from "../lib/stockAnalysisPageModel";
 import type { StockSectorRow, StockSectorViewKind } from "../lib/stockAnalysisPageModel";
+import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
+import { StockDetailDrawer } from "../components/StockDetailDrawer";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockAnalysisPage.css";
 
@@ -83,6 +86,8 @@ export default function StockAnalysisPage() {
     order: "ascend" | "descend";
   }>({ key: "rank", order: "ascend" });
   const [boundaryDrawerOpen, setBoundaryDrawerOpen] = useState(false);
+  const [detailSelection, setDetailSelection] = useState<{ code: string; name?: string } | null>(null);
+  const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
 
   const strategyQueryKey = ["stock-analysis", "livermore-strategy", asOfOverride ?? "__default"] as const;
 
@@ -201,6 +206,26 @@ export default function StockAnalysisPage() {
   const pickerDisplay =
     asOfOverride != null && asOfOverride.trim() !== "" ? dayjs(asOfOverride) : headerDateValue;
 
+  const stockDetailAsOfDate = asOfOverride ?? strategyPayload?.as_of_date ?? undefined;
+
+  const effectiveAsOf = asOfOverride ?? strategyPayload?.as_of_date ?? null;
+
+  const stockAnalysisBridgeClient = useMemo(() => {
+    return {
+      ...client,
+      queryAgent: async (request: AgentQueryRequest) =>
+        client.queryAgent({
+          ...request,
+          page_context: buildStockAnalysisAgentPageContext({
+            asOfDate: effectiveAsOf,
+            sectorFilterSectorCode,
+            sectorView,
+            detailSelection,
+          }),
+        }),
+    };
+  }, [client, detailSelection, effectiveAsOf, sectorFilterSectorCode, sectorView]);
+
   return (
     <main
       className="stock-analysis-page"
@@ -219,6 +244,15 @@ export default function StockAnalysisPage() {
           </div>
           <div className="stock-analysis-page__header-controls">
             <span className="stock-analysis-page__badge">仅观察 / 复核 / 研究</span>
+            <Button
+              type="default"
+              className="stock-analysis-page__agent-entry"
+              data-testid="stock-analysis-agent-open"
+              onClick={() => setAgentDrawerOpen(true)}
+              aria-expanded={agentDrawerOpen}
+            >
+              召唤 Agent 复核
+            </Button>
             <DatePicker
               allowClear
               aria-label="as-of-date-picker"
@@ -603,7 +637,17 @@ export default function StockAnalysisPage() {
                               形态(UI)：{card.pattern} · 距观察位 {card.distanceToBreakoutPct}
                             </div>
                           </div>
-                          <span>观察</span>
+                          <div className="stock-analysis-page__candidate-actions">
+                            <Button
+                              type="link"
+                              size="small"
+                              data-testid={`stock-candidate-review-chart-${card.stockCode}`}
+                              onClick={() => setDetailSelection({ code: card.stockCode, name: card.stockName })}
+                            >
+                              复核 K 线
+                            </Button>
+                            <span>观察</span>
+                          </div>
                         </div>
                         <div className="stock-analysis-page__evidence-columns">
                           <div>
@@ -690,7 +734,20 @@ export default function StockAnalysisPage() {
                 {riskRows.length > 0 ? (
                   <div className="stock-analysis-page__rail-list">
                     {riskRows.map((row) => (
-                      <div className="stock-analysis-page__rail-row" key={`${row.stockCode}:${row.status}:${row.reason}`}>
+                      <div
+                        className="stock-analysis-page__rail-row stock-analysis-page__rail-row--interactive"
+                        data-testid={`stock-risk-row-${row.stockCode}`}
+                        key={`${row.stockCode}:${row.status}:${row.reason}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setDetailSelection({ code: row.stockCode, name: row.stockName })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setDetailSelection({ code: row.stockCode, name: row.stockName });
+                          }
+                        }}
+                      >
                         <div>
                           <strong>{row.stockName}</strong>
                           <small>{row.stockCode}</small>
@@ -803,6 +860,37 @@ export default function StockAnalysisPage() {
           </div>
         </>
       ) : null}
+      <StockDetailDrawer
+        stockCode={detailSelection?.code ?? null}
+        stockName={detailSelection?.name}
+        asOfDate={stockDetailAsOfDate}
+        onClose={() => setDetailSelection(null)}
+      />
+      <Drawer
+        title="请 Hermes 复核当前观察"
+        placement="left"
+        width={480}
+        open={agentDrawerOpen}
+        onClose={() => setAgentDrawerOpen(false)}
+        destroyOnClose
+        className="stock-analysis-page__agent-drawer"
+        data-testid="stock-analysis-agent-drawer"
+        maskClosable
+      >
+        <div style={stockAnalysisPageCssVars} className="stock-analysis-page__agent-drawer-body">
+          <ApiClientProvider client={stockAnalysisBridgeClient}>
+            <AgentPanel
+              pageId="stock-analysis"
+              reportDate={effectiveAsOf ?? null}
+              currentFilters={{
+                ...(effectiveAsOf ? { as_of_date: effectiveAsOf } : {}),
+                sector_filter: sectorFilterSectorCode ?? null,
+                sector_view: sectorView,
+              }}
+            />
+          </ApiClientProvider>
+        </div>
+      </Drawer>
     </main>
   );
 }
