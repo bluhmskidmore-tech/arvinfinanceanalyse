@@ -10,6 +10,7 @@ import type {
   LivermoreManualPositionInput,
   LivermoreCandidateHistoryPayload,
   LivermorePositionSnapshotPayload,
+  LivermoreSectorRankSeriesPayload,
   LivermoreSignalConfluencePayload,
   LivermoreStockDetailPayload,
   LivermoreStrategyPayload,
@@ -85,6 +86,12 @@ export type MarketDataClientMethods = {
     snapshotTo?: string;
     limit?: number;
   }) => Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>>;
+  getLivermoreSectorRankSeries: (options?: {
+    asOfDate?: string;
+    windowDays?: number;
+    sectorCode?: string;
+    topK?: number;
+  }) => Promise<ApiEnvelope<LivermoreSectorRankSeriesPayload>>;
   getLivermoreSignalConfluence: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreSignalConfluencePayload>>;
@@ -1115,6 +1122,31 @@ function buildStockDetailQuery(options: { stockCode: string; asOfDate?: string; 
   return `?${params.toString()}`;
 }
 
+function buildSectorRankSeriesQuery(options?: {
+  asOfDate?: string;
+  windowDays?: number;
+  sectorCode?: string;
+  topK?: number;
+}) {
+  const params = new URLSearchParams();
+  const asOf = options?.asOfDate?.trim();
+  if (asOf) {
+    params.set("as_of_date", asOf);
+  }
+  if (options?.windowDays != null) {
+    params.set("window_days", String(options.windowDays));
+  }
+  const code = options?.sectorCode?.trim();
+  if (code) {
+    params.set("sector_code", code);
+  }
+  if (options?.topK != null) {
+    params.set("top_k", String(options.topK));
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
 function buildCandidateHistoryQuery(options?: {
   stockCode?: string;
   snapshotFrom?: string;
@@ -1529,6 +1561,56 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getLivermoreSectorRankSeries(options?: {
+      asOfDate?: string;
+      windowDays?: number;
+      sectorCode?: string;
+      topK?: number;
+    }) {
+      await delay();
+      const wd = options?.windowDays ?? 20;
+      const asOf = options?.asOfDate?.trim() || "2026-04-29";
+      const rowA: LivermoreSectorRankSeriesPayload["series"][number] = {
+        trade_date: asOf,
+        sector_code: "801001",
+        sector_name: "AI",
+        score: 0.91,
+        rank: 1,
+        avg_pctchange: 0.42,
+        avg_turn: 2.2,
+        avg_amplitude: 1.1,
+        constituent_count: 12,
+        cum_pctchange_window: Number((wd * 0.42).toFixed(6)),
+      };
+      return buildMockApiEnvelope(
+        "market_data.livermore.sector_rank_series",
+        {
+          basis: "analytical",
+          state: "ok",
+          as_of_date: asOf,
+          window_days: wd,
+          top_k: options?.topK ?? 10,
+          sector_code_filter: options?.sectorCode?.trim() ?? null,
+          formula_version: "rv_livermore_sector_rank_series_v1",
+          series: [rowA],
+          unsupported_notes: [
+            "momentum_persistence: needs metric definition review (P1)",
+            "sector_money_flow: needs vendor approval & new schema (P1)",
+          ],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_sector_series_mock",
+          vendor_version: "vv_livermore_sector_series_mock",
+          rule_version: "rv_livermore_sector_rank_series_v1",
+          cache_version: "cv_livermore_sector_rank_series_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getLivermoreCandidateHistory(options?: {
       stockCode?: string;
       snapshotFrom?: string;
@@ -1833,6 +1915,17 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore/candidate-history${buildCandidateHistoryQuery(options)}`,
+      ),
+    getLivermoreSectorRankSeries: (options?: {
+      asOfDate?: string;
+      windowDays?: number;
+      sectorCode?: string;
+      topK?: number;
+    }) =>
+      requestJson<LivermoreSectorRankSeriesPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/sector-rank-series${buildSectorRankSeriesQuery(options)}`,
       ),
     getLivermoreSignalConfluence: (options?: { asOfDate?: string }) =>
       requestJson<LivermoreSignalConfluencePayload>(

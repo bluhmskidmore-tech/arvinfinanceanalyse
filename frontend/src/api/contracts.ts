@@ -1184,6 +1184,31 @@ export type LivermoreStockDetailPayload = {
   factor: LivermoreStockDetailFactor;
 };
 
+export type LivermoreSectorRankSeriesPoint = {
+  trade_date: string;
+  sector_code: string;
+  sector_name: string;
+  score: number | null;
+  rank: number | null;
+  avg_pctchange: number | null;
+  avg_turn: number | null;
+  avg_amplitude: number | null;
+  constituent_count: number | null;
+  cum_pctchange_window: number | null;
+};
+
+export type LivermoreSectorRankSeriesPayload = {
+  basis: "analytical";
+  state: "ok" | "missing";
+  as_of_date: string | null;
+  window_days: number;
+  top_k: number;
+  sector_code_filter: string | null;
+  formula_version: string;
+  series: LivermoreSectorRankSeriesPoint[];
+  unsupported_notes: string[];
+};
+
 export type LivermoreCandidateHistoryRow = {
   snapshot_as_of_date: string;
   stock_code: string;

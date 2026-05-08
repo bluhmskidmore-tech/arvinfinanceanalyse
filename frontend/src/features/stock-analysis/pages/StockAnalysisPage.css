@@ -694,6 +694,21 @@
   line-height: 1.45;
 }
 
+.stock-analysis-page__sector-series-wrap {
+  padding-top: var(--sa-space-2, 8px);
+}
+
+.stock-analysis-page__sector-series-note {
+  margin: 0 0 var(--sa-space-3, 12px);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--sa-color-muted);
+}
+
+.stock-analysis-page__sector-series-tabs {
+  margin-bottom: var(--sa-space-3, 12px);
+}
+
 @media (max-width: 1180px) {
   .stock-analysis-page__workspace {
     grid-template-columns: 1fr;

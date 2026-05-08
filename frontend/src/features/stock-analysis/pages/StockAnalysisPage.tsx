@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Collapse, DatePicker, Drawer, Tabs, Typography } from "antd";
+import { Alert, Button, Collapse, DatePicker, Drawer, Tabs, Typography } from "antd";
 import dayjs from "dayjs";
 
 import { useApiClient } from "../../../api/client";
-import type { LivermoreSignalConfluencePayload } from "../../../api/contracts";
+import type {
+  LivermoreSectorRankSeriesPoint,
+  LivermoreSignalConfluencePayload,
+} from "../../../api/contracts";
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateEvidenceCards,
@@ -75,6 +78,21 @@ function sectorRankUnavailable(strategyPayload: { sector_rank?: { formula_versio
   return items.length === 0 || fv == null || String(fv).trim() === "";
 }
 
+function latestSectorSeriesTableRows(series: LivermoreSectorRankSeriesPoint[]): LivermoreSectorRankSeriesPoint[] {
+  const byCode = new Map<string, LivermoreSectorRankSeriesPoint>();
+  for (const row of series) {
+    const cur = byCode.get(row.sector_code);
+    if (!cur || row.trade_date > cur.trade_date) {
+      byCode.set(row.sector_code, row);
+    }
+  }
+  return Array.from(byCode.values()).sort((a, b) => {
+    const ra = a.rank ?? 9999;
+    const rb = b.rank ?? 9999;
+    return ra - rb;
+  });
+}
+
 export default function StockAnalysisPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -88,6 +106,8 @@ export default function StockAnalysisPage() {
   const [boundaryDrawerOpen, setBoundaryDrawerOpen] = useState(false);
   const [detailSelection, setDetailSelection] = useState<{ code: string; name?: string } | null>(null);
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
+  const [sectorSeriesCollapseKeys, setSectorSeriesCollapseKeys] = useState<string[]>([]);
+  const [sectorSeriesWindow, setSectorSeriesWindow] = useState<5 | 20>(5);
 
   const strategyQueryKey = ["stock-analysis", "livermore-strategy", asOfOverride ?? "__default"] as const;
 
@@ -209,6 +229,33 @@ export default function StockAnalysisPage() {
   const stockDetailAsOfDate = asOfOverride ?? strategyPayload?.as_of_date ?? undefined;
 
   const effectiveAsOf = asOfOverride ?? strategyPayload?.as_of_date ?? null;
+
+  const sectorSeriesExpanded = sectorSeriesCollapseKeys.includes("sector-rank-series-multi");
+
+  const sectorRankSeriesQuery = useQuery({
+    queryKey: ["stock-analysis", "livermore-sector-rank-series", effectiveAsOf ?? "__none", sectorSeriesWindow] as const,
+    queryFn: () =>
+      client.getLivermoreSectorRankSeries({
+        asOfDate: effectiveAsOf ?? undefined,
+        windowDays: sectorSeriesWindow,
+        topK: 10,
+      }),
+    enabled: Boolean(
+      sectorSeriesExpanded &&
+        effectiveAsOf &&
+        strategyPayload &&
+        !sectorRankUnavailable(strategyPayload),
+    ),
+  });
+
+  const sectorSeriesTableRows = useMemo(() => {
+    const envelope = sectorRankSeriesQuery.data?.result;
+    const series = envelope?.series;
+    if (!series || envelope?.state !== "ok") {
+      return [];
+    }
+    return latestSectorSeriesTableRows(series);
+  }, [sectorRankSeriesQuery.data?.result]);
 
   const stockAnalysisAgentPageContext = useMemo(
     () =>
@@ -461,7 +508,7 @@ export default function StockAnalysisPage() {
                       </div>
                     </div>
                     <p className="stock-analysis-page__footnote">
-                      视图切换不重拉接口；暂不包含 N 日累计强度（需后端 sector_rank 字段扩展）。
+                      视图切换不重拉接口；条形图为单日截面，多日窗口聚合见下方折叠（运行时聚合，sum 累加未复利）。
                     </p>
 
                     <Collapse
@@ -564,6 +611,114 @@ export default function StockAnalysisPage() {
                                   ))}
                                 </tbody>
                               </table>
+                            </div>
+                          ),
+                        },
+                      ]}
+                    />
+
+                    <Collapse
+                      bordered={false}
+                      style={{ marginTop: 12 }}
+                      activeKey={sectorSeriesCollapseKeys}
+                      onChange={(keys) =>
+                        setSectorSeriesCollapseKeys(Array.isArray(keys) ? keys : [keys])
+                      }
+                      items={[
+                        {
+                          key: "sector-rank-series-multi",
+                          label: "多日累计强度（窗口聚合）",
+                          children: (
+                            <div
+                              className="stock-analysis-page__sector-series-wrap"
+                              data-testid="stock-analysis-sector-series-panel"
+                            >
+                              <p className="stock-analysis-page__sector-series-note">
+                                窗口内对每日 avg_pctchange 做 sum 累加（未做复利）；动量持续度与资金流向暂不可用（见接口
+                                unsupported_notes）。
+                              </p>
+                              <Tabs
+                                size="small"
+                                activeKey={String(sectorSeriesWindow)}
+                                onChange={(key) => setSectorSeriesWindow(key === "20" ? 20 : 5)}
+                                className="stock-analysis-page__sector-series-tabs"
+                                items={[
+                                  { key: "5", label: "5 交易日" },
+                                  { key: "20", label: "20 交易日" },
+                                ]}
+                              />
+                              {sectorRankSeriesQuery.isFetching ? (
+                                <Text type="secondary">加载多日板块序列…</Text>
+                              ) : null}
+                              {sectorRankSeriesQuery.isError ? (
+                                <Alert
+                                  type="warning"
+                                  showIcon
+                                  message="多日板块序列加载失败"
+                                  description={errorMessage(sectorRankSeriesQuery.error)}
+                                />
+                              ) : null}
+                              {!sectorRankSeriesQuery.isFetching &&
+                              !sectorRankSeriesQuery.isError &&
+                              sectorRankSeriesQuery.data?.result?.state === "missing" ? (
+                                <Text type="secondary">暂无多日窗口可用数据。</Text>
+                              ) : null}
+                              {!sectorRankSeriesQuery.isFetching &&
+                              !sectorRankSeriesQuery.isError &&
+                              sectorRankSeriesQuery.data?.result?.state === "ok" &&
+                              sectorSeriesTableRows.length === 0 ? (
+                                <Text type="secondary">窗口内无表格行可展示。</Text>
+                              ) : null}
+                              {!sectorRankSeriesQuery.isFetching &&
+                              !sectorRankSeriesQuery.isError &&
+                              sectorRankSeriesQuery.data?.result?.state === "ok" &&
+                              sectorSeriesTableRows.length > 0 ? (
+                                <div className="stock-analysis-page__table-wrap">
+                                  <table className="stock-analysis-page__table">
+                                    <thead>
+                                      <tr>
+                                        <th scope="col">行业</th>
+                                        <th scope="col">代码</th>
+                                        <th className="stock-analysis-page__table-number" scope="col">
+                                          score（最新）
+                                        </th>
+                                        <th className="stock-analysis-page__table-number" scope="col">
+                                          rank（最新）
+                                        </th>
+                                        <th className="stock-analysis-page__table-number" scope="col">
+                                          cum_pctchange_window
+                                        </th>
+                                        <th className="stock-analysis-page__table-number" scope="col">
+                                          成分数
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {sectorSeriesTableRows.map((row) => (
+                                        <tr
+                                          key={`${row.sector_code}-${row.trade_date}`}
+                                          data-testid={`sector-series-row-${row.sector_code}`}
+                                        >
+                                          <td>{row.sector_name}</td>
+                                          <td className="stock-analysis-page__tabular">{row.sector_code}</td>
+                                          <td className="stock-analysis-page__table-number">
+                                            {row.score ?? "—"}
+                                          </td>
+                                          <td className="stock-analysis-page__table-number">
+                                            {row.rank ?? "—"}
+                                          </td>
+                                          <td className="stock-analysis-page__table-number">
+                                            {row.cum_pctchange_window ?? "—"}
+                                          </td>
+                                          <td className="stock-analysis-page__table-number">
+                                            {row.constituent_count ?? "—"}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : null}
                             </div>
                           ),
                         },

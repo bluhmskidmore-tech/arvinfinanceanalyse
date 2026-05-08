@@ -17,6 +17,7 @@ from backend.app.services.livermore_signal_confluence_service import (
 )
 from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
 from backend.app.services.livermore_candidate_history_service import livermore_candidate_history_envelope
+from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
@@ -416,3 +417,26 @@ def _safe_int(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+@router.get("/livermore/sector-rank-series")
+def livermore_sector_rank_series(
+    as_of_date: str | None = Query(default=None),
+    window_days: int = Query(default=20, ge=2, le=60),
+    sector_code: str | None = Query(default=None, max_length=32),
+    top_k: int = Query(default=10, ge=1, le=50),
+) -> dict[str, object]:
+    settings = get_settings()
+    parsed_as_of: date | None = None
+    if as_of_date is not None:
+        try:
+            parsed_as_of = date.fromisoformat(as_of_date.strip()[:10])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return livermore_sector_rank_series_envelope(
+        duckdb_path=str(settings.duckdb_path),
+        as_of_date=parsed_as_of,
+        window_days=window_days,
+        sector_code=sector_code,
+        top_k=top_k,
+    )

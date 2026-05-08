@@ -360,6 +360,42 @@ describe("StockAnalysisPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("loads sector rank series when multi-day collapse opens", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const spy = vi.spyOn(client, "getLivermoreSectorRankSeries");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
+    expect(spy).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText("多日累计强度（窗口聚合）"));
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalled();
+    });
+
+    await screen.findByTestId("sector-series-row-801001");
+    expect(screen.getByTestId("sector-series-row-801001")).toHaveTextContent("AI");
+    spy.mockRestore();
+  });
+
+  it("shows sector series failure alert without breaking sector bars", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    vi.spyOn(client, "getLivermoreSectorRankSeries").mockRejectedValue(new Error("series fetch failed"));
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
+    await user.click(screen.getByText("多日累计强度（窗口聚合）"));
+
+    expect(await screen.findByText("多日板块序列加载失败")).toBeInTheDocument();
+    expect(screen.getByText("series fetch failed")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
+  });
+
   it("opens stock detail drawer when 复核 K 线 is clicked", async () => {
     const user = userEvent.setup();
     const client = stockClient();
