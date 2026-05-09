@@ -6,6 +6,7 @@ from decimal import Decimal
 from functools import lru_cache
 from uuid import uuid4
 
+from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
 from backend.app.core_finance.field_normalization import is_approved_status
 from backend.app.core_finance.pnl import compute_nonstd_signed_ledger_amount
 from backend.app.core_finance.reconciliation_checks import pnl_vs_ledger_diff
@@ -78,6 +79,7 @@ PNL_BY_BUSINESS_PRECOMPUTE_TABLE = "fact_pnl_by_business_precompute"
 PNL_BY_BUSINESS_ADJUSTMENT_STREAM = "pnl_by_business_adjustments"
 PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v1"
 PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v1"
+V1_INTEREST_INCOME_JOURNAL_TYPE = LEDGER_PNL_ACCOUNT_PREFIXES[0]
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
     "bond_bucket_monthly",
@@ -1106,13 +1108,13 @@ def _pnl_by_business_ytd_envelope_uncached(
     repo = PnlRepository(duckdb_path)
     settings = get_settings()
     as_cap = as_of_date or repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=None)
-    use_formal = (
+    prefer_fact_path = (
         settings.pnl_by_business_ytd_prefer_formal_facts
         and bool(as_cap)
         and str(as_cap).startswith(f"{year:04d}-")
         and repo.formal_pnl_ytd_has_rows(year=year, as_of_date=str(as_cap))
     )
-    if use_formal:
+    if prefer_fact_path:
         return _pnl_by_business_ytd_from_formal_facts(
             duckdb_path=duckdb_path,
             governance_dir=governance_dir,
@@ -2519,11 +2521,11 @@ def _build_v1_detail_rows(
                 journal_type=str(journal_type),
             )
             code_prefix = code[:2].upper()
-            if str(journal_type) == "514" and code_prefix == "JM":
+            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE and code_prefix == "JM":
                 amount = amount / V1_VAT_DIVISOR
             if code_prefix == "J1":
                 amount = amount * _v1_fx_rate("USD", fx_rates)
-            if str(journal_type) == "514":
+            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE:
                 group["interest_income"] = Decimal(str(group["interest_income"])) + amount
             elif str(journal_type) == "516":
                 group["fair_value_change"] = Decimal(str(group["fair_value_change"])) + amount
@@ -2621,11 +2623,11 @@ def _iter_v1_compatible_pnl_records(
                 journal_type=str(journal_type),
             )
             code_prefix = code[:2].upper()
-            if str(journal_type) == "514" and code_prefix == "JM":
+            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE and code_prefix == "JM":
                 amount = amount / V1_VAT_DIVISOR
             if code_prefix == "J1":
                 amount = amount * _v1_fx_rate("USD", fx_rates)
-            if str(journal_type) == "514":
+            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE:
                 bucket["interest_income"] = Decimal(str(bucket["interest_income"])) + amount
             elif str(journal_type) == "516":
                 bucket["fair_value_change"] = Decimal(str(bucket["fair_value_change"])) + amount

@@ -128,6 +128,11 @@
       "ensure_symbol": "_ensure_tables"
     },
     {
+      "path": "27_choice_stock_factor_snapshot.sql",
+      "ensure_module": "backend.app.tasks.choice_stock_materialize",
+      "ensure_symbol": "ensure_choice_stock_schema"
+    },
+    {
       "path": "28_livermore_candidate_history.sql",
       "ensure_module": "backend.app.tasks.livermore_candidate_history_materialize",
       "ensure_symbol": "ensure_livermore_candidate_history_schema"

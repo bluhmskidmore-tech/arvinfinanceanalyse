@@ -22,6 +22,11 @@ FUTURE_SUPPLY_AUCTION_FILES = (
     ROOT / "backend" / "app" / "schemas" / "research_calendar.py",
 )
 
+SUPPLY_AUCTION_FRONTEND_FILES = (
+    ROOT / "frontend" / "src" / "api" / "marketDataClient.ts",
+    ROOT / "frontend" / "src" / "lib" / "researchCalendarApiEvent.ts",
+)
+
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -34,14 +39,14 @@ def _landed_supply_auction_files() -> list[Path]:
 def test_approved_supply_auction_plan_pins_external_data_authority_and_payload_severity():
     route_src = _read(ROOT / "backend" / "app" / "api" / "routes" / "research_calendar.py")
     repo_src = _read(ROOT / "backend" / "app" / "repositories" / "research_calendar_repo.py")
-    client_src = _read(ROOT / "frontend" / "src" / "api" / "client.ts")
-    authority_src = "\n".join((route_src, repo_src, client_src))
+    frontend_src = "\n".join(_read(path) for path in SUPPLY_AUCTION_FRONTEND_FILES)
+    authority_src = "\n".join((route_src, repo_src, frontend_src))
 
     assert "research.calendar.supply_auction" in authority_src
     assert "std_external_supply_auction_calendar" in authority_src
     assert "vw_external_supply_auction_calendar" in authority_src
-    assert "/ui/calendar/supply-auctions" in client_src
-    assert "severity: event.severity" in client_src
+    assert "/ui/calendar/supply-auctions" in frontend_src
+    assert "severity: event.severity" in frontend_src
 
 
 def test_current_adjacent_calendar_surfaces_do_not_reuse_workbook_event_calendar():

@@ -20,6 +20,7 @@ from backend.app.agent.schemas.agent_response import (
     AgentEvidence,
     AgentResultMeta,
 )
+from backend.app.core_finance.calibers.enums import Basis
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
 from backend.app.repositories.governance_repo import GovernanceRepository
 
@@ -320,7 +321,7 @@ def build_hermes_envelope(
         quality_flag="ok",
         vendor_status="ok",
         fallback_mode="none",
-        scenario_flag=request.basis == "scenario",
+        scenario_flag=request.basis == Basis.SCENARIO.value,
         generated_at=generated_at,
         tables_used=evidence.tables_used,
         filters_applied=evidence.filters_applied,

@@ -5,6 +5,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
+from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
+
 
 BasisBucket = Literal["AC", "OCI", "TPL"]
 ReconciliationStatus = Literal["matched", "mismatch", "gl_only", "zqtz_only"]
@@ -75,7 +77,7 @@ def build_accounting_asset_movement_rows(
         if bucket is None:
             continue
         zqtz_amounts[bucket] += (
-            row.amortized_cost_amount if bucket == "AC" else row.market_value_amount
+            row.amortized_cost_amount if bucket == ACCOUNTING_BASIS_AC else row.market_value_amount
         )
         _append_unique(source_versions, row.source_version)
         _append_unique(rule_versions, row.rule_version)

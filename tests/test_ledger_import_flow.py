@@ -441,9 +441,19 @@ def test_ledger_import_schema_registry_adds_batch_raw_and_snapshot_tables():
 
 def _configure_ledger_import_env(tmp_path, monkeypatch) -> Path:
     duckdb_path = tmp_path / "moss.duckdb"
+    auth_scope_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{auth_scope_path.as_posix()}")
     get_settings.cache_clear()
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    UserScopeRepository(f"sqlite:///{auth_scope_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="ledger.data",
+        action="import",
+    )
     return duckdb_path
 
 

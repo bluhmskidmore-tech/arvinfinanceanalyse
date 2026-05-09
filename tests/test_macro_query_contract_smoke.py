@@ -1,5 +1,6 @@
 
 import duckdb
+from fastapi import FastAPI
 from backend.app.governance.settings import get_settings
 from fastapi.testclient import TestClient
 
@@ -453,7 +454,7 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
     monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
 
-    payload = route_module.choice_series_refresh(backfill_days=7)
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
 
     assert calls == [("choice", 7), ("public_cross_asset", None)]
     assert payload["status"] == "completed"
@@ -462,6 +463,25 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     assert payload["public_cross_asset"]["series_count"] == 3
     assert payload["public_cross_asset"]["row_count"] == 20
     assert payload["warnings"] == ["tushare index_weight used latest available date"]
+
+
+def test_choice_macro_refresh_keeps_auth_dependency_contract():
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+
+    route = next(
+        item
+        for item in app.routes
+        if getattr(item, "path", "") == "/ui/macro/choice-series/refresh"
+    )
+
+    assert [dependency.name for dependency in route.dependant.dependencies] == ["auth"]
+    assert "auth" not in [param.name for param in route.dependant.body_params]
+    assert "backfill_days" in [param.name for param in route.dependant.query_params]
 
 
 def test_choice_macro_latest_filters_persisted_market_data_categories(

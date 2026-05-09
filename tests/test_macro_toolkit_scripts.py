@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import py_compile
 import sys
+import time
 
 import duckdb
 import pandas as pd
@@ -422,7 +423,7 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     get_settings.cache_clear()
 
-    route_module = importlib.import_module("backend.app.api.routes.macro_toolkit")
+    route_globals = _macro_toolkit_refresh_endpoint().__globals__
     calls: list[tuple[str, dict[str, object]]] = []
 
     def fake_materialize_choice_stock_inputs(**kwargs: object) -> dict[str, object]:
@@ -445,9 +446,9 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
             "vendor_version": "vv_factor",
         }
 
-    monkeypatch.setattr(route_module, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
-    monkeypatch.setattr(
-        route_module,
+    monkeypatch.setitem(route_globals, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
+    monkeypatch.setitem(
+        route_globals,
         "materialize_choice_stock_factor_snapshot",
         fake_materialize_choice_stock_factor_snapshot,
     )
@@ -467,9 +468,9 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
             headers={"X-User-Id": "stock-refresh-user"},
         )
         payload = response.json()
-        status_response = client.get(
-            "/ui/macro/toolkit/choice-stock/refresh-status",
-            params={"run_id": payload["result"]["refresh"]["run_id"]},
+        status_response = _wait_for_choice_stock_refresh_status(
+            client,
+            run_id=payload["result"]["refresh"]["run_id"],
         )
     finally:
         get_settings.cache_clear()
@@ -511,10 +512,10 @@ def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monke
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     get_settings.cache_clear()
-    route_module = importlib.import_module("backend.app.api.routes.macro_toolkit")
+    route_globals = _macro_toolkit_refresh_endpoint().__globals__
     GovernanceRepository(base_dir=governance_path).append(
-        route_module.CACHE_BUILD_RUN_STREAM,
-        route_module._choice_stock_refresh_run_payload(
+        route_globals["CACHE_BUILD_RUN_STREAM"],
+        route_globals["_choice_stock_refresh_run_payload"](
             run_id="choice_stock_refresh:2026-04-30:existing",
             status="running",
             as_of_date="2026-04-30",
@@ -539,6 +540,36 @@ def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monke
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Choice stock refresh already in progress for as_of_date=2026-04-30."
+
+
+def _macro_toolkit_refresh_endpoint():
+    return next(
+        route.endpoint
+        for route in macro_toolkit_router.routes
+        if getattr(route.endpoint, "__name__", "") == "macro_toolkit_refresh_choice_stock"
+    )
+
+
+def _wait_for_choice_stock_refresh_status(
+    client: TestClient,
+    *,
+    run_id: str,
+    timeout_seconds: float = 5.0,
+):
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(
+            "/ui/macro/toolkit/choice-stock/refresh-status",
+            params={"run_id": run_id},
+        )
+        if last_response.status_code == 200:
+            status = last_response.json()["result"]["refresh"]["status"]
+            if status in {"completed", "failed"}:
+                return last_response
+        time.sleep(0.05)
+    assert last_response is not None
+    return last_response
 
 
 def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_path, monkeypatch) -> None:

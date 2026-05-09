@@ -65,7 +65,7 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
   };
 }
 
-/** 会计分桶（AC/FVOCI/FVTPL 等）日均余额按月的走势；数据来自后端 trend。 */
+/** 会计分桶日均余额按月的走势；数据来自后端 trend。 */
 export default function AdbAccountingBasisTrendChart({
   trend,
   height = 300,

@@ -75,17 +75,16 @@ def choice_series_refresh(
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
     settings = get_settings()
-    choice_payload = refresh_choice_macro_snapshot(
-        duckdb_path=settings.duckdb_path,
-        backfill_days=backfill_days,
-    )
+    choice_refresh = getattr(refresh_choice_macro_snapshot, "fn", refresh_choice_macro_snapshot)
+    choice_payload = choice_refresh(backfill_days=backfill_days)
     public_payload = _run_public_cross_asset_headline_refresh()
     return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload)
 
 
 def _run_public_cross_asset_headline_refresh() -> dict[str, object]:
     try:
-        return refresh_public_cross_asset_headlines()
+        public_refresh = getattr(refresh_public_cross_asset_headlines, "fn", refresh_public_cross_asset_headlines)
+        return public_refresh()
     except RuntimeError as exc:
         error_text = str(exc)
         return {

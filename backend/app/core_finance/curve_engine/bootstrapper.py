@@ -201,7 +201,11 @@ def _interpolate_df(
             return df0
         return df0 ** (target / t0)
     if target >= dfs[-1][0]:
-        return dfs[-1][1]
+        t_last, df_last = dfs[-1]
+        if t_last > 0 and df_last > 0:
+            # Tail policy: extrapolate at the last observed zero rate.
+            return df_last ** (target / t_last)
+        return df_last
 
     for i in range(len(dfs) - 1):
         t0, df0 = dfs[i]

@@ -30,6 +30,14 @@ def _main_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool
     return row is not None
 
 
+def _ensure_zqtz_patch_target_tables(conn: duckdb.DuckDBPyConnection) -> None:
+    """Recover legacy DBs that recorded baseline migrations before these tables existed."""
+    if not _main_table_exists(conn, "zqtz_bond_daily_snapshot"):
+        _run_sql_slice(conn, "01_snapshot.sql")
+    if not _main_table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        _run_sql_slice(conn, "05_balance_analysis.sql")
+
+
 def ensure_fx_daily_mid_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> None:
     """Re-apply fx DDL when the table is missing (e.g. dropped) but migrations are already recorded."""
     if _main_table_exists(conn, "fx_daily_mid"):
@@ -61,11 +69,15 @@ def ensure_balance_zqtz_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
 
 
 def _v18_zqtz_business_type_primary(conn: duckdb.DuckDBPyConnection) -> None:
-    for statement in (
-        "alter table zqtz_bond_daily_snapshot add column if not exists business_type_primary varchar",
-        "alter table fact_formal_zqtz_balance_daily add column if not exists business_type_primary varchar",
+    _ensure_zqtz_patch_target_tables(conn)
+    for table_name in (
+        "zqtz_bond_daily_snapshot",
+        "fact_formal_zqtz_balance_daily",
     ):
-        conn.execute(statement)
+        if _main_table_exists(conn, table_name):
+            conn.execute(
+                f"alter table {table_name} add column if not exists business_type_primary varchar"
+            )
 
 
 def _v19_ledger_import(conn: duckdb.DuckDBPyConnection) -> None:
@@ -90,9 +102,9 @@ def _v23_livermore_gate_supplement(conn: duckdb.DuckDBPyConnection) -> None:
 
 def _v24_zqtz_accounting_sub_type(conn: duckdb.DuckDBPyConnection) -> None:
     """Persist accounting/data-dictionary sub_type on ZQTZ snapshot + formal facts; backfill from 业务种类1."""
-    conn.execute("alter table zqtz_bond_daily_snapshot add column if not exists sub_type varchar")
-    conn.execute("alter table fact_formal_zqtz_balance_daily add column if not exists sub_type varchar")
+    _ensure_zqtz_patch_target_tables(conn)
     if _main_table_exists(conn, "zqtz_bond_daily_snapshot"):
+        conn.execute("alter table zqtz_bond_daily_snapshot add column if not exists sub_type varchar")
         conn.execute(
             """
             update zqtz_bond_daily_snapshot
@@ -101,6 +113,7 @@ def _v24_zqtz_accounting_sub_type(conn: duckdb.DuckDBPyConnection) -> None:
             """
         )
     if _main_table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        conn.execute("alter table fact_formal_zqtz_balance_daily add column if not exists sub_type varchar")
         conn.execute(
             """
             update fact_formal_zqtz_balance_daily

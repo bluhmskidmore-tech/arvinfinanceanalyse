@@ -20,8 +20,9 @@ from backend.app.core_finance.field_normalization import (
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 CurrencyBasis = Literal["CNY", "CNX"]
-_INTEREST_INCOME_PREFIX = "514"
+_INTEREST_INCOME_PREFIX = LEDGER_PNL_ACCOUNT_PREFIXES[0]
 _MANUAL_ADJUSTMENT_TOKEN = "adjustment"
+# Human: caliber-subject_514_516_517_merge-justified -- Literal requires concrete members; the assert below locks them to LEDGER_PNL_ACCOUNT_PREFIXES.
 JournalType = Literal["514", "516", "517", "adjustment"]
 assert set(get_args(JournalType)) == set(LEDGER_PNL_ACCOUNT_PREFIXES) | {
     _MANUAL_ADJUSTMENT_TOKEN
@@ -204,11 +205,11 @@ def build_nonstd_pnl_bridge_rows(
         trace_ids: list[str] = []
 
         for item in items:
-            if item.journal_type == "514":
+            if item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[0]:
                 interest_income_514 += item.signed_amount
-            elif item.journal_type == "516":
+            elif item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[1]:
                 fair_value_change_516 += item.signed_amount
-            elif item.journal_type == "517":
+            elif item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[2]:
                 capital_gain_517 += item.signed_amount
             else:
                 manual_adjustment += item.signed_amount

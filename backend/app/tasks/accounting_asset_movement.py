@@ -9,6 +9,7 @@ from pathlib import Path
 
 import duckdb
 
+from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
 from backend.app.core_finance.accounting_asset_movement import (
     AccountingAssetMovementRow,
     GlAccountingAssetBalance,
@@ -575,8 +576,8 @@ def _load_zqtz_cnx_control_rows(
                 accounting_basis=normalized_basis,
                 position_scope="asset",
                 currency_basis=currency_basis,
-                market_value_amount=Decimal("0") if normalized_basis == "AC" else amount,
-                amortized_cost_amount=amount if normalized_basis == "AC" else Decimal("0"),
+                market_value_amount=Decimal("0") if normalized_basis == ACCOUNTING_BASIS_AC else amount,
+                amortized_cost_amount=amount if normalized_basis == ACCOUNTING_BASIS_AC else Decimal("0"),
                 source_version=str(source_version or ""),
                 rule_version=str(rule_version or ""),
             )

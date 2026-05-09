@@ -53,6 +53,8 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
         "零售规模",
         "金融市场规模",
         "收益率分析（总账可复算）",
+        "存款利息拆分",
+        "母公司营收分项",
     ]
 
     overview = workbook["经营概览"]

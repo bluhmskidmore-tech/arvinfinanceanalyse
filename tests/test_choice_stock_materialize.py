@@ -326,6 +326,7 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v25: CFFEX member-rank daily from Choice/Tushare",
         "v26: PnL by-business page precompute read model",
         "v27: Choice stock factor snapshot for equity strategies",
+        "v28: Livermore candidate history analytical replay",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:

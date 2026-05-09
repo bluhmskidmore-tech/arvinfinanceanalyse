@@ -39,6 +39,7 @@ def run_powershell_script(script_name: str, *args: str) -> str:
         cwd=ROOT,
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         text=True,
     )
     return completed.stdout

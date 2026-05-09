@@ -22,6 +22,7 @@ from typing import Callable, Sequence
 
 logger = logging.getLogger(__name__)
 
+from backend.app.core_finance.calibers.enums import Basis
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
 from backend.app.security.auth_context import AuthContext
@@ -98,9 +99,9 @@ class AnalyticalBridgeService:
         auth: AuthContext,
     ) -> CubeQueryResponse:
         """Route query to the right pathway based on ``request.basis``."""
-        if request.basis == "formal":
+        if request.basis == Basis.FORMAL.value:
             return self._cube_service.execute(request, duckdb_path)
-        if request.basis == "analytical":
+        if request.basis == Basis.ANALYTICAL.value:
             return self._execute_analytical(request, duckdb_path, auth=auth)
         if request.basis == "ledger":
             return self._execute_ledger(request, duckdb_path, auth=auth)

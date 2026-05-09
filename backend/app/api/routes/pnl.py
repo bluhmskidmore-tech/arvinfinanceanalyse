@@ -103,7 +103,7 @@ def v1_data(
 
 @router.get("/pnl/by-business")
 def by_business(
-    report_date: str = Query(..., description="Requested report date for formal PnL by ZQTZ business type 1."),
+    report_date: str = Query(..., description="Requested report date for governed PnL by ZQTZ business type 1."),
 ) -> dict[str, object]:
     settings = get_settings()
     try:
@@ -257,7 +257,7 @@ def restore_by_business_manual_adjustment(
 
 @router.get("/pnl/yearly-summary")
 def yearly_summary(
-    year: int = Query(..., description="Requested calendar year for formal PnL by ZQTZ business type 1."),
+    year: int = Query(..., description="Requested calendar year for governed PnL by ZQTZ business type 1."),
 ) -> dict[str, object]:
     settings = get_settings()
     try:

@@ -58,6 +58,14 @@ class TestBootstrapZeroCurve:
         for pt in result.zero_curve:
             assert abs(float(pt.rate) - 3.0) < 0.05, f"Flat curve: spot at {pt.years}Y = {pt.rate}, expected ~3.0"
 
+    def test_flat_curve_extrapolates_intermediate_tail_coupons_at_last_zero_rate(self):
+        """Sparse long-end coupon dates beyond the last known DF keep flat-curve zeros flat."""
+        result = bootstrap_zero_curve(FLAT_CURVE)
+        ten_year_df = dict(result.discount_factors)[10.0]
+
+        assert abs(float(result.zero_curve[-1].rate) - 3.0) < 0.01
+        assert abs(ten_year_df - (1.0 / (1.0 + 0.03) ** 10.0)) < 0.0001
+
     def test_upward_curve_spot_above_par_at_long_end(self):
         """For upward-sloping curve, spot rates should be ≥ par at long tenors."""
         result = bootstrap_zero_curve(UPWARD_CURVE)
