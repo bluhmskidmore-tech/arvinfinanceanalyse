@@ -50,6 +50,7 @@ def _apply_numeric_coercion(
 class RiskTensorPayload(BaseModel):
     report_date: date
     portfolio_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
+    regulatory_dv01: Numeric | None = None
     krd_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
     krd_3y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
     krd_5y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
@@ -75,6 +76,7 @@ class RiskTensorPayload(BaseModel):
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_dv01": ("dv01", False),
+        "regulatory_dv01": ("dv01", False),
         "krd_1y": ("ratio", True),
         "krd_3y": ("ratio", True),
         "krd_5y": ("ratio", True),

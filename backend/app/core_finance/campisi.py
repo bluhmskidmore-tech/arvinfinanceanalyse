@@ -86,11 +86,14 @@ def benchmark_yield_change_decimal(
     return Decimal(str((y1 - y0) / 100.0))
 
 
-_SPREAD_FIELD = {
+SPREAD_FIELD = {
     "AAA": "credit_spread_aaa_3y",
     "AA+": "credit_spread_aa_plus_3y",
     "AA": "credit_spread_aa_3y",
 }
+
+# Private alias for backward compatibility with any internal callers.
+_SPREAD_FIELD = SPREAD_FIELD
 
 
 def credit_spread_change_decimal(

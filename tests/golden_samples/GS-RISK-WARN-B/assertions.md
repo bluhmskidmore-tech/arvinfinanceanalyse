@@ -15,7 +15,7 @@
 - `result.bond_count == 3`.
 - `result.quality_flag == "warning"`.
 - `warnings` contains:
-  - `Unsupported tenor buckets`
+  - `Non-standard tenor buckets remapped`
   - `without maturity_date`
 
 ## Reconciliation

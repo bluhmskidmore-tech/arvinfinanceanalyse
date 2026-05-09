@@ -71,7 +71,7 @@ def parse_json_field(val):
         import json as _json
         try:
             return _json.loads(val)
-        except:
+        except (ValueError, TypeError):
             return val
     return val
 
@@ -120,7 +120,7 @@ def fetch_polymarket():
             if isinstance(prices, list) and len(prices) >= 2:
                 try:
                     prob = round(float(prices[0]) * 100, 1)
-                except:
+                except (ValueError, TypeError):
                     pass
             macro.append({
                 "question": q,
@@ -152,11 +152,13 @@ def load_signals():
         if path.exists():
             try:
                 data[key] = pd.read_csv(path, encoding="utf-8-sig")
-            except Exception:
+            except UnicodeDecodeError:
                 try:
                     data[key] = pd.read_csv(path)
-                except:
-                    pass
+                except (OSError, pd.errors.ParserError) as e:
+                    print(f"  [{key}] WARNING: could not load {path}: {e}")
+            except (OSError, pd.errors.ParserError) as e:
+                print(f"  [{key}] WARNING: could not load {path}: {e}")
     return data
 
 
@@ -171,7 +173,7 @@ def extract_value(df, col_hint, val_hint):
             if pd.notna(v):
                 try:
                     return round(float(v), 3)
-                except:
+                except (ValueError, TypeError):
                     return v
     return "N/A"
 
@@ -237,7 +239,7 @@ def build_report():
     # ── 综合判断 ─────────────────────────────────────────────────
     try:
         cs_v = float(cs_score) if cs_score != "N/A" else None
-    except:
+    except (ValueError, TypeError):
         cs_v = None
 
     if cs_v is not None:
@@ -331,7 +333,7 @@ def build_report():
         try:
             if float(var99) < -0.1:
                 lines.append(f"- ⚠️ **VaR(99%)较低**: {var99}，尾部风险显著")
-        except:
+        except (ValueError, TypeError):
             pass
     if not lines[-1].startswith(f"- ⚠️"):
         lines.append(f"- ✅ 无重大风险预警")

@@ -106,6 +106,7 @@ class RiskTensorRepository:
                 insert into {FACT_TABLE} (
                     report_date,
                     portfolio_dv01,
+                    regulatory_dv01,
                     krd_1y,
                     krd_3y,
                     krd_5y,
@@ -136,12 +137,13 @@ class RiskTensorRepository:
                     cache_version,
                     trace_id
                 ) values (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
                     report_date,
                     tensor.portfolio_dv01,
+                    tensor.regulatory_dv01,
                     tensor.krd_1y,
                     tensor.krd_3y,
                     tensor.krd_5y,
@@ -224,10 +226,16 @@ class RiskTensorRepository:
                 "''",
                 coalesce=True,
             )
+            regulatory_dv01 = _column_or_default(
+                table_columns,
+                "regulatory_dv01",
+                "cast(null as decimal(24, 8))",
+            )
             row = conn.execute(
                 f"""
                 select report_date,
                        portfolio_dv01,
+                       {regulatory_dv01},
                        krd_1y,
                        krd_3y,
                        krd_5y,
@@ -268,6 +276,7 @@ class RiskTensorRepository:
             columns = [
                 "report_date",
                 "portfolio_dv01",
+                "regulatory_dv01",
                 "krd_1y",
                 "krd_3y",
                 "krd_5y",

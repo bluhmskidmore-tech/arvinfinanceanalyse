@@ -671,6 +671,7 @@
 #### 禁止 section
 
 - 前端重算 KRD / DV01 / CS01 / convexity
+- 用 `portfolio_dv01` 回填或伪装 `regulatory_dv01`
 - 把 excluded 的 `risk-overview` 内容移花接木进来
 
 ### D. 筛选与时间语义
@@ -700,6 +701,7 @@
 | 页面展示项 | `metric_id` | 来源字段 |
 | --- | --- | --- |
 | 组合 DV01 | `MTR-RSK-001` | `portfolio_dv01` |
+| 监管口径 DV01 | `MTR-RSK-001R` | `regulatory_dv01` |
 | KRD 1Y | `MTR-RSK-002` | `krd_1y` |
 | KRD 3Y | `MTR-RSK-003` | `krd_3y` |
 | KRD 5Y | `MTR-RSK-004` | `krd_5y` |

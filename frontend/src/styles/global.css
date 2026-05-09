@@ -99,9 +99,8 @@
   --moss-motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --moss-motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 
-  --moss-font-sans: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui,
-    sans-serif;
-  --moss-font-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
+  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif;
+  --moss-font-mono: ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
   --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
 
   /* Semantic aliases */
@@ -1062,6 +1061,55 @@ select {
   color: var(--moss-color-text-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.agent-conversation {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.agent-message {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-message__speaker {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.agent-message__body {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.agent-message--user {
+  justify-items: end;
+}
+
+.agent-message--user .agent-message__body {
+  max-width: min(720px, 86%);
+  padding: 10px 12px;
+  border: 1px solid #b8cbe6;
+  border-radius: 8px;
+  background: #eef6ff;
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.agent-message--assistant {
+  justify-items: stretch;
+}
+
+.agent-message--assistant .agent-message__body {
+  display: grid;
+  gap: 12px;
 }
 
 .agent-wait-status {

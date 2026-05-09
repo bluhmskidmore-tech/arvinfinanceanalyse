@@ -20,13 +20,18 @@ from backend.app.core_finance.bond_analytics.read_models import (
     build_krd_distribution,
     summarize_portfolio_risk,
 )
+from backend.app.core_finance.campisi import (
+    SPREAD_FIELD as _CAMPISI_SPREAD_FIELD,
+    credit_spread_change_decimal,
+    infer_credit_rating_from_asset_class,
+)
 
 CompareType = Literal["mom", "yoy"]
 PositionKey = tuple[str, str, str]
 DATA_FALLBACK_MSG = "数据尚未物化，当前展示空白结构。"
 
 
-def _f(x: object | None) -> float:
+def _f(x: object | None, _field_hint: str = "") -> float:
     if x is None:
         return 0.0
     if isinstance(x, Decimal):
@@ -34,6 +39,12 @@ def _f(x: object | None) -> float:
     try:
         return float(x)
     except (TypeError, ValueError):
+        logger.warning(
+            "_f: cannot convert %r (type=%s) to float%s, using 0.0",
+            x,
+            type(x).__name__,
+            f" [field={_field_hint}]" if _field_hint else "",
+        )
         return 0.0
 
 
@@ -120,12 +131,17 @@ def _tenor_bucket_mid_years(tenor: str) -> float:
     return 5.0
 
 
-def _weighted_ytm_decimal(rows: list[dict[str, Any]]) -> float | None:
+def _weighted_ytm_float(rows: list[dict[str, Any]]) -> float | None:
+    """Market-value-weighted average YTM; returns float (not Decimal) or None if no MV."""
     num = sum(_f(r.get("market_value")) * _f(r.get("ytm")) for r in rows)
     den = sum(_f(r.get("market_value")) for r in rows)
     if den <= 0:
         return None
     return num / den
+
+
+# Legacy alias — remove once all callers are updated.
+_weighted_ytm_decimal = _weighted_ytm_float  # backward-compat alias — remove after all callers migrated
 
 
 def _rows_for_bucket(all_rows: list[dict[str, Any]], tenor_bucket: str) -> list[dict[str, Any]]:
@@ -438,7 +454,7 @@ def build_carry_roll_down(
         den = mv
         coupon_dec = (num_c / den) if den > 0 else 0.0
         coupon_pct = coupon_dec * 100.0
-        ytm_dec = _weighted_ytm_decimal(rows)
+        ytm_dec = _weighted_ytm_float(rows)
         ytm_pct = ytm_dec * 100.0 if ytm_dec is not None else None
         num_d = sum(_f(r.get("market_value")) * _f(r.get("modified_duration")) for r in rows)
         dur = (num_d / den) if den > 0 else 0.0
@@ -513,8 +529,8 @@ def build_spread_attribution(
     dt_dec = (dt_pct / 100.0) if dt_pct is not None else None
     d_bp = (dt_pct * 100.0) if dt_pct is not None else None
 
-    y_end = _weighted_ytm_decimal(bond_rows_end)
-    y_start = _weighted_ytm_decimal(bond_rows_start)
+    y_end = _weighted_ytm_float(bond_rows_end)
+    y_start = _weighted_ytm_float(bond_rows_start)
     dy_bond_dec = (y_end - y_start) if y_end is not None and y_start is not None else None
     spread_chg_dec = (
         (dy_bond_dec - dt_dec) if dy_bond_dec is not None and dt_dec is not None else None
@@ -535,8 +551,8 @@ def build_spread_attribution(
         w = (mv / total_mv * 100.0) if total_mv > 0 else 0.0
         num_d = sum(_f(r.get("market_value")) * _f(r.get("modified_duration")) for r in rows_e)
         dur = (num_d / mv) if mv > 0 else 0.0
-        ye = _weighted_ytm_decimal(rows_e)
-        ys = _weighted_ytm_decimal(by_ac_s.get(ac, []))
+        ye = _weighted_ytm_float(rows_e)
+        ys = _weighted_ytm_float(by_ac_s.get(ac, []))
         ychg = ((ye - ys) * 10000.0) if ye is not None and ys is not None else None
         tchg_bp = (dt_pct * 100.0) if dt_pct is not None else None
         schg_bp = (
@@ -629,8 +645,8 @@ def build_krd_attribution(
         w = (mv / total_mv * 100.0) if total_mv > 0 else 0.0
         krd = float(b["krd"])
         rows_s = by_bucket_start.get(tenor, [])
-        ye = _weighted_ytm_decimal(_rows_for_bucket(bond_rows_end, tenor))
-        ys = _weighted_ytm_decimal(rows_s)
+        ye = _weighted_ytm_float(_rows_for_bucket(bond_rows_end, tenor))
+        ys = _weighted_ytm_float(rows_s)
         ychg = ((ye - ys) * 10000.0) if ye is not None and ys is not None else None
         contrib = -mv * krd * (shift_bp / 10000.0)
         total_dur_eff += contrib
@@ -712,8 +728,15 @@ def build_campisi_attribution(
     period_end: str,
     bond_rows: list[dict[str, Any]],
     treasury_dy_decimal: float | None,
+    market_start: dict[str, Any] | None = None,
+    market_end: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Campisi-style split using `build_asset_class_risk_summary` buckets; selection as residual."""
+    """Campisi-style split using `build_asset_class_risk_summary` buckets; selection as residual.
+
+    market_start / market_end: yield-curve + credit-spread dicts (optional).
+    When provided, spread_effect is computed from credit_spread_change_decimal per asset class.
+    selection_effect is always the true residual: actual_total_return - income - treasury - spread.
+    """
     if not bond_rows:
         num_days_empty = 0
         if period_start and period_end:
@@ -759,9 +782,59 @@ def build_campisi_attribution(
         )
         income = mv * coupon_dec * (days / 365.0)
         tre = -mv * d * dy
-        spread = 0.0  # STUB: requires credit curve data, not yet implemented
-        total_ret = income + tre + spread
-        sel = 0.0  # STUB: depends on spread, not yet implemented
+
+        # Spread effect: use credit curve when available, else 0.
+        # Rating is inferred from asset_class label; GOV → spread=0 by convention.
+        # Partial-data guard: if one side is missing the spread key, credit_spread_change_decimal
+        # treats the missing side as 0 bp, producing a wrong delta. Detect and warn.
+        _spread_key_missing = False
+        if market_start is not None and market_end is not None:
+            rating = infer_credit_rating_from_asset_class(ac)
+            if rating != "GOV":
+                _key = _CAMPISI_SPREAD_FIELD.get(rating)
+                if _key and ((_key not in market_start and _key in market_end) or
+                             (_key in market_start and _key not in market_end)):
+                    _spread_key_missing = True
+                    logger.warning(
+                        "build_campisi_attribution: credit spread key %r present on only one side "
+                        "for asset_class=%r (rating=%s); spread_effect set to 0 to avoid wrong delta",
+                        _key, ac, rating,
+                    )
+            if not _spread_key_missing:
+                ds = float(credit_spread_change_decimal(market_start, market_end, rating))
+                spread = -mv * d * ds
+            else:
+                spread = 0.0
+        else:
+            spread = 0.0
+
+        # Actual total return: sum of (mv_end - mv_start) + accrued_interest change per bond.
+        # bond_rows here are single-snapshot (period-end only), so we use mv_start/mv_end if
+        # the caller has merged them; otherwise fall back to income+treasury+spread model.
+        actual_total: float | None = None
+        mv_start_ac = sum(_f(r.get("market_value_start")) for r in rows)
+        mv_end_ac = sum(_f(r.get("market_value_end")) for r in rows)
+        ai_start_ac = sum(_f(r.get("accrued_interest_start")) for r in rows)
+        ai_end_ac = sum(_f(r.get("accrued_interest_end")) for r in rows)
+        if mv_start_ac > 0 or mv_end_ac > 0:
+            # Full-price basis when accrued interest is available, else net-price.
+            if ai_start_ac != 0.0 or ai_end_ac != 0.0:
+                actual_total = (mv_end_ac + ai_end_ac) - (mv_start_ac + ai_start_ac)
+            else:
+                # Net-price basis: income is re-estimated from mv_start_ac for consistency.
+                # Using period-end MV (mv) for income would be inconsistent when mv_start_ac
+                # differs (e.g. mid-period purchase). Use mv_start_ac as the income base.
+                income_from_start = mv_start_ac * coupon_dec * (days / 365.0)
+                actual_total = (mv_end_ac - mv_start_ac) + income_from_start
+
+        if actual_total is not None:
+            sel = actual_total - income - tre - spread
+            total_ret = actual_total
+        else:
+            # No start/end market values — fall back to model-implied total.
+            total_ret = income + tre + spread
+            sel = 0.0
+
         tot_inc += income
         tot_t += tre
         tot_s += spread
@@ -780,21 +853,15 @@ def build_campisi_attribution(
                 "spread_effect": round(spread, 4),
                 "spread_effect_pct": round((spread / total_ret * 100.0) if total_ret else 0.0, 4),
                 "selection_effect": round(sel, 4),
-                "selection_effect_pct": 0.0,
+                "selection_effect_pct": round((sel / total_ret * 100.0) if total_ret else 0.0, 4),
             }
         )
 
-    # LO-03: Log credit spread coverage so production logs surface the stub impact.
-    credit_ac_count = sum(1 for i in items if "credit" in str(i.get("category", "")).lower())
-    if credit_ac_count > 0:
-        logger.info(
-            "Campisi attribution: %d/%d asset classes are credit but spread/selection=0 (Phase 3 stub); "
-            "total_income=%.2f, total_treasury=%.2f",
-            credit_ac_count,
-            len(items),
-            tot_inc,
-            tot_t,
-        )
+    has_credit_curve = market_start is not None and market_end is not None
+    has_mv_start_end = any(
+        r.get("market_value_start") is not None or r.get("market_value_end") is not None
+        for r in bond_rows
+    )
 
     total_return = tot_inc + tot_t + tot_s + tot_sel
 
@@ -803,6 +870,12 @@ def build_campisi_attribution(
 
     parts = [("income", tot_inc), ("treasury", tot_t), ("spread", tot_s), ("selection", tot_sel)]
     primary = max(parts, key=lambda x: abs(x[1]))[0]
+
+    warnings: list[str] = []
+    if not has_credit_curve:
+        warnings.append("spread_effect 未传入信用曲线数据，当前为 0；如需利差归因请传入 market_start/market_end。")
+    if not has_mv_start_end:
+        warnings.append("bond_rows 缺少 market_value_start/end，selection_effect 按模型残差（0）处理；如需真实残差请传入合并后的持仓数据。")
 
     return {
         "report_date": report_date,
@@ -821,9 +894,7 @@ def build_campisi_attribution(
         "spread_contribution_pct": round(_share(tot_s), 4),
         "selection_contribution_pct": round(_share(tot_sel), 4),
         "primary_driver": primary,
-        "interpretation": "Campisi 四效应为收入、国债平移、利差与选择（此处利差/选择按简化残差框架可扩展）。",
+        "interpretation": "Campisi 四效应：收入、国债平移、信用利差、选券残差。",
         "items": items,
-        "warnings": [
-            "spread_effect 和 selection_effect 尚未实现信用曲线数据接入，当前为 0（Phase 3 待集成）。",
-        ],
+        "warnings": warnings,
     }

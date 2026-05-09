@@ -105,6 +105,7 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     assert row["upstream_source_version"] == "sv_bond_snap_1"
     assert row["cache_version"] == risk_task_mod.CACHE_VERSION
     assert row["bond_count"] == 3
+    assert row["regulatory_dv01"] == row["portfolio_dv01"]
     assert row["asset_cashflow_30d"] == row["liquidity_gap_30d"]
     assert row["asset_cashflow_90d"] == row["liquidity_gap_90d"]
     assert row["liability_cashflow_30d"] == 0

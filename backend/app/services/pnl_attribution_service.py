@@ -31,6 +31,7 @@ from backend.app.schemas.pnl_attribution import (
     VolumeRateAttributionItem,
     VolumeRateAttributionPayload,
 )
+from backend.app.services.campisi_attribution_service import fetch_credit_spread_market
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
 
 RULE_VERSION = "rv_pnl_attribution_workbench_v1"
@@ -650,8 +651,19 @@ def campisi_attribution_envelope(
         rd_start = (date.fromisoformat(rd_end) - timedelta(days=max(1, lookback_days))).isoformat()
     anchor = _anchor_on_or_before(dates, rd_start)
     rows = bond.fetch_bond_analytics_rows(report_date=rd_end) if rd_end in dates else []
-    t_end = _treasury_10y(curve.fetch_curve(rd_end, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+
+    # Build market dicts: treasury tenors (converted to float) + credit spreads (bp, float).
+    # fetch_curve returns dict[str, Decimal]; convert to float so the merged dict is
+    # uniformly float-valued and credit_spread_change_decimal doesn't receive mixed types.
+    tsy_end = {k: float(v) for k, v in curve.fetch_curve(rd_end, "treasury").items()}
+    tsy_start = {k: float(v) for k, v in curve.fetch_curve(anchor, "treasury").items()} if anchor else {}
+    spread_end = fetch_credit_spread_market(curve, rd_end)
+    spread_start = fetch_credit_spread_market(curve, anchor) if anchor else {}
+    mkt_end: dict[str, Any] = {**tsy_end, **spread_end}
+    mkt_start: dict[str, Any] | None = ({**tsy_start, **spread_start}) if anchor else None
+
+    t_end = _treasury_10y(tsy_end)
+    t_start = _treasury_10y(tsy_start) if tsy_start else None
     dy = ((t_end - t_start) / 100.0) if t_end is not None and t_start is not None else None
     payload = pa_wb.build_campisi_attribution(
         report_date=rd_end,
@@ -659,6 +671,8 @@ def campisi_attribution_envelope(
         period_end=rd_end,
         bond_rows=rows,
         treasury_dy_decimal=dy,
+        market_start=mkt_start,
+        market_end=mkt_end,
     )
     warn = not rows
     promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)

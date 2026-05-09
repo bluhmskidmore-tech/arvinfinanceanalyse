@@ -164,6 +164,25 @@ export type MacroToolkitSignalCard = {
   evidence: string[];
 };
 
+export type MacroToolkitInputEvidence = {
+  inputs?: Array<{
+    field: string;
+    label: string;
+    aliases?: string[];
+    warning?: string;
+    required?: boolean;
+    available?: boolean;
+    row_count?: number;
+    latest_date?: string | null;
+    series_id?: string | null;
+    source?: string | null;
+    value?: number | null;
+  }>;
+  missing_inputs?: string[];
+  sources?: string[];
+  latest_dates?: string[];
+};
+
 export type MacroToolkitCapabilityResult = {
   key: string;
   legacy_module: string;
@@ -178,9 +197,12 @@ export type MacroToolkitCapabilityResult = {
     value: string | number;
     unit: string;
   } | null;
+  input_evidence?: MacroToolkitInputEvidence | null;
   evidence: string[];
   warnings: string[];
-  result: Record<string, unknown>;
+  result: Record<string, unknown> & {
+    input_evidence?: MacroToolkitInputEvidence | null;
+  };
 };
 
 export type MacroToolkitStrategySummary = {
@@ -275,8 +297,188 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
     headline: "资金面偏平衡，政策立场暂不形成单边信号。",
     primary_metric: { label: "立场得分", value: 56, unit: "" },
     evidence: ["DR007=1.82%", "10Y-1Y=34bp"],
-    warnings: ["POLICY_RATE_7D_MISSING"],
-    result: { data_status: "degraded" },
+    warnings: [],
+    input_evidence: {
+      inputs: [
+        {
+          field: "policy_rate_7d",
+          label: "Policy rate 7D",
+          aliases: ["M0041653"],
+          warning: "POLICY_RATE_7D_MISSING",
+          required: true,
+          available: true,
+          row_count: 1,
+          latest_date: "2026-04-10",
+          series_id: "M001",
+          source: "choice",
+          value: 1.75,
+        },
+        {
+          field: "dr007",
+          label: "DR007",
+          aliases: ["DR007.IB"],
+          warning: "DR007_MISSING",
+          required: true,
+          available: true,
+          row_count: 1,
+          latest_date: "2026-04-10",
+          series_id: "CA.DR007",
+          source: "choice",
+          value: 1.82,
+        },
+      ],
+      missing_inputs: [],
+      sources: ["choice"],
+      latest_dates: ["2026-04-10"],
+    },
+    result: {
+      data_status: "degraded",
+      key_metrics: {
+        policy_rate_curve_id: "CN_RRP",
+        policy_rate_tenor: "7D",
+        policy_rate_7d: 1.75,
+        dr007: 1.82,
+      },
+      input_evidence: {
+        missing_inputs: [],
+        sources: ["choice"],
+        latest_dates: ["2026-04-10"],
+      },
+    },
+  },
+  {
+    key: "leading_indicator",
+    legacy_module: "M10",
+    label: "宏观领先指标",
+    group: "增长与通胀",
+    status: "degraded",
+    tone: "neutral",
+    score: 51,
+    headline: "领先指标位于中性区间，部分输入待补齐。",
+    primary_metric: { label: "LEI", value: 51, unit: "" },
+    evidence: ["LEI=51", "trend=flat"],
+    warnings: ["PMI_MISSING", "M2_YOY_MISSING"],
+    input_evidence: {
+      inputs: [
+        {
+          field: "pmi",
+          label: "PMI",
+          aliases: ["M0017126"],
+          warning: "PMI_MISSING",
+          required: true,
+          available: false,
+          row_count: 0,
+          latest_date: null,
+          series_id: null,
+          source: null,
+          value: null,
+        },
+        {
+          field: "m2_yoy",
+          label: "M2 YoY",
+          aliases: ["M0001385"],
+          warning: "M2_YOY_MISSING",
+          required: true,
+          available: false,
+          row_count: 0,
+          latest_date: null,
+          series_id: null,
+          source: null,
+          value: null,
+        },
+        {
+          field: "social_financing_yoy",
+          label: "Social financing YoY",
+          aliases: ["M5525763"],
+          warning: "SOCIAL_FINANCING_YOY_MISSING",
+          required: true,
+          available: true,
+          row_count: 1,
+          latest_date: "2026-02-01",
+          series_id: "EMM00191807",
+          source: "choice",
+          value: 8.944901,
+        },
+      ],
+      missing_inputs: ["PMI_MISSING", "M2_YOY_MISSING"],
+      sources: ["choice", "fred", "moss_derived"],
+      latest_dates: ["2026-02-01", "2026-04-10", "2026-04-27", "2026-04-30"],
+    },
+    result: {
+      data_status: "degraded",
+      input_evidence: {
+        missing_inputs: ["PMI_MISSING", "M2_YOY_MISSING"],
+        sources: ["choice", "fred", "moss_derived"],
+        latest_dates: ["2026-02-01", "2026-04-10", "2026-04-27", "2026-04-30"],
+      },
+    },
+  },
+  {
+    key: "economic_cycle",
+    legacy_module: "M14",
+    label: "经济周期定位",
+    group: "增长与通胀",
+    status: "degraded",
+    tone: "neutral",
+    score: 47,
+    headline: "周期定位证据不足，需补齐增长与社融输入。",
+    primary_metric: { label: "增长得分", value: 47, unit: "" },
+    evidence: ["growth=47", "inflation=32"],
+    warnings: ["PMI_MISSING", "PPI_YOY_MISSING", "M2_YOY_MISSING"],
+    input_evidence: {
+      inputs: [
+        {
+          field: "pmi",
+          label: "PMI",
+          aliases: ["M0017126"],
+          warning: "PMI_MISSING",
+          required: true,
+          available: false,
+          row_count: 0,
+          latest_date: null,
+          series_id: null,
+          source: null,
+          value: null,
+        },
+        {
+          field: "cpi_yoy",
+          label: "CPI YoY",
+          aliases: ["M0000612"],
+          warning: "CPI_YOY_MISSING",
+          required: true,
+          available: true,
+          row_count: 507,
+          latest_date: "2026-03-01",
+          series_id: "EMM00072301",
+          source: "choice",
+          value: 1,
+        },
+        {
+          field: "ppi_yoy",
+          label: "PPI YoY",
+          aliases: ["M0001227"],
+          warning: "PPI_YOY_MISSING",
+          required: true,
+          available: false,
+          row_count: 0,
+          latest_date: null,
+          series_id: null,
+          source: null,
+          value: null,
+        },
+      ],
+      missing_inputs: ["PMI_MISSING", "PPI_YOY_MISSING", "M2_YOY_MISSING"],
+      sources: ["choice"],
+      latest_dates: ["2026-02-01", "2026-03-01"],
+    },
+    result: {
+      data_status: "degraded",
+      input_evidence: {
+        missing_inputs: ["PMI_MISSING", "PPI_YOY_MISSING", "M2_YOY_MISSING"],
+        sources: ["choice"],
+        latest_dates: ["2026-02-01", "2026-03-01"],
+      },
+    },
   },
   {
     key: "decision_summary",

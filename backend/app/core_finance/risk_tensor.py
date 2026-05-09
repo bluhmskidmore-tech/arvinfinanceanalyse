@@ -19,6 +19,11 @@ from backend.app.core_finance.interest_mode import (
     classify_interest_rate_style,
     resolve_interest_payment_frequency,
 )
+from backend.app.core_finance.risk_tensor_regulatory_scope import (
+    DEFAULT_REGULATORY_DV01_SCOPE_RULES,
+    RegulatoryDv01ScopeRule,
+    row_in_regulatory_dv01_scope,
+)
 
 ZERO = Decimal("0")
 SUPPORTED_KRD_BUCKETS = {
@@ -63,6 +68,7 @@ def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
 class PortfolioRiskTensor:
     report_date: date
     portfolio_dv01: Decimal
+    regulatory_dv01: Decimal
     krd_1y: Decimal
     krd_3y: Decimal
     krd_5y: Decimal
@@ -91,13 +97,23 @@ def compute_portfolio_risk_tensor(
     bond_analytics_rows: list[dict],
     report_date: date,
     liability_rows: list[dict] | None = None,
+    regulatory_scope_rules: list[RegulatoryDv01ScopeRule] | tuple[RegulatoryDv01ScopeRule, ...] | None = None,
 ) -> PortfolioRiskTensor:
     rows = list(bond_analytics_rows or [])
     liabilities = list(liability_rows or [])
     warnings: list[str] = []
+    scope_rules = (
+        DEFAULT_REGULATORY_DV01_SCOPE_RULES
+        if regulatory_scope_rules is None
+        else tuple(regulatory_scope_rules)
+    )
 
     total_market_value = _sum_field(rows, "market_value")
     portfolio_dv01 = _sum_field(rows, "dv01")
+    regulatory_dv01 = _sum_field(
+        [row for row in rows if row_in_regulatory_dv01_scope(row, scope_rules)],
+        "dv01",
+    )
     krd_values = _aggregate_krd_values(rows, warnings)
     cs01 = sum(
         (_safe_decimal(row.get("spread_dv01")) for row in rows if _is_credit(row.get("is_credit"))),
@@ -131,6 +147,7 @@ def compute_portfolio_risk_tensor(
     return PortfolioRiskTensor(
         report_date=report_date,
         portfolio_dv01=portfolio_dv01,
+        regulatory_dv01=regulatory_dv01,
         krd_1y=krd_values["krd_1y"],
         krd_3y=krd_values["krd_3y"],
         krd_5y=krd_values["krd_5y"],

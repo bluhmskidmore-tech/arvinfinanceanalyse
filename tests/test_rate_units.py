@@ -164,22 +164,22 @@ class TestNormalizeAnnualRateToDecimal:
         result = normalize_annual_rate_to_decimal(0.0)
         assert result == 0.0
 
-    def test_one_percent_boundary(self):
-        """1.0 (edge case) -> 0.01 (treated as one percent)."""
+    def test_one_decimal_boundary(self):
+        """1.0 (edge case) remains decimal form."""
         result = normalize_annual_rate_to_decimal(1.0)
-        assert result == 0.01
-
-    def test_just_above_one(self):
-        """1.5 (percentage) → 0.015"""
-        result = normalize_annual_rate_to_decimal(1.5)
-        assert result == 0.015
-
-    def test_hundred(self):
-        """100.0 (edge case) → 1.0"""
-        result = normalize_annual_rate_to_decimal(100.0)
         assert result == 1.0
 
-    def test_above_hundred_returns_none(self):
+    def test_below_percent_correction_threshold(self):
+        """1.5 remains decimal form; only values above 2 are corrected."""
+        result = normalize_annual_rate_to_decimal(1.5)
+        assert result == 1.5
+
+    def test_hundred_returns_none(self):
+        """100.0 is dirty rate data under the >20 guardrail."""
+        result = normalize_annual_rate_to_decimal(100.0)
+        assert result is None
+
+    def test_above_twenty_returns_none(self):
         """150.0 (dirty data) → None"""
         result = normalize_annual_rate_to_decimal(150.0)
         assert result is None
@@ -221,11 +221,11 @@ class TestNormalizeAnnualRateToDecimal:
 
     def test_boundary_at_one(self):
         """Test boundary behavior around 1.0."""
-        # Exactly 1.0 is treated as a percentage point value.
-        assert normalize_annual_rate_to_decimal(1.0) == 0.01
+        # Exactly 1.0 is treated as decimal form.
+        assert normalize_annual_rate_to_decimal(1.0) == 1.0
 
-        # Just above 1.0 is treated as percentage
-        assert normalize_annual_rate_to_decimal(1.0001) == 0.010001
+        # Just above 1.0 is also treated as decimal form.
+        assert normalize_annual_rate_to_decimal(1.0001) == 1.0001
 
     def test_typical_bond_yields(self):
         """Test typical bond yield values."""

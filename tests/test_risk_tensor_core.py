@@ -26,6 +26,7 @@ def _row(
     interest_mode: str = "annual",
     issuer_name: str = "Issuer A",
     maturity_date: date | None = None,
+    accounting_class: str = "AC",
 ) -> dict[str, object]:
     return {
         "dv01": Decimal(dv01),
@@ -39,6 +40,7 @@ def _row(
         "interest_mode": interest_mode,
         "issuer_name": issuer_name,
         "maturity_date": maturity_date,
+        "accounting_class": accounting_class,
     }
 
 
@@ -55,6 +57,79 @@ def test_dv01_is_sum_of_bond_dv01s():
     )
 
     assert tensor.portfolio_dv01 == Decimal("3.50")
+
+
+def test_regulatory_dv01_defaults_to_direct_net_sum_of_included_rows():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="1.25", tenor_bucket="1Y"),
+            _row(dv01="2.75", tenor_bucket="5Y"),
+            _row(dv01="-0.50", tenor_bucket="10Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.portfolio_dv01 == Decimal("3.50")
+    assert tensor.regulatory_dv01 == Decimal("3.50")
+
+
+def test_regulatory_dv01_scope_rules_can_exclude_future_rows():
+    mod = _risk_tensor_module()
+    scope_mod = load_module(
+        "backend.app.core_finance.risk_tensor_regulatory_scope",
+        "backend/app/core_finance/risk_tensor_regulatory_scope.py",
+    )
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="1.25", accounting_class="AC"),
+            _row(dv01="2.75", accounting_class="OCI"),
+            _row(dv01="-0.50", accounting_class="TPL"),
+        ],
+        report_date=date(2026, 3, 31),
+        regulatory_scope_rules=[
+            scope_mod.RegulatoryDv01ScopeRule(
+                rule_id="test_include_only_ac_oci",
+                rule_version="test_v1",
+                include=True,
+                match_fields={"accounting_class": ("AC", "OCI")},
+            )
+        ],
+    )
+
+    assert tensor.portfolio_dv01 == Decimal("3.50")
+    assert tensor.regulatory_dv01 == Decimal("4.00")
+
+
+def test_regulatory_dv01_scope_exclude_overrides_default_include_all():
+    mod = _risk_tensor_module()
+    scope_mod = load_module(
+        "backend.app.core_finance.risk_tensor_regulatory_scope",
+        "backend/app/core_finance/risk_tensor_regulatory_scope.py",
+    )
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="1.25", accounting_class="AC"),
+            _row(dv01="2.75", accounting_class="OCI"),
+            _row(dv01="-0.50", accounting_class="TPL"),
+        ],
+        report_date=date(2026, 3, 31),
+        regulatory_scope_rules=[
+            scope_mod.DEFAULT_REGULATORY_DV01_SCOPE_RULE,
+            scope_mod.RegulatoryDv01ScopeRule(
+                rule_id="test_exclude_tpl",
+                rule_version="test_v1",
+                include=False,
+                match_fields={"accounting_class": ("TPL",)},
+            ),
+        ],
+    )
+
+    assert tensor.portfolio_dv01 == Decimal("3.50")
+    assert tensor.regulatory_dv01 == Decimal("4.00")
 
 
 def test_krd_buckets_sum_to_portfolio_dv01():
@@ -162,6 +237,7 @@ def test_empty_rows_returns_zero_tensor():
     tensor = mod.compute_portfolio_risk_tensor([], report_date=date(2026, 3, 31))
 
     assert tensor.portfolio_dv01 == Decimal("0")
+    assert tensor.regulatory_dv01 == Decimal("0")
     assert tensor.krd_1y == Decimal("0")
     assert tensor.cs01 == Decimal("0")
     assert tensor.portfolio_convexity == Decimal("0")
@@ -197,8 +273,8 @@ def test_warning_paths_flag_degraded_tensor_inputs():
 
     assert tensor.portfolio_dv01 == Decimal("1.00")
     assert tensor.krd_1y == Decimal("0")
-    assert tensor.krd_30y == Decimal("0")
+    assert tensor.krd_30y == Decimal("1.00")
     assert tensor.quality_flag == "warning"
-    assert any("Unsupported tenor buckets" in warning for warning in tensor.warnings)
+    assert any("Non-standard tenor buckets remapped" in warning for warning in tensor.warnings)
     assert any("without maturity_date" in warning for warning in tensor.warnings)
     assert any("Total market value is zero" in warning for warning in tensor.warnings)

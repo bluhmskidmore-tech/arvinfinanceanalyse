@@ -412,8 +412,8 @@ class TestEdgeCases:
         result = compute_bond_four_effects(
             bond, 30, Decimal("0.002"), Decimal("0.001"), date(2026, 1, 1)
         )
-        md = float(result["mod_duration"])
-        assert 0.15 < md < 0.35
+        assert result["mod_duration"] == Decimal("0")
+        assert "mod_dur_fallback_zero" in result["diagnostics"]
         assert "total_return" in result
 
     def test_zero_market_value_start(self):

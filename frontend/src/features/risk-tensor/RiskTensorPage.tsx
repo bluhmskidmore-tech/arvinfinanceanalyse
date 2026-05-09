@@ -405,7 +405,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="监管口径 DV01"
                 value={regulatoryDv01Display(result.regulatory_dv01)}
-                detail="等待后端监管/限额口径字段接入；不得用估值 DV01 替代。"
+                detail="后端监管/限额口径字段；不得用估值 DV01 替代。"
                 tone={regulatoryDv01Tone(result.regulatory_dv01)}
               />
               <KpiCard

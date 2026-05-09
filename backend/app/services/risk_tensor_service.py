@@ -132,6 +132,7 @@ def risk_tensor_envelope(
             {
                 "report_date": report_date_value,
                 "portfolio_dv01": row["portfolio_dv01"],
+                "regulatory_dv01": row["regulatory_dv01"],
                 "krd_1y": row["krd_1y"],
                 "krd_3y": row["krd_3y"],
                 "krd_5y": row["krd_5y"],

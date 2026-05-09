@@ -252,10 +252,14 @@ def compute_weighted_rate(total_weighted: float, total_amount: float) -> float |
 
 
 def month_date_range(year: int, month: int) -> tuple[date, date]:
-    """Return (month_start, month_end) capped at today."""
+    """Return (month_start, month_end) for the given calendar month.
+
+    No truncation to today — callers that need a "not beyond today" cap should
+    apply it themselves so historical queries remain reproducible.
+    """
     month_start = date(year, month, 1)
     if month == 12:
         month_end = date(year, 12, 31)
     else:
         month_end = date(year, month + 1, 1) - timedelta(days=1)
-    return month_start, min(month_end, date.today())
+    return month_start, month_end

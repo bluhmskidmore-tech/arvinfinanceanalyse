@@ -21,13 +21,18 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "edb-cpi-yoy": ("cn_cpi_yoy", "tushare.macro.cn_cpi.monthly"),
     "m0001227": ("cn_ppi_yoy", "tushare.macro.cn_ppi.monthly"),
     "edb-ppi-yoy": ("cn_ppi_yoy", "tushare.macro.cn_ppi.monthly"),
+    "tushare.macro.cn_ppi.monthly": ("cn_ppi_yoy", "m0001227", "edb-ppi-yoy"),
     "m0001385": ("cn_m2_yoy", "tushare.macro.cn_money.monthly"),
     "edb-m2-yoy": ("cn_m2_yoy", "tushare.macro.cn_money.monthly"),
+    "tushare.macro.cn_money.monthly": ("cn_m2_yoy", "m0001385", "edb-m2-yoy"),
     "m5525763": ("EMM00191807",),
     "m0067855": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY", "USDCNY"),
     "usd/cny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY"),
     "usdcny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY"),
-    "m0041653": ("cn_repo_7d",),
+    "m0041653": ("cn_repo_7d", "M001", "公开市场7天逆回购利率"),
+    "cn-repo-7d": ("M001", "m0041653", "公开市场7天逆回购利率"),
+    "m001": ("cn_repo_7d", "m0041653", "公开市场7天逆回购利率"),
+    "公开市场7天逆回购利率": ("M001", "cn_repo_7d", "m0041653"),
     "m0041813": ("NCD.SHIBOR.3M", "shibor:3m"),
     "dr007.ib": ("CA.DR007", "repo_rate_query:FDR007", "DR007.IB"),
     "s0059743": ("EMM00166458", "legacy.yield.choice.treasury.1Y"),
@@ -351,6 +356,8 @@ def _row_aliases(row: pd.Series) -> set[str]:
     aliases = {_normalize_alias(value) for value in values if str(value or "").strip()}
     for value in values:
         aliases.update(_expanded_vendor_aliases(str(value or "")))
+    for alias in tuple(aliases):
+        aliases.update(_candidate_aliases(alias))
     return aliases
 
 

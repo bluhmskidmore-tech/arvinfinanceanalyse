@@ -18,6 +18,7 @@ import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPan
 import { SectionLead } from "../../components/page/SectionLead";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
+import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 import "./PnlByBusinessPage.css";
 
@@ -1535,6 +1536,40 @@ export default function PnlByBusinessPage() {
       (viewMode === "ytd" && ytdRows.length === 0) ||
       (viewMode === "formal" && formalRows.length === 0));
 
+  const handleExportExcel = () => {
+    if (!selectedReportDate) {
+      return;
+    }
+    downloadPnlByBusinessExcel({
+      viewMode,
+      reportDate: selectedReportDate,
+      year: selectedYear,
+      periodStart: ytdResult?.period_start_date,
+      periodEnd: ytdResult?.period_end_date,
+      periodLabel: ytdResult?.period_label,
+      ytdRows: businessQuery.isSuccess ? ytdRows : [],
+      adbAvgByBusinessType,
+      formalRows: formalBusinessQuery.isSuccess ? formalRows : [],
+      months: monthlyBusinessQuery.isSuccess ? monthlyBusinessMonths : [],
+      adjustments: manualAdjustmentQuery.isSuccess ? currentAdjustments : [],
+      adjustmentEvents: manualAdjustmentQuery.isSuccess ? adjustmentEvents : [],
+      bondBucketRows: bondBucketQuery.isSuccess ? bondBucketRows : [],
+      bondBucketMonthlyRows: bondBucketMonthlyQuery.isSuccess ? bondBucketMonthlyRows : [],
+      negativeFtpRows: negativeFtpInstrumentQuery.isSuccess ? negativeFtpInstrumentRows : [],
+      analysisDimension: analysisQuery.isSuccess ? analysisDimension : undefined,
+      analysisRows: analysisQuery.isSuccess ? analysisRows : [],
+      selectedBusinessLabel: selectedBusinessRow?.business_type,
+    });
+  };
+
+  const exportExcelDisabled =
+    !selectedReportDate ||
+    loading ||
+    error ||
+    empty ||
+    (viewMode === "ytd" && !businessQuery.isSuccess) ||
+    (viewMode === "formal" && !formalBusinessQuery.isSuccess);
+
   return (
     <main data-testid="pnl-by-business-page">
       <div className="pnl-by-business-page-header">
@@ -1576,6 +1611,17 @@ export default function PnlByBusinessPage() {
             <option value="formal">报表日 formal（/api/pnl/by-business）</option>
           </select>
         </label>
+        <div className="pnl-by-business-filter-export-slot">
+          <button
+            type="button"
+            className="pnl-by-business-action-button pnl-by-business-action-button-primary"
+            aria-label="pnl-by-business-export-excel"
+            disabled={exportExcelDisabled}
+            onClick={handleExportExcel}
+          >
+            导出 Excel
+          </button>
+        </div>
       </FilterBar>
 
       <AsyncSection

@@ -53,6 +53,9 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     usdcny = load_series_by_alias("M0067855")
     treasury_5y = load_series_by_alias("S0059747")
     credit_aa_5y = load_series_by_alias("S0059760")
+    policy_rate = load_series_by_alias("M0041653")
+    ppi = load_series_by_alias("M0001227")
+    m2 = load_series_by_alias("M0001385")
 
     assert {"choice", "tushare"}.issubset(set(frame["vendor_name"]))
     assert hs300["value"].tolist() == [4102.25]
@@ -60,6 +63,12 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     assert usdcny["value"].tolist() == [7.1234]
     assert treasury_5y["value"].tolist() == [2.34]
     assert credit_aa_5y["value"].tolist() == [2.91]
+    assert policy_rate["series_id"].tolist() == ["M001"]
+    assert policy_rate["value"].tolist() == [1.75]
+    assert ppi["series_id"].tolist() == ["tushare.macro.cn_ppi.monthly"]
+    assert ppi["value"].tolist() == [-2.3]
+    assert m2["series_id"].tolist() == ["tushare.macro.cn_money.monthly"]
+    assert m2["value"].tolist() == [8.1]
     get_settings.cache_clear()
 
 
@@ -238,6 +247,29 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     }
     assert capability_results["decision_summary"]["headline"]
     assert capability_results["decision_summary"]["status"] in {"complete", "degraded"}
+    monetary_policy = capability_results["monetary_policy_stance"]
+    policy_inputs = {
+        item["field"]: item
+        for item in monetary_policy["result"]["input_evidence"]["inputs"]
+    }
+    assert "POLICY_RATE_7D_MISSING" not in monetary_policy["warnings"]
+    assert policy_inputs["policy_rate_7d"]["series_id"] == "M001"
+    assert policy_inputs["policy_rate_7d"]["latest_date"] == "2026-04-10"
+    assert monetary_policy["result"]["key_metrics"]["policy_rate_curve_id"] == "CN_RRP"
+    assert monetary_policy["result"]["key_metrics"]["dr007"] == 1.82
+
+    leading_indicator = capability_results["leading_indicator"]
+    leading_missing = set(leading_indicator["result"]["input_evidence"]["missing_inputs"])
+    assert leading_indicator["status"] == "degraded"
+    assert {"PMI_MISSING", "SOCIAL_FINANCING_YOY_MISSING", "CREDIT_SPREAD_AAA_MISSING"}.issubset(leading_missing)
+    assert "M2_YOY_MISSING" in leading_missing
+
+    economic_cycle = capability_results["economic_cycle"]
+    cycle_missing = set(economic_cycle["result"]["input_evidence"]["missing_inputs"])
+    assert economic_cycle["status"] == "degraded"
+    assert {"PMI_MISSING", "SOCIAL_FINANCING_YOY_MISSING"}.issubset(cycle_missing)
+    assert "PPI_YOY_MISSING" in cycle_missing
+    assert "M2_YOY_MISSING" in cycle_missing
     indicators = {item["alias"]: item for item in payload["result"]["indicators"]}
     assert indicators["DR007.IB"]["latest_value"] == 1.82
     assert indicators["S0059749"]["latest_value"] == 2.48
@@ -249,6 +281,36 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     }
     assert strategy_summaries["moving_average"]["status"] == "sample_only"
     assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
+
+
+def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _delete_external_macro_series(duckdb_path, "tushare.macro.cn_ppi.monthly")
+    _delete_external_macro_series(duckdb_path, "tushare.macro.cn_money.monthly")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    cards = {item["key"]: item for item in response.json()["result"]["capability_results"]}
+    leading = cards["leading_indicator"]
+    cycle = cards["economic_cycle"]
+
+    leading_missing = set(leading["input_evidence"]["missing_inputs"])
+    cycle_missing = set(cycle["input_evidence"]["missing_inputs"])
+    assert leading["status"] == "degraded"
+    assert cycle["status"] == "degraded"
+    assert "M2_YOY_MISSING" in leading_missing
+    assert "M2_YOY_MISSING" in cycle_missing
+    assert "PPI_YOY_MISSING" in cycle_missing
 
 
 def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(tmp_path, monkeypatch) -> None:
@@ -730,6 +792,9 @@ def _seed_choice_tushare_macro_db(path) -> None:
             insert into choice_market_snapshot values
               ('cn_cpi_yoy', 'CN CPI YoY', 'EDB_CPI_YOY', 'choice', '2026-04-09',
                0.7, 'monthly', 'pct', 'sv_choice', 'vv_choice', 'rv_choice_macro_thin_slice_v1', 'choice-run'),
+              ('M001', '公开市场7天逆回购利率', 'M001', 'choice', '2026-04-10',
+               1.75, 'daily', '%', 'sv_choice_repo_policy', 'vv_choice_repo_policy',
+               'rv_choice_macro_thin_slice_v1', 'choice-run'),
               ('CA.CSI300', 'CSI 300 close', 'index_daily:000300.SH.close', 'tushare', '2026-04-10',
                4102.25, 'daily', 'index', 'sv_tushare_index', 'vv_tushare_index',
                'rv_public_cross_asset_headline_v1', 'tushare-run'),
@@ -841,6 +906,14 @@ def _seed_choice_tushare_macro_db(path) -> None:
               ('tushare.macro.cn_cpi.monthly', 'tushare', 'macro', '2026-04-09',
                0.8, 'monthly', 'pct', 'sv_tushare', 'vv_tushare',
                'm2b.external_std_macro_etl.v1', 'batch-1', 'data/raw/tushare/batch-1/cn_cpi_monthly.json',
+               current_timestamp),
+              ('tushare.macro.cn_ppi.monthly', 'tushare', 'macro', '2026-04-30',
+               -2.3, 'monthly', 'pct', 'sv_tushare', 'vv_tushare',
+               'm2b.external_std_macro_etl.v1', 'batch-1', 'data/raw/tushare/batch-1/cn_ppi_monthly.json',
+               current_timestamp),
+              ('tushare.macro.cn_money.monthly', 'tushare', 'macro', '2026-04-30',
+               8.1, 'monthly', 'pct', 'sv_tushare', 'vv_tushare',
+               'm2b.external_std_macro_etl.v1', 'batch-1', 'data/raw/tushare/batch-1/cn_money_monthly.json',
                current_timestamp)
             """
         )
@@ -852,9 +925,30 @@ def _seed_choice_tushare_macro_db(path) -> None:
                'data/raw/tushare/{ingest_batch_id}/cn_cpi_monthly.json', 'std_external_macro_daily',
                'vw_external_macro_daily',
                'select * from vw_external_macro_daily where series_id = ''tushare.macro.cn_cpi.monthly''',
+               'm2b.tushare_macro.v1', current_timestamp),
+              ('tushare.macro.cn_ppi.monthly', 'China PPI YoY (Tushare)', 'tushare',
+               'tushare_macro', 'macro', 'monthly', 'pct', 'on_demand', 'seed_register',
+               'data/raw/tushare/{ingest_batch_id}/cn_ppi_monthly.json', 'std_external_macro_daily',
+               'vw_external_macro_daily',
+               'select * from vw_external_macro_daily where series_id = ''tushare.macro.cn_ppi.monthly''',
+               'm2b.tushare_macro.v1', current_timestamp),
+              ('tushare.macro.cn_money.monthly', 'China M2 YoY (Tushare)', 'tushare',
+               'tushare_macro', 'macro', 'monthly', 'pct', 'on_demand', 'seed_register',
+               'data/raw/tushare/{ingest_batch_id}/cn_money_monthly.json', 'std_external_macro_daily',
+               'vw_external_macro_daily',
+               'select * from vw_external_macro_daily where series_id = ''tushare.macro.cn_money.monthly''',
                'm2b.tushare_macro.v1', current_timestamp)
             """
         )
+    finally:
+        conn.close()
+
+
+def _delete_external_macro_series(path, series_id: str) -> None:
+    conn = duckdb.connect(str(path), read_only=False)
+    try:
+        conn.execute("delete from std_external_macro_daily where series_id = ?", [series_id])
+        conn.execute("delete from external_data_catalog where series_id = ?", [series_id])
     finally:
         conn.close()
 

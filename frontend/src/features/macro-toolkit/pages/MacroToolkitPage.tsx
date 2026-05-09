@@ -859,6 +859,7 @@ export default function MacroToolkitPage() {
 function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult }) {
   const metric = result.primary_metric;
   const evidence = result.evidence.length ? result.evidence : result.warnings;
+  const inputEvidence = normalizeInputEvidence(result);
   return (
     <div className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}>
       <div className="macro-toolkit-capability-result-head">
@@ -870,8 +871,40 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
       <strong>{metric ? formatMetricDisplay(metric) : result.score ?? statusLabel(result.status)}</strong>
       <p>{result.headline}</p>
       <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
+      {inputEvidence ? (
+        <div className="macro-toolkit-input-evidence">
+          {inputEvidence.missingInputs.length ? (
+            <span>缺失输入：{inputEvidence.missingInputs.join(" / ")}</span>
+          ) : null}
+          {inputEvidence.sources.length ? <span>数据源：{inputEvidence.sources.join(" / ")}</span> : null}
+          {inputEvidence.latestDates.length ? <span>最新日期：{inputEvidence.latestDates.join(" / ")}</span> : null}
+          {inputEvidence.inputs.length ? (
+            <small>
+              {inputEvidence.inputs
+                .slice(0, 3)
+                .map((item) => `${item.label || item.field}: ${item.series_id ?? "缺失"} ${item.latest_date ?? ""}`.trim())
+                .join(" / ")}
+            </small>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function normalizeInputEvidence(result: MacroToolkitCapabilityResult) {
+  const raw = result.input_evidence ?? result.result.input_evidence;
+  if (!raw) {
+    return null;
+  }
+  const inputs = raw.inputs ?? [];
+  const missingInputs = raw.missing_inputs ?? [];
+  const sources = raw.sources ?? [];
+  const latestDates = raw.latest_dates ?? [];
+  if (!inputs.length && !missingInputs.length && !sources.length && !latestDates.length) {
+    return null;
+  }
+  return { inputs, missingInputs, sources, latestDates };
 }
 
 function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrategySummary }) {

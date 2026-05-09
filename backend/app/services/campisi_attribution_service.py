@@ -124,11 +124,19 @@ def _curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
     return market
 
 
-def _fetch_spread_data(curve_repo: YieldCurveRepository, trade_date: str) -> dict[str, Any]:
-    """Fetch AAA/AA+/AA 3Y credit spreads in bp for Campisi."""
+def fetch_credit_spread_market(curve_repo: YieldCurveRepository, trade_date: str) -> dict[str, Any]:
+    """Fetch AAA/AA+/AA 3Y credit spreads in bp for Campisi.
+
+    Returns a dict with keys like ``credit_spread_aaa_3y``, ``credit_spread_aa_plus_3y``,
+    ``credit_spread_aa_3y`` (values in BP). Safe to merge with a treasury curve dict.
+    """
     spread = _fetch_legacy_spread_curve_data(curve_repo, trade_date)
     spread.update(_derive_spreads_from_yield_sources(curve_repo, trade_date))
     return spread
+
+
+# Keep the private alias so internal callers don't break.
+_fetch_spread_data = fetch_credit_spread_market
 
 
 def _fetch_legacy_spread_curve_data(curve_repo: YieldCurveRepository, trade_date: str) -> dict[str, Any]:
@@ -808,8 +816,8 @@ def campisi_four_effects_envelope(
 
     treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
     treasury_end = _curve_to_market_dict(curve_repo.fetch_curve(anchor_end, "treasury"))
-    spread_start = _fetch_spread_data(curve_repo, anchor_start)
-    spread_end = _fetch_spread_data(curve_repo, anchor_end)
+    spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
+    spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
     market_end = {**treasury_end, **spread_end}
     _add_market_curve_quality(
@@ -883,8 +891,8 @@ def campisi_enhanced_envelope(
 
     treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
     treasury_end = _curve_to_market_dict(curve_repo.fetch_curve(anchor_end, "treasury"))
-    spread_start = _fetch_spread_data(curve_repo, anchor_start)
-    spread_end = _fetch_spread_data(curve_repo, anchor_end)
+    spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
+    spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
     market_end = {**treasury_end, **spread_end}
     _add_market_curve_quality(
@@ -957,8 +965,8 @@ def campisi_maturity_bucket_envelope(
 
     treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
     treasury_end = _curve_to_market_dict(curve_repo.fetch_curve(anchor_end, "treasury"))
-    spread_start = _fetch_spread_data(curve_repo, anchor_start)
-    spread_end = _fetch_spread_data(curve_repo, anchor_end)
+    spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
+    spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
     market_end = {**treasury_end, **spread_end}
     _add_market_curve_quality(

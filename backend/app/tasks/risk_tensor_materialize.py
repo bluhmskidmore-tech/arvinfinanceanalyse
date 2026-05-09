@@ -29,7 +29,7 @@ RISK_TENSOR_MODULE = ensure_formal_module(
         # Governed downstream derivative of bond_analytics formal facts.
         input_sources=("fact_formal_bond_analytics_daily", "fact_formal_tyw_balance_daily"),
         fact_tables=("fact_formal_risk_tensor_daily",),
-        rule_version="rv_risk_tensor_formal_materialize_v1",
+        rule_version="rv_risk_tensor_formal_materialize_v2",
         result_kind_family="risk-tensor",
         supports_standard_queries=True,
         supports_custom_queries=False,

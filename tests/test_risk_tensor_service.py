@@ -167,8 +167,8 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v1"
-    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2"
     assert payload["result_meta"]["quality_flag"] == "ok"
 
     result = payload["result"]
@@ -189,8 +189,11 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     )
     assert result["issuer_top5_weight"]["raw"] == 1.0
     assert isinstance(result["portfolio_dv01"], dict)
+    assert isinstance(result["regulatory_dv01"], dict)
     assert isinstance(result["portfolio_convexity"], dict)
     assert result["portfolio_dv01"]["unit"] == "dv01"
+    assert result["regulatory_dv01"]["unit"] == "dv01"
+    assert result["regulatory_dv01"]["raw"] == result["portfolio_dv01"]["raw"]
     assert result["portfolio_convexity"]["unit"] == "ratio"
     assert (
         Decimal(str(result["krd_1y"]["raw"]))
@@ -434,7 +437,7 @@ def test_risk_tensor_service_returns_non_empty_degraded_tensor_when_materialized
     assert result["bond_count"] == 3
     assert result["quality_flag"] == "warning"
     assert Decimal(str(result["portfolio_dv01"]["raw"])) > Decimal("0")
-    assert any("Unsupported tenor buckets" in warning for warning in result["warnings"])
+    assert any("Non-standard tenor buckets remapped" in warning for warning in result["warnings"])
     assert any("without maturity_date" in warning for warning in result["warnings"])
 
     get_settings.cache_clear()

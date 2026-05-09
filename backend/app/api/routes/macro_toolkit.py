@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -101,7 +101,7 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "library_ready",
         "route_status": "not_wired",
         "frontend_status": "planned",
-        "data_aliases": ("DR007.IB", "S0059743", "S0059749", "S0059760"),
+        "data_aliases": ("M0041653", "DR007.IB", "S0059743", "S0059749", "S0059760"),
         "next_step": "封装 /api/macro/monetary-policy-stance，并在本页接入政策立场卡。",
     },
     {
@@ -134,7 +134,7 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "library_ready",
         "route_status": "not_wired",
         "frontend_status": "planned",
-        "data_aliases": ("M0000612", "M0001385", "CU0", "S0059670"),
+        "data_aliases": ("M0017126", "M0001385", "M5525763", "S0059743", "S0059749", "S0059670", "CA.BRENT"),
         "next_step": "补 PMI/M2/社融映射后输出领先指标指数。",
     },
     {
@@ -178,7 +178,7 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "library_ready",
         "route_status": "not_wired",
         "frontend_status": "planned",
-        "data_aliases": ("M0000612", "M0001227", "M0001385", "CU0"),
+        "data_aliases": ("M0017126", "M0000612", "M0001227", "M0001385", "M5525763"),
         "next_step": "补齐增长/通胀宽表后输出周期象限。",
     },
     {
@@ -513,8 +513,8 @@ def _source_checks(duckdb_path: str | Path) -> list[dict[str, object]]:
     return [_source_check(alias, duckdb_path) for alias in _SOURCE_CHECK_ALIASES]
 
 
-def _source_check(alias: str, duckdb_path: str | Path) -> dict[str, object]:
-    frame = load_series_by_alias(alias, duckdb_path=duckdb_path)
+def _source_check(alias: str, duckdb_path: str | Path, *, end: str | None = None) -> dict[str, object]:
+    frame = load_series_by_alias(alias, end=end, duckdb_path=duckdb_path)
     latest = None
     if not frame.empty:
         latest_row = frame.sort_values("date").iloc[-1]
@@ -1034,7 +1034,7 @@ _CURVE_ALIAS_POINTS = (
     ("S0059657", "CN_CREDIT_AA", "3Y"),
     ("S0059760", "CN_CREDIT_AA", "5Y"),
     ("DR007.IB", "CN_DR", "7D"),
-    ("M0041653", "CN_REPO", "7D"),
+    ("M0041653", "CN_RRP", "7D"),
     ("M0041813", "CN_SHIBOR", "3M"),
 )
 
@@ -1050,8 +1050,118 @@ _WIDE_SERIES_ALIASES = (
     ("m2_yoy", "M0001385"),
     ("social_financing_yoy", "M5525763"),
     ("industrial_yoy", "M0000545"),
+    ("credit_spread_aaa_3y", "S0059670"),
     ("dr007", "DR007.IB"),
 )
+
+_CAPABILITY_INPUT_REQUIREMENTS = {
+    "monetary_policy_stance": (
+        {
+            "field": "policy_rate_7d",
+            "label": "Policy rate 7D",
+            "aliases": ("M0041653",),
+            "warning": "POLICY_RATE_7D_MISSING",
+            "required": True,
+        },
+        {
+            "field": "dr007",
+            "label": "DR007",
+            "aliases": ("DR007.IB",),
+            "warning": "DR007_MISSING",
+            "required": True,
+        },
+        {
+            "field": "gov_10y",
+            "label": "Treasury 10Y",
+            "aliases": ("S0059749",),
+            "warning": "GOV_10Y_MISSING",
+            "required": False,
+        },
+    ),
+    "leading_indicator": (
+        {
+            "field": "pmi",
+            "label": "PMI",
+            "aliases": ("M0017126",),
+            "warning": "PMI_MISSING",
+            "required": True,
+        },
+        {
+            "field": "m2_yoy",
+            "label": "M2 YoY",
+            "aliases": ("M0001385",),
+            "warning": "M2_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "social_financing_yoy",
+            "label": "Social financing YoY",
+            "aliases": ("M5525763",),
+            "warning": "SOCIAL_FINANCING_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "term_spread_10y_1y",
+            "label": "10Y-1Y term spread",
+            "aliases": ("S0059743", "S0059749"),
+            "warning": "TERM_SPREAD_MISSING",
+            "required": True,
+            "derived": True,
+        },
+        {
+            "field": "credit_spread_aaa_3y",
+            "label": "AAA credit spread",
+            "aliases": ("S0059670",),
+            "warning": "CREDIT_SPREAD_AAA_MISSING",
+            "required": True,
+            "derived": True,
+        },
+        {
+            "field": "brent_oil",
+            "label": "Brent oil",
+            "aliases": ("CA.BRENT",),
+            "warning": "COMMODITY_MISSING",
+            "required": True,
+        },
+    ),
+    "economic_cycle": (
+        {
+            "field": "pmi",
+            "label": "PMI",
+            "aliases": ("M0017126",),
+            "warning": "PMI_MISSING",
+            "required": True,
+        },
+        {
+            "field": "cpi_yoy",
+            "label": "CPI YoY",
+            "aliases": ("M0000612",),
+            "warning": "CPI_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "ppi_yoy",
+            "label": "PPI YoY",
+            "aliases": ("M0001227",),
+            "warning": "PPI_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "m2_yoy",
+            "label": "M2 YoY",
+            "aliases": ("M0001385",),
+            "warning": "M2_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "social_financing_yoy",
+            "label": "Social financing YoY",
+            "aliases": ("M5525763",),
+            "warning": "SOCIAL_FINANCING_YOY_MISSING",
+            "required": True,
+        },
+    ),
+}
 
 
 def _macro_capability_results(
@@ -1118,6 +1228,14 @@ def _macro_capability_results(
             ),
         ),
     }
+    for key in ("monetary_policy_stance", "leading_indicator", "economic_cycle"):
+        raw_results[key] = _with_capability_input_evidence(
+            key,
+            raw_results[key],
+            duckdb_path=duckdb_path,
+            report_date=parsed_report_date,
+            wide_rows=wide_rows,
+        )
 
     cards: list[dict[str, object]] = []
     for definition in _CAPABILITY_DEFINITIONS:
@@ -1536,6 +1654,111 @@ def _run_capability(
         }
 
 
+def _with_capability_input_evidence(
+    key: str,
+    result: dict[str, object],
+    *,
+    duckdb_path: str | Path,
+    report_date: date,
+    wide_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    requirements = _CAPABILITY_INPUT_REQUIREMENTS.get(key)
+    if not requirements:
+        return result
+
+    inputs = [
+        _capability_input_evidence_item(requirement, duckdb_path=duckdb_path, report_date=report_date, wide_rows=wide_rows)
+        for requirement in requirements
+    ]
+    missing_inputs = [
+        str(item["warning"])
+        for item in inputs
+        if item["required"] and not item["available"]
+    ]
+    warnings = [str(item) for item in result.get("warnings", []) if item]
+    for warning in missing_inputs:
+        if warning not in warnings:
+            warnings.append(warning)
+
+    enriched = dict(result)
+    if missing_inputs and str(enriched.get("data_status") or "").lower() == "complete":
+        enriched["data_status"] = "degraded"
+    enriched["warnings"] = warnings
+    enriched["input_evidence"] = {
+        "inputs": inputs,
+        "missing_inputs": missing_inputs,
+        "sources": _unique_sorted_texts(item.get("source") for item in inputs),
+        "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
+    }
+    return enriched
+
+
+def _capability_input_evidence_item(
+    requirement: dict[str, object],
+    *,
+    duckdb_path: str | Path,
+    report_date: date,
+    wide_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    aliases = tuple(str(alias) for alias in requirement.get("aliases", ()))
+    check = _first_available_source_check(aliases, duckdb_path, report_date)
+    latest = check.get("latest") if isinstance(check.get("latest"), dict) else None
+    field = str(requirement["field"])
+    derived = bool(requirement.get("derived", False))
+    value = _latest_wide_field_value(field, wide_rows) if derived else None
+    if value is None and isinstance(latest, dict):
+        value = latest.get("value")
+    available = value is not None if derived else latest is not None
+    return {
+        "field": field,
+        "label": str(requirement["label"]),
+        "aliases": list(aliases),
+        "warning": str(requirement["warning"]),
+        "required": bool(requirement.get("required", True)),
+        "available": available,
+        "row_count": int(check.get("row_count") or 0),
+        "latest_date": latest.get("date") if isinstance(latest, dict) else None,
+        "series_id": latest.get("series_id") if isinstance(latest, dict) else None,
+        "source": latest.get("vendor_name") if isinstance(latest, dict) else None,
+        "value": value,
+    }
+
+
+def _first_available_source_check(
+    aliases: tuple[str, ...],
+    duckdb_path: str | Path,
+    report_date: date,
+) -> dict[str, object]:
+    checks = [
+        _source_check(alias, duckdb_path, end=report_date.isoformat())
+        for alias in aliases
+    ]
+    for check in checks:
+        if check["latest"]:
+            return check
+    return checks[0] if checks else {"alias": "", "row_count": 0, "latest": None}
+
+
+def _latest_wide_field_value(field: str, wide_rows: list[dict[str, object]]) -> float | None:
+    for row in wide_rows:
+        value = _float_or_none(row.get(field))
+        if value is not None:
+            return value
+    return None
+
+
+def _unique_sorted_texts(values: Iterable[object]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return sorted(out)
+
+
 def _parse_report_date(value: str | None) -> date | None:
     if not value:
         return None
@@ -1816,6 +2039,7 @@ def _capability_result_card(
         "score": _capability_result_score(str(definition["key"]), raw_result),
         "headline": _capability_result_headline(str(definition["key"]), raw_result),
         "primary_metric": _capability_primary_metric(str(definition["key"]), raw_result),
+        "input_evidence": raw_result.get("input_evidence"),
         "evidence": _capability_result_evidence(str(definition["key"]), raw_result),
         "warnings": [str(item) for item in raw_result.get("warnings", []) if item],
         "result": raw_result,

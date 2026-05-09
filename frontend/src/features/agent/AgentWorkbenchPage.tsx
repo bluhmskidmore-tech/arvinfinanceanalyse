@@ -69,6 +69,15 @@ type AgentQueryError =
       message: string;
     };
 
+type AgentConversationTurn = {
+  id: string;
+  question: string;
+  agentRun: AgentRunPayload | null;
+  result: AgentQueryResult | null;
+  error: AgentQueryError | null;
+  activeSuggestedActionPayload: Record<string, unknown> | null;
+};
+
 type AgentWorkbenchPageProps = {
   pageContext?: AgentPageContext;
 };
@@ -98,6 +107,9 @@ const AGENT_RUN_STATUSES = new Set<AgentRunStatus>([
 ]);
 
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
+const MAX_AGENT_CONTEXT_TURNS = 4;
+const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
+const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -214,6 +226,39 @@ function normalizeAgentRunPayload(payload: AgentRunPayload): AgentRunPayload {
   return payload;
 }
 
+function createAgentConversationTurn(question: string): AgentConversationTurn {
+  return {
+    id: `turn:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+    question,
+    agentRun: null,
+    result: null,
+    error: null,
+    activeSuggestedActionPayload: null,
+  };
+}
+
+function trimAgentContextText(value: string, limit: number) {
+  const normalized = value.trim();
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit - 3)}...`;
+}
+
+function buildConversationContext(turns: AgentConversationTurn[]) {
+  const history = turns
+    .filter((turn) => turn.question.trim() && turn.result?.answer.trim())
+    .slice(-MAX_AGENT_CONTEXT_TURNS)
+    .map((turn) => ({
+      question: trimAgentContextText(turn.question, MAX_AGENT_CONTEXT_QUESTION_LENGTH),
+      answer: trimAgentContextText(turn.result?.answer ?? "", MAX_AGENT_CONTEXT_ANSWER_LENGTH),
+      run_id: turn.agentRun?.run_id ?? null,
+      trace_id: turn.result?.result_meta.trace_id ?? null,
+    }));
+
+  return history.length > 0 ? { recent_turns: history } : undefined;
+}
+
 function buildErrorMessage(error: unknown) {
   if (isFetchNetworkError(error)) {
     return "无法连接 Agent 后端。请确认 7888 后端、5888 前端代理和 Hermes 桥接服务正在运行。";
@@ -304,6 +349,9 @@ function formatProviderLabel(value: unknown, fallback: string) {
 }
 
 function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback = "--") {
+  if (!status) {
+    return "正在交给 Hermes";
+  }
   switch (status) {
     case "queued":
       return "排队中";
@@ -321,6 +369,9 @@ function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback 
 }
 
 function formatAgentWaitTitle(status: AgentRunStatus | undefined) {
+  if (!status) {
+    return "已收到问题";
+  }
   switch (status) {
     case "queued":
       return "Hermes 已排队";
@@ -344,6 +395,31 @@ function formatAgentRunElapsed(agentRun: AgentRunPayload | null, fallbackSeconds
   return fallbackSeconds;
 }
 
+function formatAgentWaitHint(status: AgentRunStatus | undefined, waitSeconds: number) {
+  if (!status) {
+    return "先把问题放进队列，拿到 run_id 后会继续更新。";
+  }
+  if (status === "queued") {
+    return "任务已入队；如果前面还有回答，会按顺序处理。";
+  }
+  if (status === "starting") {
+    return "Hermes 正在准备运行环境。";
+  }
+  if (status === "running" && waitSeconds >= 10) {
+    return "Hermes 还在思考，复杂问题通常会多等一会儿。";
+  }
+  if (status === "running") {
+    return "Hermes 正在分析，本页会自动更新结果。";
+  }
+  if (status === "completed") {
+    return "可以离开或刷新，回来后会继续显示这次结果。";
+  }
+  if (status === "failed") {
+    return "这次没有完成，可以调整问题后重试。";
+  }
+  return "可以离开或刷新，回来后会继续显示这次结果。";
+}
+
 function buildRuntimeStatus(
   result: AgentQueryResult | null,
   loading: boolean,
@@ -358,6 +434,24 @@ function buildRuntimeStatus(
     toolsets: formatRuntimeLabel(agentRun?.toolsets ?? filters.toolsets, "--"),
     quality: formatRuntimeLabel(result?.evidence.quality_flag, statusLabel),
   };
+}
+
+function findLatestTurnWithResult(turns: AgentConversationTurn[]) {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index]?.result) {
+      return turns[index];
+    }
+  }
+  return null;
+}
+
+function findLatestTurnWithRun(turns: AgentConversationTurn[]) {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index]?.agentRun) {
+      return turns[index];
+    }
+  }
+  return null;
 }
 
 const GITNEXUS_QUICK_EXAMPLES = [
@@ -379,6 +473,7 @@ function buildAgentRequestBody(
   question: string,
   repoPath: string,
   processName: string,
+  conversationContext?: Record<string, unknown>,
   pageContext?: AgentPageContext,
 ): AgentQueryRequest {
   return {
@@ -389,6 +484,7 @@ function buildAgentRequestBody(
     currency_basis: "CNY",
     context: {
       user_id: "web-user",
+      ...(conversationContext ? { conversation: conversationContext } : {}),
     },
     ...(pageContext ? { page_context: pageContext } : {}),
   };
@@ -550,6 +646,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
   const [query, setQuery] = useState("");
+  const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>([]);
   const [repoPath, setRepoPath] = useState(() => loadRecentRepoPaths()[0] ?? "");
   const [availableProcesses, setAvailableProcesses] = useState<string[]>([]);
   const [processSearch, setProcessSearch] = useState("");
@@ -559,9 +656,9 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   const [processLoading, setProcessLoading] = useState(false);
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
-  const [activeSuggestedActionPayload, setActiveSuggestedActionPayload] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
   const repoPathRef = useRef(repoPath);
+  const conversationRef = useRef<HTMLElement | null>(null);
   const processStateRequestVersionRef = useRef(0);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
@@ -569,7 +666,15 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   );
   const recentUnpinnedRepoPaths = recentRepoPaths.filter((path) => !pinnedRepoPaths.includes(path));
   const isCurrentRepoPinned = pinnedRepoPaths.includes(repoPath.trim());
-  const runtimeStatus = buildRuntimeStatus(result, loading, agentRun);
+  const latestConversationTurn = conversationTurns[conversationTurns.length - 1] ?? null;
+  const latestResultTurn = findLatestTurnWithResult(conversationTurns);
+  const latestRunTurn = findLatestTurnWithRun(conversationTurns);
+  const runtimeStatus = buildRuntimeStatus(
+    latestResultTurn?.result ?? result,
+    loading,
+    latestRunTurn?.agentRun ?? agentRun,
+  );
+  const hasConversation = conversationTurns.length > 0 || Boolean(result || error);
   repoPathRef.current = repoPath;
 
   function beginProcessStateRequest() {
@@ -616,21 +721,14 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     });
   }
 
-  useEffect(() => {
-    const normalizedRepoPath = repoPath.trim();
-    const requestVersion = beginProcessStateRequest();
-    if (!normalizedRepoPath) {
-      setAvailableProcesses([]);
-      setSelectedProcess("");
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void loadGitNexusProcesses(normalizedRepoPath, requestVersion);
-    }, 350);
-    return () => window.clearTimeout(timeoutId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce repo path changes only
-  }, [repoPath]);
+  function updateConversationTurn(
+    turnId: string,
+    updater: (turn: AgentConversationTurn) => AgentConversationTurn,
+  ) {
+    setConversationTurns((currentTurns) =>
+      currentTurns.map((turn) => (turn.id === turnId ? updater(turn) : turn)),
+    );
+  }
 
   useEffect(() => {
     if (!filteredProcesses.length) {
@@ -653,6 +751,22 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   }, [loading]);
 
   useEffect(() => {
+    if (!hasConversation) {
+      return;
+    }
+    const scrollIntoView = conversationRef.current?.scrollIntoView;
+    if (typeof scrollIntoView === "function") {
+      scrollIntoView.call(conversationRef.current, { behavior: "smooth", block: "end" });
+    }
+  }, [
+    hasConversation,
+    latestConversationTurn?.id,
+    latestConversationTurn?.agentRun?.status,
+    latestConversationTurn?.result,
+    latestConversationTurn?.error,
+  ]);
+
+  useEffect(() => {
     const latestRunId = loadLatestAgentRunId();
     if (!latestRunId) {
       return;
@@ -665,6 +779,23 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
           return;
         }
         setAgentRun(payload);
+        const restoredQuestion = payload.question?.trim() || "恢复上一次 Hermes 对话";
+        setConversationTurns([
+          {
+            id: `restored:${payload.run_id}`,
+            question: restoredQuestion,
+            agentRun: payload,
+            result: payload.status === "completed" && payload.result ? payload.result : null,
+            error:
+              payload.status === "failed"
+                ? {
+                    kind: "request",
+                    message: payload.error_message || "Hermes 托管任务失败，请稍后重试。",
+                  }
+                : null,
+            activeSuggestedActionPayload: null,
+          },
+        ]);
         if (payload.status === "completed" && payload.result) {
           setResult(payload.result);
           setActiveSuggestedActionPayload(null);
@@ -739,17 +870,33 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     return normalizeAgentRunPayload(payload);
   }
 
-  async function executeManagedAgentRun(question: string) {
+  async function executeManagedAgentRun(
+    question: string,
+    turnId: string,
+    conversationContext?: Record<string, unknown>,
+  ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
-    const requestBody = buildAgentRequestBody(question, normalizedRepoPath, selectedProcess, pageContext);
+    const requestBody = buildAgentRequestBody(
+      question,
+      normalizedRepoPath,
+      selectedProcess,
+      conversationContext,
+      pageContext,
+    );
     setAgentRun(null);
+    setResult(null);
+    setActiveSuggestedActionPayload(null);
     try {
       const finalPayload = await runPollingTask<AgentRunPayload>({
         start: () => createAgentRun(requestBody),
         getStatus: fetchAgentRunStatus,
         onUpdate: (payload) => {
           setAgentRun(payload);
+          updateConversationTurn(turnId, (turn) => ({
+            ...turn,
+            agentRun: payload,
+          }));
         },
       });
 
@@ -776,21 +923,32 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         rememberRepoPath(normalizedRepoPath);
       }
       setResult(payload);
+      updateConversationTurn(turnId, (turn) => ({
+        ...turn,
+        agentRun: finalPayload,
+        result: payload,
+        error: null,
+        activeSuggestedActionPayload: null,
+      }));
       setActiveSuggestedActionPayload(null);
     } catch (requestError) {
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         if (requestError instanceof AgentDisabledQueryError) {
-          setError({
+          const disabledError: AgentQueryError = {
             kind: "disabled",
             detail: requestError.detail,
             phase: requestError.phase,
-          });
+          };
+          setError(disabledError);
+          updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
           return;
         }
-        setError({
+        const nextError: AgentQueryError = {
           kind: "request",
           message: buildErrorMessage(requestError),
-        });
+        };
+        setError(nextError);
+        updateConversationTurn(turnId, (turn) => ({ ...turn, error: nextError }));
       }
     }
   }
@@ -799,7 +957,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
     try {
-      const requestBody = buildAgentRequestBody(question, normalizedRepoPath, selectedProcess, pageContext);
+      const requestBody = buildAgentRequestBody(question, normalizedRepoPath, selectedProcess, undefined, pageContext);
 
       const response = await fetch("/api/agent/query", {
         method: "POST",
@@ -846,6 +1004,25 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setResult(payload);
+        setConversationTurns((currentTurns) => [
+          ...currentTurns,
+          {
+            id: `sync:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+            question,
+            agentRun: {
+              run_id: "agent_run:sync_query",
+              status: "completed",
+              provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
+              model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
+              transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
+              toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "default"),
+              result: payload,
+            },
+            result: payload,
+            error: null,
+            activeSuggestedActionPayload: null,
+          },
+        ]);
         setActiveSuggestedActionPayload(null);
       }
       return payload;
@@ -864,19 +1041,23 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
 
     const question = query.trim();
     if (!question) {
-      setResult(null);
-      setError({
+      const nextError: AgentQueryError = {
         kind: "request",
         message: "请输入查询问题。",
-      });
+      };
+      setError(nextError);
       return;
     }
 
+    const context = buildConversationContext(conversationTurns);
+    const turn = createAgentConversationTurn(question);
     setAgentWaitSeconds(0);
+    setConversationTurns((currentTurns) => [...currentTurns, turn]);
+    setQuery("");
     setLoading(true);
     setError(null);
     try {
-      await executeManagedAgentRun(question);
+      await executeManagedAgentRun(question, turn.id, context);
     } finally {
       setLoading(false);
     }
@@ -933,6 +1114,25 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         setSelectedProcess(nextProcesses[0] ?? "");
         rememberRepoPath(normalizedRepoPath);
         setResult(payload);
+        setConversationTurns((currentTurns) => [
+          ...currentTurns,
+          {
+            id: `processes:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+            question: requestBody.question,
+            agentRun: {
+              run_id: "agent_run:sync_processes",
+              status: "completed",
+              provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
+              model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
+              transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
+              toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "GitNexus"),
+              result: payload,
+            },
+            result: payload,
+            error: null,
+            activeSuggestedActionPayload: null,
+          },
+        ]);
         setActiveSuggestedActionPayload(null);
       }
     } catch (requestError) {
@@ -993,13 +1193,135 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     unpinRepoPath(path);
   }
 
-  function handleSuggestedAction(action: AgentSuggestedAction) {
+  function handleSuggestedAction(turnId: string, action: AgentSuggestedAction) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
       setQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       setError(null);
       return;
     }
+    updateConversationTurn(turnId, (turn) => ({
+      ...turn,
+      activeSuggestedActionPayload: action.payload,
+    }));
     setActiveSuggestedActionPayload(action.payload);
+  }
+
+  function renderAgentTurnResult(turn: AgentConversationTurn) {
+    const turnResult = turn.result;
+    if (!turnResult) {
+      return null;
+    }
+
+    return (
+      <div className="agent-result-shell">
+        {hasRenderableResult(turnResult) ? (
+          <div className="agent-result-grid">
+            <div className="agent-result-main">
+              <AgentAnswerPanel answer={turnResult.answer} />
+
+              {turnResult.cards.length > 0 ? (
+                (() => {
+                  const gitNexusCards = isGitNexusResult(turnResult)
+                    ? turnResult.cards
+                    : turnResult.cards.filter(isGitNexusCard);
+                  const genericCards = isGitNexusResult(turnResult)
+                    ? []
+                    : turnResult.cards.filter((card) => !isGitNexusCard(card));
+                  return (
+                    <div className="agent-result-card-stack">
+                      {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
+                      <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
+                    </div>
+                  );
+                })()
+              ) : null}
+
+              {turnResult.next_drill.length > 0 ? (
+                <div className="agent-next-drill-row">
+                  {turnResult.next_drill.map((drill) => (
+                    <span key={drill.dimension}>{drill.label}</span>
+                  ))}
+                </div>
+              ) : null}
+
+              <AgentSuggestedActionsPanel
+                actions={turnResult.suggested_actions}
+                formatValue={formatMetaValue}
+                activePayload={turn.activeSuggestedActionPayload}
+                onActionClick={(action) => handleSuggestedAction(turn.id, action)}
+              />
+            </div>
+
+            <aside className="agent-result-side">
+              {hasEvidenceContent(turnResult.evidence) ? (
+                <AgentEvidencePanel
+                  tablesUsed={turnResult.evidence.tables_used}
+                  filtersApplied={turnResult.evidence.filters_applied}
+                  evidenceRows={turnResult.evidence.evidence_rows}
+                  qualityFlag={turnResult.evidence.quality_flag}
+                />
+              ) : null}
+              <AgentResultMetaPanel
+                entries={buildResultMetaEntries(turnResult.result_meta)}
+                formatValue={formatMetaValue}
+              />
+            </aside>
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: 20,
+              borderRadius: 16,
+              border: `1px solid ${t.colorBorderSoft}`,
+              background: t.colorBgCanvas,
+              color: t.colorTextSecondary,
+              fontSize: 15,
+              lineHeight: 1.75,
+            }}
+          >
+            本次查询未返回可展示结果。请调整问题后重试。
+          </div>
+        )}
+
+        {!hasRenderableResult(turnResult) ? (
+          <AgentResultMetaPanel
+            entries={buildResultMetaEntries(turnResult.result_meta)}
+            formatValue={formatMetaValue}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderAgentTurnError(turn: AgentConversationTurn) {
+    if (turn.error?.kind === "disabled") {
+      return (
+        <div
+          style={{
+            padding: 24,
+            borderRadius: 16,
+            border: `1px solid ${t.colorBorderWarning}`,
+            background: t.colorBgWarningSoft,
+            color: t.colorTextWarning,
+            fontSize: 14,
+            lineHeight: 1.7,
+          }}
+        >
+          智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
+        </div>
+      );
+    }
+
+    if (turn.error?.kind === "request") {
+      return (
+        <div className="agent-callout agent-callout--error" role="alert">
+          <strong>请求没有送达</strong>
+          <span>{turn.error.message}</span>
+        </div>
+      );
+    }
+
+    return null;
   }
 
   function formatPageContextSummary(context: AgentPageContext) {
@@ -1096,6 +1418,55 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         onSubmit={handleSubmit}
       />
 
+      {hasConversation ? (
+        <section className="agent-conversation" aria-label="agent-conversation" ref={conversationRef}>
+          {conversationTurns.map((turn) => (
+            <div key={turn.id} className="agent-turn">
+              <div className="agent-message agent-message--user">
+                <div className="agent-message__speaker">我</div>
+                <div className="agent-message__body">{turn.question}</div>
+              </div>
+
+              <div className="agent-message agent-message--assistant">
+                <div className="agent-message__speaker">智能体</div>
+                <div className="agent-message__body">
+                  {(turn === latestConversationTurn && loading) || turn.agentRun ? (
+                    <div className="agent-wait-status" role="status" aria-live="polite">
+                      <div className="agent-wait-status__title">{formatAgentWaitTitle(turn.agentRun?.status)}</div>
+                      <div className="agent-wait-status__detail">
+                        <span>{formatAgentRunStatusLabel(turn.agentRun?.status, "运行中")}</span>
+                        <span>已等待 {formatAgentRunElapsed(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)} 秒</span>
+                        {turn.agentRun?.run_id ? <span>run_id: {turn.agentRun.run_id}</span> : null}
+                        <span>{formatAgentWaitHint(turn.agentRun?.status, turn === latestConversationTurn ? agentWaitSeconds : 0)}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {renderAgentTurnError(turn)}
+                  {renderAgentTurnResult(turn)}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {conversationTurns.length === 0 && error ? (
+            <div className="agent-message agent-message--assistant">
+              <div className="agent-message__speaker">智能体</div>
+              <div className="agent-message__body">
+                {renderAgentTurnError({
+                  id: "page-error",
+                  question: "",
+                  agentRun: null,
+                  result: null,
+                  error,
+                  activeSuggestedActionPayload: null,
+                })}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <AgentRepoMemoryPanel
         pinnedRepoPaths={pinnedRepoPaths}
         recentUnpinnedRepoPaths={recentUnpinnedRepoPaths}
@@ -1104,121 +1475,6 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         onUnpinRepo={unpinRepo}
         onPinRepoPath={pinRepoPath}
       />
-
-      {loading || agentRun ? (
-        <div className="agent-wait-status" role="status" aria-live="polite">
-          <div className="agent-wait-status__title">{formatAgentWaitTitle(agentRun?.status)}</div>
-          <div className="agent-wait-status__detail">
-            <span>{formatAgentRunStatusLabel(agentRun?.status, "运行中")}</span>
-            <span>已等待 {formatAgentRunElapsed(agentRun, agentWaitSeconds)} 秒</span>
-            {agentRun?.run_id ? <span>run_id: {agentRun.run_id}</span> : null}
-            <span>后端会托管 Hermes bridge，页面刷新后可恢复最近任务。</span>
-          </div>
-        </div>
-      ) : null}
-
-      {error?.kind === "disabled" ? (
-        <div
-          style={{
-            padding: 24,
-            borderRadius: 16,
-            border: `1px solid ${t.colorBorderWarning}`,
-            background: t.colorBgWarningSoft,
-            color: t.colorTextWarning,
-            fontSize: 14,
-            lineHeight: 1.7,
-          }}
-        >
-          智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
-        </div>
-      ) : null}
-
-      {error?.kind === "request" ? (
-        <div className="agent-callout agent-callout--error" role="alert">
-          <strong>请求没有送达</strong>
-          <span>{error.message}</span>
-        </div>
-      ) : null}
-
-      {result ? (
-        <div className="agent-result-shell">
-          {hasRenderableResult(result) ? (
-            <div className="agent-result-grid">
-              <div className="agent-result-main">
-                <AgentAnswerPanel answer={result.answer} />
-
-                {result.cards.length > 0 ? (
-                  (() => {
-                    const gitNexusCards = isGitNexusResult(result)
-                      ? result.cards
-                      : result.cards.filter(isGitNexusCard);
-                    const genericCards = isGitNexusResult(result)
-                      ? []
-                      : result.cards.filter((card) => !isGitNexusCard(card));
-                    return (
-                      <div className="agent-result-card-stack">
-                        {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
-                        <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
-                      </div>
-                    );
-                  })()
-                ) : null}
-
-                {result.next_drill.length > 0 ? (
-                  <div className="agent-next-drill-row">
-                    {result.next_drill.map((drill) => (
-                      <span key={drill.dimension}>{drill.label}</span>
-                    ))}
-                  </div>
-                ) : null}
-
-                <AgentSuggestedActionsPanel
-                  actions={result.suggested_actions}
-                  formatValue={formatMetaValue}
-                  activePayload={activeSuggestedActionPayload}
-                  onActionClick={handleSuggestedAction}
-                />
-              </div>
-
-              <aside className="agent-result-side">
-                {hasEvidenceContent(result.evidence) ? (
-                  <AgentEvidencePanel
-                    tablesUsed={result.evidence.tables_used}
-                    filtersApplied={result.evidence.filters_applied}
-                    evidenceRows={result.evidence.evidence_rows}
-                    qualityFlag={result.evidence.quality_flag}
-                  />
-                ) : null}
-                <AgentResultMetaPanel
-                  entries={buildResultMetaEntries(result.result_meta)}
-                  formatValue={formatMetaValue}
-                />
-              </aside>
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: 20,
-                borderRadius: 16,
-                border: `1px solid ${t.colorBorderSoft}`,
-                background: t.colorBgCanvas,
-                color: t.colorTextSecondary,
-                fontSize: 15,
-                lineHeight: 1.75,
-              }}
-            >
-              本次查询未返回可展示结果。请调整问题后重试。
-            </div>
-          )}
-
-          {!hasRenderableResult(result) ? (
-            <AgentResultMetaPanel
-              entries={buildResultMetaEntries(result.result_meta)}
-              formatValue={formatMetaValue}
-            />
-          ) : null}
-        </div>
-      ) : null}
     </section>
   );
 }

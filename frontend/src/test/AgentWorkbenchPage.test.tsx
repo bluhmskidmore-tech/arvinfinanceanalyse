@@ -204,7 +204,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "固定仓库 F:\\PIN-ME" })).toBeInTheDocument();
   });
 
-  it("auto-refreshes processes when repo_path changes", async () => {
+  it("does not auto-load GitNexus processes when repo_path changes", async () => {
     fetchMock.mockResolvedValueOnce(
       buildJsonResponse({
         answer: "GitNexus processes ready.",
@@ -237,24 +237,9 @@ describe("AgentWorkbenchPage", () => {
       target: { value: "F:\\MOSS-SYSTEM-V1" },
     });
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/agent/query",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            question: "请给我看 GitNexus processes",
-            basis: "formal",
-            filters: { repo_path: "F:\\MOSS-SYSTEM-V1" },
-            position_scope: "all",
-            currency_basis: "CNY",
-            context: {
-              user_id: "web-user",
-            },
-          }),
-        }),
-      );
-    }, { timeout: 2000 });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("includes page_context when provided by the mounting page", async () => {
@@ -1121,6 +1106,67 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("keeps the submitted question and Hermes answer together as a chat turn", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(fetchMock, {
+      answer: "这是更像对话的一次回答。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_agent_conversation",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    const conversation = await screen.findByLabelText("agent-conversation");
+    expect(conversation).toHaveTextContent("帮我判断今天的主要风险");
+    expect(conversation).toHaveTextContent("这是更像对话的一次回答。");
+    expect(conversation).toHaveTextContent("已完成");
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+  });
+
+  it("shows a local acknowledgement immediately while Hermes accepts the run", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    fetchMock.mockReturnValue(new Promise(() => undefined));
+
+    try {
+      render(<AgentWorkbenchPage />);
+
+      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "先给我一个响应");
+      await user.click(screen.getByRole("button", { name: "发送" }));
+
+      const conversation = await screen.findByLabelText("agent-conversation");
+      expect(conversation).toHaveTextContent("先给我一个响应");
+      expect(conversation).toHaveTextContent("已收到问题");
+      expect(conversation).toHaveTextContent("正在交给 Hermes");
+      expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("restores the latest managed Hermes run after a refresh", async () => {
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore");
     fetchMock.mockResolvedValueOnce(
@@ -1174,7 +1220,8 @@ describe("AgentWorkbenchPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Hermes 正在分析");
+    expect(screen.getByRole("status")).toHaveTextContent("已收到问题");
+    expect(screen.getByRole("status")).toHaveTextContent("正在交给 Hermes");
     expect(screen.getByRole("status")).toHaveTextContent("已等待 0 秒");
 
     act(() => {

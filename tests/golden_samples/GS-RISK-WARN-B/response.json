@@ -6,8 +6,8 @@
     "formal_use_allowed": true,
     "source_version": "sv_risk_tensor__sv_bond_snap_1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_risk_tensor_formal_materialize_v1",
-    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+    "rule_version": "rv_risk_tensor_formal_materialize_v2",
+    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
     "quality_flag": "warning",
     "vendor_status": "ok",
     "fallback_mode": "none",
@@ -22,6 +22,13 @@
   "result": {
     "report_date": "2026-03-31",
     "portfolio_dv01": {
+      "raw": 0.41281987,
+      "unit": "dv01",
+      "display": "0.41",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "regulatory_dv01": {
       "raw": 0.41281987,
       "unit": "dv01",
       "display": "0.41",
@@ -64,9 +71,9 @@
       "sign_aware": true
     },
     "krd_30y": {
-      "raw": 0.0,
+      "raw": 0.30031404,
       "unit": "ratio",
-      "display": "+0.00",
+      "display": "+0.30",
       "precision": 2,
       "sign_aware": true
     },
@@ -164,7 +171,7 @@
     "bond_count": 3,
     "quality_flag": "warning",
     "warnings": [
-      "Unsupported tenor buckets excluded from minimal KRD tensor: 20Y",
+      "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y",
       "Excluded 1 rows without maturity_date from liquidity gap calculation."
     ]
   }

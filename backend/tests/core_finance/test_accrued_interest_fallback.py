@@ -41,7 +41,7 @@ class TestAccruedInterestFallbackMarker:
         assert result["has_accrued_interest"] is True
         assert result["diagnostics"] == []
 
-    def test_without_accrued_interest_marks_fallback(self):
+    def test_without_accrued_interest_marks_missing(self):
         bond = _make_bond()
         result = compute_bond_four_effects(
             bond=bond,
@@ -51,10 +51,11 @@ class TestAccruedInterestFallbackMarker:
             report_date=date(2026, 3, 31),
         )
         assert result["has_accrued_interest"] is False
-        assert "accrued_interest_fallback_to_zero" in result["diagnostics"]
+        assert "accrued_interest_missing" in result["diagnostics"]
+        assert "accrued_interest_partial" not in result["diagnostics"]
 
-    def test_partial_accrued_interest_marks_fallback(self):
-        """Only start present, end missing — should still mark as fallback."""
+    def test_partial_accrued_interest_marks_partial(self):
+        """Only start present, end missing — should mark as partial, not missing."""
         bond = _make_bond(accrued_interest_start=50000.0)
         result = compute_bond_four_effects(
             bond=bond,
@@ -64,7 +65,8 @@ class TestAccruedInterestFallbackMarker:
             report_date=date(2026, 3, 31),
         )
         assert result["has_accrued_interest"] is False
-        assert "accrued_interest_fallback_to_zero" in result["diagnostics"]
+        assert "accrued_interest_partial" in result["diagnostics"]
+        assert "accrued_interest_missing" not in result["diagnostics"]
 
     def test_calculation_still_works_without_accrued(self):
         """Fallback should not break the calculation — all numeric keys still present."""

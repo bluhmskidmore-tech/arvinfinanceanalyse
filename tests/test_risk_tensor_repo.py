@@ -13,6 +13,7 @@ def _sample_tensor(core_mod):
     return core_mod.PortfolioRiskTensor(
         report_date=date(2026, 3, 31),
         portfolio_dv01=Decimal("1.25000000"),
+        regulatory_dv01=Decimal("1.25000000"),
         krd_1y=Decimal("0.25000000"),
         krd_3y=Decimal("0"),
         krd_5y=Decimal("1.00000000"),
@@ -83,6 +84,7 @@ def test_risk_tensor_repo_round_trip_preserves_lineage_and_warnings(tmp_path):
     assert row["warnings"] == ["synthetic warning"]
     assert row["bond_count"] == 2
     assert row["portfolio_dv01"] == Decimal("1.25000000")
+    assert row["regulatory_dv01"] == Decimal("1.25000000")
     assert row["portfolio_modified_duration"] == Decimal("1.50000000")
     assert row["liquidity_gap_30d_ratio"] == Decimal("0.10000000")
     assert row["asset_cashflow_30d"] == Decimal("12.00000000")
@@ -226,6 +228,7 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
     ]
     assert row is not None
     assert row["asset_cashflow_30d"] == 0
+    assert row["regulatory_dv01"] is None
     assert row["asset_cashflow_90d"] == 0
     assert row["liability_cashflow_30d"] == 0
     assert row["liability_cashflow_90d"] == 0
@@ -239,6 +242,7 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
     finally:
         conn.close()
     assert "asset_cashflow_30d" not in columns
+    assert "regulatory_dv01" not in columns
     assert "liability_source_version" not in columns
 
 
