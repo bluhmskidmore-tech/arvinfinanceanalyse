@@ -210,6 +210,10 @@ class _TTLCache:
         with self._lock:
             self._store.pop(key, None)
 
+    def clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+
     def invalidate_matching(self, predicate) -> None:
         with self._lock:
             for key in list(self._store):
