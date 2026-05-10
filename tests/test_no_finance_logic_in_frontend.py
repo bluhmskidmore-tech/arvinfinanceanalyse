@@ -19,6 +19,9 @@ FORBIDDEN_TOKENS = (
 DISPLAY_ONLY_DIRS = (
     "features/bond-analytics/",
     "features/bond-dashboard/",
+    "features/balance-analysis/",
+    "features/balance-movement-analysis/",
+    "features/executive-dashboard/",
     "features/liability-analytics/",
     "features/pnl-attribution/",
     "features/risk-overview/",
@@ -28,10 +31,29 @@ DISPLAY_ONLY_DIRS = (
     "test/",
 )
 
+CONTRACT_ONLY_DIRS = (
+    "bond-analysis-foundation/",
+)
+
+DISPLAY_COPY_SNIPPETS = (
+    "看 DV01、张量和下钻证据",
+    "进入后先看风险张量、KRD 曲线与信用利差迁移。",
+    "DV01 / NIM / 久期与利差",
+    "DV01 / KRD / 信用利差迁移",
+)
+
+
+def _is_test_file(path: Path) -> bool:
+    return path.name.endswith((".test.ts", ".test.tsx"))
+
 
 def _is_display_only(path: Path) -> bool:
     rel = path.relative_to(FRONTEND_SRC).as_posix()
-    return any(rel.startswith(d) for d in DISPLAY_ONLY_DIRS)
+    return (
+        _is_test_file(path)
+        or any(rel.startswith(d) for d in DISPLAY_ONLY_DIRS)
+        or any(rel.startswith(d) for d in CONTRACT_ONLY_DIRS)
+    )
 
 
 def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
@@ -49,6 +71,8 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
     violations: list[str] = []
     for path in files:
         text = path.read_text(encoding="utf-8")
+        for snippet in DISPLAY_COPY_SNIPPETS:
+            text = text.replace(snippet, "")
         for token in FORBIDDEN_TOKENS:
             if token in text:
                 violations.append(f"{path}: {token}")

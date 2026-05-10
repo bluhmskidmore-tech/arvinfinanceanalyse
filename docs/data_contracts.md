@@ -89,7 +89,11 @@ hard-required lineage：
 - `trace_id`
 
 canonical grain：
-- `(report_date, instrument_code, portfolio_name, cost_center, currency_code)`
+- `(report_date, instrument_code, instrument_name, portfolio_name, cost_center, currency_code, account_category, asset_class, bond_type, business_type_primary, maturity_date, next_call_date, is_issuance_like, source_version, ingest_batch_id)`
+
+note:
+- `(report_date, instrument_code, portfolio_name, cost_center, currency_code)` is a report-position lookup key, not the canonical storage grain.
+- The storage grain keeps distinct accounting buckets and maturity/call-date lots separate so materialization does not collapse same-bond multi-classification positions.
 
 first-wave required now：
 - `report_date`
@@ -616,7 +620,7 @@ canonical grain：
 
 ### bond snapshot 主键
 ```text
-(report_date, instrument_code, portfolio_name, cost_center, currency_code)
+(report_date, instrument_code, instrument_name, portfolio_name, cost_center, currency_code, account_category, asset_class, bond_type, business_type_primary, maturity_date, next_call_date, is_issuance_like, source_version, ingest_batch_id)
 ```
 
 ### interbank snapshot 主键

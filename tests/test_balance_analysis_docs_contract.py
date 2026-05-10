@@ -71,6 +71,19 @@ def test_data_contracts_record_account_category_as_formal_zqtz_balance_field():
     assert "- `value_date`" in contracts
 
 
+def test_data_contracts_zqtz_snapshot_grain_preserves_multi_classification_lots():
+    contracts = _read_doc("docs/data_contracts.md")
+    expected_grain = (
+        "(report_date, instrument_code, instrument_name, portfolio_name, cost_center, "
+        "currency_code, account_category, asset_class, bond_type, business_type_primary, "
+        "maturity_date, next_call_date, is_issuance_like, source_version, ingest_batch_id)"
+    )
+
+    assert expected_grain in contracts
+    assert "report-position lookup key" in contracts
+    assert "multi-classification positions" in contracts
+
+
 def test_balance_analysis_advanced_attribution_boundary_design_note_exists():
     doc = _read_doc("docs/plans/2026-04-12-balance-analysis-advanced-attribution-boundary.md")
 
