@@ -102,6 +102,34 @@ describe("StockDetailDrawer", () => {
     expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("未按本股过滤");
   });
 
+  it("shows the review context that opened the drawer", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          reviewContext={{
+            sourceLabel: "复核队列",
+            sectorName: "AI",
+            reviewRank: 1,
+            distanceToBreakoutPct: "0.46%",
+          }}
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const context = await screen.findByTestId("stock-detail-review-context");
+    expect(context).toHaveTextContent("复核队列");
+    expect(context).toHaveTextContent("#1");
+    expect(context).toHaveTextContent("AI");
+    expect(context).toHaveTextContent("距观察位 0.46%");
+  });
+
   it("renders market event rows from getChoiceNewsEvents", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());

@@ -7,12 +7,14 @@ import type {
 import {
   buildCandidateReviewQueue,
   buildCandidateEvidenceCards,
+  buildDataBoundarySummary,
   buildDecisionSummary,
   buildDailyJudgmentStrip,
   buildDataBoundaryNotes,
   buildMarketStateCard,
   buildRiskExitRows,
   buildSectorRows,
+  buildSectorFilterSummary,
   buildSectorViewModel,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 
@@ -244,6 +246,16 @@ describe("stockAnalysisPageModel", () => {
     expect(queue[0].reviewFocus).not.toContain("买入");
   });
 
+  it("treats fallback snapshots as data that needs review", () => {
+    const summary = buildDecisionSummary(strategyPayload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "latest_snapshot",
+    });
+
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 ok / ok / fallback latest_snapshot");
+  });
+
   it("keeps the decision summary honest when candidates are unavailable", () => {
     const summary = buildDecisionSummary(
       {
@@ -326,4 +338,49 @@ describe("stockAnalysisPageModel", () => {
     expect(bottom?.isBottom).toBe(true);
     expect(typeof top?.scoreNormalized).toBe("number");
   });
+
+  it("builds a boundary summary from existing payload evidence only", () => {
+    const summary = buildDataBoundarySummary(
+      {
+        ...strategyPayload,
+        unsupported_outputs: [
+          {
+            key: "risk_exit",
+            reason: "position snapshot not landed",
+          },
+        ],
+      },
+      {
+        quality_flag: "warning",
+        vendor_status: "ok",
+        fallback_mode: "latest_snapshot",
+      },
+    );
+
+    expect(summary.boundaryCount).toBe(3);
+    expect(summary.diagnosticsCount).toBe(1);
+    expect(summary.dataGapCount).toBe(1);
+    expect(summary.unsupportedCount).toBe(1);
+    expect(summary.freshnessLabel).toBe("新鲜度 warning / ok / 回退 latest_snapshot");
+    expect(summary.summaryLabel).toBe("3 条边界");
+    expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 未支持 1");
+    expect(summary.topMessages.join(" ")).toContain("Breadth inputs are unavailable.");
+    expect(summary.topMessages.join(" ")).toContain("position snapshot not landed");
+  });
+
+  it("builds current sector filter status for review queue stitching", () => {
+    const filtered = buildSectorFilterSummary(strategyPayload, "801001");
+    const unfiltered = buildSectorFilterSummary(strategyPayload, null);
+
+    expect(filtered.isFiltered).toBe(true);
+    expect(filtered.sectorLabel).toBe("AI");
+    expect(filtered.visibleCount).toBe(1);
+    expect(filtered.totalCount).toBe(1);
+    expect(filtered.summaryLabel).toContain("sector AI (801001)");
+
+    expect(unfiltered.isFiltered).toBe(false);
+    expect(unfiltered.sectorLabel).toBe("all sectors");
+    expect(unfiltered.summaryLabel).toBe("sector all sectors / showing 1 of 1");
+  });
+
 });

@@ -7,8 +7,16 @@ export type BuildStockAnalysisAgentPageContextInput = {
   /** 当前快照日：取自日期覆盖或策略返回的 as_of_date */
   asOfDate?: string | null;
   sectorFilterSectorCode: string | null;
+  sectorFilterLabel?: string | null;
   sectorView: StockSectorViewKind;
-  detailSelection: { code: string; name?: string } | null;
+  detailSelection: {
+    code: string;
+    name?: string;
+    reviewRank?: number;
+    sectorCode?: string;
+    sectorName?: string;
+    source?: "review_queue" | "risk_exit";
+  } | null;
 };
 
 export function buildStockAnalysisAgentPageContext(
@@ -16,7 +24,13 @@ export function buildStockAnalysisAgentPageContext(
 ): AgentPageContext {
   const current_filters: Record<string, unknown> = {
     sector_filter: input.sectorFilterSectorCode ?? null,
+    sector_filter_label: input.sectorFilterLabel ?? null,
     sector_view: input.sectorView,
+    current_view: input.detailSelection
+      ? "stock_detail"
+      : input.sectorFilterSectorCode
+        ? "review_queue_filtered"
+        : "decision",
   };
   if (input.asOfDate != null && String(input.asOfDate).trim() !== "") {
     current_filters.as_of_date = input.asOfDate;
@@ -27,6 +41,18 @@ export function buildStockAnalysisAgentPageContext(
     const row: Record<string, unknown> = { stock_code: input.detailSelection.code };
     if (input.detailSelection.name != null && String(input.detailSelection.name).trim() !== "") {
       row.stock_name = input.detailSelection.name;
+    }
+    if (input.detailSelection.reviewRank != null) {
+      row.review_rank = input.detailSelection.reviewRank;
+    }
+    if (input.detailSelection.sectorCode != null && String(input.detailSelection.sectorCode).trim() !== "") {
+      row.sector_code = input.detailSelection.sectorCode;
+    }
+    if (input.detailSelection.sectorName != null && String(input.detailSelection.sectorName).trim() !== "") {
+      row.sector_name = input.detailSelection.sectorName;
+    }
+    if (input.detailSelection.source != null) {
+      row.source = input.detailSelection.source;
     }
     selected_rows.push(row);
   }

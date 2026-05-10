@@ -186,6 +186,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+.stock-analysis-page__boundary-summary {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  border: 1px solid var(--sa-color-border-subtle);
+  border-radius: var(--sa-radius-sm, 8px);
+  padding: 9px 10px;
+  background: var(--sa-table-header-bg);
+  color: var(--sa-color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.stock-analysis-page__boundary-summary strong {
+  color: var(--sa-color-text);
+}
+
+.stock-analysis-page__boundary-summary span,
+.stock-analysis-page__boundary-summary small {
+  overflow-wrap: anywhere;
+}
+
 .stock-analysis-page__overview-panel .stock-analysis-page__kpi strong {
   font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
   font-variant-numeric: tabular-nums;
@@ -460,6 +482,29 @@
   border-color: var(--sa-accent-line);
   background: var(--sa-accent-bg-soft);
   color: var(--sa-accent-text);
+}
+
+.stock-analysis-page__filter-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--sa-color-border-subtle);
+  border-radius: var(--sa-radius-md, 12px);
+  padding: 9px 12px;
+  background: var(--sa-table-header-bg);
+  color: var(--sa-color-muted);
+  font-size: 12px;
+}
+
+.stock-analysis-page__filter-status strong {
+  color: var(--sa-color-text);
+  font-size: 13px;
+}
+
+.stock-analysis-page__filter-status small {
+  color: var(--sa-color-muted);
 }
 
 .stock-analysis-page__sector-tabs .ant-tabs-nav {

@@ -3,6 +3,7 @@ import type {
   LivermoreSignalConfluencePayload,
   LivermoreStockCandidateItem,
   LivermoreStrategyPayload,
+  ResultMeta,
 } from "../../../api/contracts";
 
 export type StockMarketConditionRow = {
@@ -119,6 +120,33 @@ export type StockDecisionSummary = {
   nextReviewAction: string;
   basisLabel: string;
   asOfLabel: string;
+};
+
+export type StockViewModelMeta = Partial<
+  Pick<
+    ResultMeta,
+    "quality_flag" | "vendor_status" | "source_version" | "rule_version" | "trace_id" | "fallback_mode"
+  >
+>;
+
+export type StockDataBoundarySummary = {
+  boundaryCount: number;
+  diagnosticsCount: number;
+  dataGapCount: number;
+  unsupportedCount: number;
+  freshnessLabel: string;
+  summaryLabel: string;
+  detailLabel: string;
+  topMessages: string[];
+};
+
+export type StockSectorFilterSummary = {
+  sectorCode: string | null;
+  sectorLabel: string;
+  isFiltered: boolean;
+  visibleCount: number;
+  totalCount: number;
+  summaryLabel: string;
 };
 
 export type StockCandidateReviewQueueItem = {
@@ -269,6 +297,13 @@ function metricValueForView(row: StockSectorRow, view: StockSectorViewKind): num
   }
 }
 
+function formatFreshnessLabel(meta: StockViewModelMeta = {}): string {
+  const quality = meta.quality_flag ?? "pending";
+  const vendor = meta.vendor_status ?? "pending";
+  const fallback = meta.fallback_mode && meta.fallback_mode !== "none" ? ` / 回退 ${meta.fallback_mode}` : "";
+  return `新鲜度 ${quality} / ${vendor}${fallback}`;
+}
+
 export function buildDailyJudgmentStrip(payload: LivermoreStrategyPayload): StockDailyJudgmentStrip {
   const gate = payload.market_gate;
   const tone = mapGateStateToTone(gate.state);
@@ -298,6 +333,7 @@ export function buildInlineMetaSegments(
     vendor_status: string;
     source_version: string;
     rule_version: string;
+    fallback_mode: string;
   }>,
 ): StockMetaSegment[] {
   const out: StockMetaSegment[] = [
@@ -306,6 +342,7 @@ export function buildInlineMetaSegments(
     { key: "rule_version", text: extras.rule_version ?? "待补" },
     { key: "quality_flag", text: extras.quality_flag ?? "待补" },
     { key: "vendor_status", text: extras.vendor_status ?? "待补" },
+    { key: "fallback_mode", text: extras.fallback_mode ?? "待补" },
   ];
   return out;
 }
@@ -316,6 +353,66 @@ function countBoundaryItems(payload: LivermoreStrategyPayload): number {
     payload.data_gaps.filter((gap) => gap.status !== "ready").length +
     payload.unsupported_outputs.length
   );
+}
+
+export function buildDataBoundarySummary(
+  payload: LivermoreStrategyPayload,
+  meta: StockViewModelMeta = {},
+): StockDataBoundarySummary {
+  const diagnostics = payload.diagnostics.filter((item) => item.severity !== "info");
+  const dataGaps = payload.data_gaps.filter((gap) => gap.status !== "ready");
+  const unsupported = payload.unsupported_outputs;
+  const topMessages = [
+    ...diagnostics.map((item) => item.message),
+    ...dataGaps.map((gap) => `${gap.input_family} ${gap.status}: ${gap.evidence}`),
+    ...unsupported.map((item) => `${item.key}: ${item.reason}`),
+  ].slice(0, 4);
+  const freshnessLabel = formatFreshnessLabel(meta);
+  const boundaryCount = diagnostics.length + dataGaps.length + unsupported.length;
+
+  return {
+    boundaryCount,
+    diagnosticsCount: diagnostics.length,
+    dataGapCount: dataGaps.length,
+    unsupportedCount: unsupported.length,
+    freshnessLabel,
+    summaryLabel: boundaryCount > 0 ? `${boundaryCount} 条边界` : "边界清晰",
+    detailLabel: `诊断 ${diagnostics.length} / 缺口 ${dataGaps.length} / 未支持 ${unsupported.length} / ${freshnessLabel}`,
+    topMessages,
+  };
+}
+
+export function buildSectorFilterSummary(
+  payload: LivermoreStrategyPayload,
+  sectorFilterSectorCode: string | null,
+): StockSectorFilterSummary {
+  const queue = buildCandidateReviewQueue(payload);
+  const totalCount = queue.length;
+  if (!sectorFilterSectorCode) {
+    return {
+      sectorCode: null,
+      sectorLabel: "all sectors",
+      isFiltered: false,
+      visibleCount: totalCount,
+      totalCount,
+      summaryLabel: `sector all sectors / showing ${totalCount} of ${totalCount}`,
+    };
+  }
+
+  const sectorName =
+    queue.find((item) => item.sectorCode === sectorFilterSectorCode)?.sectorName ??
+    payload.sector_rank?.items?.find((item) => item.sector_code === sectorFilterSectorCode)?.sector_name ??
+    sectorFilterSectorCode;
+  const visibleCount = queue.filter((item) => item.sectorCode === sectorFilterSectorCode).length;
+
+  return {
+    sectorCode: sectorFilterSectorCode,
+    sectorLabel: sectorName,
+    isFiltered: true,
+    visibleCount,
+    totalCount,
+    summaryLabel: `sector ${sectorName} (${sectorFilterSectorCode}) / showing ${visibleCount} of ${totalCount}`,
+  };
 }
 
 export function buildCandidateReviewQueue(
@@ -346,6 +443,7 @@ export function buildDecisionSummary(
   meta: Partial<{
     quality_flag: string;
     vendor_status: string;
+    fallback_mode: string;
   }> = {},
 ): StockDecisionSummary {
   const strip = buildDailyJudgmentStrip(payload);
@@ -353,7 +451,10 @@ export function buildDecisionSummary(
   const firstReview = queue[0];
   const qualityFlag = meta.quality_flag ?? "待补";
   const vendorStatus = meta.vendor_status ?? "待补";
-  const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok";
+  const fallbackMode = meta.fallback_mode ?? "none";
+  const isFallback = fallbackMode !== "none";
+  const fallbackLabel = isFallback ? ` / fallback ${fallbackMode}` : "";
+  const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok" && !isFallback;
   const candidateCount = payload.stock_candidates?.candidate_count ?? queue.length;
   const boundaryCount = countBoundaryItems(payload);
 
@@ -364,7 +465,7 @@ export function buildDecisionSummary(
     strongestSectorLabel: strip.strongestSectorChip,
     weakestSectorLabel: strip.weakestSectorChip,
     candidateCountLabel: `候选 ${candidateCount}`,
-    dataFreshnessLabel: `${dataFreshnessOk ? "数据正常" : "数据需复核"} ${qualityFlag} / ${vendorStatus}`,
+    dataFreshnessLabel: `${dataFreshnessOk ? "数据正常" : "数据需复核"} ${qualityFlag} / ${vendorStatus}${fallbackLabel}`,
     boundaryLabel: boundaryCount > 0 ? `${boundaryCount} 条边界` : "边界清晰",
     nextReviewAction: firstReview
       ? `下一步：先复核 ${firstReview.stockName}（${firstReview.stockCode}），${firstReview.sectorName}，距观察位 ${firstReview.distanceToBreakoutPct}。`

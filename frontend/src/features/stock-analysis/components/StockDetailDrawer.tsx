@@ -99,6 +99,12 @@ export type StockDetailDrawerProps = {
   stockCode: string | null;
   stockName?: string;
   asOfDate?: string;
+  reviewContext?: {
+    sourceLabel: string;
+    sectorName?: string;
+    reviewRank?: number;
+    distanceToBreakoutPct?: string;
+  } | null;
   onClose: () => void;
 };
 
@@ -126,7 +132,7 @@ function candidateHistoryRowClass(status: string): string {
   return "";
 }
 
-export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: StockDetailDrawerProps) {
+export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContext, onClose }: StockDetailDrawerProps) {
   const client = useApiClient();
   const [lookback, setLookback] = useState<number>(60);
 
@@ -200,6 +206,16 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, onClose }: S
               <div className="stock-detail-drawer__meta-line">
                 <Text type="secondary">截至日 {asOfDate ?? detailQuery.data?.result?.as_of_date ?? "—"}</Text>
               </div>
+              {reviewContext ? (
+                <div className="stock-detail-drawer__review-context" data-testid="stock-detail-review-context">
+                  <span>{reviewContext.sourceLabel}</span>
+                  {reviewContext.reviewRank != null ? <span>#{reviewContext.reviewRank}</span> : null}
+                  {reviewContext.sectorName ? <span>{reviewContext.sectorName}</span> : null}
+                  {reviewContext.distanceToBreakoutPct ? (
+                    <span>距观察位 {reviewContext.distanceToBreakoutPct}</span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="stock-detail-drawer__lookback">
               <Text type="secondary">回看交易日</Text>

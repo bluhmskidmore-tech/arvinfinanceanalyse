@@ -11,10 +11,12 @@ import type {
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateReviewQueue,
+  buildDataBoundarySummary,
   buildDecisionSummary,
   buildInlineMetaSegments,
   buildMarketStateCard,
   buildRiskExitRows,
+  buildSectorFilterSummary,
   buildSectorRows,
   buildSectorTableSortComparator,
   buildSectorViewModel,
@@ -104,7 +106,15 @@ export default function StockAnalysisPage() {
     order: "ascend" | "descend";
   }>({ key: "rank", order: "ascend" });
   const [boundaryDrawerOpen, setBoundaryDrawerOpen] = useState(false);
-  const [detailSelection, setDetailSelection] = useState<{ code: string; name?: string } | null>(null);
+  const [detailSelection, setDetailSelection] = useState<{
+    code: string;
+    name?: string;
+    reviewRank?: number;
+    sectorCode?: string;
+    sectorName?: string;
+    distanceToBreakoutPct?: string;
+    source?: "review_queue" | "risk_exit";
+  } | null>(null);
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [sectorSeriesCollapseKeys, setSectorSeriesCollapseKeys] = useState<string[]>([]);
   const [sectorSeriesWindow, setSectorSeriesWindow] = useState<5 | 20>(5);
@@ -139,12 +149,14 @@ export default function StockAnalysisPage() {
         ? buildDecisionSummary(strategyPayload, {
             quality_flag: strategyQuery.data?.result_meta?.quality_flag,
             vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
           })
         : null,
     [
       strategyPayload,
       strategyQuery.data?.result_meta?.quality_flag,
       strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
     ],
   );
 
@@ -181,6 +193,13 @@ export default function StockAnalysisPage() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "zh-Hans-CN"));
   }, [reviewQueue]);
 
+  const sectorFilterSummary = useMemo(
+    () => (strategyPayload ? buildSectorFilterSummary(strategyPayload, sectorFilterSectorCode) : null),
+    [strategyPayload, sectorFilterSectorCode],
+  );
+
+  const selectedSectorLabel = sectorFilterSectorCode ? (sectorFilterSummary?.sectorLabel ?? sectorFilterSectorCode) : null;
+
   const filteredCandidates = useMemo(() => {
     if (!sectorFilterSectorCode) return reviewQueue;
     return reviewQueue.filter((c) => c.sectorCode === sectorFilterSectorCode);
@@ -193,19 +212,38 @@ export default function StockAnalysisPage() {
 
   const riskExitUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "risk_exit");
 
+  const boundarySummary = useMemo(
+    () =>
+      strategyPayload
+        ? buildDataBoundarySummary(strategyPayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
+          })
+        : null,
+    [
+      strategyPayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+    ],
+  );
+
   const metaSegments = strategyPayload
     ? buildInlineMetaSegments(strategyPayload, {
         quality_flag: strategyQuery.data?.result_meta?.quality_flag,
         vendor_status: strategyQuery.data?.result_meta?.vendor_status,
         source_version: strategyQuery.data?.result_meta?.source_version,
         rule_version: strategyQuery.data?.result_meta?.rule_version,
+        fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
       })
     : [];
 
   const showStaleBanner = Boolean(
     strategyQuery.data?.result_meta &&
       (strategyQuery.data.result_meta.quality_flag !== "ok" ||
-        strategyQuery.data.result_meta.vendor_status !== "ok"),
+        strategyQuery.data.result_meta.vendor_status !== "ok" ||
+        strategyQuery.data.result_meta.fallback_mode !== "none"),
   );
 
   const topBars = sectorViewRows.slice(0, 5);
@@ -272,10 +310,11 @@ export default function StockAnalysisPage() {
       buildStockAnalysisAgentPageContext({
         asOfDate: effectiveAsOf,
         sectorFilterSectorCode,
+        sectorFilterLabel: selectedSectorLabel,
         sectorView,
         detailSelection,
       }),
-    [detailSelection, effectiveAsOf, sectorFilterSectorCode, sectorView],
+    [detailSelection, effectiveAsOf, sectorFilterSectorCode, sectorView, selectedSectorLabel],
   );
 
   return (
@@ -413,7 +452,7 @@ export default function StockAnalysisPage() {
 
           {showStaleBanner ? (
             <div className="stock-analysis-page__stale-banner" data-testid="stock-analysis-stale-banner" role="status">
-              数据陈旧或通道异常（quality_flag / vendor_status）。下方结论仅供复核参考。
+              数据陈旧、通道异常或使用回退快照（quality_flag / vendor_status / fallback_mode）。下方结论仅供复核参考。
             </div>
           ) : null}
 
@@ -773,6 +812,15 @@ export default function StockAnalysisPage() {
                     ))}
                   </div>
                 ) : null}
+                {reviewQueue.length > 0 ? (
+                  <div className="stock-analysis-page__filter-status" data-testid="stock-review-filter-status">
+                    <span>当前复核范围</span>
+                    <strong>{selectedSectorLabel ?? "全部行业"}</strong>
+                    <small>
+                      显示 {filteredCandidates.length} / {reviewQueue.length} 个候选
+                    </small>
+                  </div>
+                ) : null}
 
                 {reviewQueue.length > 0 ? (
                   <div className="stock-analysis-page__candidate-grid">
@@ -798,7 +846,17 @@ export default function StockAnalysisPage() {
                               type="default"
                               size="small"
                               data-testid={`stock-candidate-review-chart-${card.stockCode}`}
-                              onClick={() => setDetailSelection({ code: card.stockCode, name: card.stockName })}
+                              onClick={() =>
+                                setDetailSelection({
+                                  code: card.stockCode,
+                                  name: card.stockName,
+                                  reviewRank: card.rank,
+                                  sectorCode: card.sectorCode,
+                                  sectorName: card.sectorName,
+                                  distanceToBreakoutPct: card.distanceToBreakoutPct,
+                                  source: "review_queue",
+                                })
+                              }
                             >
                               复核 K 线
                             </Button>
@@ -898,11 +956,21 @@ export default function StockAnalysisPage() {
                         key={`${row.stockCode}:${row.status}:${row.reason}`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => setDetailSelection({ code: row.stockCode, name: row.stockName })}
+                        onClick={() =>
+                          setDetailSelection({
+                            code: row.stockCode,
+                            name: row.stockName,
+                            source: "risk_exit",
+                          })
+                        }
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            setDetailSelection({ code: row.stockCode, name: row.stockName });
+                            setDetailSelection({
+                              code: row.stockCode,
+                              name: row.stockName,
+                              source: "risk_exit",
+                            });
                           }
                         }}
                       >
@@ -944,6 +1012,13 @@ export default function StockAnalysisPage() {
                     </span>
                   ))}
                 </div>
+                {boundarySummary ? (
+                  <p className="stock-analysis-page__boundary-summary" data-testid="stock-analysis-boundary-summary">
+                    <strong>{boundarySummary.summaryLabel}</strong>
+                    <span>{boundarySummary.detailLabel}</span>
+                    {boundarySummary.topMessages[0] ? <small>{boundarySummary.topMessages[0]}</small> : null}
+                  </p>
+                ) : null}
                 <Button type="link" aria-expanded={boundaryDrawerOpen} onClick={() => setBoundaryDrawerOpen(true)}>
                   查看完整诊断
                 </Button>
@@ -1022,6 +1097,16 @@ export default function StockAnalysisPage() {
         stockCode={detailSelection?.code ?? null}
         stockName={detailSelection?.name}
         asOfDate={stockDetailAsOfDate}
+        reviewContext={
+          detailSelection
+            ? {
+                sourceLabel: detailSelection.source === "risk_exit" ? "风险退出观察" : "复核队列",
+                sectorName: detailSelection.sectorName,
+                reviewRank: detailSelection.reviewRank,
+                distanceToBreakoutPct: detailSelection.distanceToBreakoutPct,
+              }
+            : null
+        }
         onClose={() => setDetailSelection(null)}
       />
       <Drawer

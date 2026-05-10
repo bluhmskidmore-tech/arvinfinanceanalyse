@@ -306,6 +306,18 @@ describe("StockAnalysisPage", () => {
     );
   });
 
+  it("shows fallback snapshots as data that needs review", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({ metaOverrides: { fallback_mode: "latest_snapshot" } }),
+    });
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("数据需复核 ok / ok / fallback latest_snapshot");
+    expect(await screen.findByTestId("stock-analysis-stale-banner")).toHaveTextContent(
+      "仅供复核参考",
+    );
+  });
+
   it("renders refresh control and exposes as-of picker", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
@@ -318,15 +330,82 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByTestId("stock-candidate-000001.SZ")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("全部行业");
+    expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 2 / 2 个候选");
     await user.click(screen.getByTestId("sector-filter-chip-801002"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("stock-candidate-000001.SZ")).not.toBeInTheDocument();
       expect(screen.getByTestId("stock-candidate-000002.SZ")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("sector-filter-chip-801002")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "全部行业" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("新能源车");
+    expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 1 / 2 个候选");
 
     await user.click(screen.getByRole("button", { name: "全部行业" }));
     await screen.findByTestId("stock-candidate-000001.SZ");
+    expect(screen.getByRole("button", { name: "全部行业" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows an empty review queue state when a sector bar has no candidates", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          sector_rank: {
+            ...buildStrategyPayload().sector_rank!,
+            sector_count: 3,
+            items: [
+              ...buildStrategyPayload().sector_rank!.items,
+              {
+                rank: 3,
+                sector_code: "801003",
+                sector_name: "无候选行业",
+                score: 0.7,
+                avg_pctchange: 0.1,
+                avg_turn: 1.2,
+                avg_amplitude: 1.5,
+                constituent_count: 5,
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    expect(await screen.findByTestId("stock-candidate-000001.SZ")).toBeInTheDocument();
+    await user.click(screen.getByTestId("sector-bar-801003"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("stock-candidate-000001.SZ")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("stock-candidate-000002.SZ")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("无候选行业");
+    expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 0 / 2 个候选");
+    expect(screen.getByText("该行业暂无候选复核项，可切换到其他行业复核。")).toBeInTheDocument();
+  });
+
+  it("connects the boundary summary to the full diagnostics drawer", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("边界");
+
+    const boundarySummary = screen.getByTestId("stock-analysis-boundary-summary");
+    expect(boundarySummary).toHaveTextContent("2 条边界");
+    expect(boundarySummary).toHaveTextContent("诊断 1 / 缺口 1 / 未支持 0");
+
+    await user.click(screen.getByRole("button", { name: "查看完整诊断" }));
+
+    expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
+    expect(screen.getByText("警告 / Warning")).toBeInTheDocument();
+    expect(screen.getAllByText("Breadth inputs are unavailable.").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("data_gaps")).toBeInTheDocument();
+    expect(screen.getAllByText(/breadth/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("supported_outputs")).toBeInTheDocument();
+    expect(screen.getByText("unsupported_outputs")).toBeInTheDocument();
   });
 
   it("avoids forbidden trading copy", async () => {
@@ -435,6 +514,9 @@ describe("StockAnalysisPage", () => {
       ),
     );
     expect(await screen.findByTestId("stock-detail-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-detail-review-context")).toHaveTextContent("复核队列");
+    expect(screen.getByTestId("stock-detail-review-context")).toHaveTextContent("#1");
+    expect(screen.getByTestId("stock-detail-review-context")).toHaveTextContent("AI");
   });
 
   it("opens Agent drawer and submits page_context.page_id stock-analysis + filters", async () => {
@@ -460,7 +542,9 @@ describe("StockAnalysisPage", () => {
     expect(submitted?.page_context?.current_filters).toMatchObject({
       as_of_date: "2026-04-29",
       sector_filter: null,
+      sector_filter_label: null,
       sector_view: "score",
+      current_view: "decision",
     });
     expect(Array.isArray(submitted?.page_context?.selected_rows)).toBe(true);
     expect(submitted?.page_context?.selected_rows ?? []).toEqual([]);
@@ -489,9 +573,18 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => expect(queryAgentSpy).toHaveBeenCalled());
     const submitted = queryAgentSpy.mock.calls[0]?.[0];
     expect(submitted?.page_context?.current_filters?.sector_filter).toBe("801002");
+    expect(submitted?.page_context?.current_filters?.sector_filter_label).toBe("新能源车");
     expect(submitted?.page_context?.current_filters?.sector_view).toBe("score");
+    expect(submitted?.page_context?.current_filters?.current_view).toBe("stock_detail");
     expect(submitted?.page_context?.selected_rows).toEqual([
-      { stock_code: "000002.SZ", stock_name: "Beta" },
+      {
+        stock_code: "000002.SZ",
+        stock_name: "Beta",
+        review_rank: 2,
+        sector_code: "801002",
+        sector_name: "新能源车",
+        source: "review_queue",
+      },
     ]);
     expect(submitted?.filters).toEqual({ research_domain: "stock" });
     queryAgentSpy.mockRestore();
