@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Literal
 
 from backend.app.governance.settings import get_settings
@@ -16,8 +16,6 @@ from backend.app.schemas.dashboard import (
     DailyChangesPayload,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
-
-Q8 = Decimal("0.00000001")
 
 _DASHBOARD_CACHE_VERSION = "cv_dashboard_analytical_v1"
 _DASHBOARD_RULE_VERSION = "rv_dashboard_read_v1"
@@ -34,7 +32,7 @@ def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
 
 
-def _pct_numeric_from_fraction(frac: Decimal | None, *, precision: int = 8) -> Numeric:
+def _pct_numeric_from_fraction(frac: Decimal | None, *, precision: int = 2) -> Numeric:
     if frac is None:
         return null_numeric(unit="pct", precision=precision, sign_aware=False)
     pct = frac * Decimal("100")
@@ -48,13 +46,28 @@ def _pct_numeric_from_fraction(frac: Decimal | None, *, precision: int = 8) -> N
 
 
 def _yuan_numeric(val: Decimal, *, sign_aware: bool) -> Numeric:
-    return numeric_from_raw(
+    numeric = numeric_from_raw(
         raw=float(val),
         unit="yuan",
         precision=8,
         sign_aware=sign_aware,
         signed_format=sign_aware,
     )
+    numeric.display = _fmt_yuan_as_yi(val, sign_aware=sign_aware)
+    return numeric
+
+
+def _fmt_yuan_as_yi(value: Decimal, *, sign_aware: bool = False) -> str:
+    yi = value / Decimal("100000000")
+    prefix = "+" if sign_aware and yi >= 0 else ""
+    return f"{prefix}{yi:,.2f} 亿"
+
+
+def _fmt_rate_pct(value: Decimal | None) -> str:
+    if value is None:
+        return "—"
+    pct = value * Decimal("100")
+    return f"{pct:,.2f}%"
 
 
 def _pct_change_numeric(chg_amt: Decimal, prev: Decimal) -> Numeric:
@@ -64,14 +77,10 @@ def _pct_change_numeric(chg_amt: Decimal, prev: Decimal) -> Numeric:
     return numeric_from_raw(
         raw=float(pct),
         unit="pct",
-        precision=8,
+        precision=2,
         sign_aware=True,
         signed_format=True,
     )
-
-
-def _fmt813(value: Decimal) -> str:
-    return format(value.quantize(Q8, rounding=ROUND_HALF_UP), "f")
 
 
 def _top_3_detail_rows(
@@ -79,8 +88,7 @@ def _top_3_detail_rows(
 ) -> list[dict[str, object]]:
     out: list[dict[str, object]] = []
     for name, amt, rte in rows:
-        frac = rte if rte is not None else Decimal("0")
-        out.append({"name": name, "amount": _fmt813(amt), "rate": _fmt813(frac)})
+        out.append({"name": name, "amount": _fmt_yuan_as_yi(amt), "rate": _fmt_rate_pct(rte)})
     return out
 
 
@@ -148,7 +156,7 @@ def _zeroed_metrics_card() -> CoreMetricsCardData:
         total_amount=_yuan_numeric(zero, sign_aware=False),
         weighted_avg_rate=_pct_numeric_from_fraction(None),
         change_amount=_yuan_numeric(zero, sign_aware=True),
-        change_pct=null_numeric(unit="pct", precision=8, sign_aware=True),
+        change_pct=null_numeric(unit="pct", precision=2, sign_aware=True),
         top_3_details=[],
     )
 
