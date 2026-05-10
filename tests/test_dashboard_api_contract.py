@@ -180,12 +180,16 @@ def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> No
     bonds = body["bond_investments"]
     assert bonds["total_amount"]["raw"] == pytest.approx(1_600_000.0)
     assert bonds["total_amount"]["unit"] == "yuan"
+    assert bonds["total_amount"]["precision"] == 2
     assert bonds["total_amount"]["display"] == "0.02 亿"
     assert bonds["weighted_avg_rate"]["raw"] == pytest.approx(0.0345)
+    assert bonds["weighted_avg_rate"]["precision"] == 2
     assert bonds["weighted_avg_rate"]["display"] == "3.45%"
     assert bonds["change_amount"]["raw"] == pytest.approx(600_000.0)
+    assert bonds["change_amount"]["precision"] == 2
     assert bonds["change_amount"]["display"] == "+0.01 亿"
     assert bonds["change_pct"]["raw"] == pytest.approx(0.6)
+    assert bonds["change_pct"]["precision"] == 2
     assert bonds["change_pct"]["display"] == "+60.00%"
     assert bonds["top_3_details"][0]["amount"] == "0.01 亿"
     assert bonds["top_3_details"][0]["rate"] == "3.20%"
@@ -203,6 +207,7 @@ def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> No
     assert periods[1]["period"] == "week"
     assert periods[2]["period"] == "month"
     assert periods[0]["bond_investments_change"]["raw"] == pytest.approx(600_000.0)
+    assert periods[0]["bond_investments_change"]["precision"] == 2
     assert periods[0]["bond_investments_change"]["display"] == "+0.01 亿"
 
     get_settings.cache_clear()
