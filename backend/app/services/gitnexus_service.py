@@ -33,14 +33,15 @@ def build_gitnexus_status_payload(request: AgentQueryRequest) -> dict[str, Any]:
     process_name = _resolve_process_name(request)
     mcp_bundle = None
     mcp_error = None
-    try:
-        mcp_bundle = GitNexusMcpClient(repo_path).read_bundle(process_name=process_name)
-        if mcp_bundle.get("repo_name"):
-            resource_repo_name = str(mcp_bundle["repo_name"])
-            context_uri = f"gitnexus://repo/{resource_repo_name}/context"
-            processes_uri = f"gitnexus://repo/{resource_repo_name}/processes"
-    except Exception as exc:  # pragma: no cover - exercised via fallback assertions
-        mcp_error = str(exc)
+    if process_name or (mcp_configured and _request_wants_mcp_bundle(request, process_name=process_name)):
+        try:
+            mcp_bundle = GitNexusMcpClient(repo_path).read_bundle(process_name=process_name)
+            if mcp_bundle.get("repo_name"):
+                resource_repo_name = str(mcp_bundle["repo_name"])
+                context_uri = f"gitnexus://repo/{resource_repo_name}/context"
+                processes_uri = f"gitnexus://repo/{resource_repo_name}/processes"
+        except Exception as exc:  # pragma: no cover - exercised via fallback assertions
+            mcp_error = str(exc)
 
     quality_flag = "ok" if mcp_bundle else ("warning" if mcp_configured else "warning")
     repo_name = repo_path.name or str(repo_path)
@@ -193,6 +194,20 @@ def _resolve_process_name(request: AgentQueryRequest) -> str | None:
     if match:
         return match.group("name").strip()
     return None
+
+
+def _request_wants_mcp_bundle(
+    request: AgentQueryRequest,
+    *,
+    process_name: str | None,
+) -> bool:
+    if process_name:
+        return True
+    explicit = str(request.context.get("gitnexus_mcp") or "").strip().lower()
+    if explicit in {"1", "true", "yes", "context", "processes"}:
+        return True
+    normalized = str(request.question or "").strip().lower()
+    return any(token in normalized for token in ("context", "processes"))
 
 
 def _normalize_repo_path(raw_path: str) -> Path:
