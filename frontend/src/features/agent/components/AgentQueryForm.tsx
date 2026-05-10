@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from "react";
 import { shellTokens as t } from "../../../theme/tokens";
 
 type AgentQueryFormProps = {
+  compact?: boolean;
   pageContext?: { page_id: string };
   repoPath: string;
   onRepoPathChange: (value: string) => void;
@@ -39,13 +40,14 @@ function buildPromptPlaceholder(pageContext?: { page_id: string }) {
   return "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
 }
 
-function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
-  return event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, loading: boolean) {
+  return !loading && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
 }
 
 const primaryQuickExampleCount = 2;
 
 export function AgentQueryForm({
+  compact = false,
   pageContext,
   repoPath,
   onRepoPathChange,
@@ -71,37 +73,41 @@ export function AgentQueryForm({
   const advancedQuickExamples = quickExamples.slice(primaryQuickExampleCount);
 
   return (
-    <div className="agent-chat-composer">
-      <div className="agent-chat-composer__header">
-        <div>
-          <div className="agent-chat-composer__title">问 Agent</div>
-        </div>
-        <div className="agent-chat-composer__hint">Enter 发送 · Shift+Enter 换行</div>
-      </div>
+    <div className={compact ? "agent-chat-composer agent-chat-composer--compact" : "agent-chat-composer"}>
+      {!compact ? (
+        <>
+          <div className="agent-chat-composer__header">
+            <div>
+              <div className="agent-chat-composer__title">问 Agent</div>
+            </div>
+            <div className="agent-chat-composer__hint">Enter 发送 · Shift+Enter 换行</div>
+          </div>
 
-      <div className="agent-chat-composer__quick-row" aria-label="常用问题">
-        {primaryQuickExamples.map((example) => (
-          <button
-            key={example}
-            type="button"
-            className="agent-chat-composer__quick-button"
-            onClick={() => onQuickExample(example)}
-          >
-            {formatQuickExampleLabel(example)}
-          </button>
-        ))}
-      </div>
+          <div className="agent-chat-composer__quick-row" aria-label="常用问题">
+            {primaryQuickExamples.map((example) => (
+              <button
+                key={example}
+                type="button"
+                className="agent-chat-composer__quick-button"
+                onClick={() => onQuickExample(example)}
+              >
+                {formatQuickExampleLabel(example)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
         <textarea
           aria-label="agent-question-input"
           className="agent-chat-composer__input"
-          rows={3}
+          rows={compact ? 2 : 3}
           placeholder={buildPromptPlaceholder(pageContext)}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
-            if (shouldSubmitByEnter(event)) {
+            if (shouldSubmitByEnter(event, loading)) {
               event.preventDefault();
               void onSubmit();
             }

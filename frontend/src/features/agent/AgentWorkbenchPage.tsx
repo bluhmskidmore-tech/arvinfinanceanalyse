@@ -46,6 +46,7 @@ type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed"
 type AgentRunPayload = PollingTaskPayload & {
   run_id: string;
   status: AgentRunStatus;
+  run_kind?: "managed" | "workflow" | "sync";
   question?: string | null;
   provider?: string;
   model?: string;
@@ -86,6 +87,26 @@ type AgentPanelProps = AgentWorkbenchPageProps & {
   showHeader?: boolean;
 };
 
+type AgentOrdinaryConversationMode = "unknown" | "managed" | "local_sync";
+
+type FinancialWorkflowShortcut = {
+  id: string;
+  title: string;
+  slashCommand: string;
+  description: string;
+  mappedIntents: string[];
+};
+
+type ResearchDomain = "stock" | "macro";
+
+type ResearchShortcut = {
+  id: string;
+  title: string;
+  question: string;
+  description: string;
+  domain: ResearchDomain;
+};
+
 class AgentDisabledQueryError extends Error {
   detail: string;
   phase: string;
@@ -95,6 +116,16 @@ class AgentDisabledQueryError extends Error {
     this.name = "AgentDisabledQueryError";
     this.detail = detail;
     this.phase = phase;
+  }
+}
+
+class AgentManagedRunRequiresHermesError extends Error {
+  detail: string;
+
+  constructor(detail: string) {
+    super(detail);
+    this.name = "AgentManagedRunRequiresHermesError";
+    this.detail = detail;
   }
 }
 
@@ -110,6 +141,8 @@ const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
 const MAX_AGENT_CONTEXT_TURNS = 4;
 const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
+const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
+const latestAgentRunStatusRequests = new Map<string, Promise<AgentRunPayload>>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -186,6 +219,17 @@ function isDisabledPayload(value: unknown): value is {
     typeof value.phase === "string" &&
     typeof value.detail === "string"
   );
+}
+
+function getManagedRunRequiresHermesDetail(value: unknown) {
+  if (!isRecord(value) || typeof value.detail !== "string") {
+    return null;
+  }
+  const detail = value.detail.trim();
+  if (!detail.startsWith("Agent runs require MOSS_AGENT_PROVIDER=")) {
+    return null;
+  }
+  return detail;
 }
 
 function isAgentRunStatus(value: unknown): value is AgentRunStatus {
@@ -345,12 +389,59 @@ function formatRuntimeLabel(value: unknown, fallback: string) {
 
 function formatProviderLabel(value: unknown, fallback: string) {
   const label = formatRuntimeLabel(value, fallback);
-  return label.toLowerCase() === "hermes" ? "Hermes" : label;
+  switch (label.toLowerCase()) {
+    case "hermes":
+      return "Hermes";
+    case "dexter":
+      return "Dexter";
+    default:
+      return label;
+  }
+}
+
+function formatManagedProviderLabel(provider: unknown) {
+  if (typeof provider !== "string" || provider.trim().length === 0) {
+    return null;
+  }
+  return formatProviderLabel(provider, "托管运行时");
+}
+
+function formatManagedRunTitle(status: AgentRunStatus | undefined, provider: unknown) {
+  const providerLabel = formatManagedProviderLabel(provider);
+  if (!status) {
+    return "已收到问题";
+  }
+  switch (status) {
+    case "queued":
+      return providerLabel ? `${providerLabel} 已排队` : "托管任务已排队";
+    case "starting":
+      return providerLabel ? `${providerLabel} 正在启动` : "托管任务启动中";
+    case "running":
+      return providerLabel ? `${providerLabel} 正在分析` : "托管任务分析中";
+    case "completed":
+      return providerLabel ? `${providerLabel} 托管任务完成` : "托管任务完成";
+    case "failed":
+      return providerLabel ? `${providerLabel} 托管任务失败` : "托管任务失败";
+    default:
+      return providerLabel ? `${providerLabel} 正在分析` : "托管任务分析中";
+  }
+}
+
+function formatManagedRunFailureMessage(provider: unknown) {
+  const providerLabel = formatManagedProviderLabel(provider);
+  return providerLabel
+    ? `${providerLabel} 托管任务失败，请稍后重试。`
+    : "托管任务失败，请稍后重试。";
+}
+
+function formatManagedRunRestoreQuestion(provider: unknown) {
+  const providerLabel = formatManagedProviderLabel(provider);
+  return providerLabel ? `恢复上一次 ${providerLabel} 对话` : "恢复上一次托管对话";
 }
 
 function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback = "--") {
   if (!status) {
-    return "正在交给 Hermes";
+    return fallback;
   }
   switch (status) {
     case "queued":
@@ -368,24 +459,56 @@ function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback 
   }
 }
 
-function formatAgentWaitTitle(status: AgentRunStatus | undefined) {
+function formatAgentTurnWaitTitle(agentRun: AgentRunPayload | null) {
+  if (agentRun?.run_kind === "workflow") {
+    if (agentRun.status === "failed") {
+      return "Workflow 执行失败";
+    }
+    if (agentRun.status === "completed") {
+      return "Workflow 执行完成";
+    }
+    return "Workflow 执行进行中";
+  }
+  if (agentRun?.run_kind === "sync") {
+    if (agentRun.status === "failed") {
+      return "本地查询失败";
+    }
+    if (agentRun.status === "completed") {
+      return "本地查询完成";
+    }
+    return "本地查询进行中";
+  }
+  return formatManagedRunTitle(agentRun?.status, agentRun?.provider);
+}
+
+function formatAgentWaitPhase(agentRun: AgentRunPayload | null) {
+  if (agentRun?.run_kind === "workflow") {
+    if (agentRun.status === "running") {
+      return "本地 workflow 执行中";
+    }
+    if (agentRun.status === "starting") {
+      return "准备本地 workflow";
+    }
+    if (agentRun.status === "queued") {
+      return "等待本地 workflow";
+    }
+  }
+  if (agentRun?.run_kind === "sync") {
+    if (agentRun.status === "running") {
+      return "同步处理中";
+    }
+    if (agentRun.status === "starting") {
+      return "准备本地查询";
+    }
+    if (agentRun.status === "queued") {
+      return "等待本地查询";
+    }
+  }
+  const status = agentRun?.status;
   if (!status) {
-    return "已收到问题";
+    return "正在交给托管运行时";
   }
-  switch (status) {
-    case "queued":
-      return "Hermes 已排队";
-    case "starting":
-      return "Hermes 正在启动";
-    case "running":
-      return "Hermes 正在分析";
-    case "completed":
-      return "Hermes 托管任务完成";
-    case "failed":
-      return "Hermes 托管任务失败";
-    default:
-      return "Hermes 正在分析";
-  }
+  return formatAgentRunStatusLabel(status, "运行中");
 }
 
 function formatAgentRunElapsed(agentRun: AgentRunPayload | null, fallbackSeconds: number) {
@@ -395,7 +518,42 @@ function formatAgentRunElapsed(agentRun: AgentRunPayload | null, fallbackSeconds
   return fallbackSeconds;
 }
 
-function formatAgentWaitHint(status: AgentRunStatus | undefined, waitSeconds: number) {
+function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: number) {
+  if (agentRun?.run_kind === "workflow") {
+    if (agentRun.status === "queued" || agentRun.status === "starting") {
+      return "本地 workflow 正在准备，本页会直接显示结果。";
+    }
+    if (agentRun.status === "running" && waitSeconds >= 10) {
+      return "本地 workflow 仍在处理，复杂问题通常会多等一会儿。";
+    }
+    if (agentRun.status === "running") {
+      return "本地 workflow 正在生成结果，本页会直接更新答案。";
+    }
+    if (agentRun.status === "completed") {
+      return "结果已返回，可以继续追问。";
+    }
+    if (agentRun.status === "failed") {
+      return "这次 workflow 没有完成，可以调整问题后重试。";
+    }
+  }
+  if (agentRun?.run_kind === "sync") {
+    if (agentRun.status === "queued" || agentRun.status === "starting") {
+      return "本地同步查询正在准备，本页会直接显示结果。";
+    }
+    if (agentRun.status === "running" && waitSeconds >= 10) {
+      return "本地查询仍在处理，复杂问题通常会多等一会儿。";
+    }
+    if (agentRun.status === "running") {
+      return "本地查询正在生成结果，本页会直接更新答案。";
+    }
+    if (agentRun.status === "completed") {
+      return "结果已返回，可以继续追问。";
+    }
+    if (agentRun.status === "failed") {
+      return "这次本地查询没有完成，可以调整问题后重试。";
+    }
+  }
+  const status = agentRun?.status;
   if (!status) {
     return "先把问题放进队列，拿到 run_id 后会继续更新。";
   }
@@ -403,13 +561,20 @@ function formatAgentWaitHint(status: AgentRunStatus | undefined, waitSeconds: nu
     return "任务已入队；如果前面还有回答，会按顺序处理。";
   }
   if (status === "starting") {
-    return "Hermes 正在准备运行环境。";
+    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
+    return providerLabel ? `${providerLabel} 正在准备运行环境。` : "托管任务正在准备运行环境。";
   }
   if (status === "running" && waitSeconds >= 10) {
-    return "Hermes 还在思考，复杂问题通常会多等一会儿。";
+    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
+    return providerLabel
+      ? `${providerLabel} 还在思考，复杂问题通常会多等一会儿。`
+      : "托管任务仍在处理中，复杂问题通常会多等一会儿。";
   }
   if (status === "running") {
-    return "Hermes 正在分析，本页会自动更新结果。";
+    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
+    return providerLabel
+      ? `${providerLabel} 正在分析，本页会自动更新结果。`
+      : "托管任务正在分析，本页会自动更新结果。";
   }
   if (status === "completed") {
     return "可以离开或刷新，回来后会继续显示这次结果。";
@@ -420,6 +585,16 @@ function formatAgentWaitHint(status: AgentRunStatus | undefined, waitSeconds: nu
   return "可以离开或刷新，回来后会继续显示这次结果。";
 }
 
+function getAgentRunPollIntervalMs(_payload: AgentRunPayload, attempt: number) {
+  if (attempt < 5) {
+    return 120;
+  }
+  if (attempt < 20) {
+    return 500;
+  }
+  return 1000;
+}
+
 function buildRuntimeStatus(
   result: AgentQueryResult | null,
   loading: boolean,
@@ -428,7 +603,7 @@ function buildRuntimeStatus(
   const filters = result?.evidence.filters_applied ?? {};
   const statusLabel = formatAgentRunStatusLabel(agentRun?.status, loading ? "分析中" : "--");
   return {
-    provider: formatProviderLabel(agentRun?.provider ?? filters.provider, loading ? "Hermes" : "待连接"),
+    provider: formatProviderLabel(agentRun?.provider ?? filters.provider, loading ? "托管运行时" : "待连接"),
     transport: formatRuntimeLabel(agentRun?.transport ?? filters.transport, loading ? "bridge" : "等待提问"),
     model: formatRuntimeLabel(agentRun?.model ?? filters.model, "--"),
     toolsets: formatRuntimeLabel(agentRun?.toolsets ?? filters.toolsets, "--"),
@@ -463,6 +638,55 @@ const GITNEXUS_QUICK_EXAMPLES = [
   "请给我看 GitNexus context",
   "请给我看 GitNexus processes",
 ] as const;
+
+const FINANCIAL_WORKFLOWS: FinancialWorkflowShortcut[] = [
+  {
+    id: "portfolio_review",
+    title: "Portfolio Review",
+    slashCommand: "/portfolio-review",
+    description: "组合规模、久期和信用暴露",
+    mappedIntents: ["portfolio_overview", "duration_risk", "credit_exposure"],
+  },
+  {
+    id: "pnl_review",
+    title: "PnL Review",
+    slashCommand: "/pnl-review",
+    description: "损益摘要、归因桥和产品损益",
+    mappedIntents: ["pnl_summary", "pnl_bridge", "product_pnl"],
+  },
+  {
+    id: "risk_memo",
+    title: "Risk Memo",
+    slashCommand: "/risk-memo",
+    description: "久期、信用暴露和风险张量",
+    mappedIntents: ["duration_risk", "credit_exposure", "risk_tensor"],
+  },
+  {
+    id: "market_brief",
+    title: "Market Brief",
+    slashCommand: "/market-brief",
+    description: "市场数据和新闻入口",
+    mappedIntents: ["market_data", "news"],
+  },
+];
+
+const RESEARCH_SHORTCUTS: ResearchShortcut[] = [
+  {
+    id: "stock_research",
+    title: "Stock Research",
+    question: "Review landed stock research context",
+    description: "Review refreshed stock rows with evidence and limits.",
+    domain: "stock",
+  },
+  {
+    id: "macro_research",
+    title: "Macro Research",
+    question: "Review landed macro research context",
+    description: "Review refreshed macro series with evidence and limits.",
+    domain: "macro",
+  },
+];
+
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const MAX_RECENT_REPO_PATHS = 5;
@@ -487,6 +711,81 @@ function buildAgentRequestBody(
       ...(conversationContext ? { conversation: conversationContext } : {}),
     },
     ...(pageContext ? { page_context: pageContext } : {}),
+  };
+}
+
+function buildFinancialWorkflowRequestBody(
+  workflow: FinancialWorkflowShortcut,
+  pageContext?: AgentPageContext,
+): AgentQueryRequest {
+  return {
+    question: workflow.slashCommand,
+    basis: "formal",
+    filters: {},
+    position_scope: "all",
+    currency_basis: "CNY",
+    context: {
+      user_id: "web-user",
+      workflow_mode: "execute",
+    },
+    ...(pageContext ? { page_context: pageContext } : {}),
+  };
+}
+
+function buildResearchRequestBody(
+  shortcut: ResearchShortcut,
+  pageContext?: AgentPageContext,
+): AgentQueryRequest {
+  return {
+    question: shortcut.question,
+    basis: "formal",
+    filters: { research_domain: shortcut.domain },
+    position_scope: "all",
+    currency_basis: "CNY",
+    context: {
+      user_id: "web-user",
+    },
+    ...(pageContext ? { page_context: pageContext } : {}),
+  };
+}
+
+function buildLocalSyncAgentRun(
+  runId: string,
+  question: string,
+  status: AgentRunStatus,
+  result?: AgentQueryResult | null,
+  errorMessage?: string,
+): AgentRunPayload {
+  const filters = result?.evidence.filters_applied ?? {};
+  return {
+    run_id: runId,
+    status,
+    run_kind: "sync",
+    question,
+    provider: formatRuntimeLabel(filters.provider, "local"),
+    model: formatRuntimeLabel(filters.model, "default"),
+    transport: formatRuntimeLabel(filters.transport, "sync"),
+    toolsets: formatRuntimeLabel(filters.toolsets, "default"),
+    error_message: errorMessage,
+    result: result ?? null,
+  };
+}
+
+function buildPendingAgentRun(
+  runId: string,
+  question: string,
+  runKind: "workflow" | "sync",
+): AgentRunPayload {
+  return {
+    run_id: runId,
+    status: "starting",
+    run_kind: runKind,
+    question,
+    provider: "local",
+    model: runKind === "workflow" ? "MOSS intents" : "default",
+    transport: "sync",
+    toolsets: runKind === "workflow" ? "workflow" : "GitNexus",
+    result: null,
   };
 }
 
@@ -647,6 +946,8 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
   const [query, setQuery] = useState("");
   const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>([]);
+  const [ordinaryConversationMode, setOrdinaryConversationMode] =
+    useState<AgentOrdinaryConversationMode>("unknown");
   const [repoPath, setRepoPath] = useState(() => loadRecentRepoPaths()[0] ?? "");
   const [availableProcesses, setAvailableProcesses] = useState<string[]>([]);
   const [processSearch, setProcessSearch] = useState("");
@@ -669,10 +970,16 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   const latestConversationTurn = conversationTurns[conversationTurns.length - 1] ?? null;
   const latestResultTurn = findLatestTurnWithResult(conversationTurns);
   const latestRunTurn = findLatestTurnWithRun(conversationTurns);
+  const runtimeResult = loading ? null : latestResultTurn?.result ?? result;
+  const runtimeRun = (
+    loading
+      ? latestConversationTurn?.agentRun ?? agentRun ?? latestRunTurn?.agentRun
+      : latestRunTurn?.agentRun ?? agentRun
+  ) ?? null;
   const runtimeStatus = buildRuntimeStatus(
-    latestResultTurn?.result ?? result,
+    runtimeResult,
     loading,
-    latestRunTurn?.agentRun ?? agentRun,
+    runtimeRun,
   );
   const hasConversation = conversationTurns.length > 0 || Boolean(result || error);
   repoPathRef.current = repoPath;
@@ -773,13 +1080,21 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     }
 
     let cancelled = false;
-    void fetchAgentRunStatus(latestRunId)
+    let restoreRequest = latestAgentRunStatusRequests.get(latestRunId);
+    if (!restoreRequest) {
+      restoreRequest = fetchAgentRunStatus(latestRunId).finally(() => {
+        latestAgentRunStatusRequests.delete(latestRunId);
+      });
+      latestAgentRunStatusRequests.set(latestRunId, restoreRequest);
+    }
+    void restoreRequest
       .then((payload) => {
         if (cancelled) {
           return;
         }
+        setOrdinaryConversationMode("managed");
         setAgentRun(payload);
-        const restoredQuestion = payload.question?.trim() || "恢复上一次 Hermes 对话";
+        const restoredQuestion = payload.question?.trim() || formatManagedRunRestoreQuestion(payload.provider);
         setConversationTurns([
           {
             id: `restored:${payload.run_id}`,
@@ -790,7 +1105,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
               payload.status === "failed"
                 ? {
                     kind: "request",
-                    message: payload.error_message || "Hermes 托管任务失败，请稍后重试。",
+                    message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
                   }
                 : null,
             activeSuggestedActionPayload: null,
@@ -798,12 +1113,11 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         ]);
         if (payload.status === "completed" && payload.result) {
           setResult(payload.result);
-          setActiveSuggestedActionPayload(null);
         }
         if (payload.status === "failed") {
           setError({
             kind: "request",
-            message: payload.error_message || "Hermes 托管任务失败，请稍后重试。",
+            message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
           });
         }
       })
@@ -845,6 +1159,11 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       throw new AgentDisabledQueryError(payload.detail, payload.phase);
     }
 
+    const managedRunRequiresHermesDetail = response.status === 400 ? getManagedRunRequiresHermesDetail(payload) : null;
+    if (managedRunRequiresHermesDetail) {
+      throw new AgentManagedRunRequiresHermesError(managedRunRequiresHermesDetail);
+    }
+
     if (!response.ok) {
       throw new Error(`智能体查询失败（${response.status}）`);
     }
@@ -854,7 +1173,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       return {
         run_id: "agent_run:sync_compat",
         status: "completed",
-        provider: formatRuntimeLabel(result.evidence.filters_applied.provider, "hermes"),
+        provider: formatRuntimeLabel(result.evidence.filters_applied.provider, "managed"),
         model: formatRuntimeLabel(result.evidence.filters_applied.model, "default"),
         transport: formatRuntimeLabel(result.evidence.filters_applied.transport, "bridge"),
         toolsets: formatRuntimeLabel(result.evidence.filters_applied.toolsets, "default"),
@@ -874,6 +1193,9 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     question: string,
     turnId: string,
     conversationContext?: Record<string, unknown>,
+    options?: {
+      rethrowLocalProviderFallback?: boolean;
+    },
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
@@ -886,12 +1208,14 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     );
     setAgentRun(null);
     setResult(null);
-    setActiveSuggestedActionPayload(null);
     try {
       const finalPayload = await runPollingTask<AgentRunPayload>({
         start: () => createAgentRun(requestBody),
         getStatus: fetchAgentRunStatus,
+        getIntervalMs: getAgentRunPollIntervalMs,
+        maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
         onUpdate: (payload) => {
+          setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           updateConversationTurn(turnId, (turn) => ({
             ...turn,
@@ -901,7 +1225,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       });
 
       if (finalPayload.status === "failed") {
-        throw new Error(finalPayload.error_message || "Hermes 托管任务失败，请稍后重试。");
+        throw new Error(finalPayload.error_message || formatManagedRunFailureMessage(finalPayload.provider));
       }
 
       if (!finalPayload.result) {
@@ -930,8 +1254,13 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         error: null,
         activeSuggestedActionPayload: null,
       }));
-      setActiveSuggestedActionPayload(null);
     } catch (requestError) {
+      if (
+        requestError instanceof AgentManagedRunRequiresHermesError &&
+        options?.rethrowLocalProviderFallback
+      ) {
+        throw requestError;
+      }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         if (requestError instanceof AgentDisabledQueryError) {
           const disabledError: AgentQueryError = {
@@ -953,11 +1282,22 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     }
   }
 
-  async function executeAgentQuery(question: string, mode: "query" | "processes" = "query") {
+  async function executeAgentQuery(
+    question: string,
+    mode: "query" | "processes" = "query",
+    turnId?: string,
+    conversationContext?: Record<string, unknown>,
+  ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
     try {
-      const requestBody = buildAgentRequestBody(question, normalizedRepoPath, selectedProcess, undefined, pageContext);
+      const requestBody = buildAgentRequestBody(
+        question,
+        normalizedRepoPath,
+        selectedProcess,
+        conversationContext,
+        pageContext,
+      );
 
       const response = await fetch("/api/agent/query", {
         method: "POST",
@@ -973,11 +1313,15 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
           return;
         }
-        setError({
+        const disabledError: AgentQueryError = {
           kind: "disabled",
           detail: payload.detail,
           phase: payload.phase,
-        });
+        };
+        setError(disabledError);
+        if (turnId) {
+          updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
+        }
         return;
       }
 
@@ -1004,40 +1348,99 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setResult(payload);
-        setConversationTurns((currentTurns) => [
-          ...currentTurns,
-          {
-            id: `sync:${Date.now()}:${Math.random().toString(16).slice(2)}`,
-            question,
-            agentRun: {
-              run_id: "agent_run:sync_query",
-              status: "completed",
-              provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
-              model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
-              transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
-              toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "default"),
-              result: payload,
-            },
-            result: payload,
-            error: null,
-            activeSuggestedActionPayload: null,
-          },
-        ]);
-        setActiveSuggestedActionPayload(null);
       }
       return payload;
     } catch (requestError) {
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
-        setError({
+        const nextError: AgentQueryError = {
           kind: "request",
           message: buildErrorMessage(requestError),
-        });
+        };
+        setError(nextError);
+        if (turnId) {
+          updateConversationTurn(turnId, (turn) => ({ ...turn, error: nextError }));
+        }
+        return undefined;
       }
+    }
+  }
+
+  async function executeLocalSyncConversation(
+    question: string,
+    turnId: string,
+    conversationContext?: Record<string, unknown>,
+  ) {
+    const syncRunId = `agent_run:sync:${turnId}`;
+    const runningSyncRun = buildLocalSyncAgentRun(syncRunId, question, "running");
+    setOrdinaryConversationMode("local_sync");
+    setAgentRun(runningSyncRun);
+    setResult(null);
+    updateConversationTurn(turnId, (turn) => ({
+      ...turn,
+      agentRun: runningSyncRun,
+      error: null,
+    }));
+
+    const payload = await executeAgentQuery(question, "query", turnId, conversationContext);
+    if (!payload) {
+      const failedSyncRun = buildLocalSyncAgentRun(
+        syncRunId,
+        question,
+        "failed",
+        null,
+        "本地查询失败，请稍后重试。",
+      );
+      setAgentRun(failedSyncRun);
+      updateConversationTurn(turnId, (turn) => ({
+        ...turn,
+        agentRun: failedSyncRun,
+      }));
+      return;
+    }
+
+    const completedSyncRun = buildLocalSyncAgentRun(syncRunId, question, "completed", payload);
+    setAgentRun(completedSyncRun);
+    updateConversationTurn(turnId, (turn) => ({
+      ...turn,
+      agentRun: completedSyncRun,
+      result: payload,
+      error: null,
+      activeSuggestedActionPayload: null,
+    }));
+  }
+
+  async function executeOrdinaryConversation(
+    question: string,
+    turnId: string,
+    conversationContext?: Record<string, unknown>,
+  ) {
+    if (ordinaryConversationMode === "local_sync") {
+      await executeLocalSyncConversation(question, turnId, conversationContext);
+      return;
+    }
+    if (ordinaryConversationMode === "managed") {
+      await executeManagedAgentRun(question, turnId, conversationContext);
+      return;
+    }
+
+    try {
+      await executeManagedAgentRun(question, turnId, conversationContext, {
+        rethrowLocalProviderFallback: true,
+      });
+    } catch (requestError) {
+      if (requestError instanceof AgentManagedRunRequiresHermesError) {
+        await executeLocalSyncConversation(question, turnId, conversationContext);
+        return;
+      }
+      throw requestError;
     }
   }
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
+    if (loading) {
+      return;
+    }
 
     const question = query.trim();
     if (!question) {
@@ -1057,7 +1460,180 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     setLoading(true);
     setError(null);
     try {
-      await executeManagedAgentRun(question, turn.id, context);
+      await executeOrdinaryConversation(question, turn.id, context);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function executeFinancialWorkflow(workflow: FinancialWorkflowShortcut) {
+    if (loading) {
+      return;
+    }
+
+    const turn = createAgentConversationTurn(workflow.slashCommand);
+    const pendingWorkflowRun = buildPendingAgentRun(
+      `agent_run:workflow:${workflow.id}:pending`,
+      workflow.slashCommand,
+      "workflow",
+    );
+    setAgentWaitSeconds(0);
+    setConversationTurns((currentTurns) => [
+      ...currentTurns,
+      {
+        ...turn,
+        agentRun: pendingWorkflowRun,
+      },
+    ]);
+    setLoading(true);
+    setAgentRun(pendingWorkflowRun);
+    setResult(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/agent/query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildFinancialWorkflowRequestBody(workflow, pageContext)),
+      });
+      const payload = (await response.json()) as unknown;
+
+      if (response.status === 503 && isDisabledPayload(payload)) {
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: payload.detail,
+          phase: payload.phase,
+        };
+        setError(disabledError);
+        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`智能体查询失败（${response.status}）`);
+      }
+
+      if (!isAgentQueryResult(payload)) {
+        throw new Error("智能体返回结果格式无效。");
+      }
+      normalizeAgentResult(payload);
+
+      const workflowRun: AgentRunPayload = {
+        run_id: `agent_run:workflow:${workflow.id}`,
+        status: "completed",
+        run_kind: "workflow",
+        provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
+        model: formatRuntimeLabel(payload.evidence.filters_applied.model, "MOSS intents"),
+        transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
+        toolsets: workflow.mappedIntents.join(", "),
+        result: payload,
+      };
+      setOrdinaryConversationMode("local_sync");
+      setAgentRun(workflowRun);
+      setResult(payload);
+      updateConversationTurn(turn.id, (currentTurn) => ({
+        ...currentTurn,
+        agentRun: workflowRun,
+        result: payload,
+        error: null,
+        activeSuggestedActionPayload: null,
+      }));
+    } catch (requestError) {
+      const nextError: AgentQueryError = {
+        kind: "request",
+        message: buildErrorMessage(requestError),
+      };
+      setError(nextError);
+      updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: nextError }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function executeResearchShortcut(shortcut: ResearchShortcut) {
+    if (loading) {
+      return;
+    }
+
+    const turn = createAgentConversationTurn(shortcut.question);
+    const pendingRun = buildPendingAgentRun(
+      `agent_run:research:${shortcut.id}:pending`,
+      shortcut.question,
+      "sync",
+    );
+    setAgentWaitSeconds(0);
+    setConversationTurns((currentTurns) => [
+      ...currentTurns,
+      {
+        ...turn,
+        agentRun: pendingRun,
+      },
+    ]);
+    setLoading(true);
+    setAgentRun(pendingRun);
+    setResult(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/agent/query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildResearchRequestBody(shortcut, pageContext)),
+      });
+      const payload = (await response.json()) as unknown;
+
+      if (response.status === 503 && isDisabledPayload(payload)) {
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: payload.detail,
+          phase: payload.phase,
+        };
+        setError(disabledError);
+        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`智能体查询失败（${response.status}）`);
+      }
+
+      if (!isAgentQueryResult(payload)) {
+        throw new Error("智能体返回结果格式无效。");
+      }
+      normalizeAgentResult(payload);
+
+      const researchRun: AgentRunPayload = {
+        run_id: `agent_run:research:${shortcut.id}`,
+        status: "completed",
+        run_kind: "sync",
+        question: shortcut.question,
+        provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "dexter"),
+        model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
+        transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
+        toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "research"),
+        result: payload,
+      };
+      setOrdinaryConversationMode("local_sync");
+      setAgentRun(researchRun);
+      setResult(payload);
+      updateConversationTurn(turn.id, (currentTurn) => ({
+        ...currentTurn,
+        agentRun: researchRun,
+        result: payload,
+        error: null,
+        activeSuggestedActionPayload: null,
+      }));
+    } catch (requestError) {
+      const nextError: AgentQueryError = {
+        kind: "request",
+        message: buildErrorMessage(requestError),
+      };
+      setError(nextError);
+      updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: nextError }));
     } finally {
       setLoading(false);
     }
@@ -1122,6 +1698,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
             agentRun: {
               run_id: "agent_run:sync_processes",
               status: "completed",
+              run_kind: "sync",
               provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
               model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
               transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
@@ -1133,7 +1710,6 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
             activeSuggestedActionPayload: null,
           },
         ]);
-        setActiveSuggestedActionPayload(null);
       }
     } catch (requestError) {
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
@@ -1157,12 +1733,44 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       });
       return;
     }
-    setQuery(`请给我看 GitNexus process/${selectedProcess}`);
+    const question = `请给我看 GitNexus process/${selectedProcess}`;
+    const turn = createAgentConversationTurn(question);
+    const pendingSyncRun = buildPendingAgentRun(
+      `agent_run:sync:${selectedProcess}:pending`,
+      question,
+      "sync",
+    );
+    setConversationTurns((currentTurns) => [
+      ...currentTurns,
+      {
+        ...turn,
+        agentRun: pendingSyncRun,
+      },
+    ]);
     setAgentWaitSeconds(0);
+    setAgentRun(pendingSyncRun);
     setLoading(true);
     setError(null);
     try {
-      await executeAgentQuery(`请给我看 GitNexus process/${selectedProcess}`, "query");
+      const payload = await executeAgentQuery(question, "query", turn.id);
+      if (payload) {
+        updateConversationTurn(turn.id, (currentTurn) => ({
+          ...currentTurn,
+          agentRun: {
+            run_id: "agent_run:sync_query",
+            status: "completed",
+            run_kind: "sync",
+            provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
+            model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
+            transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
+            toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "default"),
+            result: payload,
+          },
+          result: payload,
+          error: null,
+          activeSuggestedActionPayload: null,
+        }));
+      }
     } finally {
       setLoading(false);
     }
@@ -1203,7 +1811,64 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       ...turn,
       activeSuggestedActionPayload: action.payload,
     }));
-    setActiveSuggestedActionPayload(action.payload);
+  }
+
+  function renderFinancialWorkflowPanel() {
+    return (
+      <section className="agent-financial-workflows" aria-label="financial-workflows">
+        <div className="agent-financial-workflows__header">
+          <div>
+            <div className="agent-financial-workflows__eyebrow">金融工作流</div>
+            <h2>本地 MOSS intents 快捷入口</h2>
+          </div>
+          <span>不接外部数据</span>
+        </div>
+        <div className="agent-financial-workflows__grid">
+          {FINANCIAL_WORKFLOWS.map((workflow) => (
+            <button
+              key={workflow.id}
+              type="button"
+              className="agent-financial-workflows__button"
+              onClick={() => void executeFinancialWorkflow(workflow)}
+              disabled={loading}
+            >
+              <span className="agent-financial-workflows__title">{workflow.title}</span>
+              <span className="agent-financial-workflows__command">{workflow.slashCommand}</span>
+              <span className="agent-financial-workflows__description">{workflow.description}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderResearchShortcutPanel() {
+    return (
+      <section className="agent-financial-workflows" aria-label="research-shortcuts">
+        <div className="agent-financial-workflows__header">
+          <div>
+            <div className="agent-financial-workflows__eyebrow">DEXTER Research</div>
+            <h2>Landed data review</h2>
+          </div>
+          <span>Refresh first</span>
+        </div>
+        <div className="agent-financial-workflows__grid">
+          {RESEARCH_SHORTCUTS.map((shortcut) => (
+            <button
+              key={shortcut.id}
+              type="button"
+              className="agent-financial-workflows__button"
+              onClick={() => void executeResearchShortcut(shortcut)}
+              disabled={loading}
+            >
+              <span className="agent-financial-workflows__title">{shortcut.title}</span>
+              <span className="agent-financial-workflows__command">{shortcut.domain}</span>
+              <span className="agent-financial-workflows__description">{shortcut.description}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
   }
 
   function renderAgentTurnResult(turn: AgentConversationTurn) {
@@ -1343,7 +2008,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
             <p>像聊天一样提问；智能体只读取已有分析服务和证据，返回结论、依据、页面上下文和下一步建议。</p>
           </div>
           <div className="agent-workbench-header__cue" aria-hidden="true">
-            MOSS / Hermes
+            MOSS / Agent
           </div>
         </header>
       ) : null}
@@ -1351,7 +2016,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       <div className="agent-runtime-strip" aria-label="agent-runtime-status">
         <div className="agent-runtime-strip__state">
           <span className={loading ? "agent-runtime-strip__dot agent-runtime-strip__dot--active" : "agent-runtime-strip__dot"} />
-          <span>{loading ? "分析中" : result ? "已连接" : "待提问"}</span>
+          <span>{loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问"}</span>
         </div>
         <div className="agent-runtime-strip__item">
           <span>Engine</span>
@@ -1395,28 +2060,34 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         </div>
       ) : null}
 
-      <AgentQueryForm
-        pageContext={pageContext}
-        repoPath={repoPath}
-        onRepoPathChange={setRepoPath}
-        quickExamples={GITNEXUS_QUICK_EXAMPLES}
-        onQuickExample={applyQuickExample}
-        isCurrentRepoPinned={isCurrentRepoPinned}
-        onPinCurrentRepo={pinCurrentRepo}
-        onUnpinCurrentRepo={() => unpinRepo(repoPath.trim())}
-        processLoading={processLoading}
-        onLoadProcesses={() => void loadGitNexusProcesses(repoPath)}
-        processSearch={processSearch}
-        onProcessSearchChange={setProcessSearch}
-        selectedProcess={selectedProcess}
-        filteredProcesses={filteredProcesses}
-        onSelectedProcessChange={setSelectedProcess}
-        onViewSelectedProcess={() => void viewSelectedProcess()}
-        loading={loading}
-        query={query}
-        onQueryChange={setQuery}
-        onSubmit={handleSubmit}
-      />
+      {renderResearchShortcutPanel()}
+
+      {renderFinancialWorkflowPanel()}
+
+      {!hasConversation ? (
+        <AgentQueryForm
+          pageContext={pageContext}
+          repoPath={repoPath}
+          onRepoPathChange={setRepoPath}
+          quickExamples={GITNEXUS_QUICK_EXAMPLES}
+          onQuickExample={applyQuickExample}
+          isCurrentRepoPinned={isCurrentRepoPinned}
+          onPinCurrentRepo={pinCurrentRepo}
+          onUnpinCurrentRepo={() => unpinRepo(repoPath.trim())}
+          processLoading={processLoading}
+          onLoadProcesses={() => void loadGitNexusProcesses(repoPath)}
+          processSearch={processSearch}
+          onProcessSearchChange={setProcessSearch}
+          selectedProcess={selectedProcess}
+          filteredProcesses={filteredProcesses}
+          onSelectedProcessChange={setSelectedProcess}
+          onViewSelectedProcess={() => void viewSelectedProcess()}
+          loading={loading}
+          query={query}
+          onQueryChange={setQuery}
+          onSubmit={handleSubmit}
+        />
+      ) : null}
 
       {hasConversation ? (
         <section className="agent-conversation" aria-label="agent-conversation" ref={conversationRef}>
@@ -1432,12 +2103,12 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
                 <div className="agent-message__body">
                   {(turn === latestConversationTurn && loading) || turn.agentRun ? (
                     <div className="agent-wait-status" role="status" aria-live="polite">
-                      <div className="agent-wait-status__title">{formatAgentWaitTitle(turn.agentRun?.status)}</div>
+                      <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
                       <div className="agent-wait-status__detail">
-                        <span>{formatAgentRunStatusLabel(turn.agentRun?.status, "运行中")}</span>
+                        <span>{formatAgentWaitPhase(turn.agentRun)}</span>
                         <span>已等待 {formatAgentRunElapsed(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)} 秒</span>
                         {turn.agentRun?.run_id ? <span>run_id: {turn.agentRun.run_id}</span> : null}
-                        <span>{formatAgentWaitHint(turn.agentRun?.status, turn === latestConversationTurn ? agentWaitSeconds : 0)}</span>
+                        <span>{formatAgentWaitHint(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)}</span>
                       </div>
                     </div>
                   ) : null}
@@ -1465,6 +2136,34 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {hasConversation ? (
+        <div className="agent-composer-dock">
+          <AgentQueryForm
+            compact
+            pageContext={pageContext}
+            repoPath={repoPath}
+            onRepoPathChange={setRepoPath}
+            quickExamples={GITNEXUS_QUICK_EXAMPLES}
+            onQuickExample={applyQuickExample}
+            isCurrentRepoPinned={isCurrentRepoPinned}
+            onPinCurrentRepo={pinCurrentRepo}
+            onUnpinCurrentRepo={() => unpinRepo(repoPath.trim())}
+            processLoading={processLoading}
+            onLoadProcesses={() => void loadGitNexusProcesses(repoPath)}
+            processSearch={processSearch}
+            onProcessSearchChange={setProcessSearch}
+            selectedProcess={selectedProcess}
+            filteredProcesses={filteredProcesses}
+            onSelectedProcessChange={setSelectedProcess}
+            onViewSelectedProcess={() => void viewSelectedProcess()}
+            loading={loading}
+            query={query}
+            onQueryChange={setQuery}
+            onSubmit={handleSubmit}
+          />
+        </div>
       ) : null}
 
       <AgentRepoMemoryPanel

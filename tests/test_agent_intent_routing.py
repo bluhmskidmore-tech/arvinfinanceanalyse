@@ -932,6 +932,231 @@ def test_unknown_intent_returns_help_message(tmp_path):
     assert any(card.title == "Supported Queries" for card in envelope.cards)
 
 
+def test_financial_workflow_context_returns_plan_envelope(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="Prepare a risk memo plan",
+            basis="scenario",
+            context={"workflow_id": "risk_memo"},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.workflow.risk_memo"
+    assert envelope.result_meta.basis == "scenario"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.source_version == "sv_anthropic_financial_workflow_reference"
+    assert envelope.result_meta.rule_version == "rv_agent_financial_workflow_catalog_v1"
+    assert envelope.evidence.tables_used == []
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.quality_flag == "warning"
+    assert [card.title for card in envelope.cards] == [
+        "Workflow Plan",
+        "Mapped MOSS Intents",
+        "Governance Notes",
+    ]
+    assert envelope.cards[1].data == [
+        {"order": 1, "intent": "duration_risk"},
+        {"order": 2, "intent": "credit_exposure"},
+        {"order": 3, "intent": "risk_tensor"},
+    ]
+    assert envelope.suggested_actions[0].type == "execute_intent"
+    assert envelope.suggested_actions[0].payload["intent"] == "duration_risk"
+
+
+def test_financial_workflow_slash_command_returns_plan_envelope(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="/pnl-review for March close")
+    )
+
+    assert envelope.result_meta.result_kind == "agent.workflow.pnl_review"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.suggested_actions[0].payload["intent"] == "pnl_summary"
+
+
+def test_unknown_workflow_id_falls_back_to_existing_intent_routing(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "pnl_summary": lambda request: {
+                "answer": "ok",
+                "basis": "formal",
+                "result_kind": "agent.pnl_summary",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": calls.append(request.context["workflow_id"]) or 1,
+                "cards": [{"type": "metric", "title": "Total PnL", "value": "1"}],
+            }
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="PnL summary",
+            context={"workflow_id": "not_registered"},
+        )
+    )
+
+    assert calls == ["not_registered"]
+    assert envelope.result_meta.result_kind == "agent.pnl_summary"
+    assert envelope.result_meta.formal_use_allowed is True
+
+
+def test_financial_workflow_execute_mode_runs_mapped_intents_in_order(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+
+    def handler(intent: str):
+        def _inner(request):
+            calls.append(intent)
+            return {
+                "answer": f"{intent} result",
+                "basis": "formal",
+                "result_kind": f"agent.{intent}",
+                "formal_use_allowed": True,
+                "source_version": f"sv_{intent}",
+                "rule_version": "rv_test",
+                "cache_version": f"cv_{intent}",
+                "quality_flag": "ok",
+                "row_count": 2,
+                "tables_used": [f"fact_{intent}"],
+                "filters_applied": {"intent": intent},
+                "cards": [{"type": "metric", "title": intent, "value": "2"}],
+            }
+
+        return _inner
+
+    tool = module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": handler("duration_risk"),
+            "credit_exposure": handler("credit_exposure"),
+            "risk_tensor": handler("risk_tensor"),
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/risk-memo",
+            context={"workflow_mode": "execute"},
+        )
+    )
+
+    assert calls == ["duration_risk", "credit_exposure", "risk_tensor"]
+    assert envelope.result_meta.result_kind == "agent.workflow.risk_memo"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "ok"
+    assert envelope.evidence.evidence_rows == 6
+    assert envelope.evidence.tables_used == [
+        "fact_duration_risk",
+        "fact_credit_exposure",
+        "fact_risk_tensor",
+    ]
+    steps_card = next(card for card in envelope.cards if card.title == "Workflow Execution Steps")
+    assert steps_card.data == [
+        {"order": 1, "intent": "duration_risk", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
+        {"order": 2, "intent": "credit_exposure", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
+        {"order": 3, "intent": "risk_tensor", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
+    ]
+    assert envelope.suggested_actions == []
+
+
+def test_financial_workflow_execute_mode_reports_step_failure_without_side_effects(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    def ok_handler(request):
+        return {
+            "answer": "duration ok",
+            "basis": "formal",
+            "result_kind": "agent.duration_risk",
+            "formal_use_allowed": True,
+            "source_version": "sv_duration",
+            "quality_flag": "ok",
+            "row_count": 1,
+            "tables_used": ["fact_duration"],
+            "cards": [{"type": "metric", "title": "Duration", "value": "1"}],
+        }
+
+    def failing_handler(request):
+        raise ValueError("No governed risk tensor date is available.")
+
+    tool = module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": ok_handler,
+            "credit_exposure": ok_handler,
+            "risk_tensor": failing_handler,
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/risk-memo",
+            context={"workflow_mode": "execute"},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.workflow.risk_memo"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.evidence_rows == 2
+    steps_card = next(card for card in envelope.cards if card.title == "Workflow Execution Steps")
+    assert steps_card.data[-1] == {
+        "order": 3,
+        "intent": "risk_tensor",
+        "status": "error",
+        "quality_flag": "warning",
+        "evidence_rows": 0,
+    }
+    assert "risk_tensor" in envelope.answer
+
+
 def test_manual_intent_result_meta_stays_formal_for_scenario_request(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",

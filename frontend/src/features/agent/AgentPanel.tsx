@@ -6,10 +6,18 @@ import { AgentDisabledError } from "../../api/agentClient";
 
 import "./AgentPanel.css";
 
+type AgentCard = {
+  type: string;
+  title: string;
+  value?: string | null;
+  data?: Record<string, unknown> | Array<Record<string, unknown>> | null;
+};
+
 export type AgentPanelProps = {
   pageId: string;
   reportDate?: string | null;
   currentFilters?: Record<string, unknown>;
+  defaultFilters?: Record<string, unknown>;
   selectedRows?: Array<Record<string, unknown>>;
   contextNote?: string | null;
   defaultQuestion?: string;
@@ -19,6 +27,7 @@ export function AgentPanel({
   pageId,
   reportDate = null,
   currentFilters = {},
+  defaultFilters = {},
   selectedRows,
   contextNote = null,
   defaultQuestion = "",
@@ -29,6 +38,7 @@ export function AgentPanel({
   const [answer, setAnswer] = useState<string | null>(null);
   const [qualityFlag, setQualityFlag] = useState<string | null>(null);
   const [tablesUsed, setTablesUsed] = useState<string[]>([]);
+  const [cards, setCards] = useState<AgentCard[]>([]);
   const [chips, setChips] = useState<Array<{ type: string; label: string }>>([]);
   const [disabledBanner, setDisabledBanner] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -56,16 +66,19 @@ export function AgentPanel({
     setAnswer(null);
     setQualityFlag(null);
     setTablesUsed([]);
+    setCards([]);
     setChips([]);
     try {
       const envelope = await client.queryAgent({
         question: trimmed,
         basis: "formal",
+        filters: defaultFilters,
         page_context: pageContextPayload,
       });
       setAnswer(envelope.answer);
       setQualityFlag(envelope.evidence.quality_flag);
       setTablesUsed(envelope.evidence.tables_used ?? []);
+      setCards(envelope.cards ?? []);
       setChips(
         (envelope.suggested_actions ?? []).map((action) => ({
           type: action.type,
@@ -136,12 +149,38 @@ export function AgentPanel({
         </div>
       ) : null}
 
+      {cards.length > 0 ? (
+        <div className="agent-panel__cards" data-testid="agent-panel-cards">
+          {cards.map((card) => (
+            <article key={`${card.type}:${card.title}`} className="agent-panel__card">
+              <strong>{card.title}</strong>
+              {card.value ? <p>{card.value}</p> : null}
+              {Array.isArray(card.data) ? (
+                <ul>
+                  {card.data.map((row, index) => (
+                    <li key={`${card.title}:${index}`}>{formatCardData(row)}</li>
+                  ))}
+                </ul>
+              ) : card.data ? (
+                <p>{formatCardData(card.data)}</p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+
       {qualityFlag !== null ? (
         <div className="agent-panel__evidence" data-testid="agent-panel-evidence">
           <div data-testid="agent-panel-quality-flag">质量标记：{qualityFlag}</div>
           <div data-testid="agent-panel-tables-used">
             使用表：{tablesUsed.length ? tablesUsed.join(", ") : "—"}
           </div>
+        </div>
+      ) : null}
+
+      {qualityFlag !== null && qualityFlag !== "ok" ? (
+        <div data-testid="agent-panel-refresh-hint">
+          数据不足或可能陈旧，请先使用页面刷新或 Choice/TuShare 手动刷新后再分析。
         </div>
       ) : null}
 
@@ -156,4 +195,13 @@ export function AgentPanel({
       ) : null}
     </section>
   );
+}
+
+function formatCardData(row: Record<string, unknown>) {
+  if ("item" in row) {
+    return String(row.item ?? "");
+  }
+  return Object.entries(row)
+    .map(([key, value]) => `${key}: ${String(value ?? "")}`)
+    .join(" / ");
 }

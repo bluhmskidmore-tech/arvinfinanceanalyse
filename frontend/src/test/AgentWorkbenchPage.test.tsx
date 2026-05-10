@@ -23,11 +23,11 @@ function buildJsonResponse(payload: unknown, status = 200) {
   });
 }
 
-function buildManagedRunPayload(result: unknown, runId = "agent_run:test") {
+function buildManagedRunPayload(result: unknown, runId = "agent_run:test", provider = "hermes") {
   return {
     run_id: runId,
     status: "completed",
-    provider: "hermes",
+    provider,
     model: "gpt-5.5",
     transport: "bridge",
     toolsets: "file",
@@ -40,20 +40,137 @@ function mockManagedRunResult(
   fetchMock: ReturnType<typeof vi.fn>,
   result: unknown,
   runId = "agent_run:test",
+  provider = "hermes",
 ) {
   fetchMock
     .mockResolvedValueOnce(
-      buildJsonResponse({
-        run_id: runId,
-        status: "queued",
-        provider: "hermes",
+        buildJsonResponse({
+          run_id: runId,
+          status: "queued",
+          provider,
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+    .mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(result, runId, provider)));
+}
+
+function buildWorkflowExecutionResult() {
+  return {
+    answer:
+      "Executed financial workflow 'Risk Memo' (risk_memo) using governed MOSS intents: duration_risk, credit_exposure, risk_tensor. The workflow summary is not a formal financial result.",
+    cards: [
+      {
+        title: "Workflow Execution Steps",
+        type: "table",
+        data: [
+          {
+            order: 1,
+            intent: "duration_risk",
+            status: "completed",
+            quality: "ok",
+            evidence_rows: 3,
+          },
+        ],
+        spec: {
+          columns: ["order", "intent", "status", "quality", "evidence_rows"],
+        },
+      },
+      {
+        title: "Mapped Intent Results",
+        type: "table",
+        data: [
+          {
+            intent: "duration_risk",
+            result_kind: "agent.intent.duration_risk",
+            answer: "Duration risk ready.",
+            tables: "fact_risk_tensor",
+            evidence_rows: 3,
+          },
+        ],
+        spec: {
+          columns: ["intent", "result_kind", "answer", "tables", "evidence_rows"],
+        },
+      },
+    ],
+    evidence: {
+      tables_used: ["fact_risk_tensor"],
+      filters_applied: {},
+      evidence_rows: 3,
+      quality_flag: "warning",
+    },
+    result_meta: {
+      trace_id: "tr_workflow_risk_memo",
+      basis: "formal",
+      result_kind: "agent.workflow.risk_memo",
+      formal_use_allowed: false,
+      source_version: "sv_agent_financial_workflow_reference",
+      rule_version: "rv_agent_financial_workflow_catalog_v1",
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
+}
+
+function buildLocalOrdinaryTextResult(answer = "本地普通问题回答。") {
+  return {
+    answer,
+    cards: [],
+    evidence: {
+      tables_used: ["agent_query_local"],
+      filters_applied: {
+        provider: "local",
+        transport: "sync",
+        model: "default",
+        toolsets: "default",
+      },
+      evidence_rows: 1,
+      quality_flag: "ok",
+    },
+    result_meta: {
+      trace_id: "tr_local_sync_query",
+      basis: "formal",
+      result_kind: "agent.local",
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
+}
+
+function buildDexterResearchResult(domain: "stock" | "macro", answer: string) {
+  const tableName = domain === "stock" ? "choice_stock_daily_observation" : "fact_choice_macro_daily";
+  return {
+    answer,
+    cards: [
+      {
+        title: "Research Summary",
+        type: "summary",
+        value: `${domain} context ready`,
+      },
+    ],
+    evidence: {
+      tables_used: [tableName],
+      filters_applied: {
+        provider: "dexter",
+        transport: "sync",
         model: "gpt-5.5",
-        transport: "bridge",
         toolsets: "file",
-        queued_at: "2026-05-07T08:00:00Z",
-      }),
-    )
-    .mockResolvedValueOnce(buildJsonResponse(buildManagedRunPayload(result, runId)));
+        research_domain: domain,
+      },
+      evidence_rows: 1,
+      quality_flag: "ok",
+    },
+    result_meta: {
+      trace_id: `tr_dexter_${domain}`,
+      basis: "formal",
+      result_kind: "agent.dexter",
+      formal_use_allowed: false,
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
 }
 
 describe("AgentWorkbenchPage", () => {
@@ -101,6 +218,269 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: GITNEXUS_STATUS_BUTTON })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_CONTEXT_BUTTON })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON })).toBeInTheDocument();
+  });
+
+  it("renders four financial workflow shortcut buttons", () => {
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByRole("button", { name: /Portfolio Review/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /PnL Review/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Risk Memo/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Market Brief/ })).toBeInTheDocument();
+  });
+
+  it("renders stock and macro research shortcut buttons", () => {
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByRole("button", { name: /Stock Research/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Macro Research/ })).toBeInTheDocument();
+  });
+
+  it("submits the stock research shortcut with the stock research domain filter", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(buildDexterResearchResult("stock", "Stock research ready.")),
+    );
+
+    render(
+      <AgentWorkbenchPage
+        pageContext={{
+          page_id: "stock-analysis",
+          current_filters: { as_of_date: "2026-05-10" },
+          selected_rows: [{ stock_code: "000001.SZ" }],
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/query",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "Review landed stock research context",
+      filters: { research_domain: "stock" },
+      page_context: {
+        page_id: "stock-analysis",
+        current_filters: { as_of_date: "2026-05-10" },
+        selected_rows: [{ stock_code: "000001.SZ" }],
+      },
+    });
+    expect(await screen.findByText("Stock research ready.")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("Dexter");
+  });
+
+  it("submits the macro research shortcut with the macro research domain filter", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(buildDexterResearchResult("macro", "Macro research ready.")),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: /Macro Research/ }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/query",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "Review landed macro research context",
+      filters: { research_domain: "macro" },
+    });
+    expect(await screen.findByText("Macro research ready.")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("Dexter");
+  });
+
+  it("executes Risk Memo through the local agent query workflow mode", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildWorkflowExecutionResult()));
+
+    render(
+      <AgentWorkbenchPage
+        pageContext={{
+          page_id: "risk-dashboard",
+          current_filters: { as_of_date: "2026-04-12" },
+          selected_rows: [{ portfolio_id: "core" }],
+          context_note: "risk page",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/query",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "/risk-memo",
+      basis: "formal",
+      filters: {},
+      position_scope: "all",
+      currency_basis: "CNY",
+      context: {
+        user_id: "web-user",
+        workflow_mode: "execute",
+      },
+      page_context: {
+        page_id: "risk-dashboard",
+        current_filters: { as_of_date: "2026-04-12" },
+        selected_rows: [{ portfolio_id: "core" }],
+        context_note: "risk page",
+      },
+    });
+    expect(await screen.findByText("Workflow Execution Steps")).toBeInTheDocument();
+    expect(screen.getByText("Mapped Intent Results")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Workflow 执行完成");
+    expect(screen.getByRole("status")).not.toHaveTextContent("Hermes 托管任务完成");
+    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo");
+  });
+
+  it("shows workflow-local pending copy before the Risk Memo workflow request resolves", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Workflow 执行进行中");
+    expect(status).toHaveTextContent("准备本地 workflow");
+    expect(status).toHaveTextContent("本地 workflow 正在准备，本页会直接显示结果。");
+    expect(status).not.toHaveTextContent("正在交给托管运行时");
+  });
+
+  it("falls back to local agent query when managed Hermes runs return the provider-gated 400", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          {
+            detail: "Agent runs require MOSS_AGENT_PROVIDER=hermes.",
+          },
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse(buildLocalOrdinaryTextResult("local ordinary fallback answer")),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("local ordinary fallback answer")).toBeInTheDocument();
+    expect(screen.queryByText("智能体查询失败（400）")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/agent/runs",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/agent/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("本地查询完成");
+    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
+    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("sync");
+  });
+
+  it("falls back to local agent query when managed runs return the generic provider gate", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          {
+            detail: "Agent runs require MOSS_AGENT_PROVIDER=hermes or dexter.",
+          },
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse(buildLocalOrdinaryTextResult("generic provider gate fallback answer")),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("generic provider gate fallback answer")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/agent/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("keeps non-provider managed run errors on the managed path", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(
+        {
+          detail: "temporary managed run outage",
+        },
+        500,
+      ),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/runs",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("sends ordinary text directly through local query after Risk Memo workflow completes", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildWorkflowExecutionResult()))
+      .mockResolvedValueOnce(
+        buildJsonResponse(buildLocalOrdinaryTextResult("post workflow ordinary answer")),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    expect(await screen.findByText("Workflow Execution Steps")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "post workflow follow-up");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("post workflow ordinary answer")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/agent/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/agent/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock.mock.calls.some((call) => call[0] === "/api/agent/runs")).toBe(false);
   });
 
   it("pins the current repo and shows pinned/recent sections separately", async () => {
@@ -429,6 +809,62 @@ describe("AgentWorkbenchPage", () => {
       );
       expect(matched).toBe(true);
     });
+  });
+
+  it("shows local-sync pending copy before the selected GitNexus process request resolves", async () => {
+    const user = userEvent.setup();
+    let resolveProcesses!: (value: Response) => void;
+    const processesResponse = new Promise<Response>((resolve) => {
+      resolveProcesses = resolve;
+    });
+    fetchMock
+      .mockReturnValueOnce(processesResponse)
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.click(screen.getByRole("button", { name: /读取流程/ }));
+
+    await act(async () => {
+      resolveProcesses(
+        buildJsonResponse({
+          answer: "GitNexus processes ready.",
+          cards: [
+            {
+              title: "GitNexus Processes Table",
+              type: "table",
+              data: [{ name: "CheckoutFlow", type: "cross_community", steps: 6 }],
+              spec: { columns: ["name", "type", "steps"] },
+            },
+          ],
+          evidence: {
+            tables_used: ["gitnexus://repo/MOSS-SYSTEM-V1/processes"],
+            filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+            evidence_rows: 1,
+            quality_flag: "ok",
+          },
+          result_meta: {
+            trace_id: "tr_gitnexus_processes",
+            basis: "analytical",
+            generated_at: "2026-04-12T09:00:00Z",
+          },
+          next_drill: [],
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
+    await user.click(screen.getByRole("button", { name: /查看所选流程/ }));
+
+    await screen.findByText("本地同步查询正在准备，本页会直接显示结果。");
+    const status = screen.getAllByRole("status").at(-1);
+    expect(status).toBeDefined();
+    expect(status).toHaveTextContent("本地查询进行中");
+    expect(status).toHaveTextContent("准备本地查询");
+    expect(status).toHaveTextContent("本地同步查询正在准备，本页会直接显示结果。");
+    expect(status).not.toHaveTextContent("正在交给托管运行时");
   });
 
   it("filters process options by keyword search", async () => {
@@ -1143,7 +1579,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
   });
 
-  it("shows a local acknowledgement immediately while Hermes accepts the run", async () => {
+  it("shows a local acknowledgement immediately while the managed runtime accepts the run", async () => {
     const user = userEvent.setup();
     const scrollIntoView = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -1159,7 +1595,7 @@ describe("AgentWorkbenchPage", () => {
       const conversation = await screen.findByLabelText("agent-conversation");
       expect(conversation).toHaveTextContent("先给我一个响应");
       expect(conversation).toHaveTextContent("已收到问题");
-      expect(conversation).toHaveTextContent("正在交给 Hermes");
+      expect(conversation).toHaveTextContent("正在交给托管运行时");
       expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
       expect(scrollIntoView).toHaveBeenCalled();
     } finally {
@@ -1209,7 +1645,7 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
-  it("shows elapsed Hermes wait status while the agent request is still running", async () => {
+  it("shows elapsed managed-runtime wait status while the agent request is still running", async () => {
     vi.useFakeTimers();
     fetchMock.mockReturnValue(new Promise(() => undefined));
 
@@ -1221,7 +1657,7 @@ describe("AgentWorkbenchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(screen.getByRole("status")).toHaveTextContent("已收到问题");
-    expect(screen.getByRole("status")).toHaveTextContent("正在交给 Hermes");
+    expect(screen.getByRole("status")).toHaveTextContent("正在交给托管运行时");
     expect(screen.getByRole("status")).toHaveTextContent("已等待 0 秒");
 
     act(() => {
@@ -1414,6 +1850,50 @@ describe("AgentWorkbenchPage", () => {
 
     const runtimeStatus = await screen.findByLabelText("agent-runtime-status");
     expect(runtimeStatus).toHaveTextContent("Hermes");
+    expect(runtimeStatus).toHaveTextContent("bridge");
+    expect(runtimeStatus).toHaveTextContent("gpt-5.5");
+    expect(runtimeStatus).toHaveTextContent("file");
+  });
+
+  it("shows Dexter nicely when the managed run and evidence provider are dexter", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "Dexter managed run complete.",
+        cards: [],
+        evidence: {
+          tables_used: ["dexter_cli"],
+          filters_applied: {
+            provider: "dexter",
+            model: "gpt-5.5",
+            toolsets: "file",
+            transport: "bridge",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_agent_dexter",
+          basis: "formal",
+          result_kind: "agent.dexter",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:dexter",
+      "dexter",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("Dexter managed run complete.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Dexter 托管任务完成");
+    const runtimeStatus = screen.getByLabelText("agent-runtime-status");
+    expect(runtimeStatus).toHaveTextContent("Dexter");
     expect(runtimeStatus).toHaveTextContent("bridge");
     expect(runtimeStatus).toHaveTextContent("gpt-5.5");
     expect(runtimeStatus).toHaveTextContent("file");

@@ -4,6 +4,10 @@ from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.financial_workflow_catalog import (
+    FinancialWorkflow,
+    resolve_financial_workflow,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -61,6 +65,12 @@ class AnalysisViewTool:
         self._evidence = EvidenceTool()
 
     def execute(self, request: AgentQueryRequest) -> AgentEnvelope:
+        workflow = resolve_financial_workflow(request.question, request.context)
+        if workflow is not None:
+            if str(request.context.get("workflow_mode") or "").strip().lower() == "execute":
+                return self._execute_workflow_envelope(request, workflow)
+            return self._workflow_envelope(request, workflow)
+
         intent = self._resolve_intent(request)
         try:
             if intent == "cube_query":
@@ -88,6 +98,275 @@ class AnalysisViewTool:
             if any(keyword.lower() in normalized for keyword in keywords):
                 return intent
         return "unknown"
+
+    def _workflow_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: FinancialWorkflow,
+    ) -> AgentEnvelope:
+        evidence = self._evidence.build_evidence(
+            tables_used=[],
+            filters_applied={},
+            row_count=0,
+            quality_flag="warning",
+        )
+        next_intent = workflow.mapped_intents[0] if workflow.mapped_intents else ""
+        result_meta = AgentResultMeta(
+            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
+            basis=request.basis,
+            result_kind=f"agent.workflow.{workflow.workflow_id}",
+            formal_use_allowed=False,
+            source_version="sv_anthropic_financial_workflow_reference",
+            vendor_version="vv_none",
+            rule_version="rv_agent_financial_workflow_catalog_v1",
+            cache_version=f"cv_agent_workflow_{workflow.workflow_id}_v1",
+            quality_flag="warning",
+            vendor_status="ok",
+            fallback_mode="none",
+            scenario_flag=request.basis == "scenario",
+            tables_used=evidence.tables_used,
+            filters_applied=evidence.filters_applied,
+            sql_executed=evidence.sql_executed,
+            evidence_rows=evidence.evidence_rows,
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="workflow_plan",
+                title="Workflow Plan",
+                data={
+                    "workflow_id": workflow.workflow_id,
+                    "title": workflow.title,
+                    "description": workflow.description,
+                    "category": workflow.category,
+                    "source": workflow.source,
+                    "output_kind": workflow.output_kind,
+                    "phase": "plan_only",
+                },
+            ),
+            AgentCard(
+                type="workflow_intents",
+                title="Mapped MOSS Intents",
+                data=[
+                    {"order": index, "intent": intent}
+                    for index, intent in enumerate(workflow.mapped_intents, start=1)
+                ],
+            ),
+            AgentCard(
+                type="governance_notes",
+                title="Governance Notes",
+                data=[{"note": note} for note in workflow.governance_notes],
+            ),
+        ]
+        suggested_actions = []
+        if next_intent:
+            suggested_actions.append(
+                AgentSuggestedAction(
+                    type="execute_intent",
+                    label=f"Execute first mapped intent: {next_intent}",
+                    payload={
+                        "intent": next_intent,
+                        "workflow_id": workflow.workflow_id,
+                    },
+                    requires_confirmation=True,
+                )
+            )
+
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=(
+                    f"Identified financial workflow '{workflow.title}' ({workflow.workflow_id}). "
+                    "This response is a workflow plan only, not a formal financial result. "
+                    "If executed, it will use governed MOSS intents: "
+                    f"{', '.join(workflow.mapped_intents)}."
+                ),
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=suggested_actions,
+            )
+        )
+
+    def _execute_workflow_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: FinancialWorkflow,
+    ) -> AgentEnvelope:
+        step_rows: list[dict[str, Any]] = []
+        detail_rows: list[dict[str, Any]] = []
+        tables_used: list[str] = []
+        filters_applied: dict[str, Any] = {}
+        evidence_rows = 0
+        failed_intents: list[str] = []
+
+        for index, intent in enumerate(workflow.mapped_intents, start=1):
+            handler = self._intent_handlers.get(intent)
+            if handler is None:
+                failed_intents.append(intent)
+                step_rows.append(
+                    self._workflow_step_row(
+                        order=index,
+                        intent=intent,
+                        status="missing",
+                        quality_flag="warning",
+                        evidence_rows=0,
+                    )
+                )
+                detail_rows.append(
+                    {
+                        "order": index,
+                        "intent": intent,
+                        "status": "missing",
+                        "message": "No registered MOSS intent handler.",
+                    }
+                )
+                continue
+
+            try:
+                envelope = self._payload_envelope(
+                    request=request,
+                    intent=intent,
+                    payload=handler(request),
+                )
+            except Exception as exc:
+                failed_intents.append(intent)
+                step_rows.append(
+                    self._workflow_step_row(
+                        order=index,
+                        intent=intent,
+                        status="error",
+                        quality_flag="warning",
+                        evidence_rows=0,
+                    )
+                )
+                detail_rows.append(
+                    {
+                        "order": index,
+                        "intent": intent,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+                continue
+
+            step_rows.append(
+                self._workflow_step_row(
+                    order=index,
+                    intent=intent,
+                    status="ok",
+                    quality_flag=envelope.result_meta.quality_flag,
+                    evidence_rows=envelope.evidence.evidence_rows,
+                )
+            )
+            detail_rows.append(
+                {
+                    "order": index,
+                    "intent": intent,
+                    "status": "ok",
+                    "answer": envelope.answer,
+                    "result_kind": envelope.result_meta.result_kind,
+                    "formal_use_allowed": envelope.result_meta.formal_use_allowed,
+                    "source_version": envelope.result_meta.source_version,
+                    "rule_version": envelope.result_meta.rule_version,
+                    "tables_used": envelope.evidence.tables_used,
+                    "evidence_rows": envelope.evidence.evidence_rows,
+                    "card_count": len(envelope.cards),
+                }
+            )
+            evidence_rows += envelope.evidence.evidence_rows
+            for table in envelope.evidence.tables_used:
+                if table not in tables_used:
+                    tables_used.append(table)
+            for key, value in envelope.evidence.filters_applied.items():
+                filters_applied[f"{intent}.{key}"] = value
+            if envelope.result_meta.quality_flag != "ok":
+                failed_intents.append(intent)
+
+        quality_flag = "warning" if failed_intents else "ok"
+        evidence = self._evidence.build_evidence(
+            tables_used=tables_used,
+            filters_applied=filters_applied,
+            row_count=evidence_rows,
+            quality_flag=quality_flag,
+        )
+        result_meta = AgentResultMeta(
+            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
+            basis=request.basis,
+            result_kind=f"agent.workflow.{workflow.workflow_id}",
+            formal_use_allowed=False,
+            source_version="sv_anthropic_financial_workflow_reference",
+            vendor_version="vv_none",
+            rule_version="rv_agent_financial_workflow_catalog_v1",
+            cache_version=f"cv_agent_workflow_{workflow.workflow_id}_v1",
+            quality_flag=quality_flag,
+            vendor_status="ok",
+            fallback_mode="none",
+            scenario_flag=request.basis == "scenario",
+            tables_used=evidence.tables_used,
+            filters_applied=evidence.filters_applied,
+            sql_executed=evidence.sql_executed,
+            evidence_rows=evidence.evidence_rows,
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="workflow_execution",
+                title="Workflow Execution Steps",
+                data=step_rows,
+            ),
+            AgentCard(
+                type="workflow_results",
+                title="Mapped Intent Results",
+                data=detail_rows,
+            ),
+            AgentCard(
+                type="governance_notes",
+                title="Governance Notes",
+                data=[{"note": note} for note in workflow.governance_notes],
+            ),
+        ]
+
+        if failed_intents:
+            answer = (
+                f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) with warnings. "
+                f"Failed or degraded intents: {', '.join(failed_intents)}. "
+                "The workflow summary is not a formal financial result."
+            )
+        else:
+            answer = (
+                f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) using governed MOSS intents: "
+                f"{', '.join(workflow.mapped_intents)}. "
+                "The workflow summary is not a formal financial result."
+            )
+
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=answer,
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=[],
+            )
+        )
+
+    def _workflow_step_row(
+        self,
+        *,
+        order: int,
+        intent: str,
+        status: str,
+        quality_flag: str,
+        evidence_rows: int,
+    ) -> dict[str, Any]:
+        return {
+            "order": order,
+            "intent": intent,
+            "status": status,
+            "quality_flag": quality_flag,
+            "evidence_rows": evidence_rows,
+        }
 
     def _cube_query(self, request: AgentQueryRequest) -> AgentEnvelope:
         payload = dict(request.context.get("cube_query") or {})
