@@ -44,6 +44,7 @@ export default function BondDashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState<string | null>(null);
   const [assetGroupBy, setAssetGroupBy] = useState<AssetGroupBy>("bond_type");
+  const [lowerPanelReadyDate, setLowerPanelReadyDate] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: [client.mode, "bond-dashboard", "dates"],
@@ -65,64 +66,89 @@ export default function BondDashboardPage() {
     enabled: Boolean(rd),
   });
 
-  const assetQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "asset", rd, assetGroupBy],
-    queryFn: () => client.getBondDashboardAssetStructure(rd, assetGroupBy),
-    enabled: Boolean(rd),
-  });
-
-  const ratingQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "asset-rating", rd],
-    queryFn: () => client.getBondDashboardAssetStructure(rd, "rating"),
-    enabled: Boolean(rd),
-  });
-
-  const tenorBarQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "tenor-bars", rd],
-    queryFn: () => client.getBondDashboardAssetStructure(rd, "tenor_bucket"),
-    enabled: Boolean(rd),
-  });
-
-  const yieldQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "yield-dist", rd],
-    queryFn: () => client.getBondDashboardYieldDistribution(rd),
-    enabled: Boolean(rd),
-  });
-
-  const portfolioQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "portfolio", rd],
-    queryFn: () => client.getBondDashboardPortfolioComparison(rd),
-    enabled: Boolean(rd),
-  });
-
-  const spreadQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "spread", rd],
-    queryFn: () => client.getBondDashboardSpreadAnalysis(rd),
-    enabled: Boolean(rd),
-  });
-
-  const maturityQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "maturity", rd],
-    queryFn: () => client.getBondDashboardMaturityStructure(rd),
-    enabled: Boolean(rd),
-  });
-
-  const industryQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "industry", rd],
-    queryFn: () => client.getBondDashboardIndustryDistribution(rd),
-    enabled: Boolean(rd),
-  });
-
   const riskQuery = useQuery({
     queryKey: [client.mode, "bond-dashboard", "risk", rd],
     queryFn: () => client.getBondDashboardRiskIndicators(rd),
     enabled: Boolean(rd),
   });
 
+  const firstScreenReady = Boolean(headlineQuery.data?.result && riskQuery.data?.result);
+  const lowerPanelEnabled = Boolean(rd) && lowerPanelReadyDate === rd;
+
+  useEffect(() => {
+    if (!firstScreenReady || !rd) {
+      return;
+    }
+
+    const idleWindow = window as typeof window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (idleWindow.requestIdleCallback) {
+      const idleHandle = idleWindow.requestIdleCallback(
+        () => setLowerPanelReadyDate(rd),
+        { timeout: 600 },
+      );
+      return () => idleWindow.cancelIdleCallback?.(idleHandle);
+    }
+
+    const timeoutHandle = window.setTimeout(() => setLowerPanelReadyDate(rd), 120);
+    return () => window.clearTimeout(timeoutHandle);
+  }, [firstScreenReady, rd]);
+
+  const assetQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "asset", rd, assetGroupBy],
+    queryFn: () => client.getBondDashboardAssetStructure(rd, assetGroupBy),
+    enabled: lowerPanelEnabled,
+  });
+
+  const ratingQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "asset-rating", rd],
+    queryFn: () => client.getBondDashboardAssetStructure(rd, "rating"),
+    enabled: lowerPanelEnabled,
+  });
+
+  const tenorBarQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "tenor-bars", rd],
+    queryFn: () => client.getBondDashboardAssetStructure(rd, "tenor_bucket"),
+    enabled: lowerPanelEnabled,
+  });
+
+  const yieldQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "yield-dist", rd],
+    queryFn: () => client.getBondDashboardYieldDistribution(rd),
+    enabled: lowerPanelEnabled,
+  });
+
+  const portfolioQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "portfolio", rd],
+    queryFn: () => client.getBondDashboardPortfolioComparison(rd),
+    enabled: lowerPanelEnabled,
+  });
+
+  const spreadQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "spread", rd],
+    queryFn: () => client.getBondDashboardSpreadAnalysis(rd),
+    enabled: lowerPanelEnabled,
+  });
+
+  const maturityQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "maturity", rd],
+    queryFn: () => client.getBondDashboardMaturityStructure(rd),
+    enabled: lowerPanelEnabled,
+  });
+
+  const industryQuery = useQuery({
+    queryKey: [client.mode, "bond-dashboard", "industry", rd],
+    queryFn: () => client.getBondDashboardIndustryDistribution(rd),
+    enabled: lowerPanelEnabled,
+  });
+
   const businessTypeMetricsQuery = useQuery({
     queryKey: [client.mode, "bond-dashboard", "business-type-metrics", rd],
     queryFn: () => client.getBondBusinessTypeMetrics({ reportDate: rd }),
-    enabled: Boolean(rd),
+    enabled: lowerPanelEnabled,
     retry: false,
     staleTime: 60_000,
   });

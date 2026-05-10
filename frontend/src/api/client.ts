@@ -1,11 +1,3 @@
-import {
-  createContext,
-  createElement,
-  useContext,
-  useMemo,
-  type ReactNode,
-} from "react";
-
 import type {
   AlertsPayload,
   ApiEnvelope,
@@ -181,6 +173,7 @@ import {
 } from "./bondDashboardWorkbenchEndpoints";
 
 export type DataSourceMode = "mock" | "real";
+export { ApiClientProvider, useApiClient } from "./clientContext";
 
 // Re-export domain method types for consumers who want fine-grained imports
 export type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
@@ -216,15 +209,10 @@ export type ApiClient = {
   getHealthSummary: () => Promise<HealthStatusResponse>;
 };
 
-type ApiClientOptions = {
+export type ApiClientOptions = {
   mode?: DataSourceMode;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
-};
-
-type ApiClientProviderProps = {
-  children: ReactNode;
-  client?: ApiClient;
 };
 
 const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
@@ -5216,32 +5204,4 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       ),
 
   };
-}
-
-const ApiClientContext = createContext<ApiClient | null>(null);
-
-export function ApiClientProvider({
-  children,
-  client,
-}: ApiClientProviderProps) {
-  const resolvedClient = useMemo(
-    () => client ?? createApiClient(),
-    [client],
-  );
-
-  return createElement(
-    ApiClientContext.Provider,
-    { value: resolvedClient },
-    children,
-  );
-}
-
-export function useApiClient(): ApiClient {
-  const client = useContext(ApiClientContext);
-
-  if (!client) {
-    throw new Error("ApiClientProvider is missing");
-  }
-
-  return client;
 }

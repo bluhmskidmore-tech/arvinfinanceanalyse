@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -10,6 +11,14 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from tests.helpers import load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def _seed_choice_macro_history(
@@ -197,6 +206,27 @@ def test_livermore_api_returns_explicit_no_data_state(tmp_path, monkeypatch) -> 
     assert any(row["code"] == "LIVERMORE_BROAD_INDEX_NO_DATA" for row in result["diagnostics"])
     readiness_by_key = {row["key"]: row for row in result["rule_readiness"]}
     assert "broad_index_history" in readiness_by_key["market_gate"]["missing_inputs"]
+    get_settings.cache_clear()
+
+
+def test_livermore_stock_detail_logs_api_perf(tmp_path, monkeypatch, caplog) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get(
+            "/ui/market-data/livermore/stock-detail",
+            params={"stock_code": "000001.SZ", "lookback": 5},
+        )
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/market-data/livermore/stock-detail")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "market_data.livermore.stock_detail"
+    assert getattr(record, "trace_id")
+    assert getattr(record, "duckdb_statement_count") is None
     get_settings.cache_clear()
 
 

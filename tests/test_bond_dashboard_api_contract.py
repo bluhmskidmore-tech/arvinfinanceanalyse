@@ -1,6 +1,7 @@
 """Contract tests for bond-dashboard HTTP API (envelope + empty DB behavior)."""
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -12,6 +13,14 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
     ("/api/bond-dashboard/dates", {}),
@@ -233,6 +242,31 @@ def test_bond_dashboard_group_by_validation_422(tmp_path, monkeypatch) -> None:
         params={"report_date": REPORT_DATE, "group_by": "not_a_column"},
     )
     assert response.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_bond_dashboard_headline_logs_api_perf(tmp_path, monkeypatch, caplog) -> None:
+    duckdb_path = tmp_path / "empty-perf.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get(
+            "/api/bond-dashboard/headline-kpis",
+            params={"report_date": REPORT_DATE},
+        )
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/api/bond-dashboard/headline-kpis")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "bond_dashboard.headline_kpis"
+    assert getattr(record, "trace_id")
+    assert getattr(record, "duckdb_statement_count") is None
     get_settings.cache_clear()
 
 

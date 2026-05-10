@@ -26,6 +26,8 @@ from backend.app.services.market_data_livermore_service import (
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.app.api.perf_logging import timed_api_call
+
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
 LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND = "market_data.livermore.signal_confluence"
@@ -302,11 +304,14 @@ def livermore_stock_detail(
             raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
 
     settings = get_settings()
-    return livermore_stock_detail_envelope(
-        duckdb_path=str(settings.duckdb_path),
-        stock_code=cleaned,
-        as_of_date=parsed_as_of,
-        lookback=lookback,
+    return timed_api_call(
+        "/ui/market-data/livermore/stock-detail",
+        lambda: livermore_stock_detail_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            stock_code=cleaned,
+            as_of_date=parsed_as_of,
+            lookback=lookback,
+        ),
     )
 
 
@@ -337,12 +342,15 @@ def livermore_candidate_history(
             ) from exc
 
     settings = get_settings()
-    return livermore_candidate_history_envelope(
-        duckdb_path=str(settings.duckdb_path),
-        stock_code=stock_code,
-        snapshot_from=snapshot_from,
-        snapshot_to=snapshot_to,
-        limit=limit,
+    return timed_api_call(
+        "/ui/market-data/livermore/candidate-history",
+        lambda: livermore_candidate_history_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            stock_code=stock_code,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            limit=limit,
+        ),
     )
 
 
@@ -433,10 +441,13 @@ def livermore_sector_rank_series(
             parsed_as_of = date.fromisoformat(as_of_date.strip()[:10])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return livermore_sector_rank_series_envelope(
-        duckdb_path=str(settings.duckdb_path),
-        as_of_date=parsed_as_of,
-        window_days=window_days,
-        sector_code=sector_code,
-        top_k=top_k,
+    return timed_api_call(
+        "/ui/market-data/livermore/sector-rank-series",
+        lambda: livermore_sector_rank_series_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            as_of_date=parsed_as_of,
+            window_days=window_days,
+            sector_code=sector_code,
+            top_k=top_k,
+        ),
     )

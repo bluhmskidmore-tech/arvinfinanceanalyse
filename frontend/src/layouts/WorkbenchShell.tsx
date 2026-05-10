@@ -16,7 +16,7 @@ import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { useApiClient } from "../api/client";
+import { useApiClient } from "../api/clientContext";
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
 import {
   findWorkbenchSectionByPath,

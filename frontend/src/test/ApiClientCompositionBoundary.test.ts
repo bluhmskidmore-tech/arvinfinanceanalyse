@@ -6,6 +6,10 @@ import { describe, expect, it } from "vitest";
 import { createApiClient } from "../api/client";
 
 const clientSource = readFileSync(resolve(process.cwd(), "src/api/client.ts"), "utf8");
+const clientContextSource = readFileSync(resolve(process.cwd(), "src/api/clientContext.ts"), "utf8");
+const providersSource = readFileSync(resolve(process.cwd(), "src/app/providers.tsx"), "utf8");
+const shellSource = readFileSync(resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx"), "utf8");
+const dataModeRibbonSource = readFileSync(resolve(process.cwd(), "src/components/DataModeRibbon.tsx"), "utf8");
 const marketDataSource = readFileSync(resolve(process.cwd(), "src/api/marketDataClient.ts"), "utf8");
 const kpiSource = readFileSync(resolve(process.cwd(), "src/api/kpiClient.ts"), "utf8");
 const cubeSource = readFileSync(resolve(process.cwd(), "src/api/cubeClient.ts"), "utf8");
@@ -70,5 +74,17 @@ describe("ApiClient composition boundary", () => {
     expect(kpiSource).toMatch(/async fetchAndRecalcKpi\(/);
     expect(cubeSource).toMatch(/async getCubeDimensions\(/);
     expect(cubeSource).toMatch(/async executeCubeQuery\(/);
+  });
+
+  it("keeps first-screen providers and shell on the lightweight API context boundary", () => {
+    expect(providersSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
+    expect(providersSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
+    expect(shellSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
+    expect(shellSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
+    expect(dataModeRibbonSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
+    expect(dataModeRibbonSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
+    expect(clientContextSource).toContain("createDeferredApiClient");
+    expect(clientContextSource).not.toMatch(/import\s+\{[^}]*createApiClient/);
+    expect(clientSource).toContain("from \"./clientContext\"");
   });
 });

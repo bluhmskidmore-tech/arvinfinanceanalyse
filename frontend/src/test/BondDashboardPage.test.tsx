@@ -194,4 +194,84 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-duration")).toHaveTextContent("4.14");
     });
   });
+
+  it("loads the first-screen decision data before lower dashboard panels", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const calls: string[] = [];
+    client.getBondDashboardDates = async () => {
+      calls.push("dates");
+      return {
+        result_meta: resultMeta("bond_dashboard.dates"),
+        result: { report_dates: ["2026-04-30"] },
+      };
+    };
+    client.getBondDashboardHeadlineKpis = async () => {
+      calls.push("headline");
+      return {
+        result_meta: resultMeta("bond_dashboard.headline_kpis"),
+        result: {
+          report_date: "2026-04-30",
+          prev_report_date: null,
+          kpis: {
+            total_market_value: yuan(100_000_000),
+            unrealized_pnl: yuan(0),
+            weighted_ytm: pct(0.025),
+            weighted_duration: ratio(4.1),
+            weighted_coupon: pct(0.02),
+            credit_spread_median: pct(0.01),
+            total_dv01: dv01(100),
+            bond_count: 1,
+          },
+          prev_kpis: null,
+        },
+      };
+    };
+    client.getBondDashboardRiskIndicators = async () => {
+      calls.push("risk");
+      return {
+        result_meta: resultMeta("bond_dashboard.risk_indicators"),
+        result: {
+          report_date: "2026-04-30",
+          total_market_value: yuan(100_000_000),
+          credit_ratio: pct(0.4),
+          weighted_duration: ratio(4.1),
+          weighted_convexity: ratio(0.03),
+          total_dv01: dv01(100),
+          total_spread_dv01: dv01(40),
+          reinvestment_ratio_1y: pct(0.12),
+        },
+      };
+    };
+    const lowerPanelMethods = [
+      "getBondDashboardAssetStructure",
+      "getBondDashboardYieldDistribution",
+      "getBondDashboardPortfolioComparison",
+      "getBondDashboardSpreadAnalysis",
+      "getBondDashboardMaturityStructure",
+      "getBondDashboardIndustryDistribution",
+      "getBondBusinessTypeMetrics",
+    ] as const;
+    for (const method of lowerPanelMethods) {
+      vi.spyOn(client, method).mockImplementation(async () => {
+        calls.push(method);
+        throw new Error(`${method} should wait for first-screen queries`);
+      });
+    }
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(calls).toEqual(["dates", "headline", "risk"]);
+    });
+    expect(await screen.findByTestId("bond-dashboard-conclusion")).toHaveTextContent("当前结论");
+  });
 });

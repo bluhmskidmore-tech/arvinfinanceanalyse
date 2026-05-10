@@ -1,6 +1,7 @@
 """Contract tests for analytical dashboard KPI endpoints."""
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 
@@ -12,6 +13,14 @@ from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from tests.helpers import load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def _tyw_ddl() -> str:
@@ -229,4 +238,26 @@ def test_dashboard_endpoints_empty_db(tmp_path, monkeypatch) -> None:
     assert dy.status_code == 200
     assert dy.json()["result"]["periods"] == []
 
+    get_settings.cache_clear()
+
+
+def test_dashboard_core_metrics_logs_api_perf(tmp_path, monkeypatch, caplog) -> None:
+    duckdb_path = tmp_path / "empty-dash-perf.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get("/api/dashboard/core_metrics")
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/api/dashboard/core_metrics")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "dashboard.core_metrics"
+    assert getattr(record, "trace_id")
+    assert getattr(record, "duckdb_statement_count") is None
     get_settings.cache_clear()

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import json
 import csv
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,14 @@ from tests.test_balance_analysis_materialize_flow import (
     _patch_skip_fx_refresh,
     _seed_snapshot_and_fx_tables,
 )
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def _configure_and_materialize(tmp_path, monkeypatch):
@@ -940,6 +949,32 @@ def test_balance_analysis_overview_returns_422_for_invalid_filters(tmp_path, mon
     )
     assert invalid_currency.status_code == 422
 
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_overview_logs_api_perf(tmp_path, monkeypatch, caplog):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get(
+            "/ui/balance-analysis/overview",
+            params={
+                "report_date": "2025-12-31",
+                "position_scope": "all",
+                "currency_basis": "CNY",
+            },
+        )
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/balance-analysis/overview")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "balance-analysis.overview"
+    assert getattr(record, "trace_id")
+    assert getattr(record, "duckdb_statement_count") is None
     get_settings.cache_clear()
 
 

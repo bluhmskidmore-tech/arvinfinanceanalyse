@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.services.dashboard_service import get_core_metrics, get_daily_changes
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -17,7 +18,10 @@ def core_metrics(
         Query(description="Trading date anchor (YYYY-MM-DD); omit for latest merged date."),
     ] = None,
 ) -> dict[str, object]:
-    return get_core_metrics(report_date)
+    return timed_api_call(
+        "/api/dashboard/core_metrics",
+        lambda: get_core_metrics(report_date),
+    )
 
 
 @router.get("/daily-changes")
@@ -27,4 +31,7 @@ def daily_changes(
         Query(description="Trading date anchor (YYYY-MM-DD); omit for latest merged date."),
     ] = None,
 ) -> dict[str, object]:
-    return get_daily_changes(report_date)
+    return timed_api_call(
+        "/api/dashboard/daily-changes",
+        lambda: get_daily_changes(report_date),
+    )

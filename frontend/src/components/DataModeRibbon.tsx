@@ -1,4 +1,4 @@
-import { useApiClient } from "../api/client";
+import { useApiClient } from "../api/clientContext";
 
 /**
  * Fixed banner shown when the frontend is running in mock mode.
