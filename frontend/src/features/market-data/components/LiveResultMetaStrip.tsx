@@ -20,6 +20,7 @@ export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripP
     warning: "预警",
     error: "错误",
     stale: "陈旧",
+    missing: "缺失",
   };
   const vendorLabel: Record<ResultMeta["vendor_status"], string> = {
     ok: "正常",

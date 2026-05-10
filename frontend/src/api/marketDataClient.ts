@@ -1535,6 +1535,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         "market_data.livermore.stock_detail",
         {
           basis: "analytical",
+          state: "ok",
           stock_code: options.stockCode.trim(),
           requested_as_of_date: options.asOfDate ?? null,
           as_of_date: options.asOfDate ?? "2026-04-09",

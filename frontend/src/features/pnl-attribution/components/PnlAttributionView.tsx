@@ -126,6 +126,7 @@ function metaQualityLabel(value: ResultMeta["quality_flag"]) {
     warning: "预警",
     error: "错误",
     stale: "陈旧",
+    missing: "缺失",
   };
   return labels[value] ?? value;
 }

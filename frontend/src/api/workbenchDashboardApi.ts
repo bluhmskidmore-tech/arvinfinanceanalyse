@@ -4,7 +4,6 @@ import type {
   DailyChangesPayload,
   DailyChangesResult,
 } from "./contracts";
-import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { sampleCoreMetricsResult, sampleDailyChangesResult } from "../fixtures/dashboardCoreWorkbenchSamples";
 
 /** ApiClient 延迟函数形状（与 ``client.ts`` 内嵌一致）。 */

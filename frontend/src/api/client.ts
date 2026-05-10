@@ -229,7 +229,7 @@ type ApiClientProviderProps = {
 
 const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 
-const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+const delay = async () => new Promise<void>((resolve) => setTimeout(resolve, 40));
 
 type MockClientBundle = Pick<typeof import("../mocks/mockApiEnvelope"), "buildMockApiEnvelope"> & Pick<typeof import("../mocks/productCategoryPnl"), "buildMockProductCategoryPnlEnvelope" | "buildMockProductCategoryAttributionEnvelope"> & typeof import("../mocks/workbench") & typeof import("../mocks/pnlAttributionWorkbench") & typeof import("../mocks/campisiMocks") & typeof import("../mocks/ledgerPnlMocks");
 let mockClientBundleCache: MockClientBundle | null = null;

@@ -11,7 +11,8 @@ import type {
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateEvidenceCards,
-  buildDailyJudgmentStrip,
+  buildCandidateReviewQueue,
+  buildDecisionSummary,
   buildInlineMetaSegments,
   buildMarketStateCard,
   buildRiskExitRows,
@@ -133,9 +134,19 @@ export default function StockAnalysisPage() {
   const confluencePayload: LivermoreSignalConfluencePayload | null =
     confluenceQuery.data?.result ?? null;
 
-  const judgment = useMemo(
-    () => (strategyPayload ? buildDailyJudgmentStrip(strategyPayload) : null),
-    [strategyPayload],
+  const decisionSummary = useMemo(
+    () =>
+      strategyPayload
+        ? buildDecisionSummary(strategyPayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+          })
+        : null,
+    [
+      strategyPayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+    ],
   );
 
   const marketState = useMemo(
@@ -163,6 +174,11 @@ export default function StockAnalysisPage() {
     return [...cards].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
   }, [strategyPayload]);
 
+  const reviewQueue = useMemo(() => {
+    const queue = strategyPayload ? buildCandidateReviewQueue(strategyPayload) : [];
+    return [...queue].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
+  }, [strategyPayload]);
+
   const sectorOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const card of candidateCards) {
@@ -172,9 +188,9 @@ export default function StockAnalysisPage() {
   }, [candidateCards]);
 
   const filteredCandidates = useMemo(() => {
-    if (!sectorFilterSectorCode) return candidateCards;
-    return candidateCards.filter((c) => c.sectorCode === sectorFilterSectorCode);
-  }, [candidateCards, sectorFilterSectorCode]);
+    if (!sectorFilterSectorCode) return reviewQueue;
+    return reviewQueue.filter((c) => c.sectorCode === sectorFilterSectorCode);
+  }, [reviewQueue, sectorFilterSectorCode]);
 
   const riskRows = useMemo(
     () => (strategyPayload ? buildRiskExitRows(strategyPayload, confluencePayload) : []),
@@ -331,25 +347,72 @@ export default function StockAnalysisPage() {
 
       {marketState ? (
         <>
-          {judgment ? (
+          {decisionSummary ? (
             <section
-              className="stock-analysis-page__panel"
-              aria-label="本日判断"
-              data-testid="stock-analysis-judgment-strip"
+              className="stock-analysis-page__panel stock-analysis-page__decision-panel"
+              aria-label="今日判断"
+              data-testid="stock-analysis-decision-panel"
             >
-              <div className="stock-analysis-page__judgment-strip">
-                <main>
-                  <p className="stock-analysis-page__judgment-lead">{judgment.headline}</p>
-                  <span className="stock-analysis-page__pattern-tag">
-                    {marketState.state} · 观察暴露 {marketState.exposureLabel}
-                  </span>
-                </main>
-                <aside>
-                  <span className="stock-analysis-page__judgment-chip">{judgment.gateChip}</span>
-                  <span className="stock-analysis-page__judgment-chip">{judgment.exposureChip}</span>
-                  <span className="stock-analysis-page__judgment-chip">{judgment.strongestSectorChip}</span>
-                  <span className="stock-analysis-page__judgment-chip">{judgment.weakestSectorChip}</span>
-                </aside>
+              <div className="stock-analysis-page__decision-main">
+                <div>
+                  <p className="stock-analysis-page__eyebrow">今日判断</p>
+                  <h2>{decisionSummary.headline}</h2>
+                  <p className="stock-analysis-page__decision-next">{decisionSummary.nextReviewAction}</p>
+                </div>
+                <div className="stock-analysis-page__decision-meta" aria-label="今日判断摘要">
+                  <span>{decisionSummary.gateLabel}</span>
+                  <span>{decisionSummary.exposureLabel}</span>
+                  <span>{decisionSummary.strongestSectorLabel}</span>
+                  <span>{decisionSummary.weakestSectorLabel}</span>
+                  <span>{decisionSummary.candidateCountLabel}</span>
+                  <span>{decisionSummary.dataFreshnessLabel}</span>
+                </div>
+              </div>
+              <div className="stock-analysis-page__decision-grid">
+                <div>
+                  <span>数据日期</span>
+                  <strong className="stock-analysis-page__tabular">{decisionSummary.asOfLabel}</strong>
+                </div>
+                <div>
+                  <span>口径</span>
+                  <strong>{decisionSummary.basisLabel}</strong>
+                </div>
+                <div>
+                  <span>边界</span>
+                  <strong>{decisionSummary.boundaryLabel}</strong>
+                </div>
+                <div>
+                  <span>门控确认</span>
+                  <strong>{marketState.passedLabel}</strong>
+                </div>
+              </div>
+              <div className="stock-analysis-page__decision-detail">
+                <section>
+                  <h3>门控条件</h3>
+                  <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                    {marketState.conditions.map((condition) => (
+                      <li key={condition.key}>
+                        <span>
+                          <strong>{condition.label}</strong>
+                          <small>{condition.evidence}</small>
+                        </span>
+                        <em>{statusLabel(condition.status)}</em>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section>
+                  <h3>需要关注边界</h3>
+                  {marketState.warnings.length > 0 ? (
+                    <ul className="stock-analysis-page__notes">
+                      {marketState.warnings.slice(0, 4).map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="stock-analysis-page__empty">当前无诊断预警。</p>
+                  )}
+                </section>
               </div>
             </section>
           ) : null}
@@ -359,58 +422,6 @@ export default function StockAnalysisPage() {
               数据陈旧或通道异常（quality_flag / vendor_status）。下方结论仅供复核参考。
             </div>
           ) : null}
-
-          <section className="stock-analysis-page__panel stock-analysis-page__overview-panel">
-            <div className="stock-analysis-page__section-head">
-              <div>
-                <h2>{marketState.title}</h2>
-                <p>先看市场门控，再看板块与个股证据。</p>
-              </div>
-              <span className="stock-analysis-page__pill">{marketState.basisLabel}</span>
-            </div>
-            <div className="stock-analysis-page__kpis">
-              <div className="stock-analysis-page__kpi">
-                <span>状态</span>
-                <strong>{marketState.state}</strong>
-              </div>
-              <div className="stock-analysis-page__kpi">
-                <span>观察暴露</span>
-                <strong>{marketState.exposureLabel}</strong>
-              </div>
-              <div className="stock-analysis-page__kpi">
-                <span>门控确认</span>
-                <strong>{marketState.passedLabel}</strong>
-              </div>
-            </div>
-            <div className="stock-analysis-page__split">
-              <div>
-                <h3>门控条件</h3>
-                <ul className="stock-analysis-page__list">
-                  {marketState.conditions.map((condition) => (
-                    <li key={condition.key}>
-                      <span>
-                        <strong>{condition.label}</strong>
-                        <small>{condition.evidence}</small>
-                      </span>
-                      <em>{statusLabel(condition.status)}</em>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3>需要关注边界</h3>
-                {marketState.warnings.length > 0 ? (
-                  <ul className="stock-analysis-page__notes">
-                    {marketState.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="stock-analysis-page__empty">当前无诊断预警。</p>
-                )}
-              </div>
-            </div>
-          </section>
 
           <div className="stock-analysis-page__workspace">
             <div className="stock-analysis-page__primary">
@@ -734,17 +745,17 @@ export default function StockAnalysisPage() {
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
-                data-testid="stock-analysis-candidates-section"
+                data-testid="stock-analysis-review-queue"
               >
                 <div className="stock-analysis-page__section-head">
                   <div>
-                    <h2>候选股证据卡</h2>
-                    <p>说明为什么进入观察、反证与待补证据，以及失效条件。</p>
+                    <h2>复核队列</h2>
+                    <p>按当前只读证据排列候选，先看为什么进入观察，再看反证、待补和失效条件。</p>
                   </div>
-                  <span className="stock-analysis-page__pill">候选 / 复核</span>
+                  <span className="stock-analysis-page__pill">候选 / 复核队列</span>
                 </div>
 
-                {candidateCards.length > 0 ? (
+                {reviewQueue.length > 0 ? (
                   <div className="stock-analysis-page__chip-row" data-testid="stock-sector-filter-chips">
                     <button
                       type="button"
@@ -769,11 +780,11 @@ export default function StockAnalysisPage() {
                   </div>
                 ) : null}
 
-                {candidateCards.length > 0 ? (
+                {reviewQueue.length > 0 ? (
                   <div className="stock-analysis-page__candidate-grid">
                     {filteredCandidates.map((card) => (
                       <article
-                        className="stock-analysis-page__candidate"
+                        className="stock-analysis-page__candidate stock-analysis-page__review-card"
                         data-testid={`stock-candidate-${card.stockCode}`}
                         key={card.stockCode}
                       >
@@ -788,8 +799,9 @@ export default function StockAnalysisPage() {
                             </div>
                           </div>
                           <div className="stock-analysis-page__candidate-actions">
+                            <strong>#{card.rank}</strong>
                             <Button
-                              type="link"
+                              type="default"
                               size="small"
                               data-testid={`stock-candidate-review-chart-${card.stockCode}`}
                               onClick={() => setDetailSelection({ code: card.stockCode, name: card.stockName })}
@@ -799,11 +811,12 @@ export default function StockAnalysisPage() {
                             <span>观察</span>
                           </div>
                         </div>
+                        <p className="stock-analysis-page__review-focus">{card.reviewFocus}</p>
                         <div className="stock-analysis-page__evidence-columns">
                           <div>
-                            <h4>入选证据</h4>
+                            <h4>为什么先看</h4>
                             <ul>
-                              {card.evidenceBullets.map((item) => (
+                              {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
                                 <li key={item.key}>
                                   <strong>{item.label}</strong>：{item.value}
                                 </li>
@@ -811,17 +824,18 @@ export default function StockAnalysisPage() {
                             </ul>
                           </div>
                           <div>
-                            <h4>反证 / 待补证据</h4>
+                            <h4>反证与待补</h4>
                             <ul>
-                              {card.counterEvidence.map((item) => (
+                              {card.boundaryEvidence.map((item) => (
                                 <li key={item}>{item}</li>
                               ))}
                             </ul>
                           </div>
                           <div>
                             <h4>失效条件</h4>
+                            <p className="stock-analysis-page__review-focus">{card.invalidationFocus}</p>
                             <ul>
-                              {card.invalidationRules.map((item) => (
+                              {card.invalidationRules.slice(1).map((item) => (
                                 <li key={item}>{item}</li>
                               ))}
                             </ul>
@@ -851,13 +865,13 @@ export default function StockAnalysisPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="stock-analysis-page__empty">当前无候选股证据卡。</p>
+                  <p className="stock-analysis-page__empty">当前无候选股复核队列。</p>
                 )}
-                {candidateCards.length > 0 &&
+                {reviewQueue.length > 0 &&
                 sectorFilterSectorCode &&
                 filteredCandidates.length === 0 ? (
                   <p className="stock-analysis-page__empty">
-                    该行业暂无候选卡片，可切换到其他行业复核。
+                    该行业暂无候选复核项，可切换到其他行业复核。
                   </p>
                 ) : null}
               </section>

@@ -253,14 +253,37 @@ function stockClient(options?: {
 }
 
 describe("StockAnalysisPage", () => {
+  it("puts the decision summary and review queue on the first analysis surface", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
+    });
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("今日判断");
+    expect(decisionPanel).toHaveTextContent("今日市场状态：进攻");
+    expect(decisionPanel).toHaveTextContent("门控 2/4");
+    expect(decisionPanel).toHaveTextContent("观察暴露 40%");
+    expect(decisionPanel).toHaveTextContent("最强 AI");
+    expect(decisionPanel).toHaveTextContent("最弱 新能源车");
+    expect(decisionPanel).toHaveTextContent("数据需复核 warning / ok");
+    expect(decisionPanel).toHaveTextContent("先复核 Alpha");
+    expect(decisionPanel).toHaveTextContent("边界");
+
+    const queue = await screen.findByTestId("stock-analysis-review-queue");
+    expect(queue).toHaveTextContent("复核队列");
+    expect(queue).toHaveTextContent("为什么先看");
+    expect(queue).toHaveTextContent("反证与待补");
+    expect(queue).toHaveTextContent("失效条件");
+    expect(queue).toHaveTextContent("复核 K 线");
+  });
+
   it("renders core sections and candidate evidence", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
-    expect(await screen.findByTestId("stock-analysis-judgment-strip")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "市场状态" })).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "板块强弱" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "候选股证据卡" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "复核队列" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "数据口径与边界" })).toBeInTheDocument();
 

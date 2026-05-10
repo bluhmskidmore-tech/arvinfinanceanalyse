@@ -107,6 +107,39 @@ export type StockMetaSegment = {
   text: string;
 };
 
+export type StockDecisionSummary = {
+  headline: string;
+  gateLabel: string;
+  exposureLabel: string;
+  strongestSectorLabel: string;
+  weakestSectorLabel: string;
+  candidateCountLabel: string;
+  dataFreshnessLabel: string;
+  boundaryLabel: string;
+  nextReviewAction: string;
+  basisLabel: string;
+  asOfLabel: string;
+};
+
+export type StockCandidateReviewQueueItem = {
+  rank: number;
+  stockCode: string;
+  stockName: string;
+  sectorCode: string;
+  sectorName: string;
+  headline: string;
+  pattern: StockCandidatePattern;
+  patternNote: string;
+  distanceToBreakoutPct: string;
+  reviewFocus: string;
+  primaryEvidence: StockCandidateEvidenceBullet[];
+  supportingEvidence: StockCandidateEvidenceBullet[];
+  boundaryEvidence: string[];
+  invalidationFocus: string;
+  invalidationRules: string[];
+  rawFields: { key: string; label: string; value: string }[];
+};
+
 function formatNumber(value: number | null | undefined, digits = 2) {
   if (value == null || !Number.isFinite(value)) {
     return "待补";
@@ -275,6 +308,70 @@ export function buildInlineMetaSegments(
     { key: "vendor_status", text: extras.vendor_status ?? "待补" },
   ];
   return out;
+}
+
+function countBoundaryItems(payload: LivermoreStrategyPayload): number {
+  return (
+    payload.diagnostics.filter((item) => item.severity !== "info").length +
+    payload.data_gaps.filter((gap) => gap.status !== "ready").length +
+    payload.unsupported_outputs.length
+  );
+}
+
+export function buildCandidateReviewQueue(
+  payload: LivermoreStrategyPayload,
+): StockCandidateReviewQueueItem[] {
+  return buildCandidateEvidenceCards(payload).map((card) => ({
+    rank: card.rank,
+    stockCode: card.stockCode,
+    stockName: card.stockName,
+    sectorCode: card.sectorCode,
+    sectorName: card.sectorName,
+    headline: card.headline,
+    pattern: card.pattern,
+    patternNote: card.patternNote,
+    distanceToBreakoutPct: card.distanceToBreakoutPct,
+    reviewFocus: `${card.stockName} · ${card.sectorName} · 距观察位 ${card.distanceToBreakoutPct}`,
+    primaryEvidence: card.evidenceBullets.slice(0, 3),
+    supportingEvidence: card.evidenceBullets.slice(3),
+    boundaryEvidence: card.counterEvidence,
+    invalidationFocus: card.invalidationRules[0] ?? "失效条件待补。",
+    invalidationRules: card.invalidationRules,
+    rawFields: card.rawFields,
+  }));
+}
+
+export function buildDecisionSummary(
+  payload: LivermoreStrategyPayload,
+  meta: Partial<{
+    quality_flag: string;
+    vendor_status: string;
+  }> = {},
+): StockDecisionSummary {
+  const strip = buildDailyJudgmentStrip(payload);
+  const queue = buildCandidateReviewQueue(payload);
+  const firstReview = queue[0];
+  const qualityFlag = meta.quality_flag ?? "待补";
+  const vendorStatus = meta.vendor_status ?? "待补";
+  const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok";
+  const candidateCount = payload.stock_candidates?.candidate_count ?? queue.length;
+  const boundaryCount = countBoundaryItems(payload);
+
+  return {
+    headline: strip.headline,
+    gateLabel: strip.gateChip,
+    exposureLabel: `观察暴露 ${formatRatioAsPercent(payload.market_gate.exposure)}`,
+    strongestSectorLabel: strip.strongestSectorChip,
+    weakestSectorLabel: strip.weakestSectorChip,
+    candidateCountLabel: `候选 ${candidateCount}`,
+    dataFreshnessLabel: `${dataFreshnessOk ? "数据正常" : "数据需复核"} ${qualityFlag} / ${vendorStatus}`,
+    boundaryLabel: boundaryCount > 0 ? `${boundaryCount} 条边界` : "边界清晰",
+    nextReviewAction: firstReview
+      ? `下一步：先复核 ${firstReview.stockName}（${firstReview.stockCode}），${firstReview.sectorName}，距观察位 ${firstReview.distanceToBreakoutPct}。`
+      : "暂无候选股，先核对门控、板块强弱和数据边界。",
+    basisLabel: `basis: ${payload.basis}`,
+    asOfLabel: payload.as_of_date ?? "待补日期",
+  };
 }
 
 /** @deprecated Stage 1.5 — 已由 inline meta + Drawer 替代正文列表；保留给需要纯文本的诊断导出 */

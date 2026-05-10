@@ -5,7 +5,9 @@ import type {
   LivermoreStrategyPayload,
 } from "../api/contracts";
 import {
+  buildCandidateReviewQueue,
   buildCandidateEvidenceCards,
+  buildDecisionSummary,
   buildDailyJudgmentStrip,
   buildDataBoundaryNotes,
   buildMarketStateCard,
@@ -215,6 +217,56 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].invalidationRules.join(" ")).toContain("10EMA");
     expect(cards[0].invalidationRules.join(" ")).toContain("涨跌停状态");
     expect(cards[0].rawFields.some((row) => row.key === "gap_norm")).toBe(true);
+  });
+
+  it("builds a decision summary and review queue without inventing unavailable evidence", () => {
+    const summary = buildDecisionSummary(strategyPayload, {
+      quality_flag: "warning",
+      vendor_status: "ok",
+    });
+    const queue = buildCandidateReviewQueue(strategyPayload);
+
+    expect(summary.headline).toContain("今日市场状态：进攻");
+    expect(summary.gateLabel).toBe("门控 2/4");
+    expect(summary.exposureLabel).toBe("观察暴露 40%");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 warning / ok");
+    expect(summary.nextReviewAction).toContain("先复核 Alpha");
+    expect(summary.nextReviewAction).toContain("距观察位");
+    expect(summary.boundaryLabel).toContain("2 条边界");
+    expect(queue[0].reviewFocus).toContain("Alpha");
+    expect(queue[0].primaryEvidence.map((item) => item.key)).toEqual([
+      "sector_rank",
+      "close_vs_break",
+      "ma_curve",
+    ]);
+    expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面与估值证据未接入");
+    expect(queue[0].invalidationFocus).toContain("10EMA");
+    expect(queue[0].reviewFocus).not.toContain("买入");
+  });
+
+  it("keeps the decision summary honest when candidates are unavailable", () => {
+    const summary = buildDecisionSummary(
+      {
+        ...strategyPayload,
+        stock_candidates: {
+          ...strategyPayload.stock_candidates!,
+          candidate_count: 0,
+          items: [],
+        },
+        unsupported_outputs: [
+          {
+            key: "stock_candidates",
+            reason: "choice_stock_daily_observation is not landed.",
+          },
+        ],
+      },
+      { quality_flag: "ok", vendor_status: "ok" },
+    );
+
+    expect(summary.candidateCountLabel).toBe("候选 0");
+    expect(summary.nextReviewAction).toBe("暂无候选股，先核对门控、板块强弱和数据边界。");
+    expect(summary.boundaryLabel).toContain("3 条边界");
+    expect(summary.nextReviewAction).not.toContain("Alpha");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
