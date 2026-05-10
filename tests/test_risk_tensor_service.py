@@ -250,6 +250,36 @@ def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, 
     get_settings.cache_clear()
 
 
+def test_risk_tensor_dates_envelope_wraps_governance_lock_timeout_as_service_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "load_latest_bond_analytics_lineage_by_report_date",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            TimeoutError("Timed out acquiring lock lock:governance:jsonl:test")
+        ),
+    )
+
+    try:
+        service_mod.risk_tensor_dates_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "Risk tensor lineage store is temporarily unavailable."
+    else:
+        raise AssertionError("Expected RuntimeError for governance lock timeout")
+
+    get_settings.cache_clear()
+
+
 def test_risk_tensor_dates_envelope_falls_back_to_upstream_source_version_when_manifest_missing(
     tmp_path,
     monkeypatch,

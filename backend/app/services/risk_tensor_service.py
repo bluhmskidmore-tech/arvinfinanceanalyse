@@ -5,9 +5,9 @@ from datetime import date
 
 from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.repositories.risk_tensor_repo import (
+    RiskTensorRepository,
     load_current_tyw_liability_lineage_by_report_date,
     load_current_tyw_liability_rule_version,
-    RiskTensorRepository,
     load_current_tyw_liability_source_version,
     load_latest_bond_analytics_lineage,
     load_latest_bond_analytics_lineage_by_report_date,
@@ -29,9 +29,12 @@ def risk_tensor_dates_envelope(
     candidate_report_dates = [str(row["report_date"]) for row in candidate_rows]
     report_dates: list[str] = []
     blocked_report_dates: list[dict[str, str]] = []
-    bond_lineage_by_report_date = load_latest_bond_analytics_lineage_by_report_date(
-        governance_dir=governance_dir,
-    )
+    try:
+        bond_lineage_by_report_date = load_latest_bond_analytics_lineage_by_report_date(
+            governance_dir=governance_dir,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError("Risk tensor lineage store is temporarily unavailable.") from exc
     tyw_liability_lineage_by_report_date = load_current_tyw_liability_lineage_by_report_date(
         duckdb_path=str(duckdb_path),
     )
