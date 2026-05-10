@@ -165,7 +165,7 @@ class GovernanceRepository:
                 raise
 
     def read_all(self, stream: str) -> list[dict[str, object]]:
-        with acquire_lock(self._batch_lock(), base_dir=self.base_dir):
+        with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
             if self._reads_sql(stream):
                 return self._read_all_sql(stream)
             target = self.base_dir / f"{stream}.jsonl"

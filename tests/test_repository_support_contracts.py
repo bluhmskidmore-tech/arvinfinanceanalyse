@@ -324,6 +324,59 @@ def test_duckdb_repository_keeps_connections_read_only_for_compat_flag(monkeypat
     assert calls[0] == ("connect", "/tmp/compat.duckdb", True)
 
 
+def test_duckdb_repository_retries_transient_read_only_open_failure(monkeypatch: pytest.MonkeyPatch):
+    duck_module = load_module(
+        "backend.app.repositories.duck_support_contract_d",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    calls: list[tuple[str, object, object | None]] = []
+
+    class FakeConnection:
+        def execute(self, query: str, params: list[object]):
+            calls.append(("execute", query, tuple(params)))
+            return self
+
+        def fetchall(self):
+            return [("ok",)]
+
+        def close(self) -> None:
+            calls.append(("close", None, None))
+
+    attempts = {"count": 0}
+
+    def fake_connect(path: str, *, read_only: bool):
+        attempts["count"] += 1
+        calls.append(("connect", path, read_only))
+        if attempts["count"] == 1:
+            raise OSError("transient wal unavailable")
+        return FakeConnection()
+
+    monkeypatch.setattr(duck_module.duckdb, "connect", fake_connect)
+    repo = duck_module.DuckDBRepository("/tmp/transient.duckdb", transient_open_retries=2)
+    assert repo._fetch_rows("select 1") == [("ok",)]
+    assert [call for call in calls if call[0] == "connect"] == [
+        ("connect", "/tmp/transient.duckdb", True),
+        ("connect", "/tmp/transient.duckdb", True),
+    ]
+
+
+def test_duckdb_guarded_repository_returns_empty_when_read_open_stays_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    duck_module = load_module(
+        "backend.app.repositories.duck_support_contract_e",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+
+    def fake_connect(path: str, *, read_only: bool):
+        raise OSError("wal unavailable")
+
+    monkeypatch.setattr(duck_module.duckdb, "connect", fake_connect)
+    repo = duck_module.DuckDBRepository("/tmp/optional.duckdb", guard_path_exists=True, transient_open_retries=2)
+    assert repo._fetch_rows("select 1") == []
+    assert repo._table_exists("optional_table") is False
+
+
 def test_formal_zqtz_balance_metrics_repository_lists_report_dates(tmp_path):
     repo_module = load_module(
         "backend.app.repositories.formal_zqtz_balance_metrics_repo_contract",
