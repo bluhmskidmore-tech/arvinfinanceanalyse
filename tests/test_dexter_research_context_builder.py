@@ -256,6 +256,93 @@ def test_build_macro_research_context_reads_choice_and_tushare_series(tmp_path):
     assert context["macro"]["tushare_series"][0]["source_version"] == "sv_tushare"
 
 
+def test_macro_research_context_respects_as_of_date(tmp_path):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar, series_name varchar, trade_date varchar, value_numeric double,
+              frequency varchar, unit varchar, source_version varchar, vendor_version varchar,
+              rule_version varchar, quality_flag varchar, run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+            ('legacy.yield.choice.treasury.10Y','10Y treasury','2026-04-29',2.12,'daily','pct','sv_choice_old','vv_choice','rv_choice','ok','run-choice-old'),
+            ('legacy.yield.choice.treasury.10Y','10Y treasury','2026-05-02',2.48,'daily','pct','sv_choice_future','vv_choice','rv_choice','ok','run-choice-future')
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar, series_name varchar, vendor_series_code varchar, vendor_name varchar,
+              trade_date varchar, value_numeric double, frequency varchar, unit varchar,
+              source_version varchar, vendor_version varchar, rule_version varchar, run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+            ('legacy.yield.choice.treasury.10Y','10Y treasury','S0059749','choice','2026-04-29',2.12,'daily','pct','sv_snap_old','vv_choice','rv_choice','run-snap-old'),
+            ('legacy.yield.choice.treasury.10Y','10Y treasury','S0059749','choice','2026-05-02',2.48,'daily','pct','sv_snap_future','vv_choice','rv_choice','run-snap-future')
+            """
+        )
+        conn.execute(
+            """
+            create table std_external_macro_daily (
+              series_id varchar, vendor_name varchar, domain varchar, trade_date varchar,
+              value_numeric double, frequency varchar, unit varchar, source_version varchar,
+              vendor_version varchar, rule_version varchar, ingest_batch_id varchar,
+              raw_zone_path varchar, created_at timestamp
+            )
+            """
+        )
+        conn.execute(
+            """
+            create view vw_external_macro_daily as
+            select series_id, vendor_name, domain, trade_date, value_numeric, frequency, unit,
+                   source_version, vendor_version, rule_version, ingest_batch_id, raw_zone_path, created_at
+            from std_external_macro_daily
+            """
+        )
+        conn.execute(
+            """
+            insert into std_external_macro_daily values
+            ('tushare.macro.cn_cpi.monthly','tushare','macro','2026-03-31',1.8,'monthly','pct','sv_tushare_old','vv_tushare','rv_tushare','batch-old','old.json','2026-04-30 00:00:00'),
+            ('tushare.macro.cn_cpi.monthly','tushare','macro','2026-05-31',2.6,'monthly','pct','sv_tushare_future','vv_tushare','rv_tushare','batch-future','future.json','2026-06-01 00:00:00')
+            """
+        )
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="macro as-of check",
+            filters={
+                "research_domain": "macro",
+                "as_of_date": "2026-04-30",
+                "macro_series_ids": [
+                    "legacy.yield.choice.treasury.10Y",
+                    "tushare.macro.cn_cpi.monthly",
+                ],
+            },
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert context["macro"]["choice_series"][0]["trade_date"] == "2026-04-29"
+    assert context["macro"]["choice_series"][0]["source_version"] == "sv_choice_old"
+    assert context["macro"]["choice_snapshots"][0]["trade_date"] == "2026-04-29"
+    assert context["macro"]["choice_snapshots"][0]["source_version"] == "sv_snap_old"
+    assert context["macro"]["tushare_series"][0]["trade_date"] == "2026-03-31"
+    assert context["macro"]["tushare_series"][0]["source_version"] == "sv_tushare_old"
+
+
 def test_missing_research_context_records_limitations_without_tables(tmp_path):
     context = build_dexter_research_context(
         request=AgentQueryRequest(

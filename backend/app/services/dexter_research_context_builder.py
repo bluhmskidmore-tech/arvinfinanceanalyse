@@ -205,6 +205,7 @@ def _build_macro_context(
     context: dict[str, Any],
 ) -> None:
     series_ids = _resolve_macro_series_ids(context["filters_applied"])
+    as_of_date = str(context.get("as_of_date") or "").strip()
     macro: dict[str, Any] = {"series_ids": series_ids}
 
     if "fact_choice_macro_daily" in tables:
@@ -226,6 +227,7 @@ def _build_macro_context(
                 "run_id",
             ),
             series_ids=series_ids,
+            as_of_date=as_of_date,
         )
         macro["choice_series"] = rows
         context["evidence_rows"] += len(rows)
@@ -250,6 +252,7 @@ def _build_macro_context(
                 "run_id",
             ),
             series_ids=series_ids,
+            as_of_date=as_of_date,
         )
         macro["choice_snapshots"] = rows
         context["evidence_rows"] += len(rows)
@@ -283,6 +286,7 @@ def _build_macro_context(
                 "raw_zone_path",
             ),
             series_ids=series_ids,
+            as_of_date=as_of_date,
         )
         context["evidence_rows"] += len(macro["tushare_series"])
     else:
@@ -318,8 +322,9 @@ def _latest_rows_by_series(
     table_name: str,
     select_columns: tuple[str, ...],
     series_ids: list[str],
+    as_of_date: str,
 ) -> list[dict[str, Any]]:
-    where_sql, params = _series_filter_sql(series_ids)
+    where_sql, params = _series_filter_sql(series_ids, as_of_date=as_of_date)
     columns = ", ".join(select_columns)
     return _fetch_all(
         conn,
@@ -339,11 +344,21 @@ def _latest_rows_by_series(
     )
 
 
-def _series_filter_sql(series_ids: list[str]) -> tuple[str, list[Any]]:
+def _series_filter_sql(series_ids: list[str], *, as_of_date: str = "") -> tuple[str, list[Any]]:
+    conditions: list[str] = []
+    params: list[Any] = []
     if not series_ids:
+        placeholders = ""
+    else:
+        placeholders = ", ".join(["?"] * len(series_ids))
+        conditions.append(f"series_id in ({placeholders})")
+        params.extend(series_ids)
+    if as_of_date:
+        conditions.append("trade_date <= ?")
+        params.append(as_of_date)
+    if not conditions:
         return "", []
-    placeholders = ", ".join(["?"] * len(series_ids))
-    return f"where series_id in ({placeholders})", list(series_ids)
+    return f"where {' and '.join(conditions)}", params
 
 
 def _resolve_research_domain(request: AgentQueryRequest) -> str | None:
