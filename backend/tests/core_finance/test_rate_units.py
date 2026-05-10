@@ -82,3 +82,30 @@ class TestNormalizeAnnualRateToDecimal:
         with caplog.at_level(logging.WARNING):
             normalize_annual_rate_to_decimal(25.0)
         assert "25.0" in caplog.text
+
+
+class TestDetectPercentUnitFromCurve:
+    def test_empty_returns_true(self):
+        """空列表视为百分数（保守：不乘 100）"""
+        from backend.app.core_finance.rate_units import detect_percent_unit_from_curve
+        assert detect_percent_unit_from_curve([]) is True
+
+    def test_china_treasury_range(self):
+        """中国国债 1.5-3.5% 视为百分数"""
+        from backend.app.core_finance.rate_units import detect_percent_unit_from_curve
+        assert detect_percent_unit_from_curve([1.5, 2.5, 3.0, 3.5]) is True
+
+    def test_decimal_form_detected(self):
+        """0.015-0.035 小数形式被识别"""
+        from backend.app.core_finance.rate_units import detect_percent_unit_from_curve
+        assert detect_percent_unit_from_curve([0.015, 0.025, 0.03]) is False
+
+    def test_boundary_exactly_0_5(self):
+        """0.5 边界：>= 0.5 视为百分数"""
+        from backend.app.core_finance.rate_units import detect_percent_unit_from_curve
+        assert detect_percent_unit_from_curve([0.5]) is True
+
+    def test_boundary_below_0_5(self):
+        """0.49 视为小数"""
+        from backend.app.core_finance.rate_units import detect_percent_unit_from_curve
+        assert detect_percent_unit_from_curve([0.49, 0.3]) is False

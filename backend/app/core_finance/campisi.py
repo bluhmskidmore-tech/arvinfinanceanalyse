@@ -19,6 +19,7 @@ from decimal import Decimal
 from typing import Any
 
 from .bond_four_effects import compute_bond_four_effects, compute_bond_six_effects
+from .rate_units import detect_percent_unit_from_curve
 
 _TENORS = [1, 3, 5, 7, 10, 30]
 _TREASURY_KEYS = [
@@ -37,8 +38,8 @@ def _coerce_percent_curve(m: dict[str, Any] | None) -> dict[str, float]:
     if not m:
         return {}
     out = {k: float(m.get(k) or 0) for k in _TREASURY_KEYS}
-    vals = [v for v in out.values() if v and v > 0]
-    if vals and max(vals) < 0.5:
+    # Keep the threshold in rate_units so curve-unit heuristics stay consistent.
+    if not detect_percent_unit_from_curve([v for v in out.values() if v > 0]):
         for k in out:
             out[k] = out[k] * 100.0
     return out

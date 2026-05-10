@@ -54,6 +54,31 @@ def bp_to_pct(value: Decimal | float | str) -> Decimal:
 # 启发式归一（输入单位不确定时使用，尽量少用）
 # ---------------------------------------------------------------------------
 
+def detect_percent_unit_from_curve(values: list[float]) -> bool:
+    """
+    启发式判断曲线值是否已为百分数形式（而非小数）。
+    返回 True 表示"已是百分数"（2.55 形式），False 表示"是小数"（0.0255 形式，需 x100 转百分数）。
+
+    规则：非空正值最大值 >= 0.5 则视为百分数（最低收益率 0.5%，覆盖中国 / 日本场景）；
+    否则视为小数形式。
+
+    边界：
+    - 空输入 / 全零 / 全非正 → True（保守处理，不乘 100）
+    - 触发 False（即需乘 100 修正）时记录 WARNING，便于发现上游单位错误
+    """
+    positives = [v for v in values if v and v > 0]
+    if not positives:
+        return True
+    is_percent = max(positives) >= 0.5
+    if not is_percent:
+        logger.warning(
+            "detect_percent_unit_from_curve: max positive %.6g < 0.5, "
+            "treating as decimal form (will multiply by 100 upstream)",
+            max(positives),
+        )
+    return is_percent
+
+
 def normalize_annual_rate_to_decimal(raw: Any) -> float | None:
     """
     将存储的年利率统一为「小数形式」（0.035 表示 3.5%）。
