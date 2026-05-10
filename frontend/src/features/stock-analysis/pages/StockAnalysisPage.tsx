@@ -1017,7 +1017,7 @@ export default function StockAnalysisPage() {
         onClose={() => setDetailSelection(null)}
       />
       <Drawer
-        title="Agent research review"
+        title="Agent 复核当前观察"
         placement="left"
         width={480}
         open={agentDrawerOpen}

@@ -15,44 +15,54 @@ DEFAULT_MACRO_SERIES_IDS = (
 )
 
 
+class ResearchContextBuilder:
+    def __init__(self, *, duckdb_path: str) -> None:
+        self._duckdb_path = duckdb_path
+
+    def build(self, request: AgentQueryRequest) -> dict[str, Any]:
+        domain = _resolve_research_domain(request)
+        context = _base_context(request=request, domain=domain)
+        if domain is None:
+            return context
+
+        db_path = Path(str(self._duckdb_path or ""))
+        if not db_path.exists():
+            context["quality_flag"] = "missing"
+            context["limitations"].append(
+                "DuckDB database is not available; use the manual refresh path before Dexter research."
+            )
+            return context
+
+        try:
+            conn = duckdb.connect(str(db_path), read_only=True)
+        except duckdb.Error as exc:
+            context["quality_flag"] = "missing"
+            context["limitations"].append(f"DuckDB database could not be opened read-only: {exc}")
+            return context
+
+        try:
+            tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+            if domain == "stock":
+                _build_stock_context(conn=conn, tables=tables, context=context)
+            elif domain == "macro":
+                _build_macro_context(conn=conn, tables=tables, context=context)
+        finally:
+            conn.close()
+
+        if context["evidence_rows"] <= 0 and context["quality_flag"] == "ok":
+            context["quality_flag"] = "missing"
+            context["limitations"].append("No landed Choice/TuShare research rows matched the request.")
+        elif context["limitations"] and context["quality_flag"] == "ok":
+            context["quality_flag"] = "warning"
+        return context
+
+
 def build_dexter_research_context(
     *,
     request: AgentQueryRequest,
     duckdb_path: str,
 ) -> dict[str, Any]:
-    domain = _resolve_research_domain(request)
-    context = _base_context(request=request, domain=domain)
-    if domain is None:
-        return context
-
-    db_path = Path(str(duckdb_path or ""))
-    if not db_path.exists():
-        context["quality_flag"] = "missing"
-        context["limitations"].append("DuckDB database is not available; use the manual refresh path before Dexter research.")
-        return context
-
-    try:
-        conn = duckdb.connect(str(db_path), read_only=True)
-    except duckdb.Error as exc:
-        context["quality_flag"] = "missing"
-        context["limitations"].append(f"DuckDB database could not be opened read-only: {exc}")
-        return context
-
-    try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
-        if domain == "stock":
-            _build_stock_context(conn=conn, tables=tables, context=context)
-        elif domain == "macro":
-            _build_macro_context(conn=conn, tables=tables, context=context)
-    finally:
-        conn.close()
-
-    if context["evidence_rows"] <= 0 and context["quality_flag"] == "ok":
-        context["quality_flag"] = "missing"
-        context["limitations"].append("No landed Choice/TuShare research rows matched the request.")
-    elif context["limitations"] and context["quality_flag"] == "ok":
-        context["quality_flag"] = "warning"
-    return context
+    return ResearchContextBuilder(duckdb_path=duckdb_path).build(request)
 
 
 def _base_context(*, request: AgentQueryRequest, domain: str | None) -> dict[str, Any]:

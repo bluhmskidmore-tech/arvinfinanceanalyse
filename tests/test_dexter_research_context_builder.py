@@ -3,7 +3,10 @@ from __future__ import annotations
 import duckdb
 
 from backend.app.agent.schemas.agent_request import AgentPageContext, AgentQueryRequest
-from backend.app.services.dexter_research_context_builder import build_dexter_research_context
+from backend.app.services.dexter_research_context_builder import (
+    ResearchContextBuilder,
+    build_dexter_research_context,
+)
 
 
 def _connect(path):
@@ -107,6 +110,44 @@ def test_build_stock_research_context_reads_choice_stock_tables_and_news(tmp_pat
     assert context["stock"]["sector_membership"]["sw2021code"] == "801001"
     assert context["stock"]["news_events"][0]["payload_text"] == "Alpha earnings beat"
     assert context["limitations"] == []
+
+
+def test_research_context_builder_class_matches_function_wrapper(tmp_path):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar, stock_code varchar, open_value double, high_value double,
+              low_value double, close_value double, volume double, amount double,
+              pctchange double, turn double, amplitude double, tradestatus varchar,
+              highlimit varchar, lowlimit varchar, field_keys_json varchar,
+              source_version varchar, vendor_version varchar, rule_version varchar, run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+            ('2026-04-29','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,'open','N','N','[]','sv_price','vv_choice','rv_price','run-price')
+            """
+        )
+    finally:
+        conn.close()
+
+    request = AgentQueryRequest(
+        question="review stock",
+        filters={"research_domain": "stock", "stock_code": "000001.SZ"},
+    )
+
+    class_context = ResearchContextBuilder(duckdb_path=str(duckdb_path)).build(request)
+    function_context = build_dexter_research_context(request=request, duckdb_path=str(duckdb_path))
+
+    assert class_context == function_context
+    assert class_context["tables_used"] == ["choice_stock_daily_observation"]
+    assert class_context["quality_flag"] == "warning"
+    assert "choice_stock_factor_snapshot is not landed." in class_context["limitations"]
 
 
 def test_build_macro_research_context_reads_choice_and_tushare_series(tmp_path):

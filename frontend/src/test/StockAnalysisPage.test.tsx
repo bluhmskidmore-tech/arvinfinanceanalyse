@@ -425,6 +425,7 @@ describe("StockAnalysisPage", () => {
     await user.click(screen.getByTestId("stock-analysis-agent-open"));
 
     expect(await screen.findByTestId("stock-analysis-agent-drawer")).toBeInTheDocument();
+    expect(screen.getByText("Agent 复核当前观察")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel")).toBeInTheDocument();
 
     await user.type(screen.getByTestId("agent-panel-question"), "请简述当前快照门控摘要");
