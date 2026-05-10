@@ -13,6 +13,11 @@ from tests.helpers import ROOT, load_module
 REFRESH_SOURCE_FAMILIES = ["zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"]
 
 
+@pytest.fixture(autouse=True)
+def _enable_source_preview_http(monkeypatch):
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "true")
+
+
 def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
     preview_module = load_module(
         "backend.app.services.source_preview_service",

@@ -4,11 +4,17 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.source_preview_repo import RULE_VERSION
 from tests.helpers import ROOT, load_module
+
+
+@pytest.fixture(autouse=True)
+def _enable_source_preview_http(monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "true")
 
 
 def _completed_manifest_records(governance_dir: Path) -> list[dict[str, object]]:
