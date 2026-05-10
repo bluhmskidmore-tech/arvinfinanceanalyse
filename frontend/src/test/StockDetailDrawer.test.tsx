@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../app/providers";
 import { createApiClient } from "../api/client";
-import type { LivermoreCandidateHistoryRow } from "../api/contracts";
+import type { ApiEnvelope, LivermoreCandidateHistoryRow, LivermoreStockDetailPayload } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
 
@@ -14,11 +14,12 @@ vi.mock("../components/charts/BaseChart", () => ({
   },
 }));
 
-function buildStockDetailEnvelope(overrides: { factor?: { pe: number | null } } = {}) {
+function buildStockDetailEnvelope(overrides: { factor?: { pe: number | null } } = {}): ApiEnvelope<LivermoreStockDetailPayload> {
   return buildMockApiEnvelope(
     "market_data.livermore.stock_detail",
     {
       basis: "analytical",
+      state: "ok",
       stock_code: "000001.SZ",
       requested_as_of_date: "2026-04-29",
       as_of_date: "2026-04-29",
@@ -224,6 +225,7 @@ describe("StockDetailDrawer", () => {
         "market_data.livermore.stock_detail",
         {
           basis: "analytical",
+          state: "missing",
           stock_code: "000001.SZ",
           requested_as_of_date: null,
           as_of_date: "2026-04-29",

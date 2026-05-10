@@ -72,9 +72,9 @@ type SectorSortKey =
   | "amplitude"
   | "constituentCount";
 
-function sectorRankUnavailable(strategyPayload: { sector_rank?: { formula_version?: string; items?: unknown[] } }) {
-  const items = strategyPayload.sector_rank?.items ?? [];
-  const fv = strategyPayload.sector_rank?.formula_version;
+function sectorRankUnavailable(strategyPayload: { sector_rank?: { formula_version?: string; items?: unknown[] } } | null) {
+  const items = strategyPayload?.sector_rank?.items ?? [];
+  const fv = strategyPayload?.sector_rank?.formula_version;
   return items.length === 0 || fv == null || String(fv).trim() === "";
 }
 
@@ -301,7 +301,7 @@ export default function StockAnalysisPage() {
               data-testid="stock-analysis-as-of-picker"
               value={pickerDisplay}
               onChange={(_, iso) => {
-                setAsOfOverride(iso || null);
+                setAsOfOverride(Array.isArray(iso) ? (iso[0] ?? null) : iso || null);
               }}
             />
             <Button data-testid="stock-analysis-refresh" onClick={invalidateStockAnalysis}>
@@ -1017,7 +1017,7 @@ export default function StockAnalysisPage() {
         onClose={() => setDetailSelection(null)}
       />
       <Drawer
-        title="请 Hermes 复核当前观察"
+        title="Agent research review"
         placement="left"
         width={480}
         open={agentDrawerOpen}
@@ -1031,6 +1031,7 @@ export default function StockAnalysisPage() {
           <AgentPanel
             pageId="stock-analysis"
             currentFilters={stockAnalysisAgentPageContext.current_filters}
+            defaultFilters={{ research_domain: "stock" }}
             selectedRows={stockAnalysisAgentPageContext.selected_rows}
             contextNote={stockAnalysisAgentPageContext.context_note ?? null}
           />

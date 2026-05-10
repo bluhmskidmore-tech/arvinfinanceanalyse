@@ -419,7 +419,7 @@ export function buildSectorViewModel(
 }
 
 export function buildSectorTableSortComparator(
-  key: keyof StockSectorRow | "code" | "name",
+  key: keyof StockSectorRow | "code" | "name" | "pctchange",
   order: "ascend" | "descend",
 ) {
   return (a: StockSectorRow, b: StockSectorRow) => {

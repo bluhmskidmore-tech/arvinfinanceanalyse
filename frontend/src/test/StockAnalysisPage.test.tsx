@@ -469,6 +469,7 @@ describe("StockAnalysisPage", () => {
     expect(submitted?.page_context?.selected_rows).toEqual([
       { stock_code: "000002.SZ", stock_name: "Beta" },
     ]);
+    expect(submitted?.filters).toEqual({ research_domain: "stock" });
     queryAgentSpy.mockRestore();
   });
 });
