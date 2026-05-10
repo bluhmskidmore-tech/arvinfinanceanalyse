@@ -10,7 +10,6 @@ import type {
 } from "../../../api/contracts";
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
-  buildCandidateEvidenceCards,
   buildCandidateReviewQueue,
   buildDecisionSummary,
   buildInlineMetaSegments,
@@ -169,11 +168,6 @@ export default function StockAnalysisPage() {
     return [...sectorRowsFull].sort(cmp);
   }, [sectorRowsFull, sectorSort]);
 
-  const candidateCards = useMemo(() => {
-    const cards = strategyPayload ? buildCandidateEvidenceCards(strategyPayload) : [];
-    return [...cards].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
-  }, [strategyPayload]);
-
   const reviewQueue = useMemo(() => {
     const queue = strategyPayload ? buildCandidateReviewQueue(strategyPayload) : [];
     return [...queue].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
@@ -181,11 +175,11 @@ export default function StockAnalysisPage() {
 
   const sectorOptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const card of candidateCards) {
+    for (const card of reviewQueue) {
       map.set(card.sectorCode, card.sectorName || card.sectorCode);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "zh-Hans-CN"));
-  }, [candidateCards]);
+  }, [reviewQueue]);
 
   const filteredCandidates = useMemo(() => {
     if (!sectorFilterSectorCode) return reviewQueue;
