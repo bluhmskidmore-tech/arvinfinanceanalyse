@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from backend.app.core_finance.pnl_attribution import workbench as pa_wb
+from backend.app.core_finance.campisi import campisi_attribution as _core_campisi
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -31,7 +32,11 @@ from backend.app.schemas.pnl_attribution import (
     VolumeRateAttributionItem,
     VolumeRateAttributionPayload,
 )
-from backend.app.services.campisi_attribution_service import fetch_credit_spread_market
+from backend.app.services.campisi_attribution_service import (
+    _curve_to_market_dict,
+    _merge_positions,
+    fetch_credit_spread_market,
+)
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
 
 RULE_VERSION = "rv_pnl_attribution_workbench_v1"
@@ -620,6 +625,122 @@ def advanced_attribution_summary_envelope(*, report_date: str | None) -> dict[st
     )
 
 
+def _empty_path_a_payload(period_start: str, period_end: str) -> dict[str, Any]:
+    """Empty Path A Campisi payload (matches `CampisiAttributionPayload` shape)."""
+    return {
+        "report_date": period_end,
+        "period_start": period_start,
+        "period_end": period_end,
+        "num_days": 0,
+        "total_market_value": 0.0,
+        "total_return": 0.0,
+        "total_return_pct": 0.0,
+        "total_income": 0.0,
+        "total_treasury_effect": 0.0,
+        "total_spread_effect": 0.0,
+        "total_selection_effect": 0.0,
+        "income_contribution_pct": 0.0,
+        "treasury_contribution_pct": 0.0,
+        "spread_contribution_pct": 0.0,
+        "selection_contribution_pct": 0.0,
+        "primary_driver": "unknown",
+        "interpretation": "缺债券持仓事实，Campisi 分解为空。",
+        "items": [],
+    }
+
+
+def _core_campisi_result_to_path_a_payload(
+    result: Any,
+    *,
+    report_date: str,
+    period_start: str,
+    period_end: str,
+) -> dict[str, Any]:
+    """Adapt `CampisiResult` (Path B / single-bond core) into `CampisiAttributionPayload` shape."""
+    totals = dict(result.totals or {})
+    total_mv = float(totals.get("market_value_start") or 0.0)
+    total_return = float(totals.get("total_return") or 0.0)
+    tot_inc = float(totals.get("income_return") or 0.0)
+    tot_t = float(totals.get("treasury_effect") or 0.0)
+    tot_s = float(totals.get("spread_effect") or 0.0)
+    tot_sel = float(totals.get("selection_effect") or 0.0)
+
+    def _share(part: float) -> float:
+        if abs(total_return) < 1e-12:
+            return 0.0
+        return part / total_return * 100.0
+
+    parts = [
+        ("income", tot_inc),
+        ("treasury", tot_t),
+        ("spread", tot_s),
+        ("selection", tot_sel),
+    ]
+    ordered = sorted(parts, key=lambda kv: abs(kv[1]), reverse=True)
+    top_name, top_val = ordered[0]
+    second_val = ordered[1][1] if len(ordered) > 1 else 0.0
+    if abs(top_val) < 1e-12:
+        primary = "unknown"
+    elif abs(abs(top_val) - abs(second_val)) / abs(top_val) < 0.10:
+        primary = "mixed"
+    else:
+        primary = top_name
+
+    items: list[dict[str, Any]] = []
+    for b in result.by_asset_class or []:
+        # Core returns Decimal for mv/effects and Decimal *_pct already expressed in percent points.
+        mv = float(b.get("market_value_start") or 0)
+        tr = float(b.get("total_return") or 0)
+        ir = float(b.get("income_return") or 0)
+        te = float(b.get("treasury_effect") or 0)
+        sp = float(b.get("spread_effect") or 0)
+        se = float(b.get("selection_effect") or 0)
+        weight_pct = float(b.get("weight_pct") or 0)
+        items.append(
+            {
+                "category": str(b.get("asset_class") or "未分类"),
+                "market_value": round(mv, 4),
+                "weight": round(weight_pct / 100.0, 6),  # ratio for schema
+                "total_return": round(tr, 4),
+                "total_return_pct": round(float(b.get("total_return_pct") or 0), 4),
+                "income_return": round(ir, 4),
+                "income_return_pct": round(float(b.get("income_return_pct") or 0), 4),
+                "treasury_effect": round(te, 4),
+                "treasury_effect_pct": round(float(b.get("treasury_effect_pct") or 0), 4),
+                "spread_effect": round(sp, 4),
+                "spread_effect_pct": round(float(b.get("spread_effect_pct") or 0), 4),
+                "selection_effect": round(se, 4),
+                "selection_effect_pct": round(float(b.get("selection_effect_pct") or 0), 4),
+            }
+        )
+
+    total_return_pct = (total_return / total_mv * 100.0) if abs(total_mv) > 1e-12 else 0.0
+
+    payload: dict[str, Any] = {
+        "report_date": report_date,
+        "period_start": period_start,
+        "period_end": period_end,
+        "num_days": int(result.num_days or 0),
+        "total_market_value": round(total_mv, 4),
+        "total_return": round(total_return, 4),
+        "total_return_pct": round(total_return_pct, 4),
+        "total_income": round(tot_inc, 4),
+        "total_treasury_effect": round(tot_t, 4),
+        "total_spread_effect": round(tot_s, 4),
+        "total_selection_effect": round(tot_sel, 4),
+        "income_contribution_pct": round(_share(tot_inc), 4),
+        "treasury_contribution_pct": round(_share(tot_t), 4),
+        "spread_contribution_pct": round(_share(tot_s), 4),
+        "selection_contribution_pct": round(_share(tot_sel), 4),
+        "primary_driver": primary,
+        "interpretation": "Campisi 四效应（单券级，AC 类仅票息）：收入、国债平移、信用利差、选券残差。",
+        "items": items,
+    }
+    if result.diagnostics:
+        payload["warnings"] = list(result.diagnostics)
+    return payload
+
+
 def campisi_attribution_envelope(
     *,
     start_date: str | None,
@@ -630,13 +751,7 @@ def campisi_attribution_envelope(
     curve = _curve_repo()
     dates = bond.list_report_dates()
     if not dates:
-        payload = pa_wb.build_campisi_attribution(
-            report_date="",
-            period_start="",
-            period_end="",
-            bond_rows=[],
-            treasury_dy_decimal=None,
-        )
+        payload = _empty_path_a_payload("", "")
         promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
         p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
@@ -649,32 +764,54 @@ def campisi_attribution_envelope(
         rd_start = start_date
     else:
         rd_start = (date.fromisoformat(rd_end) - timedelta(days=max(1, lookback_days))).isoformat()
-    anchor = _anchor_on_or_before(dates, rd_start)
-    rows = bond.fetch_bond_analytics_rows(report_date=rd_end) if rd_end in dates else []
 
-    # Build market dicts: treasury tenors (converted to float) + credit spreads (bp, float).
-    # fetch_curve returns dict[str, Decimal]; convert to float so the merged dict is
-    # uniformly float-valued and credit_spread_change_decimal doesn't receive mixed types.
-    tsy_end = {k: float(v) for k, v in curve.fetch_curve(rd_end, "treasury").items()}
-    tsy_start = {k: float(v) for k, v in curve.fetch_curve(anchor, "treasury").items()} if anchor else {}
-    spread_end = fetch_credit_spread_market(curve, rd_end)
-    spread_start = fetch_credit_spread_market(curve, anchor) if anchor else {}
-    mkt_end: dict[str, Any] = {**tsy_end, **spread_end}
-    mkt_start: dict[str, Any] | None = ({**tsy_start, **spread_start}) if anchor else None
+    anchor_start = _anchor_on_or_before(dates, rd_start)
+    anchor_end = rd_end if rd_end in dates else _anchor_on_or_before(dates, rd_end)
 
-    t_end = _treasury_10y(tsy_end)
-    t_start = _treasury_10y(tsy_start) if tsy_start else None
-    dy = ((t_end - t_start) / 100.0) if t_end is not None and t_start is not None else None
-    payload = pa_wb.build_campisi_attribution(
-        report_date=rd_end,
-        period_start=anchor or rd_start,
-        period_end=rd_end,
-        bond_rows=rows,
-        treasury_dy_decimal=dy,
-        market_start=mkt_start,
-        market_end=mkt_end,
+    if not anchor_start or not anchor_end:
+        payload = _empty_path_a_payload(rd_start, rd_end)
+        promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
+        p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
+        return build_formal_result_envelope(
+            result_meta=_meta_warn("pnl_attribution.campisi"),
+            result_payload=_with_optional_warnings(p, warn=True),
+        )
+
+    rows_start = bond.fetch_bond_analytics_rows(report_date=anchor_start)
+    rows_end = bond.fetch_bond_analytics_rows(report_date=anchor_end)
+    positions = _merge_positions(rows_start, rows_end)
+
+    if not positions:
+        payload = _empty_path_a_payload(anchor_start, anchor_end)
+        promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
+        p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
+        return build_formal_result_envelope(
+            result_meta=_meta_warn("pnl_attribution.campisi"),
+            result_payload=_with_optional_warnings(p, warn=True),
+        )
+
+    treasury_start = _curve_to_market_dict(curve.fetch_curve(anchor_start, "treasury"))
+    treasury_end = _curve_to_market_dict(curve.fetch_curve(anchor_end, "treasury"))
+    spread_start = fetch_credit_spread_market(curve, anchor_start)
+    spread_end = fetch_credit_spread_market(curve, anchor_end)
+    market_start: dict[str, Any] = {**treasury_start, **spread_start}
+    market_end: dict[str, Any] = {**treasury_end, **spread_end}
+
+    result = _core_campisi(
+        positions_merged=positions,
+        market_start=market_start,
+        market_end=market_end,
+        start_date=date.fromisoformat(anchor_start),
+        end_date=date.fromisoformat(anchor_end),
     )
-    warn = not rows
+
+    payload = _core_campisi_result_to_path_a_payload(
+        result,
+        report_date=anchor_end,
+        period_start=anchor_start,
+        period_end=anchor_end,
+    )
+    warn = False  # positions non-empty here; diagnostics (if any) surface via payload["warnings"]
     promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
     p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(

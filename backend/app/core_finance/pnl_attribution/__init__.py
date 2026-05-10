@@ -2,7 +2,6 @@
 
 from backend.app.core_finance.pnl_attribution.workbench import (
     build_advanced_attribution_summary,
-    build_campisi_attribution,
     build_carry_roll_down,
     build_krd_attribution,
     build_pnl_attribution_analysis_summary,
@@ -21,5 +20,4 @@ __all__ = [
     "build_spread_attribution",
     "build_krd_attribution",
     "build_advanced_attribution_summary",
-    "build_campisi_attribution",
 ]
