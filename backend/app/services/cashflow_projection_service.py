@@ -8,8 +8,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from backend.app.core_finance.bond_duration import estimate_duration
 from backend.app.core_finance.cashflow_projection import MonthlyBucket, compute_duration_gap
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.cashflow_projection_repo import CashflowProjectionRepository
 from backend.app.schemas.cashflow_projection import CashflowProjectionResponse
 from backend.app.services.explicit_numeric import numeric_json
 from backend.app.services.formal_result_runtime import (
@@ -28,16 +28,15 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
     settings = get_settings()
     report_date_text = report_date.isoformat()
 
-    balance_repo = BalanceAnalysisRepository(str(settings.duckdb_path))
+    cashflow_repo = CashflowProjectionRepository(str(settings.duckdb_path))
     analytics_repo = BondAnalyticsRepository(str(settings.duckdb_path))
-    zqtz_rows = balance_repo.fetch_formal_zqtz_rows(
+    zqtz_rows = cashflow_repo.fetch_formal_zqtz_rows(
         report_date=report_date_text,
         position_scope="all",
         currency_basis="CNY",
     )
-    tyw_rows = balance_repo.fetch_formal_tyw_rows(
+    tyw_rows = cashflow_repo.fetch_formal_tyw_liability_rows(
         report_date=report_date_text,
-        position_scope="all",
         currency_basis="CNY",
     )
     analytics_rows = analytics_repo.fetch_bond_analytics_rows(report_date=report_date_text)

@@ -492,9 +492,8 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
             }
         ]
 
-    def fake_fetch_tyw_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
         assert report_date == "2026-01-01"
-        assert position_scope == "all"
         assert currency_basis == "CNY"
         return [
             {
@@ -511,13 +510,13 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
+        service_mod.CashflowProjectionRepository,
         "fetch_formal_zqtz_rows",
         fake_fetch_zqtz_rows,
     )
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
-        "fetch_formal_tyw_rows",
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
         fake_fetch_tyw_rows,
     )
 
@@ -583,7 +582,7 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
             }
         ]
 
-    def fake_fetch_tyw_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
         assert report_date == "2026-01-01"
         return []
 
@@ -605,13 +604,13 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
         ]
 
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
+        service_mod.CashflowProjectionRepository,
         "fetch_formal_zqtz_rows",
         fake_fetch_zqtz_rows,
     )
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
-        "fetch_formal_tyw_rows",
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
         fake_fetch_tyw_rows,
     )
     monkeypatch.setattr(
