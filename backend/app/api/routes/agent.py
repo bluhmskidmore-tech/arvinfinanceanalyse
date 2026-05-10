@@ -22,9 +22,23 @@ from backend.app.services.agent_service import (
     execute_agent_query,
     phase1_disabled_response,
 )
+from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import execute_hermes_agent_query
 
 router = APIRouter(prefix="/api/agent")
+
+
+def _provider_name(settings: object) -> str:
+    return str(getattr(settings, "agent_provider", "local")).strip().lower() or "local"
+
+
+def _run_executor_for_provider(settings: object):
+    provider = _provider_name(settings)
+    if provider == "hermes":
+        return execute_hermes_agent_query
+    if provider == "dexter":
+        return execute_dexter_agent_query
+    return None
 
 
 def _apply_auth_context(
@@ -61,8 +75,15 @@ def query_agent(
         )
 
     try:
-        if str(getattr(settings, "agent_provider", "local")).strip().lower() == "hermes":
+        provider = _provider_name(settings)
+        if provider == "hermes":
             return execute_hermes_agent_query(
+                request=request,
+                governance_dir=str(settings.governance_path),
+                settings=settings,
+            )
+        if provider == "dexter":
+            return execute_dexter_agent_query(
                 request=request,
                 governance_dir=str(settings.governance_path),
                 settings=settings,
@@ -94,13 +115,14 @@ def create_agent_run_endpoint(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=phase1_disabled_response().model_dump(mode="json"),
         )
-    if str(getattr(settings, "agent_provider", "local")).strip().lower() != "hermes":
-        raise HTTPException(status_code=400, detail="Agent runs require MOSS_AGENT_PROVIDER=hermes.")
+    executor = _run_executor_for_provider(settings)
+    if executor is None:
+        raise HTTPException(status_code=400, detail="Agent runs require MOSS_AGENT_PROVIDER=hermes or dexter.")
 
     return create_agent_run(
         request=request,
         settings=settings,
-        executor=execute_hermes_agent_query,
+        executor=executor,
     )
 
 

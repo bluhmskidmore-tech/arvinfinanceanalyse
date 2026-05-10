@@ -81,11 +81,12 @@ def _client(monkeypatch, tmp_path: Path, execute):
 
 
 def _wait_for_terminal(client: TestClient, run_id: str) -> dict[str, object]:
-    for _ in range(40):
+    for _ in range(200):
         payload = client.get(f"/api/agent/runs/{run_id}").json()
-        if payload["status"] in {"completed", "failed"}:
+        status = payload.get("status")
+        if status in {"completed", "failed"}:
             return payload
-        time.sleep(0.025)
+        time.sleep(0.05)
     raise AssertionError(f"agent run did not finish: {run_id}")
 
 
@@ -134,6 +135,57 @@ def test_agent_run_status_returns_404_for_unknown_run(monkeypatch, tmp_path):
     assert "Unknown agent run_id=agent_run:nope" in response.json()["detail"]
 
 
+def test_agent_run_status_prefers_jsonl_terminal_state_over_in_memory_running_cache(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    settings = _settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+
+    service_module._remember_run_record(
+        {
+            "run_id": "agent_run:finished",
+            "status": "running",
+            "question": "ping",
+            "provider": "hermes",
+            "model": "gpt-test",
+            "transport": "bridge",
+            "toolsets": "file",
+            "queued_at": "2026-05-09T01:00:00+00:00",
+            "started_at": "2026-05-09T01:00:01+00:00",
+        }
+    )
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": "agent_run:finished",
+                "status": "completed",
+                "question": "ping",
+                "provider": "hermes",
+                "model": "gpt-test",
+                "transport": "bridge",
+                "toolsets": "file",
+                "queued_at": "2026-05-09T01:00:00+00:00",
+                "started_at": "2026-05-09T01:00:01+00:00",
+                "finished_at": "2026-05-09T01:00:02+00:00",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    status = service_module.get_agent_run_status(run_id="agent_run:finished", settings=settings)
+
+    assert status.status == "completed"
+    assert status.run_id == "agent_run:finished"
+    assert status.model == "gpt-test"
+
+
 def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     def fake_execute(request, governance_dir, settings):
         raise RuntimeError("Hermes bridge unavailable")
@@ -154,3 +206,106 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
     assert latest["status"] == "failed"
     assert latest["error_message"] == "Hermes bridge unavailable"
+
+
+def test_agent_runs_accept_dexter_provider_and_persist_provider_metadata(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+
+    class InlineThread:
+        def __init__(self, *, target, kwargs, daemon, name):
+            self._target = target
+            self._kwargs = kwargs
+
+        def start(self):
+            self._target(**self._kwargs)
+
+    monkeypatch.setattr(service_module.threading, "Thread", InlineThread)
+
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    settings = SimpleNamespace(
+        agent_enabled=True,
+        agent_provider="dexter",
+        agent_dexter_command="dexter",
+        agent_dexter_transport="sidecar",
+        agent_dexter_bridge_url="http://127.0.0.1:7892",
+        agent_dexter_model="dexter-test",
+        agent_dexter_toolsets="sql,files",
+        agent_dexter_timeout_seconds=9.0,
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+
+    calls = []
+
+    def fake_execute(request, governance_dir, settings):
+        calls.append((request, governance_dir, settings.agent_dexter_model))
+        sample = _sample_envelope()
+        return sample.model_copy(
+            update={
+                "answer": "Dexter managed answer.",
+                "evidence": sample.evidence.model_copy(
+                    update={
+                        "tables_used": ["dexter_sidecar"],
+                        "filters_applied": {
+                            "provider": "dexter",
+                            "model": "dexter-test",
+                            "transport": "sidecar",
+                            "toolsets": "sql,files",
+                        },
+                    }
+                ),
+                "result_meta": sample.result_meta.model_copy(
+                    update={
+                        "result_kind": "agent.dexter",
+                        "source_version": "sv_dexter_sidecar",
+                        "vendor_version": "vv_dexter",
+                        "rule_version": "rv_agent_dexter_v1",
+                        "cache_version": "cv_agent_dexter_v1",
+                        "tables_used": ["dexter_sidecar"],
+                        "filters_applied": {"provider": "dexter"},
+                    }
+                ),
+            }
+        )
+
+    monkeypatch.setattr(route_module, "execute_dexter_agent_query", fake_execute)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/runs", json={"question": "ping"})
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["provider"] == "dexter"
+    assert created["model"] == "dexter-test"
+    assert created["transport"] == "sidecar"
+    assert created["toolsets"] == "sql,files"
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    matching = [record for record in records if record["run_id"] == created["run_id"]]
+    assert [record["status"] for record in matching] == [
+        "queued",
+        "starting",
+        "running",
+        "completed",
+    ]
+    completed = matching[-1]
+    assert completed["provider"] == "dexter"
+    assert completed["model"] == "dexter-test"
+    assert completed["transport"] == "sidecar"
+    assert completed["toolsets"] == "sql,files"
+    assert completed["result"]["answer"] == "Dexter managed answer."
+    assert completed["result"]["result_meta"]["result_kind"] == "agent.dexter"
+    assert calls and calls[0][2] == "dexter-test"

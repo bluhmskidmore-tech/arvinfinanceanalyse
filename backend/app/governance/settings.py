@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     agent_hermes_toolsets: str = ""
     agent_hermes_max_turns: int = 20
     agent_hermes_timeout_seconds: float = 180.0
+    agent_dexter_command: str = "dexter"
+    agent_dexter_transport: str = "cli"
+    agent_dexter_bridge_url: str = "http://127.0.0.1:7892"
+    agent_dexter_model: str = ""
+    agent_dexter_toolsets: str = ""
+    agent_dexter_timeout_seconds: float = 180.0
     postgres_dsn: str = DEFAULT_POSTGRES_DSN
     governance_sql_dsn: str = ""
     governance_backend: str = "jsonl"

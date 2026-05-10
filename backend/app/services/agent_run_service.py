@@ -17,8 +17,28 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 AGENT_RUN_STREAM = "agent_run"
 AGENT_RUN_JOB_NAME = "agent_run"
 AGENT_RUN_LOCK = threading.Lock()
+AGENT_RUN_STATE_LOCK = threading.Lock()
+MAX_AGENT_RUN_CACHE_SIZE = 200
+_AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
+
+
+def _provider_runtime_fields(settings: Any, provider: str | None = None) -> tuple[str, str, str, str]:
+    normalized_provider = str(provider or getattr(settings, "agent_provider", "hermes") or "hermes").strip().lower()
+    if normalized_provider == "dexter":
+        return (
+            "dexter",
+            str(getattr(settings, "agent_dexter_model", "") or "default"),
+            str(getattr(settings, "agent_dexter_transport", "cli") or "cli"),
+            str(getattr(settings, "agent_dexter_toolsets", "") or "default"),
+        )
+    return (
+        "hermes",
+        str(getattr(settings, "agent_hermes_model", "") or "default"),
+        str(getattr(settings, "agent_hermes_transport", "bridge") or "bridge"),
+        str(getattr(settings, "agent_hermes_toolsets", "") or "default"),
+    )
 
 
 def create_agent_run(
@@ -29,15 +49,16 @@ def create_agent_run(
 ) -> AgentRunCreateResponse:
     run_id = _build_run_id()
     queued_at = _utc_now()
+    provider, model, transport, toolsets = _provider_runtime_fields(settings)
     record = AgentRunRecord(
         run_id=run_id,
         status="queued",
         question=request.question,
         request=request.model_dump(mode="json"),
-        provider=str(getattr(settings, "agent_provider", "hermes") or "hermes"),
-        model=str(getattr(settings, "agent_hermes_model", "") or "default"),
-        transport=str(getattr(settings, "agent_hermes_transport", "bridge") or "bridge"),
-        toolsets=str(getattr(settings, "agent_hermes_toolsets", "") or "default"),
+        provider=provider,
+        model=model,
+        transport=transport,
+        toolsets=toolsets,
         queued_at=queued_at,
     )
     _append_record(settings, record)
@@ -68,9 +89,15 @@ def create_agent_run(
 
 def get_agent_run_status(*, run_id: str, settings: Any) -> AgentRunStatusResponse:
     records = _load_run_records(settings, run_id=run_id)
-    if not records:
-        raise ValueError(f"Unknown agent run_id={run_id}")
-    return _status_from_record(records[-1])
+    if records:
+        latest_record = records[-1]
+        _remember_run_record(latest_record)
+        return _status_from_record(latest_record)
+
+    cached_record = _load_cached_run_record(run_id)
+    if cached_record is not None:
+        return _status_from_record(cached_record)
+    raise ValueError(f"Unknown agent run_id={run_id}")
 
 
 def _execute_agent_run(
@@ -154,16 +181,20 @@ def _transition_record(
     error_message: str | None = None,
     result: dict[str, object] | None = None,
 ) -> AgentRunRecord:
-    initial = _load_run_records(settings, run_id=run_id)[0]
+    initial = _load_cached_run_record(run_id) or _load_run_records(settings, run_id=run_id)[0]
+    provider, model, transport, toolsets = _provider_runtime_fields(
+        settings,
+        str(initial.get("provider") or getattr(settings, "agent_provider", "hermes") or "hermes"),
+    )
     return AgentRunRecord(
         run_id=run_id,
         status=status,  # type: ignore[arg-type]
         question=request.question,
         request=request.model_dump(mode="json"),
-        provider=str(initial.get("provider") or getattr(settings, "agent_provider", "hermes") or "hermes"),
-        model=str(initial.get("model") or getattr(settings, "agent_hermes_model", "") or "default"),
-        transport=str(initial.get("transport") or getattr(settings, "agent_hermes_transport", "bridge") or "bridge"),
-        toolsets=str(initial.get("toolsets") or getattr(settings, "agent_hermes_toolsets", "") or "default"),
+        provider=str(initial.get("provider") or provider),
+        model=str(initial.get("model") or model),
+        transport=str(initial.get("transport") or transport),
+        toolsets=str(initial.get("toolsets") or toolsets),
         queued_at=str(initial.get("queued_at") or ""),
         started_at=started_at or _optional_text(initial.get("started_at")),
         finished_at=finished_at,
@@ -181,6 +212,23 @@ def _append_record(settings: Any, record: AgentRunRecord) -> None:
             **record.model_dump(mode="json", exclude_none=True),
         },
     )
+    _remember_run_record(record.model_dump(mode="json", exclude_none=True))
+
+
+def _remember_run_record(record: dict[str, object]) -> None:
+    run_id = str(record.get("run_id") or "").strip()
+    if not run_id:
+        return
+    with AGENT_RUN_STATE_LOCK:
+        _AGENT_RUN_LATEST_RECORDS[run_id] = dict(record)
+        while len(_AGENT_RUN_LATEST_RECORDS) > MAX_AGENT_RUN_CACHE_SIZE:
+            _AGENT_RUN_LATEST_RECORDS.pop(next(iter(_AGENT_RUN_LATEST_RECORDS)))
+
+
+def _load_cached_run_record(run_id: str) -> dict[str, object] | None:
+    with AGENT_RUN_STATE_LOCK:
+        record = _AGENT_RUN_LATEST_RECORDS.get(run_id)
+        return dict(record) if record is not None else None
 
 
 def _load_run_records(settings: Any, *, run_id: str) -> list[dict[str, object]]:

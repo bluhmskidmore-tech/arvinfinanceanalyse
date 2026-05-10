@@ -29,6 +29,12 @@ def test_settings_defaults():
     assert s.agent_hermes_model == ""
     assert s.agent_hermes_toolsets == ""
     assert s.agent_hermes_timeout_seconds == 180.0
+    assert s.agent_dexter_command == "dexter"
+    assert s.agent_dexter_transport == "cli"
+    assert s.agent_dexter_bridge_url == "http://127.0.0.1:7892"
+    assert s.agent_dexter_model == ""
+    assert s.agent_dexter_toolsets == ""
+    assert s.agent_dexter_timeout_seconds == 180.0
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
@@ -50,6 +56,12 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_AGENT_HERMES_MODEL", "gpt-test")
     monkeypatch.setenv("MOSS_AGENT_HERMES_TOOLSETS", "file,terminal")
     monkeypatch.setenv("MOSS_AGENT_HERMES_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_COMMAND", "dexter-cli")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_TRANSPORT", "sidecar")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_BRIDGE_URL", "http://127.0.0.1:8899")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_MODEL", "dexter-test")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_TOOLSETS", "sql,files")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_TIMEOUT_SECONDS", "22.5")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
     monkeypatch.setenv("MOSS_FTP_RATE_PCT", "2.5")
@@ -69,6 +81,12 @@ def test_settings_env_overrides(monkeypatch):
     assert s.agent_hermes_model == "gpt-test"
     assert s.agent_hermes_toolsets == "file,terminal"
     assert s.agent_hermes_timeout_seconds == 12.5
+    assert s.agent_dexter_command == "dexter-cli"
+    assert s.agent_dexter_transport == "sidecar"
+    assert s.agent_dexter_bridge_url == "http://127.0.0.1:8899"
+    assert s.agent_dexter_model == "dexter-test"
+    assert s.agent_dexter_toolsets == "sql,files"
+    assert s.agent_dexter_timeout_seconds == 22.5
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")

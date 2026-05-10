@@ -395,3 +395,81 @@ def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_
     assert payload["result_meta"]["vendor_version"] == "vv_hermes"
     assert calls
     assert calls[0][2] == "gpt-test"
+
+
+def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "dexter",
+                "agent_dexter_command": "dexter",
+                "agent_dexter_transport": "sidecar",
+                "agent_dexter_model": "dexter-test",
+                "agent_dexter_toolsets": "sql,files",
+                "agent_dexter_timeout_seconds": 11.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_dexter_agent_query(request, governance_dir, settings):
+        calls.append((request, governance_dir, settings.agent_dexter_model))
+        sample = _sample_agent_envelope()
+        return sample.model_copy(
+            update={
+                "answer": "Dexter answered.",
+                "evidence": sample.evidence.model_copy(
+                    update={
+                        "tables_used": ["dexter_sidecar"],
+                        "filters_applied": {
+                            "provider": "dexter",
+                            "model": "dexter-test",
+                            "transport": "sidecar",
+                            "toolsets": "sql,files",
+                        },
+                    }
+                ),
+                "result_meta": sample.result_meta.model_copy(
+                    update={
+                        "result_kind": "agent.dexter",
+                        "formal_use_allowed": False,
+                        "source_version": "sv_dexter_sidecar",
+                        "vendor_version": "vv_dexter",
+                        "rule_version": "rv_agent_dexter_v1",
+                        "cache_version": "cv_agent_dexter_v1",
+                        "tables_used": ["dexter_sidecar"],
+                        "filters_applied": {
+                            "provider": "dexter",
+                        },
+                    }
+                ),
+            }
+        )
+
+    monkeypatch.setattr(route_module, "execute_dexter_agent_query", fake_execute_dexter_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "请分析当前组合"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Dexter answered."
+    assert payload["result_meta"]["result_kind"] == "agent.dexter"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["vendor_version"] == "vv_dexter"
+    assert payload["evidence"]["tables_used"] == ["dexter_sidecar"]
+    assert calls
+    assert calls[0][2] == "dexter-test"
