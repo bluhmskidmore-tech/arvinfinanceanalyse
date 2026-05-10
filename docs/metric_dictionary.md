@@ -32,8 +32,8 @@
 - broad `executive.*` 其余路由
 - preview / vendor / analytical-only 扩张面
 - `product-category PnL` 的字段级 truth freeze
-  - `GS-PROD-CAT-PNL-A` 当前以 `docs/pnl/product-category-page-truth-contract.md`、`docs/page_contracts.md -> PAGE-PROD-CAT-PNL-001` 和样本断言为权威
-  - 在正式 `metric_id` 审批前，不把 `business_net_income`、`weighted_yield`、`cnx_scale` 等字段臆造为字典指标
+  - `GS-PROD-CAT-PNL-A` 当前以 `docs/pnl/product-category-page-truth-contract.md`、`docs/page_contracts.md -> PAGE-PROD-CAT-PNL-001`、`MTR-PCP-001` / `MTR-PCP-002` / `MTR-PCP-003` 和样本断言为权威
+  - Only the three headline product-category metrics are approved; detail fields remain page/sample truth until separately approved.
 
 ## 3. 编制依据
 
@@ -253,7 +253,7 @@
 | metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `MTR-EXEC-001` | 资产规模 | business | `analytical` | `backend/app/services/executive_service.py -> ExecutiveMetric(id=\"aum\")`；上游来自 formal balance overview | `/ui/home/overview` | 亿元字符串 | consumer overlay；当前是 analytical，不可冒充 formal result | `tests/test_executive_dashboard_endpoints.py` |
-| `MTR-EXEC-002` | 年内收益 | business | `analytical` | `ExecutiveMetric(id=\"yield\")`；上游来自 `fact_formal_pnl_fi` 聚合 | `/ui/home/overview` | 亿元 signed string | consumer overlay；report_date 未显式传入时可能取 latest | `tests/test_executive_dashboard_endpoints.py` |
+| `MTR-EXEC-002` | 年度损益（不扣FTP） | business | `analytical` | `ExecutiveMetric(id=\"yield\")`；上游来自 `fact_formal_pnl_fi + fact_nonstd_pnl_bridge` 聚合 | `/ui/home/overview` | 亿元 signed string；`caliber_label=FI + 非标桥接` | consumer overlay；report_date 未显式传入时可能取 latest | `tests/test_executive_dashboard_endpoints.py`; `tests/test_executive_service_contract.py` |
 | `MTR-EXEC-003` | 净息差 | business | `analytical` | `ExecutiveMetric(id=\"nim\")`；上游来自 `compute_liability_yield_metrics` | `/ui/home/overview` | 百分比 signed string | 当前依赖 liability analytics 读面；不属于 formal 主链真值页 | `tests/test_executive_dashboard_endpoints.py` |
 | `MTR-EXEC-004` | 组合 DV01（管理视图） | business | `analytical` | `ExecutiveMetric(id=\"dv01\")`；上游来自 bond analytics risk snapshot | `/ui/home/overview` | 整数字符串 | 是 `MTR-RSK-001` 的管理层 overlay，不是新的 formal 指标 | `tests/test_executive_dashboard_endpoints.py` |
 
@@ -357,7 +357,25 @@
 处理方式：
 
 - 后续样本断言如果新增 `MTR-*`，必须同步更新 §12.4。
-- 产品分类 PnL 只有页面 truth contract 与样本 truth；正式字典级 `metric_id` 待审批后再补。
+- 产品分类 PnL 目前只批准三条 headline 字典指标：`MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail 字段仍只属于页面 / 样本真值。
+
+### 12.3.1 Product-category metric promotion guard
+
+`GS-PROD-CAT-PNL-A` and `PAGE-PROD-CAT-PNL-001` currently freeze page/sample truth only.
+P0 now approves only the three headline product-category metrics below.
+
+| metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `MTR-PCP-001` | 产品分类资产端净收益 | business | `formal` | `ProductCategoryPnlPayload.asset_total.business_net_income` | `/product-category-pnl` headline | 金额；亿元展示；不由前端重算 | `report_date` + `view` 绑定；`as_of_date` 按页面合同表示实际采用的数据截面 | `tests/test_product_category_pnl_flow.py`; `tests/test_golden_samples_capture_ready.py` |
+| `MTR-PCP-002` | 产品分类负债端净收益 | business | `formal` | `ProductCategoryPnlPayload.liability_total.business_net_income` | `/product-category-pnl` headline | 金额；亿元展示；负债符号处理仅限展示 | `report_date` + `view` 绑定；`as_of_date` 按页面合同表示实际采用的数据截面 | `frontend/src/test/ProductCategoryPnlPage.test.tsx`; `tests/test_golden_samples_capture_ready.py` |
+| `MTR-PCP-003` | 产品分类总净收益 | business | `formal` | `ProductCategoryPnlPayload.grand_total.business_net_income` | `/product-category-pnl` headline/footer | 金额；亿元展示；使用后端总计，不由前端以资产+负债重算 | `report_date` + `view` 绑定；`as_of_date` 按页面合同表示实际采用的数据截面 | `frontend/src/test/ProductCategoryPnlPage.test.tsx`; `tests/test_golden_samples_capture_ready.py` |
+
+Guardrails:
+
+- category_id / side / view / report_date are dimensions, not separate metrics
+- do not promote row-level `business_net_income`, `weighted_yield`, `cnx_scale`, or other product-category detail fields to additional `MTR-*` rows without approval
+- scenario outputs remain analytical scenario payloads, not formal dictionary metrics
+- update `docs/pnl/product-category-page-truth-contract.md` and targeted tests before adding any further formal product-category `metric_id`
 
 ### 12.4 Capture-ready `sample_scope` 绑定
 
@@ -374,7 +392,7 @@
 | `GS-EXEC-OVERVIEW-A` | `PAGE-EXEC-OVERVIEW-001` / `/ui/home/overview` | `MTR-EXEC-001`, `MTR-EXEC-002`, `MTR-EXEC-003`, `MTR-EXEC-004` | `caliber_label` 形状为当前 executive contract truth，不新增指标 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-PNL-ATTR-A` | `PAGE-EXEC-PNL-ATTR-001` / `/ui/pnl/attribution` | `MTR-EXEC-101`; `MTR-EXEC-102`~`MTR-EXEC-106` 当前只冻结 segment id presence，不冻结段值 | title 与 segment inventory 为样本结构真值 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
-| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | 无；正式 `metric_id` 缺口必须保持显式待绑定 | `business_net_income`、`asset_total/liability_total/grand_total` 对账、分类层级与 `result_meta` 为 page/sample truth；权威见 `docs/pnl/product-category-page-truth-contract.md` | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003` | detail rows, category tree, `result_meta`, and companion scenario probe remain page/sample truth only；权威见 `docs/pnl/product-category-page-truth-contract.md` | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 
 ### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
 
@@ -402,7 +420,7 @@
 
 1. 用本文件里的指标集合，先给 6 到 7 个 in-scope 页面写页面契约
 2. 为高风险指标补“页面展示规范”和“fallback 可见性”字段
-3. 对 `GS-PROD-CAT-PNL-A` 另走业务审批，批准后再补字典级 `metric_id`
+3. Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and decide any future detail metric expansion separately.
 
 ## 14. 版本说明
 

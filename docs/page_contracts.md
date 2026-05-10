@@ -202,7 +202,7 @@
 | 页面展示项 | `metric_id` | 来源字段 |
 | --- | --- | --- |
 | 资产规模 | `MTR-EXEC-001` | `overview.metrics[id=aum]` |
-| 年内收益 | `MTR-EXEC-002` | `overview.metrics[id=yield]` |
+| 年度损益（不扣FTP） | `MTR-EXEC-002` | `overview.metrics[id=yield]` |
 | 净息差 | `MTR-EXEC-003` | `overview.metrics[id=nim]` |
 | 组合 DV01（管理视图） | `MTR-EXEC-004` | `overview.metrics[id=dv01]` |
 | 收益归因总额 | `MTR-EXEC-101` | `pnl_attribution.total` |
@@ -1300,8 +1300,8 @@
 
 ### F. 指标与字段锚点
 
-- 本页 `metric_id` 主表绑定**尚未**在 `docs/metric_dictionary.md` 中完备案；真值以 truth contract **field freeze** 为准，禁止在前端重算或推断：
-  - 头表：`result.asset_total.business_net_income`、`result.liability_total.business_net_income`、`result.grand_total.business_net_income`
+- P0 headline `metric_id` 主表绑定已经在 `docs/metric_dictionary.md` 中批准；detail 字段仍以 truth contract **field freeze** 为准，禁止在前端重算或推断：
+  - 头表：`MTR-PCP-001` -> `result.asset_total.business_net_income`；`MTR-PCP-002` -> `result.liability_total.business_net_income`；`MTR-PCP-003` -> `result.grand_total.business_net_income`
   - 行：`category_id`、`category_name`、`side`、`level`、`view`、`report_date`、`business_net_income`、`children` 等（truth contract §9）
 - 对账等式见 truth contract §12（含 asset+liability 与 grand_total 一致性等）。
 

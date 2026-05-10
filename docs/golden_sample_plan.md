@@ -38,7 +38,7 @@
 ## 2.2 当前缺口
 
 - `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md` 与 `tests/golden_samples/` 已纳入版本基线；仍需与 **页面契约 / 指标字典 / capture-ready 重抓** 保持同步。
-- `GS-EXEC-OVERVIEW-A` 已补齐 `metrics[].caliber_label` 冻结字段，与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 当前契约一致。
+- `GS-EXEC-OVERVIEW-A` 已补齐 `metrics[].caliber_label` 冻结字段；`yield` 当前冻结为 `年度损益（不扣FTP）` / `FI + 非标桥接`，与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 当前契约一致。
 - 当前样本集中没有首页 `/` 的聚合样本。
 - `GS-BOND-HEADLINE-A` 仍为 **blocked/candidate**：`PAGE-BOND-001` 专章已立，但 **metric 字典同源** 与 **冻结样本目录** 仍未齐；在 `docs/metric_dictionary.md` 补齐 **GAP-BOND-DASH-***、并建立 `tests/golden_samples/GS-BOND-HEADLINE-A/` 且纳入 gate 前，不将 `GS-BOND-HEADLINE-A` 标为 capture-ready 主包。
 - Wave 1 四条工作台路由已在本文件 §7.4 与 `docs/metric_dictionary.md` §12.5 做 **文档层** `page_id → metric_id → sample_id → test file` 绑定；全量强约束（含 CI 校验矩阵）仍待后续。

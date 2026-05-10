@@ -56,6 +56,10 @@ The sample must be captured against this chain:
 - `asset_total.category_id == "asset_total"`
 - `liability_total.category_id == "liability_total"`
 - `grand_total.category_id == "grand_total"`
+- This sample is now bound to the three headline `metric_id` values, while detail metric expansion remains open.
+- `MTR-PCP-001`: `result.asset_total.business_net_income`
+- `MTR-PCP-002`: `result.liability_total.business_net_income`
+- `MTR-PCP-003`: `result.grand_total.business_net_income`
 
 ### Category structure
 
@@ -85,7 +89,7 @@ The sample must be captured against this chain:
 This sample is now `capture-ready`, but these gaps remain visible:
 
 - the page still lacks a standalone outward `as_of_date`
-- page truth is frozen at field level, but not yet at approved `metric_id` level
+- detail rows, yield, scale, FTP fields, and scenario outputs are not approved as additional `metric_id` bindings
 - scenario comparison is defined as a companion probe, not yet a separate frozen sample
 
 ## 8. Expected Pack Shape

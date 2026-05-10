@@ -370,6 +370,14 @@ def _setup_exec_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     request = _load_json(sample_id, "request.json")
+    return _run_request_payload(request, tmp_path, monkeypatch)
+
+
+def _run_request_payload(
+    request: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
     _clear_runtime_modules()
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
@@ -516,6 +524,27 @@ def _validate_product_category(actual: dict[str, Any], expected: dict[str, Any])
         ],
     )
     assert str(actual["result_meta"]["source_version"]).startswith("sv_product_category_")
+
+
+def _validate_product_category_scenario(
+    actual: dict[str, Any],
+    baseline_expected: dict[str, Any],
+) -> None:
+    assert actual["result_meta"]["basis"] == "scenario"
+    assert actual["result_meta"]["result_kind"] == "product_category_pnl.detail"
+    assert actual["result_meta"]["formal_use_allowed"] is False
+    assert actual["result_meta"]["vendor_version"] == "vv_none"
+    assert actual["result_meta"]["rule_version"] == "rv_product_category_pnl_v1"
+    assert actual["result_meta"]["cache_version"] == "cv_product_category_pnl_v1"
+    assert actual["result_meta"]["quality_flag"] == "ok"
+    assert actual["result_meta"]["vendor_status"] == "ok"
+    assert actual["result_meta"]["fallback_mode"] == "none"
+    assert actual["result_meta"]["scenario_flag"] is True
+    assert actual["result"]["report_date"] == "2026-02-28"
+    assert actual["result"]["view"] == "monthly"
+    assert actual["result"]["available_views"] == baseline_expected["result"]["available_views"]
+    assert actual["result"]["scenario_rate_pct"] == 2.5
+    assert actual["result"]["asset_total"]["cny_ftp"] != baseline_expected["result"]["asset_total"]["cny_ftp"]
 
 
 def _validate_bridge(actual: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -729,6 +758,29 @@ def test_capture_ready_golden_sample_metadata_is_in_expected_state() -> None:
         assert "captured-awaiting-approval" in approval
 
 
+def test_product_category_capture_ready_companion_scenario_files_exist() -> None:
+    for filename in ("scenario.request.json",):
+        assert _sample_file("GS-PROD-CAT-PNL-A", filename).exists()
+
+
+def test_product_category_sample_documents_headline_metric_boundary() -> None:
+    assertions = _read_text("GS-PROD-CAT-PNL-A", "assertions.md")
+    sample_doc = (ROOT / "docs" / "pnl" / "product-category-golden-sample-a.md").read_text(encoding="utf-8")
+    combined = "\n".join((assertions, sample_doc))
+
+    for metric_id in ("MTR-PCP-001", "MTR-PCP-002", "MTR-PCP-003"):
+        assert metric_id in combined
+
+    for required in (
+        "The approved sample-to-metric bindings are limited to the three headline totals:",
+        "Detail rows, `weighted_yield`, scale, FTP fields, and scenario outputs remain page/sample truth only.",
+        "This sample is now bound to the three headline `metric_id` values, while detail metric expansion remains open.",
+    ):
+        assert required in combined
+
+    assert "not yet at approved `metric_id` level" not in combined
+
+
 @pytest.mark.parametrize("sample_id", sorted(CAPTURE_READY_CASES))
 def test_capture_ready_golden_sample_matches_selected_fields(
     sample_id: str,
@@ -741,5 +793,20 @@ def test_capture_ready_golden_sample_matches_selected_fields(
         actual = _run_sample_request(sample_id, tmp_path, monkeypatch)
         expected = _load_json(sample_id, "response.json")
         case.validator(actual, expected)
+    finally:
+        get_settings.cache_clear()
+
+
+def test_product_category_capture_ready_companion_scenario_matches_selected_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = CAPTURE_READY_CASES["GS-PROD-CAT-PNL-A"]
+    try:
+        case.setup(tmp_path, monkeypatch)
+        baseline_expected = _load_json("GS-PROD-CAT-PNL-A", "response.json")
+        scenario_request = _load_json("GS-PROD-CAT-PNL-A", "scenario.request.json")
+        actual = _run_request_payload(scenario_request, tmp_path, monkeypatch)
+        _validate_product_category_scenario(actual, baseline_expected)
     finally:
         get_settings.cache_clear()

@@ -10,16 +10,15 @@ from backend.app.schemas.executive_dashboard import HomeSnapshotPayload
 from backend.app.services.executive_service import (
     _compute_unified_report_date,
     _HOME_SNAPSHOT_CALIBERS,
-    invalidate_home_snapshot_cache,
 )
 
 
 @pytest.fixture(autouse=True)
 def _isolate_home_snapshot_cache():
     """每个用例都从空缓存开始，避免上一条用例的 envelope 污染本条 mock。"""
-    invalidate_home_snapshot_cache()
+    _executive_service().invalidate_home_snapshot_cache()
     yield
-    invalidate_home_snapshot_cache()
+    _executive_service().invalidate_home_snapshot_cache()
 
 
 def _executive_service():
@@ -254,10 +253,7 @@ class TestHomeSnapshotEnvelope:
             assert rd == "2026-04-08"
             return pc_payload
 
-        monkeypatch.setattr(
-            "backend.app.services.executive_service.resolve_product_category_ytd_payload_for_home_snapshot",
-            fake_resolve,
-        )
+        monkeypatch.setattr(es, "resolve_product_category_ytd_payload_for_home_snapshot", fake_resolve)
         headline = getattr(es, "_build_product_category_ytd_headline")("2026-04-08")
         assert headline is not None
         assert headline.summary_pnl.raw == pytest.approx(1325000000.0)
@@ -327,10 +323,7 @@ class TestHomeSnapshotEnvelope:
             assert scenario_rate_pct is None
             return {"result": pc_payload.model_dump(mode="json")}
 
-        monkeypatch.setattr(
-            "backend.app.services.executive_service.product_category_pnl_envelope",
-            fake_envelope,
-        )
+        monkeypatch.setattr(es, "product_category_pnl_envelope", fake_envelope)
         headline = getattr(es, "_build_product_category_monthly_headline")("2026-04-08")
         assert headline is not None
         assert headline.monthly_income.raw == pytest.approx(299181927.65)

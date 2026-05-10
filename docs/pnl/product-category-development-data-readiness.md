@@ -20,11 +20,11 @@ This baseline deliberately keeps broader system readiness as supporting context 
 
 | Evidence source | What it contributes | Limit |
 | --- | --- | --- |
-| `docs/pnl/product-category-page-truth-contract.md` | Page truth chain, field freeze, row-authority prohibitions, explicit gaps | Field-level truth only; no approved `metric_id` freeze |
+| `docs/pnl/product-category-page-truth-contract.md` | Page truth chain, field freeze, row-authority prohibitions, explicit gaps | P0 approves only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`; detail `metric_id` expansion remains open. |
 | `docs/pnl/product-category-closure-checklist.md` | Unit-by-unit closure status and evidence map | All units remain `PARTIAL` at this baseline |
 | `docs/pnl/product-category-remaining-blockers.md` | Blocker class and cursor-safe next work | Product/API decision rows remain blocked |
-| `docs/page_contracts.md` | Page contract binding for `PAGE-PROD-CAT-PNL-001` | Keeps `as_of_date` and `metric_id` gaps explicit |
-| `docs/metric_dictionary.md` | Cross-sample dictionary stance | Explicitly forbids inventing product-category metric IDs before approval |
+| `docs/page_contracts.md` | Page contract binding for `PAGE-PROD-CAT-PNL-001` | Keeps `as_of_date` and detail `metric_id` gaps explicit |
+| `docs/metric_dictionary.md` | Cross-sample dictionary stance | Only the three headline product-category metrics are approved; detail fields remain page/sample truth until separately approved. |
 | `tests/golden_samples/GS-PROD-CAT-PNL-A/` | Capture-ready sample pack | Scenario remains a companion probe, not a second full sample |
 | `tests/test_product_category_pnl_flow.py` | Backend route/materialization/scenario/manual-adjustment coverage | Targeted product-category flow, not full-system closure |
 | `frontend/src/test/ProductCategoryPnlPage.test.tsx` | Main page behavior and governance strip evidence | Mock/client UI evidence, not source-authority evidence |
@@ -69,7 +69,7 @@ Relevant interpretation:
 
 Do not treat this baseline as resolving these blockers:
 
-- formal product-category `metric_id` approval is still missing
+- detail product-category `metric_id` expansion beyond `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003` is still missing
 - standalone outward `as_of_date` is still missing
 - fallback-date semantics remain a product/API decision
 - refresh timeout messaging remains a product decision

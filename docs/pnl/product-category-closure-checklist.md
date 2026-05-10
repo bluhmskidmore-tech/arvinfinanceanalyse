@@ -60,7 +60,7 @@ This first pass is based on:
 | Unit | Status | Priority | Short reason |
 | --- | --- | --- | --- |
 | 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates` vs empty list for PnL/adjustments/ledger; `as_of_date` gap + fallback semantics still open |
-| 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, and first page-level column freeze exist; metric_id approval and exhaustive detail coverage remain open |
+| 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, first page-level column freeze, and three headline `metric_id` bindings exist; detail metric expansion and exhaustive detail coverage remain open |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests freeze 409/503/failed-terminal + polling + `product-category-refresh-status` in-flight line (`runPollingTask` `onUpdate`); stale-banner / timeout UX still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | page-level client validation matrix (report_date / account_code / amounts / single-amount happy paths) is now frozen in tests + checklist; backend error shapes + broader copy still open |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; Unit 5 list/timeline failure semantics frozen (`AsyncSection` + `product-category-audit-list-timeline-async` + `within` assertions: error + no stale rows + retry); dual-control "why" still narrative |
@@ -110,9 +110,10 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - page-level sample exists in `tests/golden_samples/GS-PROD-CAT-PNL-A/`
   - dedicated detail adapter/selector unit tests: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` (pure selectors in `productCategoryPnlPageModel.ts`: baseline vs scenario row source, grand total overlay, main-page `monthly`/`ytd` scope vs governed `available_views` superset)
   - first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1
+  - three P0 headline metrics are approved in `docs/metric_dictionary.md`: `MTR-PCP-001` (`asset_total.business_net_income`), `MTR-PCP-002` (`liability_total.business_net_income`), and `MTR-PCP-003` (`grand_total.business_net_income`)
   - `frontend/src/test/ProductCategoryPnlPage.test.tsx` - `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` overrides one known backend row (`repo_assets`) with unique raw yuan values and proves the rendered table order is category label, `cnx_scale`, `cny_scale`, `foreign_scale`, `cnx_cash`, `cny_cash`, `cny_ftp`, `cny_net`, `foreign_cash`, `foreign_ftp`, `foreign_net`, `business_net_income`, then unscaled `weighted_yield`; the same test keeps advertised `available_views` as `monthly/qtd/ytd/year_to_report_month_end` while the main page exposes only two view controls
 - Why not `CLOSED`:
-  - formal `metric_id` approval is still missing
+  - detail `metric_id` expansion beyond the three approved headline metrics is still missing
   - core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only
 
 ## Unit 3: Refresh + Status
@@ -170,10 +171,10 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - **List/timeline failure semantics (audit page, `getProductCategoryManualAdjustments` rejects):** `LegacyProductCategoryAdjustmentAuditBody` wraps the list/timeline `AsyncSection` in `data-testid="product-category-audit-list-timeline-async"` for a single page-level region; the `AsyncSection` uses `isError={adjustmentsQuery.isError}` and `onRetry={() => adjustmentsQuery.refetch()}`; when `isError` is true, `AsyncSection` replaces its children (see `frontend/src/components/AsyncSection.tsx`), so `audit-current-state` / `audit-event-list` (and event `data-testid`s) are not rendered - no silent display of prior rows in the DOM (React Query may retain prior `data` in cache, but the error branch does not render row bodies)
   - **`frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` - `Unit 5: list/timeline failure surfaces AsyncSection error, hides current+event bodies, and retry refetches`:** waits until the audit report-month field has a value (adjustments query enabled); `getProductCategoryManualAdjustments` throws until a flag flips; scopes assertions with `within(screen.getByTestId("product-category-audit-list-timeline-async"))`: load-failure copy + retry-entry copy, `audit-current-state` / `audit-event-list` absent inside that region, retry triggers a second fetch and then `audit-current-state` shows `after-retry-row`
   - **Same file - `Unit 5: failed list refetch does not leave prior current-state or timeline rows visible`:** first response includes `unit5-stale-marker` and timeline `audit-event-pca-audit-stale-1-edited`; after `audit-filter-account-code` + `audit-apply-filters`, second fetch rejects; `within(product-category-audit-list-timeline-async)` shows load-failure copy + retry, and that region does not contain `audit-current-state` / `audit-event-list`; stale marker and `audit-event-pca-audit-stale-1-edited` are gone from the document
+  - surface ownership is frozen in `docs/pnl/product-category-page-truth-contract.md` section 9.3: the main page is the canonical first-screen summary / quick-action surface; the audit page is the canonical full current-state, event-timeline, filter, dual-sort, pagination, retry, and CSV export surface
 - Why not `CLOSED`:
   - the product rationale for two independent sort controls (vs a single model) is still a narrative gap, not a code gap
   - broader stale/failure matrix (e.g. partial degradation, export vs list divergence under error, main-page list parity) is not fully closed
-  - list closure mostly lives in the audit page rather than the main page, which increases cognitive split
 
 ## Unit 6: Manual Adjustment Export
 
@@ -187,6 +188,18 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - **Page-level CSV pass-through (no frontend numeric rewrite; no BOM prepended by the download path):** `downloadAuditCsv` in `ProductCategoryAdjustmentAuditPage.tsx` is documented as passing the API string into `Blob` as a single part without prepending a BOM (BOM in the file, if any, is defined by the server response); **`Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM`** intercepts `Blob` and asserts the string body equals the mocked `exportProductCategoryManualAdjustmentsCsv` `content` byte-for-byte (including long decimal digits) and the first code point is not U+FEFF when the mock omits a BOM
   - **`frontend/src/test/ApiClient.test.ts` - `uses real mode to export filtered product-category manual adjustments as csv`:** `payload.content` is strictly `===` the `response().text` string; when that string has no leading BOM, `payload.content.codePointAt(0) !== 0xFEFF` (client does not insert a BOM in this path)
   - **`uses the same filter and sort query keys for real-mode list and export (export omits pagination only)`:** for every key present on the export URL, values match the list call; `adjustment_limit` / `adjustment_offset` / `limit` / `offset` are absent on export
+
+### Unit 6 CSV precision scope note
+
+This note documents exactly what existing tests prove; it does not claim every-cell UI/CSV parity.
+
+| Proven slice | Evidence | Boundary |
+| --- | --- | --- |
+| query symmetry | `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` | proves filter/sort query parity only |
+| API CSV string pass-through | `Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM` | proves frontend Blob creation does not rewrite numbers or prepend BOM |
+| real-mode client pass-through | `uses real mode to export filtered product-category manual adjustments as csv` | proves `response().text` is returned as `payload.content` |
+
+Not proved here: backend BOM policy, large-export limits, streaming behavior, or rendered UI money strings equaling every CSV cell.
 - **BOM policy (closure stance):** no governed rule is recorded for whether the **backend** CSV is UTF-8 with or without a leading BOM; the **frontend** path shown above only forwards `text()` to `content` and into `new Blob([content], ...)` without adding `\uFEFF`. Whether production exports include a BOM is **unknown** from these tests and must not be invented here.
 - Why not `CLOSED`:
   - backend/global UTF-8 BOM policy for generated CSV is still not specified in tests or this checklist (only the non-mutation of "response as received" in the two shown layers)
@@ -205,10 +218,11 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - page tests `disables revoke/restore by approval_status...` (main) and `disables audit revoke/restore...` (audit) freeze: `approved` -> revoke on / restore off; `pending` -> both off; `rejected` -> revoke off / restore on; sample rows keep edit enabled (aligns with `disabled` in `ProductCategoryPnlPage.tsx` / `ProductCategoryAdjustmentAuditPage.tsx`)
   - `product-category-adjustment-lead` and `product-category-audit-timeline-lead` copy states lifecycle actions run the same PnL refresh path as the full-page refresh before list updates; audit lead notes in-flight refresh grays out controls
   - real-mode client calls are covered in `frontend/src/test/ApiClient.test.ts`
+  - surface ownership is frozen in `docs/pnl/product-category-page-truth-contract.md` section 9.3: lifecycle actions (`edit`, `revoke`, `restore`) are allowed on both surfaces only as already tested, with the shared manual-adjustment API plus PnL refresh path as source-of-truth behavior
+  - field-level edit policy is now documented in `docs/pnl/product-category-page-truth-contract.md` section 9.4 without adding new confirmation friction or product approvals
 - Why not `CLOSED`:
   - no confirmation modal for destructive revoke; not added here, remains an explicit product gap if stakeholders want friction
-  - lifecycle closure is spread across main page and audit page
-  - field-level edit policy for every edge case is not written as a separate human contract beyond tests + these leads
+  - some edit edge cases remain product-policy gaps, but the current tested editable fields and revoke/restore gating are now documented
 
 ## Unit 8: Governance / Traceability
 
@@ -240,6 +254,16 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
     - literal `grand_total` does not appear in the table; the summary total is only via `product-category-footer-total` (`result.grand_total` path)
   - **Formal table `AsyncSection` on failed baseline refetch (no silent stale success UI):** `ProductCategoryPnlPage.tsx` wires the formal table through `AsyncSection` with `isError={baselineQuery.isError}`; React Query v5 `QueryObserverRefetchErrorResult` keeps `isError: true` after a refetch failure even when prior `data` exists, so the error branch replaces table children (see `frontend/src/components/AsyncSection.tsx`). **`product-category-summary`** (passed as `extra`) and **`product-category-footer-total`** are gated with `!baselineQuery.isError` so cached baseline money is not shown beside the error state as if the load succeeded.
   - **`frontend/src/test/ProductCategoryPnlPage.test.tsx` - `Unit 9: formal baseline refetch failure shows AsyncSection error; no stale table, summary, or footer`:** initial `getProductCategoryPnl` succeeds with `repo_assets` row label `unit9-formal-asyncsection-stale-marker`; after `product-category-refresh-button` (sync-completed refresh mock so `runRefreshWorkflow` runs `baselineQuery.refetch()`), the next `getProductCategoryPnl` rejects; within the `<section>` that contains the product-category PnL analysis title, asserts load-failure copy + retry copy; document-wide asserts `product-category-table`, the stale marker, `product-category-summary`, and `product-category-footer-total` are absent.
+
+### Unit 9 fixture-driven row matrix
+
+This matrix documents only rows already exercised by page/model tests; it does not infer broader category catalog behavior.
+
+| Fixture row | Row kind | Frozen display slice | Evidence |
+| --- | --- | --- | --- |
+| `repo_liabilities` | liability row | absolute display for `business_net_income`; yield is not money-scaled | `Unit 9: table business_net_income uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)` |
+| `repo_assets` | asset row | signed display for `business_net_income`; yield is not money-scaled | same Unit 9 page test |
+| `grand_total` | footer-only total | not rendered in table body; total uses backend grand total | same Unit 9 page test + `selectDisplayedProductCategoryGrandTotal` model test |
 - Why not `CLOSED`:
   - exhaustive column-by-column cross-field matrix (every metric x row kind) is not page-frozen; only a minimal Unit 9 slice is evidenced
   - `category_id` / `side` in the test are taken from the existing mock's known rows (`repo_liabilities` / `repo_assets`), not inferred from other domains
@@ -268,6 +292,19 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
     | Adjacent UI | `frontend/src/test/ProductCategoryBranchSwitcher.test.tsx` | Branch switcher wiring (referenced from truth contract references section) |
 
   - **Small model-level separation added for forward-compatible rows:** `productCategoryPnlPageModel.test.ts` - `sorts unknown category_id rows after governed display-order rows` documents `selectProductCategoryDetailRows` behavior for IDs not in `DISPLAY_ORDER` (stable tie-break at `Number.MAX_SAFE_INTEGER`).
+
+### Unit 10 page-to-helper traceability
+
+This table links already-covered page assertions to pure helpers; it is not an exhaustive per-field proof.
+
+| Page/audit assertion | Pure helper or model anchor | Boundary |
+| --- | --- | --- |
+| `Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link` | `nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate` | First API date and ledger deep-link only; no fallback-date policy |
+| `Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates` | `nextDefaultReportDateIfUnset`; `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY` | Empty-list behavior only; no outward `as_of_date` |
+| `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` | `selectProductCategoryDetailRows`; `PRODUCT_CATEGORY_MAIN_PAGE_VIEWS`; `PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS` | Detail field display and view-scope split only; no new metric IDs |
+| `Unit 9: table business_net_income uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)` | `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal` | Minimal money/yield/footer slice only |
+| `surfaces degraded result_meta (fallback, vendor, quality) in the governance strip, not only inside the meta panel` | `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine` | Visibility of known meta fields only; final stale-banner copy remains open |
+| `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` | `buildProductCategoryAuditListExportQuery` | Query symmetry only; no backend BOM or large-export policy |
 - Why not `CLOSED`:
   - scenario is still a **companion probe** (`product-category-golden-sample-a.md` + ApiClient scenario test), not a second full page-level golden **matrix** sample
   - **full-repo** golden-sample / e2e verification is explicitly out of scope for this unit's evidence map; remaining unevenness is process-wide, not product-category-only
@@ -311,5 +348,5 @@ Rule:
 Recommended next smallest unit:
 
 - Unit 2: Detail
-  - next evidence target: formal metric approval for governed detail fields
-  - do not invent `metric_id` bindings until the approved metric freeze exists
+  - next evidence target: decide whether detail rows, yield, scale, or FTP fields should become formal metrics
+  - do not invent additional `metric_id` bindings beyond `MTR-PCP-001` / `MTR-PCP-002` / `MTR-PCP-003`

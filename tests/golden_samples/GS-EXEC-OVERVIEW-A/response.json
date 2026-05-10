@@ -63,8 +63,8 @@
       },
       {
         "id": "yield",
-        "label": "年内收益",
-        "caliber_label": null,
+        "label": "年度损益（不扣FTP）",
+        "caliber_label": "FI + 非标桥接",
         "value": {
           "raw": 469000000.0,
           "unit": "yuan",
@@ -80,7 +80,7 @@
           "sign_aware": true
         },
         "tone": "positive",
-        "detail": "来自 fact_formal_pnl_fi 截至 2026-02-28 的年内 total_pnl 合计。",
+        "detail": "来自 fact_formal_pnl_fi + fact_nonstd_pnl_bridge 截至 2026-02-28 的年度累计 total_pnl，不扣减 FTP。",
         "history": [
           460000000.0,
           469000000.0

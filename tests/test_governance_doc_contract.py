@@ -126,7 +126,10 @@ def test_golden_sample_dirs_keep_required_four_file_structure():
 
     for sample_id in _sample_dirs():
         sample_dir = GOLDEN_ROOT / sample_id
-        assert {path.name for path in sample_dir.iterdir() if path.is_file()} == required_files
+        file_names = {path.name for path in sample_dir.iterdir() if path.is_file()}
+        allowed_companion_files = {"scenario.request.json"} if sample_id == "GS-PROD-CAT-PNL-A" else set()
+        assert required_files <= file_names
+        assert file_names <= required_files | allowed_companion_files
 
 
 def test_page_contracts_bind_sample_backed_governed_pages_to_golden_samples():
@@ -206,7 +209,8 @@ def test_product_category_detail_unit_stays_partial_until_closure_evidence_exist
         "the main page selector scope is explicitly frozen as `monthly` and `ytd`",
         "`qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements",
         "first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1",
-        "formal `metric_id` approval is still missing",
+        "three P0 headline metrics are approved in `docs/metric_dictionary.md`",
+        "detail `metric_id` expansion beyond the three approved headline metrics is still missing",
         "core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only",
         "productCategoryPnlPageModel.test.ts",
     ):
@@ -238,11 +242,319 @@ def test_product_category_first_stage_field_freeze_is_explicitly_bounded():
         assert field_path in field_freeze
 
     for rule in (
-        "This is a page-level field freeze, not a formal `metric_id` approval.",
-        "do not invent `metric_id` bindings from this table",
+        "This is a page-level field freeze for detail semantics. It is not a formal `metric_id` approval beyond the three P0-approved headline metrics.",
+        "do not invent detail `metric_id` bindings from this table",
         "do not treat liability sign normalization as backend truth",
         "do not use `available_views` to add first-screen controls",
         "do not recompute `grand_total` in frontend",
         "do not change row identity during scenario display",
     ):
         assert rule in field_freeze
+
+
+def test_product_category_p0_closure_gate_stays_decision_safe():
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    p0_gate = page_contract.split("## 15. P0 Closure Gate", maxsplit=1)[1]
+
+    for required in (
+        "P0 is a closure gate, not a new feature lane.",
+        "P0-approved formal metric ids are `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`.",
+        "detail `metric_id` expansion remains decision-required",
+        "standalone outward `as_of_date` remains backend/API-contract-required",
+        "do not add additional `MTR-*` rows for product-category fields from sample evidence alone",
+        "do not infer `as_of_date` from `report_date` or `generated_at`",
+        "P0 evidence can lock known stale/fallback behavior, but cannot choose unresolved product copy or API shape",
+    ):
+        assert required in p0_gate
+
+    for required in (
+        "## P0 execution boundary",
+        "Decision-required P0 items",
+        "Cursor-safe P0 items",
+        "`MTR-PCP-001`",
+        "detail `metric_id` expansion",
+        "`as_of_date` API shape",
+        "stale/fallback/refresh matrix",
+    ):
+        assert required in blocker_triage
+
+
+def test_product_category_metric_dictionary_does_not_promote_unapproved_fields():
+    metric_dictionary = _read_doc("metric_dictionary.md")
+
+    assert "Product-category metric promotion guard" in metric_dictionary
+    assert "GS-PROD-CAT-PNL-A" in metric_dictionary
+    assert "MTR-PCP-001" in metric_dictionary
+    assert "MTR-PCP-002" in metric_dictionary
+    assert "MTR-PCP-003" in metric_dictionary
+    assert "category_id / side / view / report_date are dimensions, not separate metrics" in metric_dictionary
+    assert "scenario outputs remain analytical scenario payloads, not formal dictionary metrics" in metric_dictionary
+
+    forbidden_promotions = (
+        "| `MTR-PROD",
+        "| `MTR-PCA",
+        "| `MTR-PCP-101",
+        "| `MTR-PCP-201",
+    )
+    for forbidden in forbidden_promotions:
+        assert forbidden not in metric_dictionary
+
+    for field_name in (
+        "`business_net_income`",
+        "`weighted_yield`",
+        "`cnx_scale`",
+    ):
+        assert field_name in metric_dictionary
+
+
+def test_product_category_as_of_date_decision_is_actual_data_cutoff():
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+
+    time_semantics = page_contract.split("## 10. Time Semantics", maxsplit=1)[1].split(
+        "## 11. Result Meta Visibility",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "`requested_report_date`: user-requested report date",
+        "`resolved_report_date`: backend-returned report date",
+        "`as_of_date`: actual data cutoff used by the result",
+        "`generated_at`: system generation timestamp",
+        "normal formal monthly case: `requested_report_date == resolved_report_date == as_of_date`",
+        "`as_of_date` must not be inferred from `generated_at`",
+    ):
+        assert required in time_semantics
+
+
+def test_product_category_manual_adjustment_surface_ownership_is_bounded():
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    surface_section = page_contract.split("### 9.3 Manual Adjustment Surface Ownership", maxsplit=1)[
+        1
+    ].split("## 10. Time Semantics", maxsplit=1)[0]
+
+    for required in (
+        "This section documents existing tested surfaces; it does not add lifecycle friction or change endpoint policy.",
+        "`/product-category-pnl`: canonical first-screen summary and quick-action surface.",
+        "`/product-category-pnl/audit`: canonical full audit surface for current-state list, event timeline, filters, dual sort, pagination, retry, and CSV export.",
+        "Full event-timeline evidence belongs to the audit page; the main page may show only a summary count and audit link.",
+        "Lifecycle actions (`edit`, `revoke`, `restore`) are allowed on both surfaces only as already tested; the source-of-truth behavior is the shared manual-adjustment API plus PnL refresh path.",
+        "No confirmation modal, dual-sort rationale, or export policy is approved by this surface note.",
+    ):
+        assert required in surface_section
+
+    for required in (
+        "surface ownership is frozen in `docs/pnl/product-category-page-truth-contract.md` section 9.3",
+        "Unit 5/7 surface cross-link note is now recorded",
+    ):
+        assert required in checklist or required in blocker_triage
+
+
+def test_product_category_p0_metric_approval_is_consistent_across_docs():
+    metric_dictionary = _read_doc("metric_dictionary.md")
+    page_contracts = _read_doc("page_contracts.md")
+    readiness = _read_pnl_doc("product-category-development-data-readiness.md")
+
+    for doc in (metric_dictionary, page_contracts, readiness):
+        assert "MTR-PCP-001" in doc
+        assert "MTR-PCP-002" in doc
+        assert "MTR-PCP-003" in doc
+
+    for stale_statement in (
+        "formal product-category `metric_id` approval is still missing",
+        "本页 `metric_id` 主表绑定**尚未**在 `docs/metric_dictionary.md` 中完备案",
+        "产品分类 PnL 只有页面 truth contract 与样本 truth；正式字典级 `metric_id` 待审批后再补。",
+        "对 `GS-PROD-CAT-PNL-A` 另走业务审批，批准后再补字典级 `metric_id`",
+        "Field-level truth only; no approved `metric_id` freeze",
+        "Explicitly forbids inventing product-category metric IDs before approval",
+    ):
+        assert stale_statement not in "\n".join((metric_dictionary, page_contracts, readiness))
+
+    for required in (
+        "P0 approves only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`; detail `metric_id` expansion remains open.",
+        "Only the three headline product-category metrics are approved; detail fields remain page/sample truth until separately approved.",
+        "Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and decide any future detail metric expansion separately.",
+    ):
+        assert required in "\n".join((metric_dictionary, page_contracts, readiness))
+
+
+def test_product_category_remaining_blockers_do_not_relist_completed_p0_evidence():
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    completed = blocker_triage.split("## Completed cursor-safe P0 evidence", maxsplit=1)[1].split(
+        "## Blockers that need user/product decision",
+        maxsplit=1,
+    )[0]
+    next_tasks = blocker_triage.split("## Next cursor-safe tasks", maxsplit=1)[1]
+
+    for required in (
+        "readiness baseline",
+        "headline sample metric assertions",
+        "stale/fallback/refresh matrix skeleton",
+        "Unit 5/7 surface ownership",
+        "Unit 7 field-level edit policy",
+        "Unit 10 page-to-helper traceability",
+        "governance regression tests",
+    ):
+        assert required in completed
+
+    for stale_task in (
+        "Evidence baseline + Unit 10 scenario assertions",
+        "Unit 3 / Unit 8 state matrix skeleton",
+        "Unit 5 / Unit 7 / Unit 10 documentation links",
+        "Unit 7 field-level edit policy",
+        "Unit 10 page-to-helper traceability",
+        "Unit 8 stale/refresh cross-surface refinement",
+        "Unit 9 fixture-driven row matrix",
+    ):
+        assert stale_task not in next_tasks
+
+    for remaining_safe_task in (
+        "Unit 6 UI-to-CSV every-cell comparison",
+        "Unit 9 broader fixture expansion",
+        "Unit 8 final stale UX copy",
+    ):
+        assert remaining_safe_task in next_tasks
+
+
+def test_product_category_manual_adjustment_edit_policy_is_documented_without_new_friction():
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    edit_policy = page_contract.split("### 9.4 Manual Adjustment Edit Field Policy", maxsplit=1)[
+        1
+    ].split("## 10. Time Semantics", maxsplit=1)[0]
+
+    for required in (
+        "This is a documentation freeze of existing tested behavior, not a new product approval.",
+        "`report_date` is carried from the selected/current row and stays read-only in the form.",
+        "`operator`, `approval_status`, `account_code`, `currency`, `account_name`, `beginning_balance`, `ending_balance`, `monthly_pnl`, `daily_avg_balance`, and `annual_avg_balance` are the current editable draft fields.",
+        "`approval_status` controls revoke/restore availability only as already tested: approved -> revoke enabled, pending -> neither, rejected -> restore enabled.",
+        "Edit remains enabled for approved, pending, and rejected rows in the existing tests; do not infer this as final product policy for every edge case.",
+        "No confirmation modal or additional revoke friction is approved here.",
+    ):
+        assert required in edit_policy
+
+    assert "field-level edit policy is now documented" in checklist
+    assert "Unit 7 field-level edit policy" not in blocker_triage.split("## Next cursor-safe tasks", maxsplit=1)[1]
+
+
+def test_product_category_unit10_traceability_table_remains_non_exhaustive():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    traceability = checklist.split("### Unit 10 page-to-helper traceability", maxsplit=1)[1].split(
+        "- Why not `CLOSED`:",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "This table links already-covered page assertions to pure helpers; it is not an exhaustive per-field proof.",
+        "`Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link`",
+        "`nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate`",
+        "`Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention`",
+        "`selectProductCategoryDetailRows`; `PRODUCT_CATEGORY_MAIN_PAGE_VIEWS`; `PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS`",
+        "`Unit 9: table",
+        "`formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal`",
+        "`surfaces degraded result_meta",
+        "`PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine`",
+        "`CSV export uses the same applied filter+sort as the list request (omits only pagination options)`",
+        "`buildProductCategoryAuditListExportQuery`",
+    ):
+        assert required in traceability
+
+    assert "Unit 10 page-to-helper traceability" not in blocker_triage.split(
+        "## Next cursor-safe tasks",
+        maxsplit=1,
+    )[1]
+
+
+def test_product_category_stale_refresh_cross_surface_matrix_is_evidence_only():
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    matrix = page_contract.split("### 11.2 Evidence-Only Cross-Surface State Matrix", maxsplit=1)[
+        1
+    ].split("## 12. Minimum Reconciliation Rules", maxsplit=1)[0]
+
+    for required in (
+        "This matrix records only states already covered by tests; it does not define new fallback-date policy, timeout copy, or outward `as_of_date`.",
+        "`/product-category-pnl` formal table",
+        "`Unit 9: formal baseline refetch failure shows AsyncSection error; no stale table, summary, or footer`",
+        "`/product-category-pnl` refresh control",
+        "`Unit 3: refresh shows in-flight status (queued",
+        "`surfaces refresh conflict (409) with explicit copy",
+        "`surfaces sync-fallback service failure (503) with explicit copy",
+        "`surfaces terminal failed refresh status as an error (not silent success)`",
+        "`/product-category-pnl/audit` list/timeline",
+        "`Unit 5: list/timeline failure surfaces AsyncSection error, hides current+event bodies, and retry refetches`",
+        "`GET /ui/pnl/product-category` backend detail",
+        "`test_product_category_detail_returns_503_when_read_model_is_locked`",
+    ):
+        assert required in matrix
+
+    assert "Unit 8 stale/refresh cross-surface refinement" not in blocker_triage.split(
+        "## Next cursor-safe tasks",
+        maxsplit=1,
+    )[1]
+
+
+def test_product_category_unit9_fixture_row_matrix_stays_narrow():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    unit9 = checklist.split("### Unit 9 fixture-driven row matrix", maxsplit=1)[1].split(
+        "- Why not `CLOSED`:",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "This matrix documents only rows already exercised by page/model tests; it does not infer broader category catalog behavior.",
+        "`repo_liabilities`",
+        "liability row",
+        "absolute display for `business_net_income`; yield is not money-scaled",
+        "`repo_assets`",
+        "asset row",
+        "signed display for `business_net_income`; yield is not money-scaled",
+        "`grand_total`",
+        "footer-only total",
+        "not rendered in table body; total uses backend grand total",
+    ):
+        assert required in unit9
+
+    assert "Unit 9 fixture-driven row matrix" not in blocker_triage.split(
+        "## Next cursor-safe tasks",
+        maxsplit=1,
+    )[1]
+
+
+def test_product_category_unit6_csv_scope_note_does_not_overclaim():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    unit6 = checklist.split("### Unit 6 CSV precision scope note", maxsplit=1)[1].split(
+        "- **BOM policy",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "This note documents exactly what existing tests prove; it does not claim every-cell UI/CSV parity.",
+        "query symmetry",
+        "`CSV export uses the same applied filter+sort as the list request (omits only pagination options)`",
+        "API CSV string pass-through",
+        "`Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM`",
+        "real-mode client pass-through",
+        "`uses real mode to export filtered product-category manual adjustments as csv`",
+        "Not proved here: backend BOM policy, large-export limits, streaming behavior, or rendered UI money strings equaling every CSV cell.",
+    ):
+        assert required in unit6
+
+    assert "Unit 6 CSV precision scope note" not in blocker_triage.split(
+        "## Next cursor-safe tasks",
+        maxsplit=1,
+    )[1]

@@ -28,6 +28,16 @@
   - `bond_valuation_spread`
 - `asset_total.business_net_income + liability_total.business_net_income == grand_total.business_net_income`.
 
+## Approved headline metric bindings
+
+The approved sample-to-metric bindings are limited to the three headline totals:
+
+- `MTR-PCP-001`: `result.asset_total.business_net_income`.
+- `MTR-PCP-002`: `result.liability_total.business_net_income`.
+- `MTR-PCP-003`: `result.grand_total.business_net_income`.
+
+Detail rows, `weighted_yield`, scale, FTP fields, and scenario outputs remain page/sample truth only.
+
 ## Companion scenario probe
 
 The companion scenario probe is `GET /ui/pnl/product-category?report_date=2026-02-28&view=monthly&scenario_rate_pct=2.5`.

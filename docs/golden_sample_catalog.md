@@ -363,7 +363,8 @@ tests/golden_samples/
 - 状态：`capture-ready`
 - `caliber_label` 冻结字段：
   - `aum` 固定为 `本币资产口径`。
-  - `yield` / `nim` / `dv01` 当前固定为 `null`。
+  - `yield` 固定为 `FI + 非标桥接`，标签为 `年度损益（不扣FTP）`，明细说明来自 `fact_formal_pnl_fi + fact_nonstd_pnl_bridge` 且不扣减 FTP。
+  - `nim` / `dv01` 当前固定为 `null`。
   - 该形状与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 的当前契约一致。
 - 证据：
   - `tests/test_executive_release_contract.py::test_gs_exec_overview_release_contract`
