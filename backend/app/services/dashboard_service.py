@@ -49,7 +49,7 @@ def _yuan_numeric(val: Decimal, *, sign_aware: bool) -> Numeric:
     numeric = numeric_from_raw(
         raw=float(val),
         unit="yuan",
-        precision=8,
+        precision=2,
         sign_aware=sign_aware,
         signed_format=sign_aware,
     )
@@ -72,7 +72,7 @@ def _fmt_rate_pct(value: Decimal | None) -> str:
 
 def _pct_change_numeric(chg_amt: Decimal, prev: Decimal) -> Numeric:
     if prev <= 0:
-        return null_numeric(unit="pct", precision=8, sign_aware=True)
+        return null_numeric(unit="pct", precision=2, sign_aware=True)
     pct = (chg_amt / prev) * Decimal("100")
     return numeric_from_raw(
         raw=float(pct),
