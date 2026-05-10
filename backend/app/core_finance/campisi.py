@@ -423,3 +423,38 @@ def maturity_bucket_attribution(
         for k in ("income_return", "treasury_effect", "spread_effect", "selection_effect", "total_return"):
             out[b][k] += r[k]
     return out
+
+
+def classify_primary_driver(
+    income: float,
+    treasury: float,
+    spread: float,
+    selection: float,
+    tie_threshold: float = 0.10,
+) -> str:
+    """
+    从四个效应中选出主驱动；若前两名 abs 差 < tie_threshold * 第一名 abs，返回 'mixed'。
+
+    返回 'income' | 'treasury' | 'spread' | 'selection' | 'mixed' | 'unknown'。
+
+    参数：
+    - income / treasury / spread / selection：四个效应的数值（正负均可，比较基于绝对值）
+    - tie_threshold：接近度阈值，默认 0.10 表示前两名 abs 差 < 10% * 第一名 abs 判为 mixed
+    """
+    ranked = sorted(
+        [
+            ("income", abs(float(income))),
+            ("treasury", abs(float(treasury))),
+            ("spread", abs(float(spread))),
+            ("selection", abs(float(selection))),
+        ],
+        key=lambda kv: kv[1],
+        reverse=True,
+    )
+    top_name, top_val = ranked[0]
+    if top_val <= 0:
+        return "unknown"
+    second_val = ranked[1][1]
+    if second_val >= (1.0 - tie_threshold) * top_val:
+        return "mixed"
+    return top_name
