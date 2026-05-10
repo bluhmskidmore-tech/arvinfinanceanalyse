@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-
-from sqlalchemy import or_, select, create_engine
-from sqlalchemy.orm import sessionmaker
+from datetime import UTC, datetime
 
 from backend.app.models.base import Base
 from backend.app.models.governance import UserRoleScope
 from backend.app.schemas.auth_context import UserScopeGrant
+from sqlalchemy import create_engine, or_, select
+from sqlalchemy.orm import sessionmaker
 
 
 @dataclass
@@ -16,6 +15,7 @@ class UserScopeRepository:
     dsn: str
 
     def __post_init__(self) -> None:
+        self.dsn = _normalize_sqlalchemy_dsn(self.dsn)
         self.engine = create_engine(self.dsn, future=True)
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
@@ -32,7 +32,7 @@ class UserScopeRepository:
         scope_value: str | None = None,
         is_active: bool = True,
     ) -> dict[str, object]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with self._session_factory() as session:
             row = UserRoleScope(
                 user_id=user_id.strip(),
@@ -144,3 +144,12 @@ class UserScopeRepository:
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
         }
+
+
+def _normalize_sqlalchemy_dsn(dsn: str) -> str:
+    normalized = str(dsn or "").strip()
+    if normalized.startswith("postgresql+psycopg://"):
+        return normalized
+    if normalized.startswith("postgresql://"):
+        return "postgresql+psycopg://" + normalized[len("postgresql://") :]
+    return normalized

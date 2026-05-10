@@ -381,6 +381,41 @@ def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> No
             ),
         ]
     )
+    _seed_dev_user_scopes(config)
+
+
+def _seed_dev_user_scopes(config: DevPostgresClusterConfig) -> None:
+    _run_checked(
+        [
+            str(config.bin_dir / "psql.exe"),
+            "-h",
+            config.host,
+            "-p",
+            str(config.port),
+            "-U",
+            "postgres",
+            "-d",
+            config.database,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            (
+                "INSERT INTO user_role_scope "
+                "(user_id, role, resource, action, scope_key, scope_value, is_active, created_at, updated_at) "
+                "SELECT '*', NULL, 'choice_news.data', 'read', NULL, NULL, TRUE, NOW(), NOW() "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM user_role_scope "
+                "WHERE user_id = '*' "
+                "AND role IS NULL "
+                "AND resource = 'choice_news.data' "
+                "AND action = 'read' "
+                "AND scope_key IS NULL "
+                "AND scope_value IS NULL "
+                "AND is_active IS TRUE"
+                ");"
+            ),
+        ]
+    )
 
 
 def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:

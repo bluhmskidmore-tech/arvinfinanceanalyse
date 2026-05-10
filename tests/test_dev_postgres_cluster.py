@@ -523,7 +523,39 @@ def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeou
     module._apply_alembic_migrations_and_grants(config)
 
     assert recorded_waits == [{"database": config.database, "attempts": 5, "retry_delay_seconds": 1.0}]
-    assert recorded_grants, "expected post-alembic GRANT statement to run after retry succeeds"
+    assert recorded_grants, "expected post-alembic GRANT statements to run after retry succeeds"
+    assert any("choice_news.data" in " ".join(args) for args in recorded_grants)
+
+
+def test_seed_dev_user_scopes_grants_choice_news_read_once(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=tmp_path / "repo",
+        bin_dir=tmp_path / "pgbin",
+        cluster_root=tmp_path / "tmp-governance" / "pgdev",
+        data_dir=tmp_path / "tmp-governance" / "pgdev" / "data",
+        log_file=tmp_path / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=tmp_path / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=tmp_path / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=tmp_path / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=tmp_path / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=tmp_path / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(module, "_run_checked", lambda args, *, capture_output=False: calls.append(args) or "")
+
+    module._seed_dev_user_scopes(config)
+
+    assert len(calls) == 1
+    command = " ".join(calls[0])
+    assert "INSERT INTO user_role_scope" in command
+    assert "choice_news.data" in command
+    assert "read" in command
+    assert "WHERE NOT EXISTS" in command
 
 
 def test_resolve_python_executable_prefers_path_python(monkeypatch):
