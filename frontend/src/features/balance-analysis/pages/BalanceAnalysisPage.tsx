@@ -66,11 +66,11 @@ import {
 } from "./BalanceAnalysisPage.styles";
 import { heroMetaChipStyle } from "./BalanceAnalysisPage.helpers";
 import {
+  buildBalanceHeadlineCards,
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
   formatBalanceGridThousandsValue,
-  formatBalanceScopeTotalAmountToYi,
   formatBalanceWorkbookCellDisplay,
   formatBalanceDecisionWorkflowStatusDisplay,
   formatBalanceGovernedSeverityDisplay,
@@ -84,7 +84,6 @@ import {
   maxAbsFiniteChartScale,
   maxFiniteChartScale,
   parseBalanceChartMagnitude,
-  summarizeBalanceAmountsByPositionScope,
 } from "./balanceAnalysisPageModel";
 
 const PAGE_SIZE = 2;
@@ -105,27 +104,6 @@ const secondaryWorkbookPanelKeys = [
 const rightRailWorkbookKeys = [
   "event_calendar",
   "risk_alerts",
-] as const;
-
-const amountMetricDefinitions = [
-  {
-    key: "market-value",
-    label: "市值合计",
-    amountKey: "marketValueAmount",
-    overviewKey: "total_market_value_amount",
-  },
-  {
-    key: "amortized-cost",
-    label: "摊余成本合计",
-    amountKey: "amortizedCostAmount",
-    overviewKey: "total_amortized_cost_amount",
-  },
-  {
-    key: "accrued-interest",
-    label: "应计利息合计",
-    amountKey: "accruedInterestAmount",
-    overviewKey: "total_accrued_interest_amount",
-  },
 ] as const;
 
 const workbookPanelNotes: Record<(typeof primaryWorkbookTableKeys)[number], string> = {
@@ -1715,68 +1693,11 @@ export default function BalanceAnalysisPage() {
     )
     .flatMap((table) => table.rows)
     .find((row) => `${row.severity}:${row.title}` === selectedRiskAlertKey);
-  const scopeAmountTotals = summarizeBalanceAmountsByPositionScope(detailQuery.data?.result.summary ?? []);
-  const canSplitAllPositionScope =
-    positionScope === "all" &&
-    detailQuery.isSuccess &&
-    scopeAmountTotals.asset.hasRows &&
-    scopeAmountTotals.liability.hasRows;
-  const scopedAmountCards =
-    positionScope === "all" && canSplitAllPositionScope
-      ? (["asset", "liability"] as const).flatMap((scope) =>
-          amountMetricDefinitions.map((metric) => ({
-            key: `${scope}-${metric.key}`,
-            label: `${scope === "asset" ? "资产" : "负债"}${metric.label}`,
-            value: formatBalanceScopeTotalAmountToYi(scopeAmountTotals[scope], metric.amountKey),
-            unit: "亿元",
-            detail: `正式明细汇总 · ${scope === "asset" ? "资产" : "负债"}口径`,
-            valueVariant: "text" as const,
-          })),
-        )
-      : positionScope === "all"
-        ? amountMetricDefinitions.map((metric) => ({
-            key: `all-${metric.key}`,
-            label: metric.label,
-            value: formatBalanceAmountToYiFromYuan(overview?.[metric.overviewKey]),
-            unit: "亿元",
-            detail: "正式总览 · 全组合口径",
-            valueVariant: "text" as const,
-          }))
-        : amountMetricDefinitions.map((metric) => ({
-            key: `${positionScope}-${metric.key}`,
-            label: `${positionScope === "asset" ? "资产" : "负债"}${metric.label}`,
-            value: formatBalanceAmountToYiFromYuan(overview?.[metric.overviewKey]),
-            unit: "亿元",
-            detail: `正式总览 · ${positionScope === "asset" ? "资产" : "负债"}口径`,
-            valueVariant: "text" as const,
-          }));
-  const overviewCards = [
-    ...scopedAmountCards,
-    {
-      key: "summary-rows",
-      label: "汇总行数",
-      value: String(overview?.summary_row_count ?? "—"),
-      unit: undefined,
-      detail: "正式总览 · 汇总行数",
-      valueVariant: "text" as const,
-    },
-    {
-      key: "detail-rows",
-      label: "明细行数",
-      value: String(overview?.detail_row_count ?? "—"),
-      unit: undefined,
-      detail: "正式总览 · 明细行数",
-      valueVariant: "text" as const,
-    },
-    ...(workbook?.cards ?? []).map((card) => ({
-      key: `workbook-card-${card.key}`,
-      label: card.label,
-      value: formatBalanceAmountToYiFromWan(card.value),
-      unit: "亿元",
-      detail: `${formatBalanceWorkbookWanTextDisplay(card.note ?? "工作簿摘要")} · 工作簿`,
-      valueVariant: "text" as const,
-    })),
-  ];
+  const overviewCards = buildBalanceHeadlineCards({
+    overview,
+    positionScope,
+  });
+  const headlineAmountCards = overviewCards.filter((card) => card.unit === "亿元");
   const balanceWorkbenchMetrics = overviewCards.map(({ key, label, value, unit, detail }) => ({
     key,
     label,
@@ -2256,7 +2177,7 @@ export default function BalanceAnalysisPage() {
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {scopedAmountCards.map((card) => card.value).join(" ")}
+        {headlineAmountCards.map((card) => card.value).join(" ")}
       </div>
 
       <div style={{ marginTop: 24 }}>

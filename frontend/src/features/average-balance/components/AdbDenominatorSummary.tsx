@@ -4,7 +4,7 @@ import type { AdbComparisonResponse } from "../../../api/contracts";
 const { Text, Paragraph } = Typography;
 
 /** 多行文本，供复制到工单 / 排障记录（与页面展示口径一致，不做重算）。 */
-export function buildAdbDenominatorCopyText(data: AdbComparisonResponse): string {
+function buildAdbDenominatorCopyText(data: AdbComparisonResponse): string {
   const cov =
     data.coverage_days !== undefined && data.coverage_days !== null
       ? String(data.coverage_days)

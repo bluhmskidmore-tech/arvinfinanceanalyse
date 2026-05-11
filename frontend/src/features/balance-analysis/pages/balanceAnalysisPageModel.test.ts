@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type {
   BalanceAnalysisBasisBreakdownPayload,
+  BalanceAnalysisOverviewPayload,
   BalanceAnalysisWorkbookPayload,
   BalanceMovementPayload,
 } from "../../../api/contracts";
 import {
   BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT,
+  buildBalanceHeadlineCards,
   buildBalanceStageRealDataModel,
   buildBalanceReconciliationLinkModel,
   distributionChartBarWidthPercent,
@@ -211,6 +213,57 @@ describe("balanceAnalysisPageModel", () => {
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "marketValueAmount")).toBe("1,845.73");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "amortizedCostAmount")).toBe("1,852.22");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "accruedInterestAmount")).toBe("0.14");
+    });
+  });
+
+  describe("BalanceAnalysisPage headline cards", () => {
+    it("uses governed overview totals and preserves missing, zero, and invalid states", () => {
+      const cards = buildBalanceHeadlineCards({
+        positionScope: "all",
+        overview: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          detail_row_count: 0,
+          summary_row_count: 3,
+          total_market_value_amount: "542645000000.00",
+          total_amortized_cost_amount: "536721326400.35",
+          total_accrued_interest_amount: "225646779.07",
+          asset_total_market_value_amount: null,
+          liability_total_market_value_amount: "0",
+          asset_total_amortized_cost_amount: "NOT_A_NUMERIC_KPI",
+          liability_total_amortized_cost_amount: "185222389626.26",
+          asset_total_accrued_interest_amount: "211650408.23",
+          liability_total_accrued_interest_amount: "13996370.84",
+        } as unknown as BalanceAnalysisOverviewPayload,
+      });
+
+      expect(cards.find((card) => card.key === "asset-market-value")).toMatchObject({
+        label: "资产市值合计",
+        value: "—",
+        unit: "亿元",
+        state: "missing",
+      });
+      expect(cards.find((card) => card.key === "liability-market-value")).toMatchObject({
+        label: "负债市值合计",
+        value: "0.00",
+        unit: "亿元",
+        state: "zero",
+      });
+      expect(cards.find((card) => card.key === "asset-amortized-cost")).toMatchObject({
+        label: "资产摊余成本合计",
+        value: "NOT_A_NUMERIC_KPI",
+        unit: "亿元",
+        state: "invalid",
+      });
+      expect(cards.find((card) => card.key === "summary-rows")).toMatchObject({
+        value: "3",
+        state: "value",
+      });
+      expect(cards.find((card) => card.key === "detail-rows")).toMatchObject({
+        value: "0",
+        state: "zero",
+      });
     });
   });
 

@@ -370,6 +370,158 @@ export function formatBalanceGridThousandsValue(value: unknown): string {
   return n.toLocaleString("zh-CN");
 }
 
+export type BalanceHeadlineMetricState = "missing" | "zero" | "invalid" | "value";
+
+export type BalanceHeadlineCard = {
+  key: string;
+  label: string;
+  value: string;
+  unit?: string;
+  detail: string;
+  valueVariant: "text";
+  state: BalanceHeadlineMetricState;
+};
+
+function classifyBalanceHeadlineValue(raw: unknown): BalanceHeadlineMetricState {
+  if (raw === null || raw === undefined || raw === "") {
+    return "missing";
+  }
+  const n = finiteNumberFromUnknown(raw);
+  if (n === null) {
+    return "invalid";
+  }
+  return n === 0 ? "zero" : "value";
+}
+
+function buildBalanceHeadlineAmountCard({
+  key,
+  label,
+  raw,
+  detail,
+}: {
+  key: string;
+  label: string;
+  raw: unknown;
+  detail: string;
+}): BalanceHeadlineCard {
+  return {
+    key,
+    label,
+    value: formatBalanceAmountToYiFromYuan(raw as string | number | null | undefined),
+    unit: "亿元",
+    detail,
+    valueVariant: "text",
+    state: classifyBalanceHeadlineValue(raw),
+  };
+}
+
+function buildBalanceHeadlineCountCard({
+  key,
+  label,
+  raw,
+  detail,
+}: {
+  key: string;
+  label: string;
+  raw: unknown;
+  detail: string;
+}): BalanceHeadlineCard {
+  return {
+    key,
+    label,
+    value: formatBalanceOverviewNumber(raw as string | number | null | undefined),
+    detail,
+    valueVariant: "text",
+    state: classifyBalanceHeadlineValue(raw),
+  };
+}
+
+export function buildBalanceHeadlineCards({
+  overview,
+  positionScope,
+}: {
+  overview?: BalanceAnalysisOverviewPayload | null;
+  positionScope: BalancePositionScope;
+}): BalanceHeadlineCard[] {
+  const scopeLabel = positionScope === "asset" ? "资产" : "负债";
+  const amountCards =
+    positionScope === "all"
+      ? [
+          buildBalanceHeadlineAmountCard({
+            key: "asset-market-value",
+            label: "资产市值合计",
+            raw: overview?.asset_total_market_value_amount,
+            detail: "正式总览 · 资产口径",
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: "asset-amortized-cost",
+            label: "资产摊余成本合计",
+            raw: overview?.asset_total_amortized_cost_amount,
+            detail: "正式总览 · 资产口径",
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: "asset-accrued-interest",
+            label: "资产应计利息合计",
+            raw: overview?.asset_total_accrued_interest_amount,
+            detail: "正式总览 · 资产口径",
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: "liability-market-value",
+            label: "负债市值合计",
+            raw: overview?.liability_total_market_value_amount,
+            detail: "正式总览 · 负债口径",
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: "liability-amortized-cost",
+            label: "负债摊余成本合计",
+            raw: overview?.liability_total_amortized_cost_amount,
+            detail: "正式总览 · 负债口径",
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: "liability-accrued-interest",
+            label: "负债应计利息合计",
+            raw: overview?.liability_total_accrued_interest_amount,
+            detail: "正式总览 · 负债口径",
+          }),
+        ]
+      : [
+          buildBalanceHeadlineAmountCard({
+            key: `${positionScope}-market-value`,
+            label: `${scopeLabel}市值合计`,
+            raw: overview?.total_market_value_amount,
+            detail: `正式总览 · ${scopeLabel}口径`,
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: `${positionScope}-amortized-cost`,
+            label: `${scopeLabel}摊余成本合计`,
+            raw: overview?.total_amortized_cost_amount,
+            detail: `正式总览 · ${scopeLabel}口径`,
+          }),
+          buildBalanceHeadlineAmountCard({
+            key: `${positionScope}-accrued-interest`,
+            label: `${scopeLabel}应计利息合计`,
+            raw: overview?.total_accrued_interest_amount,
+            detail: `正式总览 · ${scopeLabel}口径`,
+          }),
+        ];
+
+  return [
+    ...amountCards,
+    buildBalanceHeadlineCountCard({
+      key: "summary-rows",
+      label: "汇总行数",
+      raw: overview?.summary_row_count,
+      detail: "正式总览 · 汇总行数",
+    }),
+    buildBalanceHeadlineCountCard({
+      key: "detail-rows",
+      label: "明细行数",
+      raw: overview?.detail_row_count,
+      detail: "正式总览 · 明细行数",
+    }),
+  ];
+}
+
 export type BalanceStageAlertLevel = "danger" | "warning" | "caution" | "info";
 export type BalanceStageCalendarLevel = "high" | "medium" | "low";
 export type BalanceStageRiskLevel = "low" | "mid" | "high";

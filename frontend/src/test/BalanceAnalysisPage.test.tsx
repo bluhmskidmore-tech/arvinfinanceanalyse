@@ -792,19 +792,19 @@ describe("BalanceAnalysisPage", () => {
       result_meta: buildMeta("balance-analysis.overview", "tr_balance_overview"),
       result: {
         report_date: "2025-12-31",
-        position_scope: "asset" as const,
+        position_scope: "all" as const,
         currency_basis: "CNY" as const,
         detail_row_count: 7,
         summary_row_count: 3,
-        total_market_value_amount: "99999000000.00",
-        total_amortized_cost_amount: "88888000000.00",
-        total_accrued_interest_amount: "7777000000.00",
-        asset_total_market_value_amount: "0.00",
-        liability_total_market_value_amount: "0.00",
-        asset_total_amortized_cost_amount: "0.00",
-        liability_total_amortized_cost_amount: "0.00",
-        asset_total_accrued_interest_amount: "0.00",
-        liability_total_accrued_interest_amount: "0.00",
+        total_market_value_amount: "542644495360.584",
+        total_amortized_cost_amount: "536720941400.052",
+        total_accrued_interest_amount: "226236994.44",
+        asset_total_market_value_amount: "358071509295.064",
+        liability_total_market_value_amount: "184572986065.52",
+        asset_total_amortized_cost_amount: "351498551773.792",
+        liability_total_amortized_cost_amount: "185222389626.26",
+        asset_total_accrued_interest_amount: "212240408.23",
+        liability_total_accrued_interest_amount: "13996586.21",
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => {
@@ -949,9 +949,7 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债应计利息合计");
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("0.14");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("总市值合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("999.99");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("888.88");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("债券资产(剔除发行类)");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("债券资产(剔除发行类)");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("99.00 万元");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("市场资产");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("3,580.72");
@@ -970,12 +968,13 @@ describe("BalanceAnalysisPage", () => {
       "240001.IB maturity",
     );
 
-    expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("利率债组合");
-    expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("同业负债池");
+    const summaryTable = await screen.findByTestId("balance-analysis-summary-table");
+    expect(summaryTable).toHaveTextContent("利率债组合");
+    expect(summaryTable).toHaveTextContent("同业负债池");
     await waitFor(() => {
-      expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("规模(亿元)");
-      expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("720.00");
-      expect(screen.getByTestId("balance-analysis-summary-table")).not.toHaveTextContent(
+      expect(summaryTable).toHaveTextContent("规模(亿元)");
+      expect(summaryTable).toHaveTextContent("720.00");
+      expect(summaryTable).not.toHaveTextContent(
         "72,000,000,000.00",
       );
       expect(screen.getByTestId("balance-analysis-detail-summary-grid")).toHaveTextContent("市值(亿元)");
@@ -1611,11 +1610,14 @@ describe("BalanceAnalysisPage", () => {
       expect(summaryTable).toHaveTextContent("利率债组合");
       expect(primaryGrid).toBeInTheDocument();
       expect(screen.getByText("明细下钻暂时不可用，汇总驾驶舱仍可继续使用。")).toBeInTheDocument();
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("市值合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,202.00");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,123.00");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("70.40");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("资产市值合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产市值合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,130.00");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,051.00");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("56.00");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债市值合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("72.00");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("14.40");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("1,202.00");
     });
   });
 
@@ -2181,6 +2183,111 @@ describe("BalanceAnalysisPage", () => {
     const bar1 = within(panel).getByTestId("balance-analysis-distribution-bar-bond_business_types-1");
     expect(bar0).toHaveStyle({ width: "100%" });
     expect(bar1).toHaveStyle({ width: "0%" });
+  });
+
+  it("keeps headline KPI on the governed overview chain while surfacing stale fallback status", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates"),
+      result: { report_dates: ["2025-12-31"] },
+    }));
+    const getOverviewSpy = vi.fn(async () => ({
+      result_meta: {
+        ...buildMeta("balance-analysis.overview", "tr_balance_overview_stale"),
+        quality_flag: "stale" as const,
+        fallback_mode: "latest_snapshot" as const,
+      },
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        detail_row_count: 2,
+        summary_row_count: 2,
+        total_market_value_amount: "79200000000.00",
+        total_amortized_cost_amount: "72000000000.00",
+        total_accrued_interest_amount: "5040000000.00",
+        asset_total_market_value_amount: "72000000000.00",
+        liability_total_market_value_amount: "7200000000.00",
+        asset_total_amortized_cost_amount: "64800000000.00",
+        liability_total_amortized_cost_amount: "7200000000.00",
+        asset_total_accrued_interest_amount: "3600000000.00",
+        liability_total_accrued_interest_amount: "1440000000.00",
+      },
+    }));
+    const getDetailSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        details: [],
+        summary: [
+          {
+            source_family: "zqtz" as const,
+            position_scope: "asset" as const,
+            currency_basis: "CNY" as const,
+            row_count: 1,
+            market_value_amount: "99999999999.00",
+            amortized_cost_amount: "99999999999.00",
+            accrued_interest_amount: "0",
+          },
+          {
+            source_family: "tyw" as const,
+            position_scope: "liability" as const,
+            currency_basis: "CNY" as const,
+            row_count: 1,
+            market_value_amount: "88888888888.00",
+            amortized_cost_amount: "88888888888.00",
+            accrued_interest_amount: "0",
+          },
+        ],
+      },
+    }));
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
+    const getAdbComparisonSpy = vi.fn(async () => ({
+      report_date: "2025-12-31",
+      start_date: "2025-01-01",
+      end_date: "2025-12-31",
+      calendar_days_inclusive: 365,
+      adb_denominator_basis: "snapshot_calendar" as const,
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 0,
+      total_avg_assets: 0,
+      total_spot_liabilities: 0,
+      total_avg_liabilities: 0,
+      total_avg_interbank_assets: 0,
+      total_avg_interbank_liabilities: 0,
+      asset_yield: 0,
+      liability_cost: 0,
+      net_interest_margin: 0,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    }));
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
+      getAdbComparison: getAdbComparisonSpy,
+    });
+
+    await screen.findByRole("heading", { name: "资产负债分析" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产市值合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("720.00");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债市值合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("72.00");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("债券资产(剔除发行类)");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("1,000.00");
+      expect(screen.getByTestId("balance-analysis-page")).toHaveTextContent("质量 陈旧");
+      expect(screen.getByTestId("balance-analysis-page")).toHaveTextContent("降级 最新快照降级");
+    });
   });
 
   it("shows negative maturity gap amounts in text while bar width uses absolute magnitude", async () => {

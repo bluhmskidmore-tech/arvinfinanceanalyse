@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import AverageBalanceView, { shiftIsoDateByYears } from "../features/average-balance/components/AverageBalanceView";
+import AverageBalanceView from "../features/average-balance/components/AverageBalanceView";
+import { shiftIsoDateByYears } from "../features/average-balance/components/averageBalanceDateUtils";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="average-balance-echarts-stub" />,
