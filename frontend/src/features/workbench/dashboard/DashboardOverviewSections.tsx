@@ -1227,10 +1227,9 @@ export function DashboardProductCategoryYtdCards({
     state.kind === "loading"
       ? "快照载入中，数值就绪后自动刷新。"
       : state.kind === "error"
-        ? state.message ?? "快照请求失败。"
+        ? "产品经营读面加载失败，请进入专题页复核。"
         : state.kind === "empty"
-          ? state.hint ??
-            "后端未返回产品分类 ytd 摘要：请确认已部署含 product_category_ytd 的快照接口，且读模型可用。"
+          ? "当前快照缺少产品经营读面，暂不写入经营判断。"
           : null;
   const monthlyDisplay = showMonthlyValue
     ? monthlyVm.monthlyIncomeDisplay
@@ -1238,20 +1237,19 @@ export function DashboardProductCategoryYtdCards({
       ? "—"
       : "—";
   const monthlyDetail = showMonthlyValue
-    ? monthlyVm.monthlyIncomeDetail
+    ? "与产品分类损益月度视图对拍，作为月度经营口径入口。"
     : monthlyState?.kind === "error"
-      ? monthlyState.message ?? "月度产品分类损益快照请求失败。"
+      ? "月度产品分类损益加载失败，请进入专题页复核。"
       : monthlyState?.kind === "empty"
-        ? monthlyState.hint ??
-          "当前快照未包含产品分类损益 monthly 摘要；请进入产品分类损益页核验月度视图。"
-        : "与产品分类损益「月度视图」（monthly）页脚「全部市场科目 + 投资收益合计」口径一致。";
+        ? "当前快照缺少月度产品分类损益，暂不写入经营判断。"
+        : "与产品分类损益月度视图对拍。";
 
   const summaryPnlDetail = showValues
-    ? vm.summaryPnlDetail
-    : "与产品分类损益「汇总视图」（ytd）页脚「全部市场科目 + 投资收益合计」口径一致。";
+    ? "与产品分类损益汇总视图对拍，作为年度经营贡献入口。"
+    : "与产品分类损益汇总视图对拍。";
   const intermediateDetail = showValues
-    ? vm.intermediateDetail
-    : "与产品分类损益「中间业务收入」分类行（ytd）一致。";
+    ? "与中间业务收入分类行对拍，关注非息收入贡献。"
+    : "与中间业务收入分类行对拍。";
 
   return (
     <section

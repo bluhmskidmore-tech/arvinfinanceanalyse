@@ -424,6 +424,7 @@ describe("DashboardPage", () => {
     expect(productPanel).toHaveClass("dashboard-product-category-ytd-panel");
     expect(productPanel.querySelectorAll(".dashboard-product-category-ytd-card")).toHaveLength(3);
     expect(within(summary).getByText("汇总损益与月度损益")).toBeInTheDocument();
+    expect(summary).not.toHaveTextContent(/product_category|view=|grand_|report_date|intermediate_business_income/i);
   });
 
   it("turns the drilldown area into a review workspace under the summary cockpit", async () => {
