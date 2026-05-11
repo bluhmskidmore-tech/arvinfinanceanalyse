@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
   ApiEnvelope,
+  ConfluenceReplayStatus,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
@@ -182,7 +183,9 @@ function buildStrategyPayload(
   };
 }
 
-function buildConfluencePayload(): LivermoreSignalConfluencePayload {
+function buildConfluencePayload(
+  overrides: Partial<LivermoreSignalConfluencePayload> = {},
+): LivermoreSignalConfluencePayload {
   return {
     as_of_date: "2026-04-29",
     macro_context: {
@@ -210,12 +213,33 @@ function buildConfluencePayload(): LivermoreSignalConfluencePayload {
     ],
     diagnostics: [],
     disclaimer: "Observation-only output.",
+    ...overrides,
+  };
+}
+
+function buildReplayStatus(overrides: Partial<ConfluenceReplayStatus> = {}): ConfluenceReplayStatus {
+  return {
+    window_status: "valid",
+    has_decision_usable_completed_stats: true,
+    completed_dates: 2,
+    pending_dates: 0,
+    unsupported_dates: 0,
+    proxy_only_dates: 0,
+    completed_candidate_rows: 5,
+    pending_candidate_rows: 0,
+    unsupported_candidate_rows: 0,
+    proxy_only_candidate_rows: 0,
+    included_completed_stats_dates: ["2026-05-06", "2026-05-07"],
+    blocked_dates: [],
+    completed_zero_signal_dates: [],
+    ...overrides,
   };
 }
 
 function stockClient(options?: {
   strategy?: LivermoreStrategyPayload;
   strategyError?: Error;
+  confluence?: LivermoreSignalConfluencePayload;
   confluenceError?: Error;
   metaOverrides?: Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
 }): ApiClient {
@@ -246,7 +270,7 @@ function stockClient(options?: {
       }
       return buildMockApiEnvelope(
         "market_data.livermore.signal_confluence",
-        buildConfluencePayload(),
+        options?.confluence ?? buildConfluencePayload(),
       );
     },
   };
@@ -283,6 +307,7 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "板块强弱" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "题材突变雷达" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "复核队列" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "数据口径与边界" })).toBeInTheDocument();
@@ -294,6 +319,70 @@ describe("StockAnalysisPage", () => {
     expect(candidate).toHaveTextContent("基本面与估值证据未接入");
     expect(candidate).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
     expect(candidate).toHaveTextContent("10EMA");
+  });
+
+  it("renders theme breakout radar as observation-only proxy evidence", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "theme_breakout", "risk_exit"],
+          theme_breakout: {
+            as_of_date: "2026-05-08",
+            formula_version: "rv_livermore_theme_breakout_proxy_v1",
+            is_proxy: true,
+            theme_count: 1,
+            items: [
+              {
+                rank: 1,
+                as_of_date: "2026-05-08",
+                theme_key: "semiconductor_proxy",
+                theme_name: "Semiconductor proxy",
+                parent_sector_code: "801080",
+                parent_sector_name: "Electronic",
+                parent_sector_rank: 9,
+                member_count: 3,
+                advance_count: 3,
+                advance_ratio: 1,
+                strong_stock_count: 3,
+                limit_stock_count: 2,
+                avg_pctchange: 9.766667,
+                avg_turn: 4.4,
+                avg_amplitude: 7.3,
+                observation_only: true,
+                reason: "Observation-only proxy cluster: leaders 688001.SH, 688002.SH.",
+                items: [
+                  {
+                    stock_code: "688001.SH",
+                    stock_name: "Alpha Semiconductor",
+                    sector_code: "801080",
+                    sector_name: "Electronic",
+                    sector_rank: 9,
+                    open: 9.6,
+                    high: 10.1,
+                    low: 9.4,
+                    close: 10,
+                    pctchange: 12.1,
+                    turn: 4.2,
+                    amplitude: 7,
+                    close_strength: 0.86,
+                    closed_up_limit: true,
+                    strong: true,
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    const section = await screen.findByTestId("stock-analysis-theme-breakout");
+    expect(section).toHaveTextContent("题材突变雷达");
+    expect(section).toHaveTextContent("Semiconductor proxy");
+    expect(section).toHaveTextContent("Electronic #9");
+    expect(section).toHaveTextContent("代理题材观察");
+    expect(section).toHaveTextContent("Alpha Semiconductor");
+    expect(section).not.toHaveTextContent("买入");
   });
 
   it("shows staleness banner when quality_flag is not ok", async () => {
@@ -316,6 +405,199 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-stale-banner")).toHaveTextContent(
       "仅供复核参考",
     );
+  });
+
+  it("renders closed-loop summary pass states on the first decision surface", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        confluence: buildConfluencePayload({
+          adversarial_context: {
+            status: "complete",
+            mode: "anti_crowding_v1",
+            risk_gate: "pass",
+            position_scale: 0.75,
+          },
+          closed_loop_state: {
+            entry_gate: "open",
+            exit_gate: "watch",
+            replay_status: "available",
+            lineage_status: "complete",
+          },
+          replay_evidence: {
+            status: "available",
+            snapshot_as_of_date: "2026-04-29",
+            row_count: 2,
+            matched_entry_count: 1,
+            sample_items: [
+              {
+                stock_code: "000001.SZ",
+                stock_name: "Alpha",
+                candidate_rank: 1,
+                signal_kind: "stock_candidate",
+                data_status: "complete",
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    expect(summary).toHaveTextContent("闭环摘要");
+    expect(summary).toHaveTextContent("可复核");
+    expect(summary).toHaveTextContent("入场观察门");
+    expect(summary).toHaveTextContent("开放");
+    expect(summary).toHaveTextContent("反拥挤拦截");
+    expect(summary).toHaveTextContent("通过");
+    expect(summary).toHaveTextContent("风险退出");
+    expect(summary).toHaveTextContent("观察中");
+    expect(summary).toHaveTextContent("回放证据");
+    expect(summary).toHaveTextContent("已接通");
+    expect(summary).toHaveTextContent("2 条快照 / 覆盖 1 个当前候选");
+    expect(summary).toHaveTextContent("血缘状态");
+    expect(summary).toHaveTextContent("完整");
+  });
+
+  it("renders closed-loop blockers without turning them into trading advice", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        confluence: buildConfluencePayload({
+          adversarial_context: {
+            status: "complete",
+            mode: "anti_crowding_v1",
+            risk_gate: "block",
+            position_scale: null,
+            strongest_block_reason: "crowded leaders without breadth confirmation",
+          },
+          closed_loop_state: {
+            entry_gate: "blocked",
+            exit_gate: "triggered",
+            replay_status: "available",
+            lineage_status: "degraded",
+          },
+        }),
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    expect(summary).toHaveTextContent("拦截");
+    expect(summary).toHaveTextContent("阻断");
+    expect(summary).toHaveTextContent("已触发");
+    expect(summary).toHaveTextContent("降级");
+    expect(summary).toHaveTextContent("crowded leaders without breadth confirmation");
+    expect(summary).not.toHaveTextContent("买入");
+    expect(summary).not.toHaveTextContent("卖出");
+  });
+
+  it("renders missing closed-loop evidence as boundary-to-fill, not neutral proof", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        metaOverrides: {
+          quality_flag: "warning",
+          vendor_status: "vendor_unavailable",
+          fallback_mode: "latest_snapshot",
+        },
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    expect(summary).toHaveTextContent("数据不足");
+    expect(summary).toHaveTextContent("待补");
+    expect(summary).toHaveTextContent("不能视为中性证明");
+    expect(summary).toHaveTextContent("latest_snapshot");
+  });
+
+  it("renders degraded closed-loop evidence as pause on the first decision surface", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        confluence: buildConfluencePayload({
+          adversarial_context: {
+            status: "degraded",
+            mode: "crowding_latest",
+            risk_gate: "degraded",
+            position_scale: 0,
+          },
+          closed_loop_state: {
+            entry_gate: "open",
+            exit_gate: "watch",
+            replay_status: "available",
+            lineage_status: "degraded",
+          },
+        }),
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    expect(summary).toHaveTextContent("暂缓");
+    expect(summary).toHaveTextContent("降级");
+    expect(summary).toHaveTextContent("仍有降级或仅观察边界");
+  });
+
+  it("renders replay window exclusions, counts, and proxy-only coverage without implying efficacy", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        confluence: buildConfluencePayload({
+          adversarial_context: {
+            status: "complete",
+            mode: "anti_crowding_v1",
+            risk_gate: "pass",
+            position_scale: 0.5,
+          },
+          closed_loop_state: {
+            entry_gate: "open",
+            exit_gate: "watch",
+            replay_status: buildReplayStatus({
+              window_status: "partial",
+              completed_dates: 1,
+              pending_dates: 1,
+              unsupported_dates: 1,
+              proxy_only_dates: 1,
+              completed_candidate_rows: 0,
+              pending_candidate_rows: 17,
+              unsupported_candidate_rows: 0,
+              proxy_only_candidate_rows: 2,
+              included_completed_stats_dates: ["2026-05-06"],
+              blocked_dates: [
+                {
+                  trade_date: "2026-04-30",
+                  status: "unsupported",
+                  reason_code: "missing_daily_limit_flags",
+                  signal_kinds: ["stock_candidate", "theme_breakout"],
+                },
+                {
+                  trade_date: "2026-05-08",
+                  status: "pending",
+                  reason_code: "forward_returns_pending",
+                  signal_kinds: ["stock_candidate", "theme_breakout"],
+                },
+                {
+                  trade_date: "2026-05-07",
+                  status: "proxy_only",
+                  reason_code: "proxy_theme_only",
+                  signal_kinds: ["theme_breakout"],
+                },
+              ],
+              completed_zero_signal_dates: ["2026-05-06"],
+            }),
+            lineage_status: "complete",
+          },
+        }),
+      }),
+    });
+
+    const replayStatus = await screen.findByTestId("stock-analysis-replay-status");
+    expect(replayStatus).toHaveTextContent("2026-04-30");
+    expect(replayStatus).toHaveTextContent("missing_daily_limit_flags");
+    expect(replayStatus).toHaveTextContent("2026-05-08");
+    expect(replayStatus).toHaveTextContent("forward_returns_pending");
+    expect(replayStatus).toHaveTextContent("2026-05-07");
+    expect(replayStatus).toHaveTextContent("proxy_theme_only");
+    expect(replayStatus).toHaveTextContent("completed zero-signal dates: 2026-05-06");
+    expect(replayStatus).toHaveTextContent("do not infer strategy efficacy");
+    expect(replayStatus).toHaveTextContent("completed dates 1");
+    expect(replayStatus).toHaveTextContent("pending dates 1");
+    expect(replayStatus).toHaveTextContent("unsupported dates 1");
+    expect(replayStatus).toHaveTextContent("proxy-only dates 1");
   });
 
   it("renders refresh control and exposes as-of picker", async () => {

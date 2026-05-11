@@ -1,8 +1,12 @@
 import type {
+  BacktestWindowSummaryStatus,
+  ConfluenceReplayBlockedDate,
+  ConfluenceReplayStatus,
   LivermoreMarketGateState,
   LivermoreSignalConfluencePayload,
   LivermoreStockCandidateItem,
   LivermoreStrategyPayload,
+  LivermoreThemeBreakoutItem,
   ResultMeta,
 } from "../../../api/contracts";
 
@@ -122,6 +126,38 @@ export type StockDecisionSummary = {
   asOfLabel: string;
 };
 
+export type StockClosedLoopTone = "positive" | "warning" | "negative" | "neutral";
+
+export type StockClosedLoopSummaryItem = {
+  key: "entry_gate" | "adversarial_gate" | "risk_exit" | "replay" | "lineage";
+  label: string;
+  status: string;
+  statusLabel: string;
+  tone: StockClosedLoopTone;
+  detail: string;
+  badges?: string[];
+};
+
+export type StockDecisionReferenceRatingCode =
+  | "reviewable"
+  | "pause"
+  | "blocked"
+  | "insufficient_data";
+
+export type StockDecisionReferenceRating = {
+  code: StockDecisionReferenceRatingCode;
+  label: "可复核" | "暂缓" | "拦截" | "数据不足";
+  tone: StockClosedLoopTone;
+  detail: string;
+};
+
+export type StockClosedLoopSummary = {
+  summaryLabel: string;
+  boundaryCount: number;
+  referenceRating: StockDecisionReferenceRating;
+  items: StockClosedLoopSummaryItem[];
+};
+
 export type StockViewModelMeta = Partial<
   Pick<
     ResultMeta,
@@ -168,6 +204,32 @@ export type StockCandidateReviewQueueItem = {
   rawFields: { key: string; label: string; value: string }[];
 };
 
+export type StockThemeBreakoutLeader = {
+  stockCode: string;
+  stockName: string;
+  pctChange: string;
+  turn: string;
+  closeStrength: string;
+  tags: string[];
+};
+
+export type StockThemeBreakoutCard = {
+  rank: number;
+  themeKey: string;
+  themeName: string;
+  parentSectorLabel: string;
+  summary: string;
+  reason: string;
+  boundaryLabel: string;
+  strongCountLabel: string;
+  limitCountLabel: string;
+  advanceRatioLabel: string;
+  avgPctChangeLabel: string;
+  movementLabel: string;
+  latestEventLabel: string;
+  leaders: StockThemeBreakoutLeader[];
+};
+
 function formatNumber(value: number | null | undefined, digits = 2) {
   if (value == null || !Number.isFinite(value)) {
     return "待补";
@@ -201,6 +263,10 @@ function normalizeEvidence(evidence: string[] | string | null | undefined): stri
 
 function sortedCandidateItems(payload: LivermoreStrategyPayload) {
   return [...(payload.stock_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
+}
+
+function sortedThemeBreakoutItems(payload: LivermoreStrategyPayload): LivermoreThemeBreakoutItem[] {
+  return [...(payload.theme_breakout?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
 
 function deriveCandidatePattern(item: LivermoreStockCandidateItem): StockCandidatePattern {
@@ -436,6 +502,56 @@ export function buildCandidateReviewQueue(
     invalidationRules: card.invalidationRules,
     rawFields: card.rawFields,
   }));
+}
+
+export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): StockThemeBreakoutCard[] {
+  const isProxy = payload.theme_breakout?.is_proxy ?? true;
+  return sortedThemeBreakoutItems(payload).map((item) => {
+    const leaders = [...item.items]
+      .sort((left, right) => {
+        if (left.closed_up_limit !== right.closed_up_limit) {
+          return left.closed_up_limit ? -1 : 1;
+        }
+        if (right.pctchange !== left.pctchange) return right.pctchange - left.pctchange;
+        return right.turn - left.turn;
+      })
+      .slice(0, 5)
+      .map((stock) => ({
+        stockCode: stock.stock_code,
+        stockName: stock.stock_name,
+        pctChange: formatPercent(stock.pctchange),
+        turn: formatNumber(stock.turn, 2),
+        closeStrength: formatRatioAsPercent(stock.close_strength, 0),
+        tags: [
+          stock.closed_up_limit ? "涨停" : null,
+          stock.strong ? "强势" : null,
+        ].filter((tag): tag is string => Boolean(tag)),
+      }));
+
+    const boundaryLabel = isProxy
+      ? "代理题材观察：由日线、股票名称和申万一级行业拼接，不是概念库或盘中异动源。"
+      : "真实题材观察：使用已落地概念成分和异动事件；仍只作复核观察。";
+    const movementCount = item.movement_event_count ?? 0;
+    const latestEventTitle = item.latest_event_title?.trim() || "暂无最新异动标题";
+    const latestEventTime = item.latest_event_time?.trim() || "时间待补";
+
+    return {
+      rank: item.rank,
+      themeKey: item.theme_key,
+      themeName: item.theme_name,
+      parentSectorLabel: `${item.parent_sector_name} #${item.parent_sector_rank}`,
+      summary: `${item.member_count} 只观察股，${item.strong_stock_count} 只强势，${item.limit_stock_count} 只涨停。`,
+      reason: item.reason,
+      boundaryLabel,
+      strongCountLabel: `强势 ${item.strong_stock_count}`,
+      limitCountLabel: `涨停 ${item.limit_stock_count}`,
+      advanceRatioLabel: `上涨占比 ${formatRatioAsPercent(item.advance_ratio, 0)}`,
+      avgPctChangeLabel: `均涨跌 ${formatPercent(item.avg_pctchange)}`,
+      movementLabel: `异动 ${movementCount}`,
+      latestEventLabel: movementCount > 0 ? `${latestEventTime} / ${latestEventTitle}` : "异动事件待补",
+      leaders,
+    };
+  });
 }
 
 export function buildDecisionSummary(
@@ -834,4 +950,414 @@ export function buildRiskExitRows(
   }
 
   return rows;
+}
+
+export function buildClosedLoopSummary(
+  payload: LivermoreStrategyPayload,
+  confluence: LivermoreSignalConfluencePayload | null,
+  meta: StockViewModelMeta = {},
+): StockClosedLoopSummary {
+  const state = confluence?.closed_loop_state ?? null;
+  const adversarial = confluence?.adversarial_context ?? null;
+  const entryStatus = state?.entry_gate ?? deriveEntryGateStatus(state);
+  const adversarialStatus = adversarial?.risk_gate ?? "missing";
+  const exitStatus = state?.exit_gate ?? deriveExitGateStatus(payload, confluence);
+  const exitCounts = closedLoopExitCounts(payload, confluence);
+  const replayStatusRaw = state?.replay_status ?? "missing";
+  const replayStatus = normalizeClosedLoopStatus(replayStatusRaw, "missing");
+  const replayEvidence = confluence?.replay_evidence ?? null;
+  const lineageStatus = state?.lineage_status ?? deriveLineageStatus(adversarial, state);
+  const fallbackMode = meta.fallback_mode ?? "none";
+
+  const items: StockClosedLoopSummaryItem[] = [
+    {
+      key: "entry_gate",
+      label: "入场观察门",
+      status: entryStatus,
+      statusLabel: closedLoopStatusLabel("entry_gate", entryStatus),
+      tone: closedLoopTone("entry_gate", entryStatus),
+      detail:
+        entryStatus === "missing"
+          ? "待补：闭环入场状态未接通"
+          : `市场门控 ${payload.market_gate.state} / 宏观 ${confluence?.macro_context.status ?? "missing"}`,
+    },
+    {
+      key: "adversarial_gate",
+      label: "反拥挤拦截",
+      status: adversarialStatus,
+      statusLabel: closedLoopStatusLabel("adversarial_gate", adversarialStatus),
+      tone: closedLoopTone("adversarial_gate", adversarialStatus),
+      detail:
+        adversarialStatus === "missing"
+          ? "待补：反拥挤证据缺失，不能视为中性证明"
+          : adversarial?.strongest_block_reason ||
+            `${adversarial?.mode ?? "anti-crowding"} / 状态 ${adversarial?.status ?? "missing"}`,
+    },
+    {
+      key: "risk_exit",
+      label: "风险退出",
+      status: exitStatus,
+      statusLabel: closedLoopStatusLabel("risk_exit", exitStatus),
+      tone: closedLoopTone("risk_exit", exitStatus),
+      detail:
+        exitStatus === "missing"
+          ? "待补：风险退出状态未接通"
+          : `${exitCounts.watchCount} 条观察 / ${exitCounts.triggeredCount} 条触发`,
+    },
+    {
+      key: "replay",
+      label: "回放证据",
+      status: replayStatus,
+      statusLabel: closedLoopStatusLabel("replay", replayStatus),
+      tone: closedLoopTone("replay", replayStatus),
+      detail: closedLoopReplayDetail(replayStatusRaw, replayStatus, replayEvidence),
+      badges: closedLoopReplayBadges(replayStatusRaw),
+    },
+    {
+      key: "lineage",
+      label: "血缘状态",
+      status: lineageStatus,
+      statusLabel: closedLoopStatusLabel("lineage", lineageStatus),
+      tone: closedLoopTone("lineage", lineageStatus),
+      detail: `质量 ${meta.quality_flag ?? "pending"} / 供应 ${meta.vendor_status ?? "pending"}${
+        fallbackMode !== "none" ? ` / fallback ${fallbackMode}` : ""
+      }`,
+    },
+  ];
+
+  const boundaryCount = items.filter((item) => item.tone !== "positive").length;
+  return {
+    summaryLabel: boundaryCount > 0 ? `${boundaryCount} 项待复核` : "全部通过",
+    boundaryCount,
+    referenceRating: buildDecisionReferenceRating(items),
+    items,
+  };
+}
+
+function closedLoopReplayDetail(
+  replayStatusRaw: LivermoreSignalConfluencePayload["closed_loop_state"] extends infer State
+    ? State extends { replay_status?: infer ReplayStatus }
+      ? ReplayStatus
+      : unknown
+    : unknown,
+  replayStatus: string,
+  replayEvidence: LivermoreSignalConfluencePayload["replay_evidence"] | null,
+): string {
+  const windowStatus = replayStatusWindow(replayStatusRaw);
+  if (windowStatus) {
+    const excludedDates = windowStatus.blocked_dates.map((item) => item.trade_date);
+    const blockedReasons = windowStatus.blocked_dates.map((item) => `${item.trade_date} ${item.reason_code}`);
+    const detailParts = [
+      windowStatus.has_decision_usable_completed_stats
+        ? `included completed stats dates: ${windowStatus.included_completed_stats_dates.join(", ") || "none"}`
+        : "no decision-usable completed replay dates",
+      excludedDates.length > 0
+        ? `excluded from completed stats: ${excludedDates.join(", ")}`
+        : "no dates excluded from completed stats",
+      ...blockedReasons,
+    ];
+    if (windowStatus.completed_zero_signal_dates.length > 0) {
+      detailParts.push(`completed zero-signal dates: ${windowStatus.completed_zero_signal_dates.join(", ")}`);
+    }
+    detailParts.push("observation only: do not infer strategy efficacy");
+    return detailParts.join(" / ");
+  }
+  if (replayStatus === "missing") {
+    return "待补：候选历史回放未接通";
+  }
+  if (replayEvidence) {
+    const rowCount = Number.isFinite(replayEvidence.row_count) ? replayEvidence.row_count : 0;
+    const matchedEntryCount = Number.isFinite(replayEvidence.matched_entry_count)
+      ? replayEvidence.matched_entry_count
+      : 0;
+    return `候选历史回放已接通：${rowCount} 条快照 / 覆盖 ${matchedEntryCount} 个当前候选`;
+  }
+  return "候选历史回放已接通";
+}
+
+function closedLoopReplayBadges(
+  replayStatusRaw: LivermoreSignalConfluencePayload["closed_loop_state"] extends infer State
+    ? State extends { replay_status?: infer ReplayStatus }
+      ? ReplayStatus
+      : unknown
+    : unknown,
+): string[] | undefined {
+  const windowStatus = replayStatusWindow(replayStatusRaw);
+  if (!windowStatus) {
+    return undefined;
+  }
+  return [
+    `completed dates ${windowStatus.completed_dates}`,
+    `pending dates ${windowStatus.pending_dates}`,
+    `unsupported dates ${windowStatus.unsupported_dates}`,
+    `proxy-only dates ${windowStatus.proxy_only_dates}`,
+    `completed rows ${windowStatus.completed_candidate_rows}`,
+  ];
+}
+
+function normalizeClosedLoopStatus(value: unknown, defaultValue: string): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  const windowStatus = replayStatusWindow(value);
+  return windowStatus?.window_status ?? defaultValue;
+}
+
+function replayStatusWindow(value: unknown): ConfluenceReplayStatus | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as {
+    window_status?: unknown;
+    has_decision_usable_completed_stats?: unknown;
+    completed_dates?: unknown;
+    pending_dates?: unknown;
+    unsupported_dates?: unknown;
+    proxy_only_dates?: unknown;
+    completed_candidate_rows?: unknown;
+    pending_candidate_rows?: unknown;
+    unsupported_candidate_rows?: unknown;
+    proxy_only_candidate_rows?: unknown;
+    included_completed_stats_dates?: unknown;
+    blocked_dates?: unknown;
+    completed_zero_signal_dates?: unknown;
+  };
+  if (!isBacktestWindowSummaryStatus(candidate.window_status)) {
+    return null;
+  }
+  return {
+    window_status: candidate.window_status,
+    has_decision_usable_completed_stats: candidate.has_decision_usable_completed_stats === true,
+    completed_dates: finiteCount(candidate.completed_dates),
+    pending_dates: finiteCount(candidate.pending_dates),
+    unsupported_dates: finiteCount(candidate.unsupported_dates),
+    proxy_only_dates: finiteCount(candidate.proxy_only_dates),
+    completed_candidate_rows: finiteCount(candidate.completed_candidate_rows),
+    pending_candidate_rows: finiteCount(candidate.pending_candidate_rows),
+    unsupported_candidate_rows: finiteCount(candidate.unsupported_candidate_rows),
+    proxy_only_candidate_rows: finiteCount(candidate.proxy_only_candidate_rows),
+    included_completed_stats_dates: stringList(candidate.included_completed_stats_dates),
+    blocked_dates: blockedReplayDates(candidate.blocked_dates),
+    completed_zero_signal_dates: stringList(candidate.completed_zero_signal_dates),
+  };
+}
+
+function isBacktestWindowSummaryStatus(value: unknown): value is BacktestWindowSummaryStatus {
+  return value === "valid" || value === "partial" || value === "unsupported";
+}
+
+function finiteCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function blockedReplayDates(value: unknown): ConfluenceReplayBlockedDate[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const row = item as {
+      trade_date?: unknown;
+      status?: unknown;
+      reason_code?: unknown;
+      signal_kinds?: unknown;
+    };
+    if (typeof row.trade_date !== "string" || !isBlockedReplayReasonCode(row.reason_code)) {
+      return [];
+    }
+    return [
+      {
+        trade_date: row.trade_date,
+        status: normalizeBlockedReplayDateStatus(row.status, row.reason_code),
+        reason_code: row.reason_code,
+        signal_kinds: stringList(row.signal_kinds),
+      },
+    ];
+  });
+}
+
+function isBlockedReplayReasonCode(value: unknown): value is ConfluenceReplayBlockedDate["reason_code"] {
+  return (
+    value === "missing_daily_limit_flags" ||
+    value === "missing_required_source_table" ||
+    value === "forward_returns_pending" ||
+    value === "real_theme_inputs_unconfirmed" ||
+    value === "proxy_theme_only"
+  );
+}
+
+function normalizeBlockedReplayDateStatus(
+  value: unknown,
+  reasonCode: ConfluenceReplayBlockedDate["reason_code"],
+): ConfluenceReplayBlockedDate["status"] {
+  if (value === "pending" || value === "unsupported" || value === "proxy_only") {
+    return value;
+  }
+  if (reasonCode === "forward_returns_pending") {
+    return "pending";
+  }
+  if (reasonCode === "proxy_theme_only" || reasonCode === "real_theme_inputs_unconfirmed") {
+    return "proxy_only";
+  }
+  return "unsupported";
+}
+
+function buildDecisionReferenceRating(items: StockClosedLoopSummaryItem[]): StockDecisionReferenceRating {
+  const negativeItems = items.filter((item) => item.tone === "negative");
+  if (negativeItems.length > 0) {
+    return {
+      code: "blocked",
+      label: "拦截",
+      tone: "negative",
+      detail: `${closedLoopItemLabels(negativeItems)} 已触发拦截或退出，先保留复核队列。`,
+    };
+  }
+
+  const missingItems = items.filter(
+    (item) => String(item.status).toLowerCase() === "missing" || item.status === "unsupported",
+  );
+  if (missingItems.length > 0) {
+    return {
+      code: "insufficient_data",
+      label: "数据不足",
+      tone: "warning",
+      detail: `${closedLoopItemLabels(missingItems)} 待补，不能作为中性证明。`,
+    };
+  }
+
+  const warningItems = items.filter((item) => item.tone === "warning");
+  if (warningItems.length > 0) {
+    return {
+      code: "pause",
+      label: "暂缓",
+      tone: "warning",
+      detail: `${closedLoopItemLabels(warningItems)} 仍有降级或仅观察边界。`,
+    };
+  }
+
+  return {
+    code: "reviewable",
+    label: "可复核",
+    tone: "positive",
+    detail: "闭环证据完整，可进入人工复核队列。",
+  };
+}
+
+function closedLoopItemLabels(items: StockClosedLoopSummaryItem[]): string {
+  return items.map((item) => item.label).join("、");
+}
+
+function closedLoopStatusLabel(key: StockClosedLoopSummaryItem["key"], status: string): string {
+  const normalized = String(status).toLowerCase();
+  if (normalized === "valid") return "可用";
+  if (normalized === "partial") return "部分有效";
+  if (normalized === "unsupported") return "不可用";
+  if (normalized === "missing") return "待补";
+  if (normalized === "degrade" || normalized === "degraded" || normalized === "stale" || normalized === "error") {
+    return "降级";
+  }
+  if (normalized === "observe_only") return "仅观察";
+  if (normalized === "block" || normalized === "blocked") return "阻断";
+  if (normalized === "triggered") return "已触发";
+  if (normalized === "available") return "已接通";
+  if (normalized === "complete") return "完整";
+  if (normalized === "open") return "开放";
+  if (normalized === "watch") return "观察中";
+  if (normalized === "pass" || normalized === "allow" || normalized === "ok") return "通过";
+  return key === "lineage" ? "待确认" : status;
+}
+
+function closedLoopExitCounts(
+  payload: LivermoreStrategyPayload,
+  confluence: LivermoreSignalConfluencePayload | null,
+): { watchCount: number; triggeredCount: number } {
+  const observations = confluence?.exit_observations ?? [];
+  if (observations.length > 0) {
+    return {
+      watchCount: observations.filter((item) => item.action !== "exit_triggered" && !item.triggered).length,
+      triggeredCount: observations.filter((item) => item.action === "exit_triggered" || item.triggered).length,
+    };
+  }
+  return {
+    watchCount: payload.risk_exit?.watch_items?.length ?? 0,
+    triggeredCount: payload.risk_exit?.items?.length ?? 0,
+  };
+}
+
+function closedLoopTone(key: StockClosedLoopSummaryItem["key"], status: string): StockClosedLoopTone {
+  const normalized = String(status).toLowerCase();
+  if (normalized === "partial" || normalized === "unsupported") {
+    return "warning";
+  }
+  if (
+    normalized === "missing" ||
+    normalized === "degrade" ||
+    normalized === "degraded" ||
+    normalized === "observe_only" ||
+    normalized === "partial" ||
+    normalized === "unsupported"
+  ) {
+    return "warning";
+  }
+  if (normalized === "block" || normalized === "blocked" || normalized === "triggered") {
+    return "negative";
+  }
+  if (
+    normalized === "pass" ||
+    normalized === "allow" ||
+    normalized === "ok" ||
+    normalized === "open" ||
+    normalized === "watch" ||
+    normalized === "available" ||
+    normalized === "complete"
+  ) {
+    return "positive";
+  }
+  return key === "adversarial_gate" ? "warning" : "neutral";
+}
+
+function deriveEntryGateStatus(state: LivermoreSignalConfluencePayload["closed_loop_state"] | null): string {
+  const status = String((state as Record<string, unknown> | null)?.status ?? "").toLowerCase();
+  const action = String((state as Record<string, unknown> | null)?.entry_observation_action ?? "").toLowerCase();
+  if (status.includes("blocked") || action === "blocked") return "blocked";
+  if (action === "observe_entry_setup") return "open";
+  if (action === "observe_only") return "observe_only";
+  if (status === "open") return "open";
+  if (status === "observe_only") return "observe_only";
+  return "missing";
+}
+
+function deriveExitGateStatus(
+  payload: LivermoreStrategyPayload,
+  confluence: LivermoreSignalConfluencePayload | null,
+): string {
+  const exits = confluence?.exit_observations ?? [];
+  if (exits.some((item) => item.action === "exit_triggered" || item.triggered)) return "triggered";
+  if (exits.length > 0 || (payload.risk_exit?.watch_items?.length ?? 0) > 0) return "watch";
+  if ((payload.risk_exit?.items?.length ?? 0) > 0) return "triggered";
+  return "missing";
+}
+
+function deriveLineageStatus(
+  adversarial: LivermoreSignalConfluencePayload["adversarial_context"] | null | undefined,
+  state: LivermoreSignalConfluencePayload["closed_loop_state"] | null,
+): string {
+  const stateStatus = String((state as Record<string, unknown> | null)?.status ?? "").toLowerCase();
+  if (stateStatus.includes("missing")) return "missing";
+  if (stateStatus.includes("degraded")) return "degraded";
+
+  const adversarialStatus = String(adversarial?.status ?? "").toLowerCase();
+  if (adversarialStatus === "missing") return "missing";
+  if (adversarialStatus === "degraded" || adversarialStatus === "error") return "degraded";
+  if (adversarialStatus === "ok" || adversarialStatus === "complete") return "complete";
+  return "missing";
 }

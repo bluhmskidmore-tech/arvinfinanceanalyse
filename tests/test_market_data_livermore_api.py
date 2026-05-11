@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import builtins
 import logging
 import sys
 from datetime import date, timedelta
 from types import SimpleNamespace
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -73,6 +75,119 @@ def _seed_choice_macro_history(
         conn.close()
 
 
+def _write_csv(path, content: str) -> None:
+    path.write_text(content.strip() + "\n", encoding="utf-8-sig")
+
+
+def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
+    conn.execute(
+        """
+        create table if not exists choice_stock_request_audit (
+          as_of_date varchar,
+          input_family varchar,
+          field_key varchar,
+          status varchar,
+          row_count integer
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_universe (
+          as_of_date varchar,
+          stock_code varchar,
+          field_key varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_sector_membership (
+          as_of_date varchar,
+          stock_code varchar,
+          field_key varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_limit_quality (
+          as_of_date varchar,
+          stock_code varchar,
+          field_key varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_daily_observation (
+          trade_date varchar,
+          stock_code varchar,
+          field_keys_json varchar,
+          pctchange double,
+          turn double,
+          amplitude double,
+          open_value double,
+          high_value double,
+          low_value double,
+          close_value double,
+          volume double,
+          amount double,
+          tradestatus varchar,
+          highlimit double,
+          lowlimit double
+        )
+        """
+    )
+    conn.executemany(
+        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+        [
+            (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
+            (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
+            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
+            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
+            (trade_date, "stock_status", "daily_trade_status", "completed", 1),
+            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
+            (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+        ],
+    )
+    conn.execute(
+        "insert into choice_stock_universe values (?, ?, ?)",
+        [trade_date, "000001.SZ", "a_share_universe_sector_001004"],
+    )
+    conn.execute(
+        "insert into choice_stock_sector_membership values (?, ?, ?)",
+        [trade_date, "000001.SZ", "sw2021_industry_membership"],
+    )
+    conn.execute(
+        "insert into choice_stock_limit_quality values (?, ?, ?)",
+        [trade_date, "000001.SZ", "point_in_time_limit_streaks"],
+    )
+    conn.execute(
+        """
+        insert into choice_stock_daily_observation values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            trade_date,
+            "000001.SZ",
+            '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+            0.01,
+            1.2,
+            0.8,
+            10.0,
+            10.5,
+            9.8,
+            10.2,
+            1000.0,
+            10000.0,
+            "trading",
+            11.0,
+            9.0,
+        ],
+    )
+
+
 def _build_client(tmp_path, monkeypatch, *, choice_stock_catalog_file=None) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -93,6 +208,80 @@ def _build_client(tmp_path, monkeypatch, *, choice_stock_catalog_file=None) -> T
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)
     return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+
+def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(monkeypatch) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "backend.app.services.macro_adversarial_signal_service":
+            raise ModuleNotFoundError("No module named 'pandas'", name="pandas")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(ModuleNotFoundError) as excinfo:
+        route_module.load_macro_adversarial_signal_payload()
+
+    assert excinfo.value.name == "pandas"
+
+
+def test_livermore_signal_confluence_route_extracts_backtest_window_summary(monkeypatch) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    expected_summary = {
+        "status": "partial",
+        "replay_dates_completed": 1,
+        "replay_dates_pending": 1,
+        "replay_dates_unsupported": 0,
+        "replay_dates_proxy_only": 0,
+        "completed_rows": 2,
+        "pending_rows": 1,
+        "unsupported_rows": 0,
+        "proxy_only_rows": 0,
+        "included_completed_stats_dates": ["2026-05-06"],
+        "date_reasons": [],
+    }
+
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_envelope",
+        lambda **_kwargs: {
+            "result": {
+                "summary": {"row_count": 99},
+                "backtest_window_summary": expected_summary,
+            }
+        },
+    )
+
+    assert route_module.livermore_candidate_history_backtest_window_summary(
+        duckdb_path="unused.duckdb",
+        stock_code=None,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-06",
+    ) == expected_summary
+
+
+def test_livermore_signal_confluence_route_rejects_plain_candidate_summary(monkeypatch) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_envelope",
+        lambda **_kwargs: {"result": {"summary": {"status": "partial", "replay_dates_completed": 1}}},
+    )
+
+    summary = route_module.livermore_candidate_history_backtest_window_summary(
+        duckdb_path="unused.duckdb",
+        stock_code=None,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-06",
+    )
+
+    assert summary["status"] == "unsupported"
+    assert summary["replay_dates_completed"] == 0
 
 
 def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics(
@@ -124,8 +313,9 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "Choice stock catalog is missing" in unsupported_by_key["sector_rank"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["stock_candidates"]["reason"]
+    assert "Choice stock catalog is missing" in unsupported_by_key["theme_breakout"]["reason"]
     unsupported_keys = {row["key"] for row in result["unsupported_outputs"]}
-    assert unsupported_keys == {"sector_rank", "stock_candidates", "risk_exit"}
+    assert unsupported_keys == {"sector_rank", "stock_candidates", "theme_breakout", "risk_exit"}
     gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
     assert gap_by_family["breadth"]["status"] == "missing"
     assert gap_by_family["limit_up_quality"]["status"] == "missing"
@@ -273,6 +463,21 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         duckdb_path=tmp_path / "moss.duckdb",
         choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
     )
+    conn = duckdb.connect(str(settings.duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into livermore_candidate_history values ('2026-04-06', '000001.SZ')"
+        )
+    finally:
+        conn.close()
     stock_readiness = {"catalog_status": "ready"}
     livermore_envelope = {
         "result_meta": {
@@ -294,6 +499,32 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
             "risk_exit": {"items": []},
         },
     }
+    replay_summary = {
+        "status": "partial",
+        "snapshot_from": "2026-04-06",
+        "snapshot_to": "2026-04-06",
+        "replay_dates_total": 1,
+        "replay_dates_completed": 0,
+        "replay_dates_pending": 1,
+        "replay_dates_unsupported": 0,
+        "replay_dates_proxy_only": 0,
+        "completed_rows": 0,
+        "pending_rows": 1,
+        "unsupported_rows": 0,
+        "proxy_only_rows": 0,
+        "excluded_from_completed_stats_dates": ["2026-04-06"],
+        "included_completed_stats_dates": [],
+        "date_reasons": [
+            {
+                "trade_date": "2026-04-06",
+                "status": "pending",
+                "reason_code": "forward_returns_pending",
+                "message": "Forward return bars are not available yet; exclude 2026-04-06 from completed forward-return statistics.",
+                "affects_completed_stats": False,
+                "signal_kinds": ["stock_candidate"],
+            }
+        ],
+    }
     macro_envelope = {
         "result_meta": {
             "source_version": "sv_macro",
@@ -311,6 +542,25 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
             "warnings": [],
         },
     }
+    adversarial_payload = {
+        "status": "ok",
+        "risk_gate": "allow",
+    }
+    adversarial_meta = {
+        "source": {
+            "version": "sv_adversarial",
+            "status": "warning",
+        },
+        "vendor": {
+            "version": "vv_adversarial",
+            "status": "vendor_unavailable",
+        },
+        "tables": ["macro_adversarial_signal_snapshot"],
+        "evidence": {
+            "rows": 7,
+        },
+        "fallback_mode": "none",
+    }
     confluence_payload = {
         "as_of_date": "2026-04-06",
         "macro_context": {
@@ -318,10 +568,20 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
             "composite_score": -0.45,
             "multiplier": 1.0,
         },
+        "adversarial_context": {
+            "status": "ok",
+            "risk_gate": "allow",
+            "blocks_new_entry_observations": False,
+            "diagnostics": [],
+        },
         "strategy_context": {
             "market_gate_state": "WARM",
             "market_gate_exposure": 0.4,
             "allows_new_entry_observations": True,
+        },
+        "closed_loop_state": {
+            "status": "open",
+            "entry_observation_action": "observe_entry_setup",
         },
         "position_size_hint": 0.4,
         "entry_observations": [
@@ -356,14 +616,52 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         return macro_envelope
 
     def fake_build_livermore_signal_confluence(
-        *, as_of_date: str, livermore_payload: dict[str, object], macro_payload: dict[str, object]
+        *,
+        as_of_date: str,
+        livermore_payload: dict[str, object],
+        macro_payload: dict[str, object],
+        adversarial_payload: dict[str, object] | None = None,
+        backtest_window_summary: dict[str, object] | None = None,
     ) -> dict[str, object]:
         calls["confluence"] = {
             "as_of_date": as_of_date,
             "livermore_payload": livermore_payload,
             "macro_payload": macro_payload,
+            "adversarial_payload": adversarial_payload,
+            "backtest_window_summary": backtest_window_summary,
         }
-        return confluence_payload
+        return {
+            **confluence_payload,
+            "closed_loop_state": {
+                **confluence_payload["closed_loop_state"],
+                "replay_status": {
+                    "window_status": "partial",
+                    "has_decision_usable_completed_stats": False,
+                    "completed_dates": 0,
+                    "pending_dates": 1,
+                    "unsupported_dates": 0,
+                    "proxy_only_dates": 0,
+                    "completed_candidate_rows": 0,
+                    "pending_candidate_rows": 1,
+                    "unsupported_candidate_rows": 0,
+                    "proxy_only_candidate_rows": 0,
+                    "included_completed_stats_dates": [],
+                    "blocked_dates": [
+                        {
+                            "trade_date": "2026-04-06",
+                            "status": "pending",
+                            "reason_code": "forward_returns_pending",
+                            "signal_kinds": ["stock_candidate"],
+                        }
+                    ],
+                    "completed_zero_signal_dates": [],
+                },
+            },
+        }
+
+    def fake_load_macro_adversarial_signal_payload(*, output_dir=None):
+        calls["adversarial_output_dir"] = output_dir
+        return adversarial_payload, adversarial_meta
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: stock_readiness)
@@ -371,9 +669,19 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     monkeypatch.setattr(route_module, "get_macro_bond_linkage", fake_get_macro_bond_linkage)
     monkeypatch.setattr(
         route_module,
+        "load_macro_adversarial_signal_payload",
+        fake_load_macro_adversarial_signal_payload,
+    )
+    monkeypatch.setattr(
+        route_module,
         "build_livermore_signal_confluence",
         fake_build_livermore_signal_confluence,
     )
+    def fake_replay_summary(**kwargs: object) -> dict[str, object]:
+        calls["replay_summary_kwargs"] = kwargs
+        return replay_summary
+
+    monkeypatch.setattr(route_module, "livermore_candidate_history_backtest_window_summary", fake_replay_summary)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -386,6 +694,9 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     assert payload["result_meta"]["result_kind"] == "market_data.livermore.signal_confluence"
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert payload["result_meta"]["source_version"] == "sv_livermore__sv_macro__sv_adversarial"
+    assert payload["result_meta"]["vendor_version"] == "vv_livermore__vv_macro__vv_adversarial"
+    assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert payload["result_meta"]["filters_applied"] == {
         "requested_as_of_date": "2026-04-10",
         "as_of_date": "2026-04-06",
@@ -393,19 +704,68 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     assert payload["result_meta"]["tables_used"] == [
         "fact_choice_macro_daily",
         "yield_curve_daily",
+        "macro_adversarial_signal_snapshot",
     ]
-    assert payload["result_meta"]["evidence_rows"] == 105
-    assert payload["result"] == confluence_payload
+    assert payload["result_meta"]["evidence_rows"] == 112
+    assert payload["result"]["as_of_date"] == confluence_payload["as_of_date"]
+    assert payload["result"]["macro_context"] == confluence_payload["macro_context"]
+    assert payload["result"]["adversarial_context"] == confluence_payload["adversarial_context"]
+    assert payload["result"]["strategy_context"] == confluence_payload["strategy_context"]
+    assert payload["result"]["position_size_hint"] == confluence_payload["position_size_hint"]
+    assert payload["result"]["entry_observations"] == confluence_payload["entry_observations"]
+    assert payload["result"]["exit_observations"] == confluence_payload["exit_observations"]
+    assert payload["result"]["diagnostics"] == confluence_payload["diagnostics"]
+    assert payload["result"]["disclaimer"] == confluence_payload["disclaimer"]
+    assert payload["result"]["closed_loop_state"] == {
+        **confluence_payload["closed_loop_state"],
+        "replay_status": {
+            "window_status": "partial",
+            "has_decision_usable_completed_stats": False,
+            "completed_dates": 0,
+            "pending_dates": 1,
+            "unsupported_dates": 0,
+            "proxy_only_dates": 0,
+            "completed_candidate_rows": 0,
+            "pending_candidate_rows": 1,
+            "unsupported_candidate_rows": 0,
+            "proxy_only_candidate_rows": 0,
+            "included_completed_stats_dates": [],
+            "blocked_dates": [
+                {
+                    "trade_date": "2026-04-06",
+                    "status": "pending",
+                    "reason_code": "forward_returns_pending",
+                    "signal_kinds": ["stock_candidate"],
+                }
+            ],
+            "completed_zero_signal_dates": [],
+        },
+    }
+    replay_evidence = payload["result"]["replay_evidence"]
+    assert replay_evidence["status"] == "available"
+    assert replay_evidence["snapshot_as_of_date"] == "2026-04-06"
+    assert replay_evidence["row_count"] == 1
+    assert replay_evidence["matched_entry_count"] == 1
+    assert replay_evidence["sample_items"][0]["stock_code"] == "000001.SZ"
     assert calls["livermore"] == {
         "duckdb_path": str(settings.duckdb_path),
         "as_of_date": "2026-04-10",
         "stock_readiness": stock_readiness,
     }
     assert calls["macro_report_date"] == "2026-04-06"
+    assert calls["adversarial_output_dir"] is None
     assert calls["confluence"] == {
         "as_of_date": "2026-04-06",
         "livermore_payload": livermore_envelope["result"],
         "macro_payload": macro_envelope["result"],
+        "adversarial_payload": adversarial_payload,
+        "backtest_window_summary": replay_summary,
+    }
+    assert calls["replay_summary_kwargs"] == {
+        "duckdb_path": str(settings.duckdb_path),
+        "stock_code": None,
+        "snapshot_from": "2026-04-06",
+        "snapshot_to": "2026-04-06",
     }
     get_settings.cache_clear()
 
@@ -495,6 +855,320 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
     assert result["exit_observations"][0]["action"] == "exit_triggered"
     assert result["exit_observations"][0]["exit_watch_price"] == 20.1
     assert result["exit_observations"][0]["triggered"] is True
+    assert result["closed_loop_state"]["exit_gate"] == "triggered"
+    get_settings.cache_clear()
+
+
+def test_livermore_signal_confluence_api_smoke_loads_real_adversarial_overlay_and_candidate_history(
+    tmp_path, monkeypatch
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+    from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import macro_adversarial_signal_service
+
+    output_dir = tmp_path / "macro_output"
+    output_dir.mkdir()
+    _write_csv(
+        output_dir / "final_signal.csv",
+        """
+symbol,as_of_date,signal,position_scale,confidence,note,third_layer_pass
+TL,2026-04-30,short,0.35,2,crowding block,false
+""",
+    )
+
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
+    )
+    conn = duckdb.connect(str(settings.duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into livermore_candidate_history values ('2026-04-30', '000001.SZ')"
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-04-30")
+    finally:
+        conn.close()
+
+    livermore_envelope = {
+        "result_meta": {
+            "source_version": "sv_livermore",
+            "vendor_version": "vv_livermore",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "tables_used": ["fact_choice_macro_daily"],
+            "evidence_rows": 2,
+        },
+        "result": {
+            "as_of_date": "2026-04-30",
+            "market_gate": {"state": "HOT", "exposure": 0.8},
+            "stock_candidates": {
+                "items": [
+                    {
+                        "stock_code": "000001.SZ",
+                        "stock_name": "Alpha",
+                        "breakout_level": 21.8,
+                        "close": 21.9,
+                        "ema10": 20.6,
+                    }
+                ]
+            },
+            "risk_exit": {"watch_items": []},
+        },
+    }
+    macro_envelope = {
+        "result_meta": {
+            "source_version": "sv_macro",
+            "vendor_version": "vv_macro",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "tables_used": ["macro_bond_linkage"],
+            "evidence_rows": 3,
+        },
+        "result": {
+            "environment_score": {"composite_score": -0.45},
+        },
+    }
+
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
+    monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
+
+    response = client.get(
+        "/ui/market-data/livermore/signal-confluence",
+        params={"as_of_date": "2026-04-30"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    result = payload["result"]
+    assert result["adversarial_context"]["status"] == "ok"
+    assert result["adversarial_context"]["mode"] == "final_signal"
+    assert result["adversarial_context"]["risk_gate"] == "block"
+    assert result["adversarial_context"]["blocks_new_entry_observations"] is True
+    assert result["entry_observations"][0]["action"] == "observe_only"
+    closed_loop_state = result["closed_loop_state"]
+    assert {"entry_gate", "exit_gate", "replay_status", "lineage_status"} <= set(closed_loop_state)
+    assert closed_loop_state["entry_gate"] == "blocked"
+    assert closed_loop_state["exit_gate"] == "missing"
+    assert closed_loop_state["replay_status"]["window_status"] == "valid"
+    assert closed_loop_state["replay_status"]["has_decision_usable_completed_stats"] is True
+    assert closed_loop_state["replay_status"]["completed_dates"] == 1
+    assert closed_loop_state["replay_status"]["completed_candidate_rows"] == 1
+    assert closed_loop_state["lineage_status"] == "complete"
+    replay_evidence = result["replay_evidence"]
+    assert replay_evidence["status"] == "available"
+    assert replay_evidence["snapshot_as_of_date"] == "2026-04-30"
+    assert replay_evidence["row_count"] == 1
+    assert replay_evidence["matched_entry_count"] == 1
+    assert replay_evidence["sample_items"][0]["stock_code"] == "000001.SZ"
+    result_meta = payload["result_meta"]
+    assert result_meta["source_version"] == "sv_livermore__sv_macro__macro_toolkit.final_signal.csv"
+    assert result_meta["vendor_version"] == "vv_livermore__vv_macro__macro_toolkit.local_csv"
+    assert result_meta["tables_used"] == [
+        "fact_choice_macro_daily",
+        "macro_bond_linkage",
+        "macro_toolkit_output.final_signal.csv",
+    ]
+    assert result_meta["evidence_rows"] == 6
+    get_settings.cache_clear()
+
+
+def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampling_five(
+    tmp_path, monkeypatch
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+    from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import macro_adversarial_signal_service
+
+    output_dir = tmp_path / "macro_output"
+    output_dir.mkdir()
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
+    )
+    conn = duckdb.connect(str(settings.duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar,
+              candidate_rank integer
+            )
+            """
+        )
+        conn.executemany(
+            "insert into livermore_candidate_history values (?, ?, ?)",
+            [(("2026-04-30", f"00000{rank}.SZ", rank)) for rank in range(1, 7)],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-04-30")
+    finally:
+        conn.close()
+
+    livermore_envelope = {
+        "result_meta": {
+            "source_version": "sv_livermore",
+            "vendor_version": "vv_livermore",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "tables_used": ["fact_choice_macro_daily"],
+            "evidence_rows": 2,
+        },
+        "result": {
+            "as_of_date": "2026-04-30",
+            "market_gate": {"state": "HOT", "exposure": 0.8},
+            "stock_candidates": {
+                "items": [
+                    {"stock_code": "000001.SZ", "stock_name": "Alpha"},
+                    {"stock_code": "000006.SZ", "stock_name": "Zeta"},
+                ]
+            },
+            "risk_exit": {"watch_items": []},
+        },
+    }
+    macro_envelope = {
+        "result_meta": {
+            "source_version": "sv_macro",
+            "vendor_version": "vv_macro",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "tables_used": ["macro_bond_linkage"],
+            "evidence_rows": 3,
+        },
+        "result": {
+            "environment_score": {"composite_score": -0.45},
+        },
+    }
+
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
+    monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
+
+    response = client.get(
+        "/ui/market-data/livermore/signal-confluence",
+        params={"as_of_date": "2026-04-30"},
+    )
+
+    assert response.status_code == 200
+    replay_evidence = response.json()["result"]["replay_evidence"]
+    assert replay_evidence["status"] == "available"
+    assert replay_evidence["row_count"] == 6
+    assert replay_evidence["matched_entry_count"] == 2
+    assert len(replay_evidence["sample_items"]) == 5
+    assert replay_evidence["sample_items"][-1]["stock_code"] == "000005.SZ"
+    get_settings.cache_clear()
+
+
+def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial_overlay_is_missing(
+    tmp_path, monkeypatch
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+    from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import macro_adversarial_signal_service
+
+    output_dir = tmp_path / "macro_output"
+    output_dir.mkdir()
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
+    )
+    livermore_envelope = {
+        "result_meta": {
+            "source_version": "sv_livermore",
+            "vendor_version": "vv_livermore",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "tables_used": ["fact_choice_macro_daily"],
+            "evidence_rows": 2,
+        },
+        "result": {
+            "as_of_date": "2026-04-30",
+            "market_gate": {"state": "WARM", "exposure": 0.5},
+            "stock_candidates": {
+                "items": [
+                    {
+                        "stock_code": "000001.SZ",
+                        "stock_name": "Alpha",
+                        "breakout_level": 21.8,
+                        "close": 21.9,
+                        "ema10": 20.6,
+                    }
+                ]
+            },
+            "risk_exit": {"watch_items": []},
+        },
+    }
+    macro_envelope = {
+        "result_meta": {
+            "source_version": "sv_macro",
+            "vendor_version": "vv_macro",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "tables_used": ["macro_bond_linkage"],
+            "evidence_rows": 3,
+        },
+        "result": {
+            "environment_score": {"composite_score": -0.1},
+        },
+    }
+
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
+    monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
+
+    response = client.get(
+        "/ui/market-data/livermore/signal-confluence",
+        params={"as_of_date": "2026-04-30"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    result = payload["result"]
+    assert result["adversarial_context"]["status"] == "missing"
+    assert result["adversarial_context"]["risk_gate"] == "missing"
+    assert result["entry_observations"][0]["action"] == "observe_entry_setup"
+    closed_loop_state = result["closed_loop_state"]
+    assert {"entry_gate", "exit_gate", "replay_status", "lineage_status"} <= set(closed_loop_state)
+    assert closed_loop_state["entry_gate"] == "open"
+    assert closed_loop_state["exit_gate"] == "missing"
+    assert closed_loop_state["replay_status"]["window_status"] == "unsupported"
+    assert closed_loop_state["replay_status"]["has_decision_usable_completed_stats"] is False
+    assert closed_loop_state["lineage_status"] == "missing"
+    assert result["replay_evidence"] == {
+        "status": "missing",
+        "snapshot_as_of_date": "2026-04-30",
+        "row_count": 0,
+        "matched_entry_count": 0,
+        "sample_items": [],
+    }
+    result_meta = payload["result_meta"]
+    assert result_meta["source_version"] == "sv_livermore__sv_macro"
+    assert result_meta["vendor_version"] == "vv_livermore__vv_macro"
+    assert result_meta["quality_flag"] == "ok"
+    assert result_meta["vendor_status"] == "ok"
+    assert result_meta["fallback_mode"] == "none"
+    assert result_meta["tables_used"] == ["fact_choice_macro_daily", "macro_bond_linkage"]
+    assert result_meta["evidence_rows"] == 5
     get_settings.cache_clear()
 
 

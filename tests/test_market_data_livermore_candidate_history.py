@@ -7,7 +7,15 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.tasks.livermore_candidate_history_materialize import materialize_livermore_candidate_history
+from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
+from backend.app.services.livermore_candidate_history_service import (
+    livermore_candidate_history_backtest_window_summary,
+    livermore_candidate_history_envelope,
+)
+from backend.app.tasks.livermore_candidate_history_materialize import (
+    backfill_livermore_candidate_history,
+    materialize_livermore_candidate_history,
+)
 from tests.helpers import load_module
 
 
@@ -209,6 +217,214 @@ def test_task_pending_insufficient_forward_bars(monkeypatch, tmp_path) -> None:
         conn.close()
 
 
+def test_task_uses_configured_choice_stock_readiness(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "ready.duckdb"
+    snap = date(2026, 5, 1)
+    stock = "000004.SZ"
+    _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=25)
+    expected_catalog = tmp_path / "choice_catalog.json"
+    ready = ChoiceStockReadiness(
+        ready=True,
+        status="ready",
+        catalog_path=str(expected_catalog),
+        missing_input_families=[],
+        message="ready for test",
+    )
+    seen: dict[str, object] = {}
+
+    class _Settings:
+        choice_stock_catalog_file = str(expected_catalog)
+
+    def _mock_readiness(path: object) -> ChoiceStockReadiness:
+        seen["catalog_path"] = str(path)
+        return ready
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        seen["stock_readiness"] = kwargs.get("stock_readiness")
+        return _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[{"rank": 1, "stock_code": stock, "stock_name": "Ready", "sector_code": "S1", "sector_name": "Sec"}],
+        )
+
+    monkeypatch.setattr("backend.app.tasks.livermore_candidate_history_materialize.get_settings", lambda: _Settings())
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_choice_stock_readiness",
+        _mock_readiness,
+    )
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["row_count"] == 1
+    assert seen["catalog_path"] == str(expected_catalog)
+    assert seen["stock_readiness"] is ready
+
+
+def test_task_loads_strategy_before_opening_write_connection(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "lock.duckdb"
+    snap = date(2026, 5, 1)
+    stock = "000005.SZ"
+    _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=25)
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        probe = duckdb.connect(str(db_path), read_only=True)
+        probe.close()
+        return _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[{"rank": 1, "stock_code": stock, "stock_name": "Lock", "sector_code": "S1", "sector_name": "Sec"}],
+        )
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["row_count"] == 1
+
+
+def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_no_lookahead(
+    monkeypatch, tmp_path
+) -> None:
+    db_path = tmp_path / "theme.duckdb"
+    snap = date(2026, 5, 1)
+    stock = "688001.SH"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                (snap.isoformat(), stock, 100.0),
+                ((snap + timedelta(days=1)).isoformat(), stock, 90.0),
+                ((snap + timedelta(days=2)).isoformat(), stock, 150.0),
+            ],
+        )
+    finally:
+        conn.close()
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
+        payload["theme_breakout"] = {
+            "items": [
+                {
+                    "rank": 1,
+                    "theme_key": "concept:C001",
+                    "theme_name": "Chiplet",
+                    "source_kind": "real_concept",
+                    "parent_sector_rank": 9,
+                    "strong_stock_count": 3,
+                    "limit_stock_count": 2,
+                    "avg_pctchange": 9.5,
+                    "avg_turn": 5.2,
+                    "items": [
+                        {
+                            "stock_code": stock,
+                            "stock_name": "Alpha Semiconductor",
+                            "sector_code": "801080",
+                            "sector_name": "Electronic",
+                            "sector_rank": 9,
+                            "pctchange": 12.1,
+                            "turn": 4.2,
+                            "amplitude": 7.0,
+                            "close_strength": 0.86,
+                            "closed_up_limit": True,
+                        }
+                    ],
+                }
+            ]
+        }
+        return payload, meta
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["row_count"] == 1
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select
+              snapshot_as_of_date,
+              stock_code,
+              stock_name,
+              signal_kind,
+              theme_key,
+              theme_name,
+              theme_source_kind,
+              theme_rank,
+              stock_rank_in_theme,
+              sector_rank,
+              strength_pctchange,
+              strength_turn,
+              strength_amplitude,
+              close_strength,
+              closed_up_limit,
+              forward_trade_date_1d,
+              return_1d,
+              forward_trade_date_5d,
+              return_5d,
+              data_status
+            from livermore_candidate_history
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row[0] == snap.isoformat()
+    assert row[1] == stock
+    assert row[2] == "Alpha Semiconductor"
+    assert row[3] == "theme_breakout"
+    assert row[4] == "concept:C001"
+    assert row[5] == "Chiplet"
+    assert row[6] == "real_concept"
+    assert row[7] == 1
+    assert row[8] == 1
+    assert row[9] == 9
+    assert row[10] == 12.1
+    assert row[11] == 4.2
+    assert row[12] == 7.0
+    assert row[13] == 0.86
+    assert row[14] is True
+    assert row[15] == (snap + timedelta(days=1)).isoformat()
+    assert abs(float(row[16]) - -0.1) < 1e-12
+    assert row[17] is None
+    assert row[18] is None
+    assert row[19] == "pending"
+
+
+def test_task_reports_no_strategy_signals_when_payload_has_no_candidates(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "empty-signals.duckdb"
+    snap = date(2026, 5, 1)
+    _seed_calendar_observations(str(db_path), stock_code="000007.SZ", start=snap, days=25)
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
+        payload["theme_breakout"] = {"items": []}
+        return payload, meta
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["status"] == "partial"
+    assert out["row_count"] == 0
+    assert out["skipped_count"] == 1
+    assert out["skipped"] == ["no_strategy_signals"]
+
+
 def test_task_dedupe_second_run(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "ded.duckdb"
     snap = date(2026, 2, 2)
@@ -238,6 +454,654 @@ def test_task_dedupe_second_run(monkeypatch, tmp_path) -> None:
         assert n is not None and int(n[0]) == 1
     finally:
         conn.close()
+
+
+def test_backfill_materializes_available_trade_dates_and_summarizes_results(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "backfill.duckdb"
+    stock = "000006.SZ"
+    start = date(2026, 4, 1)
+    _seed_calendar_observations(str(db_path), stock_code=stock, start=start, days=30)
+    seen_dates: list[str] = []
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        as_of = kwargs.get("as_of_date")
+        assert isinstance(as_of, date)
+        seen_dates.append(as_of.isoformat())
+        return _fake_payload(
+            as_of_date=as_of.isoformat(),
+            items=[
+                {
+                    "rank": 1,
+                    "stock_code": stock,
+                    "stock_name": "Backfill",
+                    "sector_code": "S1",
+                    "sector_name": "Sec",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    out = backfill_livermore_candidate_history(
+        str(db_path),
+        start_date="2026-04-03",
+        end_date="2026-04-05",
+    )
+
+    assert out["status"] == "ok"
+    assert out["processed_date_count"] == 3
+    assert out["row_count"] == 3
+    assert seen_dates == ["2026-04-03", "2026-04-04", "2026-04-05"]
+    assert out["dates"] == [
+        {"as_of_date": "2026-04-03", "status": "ok", "row_count": 1, "skipped_count": 0, "skipped": []},
+        {"as_of_date": "2026-04-04", "status": "ok", "row_count": 1, "skipped_count": 0, "skipped": []},
+        {"as_of_date": "2026-04-05", "status": "ok", "row_count": 1, "skipped_count": 0, "skipped": []},
+    ]
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        count = conn.execute("select count(*)::integer from livermore_candidate_history").fetchone()
+        complete = conn.execute(
+            "select count(*)::integer from livermore_candidate_history where data_status = 'complete'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert count is not None and count[0] == 3
+    assert complete is not None and complete[0] == 3
+
+
+def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_returns(tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              candidate_rank integer,
+              sector_code varchar,
+              sector_name varchar,
+              selection_close double,
+              forward_trade_date_1d varchar,
+              forward_trade_date_5d varchar,
+              forward_trade_date_20d varchar,
+              return_1d double,
+              return_5d double,
+              return_20d double,
+              data_status varchar,
+              formula_version varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar,
+              signal_kind varchar,
+              theme_key varchar,
+              theme_name varchar,
+              theme_source_kind varchar,
+              theme_rank integer,
+              stock_rank_in_theme integer,
+              sector_rank integer,
+              strength_pctchange double,
+              strength_turn double,
+              strength_amplitude double,
+              close_strength double,
+              closed_up_limit boolean,
+              signal_evidence_json varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_history values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2026-05-01",
+                    "688001.SH",
+                    "A",
+                    1,
+                    "801080",
+                    "Electronic",
+                    100.0,
+                    "2026-05-02",
+                    None,
+                    None,
+                    -0.1,
+                    None,
+                    None,
+                    "pending",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r1",
+                    "theme_breakout",
+                    "concept:C001",
+                    "Chiplet",
+                    "real_concept",
+                    1,
+                    1,
+                    9,
+                    12.1,
+                    4.2,
+                    7.0,
+                    0.86,
+                    True,
+                    "{}",
+                ),
+                (
+                    "2026-05-01",
+                    "000001.SZ",
+                    "B",
+                    2,
+                    "801780",
+                    "Bank",
+                    10.0,
+                    "2026-05-02",
+                    "2026-05-08",
+                    "2026-05-28",
+                    0.02,
+                    0.03,
+                    0.04,
+                    "complete",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r1",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    2,
+                    None,
+                    None,
+                    None,
+                    0.75,
+                    False,
+                    "{}",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        limit=10,
+    )
+
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    summary = result["summary"]
+    assert summary == {
+        "row_count": 2,
+        "complete_count": 1,
+        "pending_count": 1,
+        "partial_halt_count": 0,
+        "missing_forward_return_count": 1,
+        "avg_return_1d": -0.04,
+        "avg_return_5d": 0.03,
+        "avg_return_20d": 0.04,
+        "by_signal_kind": {"stock_candidate": 1, "theme_breakout": 1},
+    }
+
+
+def test_service_adds_backtest_window_summary_with_unsupported_pending_completed_and_proxy_only_dates(tmp_path) -> None:
+    db_path = tmp_path / "replay-window.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              candidate_rank integer,
+              sector_code varchar,
+              sector_name varchar,
+              selection_close double,
+              forward_trade_date_1d varchar,
+              forward_trade_date_5d varchar,
+              forward_trade_date_20d varchar,
+              return_1d double,
+              return_5d double,
+              return_20d double,
+              data_status varchar,
+              formula_version varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar,
+              signal_kind varchar,
+              theme_key varchar,
+              theme_name varchar,
+              theme_source_kind varchar,
+              theme_rank integer,
+              stock_rank_in_theme integer,
+              sector_rank integer,
+              strength_pctchange double,
+              strength_turn double,
+              strength_amplitude double,
+              close_strength double,
+              closed_up_limit boolean,
+              signal_evidence_json varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_history values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2026-05-07",
+                    "688001.SH",
+                    "Proxy Theme",
+                    1,
+                    "801080",
+                    "Electronic",
+                    100.0,
+                    "2026-05-08",
+                    "2026-05-14",
+                    "2026-06-05",
+                    0.01,
+                    0.03,
+                    0.08,
+                    "complete",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r1",
+                    "theme_breakout",
+                    "proxy:C001",
+                    "Proxy Chiplet",
+                    "proxy",
+                    1,
+                    1,
+                    9,
+                    8.1,
+                    4.0,
+                    6.5,
+                    0.82,
+                    True,
+                    "{}",
+                ),
+                (
+                    "2026-05-08",
+                    "000001.SZ",
+                    "Pending Candidate",
+                    1,
+                    "801780",
+                    "Bank",
+                    10.0,
+                    "2026-05-09",
+                    None,
+                    None,
+                    0.02,
+                    None,
+                    None,
+                    "pending",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r2",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    2,
+                    None,
+                    None,
+                    None,
+                    0.75,
+                    False,
+                    "{}",
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            create table choice_stock_request_audit (
+              as_of_date varchar,
+              input_family varchar,
+              field_key varchar,
+              status varchar,
+              row_count integer
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              field_key varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              field_key varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_limit_quality (
+              as_of_date varchar,
+              stock_code varchar,
+              field_key varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              field_keys_json varchar,
+              pctchange double,
+              turn double,
+              amplitude double,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              volume double,
+              amount double,
+              tradestatus varchar,
+              highlimit double,
+              lowlimit double
+            )
+            """
+        )
+        for trade_date in ("2026-04-30", "2026-05-06", "2026-05-07", "2026-05-08"):
+            conn.executemany(
+                "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+                [
+                    (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
+                    (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
+                    (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
+                    (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
+                    (trade_date, "stock_status", "daily_trade_status", "completed", 1),
+                    (
+                        trade_date,
+                        "limit_up_quality",
+                        "daily_limit_flags",
+                        "completed" if trade_date != "2026-04-30" else "partial",
+                        1 if trade_date != "2026-04-30" else 0,
+                    ),
+                    (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+                ],
+            )
+            conn.execute(
+                "insert into choice_stock_universe values (?, ?, ?)",
+                [trade_date, "000001.SZ", "a_share_universe_sector_001004"],
+            )
+            conn.execute(
+                "insert into choice_stock_sector_membership values (?, ?, ?)",
+                [trade_date, "000001.SZ", "sw2021_industry_membership"],
+            )
+            conn.execute(
+                "insert into choice_stock_limit_quality values (?, ?, ?)",
+                [trade_date, "000001.SZ", "point_in_time_limit_streaks"],
+            )
+            field_keys = [
+                "daily_return_turnover_amplitude",
+                "daily_ohlcv_amount",
+                "daily_trade_status",
+            ]
+            highlimit = None
+            lowlimit = None
+            if trade_date != "2026-04-30":
+                field_keys.append("daily_limit_flags")
+                highlimit = 11.0
+                lowlimit = 9.0
+            conn.execute(
+                """
+                insert into choice_stock_daily_observation values
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    trade_date,
+                    "000001.SZ",
+                    str(field_keys).replace("'", '"'),
+                    0.01,
+                    1.2,
+                    0.8,
+                    10.0,
+                    10.5,
+                    9.8,
+                    10.2,
+                    1000.0,
+                    10000.0,
+                    "交易",
+                    highlimit,
+                    lowlimit,
+                ],
+            )
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-04-30",
+        snapshot_to="2026-05-08",
+        limit=20,
+    )
+
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    assert result["backtest_window_summary"] == {
+        "status": "partial",
+        "snapshot_from": "2026-04-30",
+        "snapshot_to": "2026-05-08",
+        "replay_dates_total": 4,
+        "replay_dates_completed": 1,
+        "replay_dates_pending": 1,
+        "replay_dates_unsupported": 1,
+        "replay_dates_proxy_only": 1,
+        "completed_rows": 0,
+        "pending_rows": 1,
+        "unsupported_rows": 0,
+        "proxy_only_rows": 1,
+        "included_completed_stats_dates": ["2026-05-06"],
+        "excluded_from_completed_stats_dates": ["2026-04-30", "2026-05-07", "2026-05-08"],
+        "date_reasons": [
+            {
+                "trade_date": "2026-04-30",
+                "status": "unsupported",
+                "reason_code": "missing_daily_limit_flags",
+                "message": "daily_limit_flags absent; stock_candidate and theme_breakout replay unsupported for 2026-04-30.",
+                "affects_completed_stats": False,
+                "signal_kinds": ["stock_candidate", "theme_breakout"],
+            },
+            {
+                "trade_date": "2026-05-06",
+                "status": "completed",
+                "reason_code": "no_strategy_signals",
+                "message": "Full replay coverage produced no Livermore stock_candidate or theme_breakout rows for 2026-05-06.",
+                "affects_completed_stats": True,
+                "signal_kinds": ["stock_candidate", "theme_breakout"],
+            },
+            {
+                "trade_date": "2026-05-07",
+                "status": "proxy_only",
+                "reason_code": "proxy_theme_only",
+                "message": "Theme breakout replay for 2026-05-07 relies on proxy-only theme evidence.",
+                "affects_completed_stats": False,
+                "signal_kinds": ["theme_breakout"],
+            },
+            {
+                "trade_date": "2026-05-08",
+                "status": "pending",
+                "reason_code": "forward_returns_pending",
+                "message": "Forward return bars are not available yet; exclude 2026-05-08 from completed forward-return statistics.",
+                "affects_completed_stats": False,
+                "signal_kinds": ["stock_candidate"],
+            },
+        ],
+    }
+
+
+def test_backtest_window_does_not_treat_missing_history_table_as_zero_signal_date(tmp_path) -> None:
+    db_path = tmp_path / "missing-history.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_request_audit (
+              as_of_date varchar,
+              input_family varchar,
+              field_key varchar,
+              status varchar,
+              row_count integer
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              field_key varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              field_key varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_limit_quality (
+              as_of_date varchar,
+              stock_code varchar,
+              field_key varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              field_keys_json varchar,
+              pctchange double,
+              turn double,
+              amplitude double,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              volume double,
+              amount double,
+              tradestatus varchar,
+              highlimit double,
+              lowlimit double
+            )
+            """
+        )
+        trade_date = "2026-05-06"
+        conn.executemany(
+            "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+            [
+                (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
+                (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
+                (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
+                (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
+                (trade_date, "stock_status", "daily_trade_status", "completed", 1),
+                (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
+                (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+            ],
+        )
+        conn.execute(
+            "insert into choice_stock_universe values (?, ?, ?)",
+            [trade_date, "000001.SZ", "a_share_universe_sector_001004"],
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values (?, ?, ?)",
+            [trade_date, "000001.SZ", "sw2021_industry_membership"],
+        )
+        conn.executemany(
+            "insert into choice_stock_limit_quality values (?, ?, ?)",
+            [
+                (trade_date, "000001.SZ", "daily_limit_flags"),
+                (trade_date, "000001.SZ", "point_in_time_limit_streaks"),
+            ],
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                trade_date,
+                "000001.SZ",
+                '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+                0.01,
+                1.2,
+                0.8,
+                10.0,
+                10.5,
+                9.8,
+                10.2,
+                1000.0,
+                10000.0,
+                "交易",
+                11.0,
+                9.0,
+            ],
+        )
+    finally:
+        conn.close()
+
+    summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-06",
+    )
+
+    assert summary["status"] == "unsupported"
+    assert summary["replay_dates_completed"] == 0
+    assert summary["included_completed_stats_dates"] == []
+    assert summary["date_reasons"] == [
+        {
+            "trade_date": "2026-05-06",
+            "status": "unsupported",
+            "reason_code": "missing_required_source_table",
+            "message": "livermore_candidate_history table absent; cannot distinguish no-signal dates from missing candidate-history materialization for 2026-05-06.",
+            "affects_completed_stats": False,
+            "signal_kinds": ["stock_candidate", "theme_breakout"],
+        }
+    ]
 
 
 def test_api_happy_and_filters(monkeypatch, tmp_path) -> None:

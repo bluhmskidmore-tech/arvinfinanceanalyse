@@ -1006,6 +1006,7 @@ export type LivermoreOutputKey =
   | "market_gate"
   | "sector_rank"
   | "stock_candidates"
+  | "theme_breakout"
   | "risk_exit";
 
 export type LivermoreMarketCondition = {
@@ -1102,6 +1103,57 @@ export type LivermoreStockCandidatesPayload = {
   items: LivermoreStockCandidateItem[];
 };
 
+export type LivermoreThemeBreakoutStockItem = {
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  sector_rank: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  pctchange: number;
+  turn: number;
+  amplitude: number;
+  close_strength: number;
+  closed_up_limit: boolean;
+  strong: boolean;
+};
+
+export type LivermoreThemeBreakoutItem = {
+  rank: number;
+  as_of_date: string;
+  theme_key: string;
+  theme_name: string;
+  source_kind?: "real_concept" | "proxy" | string;
+  parent_sector_code: string;
+  parent_sector_name: string;
+  parent_sector_rank: number;
+  member_count: number;
+  advance_count: number;
+  advance_ratio: number;
+  strong_stock_count: number;
+  limit_stock_count: number;
+  avg_pctchange: number;
+  avg_turn: number;
+  avg_amplitude: number;
+  movement_event_count?: number;
+  latest_event_title?: string;
+  latest_event_time?: string;
+  observation_only: boolean;
+  reason: string;
+  items: LivermoreThemeBreakoutStockItem[];
+};
+
+export type LivermoreThemeBreakoutPayload = {
+  as_of_date: string;
+  formula_version: string;
+  is_proxy: boolean;
+  theme_count: number;
+  items: LivermoreThemeBreakoutItem[];
+};
+
 export type LivermoreRiskExitItem = {
   stock_code: string;
   stock_name: string;
@@ -1151,6 +1203,7 @@ export type LivermoreStrategyPayload = {
   unsupported_outputs: LivermoreUnsupportedOutput[];
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
+  theme_breakout?: LivermoreThemeBreakoutPayload;
   risk_exit?: LivermoreRiskExitPayload;
 };
 
@@ -1227,12 +1280,93 @@ export type LivermoreCandidateHistoryRow = {
   data_status: "complete" | "partial_halt" | "pending" | string;
 };
 
+export type BacktestWindowSummaryStatus = "valid" | "partial" | "unsupported";
+
+export type ReplayDateStatus = "completed" | "pending" | "unsupported" | "proxy_only";
+
+export type ReplayReasonCode =
+  | "missing_daily_limit_flags"
+  | "missing_required_source_table"
+  | "forward_returns_pending"
+  | "no_strategy_signals"
+  | "real_theme_inputs_unconfirmed"
+  | "proxy_theme_only";
+
+export type ReplayDateReason = {
+  trade_date: string;
+  status: ReplayDateStatus;
+  reason_code: ReplayReasonCode;
+  message: string;
+  affects_completed_stats: boolean;
+  signal_kinds: string[];
+};
+
+export type BacktestWindowSummary = {
+  status: BacktestWindowSummaryStatus;
+  snapshot_from: string | null;
+  snapshot_to: string | null;
+  replay_dates_total: number;
+  replay_dates_completed: number;
+  replay_dates_pending: number;
+  replay_dates_unsupported: number;
+  replay_dates_proxy_only: number;
+  completed_rows: number;
+  pending_rows: number;
+  unsupported_rows: number;
+  proxy_only_rows: number;
+  included_completed_stats_dates: string[];
+  excluded_from_completed_stats_dates: string[];
+  date_reasons: ReplayDateReason[];
+};
+
+export type LivermoreCandidateHistoryLegacySummary = {
+  row_count: number;
+  complete_count?: number;
+  pending_count?: number;
+  partial_halt_count?: number;
+  missing_forward_return_count?: number;
+  avg_return_1d?: number | null;
+  avg_return_5d?: number | null;
+  avg_return_20d?: number | null;
+  by_signal_kind?: Record<string, number>;
+};
+
 export type LivermoreCandidateHistoryPayload = {
   stock_code: string | null;
   snapshot_from: string | null;
   snapshot_to: string | null;
   limit: number;
+  summary?: LivermoreCandidateHistoryLegacySummary | null;
+  backtest_window_summary?: BacktestWindowSummary | null;
   items: LivermoreCandidateHistoryRow[];
+};
+
+export type ConfluenceReplayBlockedDate = {
+  trade_date: string;
+  status: "pending" | "unsupported" | "proxy_only";
+  reason_code:
+    | "missing_daily_limit_flags"
+    | "missing_required_source_table"
+    | "forward_returns_pending"
+    | "real_theme_inputs_unconfirmed"
+    | "proxy_theme_only";
+  signal_kinds: string[];
+};
+
+export type ConfluenceReplayStatus = {
+  window_status: BacktestWindowSummaryStatus;
+  has_decision_usable_completed_stats: boolean;
+  completed_dates: number;
+  pending_dates: number;
+  unsupported_dates: number;
+  proxy_only_dates: number;
+  completed_candidate_rows: number;
+  pending_candidate_rows: number;
+  unsupported_candidate_rows: number;
+  proxy_only_candidate_rows: number;
+  included_completed_stats_dates: string[];
+  blocked_dates: ConfluenceReplayBlockedDate[];
+  completed_zero_signal_dates: string[];
 };
 
 export type LivermoreSignalConfluenceMacroStatus =
@@ -1294,6 +1428,37 @@ export type LivermoreSignalConfluenceDiagnostic =
       message?: string | null;
     };
 
+export type LivermoreSignalConfluenceAdversarialContext = {
+  status: "complete" | "degraded" | "missing" | string;
+  mode: string;
+  risk_gate: "pass" | "block" | "degrade" | "degraded" | "missing" | string;
+  position_scale: number | null;
+  strongest_block_reason?: string | null;
+};
+
+export type LivermoreSignalConfluenceClosedLoopState = {
+  entry_gate: "open" | "observe_only" | "blocked" | "missing" | string;
+  exit_gate: "watch" | "triggered" | "missing" | string;
+  replay_status: ConfluenceReplayStatus | "available" | "missing" | "degraded" | string;
+  lineage_status: "complete" | "degraded" | "missing" | string;
+};
+
+export type LivermoreSignalConfluenceReplayEvidenceItem = {
+  stock_code: string | null;
+  stock_name?: string | null;
+  candidate_rank?: number | null;
+  signal_kind?: string | null;
+  data_status?: string | null;
+};
+
+export type LivermoreSignalConfluenceReplayEvidence = {
+  status: "available" | "missing" | "degraded" | string;
+  snapshot_as_of_date: string | null;
+  row_count: number;
+  matched_entry_count: number;
+  sample_items: LivermoreSignalConfluenceReplayEvidenceItem[];
+};
+
 export type LivermoreSignalConfluencePayload = {
   as_of_date: string;
   macro_context: LivermoreSignalConfluenceMacroContext;
@@ -1301,6 +1466,9 @@ export type LivermoreSignalConfluencePayload = {
   position_size_hint: number;
   entry_observations: LivermoreSignalConfluenceEntryObservation[];
   exit_observations: LivermoreSignalConfluenceExitObservation[];
+  adversarial_context?: LivermoreSignalConfluenceAdversarialContext | null;
+  closed_loop_state?: LivermoreSignalConfluenceClosedLoopState | null;
+  replay_evidence?: LivermoreSignalConfluenceReplayEvidence | null;
   diagnostics: LivermoreSignalConfluenceDiagnostic[];
   disclaimer: string;
 };
@@ -2540,6 +2708,27 @@ export type AgentPageContext = {
   context_note?: string | null;
 };
 
+export type AgentConversationContextTurn = {
+  question: string;
+  answer: string;
+  run_id?: string | null;
+  trace_id?: string | null;
+};
+
+export type AgentConversationContext = {
+  recent_turns: AgentConversationContextTurn[];
+};
+
+export type AgentRequestContext = {
+  user_id?: string;
+  user_role?: string;
+  identity_source?: string;
+  workflow_mode?: "execute" | string;
+  intent?: string;
+  conversation?: AgentConversationContext;
+  [key: string]: unknown;
+};
+
 /** POST /api/agent/query — 字段缺省时由后端填入默认值（见 backend AgentQueryRequest）。 */
 export type AgentQueryRequest = {
   question: string;
@@ -2548,7 +2737,7 @@ export type AgentQueryRequest = {
   position_scope?: string;
   currency_basis?: string;
   /** @deprecated Prefer `page_context`. Frontend AgentPanel no longer sends this field. */
-  context?: Record<string, unknown>;
+  context?: AgentRequestContext;
   page_context?: AgentPageContext | null;
 };
 

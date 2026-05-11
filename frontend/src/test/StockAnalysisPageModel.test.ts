@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  ConfluenceReplayStatus,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
 import {
   buildCandidateReviewQueue,
   buildCandidateEvidenceCards,
+  buildClosedLoopSummary,
   buildDataBoundarySummary,
   buildDecisionSummary,
   buildDailyJudgmentStrip,
@@ -16,6 +18,7 @@ import {
   buildSectorRows,
   buildSectorFilterSummary,
   buildSectorViewModel,
+  buildThemeBreakoutCards,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 
 const strategyPayload: LivermoreStrategyPayload = {
@@ -190,6 +193,25 @@ const confluencePayload: LivermoreSignalConfluencePayload = {
   disclaimer: "Observation-only output.",
 };
 
+function buildReplayStatus(overrides: Partial<ConfluenceReplayStatus> = {}): ConfluenceReplayStatus {
+  return {
+    window_status: "valid",
+    has_decision_usable_completed_stats: true,
+    completed_dates: 2,
+    pending_dates: 0,
+    unsupported_dates: 0,
+    proxy_only_dates: 0,
+    completed_candidate_rows: 5,
+    pending_candidate_rows: 0,
+    unsupported_candidate_rows: 0,
+    proxy_only_candidate_rows: 0,
+    included_completed_stats_dates: ["2026-05-06", "2026-05-07"],
+    blocked_dates: [],
+    completed_zero_signal_dates: [],
+    ...overrides,
+  };
+}
+
 describe("stockAnalysisPageModel", () => {
   it("builds market state and sector rows from the Livermore strategy payload", () => {
     const card = buildMarketStateCard(strategyPayload);
@@ -279,6 +301,514 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.nextReviewAction).toBe("暂无候选股，先核对门控、板块强弱和数据边界。");
     expect(summary.boundaryLabel).toContain("3 条边界");
     expect(summary.nextReviewAction).not.toContain("Alpha");
+  });
+
+  it("builds theme breakout cards as proxy-only observations", () => {
+    const cards = buildThemeBreakoutCards({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: true,
+        theme_count: 1,
+        items: [
+          {
+            rank: 1,
+            as_of_date: "2026-05-08",
+            theme_key: "semiconductor_proxy",
+            theme_name: "Semiconductor proxy",
+            parent_sector_code: "801080",
+            parent_sector_name: "Electronic",
+            parent_sector_rank: 9,
+            member_count: 3,
+            advance_count: 3,
+            advance_ratio: 1,
+            strong_stock_count: 3,
+            limit_stock_count: 2,
+            avg_pctchange: 9.766667,
+            avg_turn: 4.4,
+            avg_amplitude: 7.3,
+            observation_only: true,
+            reason: "Observation-only proxy cluster: leaders 688001.SH, 688002.SH.",
+            items: [
+              {
+                stock_code: "688001.SH",
+                stock_name: "Alpha Semiconductor",
+                sector_code: "801080",
+                sector_name: "Electronic",
+                sector_rank: 9,
+                open: 9.6,
+                high: 10.1,
+                low: 9.4,
+                close: 10,
+                pctchange: 12.1,
+                turn: 4.2,
+                amplitude: 7,
+                close_strength: 0.86,
+                closed_up_limit: true,
+                strong: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(cards[0]).toMatchObject({
+      themeKey: "semiconductor_proxy",
+      parentSectorLabel: "Electronic #9",
+      strongCountLabel: "强势 3",
+      limitCountLabel: "涨停 2",
+      avgPctChangeLabel: "均涨跌 9.77%",
+    });
+    expect(cards[0].boundaryLabel).toContain("代理题材观察");
+    expect(cards[0].leaders[0]).toMatchObject({
+      stockCode: "688001.SH",
+      pctChange: "12.10%",
+      tags: ["涨停", "强势"],
+    });
+    expect(`${cards[0].summary} ${cards[0].boundaryLabel}`).not.toContain("买入");
+  });
+
+  it("builds real concept theme breakout cards with movement evidence", () => {
+    const cards = buildThemeBreakoutCards({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: false,
+        theme_count: 1,
+        items: [
+          {
+            rank: 1,
+            as_of_date: "2026-05-08",
+            theme_key: "concept:C001",
+            theme_name: "Chiplet",
+            source_kind: "real_concept",
+            parent_sector_code: "801080",
+            parent_sector_name: "Electronic",
+            parent_sector_rank: 9,
+            member_count: 3,
+            advance_count: 3,
+            advance_ratio: 1,
+            strong_stock_count: 3,
+            limit_stock_count: 2,
+            avg_pctchange: 9.766667,
+            avg_turn: 4.4,
+            avg_amplitude: 7.3,
+            movement_event_count: 2,
+            latest_event_title: "Chiplet concept extends gains",
+            latest_event_time: "2026-05-08 10:08:00",
+            observation_only: true,
+            reason: "Observation-only real concept cluster: leaders 688001.SH, 688002.SH.",
+            items: [],
+          },
+        ],
+      },
+    });
+
+    expect(cards[0].themeName).toBe("Chiplet");
+    expect(cards[0].boundaryLabel).toContain("真实题材观察");
+    expect(cards[0].movementLabel).toBe("异动 2");
+    expect(cards[0].latestEventLabel).toContain("Chiplet concept extends gains");
+    expect(`${cards[0].summary} ${cards[0].boundaryLabel}`).not.toContain("买入");
+  });
+
+  it("builds a closed-loop summary for complete pass states", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "complete",
+          mode: "anti_crowding_v1",
+          risk_gate: "pass",
+          position_scale: 0.75,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: "available",
+          lineage_status: "complete",
+        },
+        replay_evidence: {
+          status: "available",
+          snapshot_as_of_date: "2026-04-29",
+          row_count: 2,
+          matched_entry_count: 1,
+          sample_items: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              candidate_rank: 1,
+              signal_kind: "stock_candidate",
+              data_status: "complete",
+            },
+          ],
+        },
+      },
+      {
+        quality_flag: "ok",
+        vendor_status: "ok",
+        source_version: "sv_livermore_test",
+        rule_version: "rv_livermore_market_gate_v1",
+      },
+    );
+
+    expect(summary.boundaryCount).toBe(0);
+    expect(summary.summaryLabel).toBe("全部通过");
+    expect(summary.referenceRating).toMatchObject({
+      code: "reviewable",
+      label: "可复核",
+      tone: "positive",
+    });
+    expect(summary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "entry_gate",
+          label: "入场观察门",
+          status: "open",
+          tone: "positive",
+        }),
+        expect.objectContaining({
+          key: "adversarial_gate",
+          label: "反拥挤拦截",
+          status: "pass",
+          tone: "positive",
+        }),
+        expect.objectContaining({
+          key: "risk_exit",
+          label: "风险退出",
+          status: "watch",
+          tone: "positive",
+        }),
+        expect.objectContaining({
+          key: "replay",
+          label: "回放证据",
+          status: "available",
+          tone: "positive",
+          detail: "候选历史回放已接通：2 条快照 / 覆盖 1 个当前候选",
+        }),
+        expect.objectContaining({
+          key: "lineage",
+          label: "血缘状态",
+          status: "complete",
+          tone: "positive",
+        }),
+      ]),
+    );
+  });
+
+  it("builds a closed-loop summary that surfaces block states as blockers", () => {
+    const summary = buildClosedLoopSummary(
+      {
+        ...strategyPayload,
+        risk_exit: {
+          ...strategyPayload.risk_exit!,
+          items: [],
+        },
+      },
+      {
+        ...confluencePayload,
+        exit_observations: [
+          {
+            stock_code: "000777.SZ",
+            stock_name: "Watch Alpha",
+            action: "exit_triggered",
+            current_price: 18.9,
+            exit_watch_price: 20.1,
+            triggered: true,
+            evidence: ["退出观察价来自 Livermore EMA10。"],
+          },
+        ],
+        adversarial_context: {
+          status: "complete",
+          mode: "anti_crowding_v1",
+          risk_gate: "block",
+          position_scale: null,
+          strongest_block_reason: "crowded leaders without breadth confirmation",
+        },
+        closed_loop_state: {
+          entry_gate: "blocked",
+          exit_gate: "triggered",
+          replay_status: "available",
+          lineage_status: "degraded",
+        },
+      },
+      {
+        quality_flag: "warning",
+        vendor_status: "ok",
+        fallback_mode: "latest_snapshot",
+      },
+    );
+
+    expect(summary.boundaryCount).toBeGreaterThanOrEqual(3);
+    expect(summary.summaryLabel).toContain("待复核");
+    expect(summary.referenceRating).toMatchObject({
+      code: "blocked",
+      label: "拦截",
+      tone: "negative",
+    });
+    expect(summary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "entry_gate",
+          label: "入场观察门",
+          status: "blocked",
+          tone: "negative",
+        }),
+        expect.objectContaining({
+          key: "adversarial_gate",
+          label: "反拥挤拦截",
+          status: "block",
+          tone: "negative",
+          detail: expect.stringContaining("crowded leaders without breadth confirmation"),
+        }),
+        expect.objectContaining({
+          key: "risk_exit",
+          label: "风险退出",
+          status: "triggered",
+          tone: "negative",
+        }),
+        expect.objectContaining({
+          key: "lineage",
+          label: "血缘状态",
+          status: "degraded",
+          tone: "warning",
+        }),
+      ]),
+    );
+    const riskExit = summary.items.find((item) => item.key === "risk_exit");
+    expect(riskExit?.detail).toContain("1 条触发");
+    expect(riskExit?.detail).not.toContain("0 条触发");
+  });
+
+  it("builds a closed-loop summary that treats missing adversarial evidence as boundary data", () => {
+    const summary = buildClosedLoopSummary(strategyPayload, confluencePayload, {
+      quality_flag: "warning",
+      vendor_status: "vendor_unavailable",
+      fallback_mode: "latest_snapshot",
+      source_version: "sv_livermore_test",
+      rule_version: "rv_livermore_market_gate_v1",
+    });
+
+    expect(summary.boundaryCount).toBeGreaterThanOrEqual(3);
+    expect(summary.summaryLabel).toContain("待复核");
+    expect(summary.referenceRating).toMatchObject({
+      code: "insufficient_data",
+      label: "数据不足",
+      tone: "warning",
+    });
+    expect(summary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "entry_gate",
+          label: "入场观察门",
+          status: "missing",
+          tone: "warning",
+          detail: expect.stringContaining("闭环入场状态未接通"),
+        }),
+        expect.objectContaining({
+          key: "adversarial_gate",
+          label: "反拥挤拦截",
+          status: "missing",
+          tone: "warning",
+          detail: expect.stringContaining("不能视为中性证明"),
+        }),
+        expect.objectContaining({
+          key: "replay",
+          label: "回放证据",
+          status: "missing",
+          tone: "warning",
+        }),
+        expect.objectContaining({
+          key: "lineage",
+          label: "血缘状态",
+          status: "missing",
+          tone: "warning",
+        }),
+      ]),
+    );
+  });
+
+  it("builds a pause rating when evidence is present but degraded", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "degraded",
+          mode: "crowding_latest",
+          risk_gate: "degraded",
+          position_scale: 0,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: "available",
+          lineage_status: "degraded",
+        },
+      },
+      {
+        quality_flag: "warning",
+        vendor_status: "vendor_stale",
+        fallback_mode: "latest_snapshot",
+      },
+    );
+
+    expect(summary.referenceRating).toMatchObject({
+      code: "pause",
+      label: "暂缓",
+      tone: "warning",
+    });
+    expect(summary.referenceRating.detail).toContain("降级");
+  });
+
+  it("represents partial replay windows with unsupported, pending, proxy-only, and zero-signal dates", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "complete",
+          mode: "anti_crowding_v1",
+          risk_gate: "pass",
+          position_scale: 0.5,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: buildReplayStatus({
+            window_status: "partial",
+            completed_dates: 1,
+            pending_dates: 1,
+            unsupported_dates: 1,
+            proxy_only_dates: 1,
+            completed_candidate_rows: 0,
+            pending_candidate_rows: 17,
+            unsupported_candidate_rows: 0,
+            proxy_only_candidate_rows: 2,
+            included_completed_stats_dates: ["2026-05-06"],
+            blocked_dates: [
+              {
+                trade_date: "2026-04-30",
+                status: "unsupported",
+                reason_code: "missing_daily_limit_flags",
+                signal_kinds: ["stock_candidate", "theme_breakout"],
+              },
+              {
+                trade_date: "2026-05-08",
+                status: "pending",
+                reason_code: "forward_returns_pending",
+                signal_kinds: ["stock_candidate", "theme_breakout"],
+              },
+              {
+                trade_date: "2026-05-07",
+                status: "proxy_only",
+                reason_code: "proxy_theme_only",
+                signal_kinds: ["theme_breakout"],
+              },
+            ],
+            completed_zero_signal_dates: ["2026-05-06"],
+          }),
+          lineage_status: "complete",
+        },
+      },
+      {
+        quality_flag: "ok",
+        vendor_status: "ok",
+      },
+    );
+
+    const replayItem = summary.items.find((item) => item.key === "replay");
+    expect(summary.referenceRating).toMatchObject({
+      code: "pause",
+      tone: "warning",
+    });
+    expect(replayItem).toMatchObject({
+      status: "partial",
+      tone: "warning",
+    });
+    expect(replayItem?.detail).toContain("excluded from completed stats: 2026-04-30, 2026-05-08, 2026-05-07");
+    expect(replayItem?.detail).toContain("2026-04-30 missing_daily_limit_flags");
+    expect(replayItem?.detail).toContain("2026-05-08 forward_returns_pending");
+    expect(replayItem?.detail).toContain("2026-05-07 proxy_theme_only");
+    expect(replayItem?.detail).toContain("completed zero-signal dates: 2026-05-06");
+    expect(replayItem?.detail).toContain("do not infer strategy efficacy");
+    expect(replayItem?.badges).toEqual(
+      expect.arrayContaining([
+        "completed dates 1",
+        "pending dates 1",
+        "unsupported dates 1",
+        "proxy-only dates 1",
+        "completed rows 0",
+      ]),
+    );
+  });
+
+  it("treats replay windows with no completed stats as insufficient data", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "complete",
+          mode: "anti_crowding_v1",
+          risk_gate: "pass",
+          position_scale: 0.5,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: buildReplayStatus({
+            window_status: "unsupported",
+            has_decision_usable_completed_stats: false,
+            completed_dates: 0,
+            pending_dates: 1,
+            unsupported_dates: 1,
+            proxy_only_dates: 0,
+            completed_candidate_rows: 0,
+            pending_candidate_rows: 17,
+            unsupported_candidate_rows: 0,
+            proxy_only_candidate_rows: 0,
+            included_completed_stats_dates: [],
+            blocked_dates: [
+              {
+                trade_date: "2026-04-30",
+                status: "unsupported",
+                reason_code: "missing_daily_limit_flags",
+                signal_kinds: ["stock_candidate", "theme_breakout"],
+              },
+              {
+                trade_date: "2026-05-08",
+                status: "pending",
+                reason_code: "forward_returns_pending",
+                signal_kinds: ["stock_candidate", "theme_breakout"],
+              },
+            ],
+            completed_zero_signal_dates: [],
+          }),
+          lineage_status: "complete",
+        },
+      },
+      {
+        quality_flag: "ok",
+        vendor_status: "ok",
+      },
+    );
+
+    const replayItem = summary.items.find((item) => item.key === "replay");
+    expect(summary.referenceRating).toMatchObject({
+      code: "insufficient_data",
+      tone: "warning",
+    });
+    expect(replayItem).toMatchObject({
+      status: "unsupported",
+      tone: "warning",
+    });
+    expect(replayItem?.detail).toContain("no decision-usable completed replay dates");
+    expect(replayItem?.detail).toContain("2026-04-30 missing_daily_limit_flags");
+    expect(replayItem?.detail).toContain("2026-05-08 forward_returns_pending");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {

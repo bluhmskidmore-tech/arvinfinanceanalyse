@@ -11,6 +11,7 @@ import type {
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateReviewQueue,
+  buildClosedLoopSummary,
   buildDataBoundarySummary,
   buildDecisionSummary,
   buildInlineMetaSegments,
@@ -20,6 +21,7 @@ import {
   buildSectorRows,
   buildSectorTableSortComparator,
   buildSectorViewModel,
+  buildThemeBreakoutCards,
 } from "../lib/stockAnalysisPageModel";
 import type { StockSectorRow, StockSectorViewKind } from "../lib/stockAnalysisPageModel";
 import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
@@ -185,6 +187,11 @@ export default function StockAnalysisPage() {
     return [...queue].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
   }, [strategyPayload]);
 
+  const themeBreakoutCards = useMemo(
+    () => (strategyPayload ? buildThemeBreakoutCards(strategyPayload) : []),
+    [strategyPayload],
+  );
+
   const sectorOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const card of reviewQueue) {
@@ -211,6 +218,7 @@ export default function StockAnalysisPage() {
   );
 
   const riskExitUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "risk_exit");
+  const themeBreakoutUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "theme_breakout");
 
   const boundarySummary = useMemo(
     () =>
@@ -226,6 +234,49 @@ export default function StockAnalysisPage() {
       strategyQuery.data?.result_meta?.quality_flag,
       strategyQuery.data?.result_meta?.vendor_status,
       strategyQuery.data?.result_meta?.fallback_mode,
+    ],
+  );
+
+  const closedLoopSummary = useMemo(
+    () =>
+      strategyPayload && !confluenceQuery.isLoading
+        ? buildClosedLoopSummary(strategyPayload, confluencePayload, {
+            quality_flag:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.quality_flag ?? strategyQuery.data?.result_meta?.quality_flag)
+                : strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.vendor_status ?? strategyQuery.data?.result_meta?.vendor_status)
+                : strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.fallback_mode ?? strategyQuery.data?.result_meta?.fallback_mode)
+                : strategyQuery.data?.result_meta?.fallback_mode,
+            source_version:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.source_version ?? strategyQuery.data?.result_meta?.source_version)
+                : strategyQuery.data?.result_meta?.source_version,
+            rule_version:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.rule_version ?? strategyQuery.data?.result_meta?.rule_version)
+                : strategyQuery.data?.result_meta?.rule_version,
+          })
+        : null,
+    [
+      strategyPayload,
+      confluencePayload,
+      confluenceQuery.isLoading,
+      confluenceQuery.data?.result_meta?.quality_flag,
+      confluenceQuery.data?.result_meta?.vendor_status,
+      confluenceQuery.data?.result_meta?.fallback_mode,
+      confluenceQuery.data?.result_meta?.source_version,
+      confluenceQuery.data?.result_meta?.rule_version,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+      strategyQuery.data?.result_meta?.source_version,
+      strategyQuery.data?.result_meta?.rule_version,
     ],
   );
 
@@ -419,6 +470,39 @@ export default function StockAnalysisPage() {
                   <strong>{marketState.passedLabel}</strong>
                 </div>
               </div>
+              {closedLoopSummary ? (
+                <section
+                  className="stock-analysis-page__closed-loop-summary"
+                  data-testid="stock-analysis-closed-loop-summary"
+                  aria-label="闭环摘要"
+                >
+                  <div className="stock-analysis-page__section-head">
+                    <div>
+                      <h3>闭环摘要</h3>
+                      <p>{closedLoopSummary.referenceRating.detail}</p>
+                    </div>
+                    <span className="stock-analysis-page__pill" data-tone={closedLoopSummary.referenceRating.tone}>
+                      {closedLoopSummary.referenceRating.label}
+                    </span>
+                  </div>
+                  <div className="stock-analysis-page__decision-grid">
+                    {closedLoopSummary.items.map((item) => (
+                      <div
+                        key={item.key}
+                        data-tone={item.tone}
+                        data-testid={item.key === "replay" ? "stock-analysis-replay-status" : undefined}
+                      >
+                        <span>{item.label}</span>
+                        <strong>{item.statusLabel}</strong>
+                        <small>{item.detail}</small>
+                        {item.badges?.map((badge) => (
+                          <small key={badge}>{badge}</small>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <div className="stock-analysis-page__decision-detail">
                 <section>
                   <h3>门控条件</h3>
@@ -772,6 +856,70 @@ export default function StockAnalysisPage() {
                 ) : (
                   <p className="stock-analysis-page__empty">
                     当前行业强弱不可用，请检查 Choice 股票目录与当日落地覆盖。
+                  </p>
+                )}
+              </section>
+
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
+                data-testid="stock-analysis-theme-breakout"
+              >
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>题材突变雷达</h2>
+                    <p>绕开“一级行业前三”硬门槛的观察层，只看现有日线、涨停和名称代理簇，不生成交易指令。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">
+                    {(strategyPayload?.theme_breakout?.formula_version ?? "").trim() || "proxy radar"}
+                  </span>
+                </div>
+
+                {themeBreakoutCards.length > 0 ? (
+                  <div className="stock-analysis-page__candidate-grid">
+                    {themeBreakoutCards.map((card) => (
+                      <article className="stock-analysis-page__candidate" key={card.themeKey}>
+                        <div className="stock-analysis-page__candidate-head">
+                          <div>
+                            <h3>
+                              #{card.rank} {card.themeName}
+                            </h3>
+                            <p>{card.parentSectorLabel}</p>
+                            <div className="stock-analysis-page__pattern-tag">{card.summary}</div>
+                          </div>
+                          <span>观察</span>
+                        </div>
+                        <div className="stock-analysis-page__decision-meta">
+                          <span>{card.strongCountLabel}</span>
+                          <span>{card.limitCountLabel}</span>
+                          <span>{card.advanceRatioLabel}</span>
+                          <span>{card.avgPctChangeLabel}</span>
+                          <span>{card.movementLabel}</span>
+                        </div>
+                        <p className="stock-analysis-page__review-focus">{card.reason}</p>
+                        <p className="stock-analysis-page__review-focus">{card.latestEventLabel}</p>
+                        <p className="stock-analysis-page__notice">{card.boundaryLabel}</p>
+                        <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                          {card.leaders.map((leader) => (
+                            <li key={leader.stockCode}>
+                              <span>
+                                <strong>{leader.stockName}</strong>
+                                <small>
+                                  {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度{" "}
+                                  {leader.closeStrength}
+                                </small>
+                              </span>
+                              <em>{leader.tags.join(" / ") || "观察"}</em>
+                            </li>
+                          ))}
+                        </ul>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="stock-analysis-page__empty">
+                    {themeBreakoutUnsupported
+                      ? themeBreakoutUnsupported.reason
+                      : "当前无题材突变观察项。"}
                   </p>
                 )}
               </section>
