@@ -83,6 +83,48 @@ def _seed_choice_news_topics(tmp_path) -> None:
                     "headline beta",
                     None,
                 ),
+                (
+                    "ev_stock_full",
+                    "2026-05-08T11:00:00Z",
+                    "g1",
+                    "sectornews",
+                    3,
+                    1,
+                    0,
+                    "",
+                    "TOPIC_STOCK_FULL",
+                    0,
+                    "000001.SZ earnings watch headline",
+                    None,
+                ),
+                (
+                    "ev_stock_stem",
+                    "2026-05-08T12:00:00Z",
+                    "g1",
+                    "sectornews",
+                    4,
+                    1,
+                    0,
+                    "",
+                    "TOPIC_STOCK_STEM",
+                    0,
+                    "headline with stem only",
+                    '{"stock_code":"000001","title":"stem match"}',
+                ),
+                (
+                    "ev_stock_other",
+                    "2026-05-08T13:00:00Z",
+                    "g1",
+                    "sectornews",
+                    5,
+                    1,
+                    0,
+                    "",
+                    "TOPIC_STOCK_OTHER",
+                    0,
+                    "600000.SH unrelated headline",
+                    None,
+                ),
             ],
         )
     finally:
@@ -141,6 +183,43 @@ def test_choice_events_latest_topic_code_param_filters(tmp_path, monkeypatch) ->
     assert len(body["result"]["events"]) == 1
     assert body["result"]["events"][0]["topic_code"] == "TOPIC_FILTER_A"
     assert "alpha" in body["result"]["events"][0]["payload_text"]
+    get_settings.cache_clear()
+
+
+def test_choice_events_latest_stock_code_filters_payload_text_and_json(tmp_path, monkeypatch) -> None:
+    _seed_choice_news_topics(tmp_path)
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+    response = client.get("/ui/news/choice-events/latest", params={"stock_code": "000001.SZ", "limit": 10})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["stock_code"] == "000001.SZ"
+    assert body["result"]["stock_filter_mode"] == "payload_text_or_json_best_effort"
+    assert body["result"]["stock_filter_tokens"] == ["000001.SZ", "000001"]
+    assert body["result"]["total_rows"] == 2
+    assert [event["topic_code"] for event in body["result"]["events"]] == [
+        "TOPIC_STOCK_STEM",
+        "TOPIC_STOCK_FULL",
+    ]
+    get_settings.cache_clear()
+
+
+def test_choice_events_latest_stock_code_returns_empty_without_global_fallback(tmp_path, monkeypatch) -> None:
+    _seed_choice_news_topics(tmp_path)
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+    response = client.get("/ui/news/choice-events/latest", params={"stock_code": "000999.SZ"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["stock_code"] == "000999.SZ"
+    assert body["result"]["events"] == []
+    assert body["result"]["total_rows"] == 0
+    get_settings.cache_clear()
+
+
+def test_choice_events_latest_rejects_invalid_stock_code(tmp_path, monkeypatch) -> None:
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+    response = client.get("/ui/news/choice-events/latest", params={"stock_code": "bad code!"})
+    assert response.status_code == 400
+    assert "Invalid stock_code" in response.json()["detail"]
     get_settings.cache_clear()
 
 

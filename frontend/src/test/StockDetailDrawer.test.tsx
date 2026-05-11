@@ -97,9 +97,10 @@ describe("StockDetailDrawer", () => {
       expect(newsSpy).toHaveBeenCalledWith({
         limit: 10,
         offset: 0,
+        stockCode: "000001.SZ",
       }),
     );
-    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("未按本股过滤");
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("按股票代码匹配");
   });
 
   it("shows the review context that opened the drawer", async () => {
@@ -221,7 +222,9 @@ describe("StockDetailDrawer", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByTestId("stock-detail-market-events-empty")).toHaveTextContent("暂无市场事件数据");
+    expect(await screen.findByTestId("stock-detail-market-events-empty")).toHaveTextContent(
+      "暂无与该股票代码匹配的市场事件",
+    );
   });
 
   it("refetches when lookback segment changes", async () => {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date, timedelta
+import json
 
 import duckdb
 from fastapi.testclient import TestClient
@@ -511,6 +512,101 @@ def test_backfill_materializes_available_trade_dates_and_summarizes_results(monk
         conn.close()
     assert count is not None and count[0] == 3
     assert complete is not None and complete[0] == 3
+
+
+def test_candidate_history_run_cli_single_date_emits_json(monkeypatch, capsys, tmp_path) -> None:
+    run_module = load_module(
+        "backend.app.tasks.livermore_candidate_history_run",
+        "backend/app/tasks/livermore_candidate_history_run.py",
+    )
+    calls: list[tuple[str, str | None]] = []
+
+    def _fake_materialize(path: str, *, as_of_date: str | None = None) -> dict[str, object]:
+        calls.append((path, as_of_date))
+        return {"status": "ok", "row_count": 2, "snapshot_as_of_date": as_of_date}
+
+    monkeypatch.setattr(run_module, "materialize_livermore_candidate_history", _fake_materialize)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "livermore_candidate_history_run",
+            "--duckdb-path",
+            str(tmp_path / "moss.duckdb"),
+            "--as-of-date",
+            "2026-04-03",
+        ],
+    )
+
+    run_module.main()
+
+    assert calls == [(str(tmp_path / "moss.duckdb"), "2026-04-03")]
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok"
+    assert out["row_count"] == 2
+
+
+def test_candidate_history_run_cli_backfill_emits_json(monkeypatch, capsys, tmp_path) -> None:
+    run_module = load_module(
+        "backend.app.tasks.livermore_candidate_history_run",
+        "backend/app/tasks/livermore_candidate_history_run.py",
+    )
+    calls: list[tuple[str, str, str]] = []
+
+    def _fake_backfill(path: str, *, start_date: str, end_date: str) -> dict[str, object]:
+        calls.append((path, start_date, end_date))
+        return {"status": "partial", "processed_date_count": 2}
+
+    monkeypatch.setattr(run_module, "backfill_livermore_candidate_history", _fake_backfill)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "livermore_candidate_history_run",
+            "--duckdb-path",
+            str(tmp_path / "moss.duckdb"),
+            "--start-date",
+            "2026-04-03",
+            "--end-date",
+            "2026-04-04",
+        ],
+    )
+
+    run_module.main()
+
+    assert calls == [(str(tmp_path / "moss.duckdb"), "2026-04-03", "2026-04-04")]
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "partial"
+    assert out["processed_date_count"] == 2
+
+
+def test_candidate_history_run_cli_rejects_mixed_single_date_and_backfill(monkeypatch, tmp_path) -> None:
+    run_module = load_module(
+        "backend.app.tasks.livermore_candidate_history_run",
+        "backend/app/tasks/livermore_candidate_history_run.py",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "livermore_candidate_history_run",
+            "--duckdb-path",
+            str(tmp_path / "moss.duckdb"),
+            "--as-of-date",
+            "2026-04-03",
+            "--start-date",
+            "2026-04-01",
+            "--end-date",
+            "2026-04-04",
+        ],
+    )
+
+    try:
+        run_module.main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected argparse SystemExit")
 
 
 def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_returns(tmp_path) -> None:

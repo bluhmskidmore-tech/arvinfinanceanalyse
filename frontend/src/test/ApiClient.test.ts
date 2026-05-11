@@ -1525,13 +1525,14 @@ describe("createApiClient", () => {
       offset: 0,
       groupId: "news_cmd1",
       topicCode: "S888010007API",
+      stockCode: "000001.SZ",
       errorOnly: true,
       receivedFrom: "2026-04-10T08:00:00Z",
       receivedTo: "2026-04-10T10:00:00Z",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
+      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&stock_code=000001.SZ&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",

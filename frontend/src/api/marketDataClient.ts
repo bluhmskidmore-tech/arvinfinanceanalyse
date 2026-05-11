@@ -112,6 +112,7 @@ export type MarketDataClientMethods = {
     offset: number;
     groupId?: string;
     topicCode?: string;
+    stockCode?: string;
     errorOnly?: boolean;
     receivedFrom?: string;
     receivedTo?: string;
@@ -395,15 +396,21 @@ function buildMockChoiceNewsEnvelope(options: {
   offset: number;
   groupId?: string;
   topicCode?: string;
+  stockCode?: string;
   errorOnly?: boolean;
   receivedFrom?: string;
   receivedTo?: string;
 }): ApiEnvelope<ChoiceNewsEventsPayload> {
+  const stockCode = options.stockCode?.trim().toUpperCase() || null;
+  const stockFilterTokens = buildChoiceNewsStockFilterTokens(stockCode);
   const filtered = MOCK_CHOICE_NEWS_EVENTS.filter((event) => {
     if (options.groupId?.trim() && event.group_id !== options.groupId.trim()) {
       return false;
     }
     if (options.topicCode?.trim() && event.topic_code !== options.topicCode.trim()) {
+      return false;
+    }
+    if (stockFilterTokens.length > 0 && !choiceNewsEventMatchesStockTokens(event, stockFilterTokens)) {
       return false;
     }
     if (options.errorOnly && event.error_code === 0) {
@@ -418,12 +425,36 @@ function buildMockChoiceNewsEnvelope(options: {
     return true;
   });
 
-  return buildMockApiEnvelope("news.choice.latest", {
+  const result: ChoiceNewsEventsPayload = {
     total_rows: filtered.length,
     limit: options.limit,
     offset: options.offset,
     events: filtered.slice(options.offset, options.offset + options.limit),
-  });
+  };
+  if (stockCode) {
+    result.stock_code = stockCode;
+    result.stock_filter_mode = "payload_text_or_json_best_effort";
+    result.stock_filter_tokens = stockFilterTokens;
+  }
+  return buildMockApiEnvelope("news.choice.latest", result);
+}
+
+function buildChoiceNewsStockFilterTokens(stockCode: string | null): string[] {
+  if (!stockCode) return [];
+  const tokens = [stockCode];
+  const stem = stockCode.split(".", 1)[0];
+  if (/^\d{6}$/.test(stem)) {
+    tokens.push(stem);
+  }
+  return Array.from(new Set(tokens));
+}
+
+function choiceNewsEventMatchesStockTokens(
+  event: ChoiceNewsEventsPayload["events"][number],
+  tokens: string[],
+): boolean {
+  const haystack = `${event.payload_text ?? ""}\n${event.payload_json ?? ""}`.toUpperCase();
+  return tokens.some((token) => haystack.includes(token.toUpperCase()));
 }
 
 function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
@@ -1978,6 +2009,7 @@ export function createRealMarketDataClient({
       offset,
       groupId,
       topicCode,
+      stockCode,
       errorOnly,
       receivedFrom,
       receivedTo,
@@ -1990,6 +2022,9 @@ export function createRealMarketDataClient({
       }
       if (topicCode?.trim()) {
         params.set("topic_code", topicCode.trim());
+      }
+      if (stockCode?.trim()) {
+        params.set("stock_code", stockCode.trim());
       }
       if (errorOnly) {
         params.set("error_only", "true");

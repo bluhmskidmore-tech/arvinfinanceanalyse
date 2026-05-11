@@ -1,15 +1,16 @@
+import re
 from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.choice_news_service import choice_news_latest_envelope
 from backend.app.services.tushare_news_ingest_service import ingest_tushare_npr_to_choice_news
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui/news")
 # Same ingest under `/api/news/...` so gateways that only forward `/api/**` still work (dev proxy already covers both).
 router_api_news = APIRouter(prefix="/api/news")
+_STOCK_CODE_CHOICE_NEWS_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
 
 
 def _raise_choice_news_reserved_surface() -> None:
@@ -26,10 +27,20 @@ def choice_events_latest(
     offset: int = Query(default=0, ge=0),
     group_id: str | None = None,
     topic_code: str | None = None,
+    stock_code: str | None = Query(default=None, max_length=16),
     error_only: bool = False,
     received_from: str | None = None,
     received_to: str | None = None,
 ) -> dict[str, object]:
+    cleaned_stock_code = None
+    if stock_code is not None and stock_code.strip():
+        cleaned_stock_code = stock_code.strip().upper()
+        if not _STOCK_CODE_CHOICE_NEWS_PATTERN.fullmatch(cleaned_stock_code):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
+            )
+
     settings = get_settings()
     try:
         ensure_user_allowed(
@@ -46,6 +57,7 @@ def choice_events_latest(
         offset=offset,
         group_id=group_id,
         topic_code=topic_code,
+        stock_code=cleaned_stock_code,
         error_only=error_only,
         received_from=received_from,
         received_to=received_to,

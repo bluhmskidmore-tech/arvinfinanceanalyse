@@ -137,6 +137,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
   const [lookback, setLookback] = useState<number>(60);
 
   const open = stockCode != null && stockCode.trim() !== "";
+  const stockCodeForQuery = stockCode?.trim() || undefined;
 
   const detailQuery = useQuery({
     queryKey: ["stock-analysis", "livermore-stock-detail", stockCode, asOfDate ?? null, lookback] as const,
@@ -150,8 +151,13 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
   });
 
   const choiceNewsQuery = useQuery({
-    queryKey: ["stock-analysis", "choice-news-latest-global", open ? 10 : 0] as const,
-    queryFn: () => client.getChoiceNewsEvents({ limit: 10, offset: 0 }),
+    queryKey: ["stock-analysis", "choice-news-latest", stockCodeForQuery ?? "__none", open ? 10 : 0] as const,
+    queryFn: () =>
+      client.getChoiceNewsEvents({
+        limit: 10,
+        offset: 0,
+        stockCode: stockCodeForQuery,
+      }),
     enabled: open,
   });
 
@@ -355,7 +361,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                 role="note"
                 data-testid="stock-detail-market-events-banner"
               >
-                当前为全市场最新事件，未按本股过滤（按股过滤需后端补 payload 解析）
+                按股票代码匹配 Choice/Tushare 事件 payload（best effort）；公告、财报、基本面与资金流仍待治理或口径确认。
               </div>
               {choiceNewsQuery.isLoading ? (
                 <p className="stock-detail-drawer__market-events-loading" data-testid="stock-detail-market-events-loading">
@@ -377,7 +383,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
               ) : null}
               {choiceNewsQuery.isSuccess && !choiceNewsQuery.data?.result?.events?.length ? (
                 <p className="stock-detail-drawer__market-events-empty" data-testid="stock-detail-market-events-empty">
-                  暂无市场事件数据（或库表尚无写入）
+                  暂无与该股票代码匹配的市场事件（或库表尚无写入）
                 </p>
               ) : null}
               {choiceNewsQuery.isSuccess && (choiceNewsQuery.data?.result?.events?.length ?? 0) > 0 ? (
