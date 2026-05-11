@@ -58,7 +58,15 @@ class KpiRepository:
     dsn: str
 
     def __post_init__(self) -> None:
-        self.engine = create_engine(_normalize_sqlalchemy_dsn(self.dsn), future=True)
+        normalized_dsn = _normalize_sqlalchemy_dsn(self.dsn)
+        connect_args: dict[str, object] = {}
+        if normalized_dsn.startswith("postgresql+psycopg://"):
+            connect_args["connect_timeout"] = 1
+        self.engine = create_engine(
+            normalized_dsn,
+            future=True,
+            connect_args=connect_args,
+        )
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
             Base.metadata.create_all(
