@@ -47,6 +47,26 @@ function buildMiniChartPoints(values: readonly number[], width = 360, height = 1
     .join(" ");
 }
 
+const PORTFOLIO_COLORS = ["#2f7eea", "#f05a28", "#19a66a", "#8b9bb4"];
+
+function buildDonutGradient(
+  items: Array<{ value: number; color: string }>,
+): string {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) {
+    return "conic-gradient(#e6edf6 0deg 360deg)";
+  }
+
+  let cursor = 0;
+  const segments = items.map((item) => {
+    const start = cursor;
+    const end = cursor + (item.value / total) * 360;
+    cursor = end;
+    return `${item.color} ${start.toFixed(1)}deg ${end.toFixed(1)}deg`;
+  });
+  return `conic-gradient(${segments.join(", ")})`;
+}
+
 type DashboardCockpitMarketTickerProps = {
   items: readonly DashboardCockpitTickerItem[];
   isLoading: boolean;
@@ -338,6 +358,19 @@ export function DashboardCockpitLowerGrid({
 }
 
 function DashboardCockpitPortfolioPanel({ items }: { items: readonly DashboardCockpitPortfolioItem[] }) {
+  const chartItems = items
+    .map((item, index) => ({
+      item,
+      value: parseDisplayNumber(item.value),
+      color: PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length],
+    }))
+    .filter(
+      (entry): entry is { item: DashboardCockpitPortfolioItem; value: number; color: string } =>
+        entry.value !== null && entry.value > 0 && entry.item.status !== "blocked",
+    );
+  const gradient = buildDonutGradient(chartItems);
+  const leadItem = chartItems[0]?.item;
+
   return (
     <section data-testid="dashboard-cockpit-portfolio-panel" className="dashboard-cockpit-card dashboard-cockpit-panel">
       <div className="dashboard-cockpit-panel-head">
@@ -346,14 +379,32 @@ function DashboardCockpitPortfolioPanel({ items }: { items: readonly DashboardCo
           <h2 className="dashboard-cockpit-title">资产分布</h2>
         </div>
       </div>
-      <div className="dashboard-cockpit-portfolio-list">
-        {items.map((item) => (
-          <article key={item.id} className={cx("dashboard-cockpit-portfolio-row", statusClass(item.status))}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <em>{item.detail}</em>
-          </article>
-        ))}
+      <div className="dashboard-cockpit-portfolio-body">
+        <div
+          data-testid="dashboard-cockpit-portfolio-donut"
+          className={cx(
+            "dashboard-cockpit-donut",
+            chartItems.length === 0 && "dashboard-cockpit-donut--blocked",
+          )}
+          style={{ "--donut-gradient": gradient } as CSSProperties}
+          aria-hidden="true"
+        >
+          <span>{leadItem?.label ?? "结构"}</span>
+          <strong>{leadItem?.value ?? "--"}</strong>
+        </div>
+        <div className="dashboard-cockpit-portfolio-list">
+          {items.map((item, index) => (
+            <article key={item.id} className={cx("dashboard-cockpit-portfolio-row", statusClass(item.status))}>
+              <i
+                aria-hidden="true"
+                style={{ "--swatch": PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length] } as CSSProperties}
+              />
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <em>{item.detail}</em>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -395,7 +446,13 @@ function DashboardCockpitCalendarPanel({ items }: { items: readonly DashboardCoc
       </div>
       <div className="dashboard-cockpit-calendar-list">
         {items.length === 0 ? (
-          <p className="dashboard-cockpit-muted">暂无同源日历上下文。</p>
+          <div
+            data-testid="dashboard-cockpit-calendar-empty"
+            className="dashboard-cockpit-calendar-empty"
+          >
+            <strong>暂无同源日历上下文</strong>
+            <span>日历不参与本日判断，等待供应/事件读面治理。</span>
+          </div>
         ) : (
           items.map((item) => (
             <article key={item.id} className={cx("dashboard-cockpit-calendar-item", toneClass(item.tone))}>

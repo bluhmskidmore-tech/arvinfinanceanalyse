@@ -129,6 +129,8 @@ export type DashboardCockpitModelInput = {
   calendarItems?: readonly ResearchCalendarEvent[] | null;
 };
 
+type NumericLike = Numeric | string | number | null | undefined;
+
 const MARKET_TICKER_PRIORITY: ReadonlyArray<{
   ids: readonly string[];
   label: string;
@@ -144,6 +146,12 @@ const MARKET_TICKER_PRIORITY: ReadonlyArray<{
 
 const EMPTY_DISPLAY = "--";
 
+const ASSET_CLASS_LABELS: Record<string, string> = {
+  credit: "信用债",
+  rate: "利率债",
+  other: "其他",
+};
+
 function cleanDate(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
@@ -154,13 +162,94 @@ function isSameReportDate(expected: string, actual: string | null | undefined): 
   return expectedDate.length > 0 && actualDate.length > 0 && expectedDate === actualDate;
 }
 
-function numericDisplay(value: Numeric | null | undefined, fallback = EMPTY_DISPLAY): string {
-  const display = value?.display?.trim();
-  return display && display.length > 0 ? display : fallback;
+function numericObject(value: NumericLike): Numeric | null {
+  if (value == null || typeof value === "string" || typeof value === "number") {
+    return null;
+  }
+  return value;
 }
 
-function numericTone(value: Numeric | null | undefined): DashboardCockpitTone {
-  const raw = value?.raw;
+function numericRaw(value: NumericLike): number | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const raw = value.raw;
+  if (raw == null) {
+    return null;
+  }
+  const parsed = typeof raw === "number" ? raw : Number(String(raw).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formattedDisplay(value: NumericLike): string | null {
+  const display = numericObject(value)?.display?.trim();
+  return display && display.length > 0 ? display : null;
+}
+
+function formatWithCommas(value: number, digits: number): string {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function numericDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const display = formattedDisplay(value);
+  if (display) return display;
+  const raw = numericRaw(value);
+  return raw == null ? fallback : formatWithCommas(raw, Math.abs(raw) >= 100 ? 0 : 2);
+}
+
+function yuanYiDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const display = formattedDisplay(value);
+  if (display) return display;
+  const raw = numericRaw(value);
+  return raw == null ? fallback : `${formatWithCommas(raw / 100_000_000, 2)} 亿`;
+}
+
+function percentDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const display = formattedDisplay(value);
+  if (display) return display;
+  const raw = numericRaw(value);
+  return raw == null ? fallback : `${formatWithCommas(raw * 100, 2)}%`;
+}
+
+function bpDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const display = formattedDisplay(value);
+  if (display) return display;
+  const raw = numericRaw(value);
+  if (raw == null) return fallback;
+  const bp = raw * 10_000;
+  return `${formatWithCommas(bp, Math.abs(bp) >= 100 ? 0 : 1)}bp`;
+}
+
+function durationDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const display = formattedDisplay(value);
+  if (display) return display;
+  const raw = numericRaw(value);
+  return raw == null ? fallback : formatWithCommas(raw, 2);
+}
+
+function dv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const display = formattedDisplay(value);
+  if (display) return display;
+  const raw = numericRaw(value);
+  return raw == null ? fallback : `${formatWithCommas(raw / 10_000, 2)} 万`;
+}
+
+function hasNumericValue(value: NumericLike): boolean {
+  return numericRaw(value) !== null || formattedDisplay(value) !== null;
+}
+
+function numericTone(value: NumericLike): DashboardCockpitTone {
+  const raw = numericRaw(value);
   if (raw == null || Number.isNaN(raw)) {
     return "neutral";
   }
@@ -299,7 +388,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
     {
       id: "duration",
       label: "久期(年)",
-      value: numericDisplay(headline?.kpis.weighted_duration ?? portfolio?.weighted_duration),
+      value: durationDisplay(headline?.kpis.weighted_duration ?? portfolio?.weighted_duration),
       delta: headline?.prev_report_date ? `较 ${headline.prev_report_date}` : "同日读面",
       hint: "债券 headline / portfolio",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
@@ -308,7 +397,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
     {
       id: "ytm",
       label: "组合到期收益率",
-      value: numericDisplay(headline?.kpis.weighted_ytm ?? portfolio?.weighted_ytm),
+      value: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio?.weighted_ytm),
       delta: "同报告日",
       hint: "债券 headline KPI",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
@@ -317,7 +406,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
     {
       id: "credit-spread",
       label: "信用利差(BP)",
-      value: numericDisplay(headline?.kpis.credit_spread_median),
+      value: bpDisplay(headline?.kpis.credit_spread_median),
       delta: "同报告日",
       hint: "债券 headline KPI",
       status: headlineAllowed ? "supplemental" : "blocked",
@@ -326,7 +415,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
     {
       id: "dv01",
       label: "组合DV01",
-      value: numericDisplay(headline?.kpis.total_dv01 ?? portfolio?.total_dv01),
+      value: dv01Display(headline?.kpis.total_dv01 ?? portfolio?.total_dv01),
       delta: "元/1bp",
       hint: "portfolio headlines",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
@@ -335,7 +424,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
     {
       id: "coupon",
       label: "票息/Carry",
-      value: numericDisplay(headline?.kpis.weighted_coupon ?? portfolio?.weighted_coupon),
+      value: percentDisplay(headline?.kpis.weighted_coupon ?? portfolio?.weighted_coupon),
       delta: "近似 carry",
       hint: "当前无正式 carry+roll 口径，使用票息上下文",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
@@ -353,7 +442,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
     {
       id: "total-market-value",
       label: "组合市值",
-      value: numericDisplay(
+      value: yuanYiDisplay(
         headline?.kpis.total_market_value ?? portfolio?.total_market_value ?? core?.bond_investments.total_amount,
       ),
       delta: core ? "含规模读面" : "债券读面",
@@ -419,7 +508,7 @@ function buildAnalysisCards(input: {
       title: "信用判断",
       statusLabel: headlineAllowed ? "可信" : "阻断",
       detail: headlineAllowed
-        ? `信用利差中位数 ${numericDisplay(input.bondHeadline?.kpis.credit_spread_median)}。`
+        ? `信用利差中位数 ${bpDisplay(input.bondHeadline?.kpis.credit_spread_median)}。`
         : "债券 headline 报告日不一致或未返回。",
       primaryLabel: "核心观点",
       primaryValue: headlineAllowed ? "分层复核" : "不进结论",
@@ -434,7 +523,7 @@ function buildAnalysisCards(input: {
         ? `资金利率 ${dr007.value}，${dr007.delta}。`
         : "缺少资金行情，资金判断仅作为下钻入口。",
       primaryLabel: "核心观点",
-      primaryValue: portfolioAllowed ? `DV01 ${numericDisplay(input.portfolio?.total_dv01)}` : "待治理",
+      primaryValue: portfolioAllowed ? `DV01 ${dv01Display(input.portfolio?.total_dv01)}` : "待治理",
       status: dr007?.status ?? (portfolioAllowed ? "supplemental" : "blocked"),
       tone: dr007?.tone ?? "neutral",
     },
@@ -508,13 +597,30 @@ function buildPortfolioMix(
     ];
   }
 
-  return portfolio.by_asset_class.slice(0, 4).map((item) => ({
+  const rows = portfolio.by_asset_class
+    .filter((item) => hasNumericValue(item.weight) || hasNumericValue(item.market_value))
+    .slice(0, 4)
+    .map((item) => ({
     id: item.asset_class,
-    label: item.asset_class,
-    value: numericDisplay(item.weight),
-    detail: `${numericDisplay(item.market_value)} / 久期 ${numericDisplay(item.duration)}`,
-    status: "supplemental",
+    label: ASSET_CLASS_LABELS[item.asset_class] ?? item.asset_class,
+    value: percentDisplay(item.weight),
+    detail: `${yuanYiDisplay(item.market_value)} / 久期 ${durationDisplay(item.duration)}`,
+    status: "supplemental" as const,
   }));
+
+  if (rows.length === 0) {
+    return [
+      {
+        id: "portfolio-empty",
+        label: "组合结构",
+        value: EMPTY_DISPLAY,
+        detail: "同日报告日已返回，但缺少可展示的资产分类数值。",
+        status: "blocked",
+      },
+    ];
+  }
+
+  return rows;
 }
 
 function buildRiskItems(
@@ -535,11 +641,31 @@ function buildRiskItems(
     ];
   }
 
+  const hasRiskValues = [
+    portfolio.total_dv01,
+    portfolio.weighted_duration,
+    portfolio.issuer_top5_weight,
+    portfolio.credit_weight,
+  ].some(hasNumericValue);
+
+  if (!hasRiskValues) {
+    return [
+      {
+        id: "portfolio-risk-empty",
+        label: "风险摘要",
+        value: EMPTY_DISPLAY,
+        hint: "同日报告日已返回，但风险字段缺少可展示数值。",
+        status: "blocked",
+        tone: "warning",
+      },
+    ];
+  }
+
   return [
     {
       id: "dv01",
       label: "DV01",
-      value: numericDisplay(portfolio.total_dv01),
+      value: dv01Display(portfolio.total_dv01),
       hint: "元/1bp",
       status: "supplemental",
       tone: "neutral",
@@ -547,7 +673,7 @@ function buildRiskItems(
     {
       id: "duration",
       label: "久期",
-      value: numericDisplay(portfolio.weighted_duration),
+      value: durationDisplay(portfolio.weighted_duration),
       hint: "组合加权",
       status: "supplemental",
       tone: "neutral",
@@ -555,7 +681,7 @@ function buildRiskItems(
     {
       id: "issuer-top5",
       label: "发行人Top5",
-      value: numericDisplay(portfolio.issuer_top5_weight),
+      value: percentDisplay(portfolio.issuer_top5_weight),
       hint: "集中度",
       status: "supplemental",
       tone: "warning",
@@ -563,7 +689,7 @@ function buildRiskItems(
     {
       id: "credit-weight",
       label: "信用占比",
-      value: numericDisplay(portfolio.credit_weight),
+      value: percentDisplay(portfolio.credit_weight),
       hint: "资产结构",
       status: "supplemental",
       tone: "neutral",
@@ -586,6 +712,10 @@ function buildCalendarItems(
 function buildWatchRows(input: DashboardCockpitModelInput): DashboardCockpitWatchRow[] {
   const headlineAllowed = isSameReportDate(input.reportDate, input.bondHeadline?.report_date);
   const portfolioAllowed = isSameReportDate(input.reportDate, input.portfolio?.report_date);
+  const changesAllowed = isSameReportDate(input.reportDate, input.dailyChanges?.report_date);
+  const dayChange = changesAllowed
+    ? input.dailyChanges?.periods.find((period) => period.period === "day") ?? null
+    : null;
   if (!headlineAllowed && !portfolioAllowed) {
     return [
       {
@@ -607,9 +737,9 @@ function buildWatchRows(input: DashboardCockpitModelInput): DashboardCockpitWatc
       id: "portfolio-duration-watch",
       code: "PORT-DUR",
       name: "组合久期观察",
-      maturity: numericDisplay(input.bondHeadline?.kpis.weighted_duration ?? input.portfolio?.weighted_duration),
-      yieldValue: numericDisplay(input.bondHeadline?.kpis.weighted_ytm ?? input.portfolio?.weighted_ytm),
-      dailyChange: numericDisplay(input.dailyChanges?.periods.find((period) => period.period === "day")?.net_change),
+      maturity: durationDisplay(input.bondHeadline?.kpis.weighted_duration ?? input.portfolio?.weighted_duration),
+      yieldValue: percentDisplay(input.bondHeadline?.kpis.weighted_ytm ?? input.portfolio?.weighted_ytm),
+      dailyChange: numericDisplay(dayChange?.net_change),
       rating: "组合",
       reason: "长端利率与久期共同复核。",
       status: "supplemental",
@@ -618,11 +748,22 @@ function buildWatchRows(input: DashboardCockpitModelInput): DashboardCockpitWatc
       id: "portfolio-credit-watch",
       code: "PORT-CRD",
       name: "信用仓位观察",
-      maturity: numericDisplay(input.portfolio?.credit_weight),
-      yieldValue: numericDisplay(input.bondHeadline?.kpis.credit_spread_median),
-      dailyChange: numericDisplay(input.portfolio?.issuer_top5_weight),
+      maturity: percentDisplay(input.portfolio?.credit_weight),
+      yieldValue: bpDisplay(input.bondHeadline?.kpis.credit_spread_median),
+      dailyChange: percentDisplay(input.portfolio?.issuer_top5_weight),
       rating: "信用",
       reason: "信用利差与集中度共同复核。",
+      status: "supplemental",
+    },
+    {
+      id: "portfolio-dv01-watch",
+      code: "PORT-RSK",
+      name: "DV01与票息观察",
+      maturity: dv01Display(input.bondHeadline?.kpis.total_dv01 ?? input.portfolio?.total_dv01),
+      yieldValue: percentDisplay(input.bondHeadline?.kpis.weighted_coupon ?? input.portfolio?.weighted_coupon),
+      dailyChange: numericDisplay(dayChange?.bond_investments_change),
+      rating: "风险",
+      reason: "DV01、票息与债券规模变动共同复核。",
       status: "supplemental",
     },
   ];

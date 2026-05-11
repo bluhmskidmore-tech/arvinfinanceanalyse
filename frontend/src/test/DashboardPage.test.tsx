@@ -302,6 +302,7 @@ describe("DashboardPage", () => {
     expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-risk-panel"));
     expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-calendar-panel"));
     expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-watch-table"));
+    expect(within(lowerGrid).getByTestId("dashboard-cockpit-portfolio-donut")).toBeInTheDocument();
     expect(businessBalanceSummary).toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
     expect(detailDrilldown.tagName.toLowerCase()).toBe("details");

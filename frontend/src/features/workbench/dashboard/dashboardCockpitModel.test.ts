@@ -121,6 +121,57 @@ function portfolio(reportDate = "2026-04-30"): BondPortfolioHeadlinesPayload {
   };
 }
 
+function backendScalarPortfolio(reportDate = "2026-04-30"): BondPortfolioHeadlinesPayload {
+  return {
+    report_date: reportDate,
+    total_market_value: "343822795478.69000000",
+    weighted_ytm: "0.02565621",
+    weighted_duration: "4.13678311",
+    weighted_coupon: "0.02069003",
+    total_dv01: "106155944.30769531",
+    bond_count: 1740,
+    credit_weight: "0.29250449",
+    issuer_hhi: "0.05088252",
+    issuer_top5_weight: "0.41354965",
+    by_asset_class: [
+      {
+        asset_class: "credit",
+        market_value: "100569711455.34000000",
+        duration: "2.40294438",
+        dv01: "23572092.66263087",
+        weight: "0.29250449",
+      },
+      {
+        asset_class: "rate",
+        market_value: "134490494185.69000000",
+        duration: "5.62782976",
+        dv01: "73667216.08117440",
+        weight: "0.39116224",
+      },
+    ],
+    warnings: [],
+    computed_at: "2026-05-10T00:00:00Z",
+  } as unknown as BondPortfolioHeadlinesPayload;
+}
+
+function backendScalarHeadline(reportDate = "2026-04-30"): BondDashboardHeadlinePayload {
+  return {
+    report_date: reportDate,
+    prev_report_date: "2026-03-31",
+    kpis: {
+      total_market_value: "343822795478.68999970",
+      unrealized_pnl: "8012857242.10999940",
+      weighted_ytm: "0.02565621",
+      weighted_duration: "4.13678311",
+      weighted_coupon: "0.02043630",
+      credit_spread_median: "0.02390000",
+      total_dv01: "106155944.30769532",
+      bond_count: 1740,
+    },
+    prev_kpis: null,
+  } as unknown as BondDashboardHeadlinePayload;
+}
+
 function statusById(
   sections: ReturnType<typeof buildDashboardCockpitModel>["sections"],
   id: string,
@@ -199,5 +250,85 @@ describe("buildDashboardCockpitModel", () => {
     });
     expect(model.firstScreenSections.some((section) => section.status === "reserved")).toBe(false);
     expect(model.firstScreenSections.some((section) => section.status === "demo")).toBe(false);
+  });
+
+  it("formats backend scalar strings for portfolio, risk, and watch rows", () => {
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: coreMetrics(),
+      dailyChanges: dailyChanges(),
+      bondHeadline: backendScalarHeadline(),
+      portfolio: backendScalarPortfolio(),
+      marketPoints: [],
+      calendarItems: [],
+    });
+
+    expect(model.portfolioMix[0]).toMatchObject({
+      label: "信用债",
+      value: "29.25%",
+      detail: "1,005.70 亿 / 久期 2.40",
+      status: "supplemental",
+    });
+    expect(model.portfolioMix[1]).toMatchObject({
+      label: "利率债",
+      value: "39.12%",
+      detail: "1,344.90 亿 / 久期 5.63",
+    });
+    expect(model.riskItems.map((item) => item.value)).toEqual([
+      "10,615.59 万",
+      "4.14",
+      "41.35%",
+      "29.25%",
+    ]);
+    expect(model.watchRows[0]).toMatchObject({
+      maturity: "4.14",
+      yieldValue: "2.57%",
+      dailyChange: "+2.95 亿",
+    });
+    expect(model.watchRows[1]).toMatchObject({
+      maturity: "29.25%",
+      yieldValue: "239bp",
+      dailyChange: "41.35%",
+    });
+  });
+
+  it("renders compact blocked placeholders when same-day portfolio rows are unusable", () => {
+    const emptyPortfolio = {
+      ...backendScalarPortfolio(),
+      by_asset_class: [],
+      total_dv01: null,
+      weighted_duration: null,
+      issuer_top5_weight: null,
+      credit_weight: null,
+    } as unknown as BondPortfolioHeadlinesPayload;
+
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: null,
+      dailyChanges: null,
+      bondHeadline: null,
+      portfolio: emptyPortfolio,
+      marketPoints: [],
+      calendarItems: [],
+    });
+
+    expect(model.portfolioMix).toEqual([
+      expect.objectContaining({
+        id: "portfolio-empty",
+        status: "blocked",
+        value: "--",
+      }),
+    ]);
+    expect(model.riskItems).toEqual([
+      expect.objectContaining({
+        id: "portfolio-risk-empty",
+        status: "blocked",
+        value: "--",
+      }),
+    ]);
   });
 });
