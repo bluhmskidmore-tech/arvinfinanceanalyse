@@ -410,8 +410,11 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "moving_average",
         "mean_reversion_momentum",
         "multi_factor_selection",
+        "low_crowding_regime_multifactor",
     }
     assert strategy_summaries["moving_average"]["status"] == "sample_only"
+    assert strategy_summaries["low_crowding_regime_multifactor"]["status"] == "sample_only"
+    assert strategy_summaries["low_crowding_regime_multifactor"]["result"]["regime"]
     assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
 
 
@@ -473,6 +476,18 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert strategies["mean_reversion_momentum"]["status"] == "complete"
     assert strategies["multi_factor_selection"]["status"] == "degraded"
     assert "FUNDAMENTAL_FACTORS_NOT_MATERIALIZED" in strategies["multi_factor_selection"]["warnings"]
+    low_crowding = strategies["low_crowding_regime_multifactor"]
+    assert low_crowding["status"] == "degraded"
+    assert low_crowding["result"]["price_source"] == "choice_stock_daily_observation"
+    assert low_crowding["result"]["regime"] in {
+        "liquidity_shock",
+        "crowded_quant",
+        "fast_down",
+        "range",
+        "weak_up",
+        "strong_up",
+    }
+    assert "FACTOR_SNAPSHOT_REQUIRED_FOR_LOW_CROWDING_MULTIFACTOR" in low_crowding["warnings"]
     assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
 
 
@@ -530,6 +545,13 @@ def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_fact
     assert multi_factor["primary_metric"]["value"] == 1
     assert multi_factor["result"]["factor_source"] == "choice_stock_factor_snapshot"
     assert multi_factor["result"]["selected_stock_codes"] == ["000001.SZ"]
+    low_crowding = strategies["low_crowding_regime_multifactor"]
+    assert low_crowding["status"] == "complete"
+    assert low_crowding["warnings"] == []
+    assert low_crowding["result"]["factor_source"] == "choice_stock_factor_snapshot"
+    assert low_crowding["result"]["selected_stock_codes"]
+    assert "target_position" in low_crowding["result"]
+    assert low_crowding["result"]["crowding_excluded_count"] == 0
     assert "choice_stock_factor_snapshot" in payload["result_meta"]["tables_used"]
 
 

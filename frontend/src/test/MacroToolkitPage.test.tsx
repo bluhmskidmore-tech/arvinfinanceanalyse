@@ -41,6 +41,7 @@ describe("MacroToolkitPage", () => {
     expect(await screen.findByText("移动均线策略")).toBeInTheDocument();
     expect(await screen.findByText("多因子选股")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /刷新股票数据/ })).toBeInTheDocument();
+    expect(await screen.findByText("低拥挤度择时多因子")).toBeInTheDocument();
     expect((await screen.findAllByText(/M7/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/M16/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("signal_aggregator")).length).toBeGreaterThan(0);

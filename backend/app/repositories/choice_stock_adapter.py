@@ -14,9 +14,12 @@ ChoiceStockInputFamily = Literal[
     "stock_ohlcv",
     "stock_status",
     "limit_up_quality",
+    "concept_membership",
+    "intraday_movement",
 ]
 ChoiceStockCall = Literal["css", "csd", "ctr", "sector"]
 ChoiceStockCatalogStatus = Literal["missing_catalog", "incomplete_catalog", "ready"]
+ChoiceStockOptionalInputStatus = Literal["catalog_unconfirmed", "confirmed"]
 ChoiceRequestOptionValue: TypeAlias = str | int | float | bool
 
 CHOICE_STOCK_REQUIRED_INPUT_FAMILIES: tuple[ChoiceStockInputFamily, ...] = (
@@ -26,6 +29,10 @@ CHOICE_STOCK_REQUIRED_INPUT_FAMILIES: tuple[ChoiceStockInputFamily, ...] = (
     "stock_ohlcv",
     "stock_status",
     "limit_up_quality",
+)
+CHOICE_STOCK_OPTIONAL_INPUT_FAMILIES: tuple[ChoiceStockInputFamily, ...] = (
+    "concept_membership",
+    "intraday_movement",
 )
 CHOICE_STOCK_HISTORY_CALENDAR_DAYS = 220
 
@@ -65,6 +72,7 @@ class ChoiceStockReadiness(BaseModel):
     vendor_name: Literal["choice"] = "choice"
     missing_input_families: list[ChoiceStockInputFamily]
     unconfirmed_fields: list[str] = Field(default_factory=list)
+    optional_input_status: dict[ChoiceStockInputFamily, ChoiceStockOptionalInputStatus] = Field(default_factory=dict)
     message: str
 
 
@@ -147,7 +155,7 @@ def load_choice_stock_request_plan(
     requests = [
         _build_request_plan_item(entry=entry, as_of_date=as_of_date)
         for entry in catalog.fields
-        if entry.required and _entry_is_confirmed(entry)
+        if _entry_is_confirmed(entry)
     ]
     return ChoiceStockRequestPlan(
         ready=True,
@@ -177,12 +185,17 @@ def build_choice_stock_readiness(
         for entry in catalog.fields
         if entry.required and not _entry_is_confirmed(entry)
     ]
+    optional_input_status = {
+        family: _optional_input_status_for_family(catalog.fields, family)
+        for family in CHOICE_STOCK_OPTIONAL_INPUT_FAMILIES
+    }
 
     if missing_families:
         return _incomplete_readiness(
             catalog_path=catalog_path,
             missing_input_families=missing_families,
             unconfirmed_fields=unconfirmed_fields,
+            optional_input_status=optional_input_status,
         )
 
     return ChoiceStockReadiness(
@@ -191,6 +204,7 @@ def build_choice_stock_readiness(
         catalog_path=catalog_path,
         missing_input_families=[],
         unconfirmed_fields=[],
+        optional_input_status=optional_input_status,
         message="Choice stock catalog is confirmed for required Livermore stock input families.",
     )
 
@@ -201,6 +215,9 @@ def choice_stock_readiness_missing(catalog_path: str) -> ChoiceStockReadiness:
         status="missing_catalog",
         catalog_path=catalog_path,
         missing_input_families=list(CHOICE_STOCK_REQUIRED_INPUT_FAMILIES),
+        optional_input_status={
+            family: "catalog_unconfirmed" for family in CHOICE_STOCK_OPTIONAL_INPUT_FAMILIES
+        },
         message=(
             "Choice stock catalog is missing; required input families are blocked: "
             f"{_format_families(CHOICE_STOCK_REQUIRED_INPUT_FAMILIES)}."
@@ -213,6 +230,7 @@ def _incomplete_readiness(
     catalog_path: str,
     missing_input_families: list[ChoiceStockInputFamily] | None = None,
     unconfirmed_fields: list[str] | None = None,
+    optional_input_status: dict[ChoiceStockInputFamily, ChoiceStockOptionalInputStatus] | None = None,
 ) -> ChoiceStockReadiness:
     missing = missing_input_families or list(CHOICE_STOCK_REQUIRED_INPUT_FAMILIES)
     fields = unconfirmed_fields or []
@@ -222,6 +240,8 @@ def _incomplete_readiness(
         catalog_path=catalog_path,
         missing_input_families=missing,
         unconfirmed_fields=fields,
+        optional_input_status=optional_input_status
+        or {family: "catalog_unconfirmed" for family in CHOICE_STOCK_OPTIONAL_INPUT_FAMILIES},
         message=(
             "Choice stock catalog is incomplete; missing or unconfirmed required input families: "
             f"{_format_families(missing)}."
@@ -300,6 +320,23 @@ def _entry_is_confirmed(entry: ChoiceStockCatalogEntry) -> bool:
         and bool(entry.confirmation_source.strip())
         and bool(entry.confirmed_at.strip())
     )
+
+
+def choice_stock_optional_input_status(
+    readiness: ChoiceStockReadiness,
+    input_family: ChoiceStockInputFamily,
+) -> ChoiceStockOptionalInputStatus:
+    return readiness.optional_input_status.get(input_family, "catalog_unconfirmed")
+
+
+def _optional_input_status_for_family(
+    fields: list[ChoiceStockCatalogEntry],
+    input_family: ChoiceStockInputFamily,
+) -> ChoiceStockOptionalInputStatus:
+    matching = [entry for entry in fields if entry.input_family == input_family and not entry.required]
+    if any(_entry_is_confirmed(entry) for entry in matching):
+        return "confirmed"
+    return "catalog_unconfirmed"
 
 
 def _summarize_error(exc: Exception) -> str:

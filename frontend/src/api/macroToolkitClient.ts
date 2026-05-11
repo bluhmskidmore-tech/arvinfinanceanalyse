@@ -530,6 +530,22 @@ const MOCK_STRATEGY_SUMMARIES: MacroToolkitStrategySummary[] = [
     warnings: ["SYNTHETIC_SAMPLE_ONLY"],
     result: { data_status: "sample_only", selected_symbols: ["AAA"] },
   },
+  {
+    key: "low_crowding_regime_multifactor",
+    label: "低拥挤度择时多因子",
+    group: "A股策略",
+    status: "sample_only",
+    tone: "neutral",
+    primary_metric: { label: "样例目标仓位", value: 0.7, unit: "" },
+    evidence: ["样例市场状态 weak_up。", "样例低拥挤多因子入选 1 只。"],
+    warnings: ["SYNTHETIC_SAMPLE_ONLY"],
+    result: {
+      data_status: "sample_only",
+      regime: "weak_up",
+      target_position: 0.7,
+      selected_symbols: ["AAA"],
+    },
+  },
 ];
 
 const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {

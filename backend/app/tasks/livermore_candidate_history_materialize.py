@@ -9,7 +9,8 @@ from typing import Any, cast
 
 import duckdb
 
-from backend.app.repositories.choice_stock_adapter import choice_stock_readiness_missing
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, load_choice_stock_readiness
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.services.market_data_livermore_service import load_livermore_strategy_payload
 
@@ -38,6 +39,34 @@ _INSERT_COLUMNS = (
     "vendor_version",
     "rule_version",
     "run_id",
+    "signal_kind",
+    "theme_key",
+    "theme_name",
+    "theme_source_kind",
+    "theme_rank",
+    "stock_rank_in_theme",
+    "sector_rank",
+    "strength_pctchange",
+    "strength_turn",
+    "strength_amplitude",
+    "close_strength",
+    "closed_up_limit",
+    "signal_evidence_json",
+)
+_ADDED_COLUMN_SQL = (
+    ("signal_kind", "varchar"),
+    ("theme_key", "varchar"),
+    ("theme_name", "varchar"),
+    ("theme_source_kind", "varchar"),
+    ("theme_rank", "integer"),
+    ("stock_rank_in_theme", "integer"),
+    ("sector_rank", "integer"),
+    ("strength_pctchange", "double"),
+    ("strength_turn", "double"),
+    ("strength_amplitude", "double"),
+    ("close_strength", "double"),
+    ("closed_up_limit", "boolean"),
+    ("signal_evidence_json", "varchar"),
 )
 
 
@@ -45,6 +74,10 @@ def ensure_livermore_candidate_history_schema(conn: duckdb.DuckDBPyConnection) -
     text = (REGISTRY_DIR / "28_livermore_candidate_history.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
         conn.execute(statement)
+    existing = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_HIST}')").fetchall()}
+    for column, definition in _ADDED_COLUMN_SQL:
+        if column not in existing:
+            conn.execute(f"alter table {TABLE_HIST} add column {column} {definition}")
 
 
 def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str | None = None) -> dict[str, object]:
@@ -58,54 +91,46 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
 
     duckdb_file = Path(duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
     skipped: list[str] = []
-    run_id = ""
+
+    payload, meta = load_livermore_strategy_payload(
+        duckdb_path=str(duckdb_file),
+        as_of_date=parsed_as_of,
+        stock_readiness=_load_configured_stock_readiness(),
+    )
+    snapshot_as_of = cast(str | None, payload.get("as_of_date"))
+    if not snapshot_as_of:
+        return {
+            "status": "partial",
+            "row_count": 0,
+            "run_id": f"livermore_candidate_history:none:{uuid.uuid4().hex[:12]}",
+            "source_version": str(meta.get("source_version") or ""),
+            "vendor_version": str(meta.get("vendor_version") or ""),
+            "rule_version": RULE_VERSION,
+            "formula_version": FORMULA_VERSION,
+            "skipped": ["missing_resolved_as_of_date"],
+            "message": "Strategy payload has no resolved as_of_date; nothing written.",
+        }
+
+    items_sorted = _build_signal_rows(payload)
+
+    source_version_meta = cast(str, meta.get("source_version"))
+    lineage_payload = _build_vendor_payload(payload=payload, items=items_sorted, snapshot_as_of=snapshot_as_of)
+    vendor_version = _build_vendor_version(lineage_payload)
+    lineage_hash_source = hashlib.sha256(
+        json.dumps(lineage_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    row_source_version = f"sv_livermore_candidate_hist_{lineage_hash_source}"
+    run_id = f"livermore_candidate_history:{snapshot_as_of}:{uuid.uuid4().hex[:12]}"
+
+    conn = duckdb.connect(str(duckdb_file), read_only=False)
     try:
         ensure_livermore_candidate_history_schema(conn)
-        payload, meta = load_livermore_strategy_payload(
-            duckdb_path=str(duckdb_file),
-            as_of_date=parsed_as_of,
-            stock_readiness=choice_stock_readiness_missing(""),
-        )
-        snapshot_as_of = cast(str | None, payload.get("as_of_date"))
-        if not snapshot_as_of:
-            return {
-                "status": "partial",
-                "row_count": 0,
-                "run_id": f"livermore_candidate_history:none:{uuid.uuid4().hex[:12]}",
-                "source_version": str(meta.get("source_version") or ""),
-                "vendor_version": str(meta.get("vendor_version") or ""),
-                "rule_version": RULE_VERSION,
-                "formula_version": FORMULA_VERSION,
-                "skipped": ["missing_resolved_as_of_date"],
-                "message": "Strategy payload has no resolved as_of_date; nothing written.",
-            }
-
-        stock_candidates_raw = payload.get("stock_candidates")
-        items: list[dict[str, object]] = []
-        if isinstance(stock_candidates_raw, dict):
-            raw_items = stock_candidates_raw.get("items")
-            if isinstance(raw_items, list):
-                items = [cast(dict[str, object], x) for x in raw_items if isinstance(x, dict)]
-
-        items_sorted = sorted(
-            items,
-            key=lambda row: (_safe_int(row.get("rank"), default=9999), str(row.get("stock_code") or "")),
-        )
-
-        source_version_meta = cast(str, meta.get("source_version"))
-        lineage_payload = _build_vendor_payload(payload=payload, items=items_sorted, snapshot_as_of=snapshot_as_of)
-        vendor_version = _build_vendor_version(lineage_payload)
-        lineage_hash_source = hashlib.sha256(
-            json.dumps(lineage_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-        ).hexdigest()[:12]
-        row_source_version = f"sv_livermore_candidate_hist_{lineage_hash_source}"
-        run_id = f"livermore_candidate_history:{snapshot_as_of}:{uuid.uuid4().hex[:12]}"
-
         observation_table_ok = TABLE_OBS in {r[0] for r in conn.execute("show tables").fetchall()}
 
         computed_rows: list[dict[str, object]] = []
+        if not items_sorted:
+            skipped.append("no_strategy_signals")
         for item in items_sorted:
             code = _text(item.get("stock_code")).upper()
             if not code:
@@ -142,6 +167,19 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
                     "vendor_version": vendor_version,
                     "rule_version": RULE_VERSION,
                     "run_id": run_id,
+                    "signal_kind": _text(item.get("signal_kind")) or "stock_candidate",
+                    "theme_key": _optional_text(item.get("theme_key")),
+                    "theme_name": _optional_text(item.get("theme_name")),
+                    "theme_source_kind": _optional_text(item.get("theme_source_kind")),
+                    "theme_rank": _safe_int_or_none(item.get("theme_rank")),
+                    "stock_rank_in_theme": _safe_int_or_none(item.get("stock_rank_in_theme")),
+                    "sector_rank": _safe_int_or_none(item.get("sector_rank")),
+                    "strength_pctchange": _safe_float_or_none(item.get("strength_pctchange")),
+                    "strength_turn": _safe_float_or_none(item.get("strength_turn")),
+                    "strength_amplitude": _safe_float_or_none(item.get("strength_amplitude")),
+                    "close_strength": _safe_float_or_none(item.get("close_strength")),
+                    "closed_up_limit": _safe_bool_or_none(item.get("closed_up_limit")),
+                    "signal_evidence_json": _json_dump(item.get("signal_evidence")),
                 }
             )
 
@@ -185,14 +223,77 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
             "skipped": skipped,
             "skipped_count": len(skipped),
         }
-    except Exception:
-        try:
-            conn.execute("rollback")
-        except Exception:
-            pass
-        raise
     finally:
         conn.close()
+
+
+def backfill_livermore_candidate_history(
+    duckdb_path: str,
+    *,
+    start_date: str,
+    end_date: str,
+) -> dict[str, object]:
+    """Materialize candidate history for every observed trade date in a bounded date range."""
+    parsed_start = date.fromisoformat(start_date.strip()[:10])
+    parsed_end = date.fromisoformat(end_date.strip()[:10])
+    if parsed_start > parsed_end:
+        raise ValueError("start_date must be on or before end_date.")
+
+    duckdb_file = Path(duckdb_path)
+    trade_dates = _available_observation_trade_dates(
+        duckdb_file,
+        start_date=parsed_start.isoformat(),
+        end_date=parsed_end.isoformat(),
+    )
+    if not trade_dates:
+        return {
+            "status": "partial",
+            "start_date": parsed_start.isoformat(),
+            "end_date": parsed_end.isoformat(),
+            "processed_date_count": 0,
+            "row_count": 0,
+            "skipped_count": 1,
+            "dates": [],
+            "skipped": ["missing_observation_trade_dates"],
+            "rule_version": RULE_VERSION,
+            "formula_version": FORMULA_VERSION,
+        }
+
+    date_results: list[dict[str, object]] = []
+    total_rows = 0
+    total_skipped = 0
+    partial_dates = 0
+    for trade_date in trade_dates:
+        result = materialize_livermore_candidate_history(str(duckdb_file), as_of_date=trade_date)
+        row_count = _safe_int(result.get("row_count"), default=0)
+        skipped_count = _safe_int(result.get("skipped_count"), default=0)
+        status = _text(result.get("status")) or "partial"
+        total_rows += row_count
+        total_skipped += skipped_count
+        if status != "ok":
+            partial_dates += 1
+        date_results.append(
+            {
+                "as_of_date": trade_date,
+                "status": status,
+                "row_count": row_count,
+                "skipped_count": skipped_count,
+                "skipped": _string_list(result.get("skipped")),
+            }
+        )
+
+    return {
+        "status": "ok" if partial_dates == 0 else "partial",
+        "start_date": parsed_start.isoformat(),
+        "end_date": parsed_end.isoformat(),
+        "processed_date_count": len(date_results),
+        "row_count": total_rows,
+        "skipped_count": total_skipped,
+        "partial_date_count": partial_dates,
+        "dates": date_results,
+        "rule_version": RULE_VERSION,
+        "formula_version": FORMULA_VERSION,
+    }
 
 
 def _build_vendor_payload(
@@ -205,8 +306,139 @@ def _build_vendor_payload(
         "snapshot_as_of_date": snapshot_as_of,
         "strategy_as_of_requested": payload.get("requested_as_of_date"),
         "candidate_stock_codes": [_text(i.get("stock_code")).upper() for i in items if _text(i.get("stock_code"))],
+        "signal_kinds": sorted({_text(i.get("signal_kind")) or "stock_candidate" for i in items}),
         "market_gate_state": (_mapping(payload.get("market_gate")).get("state")),
     }
+
+
+def _available_observation_trade_dates(
+    duckdb_file: Path,
+    *,
+    start_date: str,
+    end_date: str,
+) -> list[str]:
+    if not duckdb_file.exists():
+        return []
+    conn = duckdb.connect(str(duckdb_file), read_only=True)
+    try:
+        tables = {r[0] for r in conn.execute("show tables").fetchall()}
+        if TABLE_OBS not in tables:
+            return []
+        rows = conn.execute(
+            f"""
+            select distinct trade_date
+            from {TABLE_OBS}
+            where cast(trade_date as date) >= cast(? as date)
+              and cast(trade_date as date) <= cast(? as date)
+            order by trade_date
+            """,
+            [start_date, end_date],
+        ).fetchall()
+    finally:
+        conn.close()
+    return [iso for row in rows if (iso := _normalize_trade_date_iso(row[0])) is not None]
+
+
+def _load_configured_stock_readiness() -> ChoiceStockReadiness:
+    settings = get_settings()
+    return load_choice_stock_readiness(settings.choice_stock_catalog_file)
+
+
+def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    stock_candidates_raw = payload.get("stock_candidates")
+    if isinstance(stock_candidates_raw, dict):
+        raw_items = stock_candidates_raw.get("items")
+        if isinstance(raw_items, list):
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                item = cast(dict[str, object], raw)
+                rank = _safe_int(item.get("rank"), default=1)
+                rows.append(
+                    {
+                        "signal_kind": "stock_candidate",
+                        "rank": rank,
+                        "stock_code": item.get("stock_code"),
+                        "stock_name": item.get("stock_name"),
+                        "sector_code": item.get("sector_code"),
+                        "sector_name": item.get("sector_name"),
+                        "sector_rank": item.get("sector_rank"),
+                        "strength_pctchange": item.get("pctchange"),
+                        "strength_turn": item.get("turn"),
+                        "strength_amplitude": item.get("amplitude"),
+                        "close_strength": item.get("close_strength"),
+                        "closed_up_limit": item.get("closed_up_limit"),
+                        "signal_evidence": {
+                            "signal_kind": "stock_candidate",
+                            "rank": rank,
+                            "stock_code": item.get("stock_code"),
+                            "sector_code": item.get("sector_code"),
+                        },
+                    }
+                )
+
+    theme_breakout_raw = payload.get("theme_breakout")
+    if isinstance(theme_breakout_raw, dict):
+        raw_themes = theme_breakout_raw.get("items")
+        if isinstance(raw_themes, list):
+            for raw_theme in raw_themes:
+                if not isinstance(raw_theme, dict):
+                    continue
+                theme = cast(dict[str, object], raw_theme)
+                theme_rank = _safe_int(theme.get("rank"), default=9999)
+                raw_stocks = theme.get("items")
+                if not isinstance(raw_stocks, list):
+                    continue
+                for index, raw_stock in enumerate(raw_stocks, start=1):
+                    if not isinstance(raw_stock, dict):
+                        continue
+                    stock = cast(dict[str, object], raw_stock)
+                    stock_rank = index
+                    rows.append(
+                        {
+                            "signal_kind": "theme_breakout",
+                            "rank": stock_rank,
+                            "stock_code": stock.get("stock_code"),
+                            "stock_name": stock.get("stock_name"),
+                            "sector_code": stock.get("sector_code"),
+                            "sector_name": stock.get("sector_name"),
+                            "theme_key": theme.get("theme_key"),
+                            "theme_name": theme.get("theme_name"),
+                            "theme_source_kind": theme.get("source_kind"),
+                            "theme_rank": theme_rank,
+                            "stock_rank_in_theme": stock_rank,
+                            "sector_rank": stock.get("sector_rank", theme.get("parent_sector_rank")),
+                            "strength_pctchange": stock.get("pctchange"),
+                            "strength_turn": stock.get("turn"),
+                            "strength_amplitude": stock.get("amplitude"),
+                            "close_strength": stock.get("close_strength"),
+                            "closed_up_limit": stock.get("closed_up_limit"),
+                            "signal_evidence": {
+                                "signal_kind": "theme_breakout",
+                                "theme_key": theme.get("theme_key"),
+                                "theme_name": theme.get("theme_name"),
+                                "theme_source_kind": theme.get("source_kind"),
+                                "theme_rank": theme_rank,
+                                "strong_stock_count": theme.get("strong_stock_count"),
+                                "limit_stock_count": theme.get("limit_stock_count"),
+                                "avg_pctchange": theme.get("avg_pctchange"),
+                                "avg_turn": theme.get("avg_turn"),
+                                "stock_rank_in_theme": stock_rank,
+                                "stock_code": stock.get("stock_code"),
+                            },
+                        }
+                    )
+
+    return sorted(
+        rows,
+        key=lambda row: (
+            0 if _text(row.get("signal_kind")) == "stock_candidate" else 1,
+            _safe_int(row.get("theme_rank"), default=9999),
+            _safe_int(row.get("rank"), default=9999),
+            str(row.get("stock_code") or ""),
+        ),
+    )
 
 
 def _build_vendor_version(lineage_payload: dict[str, object]) -> str:
@@ -318,6 +550,17 @@ def _mapping(value: object) -> dict[str, object]:
     return {}
 
 
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [text for item in value if (text := _text(item))]
+
+
+def _optional_text(value: object) -> str | None:
+    text = _text(value)
+    return text or None
+
+
 def _text(value: object) -> str:
     return str(value or "").strip()
 
@@ -329,3 +572,40 @@ def _safe_int(value: object, *, default: int = 0) -> int:
         return int(float(str(value)))
     except (TypeError, ValueError):
         return default
+
+
+def _safe_int_or_none(value: object) -> int | None:
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float_or_none(value: object) -> float | None:
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_bool_or_none(value: object) -> bool | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    text = _text(value).lower()
+    if text in {"1", "true", "yes", "y"}:
+        return True
+    if text in {"0", "false", "no", "n"}:
+        return False
+    return None
+
+
+def _json_dump(value: object) -> str:
+    return json.dumps(value if value is not None else {}, ensure_ascii=False, sort_keys=True, default=str)

@@ -150,6 +150,8 @@ def materialize_choice_stock_inputs(
     universe_rows: list[dict[str, object]] = []
     sector_rows: list[dict[str, object]] = []
     limit_rows: list[dict[str, object]] = []
+    concept_rows: list[dict[str, object]] = []
+    movement_rows: list[dict[str, object]] = []
     daily_by_key: dict[tuple[str, str], dict[str, object]] = {}
 
     try:
@@ -184,6 +186,10 @@ def materialize_choice_stock_inputs(
                     sector_rows.extend(_normalize_sector_membership_rows(css_rows, request))
                 elif request.input_family == "limit_up_quality":
                     limit_rows.extend(_normalize_limit_quality_rows(css_rows, request, as_of_date=resolved_date))
+                elif request.input_family == "concept_membership":
+                    concept_rows.extend(_normalize_concept_membership_rows(css_rows, request, as_of_date=resolved_date))
+                elif request.input_family == "intraday_movement":
+                    movement_rows.extend(_normalize_intraday_movement_rows(css_rows, request, as_of_date=resolved_date))
                 row_count = len(css_rows)
             elif request.call == "csd":
                 try:
@@ -217,8 +223,13 @@ def materialize_choice_stock_inputs(
                 _merge_daily_rows(daily_by_key, csd_rows, request)
                 row_count = len(csd_rows)
             else:
-                _call_choice(choice_client, request, stock_codes=stock_codes, as_of_date=resolved_date)
-                row_count = 0
+                result = _call_choice(choice_client, request, stock_codes=stock_codes, as_of_date=resolved_date)
+                rows = _normalize_css_rows(result, request)
+                if request.input_family == "concept_membership":
+                    concept_rows.extend(_normalize_concept_membership_rows(rows, request, as_of_date=resolved_date))
+                elif request.input_family == "intraday_movement":
+                    movement_rows.extend(_normalize_intraday_movement_rows(rows, request, as_of_date=resolved_date))
+                row_count = len(rows)
             request_audits.append(
                 _build_request_audit(
                     run_id=run_id,
@@ -254,6 +265,8 @@ def materialize_choice_stock_inputs(
             "sector_membership": sector_rows,
             "daily": _daily_rows_for_source_version(daily_rows),
             "limit_quality": limit_rows,
+            "concept_membership": concept_rows,
+            "intraday_movement": movement_rows,
             "request_audits": request_audits,
         }
     )
@@ -261,6 +274,7 @@ def materialize_choice_stock_inputs(
     vendor_version = f"{vendor_prefix}_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
     completed_at = datetime.now(UTC).isoformat()
     row_count = len(universe_rows) + len(sector_rows) + len(daily_rows) + len(limit_rows)
+    row_count += len(concept_rows) + len(movement_rows)
 
     duckdb_file = Path(resolved_duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
@@ -311,6 +325,20 @@ def materialize_choice_stock_inputs(
         _insert_limit_quality(
             conn,
             rows=limit_rows,
+            run_id=run_id,
+            source_version=source_version,
+            vendor_version=vendor_version,
+        )
+        _insert_concept_membership(
+            conn,
+            rows=concept_rows,
+            run_id=run_id,
+            source_version=source_version,
+            vendor_version=vendor_version,
+        )
+        _insert_intraday_movement_events(
+            conn,
+            rows=movement_rows,
             run_id=run_id,
             source_version=source_version,
             vendor_version=vendor_version,
@@ -1134,6 +1162,78 @@ def _normalize_limit_quality_rows(
     return normalized
 
 
+def _normalize_concept_membership_rows(
+    rows: list[dict[str, object]],
+    request: ChoiceStockRequestPlanItem,
+    *,
+    as_of_date: str,
+) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    for row in rows:
+        stock_code = _text(row.get("stock_code") or row.get("CODE") or row.get("SECUCODE") or row.get("SECURITYCODE"))
+        concept_name = _text(
+            row.get("CONCEPTNAME")
+            or row.get("CONCEPT")
+            or row.get("BKNAME")
+            or row.get("THEMENAME")
+            or row.get("NAME")
+        )
+        concept_code = _text(
+            row.get("CONCEPTCODE")
+            or row.get("CONCEPT_CODE")
+            or row.get("BKCODE")
+            or row.get("THEMECODE")
+            or row.get("CODE")
+        )
+        if not stock_code or not (concept_code or concept_name):
+            continue
+        normalized.append(
+            {
+                "as_of_date": as_of_date,
+                "stock_code": stock_code,
+                "concept_code": concept_code or concept_name,
+                "concept_name": concept_name or concept_code,
+                "concept_source": "choice",
+                "field_key": request.field_key,
+            }
+        )
+    return normalized
+
+
+def _normalize_intraday_movement_rows(
+    rows: list[dict[str, object]],
+    request: ChoiceStockRequestPlanItem,
+    *,
+    as_of_date: str,
+) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    for row in rows:
+        stock_code = _text(row.get("stock_code") or row.get("CODE") or row.get("SECUCODE") or row.get("SECURITYCODE"))
+        concept_code = _text(row.get("CONCEPTCODE") or row.get("CONCEPT_CODE") or row.get("BKCODE") or row.get("THEMECODE"))
+        concept_name = _text(row.get("CONCEPTNAME") or row.get("CONCEPT") or row.get("BKNAME") or row.get("THEMENAME"))
+        title = _text(row.get("TITLE") or row.get("EVENTTITLE") or row.get("EVENT") or row.get("CONTENT"))
+        if not stock_code and not (concept_code or concept_name or title):
+            continue
+        normalized.append(
+            {
+                "as_of_date": as_of_date,
+                "event_time": _text(row.get("EVENTTIME") or row.get("DATETIME") or row.get("TIME") or row.get("EITIME")),
+                "stock_code": stock_code,
+                "stock_name": _text(row.get("NAME") or row.get("SECURITYSHORTNAME") or row.get("STOCKNAME")),
+                "concept_code": concept_code,
+                "concept_name": concept_name,
+                "event_type": _text(row.get("EVENTTYPE") or row.get("TYPE") or row.get("LABEL")),
+                "event_title": title,
+                "pctchange": _float_or_none(row.get("PCTCHANGE") or row.get("PCT_CHG") or row.get("CHANGE")),
+                "turn": _float_or_none(row.get("TURN") or row.get("TURNOVER") or row.get("TURNOVER_RATE")),
+                "source_url": _text(row.get("URL") or row.get("SOURCEURL")),
+                "field_key": request.field_key,
+                "raw_json": json.dumps(row, ensure_ascii=False, separators=(",", ":")),
+            }
+        )
+    return normalized
+
+
 def _normalize_csd_rows(
     result: object,
     request: ChoiceStockRequestPlanItem,
@@ -1378,6 +1478,8 @@ def _delete_as_of_rows(
         ("choice_stock_universe", "as_of_date"),
         ("choice_stock_sector_membership", "as_of_date"),
         ("choice_stock_limit_quality", "as_of_date"),
+        ("choice_stock_concept_membership", "as_of_date"),
+        ("choice_stock_intraday_movement_event", "as_of_date"),
     ):
         conn.execute(f"delete from {table} where {column} = ?", [as_of_date])
     conn.execute(
@@ -1570,6 +1672,73 @@ def _insert_limit_quality(
                 row["hlimitedays"],
                 row["llimiteddays"],
                 row["field_key"],
+                source_version,
+                vendor_version,
+                RULE_VERSION,
+                run_id,
+            )
+            for row in rows
+        ],
+    )
+
+
+def _insert_concept_membership(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    rows: list[dict[str, object]],
+    run_id: str,
+    source_version: str,
+    vendor_version: str,
+) -> None:
+    if not rows:
+        return
+    conn.executemany(
+        "insert into choice_stock_concept_membership values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                row["as_of_date"],
+                row["stock_code"],
+                row["concept_code"],
+                row["concept_name"],
+                row["concept_source"],
+                row["field_key"],
+                source_version,
+                vendor_version,
+                RULE_VERSION,
+                run_id,
+            )
+            for row in rows
+        ],
+    )
+
+
+def _insert_intraday_movement_events(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    rows: list[dict[str, object]],
+    run_id: str,
+    source_version: str,
+    vendor_version: str,
+) -> None:
+    if not rows:
+        return
+    conn.executemany(
+        "insert into choice_stock_intraday_movement_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                row["as_of_date"],
+                row["event_time"],
+                row["stock_code"],
+                row["stock_name"],
+                row["concept_code"],
+                row["concept_name"],
+                row["event_type"],
+                row["event_title"],
+                row["pctchange"],
+                row["turn"],
+                row["source_url"],
+                row["field_key"],
+                row["raw_json"],
                 source_version,
                 vendor_version,
                 RULE_VERSION,

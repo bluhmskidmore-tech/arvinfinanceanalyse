@@ -107,6 +107,36 @@
       "confirmation_source": "live Choice probe: css(codes,'ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS',TradeDate=as_of_date) returned limit flags/streak counts",
       "confirmed_at": "2026-05-01T13:02:34+08:00",
       "description": "Point-in-time limit-up/down flags and streak counts."
+    },
+    {
+      "input_family": "concept_membership",
+      "field_key": "choice_concept_membership",
+      "vendor_indicator": "",
+      "call": "css",
+      "required": false,
+      "request_options": {
+        "TradeDate": "__AS_OF_DATE__",
+        "Ispandas": 0
+      },
+      "confirmed": false,
+      "confirmation_source": "",
+      "confirmed_at": "",
+      "description": "Optional real concept-board membership for Livermore theme breakout radar. Fill vendor_indicator and confirmation metadata only after a live Choice entitlement smoke test."
+    },
+    {
+      "input_family": "intraday_movement",
+      "field_key": "choice_intraday_movement",
+      "vendor_indicator": "",
+      "call": "ctr",
+      "required": false,
+      "request_options": {
+        "TradeDate": "__AS_OF_DATE__",
+        "Ispandas": 0
+      },
+      "confirmed": false,
+      "confirmation_source": "",
+      "confirmed_at": "",
+      "description": "Optional intraday movement/event feed for Livermore theme breakout radar. Fill vendor_indicator and confirmation metadata only after a live Choice entitlement smoke test."
     }
   ]
 }

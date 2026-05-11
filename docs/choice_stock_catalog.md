@@ -21,11 +21,20 @@ The Livermore stock slice is blocked until the catalog has confirmed entries for
 - `stock_status`
 - `limit_up_quality`
 
+## Optional Theme Inputs
+
+The theme breakout radar can consume optional real theme inputs when they are confirmed and landed:
+
+- `concept_membership`: real concept-board membership at stock/concept level.
+- `intraday_movement`: intraday movement or event rows tied to stocks and, when available, concepts.
+
+These entries must use `required: false`. They do not gate the base Livermore market, sector, stock-candidate, or risk-exit outputs. When confirmed, they are included in the materialization request plan and persisted to `choice_stock_concept_membership` / `choice_stock_intraday_movement_event`. When absent, the radar falls back to the proxy observation branch.
+
 ## Entry Shape
 
 Each `fields[]` entry uses:
 
-- `input_family`: one of the required families above.
+- `input_family`: one of the required families above, or one of the optional theme input families.
 - `field_key`: internal stable name for the field.
 - `vendor_indicator`: Choice/EmQuant indicator sent to `sector`, `css`, `csd`, or `ctr`.
 - `call`: Choice call family in this repo: `sector` (e.g. A-share universe), `css`, `csd`, or `ctr` when used.
@@ -57,6 +66,7 @@ The checked-in catalog is populated with live-probed fields from 2026-05-01:
 - Choice `css(..., 'SW2021,SW2021CODE', EndDate=..., ClassiFication=1)` for SW2021 level-1 sector membership.
 - Choice `csd` field definitions for return, turnover, amplitude, OHLCV, trading status, and limit flags.
 - Choice `css(..., 'ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS', TradeDate=...)` for point-in-time limit streak quality.
+- Optional concept membership and intraday movement entries are present as unconfirmed templates. They are intentionally not executed until a live Choice entitlement smoke test fills `vendor_indicator`, `confirmation_source`, and `confirmed_at`.
 
 Important evidence boundary: Choice `HIGHLIMIT` / `LOWLIMIT` are yes/no limit **flags**, not limit **prices**. The Tushare stock fallback maps `stk_limit.up_limit` / `down_limit` into the same `HIGHLIMIT` / `LOWLIMIT` observation slots as **numeric prices** so downstream `limit_ratio` can use actual limits; interpret those cells as prices only when the row is under `completed_tushare_fallback` (or when values are clearly price-like), not as Choice flag encodings.
 

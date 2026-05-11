@@ -18,5 +18,18 @@ create table if not exists livermore_candidate_history (
   source_version varchar,
   vendor_version varchar,
   rule_version varchar,
-  run_id varchar
+  run_id varchar,
+  signal_kind varchar,
+  theme_key varchar,
+  theme_name varchar,
+  theme_source_kind varchar,
+  theme_rank integer,
+  stock_rank_in_theme integer,
+  sector_rank integer,
+  strength_pctchange double,
+  strength_turn double,
+  strength_amplitude double,
+  close_strength double,
+  closed_up_limit boolean,
+  signal_evidence_json varchar
 )

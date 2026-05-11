@@ -105,6 +105,42 @@ def _write_confirmed_catalog(path: Path) -> None:
     )
 
 
+def _write_confirmed_catalog_with_theme_inputs(path: Path) -> None:
+    raw = {
+        "catalog_version": "test_choice_stock_theme_materialize",
+        "vendor_name": "choice",
+        "generated_from": "unit_test",
+        "fields": json.loads(path.read_text(encoding="utf-8"))["fields"],
+    }
+    raw["fields"].extend(
+        [
+            {
+                "input_family": "concept_membership",
+                "field_key": "choice_concept_membership",
+                "vendor_indicator": "CONCEPTCODE,CONCEPTNAME",
+                "call": "css",
+                "required": False,
+                "request_options": {"TradeDate": "__AS_OF_DATE__", "Ispandas": 0},
+                "confirmed": True,
+                "confirmation_source": "unit test optional concept probe",
+                "confirmed_at": "2026-05-11",
+            },
+            {
+                "input_family": "intraday_movement",
+                "field_key": "choice_intraday_movement",
+                "vendor_indicator": "STOCK_INTRADAY_MOVEMENT",
+                "call": "ctr",
+                "required": False,
+                "request_options": {"TradeDate": "__AS_OF_DATE__", "Ispandas": 0},
+                "confirmed": True,
+                "confirmation_source": "unit test optional movement probe",
+                "confirmed_at": "2026-05-11",
+            },
+        ]
+    )
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+
 class FakeChoiceStockClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[object, ...], str]] = []
@@ -170,6 +206,54 @@ class FakeChoiceStockClient:
                 code: [values_by_indicator[indicator] for indicator in indicators]
                 for code in requested_codes
             },
+        )
+
+
+class ThemeChoiceStockClient(FakeChoiceStockClient):
+    def css(self, *args: object, options: str = "") -> Any:
+        indicators = str(args[1]).split(",")
+        if "CONCEPTCODE" in indicators or "CONCEPTNAME" in indicators:
+            self.calls.append(("css", args, options))
+            return SimpleNamespace(
+                ErrorCode=0,
+                Indicators=indicators,
+                Data={
+                    "000001.SZ": ["C001", "Semiconductor"],
+                    "600000.SH": ["C002", "Banking"],
+                },
+            )
+        return super().css(*args, options=options)
+
+    def ctr(self, *args: object, options: str = "") -> Any:
+        self.calls.append(("ctr", args, options))
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=[
+                "EVENTTIME",
+                "CODE",
+                "NAME",
+                "CONCEPTCODE",
+                "CONCEPTNAME",
+                "EVENTTYPE",
+                "TITLE",
+                "PCTCHANGE",
+                "TURN",
+                "URL",
+            ],
+            Data=[
+                [
+                    "2026-04-28 10:05:00",
+                    "000001.SZ",
+                    "PAB",
+                    "C001",
+                    "Semiconductor",
+                    "intraday_surge",
+                    "Semiconductor concept intraday surge",
+                    10.2,
+                    5.1,
+                    "https://choice.example/news/1",
+                ]
+            ],
         )
 
 
@@ -418,6 +502,65 @@ def test_choice_stock_materialize_resolves_runtime_placeholders_and_is_idempoten
         duckdb_path=str(duckdb_path),
         as_of_date="2026-04-28",
     )
+    assert coverage.full_coverage is True
+    assert coverage.missing_request_items == []
+
+
+def test_choice_stock_materialize_persists_optional_concept_and_movement_inputs(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    _write_confirmed_catalog_with_theme_inputs(catalog_path)
+    client = ThemeChoiceStockClient()
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=client,
+    )
+
+    assert result["status"] == "completed"
+    assert any(call[0] == "ctr" for call in client.calls)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        concept_rows = conn.execute(
+            """
+            select stock_code, concept_code, concept_name, field_key
+            from choice_stock_concept_membership
+            order by stock_code
+            """
+        ).fetchall()
+        movement_rows = conn.execute(
+            """
+            select stock_code, concept_code, concept_name, event_type, event_title, pctchange, turn
+            from choice_stock_intraday_movement_event
+            order by event_time, stock_code
+            """
+        ).fetchall()
+        coverage = load_choice_stock_materialization_coverage(
+            duckdb_path=str(duckdb_path),
+            as_of_date="2026-04-28",
+        )
+    finally:
+        conn.close()
+
+    assert concept_rows == [
+        ("000001.SZ", "C001", "Semiconductor", "choice_concept_membership"),
+        ("600000.SH", "C002", "Banking", "choice_concept_membership"),
+    ]
+    assert movement_rows == [
+        (
+            "000001.SZ",
+            "C001",
+            "Semiconductor",
+            "intraday_surge",
+            "Semiconductor concept intraday surge",
+            10.2,
+            5.1,
+        )
+    ]
     assert coverage.full_coverage is True
     assert coverage.missing_request_items == []
 

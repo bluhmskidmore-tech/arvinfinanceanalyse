@@ -24,6 +24,14 @@ DEFAULT_FACTOR_WEIGHTS: Mapping[str, float] = {
     "low_vol": 0.15,
     "dividend": 0.15,
 }
+LOW_CROWDING_REGIME_TARGET_POSITIONS: Mapping[str, float] = {
+    "liquidity_shock": 0.25,
+    "crowded_quant": 0.35,
+    "fast_down": 0.35,
+    "range": 0.60,
+    "weak_up": 0.70,
+    "strong_up": 0.85,
+}
 
 
 def generate_random_prices(
@@ -240,6 +248,137 @@ def multi_factor_selection(
     return scored.sort_values("score", ascending=False).head(cutoff)
 
 
+def classify_low_crowding_market_regime(
+    prices: pd.DataFrame,
+    observations: pd.DataFrame | None = None,
+) -> dict[str, float | int | str | None]:
+    price_frame = _clean_price_frame(prices)
+    market_index = price_frame.div(price_frame.iloc[0]).mean(axis=1) * 100.0
+    latest_index = float(market_index.iloc[-1])
+    ma_fast = float(market_index.rolling(20, min_periods=min(5, len(market_index))).mean().iloc[-1])
+    ma_slow = float(market_index.rolling(60, min_periods=min(10, len(market_index))).mean().iloc[-1])
+    idx_ret_20d = _window_return(market_index, 20)
+    amount_change_20 = _market_amount_change_20(observations)
+    breadth_score = _latest_breadth_score(price_frame, observations)
+    limit_down_count, sample_count = _latest_limit_down_count(observations)
+
+    if amount_change_20 <= -0.30 and idx_ret_20d < 0:
+        regime = "liquidity_shock"
+    elif limit_down_count >= max(5, int(sample_count * 0.10)) and idx_ret_20d < 0:
+        regime = "crowded_quant"
+    elif idx_ret_20d <= -0.08 or latest_index < ma_slow * 0.97:
+        regime = "fast_down"
+    elif latest_index > ma_fast > ma_slow and breadth_score > 0:
+        regime = "strong_up"
+    elif latest_index > ma_fast or idx_ret_20d > 0:
+        regime = "weak_up"
+    else:
+        regime = "range"
+
+    target_position = float(LOW_CROWDING_REGIME_TARGET_POSITIONS[regime])
+    return {
+        "regime": regime,
+        "target_position": target_position,
+        "regime_score": round(float(breadth_score + idx_ret_20d + amount_change_20 * 0.2), 6),
+        "breadth_score": round(float(breadth_score), 6),
+        "limit_down_count": int(limit_down_count),
+        "sample_count": int(sample_count),
+        "amount_change_20": round(float(amount_change_20), 6),
+        "idx_ret_20d": round(float(idx_ret_20d), 6),
+        "latest_date": str(price_frame.index[-1])[:10],
+    }
+
+
+def compute_low_crowding_scores(observations: pd.DataFrame) -> pd.DataFrame:
+    obs = _clean_observation_frame(observations)
+    records: list[dict[str, float | str]] = []
+    for stock_code, group in obs.groupby("stock_code", sort=False):
+        ordered = group.sort_values("trade_date").tail(21)
+        if ordered.empty:
+            continue
+        latest = ordered.iloc[-1]
+        close = ordered["close_value"]
+        ret_5 = _window_return(close, 5)
+        ret_20 = _window_return(close, 20)
+        turn_median = ordered["turn"].tail(20).median()
+        amount_mean = ordered["amount"].tail(20).mean()
+        latest_turn = float(latest.get("turn", 0.0) or 0.0)
+        latest_amount = float(latest.get("amount", 0.0) or 0.0)
+        turn_accel = latest_turn / turn_median - 1 if pd.notna(turn_median) and turn_median > 0 else 0.0
+        amount_accel = latest_amount / amount_mean - 1 if pd.notna(amount_mean) and amount_mean > 0 else 0.0
+        amplitude_20 = float(ordered["amplitude"].tail(20).mean()) if ordered["amplitude"].notna().any() else 0.0
+        records.append(
+            {
+                "stock_code": str(stock_code),
+                "latest_date": str(latest["trade_date"])[:10],
+                "ret_5": float(ret_5),
+                "ret_20": float(ret_20),
+                "turn_accel": float(turn_accel),
+                "amount_accel": float(amount_accel),
+                "amplitude_20": float(amplitude_20),
+            }
+        )
+    if not records:
+        return pd.DataFrame(
+            columns=[
+                "stock_code",
+                "latest_date",
+                "crowding_score",
+                "low_crowding_score",
+                "low_crowding_rank_pct",
+            ]
+        )
+
+    out = pd.DataFrame(records).set_index("stock_code")
+    components = pd.DataFrame(
+        {
+            "ret_5_hot": out["ret_5"].clip(lower=0),
+            "ret_20_hot": out["ret_20"].clip(lower=0),
+            "turn_accel_hot": out["turn_accel"].clip(lower=0),
+            "amount_accel_hot": out["amount_accel"].clip(lower=0),
+            "amplitude_20": out["amplitude_20"].clip(lower=0),
+        },
+        index=out.index,
+    )
+    out["crowding_score"] = components.apply(_zscore).sum(axis=1)
+    out["low_crowding_score"] = -out["crowding_score"]
+    out["low_crowding_rank_pct"] = out["low_crowding_score"].rank(pct=True)
+    return out.sort_values("low_crowding_score", ascending=False)
+
+
+def low_crowding_multifactor_selection(
+    financial_df: pd.DataFrame,
+    observations: pd.DataFrame,
+    weights: Mapping[str, float] | None = None,
+    top_pct: float = 0.1,
+    min_names_for_exclusion: int = 5,
+) -> pd.DataFrame:
+    if not 0 < top_pct <= 1:
+        raise ValueError("top_pct must be in the (0, 1] range")
+    scored = multi_factor_selection(financial_df, weights=weights, top_pct=1.0)
+    crowding = compute_low_crowding_scores(observations)
+    joined = scored.join(crowding, how="inner")
+    if joined.empty:
+        return joined
+
+    filtered = joined.copy()
+    filtered["excluded_by_crowding"] = False
+    excluded_count = 0
+    if len(filtered) >= min_names_for_exclusion:
+        crowding_cutoff = filtered["crowding_score"].quantile(0.80)
+        filtered["excluded_by_crowding"] = filtered["crowding_score"] > crowding_cutoff
+        excluded_count = int(filtered["excluded_by_crowding"].sum())
+        filtered = filtered[~filtered["excluded_by_crowding"]].copy()
+    if filtered.empty:
+        filtered["crowding_excluded_count"] = excluded_count
+        return filtered
+
+    filtered["combined_score"] = filtered["score"] + 0.25 * _zscore(filtered["low_crowding_score"])
+    filtered["crowding_excluded_count"] = excluded_count
+    cutoff = max(int(len(filtered) * top_pct), 1)
+    return filtered.sort_values("combined_score", ascending=False).head(cutoff)
+
+
 def _clean_price_frame(prices: pd.DataFrame) -> pd.DataFrame:
     if prices.empty:
         raise ValueError("prices must not be empty")
@@ -283,3 +422,77 @@ def _zscore(series: pd.Series) -> pd.Series:
     if pd.isna(std) or std == 0:
         return pd.Series(0.0, index=series.index, dtype="float64")
     return ((clean - mean) / std).fillna(0.0)
+
+
+def _window_return(series: pd.Series, window: int) -> float:
+    clean = pd.to_numeric(series, errors="coerce").dropna()
+    if len(clean) < 2:
+        return 0.0
+    start_idx = max(0, len(clean) - window - 1)
+    start = float(clean.iloc[start_idx])
+    end = float(clean.iloc[-1])
+    if start <= 0:
+        return 0.0
+    return end / start - 1
+
+
+def _clean_observation_frame(observations: pd.DataFrame) -> pd.DataFrame:
+    required = ["trade_date", "stock_code", "close_value"]
+    missing = [column for column in required if column not in observations.columns]
+    if missing:
+        raise ValueError(f"missing observation columns: {', '.join(missing)}")
+    out = observations.copy()
+    out["trade_date"] = pd.to_datetime(out["trade_date"], errors="coerce")
+    out["stock_code"] = out["stock_code"].astype(str)
+    for column in ["close_value", "amount", "pctchange", "turn", "amplitude", "lowlimit"]:
+        if column not in out.columns:
+            out[column] = np.nan
+        out[column] = pd.to_numeric(out[column], errors="coerce")
+    out = out.dropna(subset=["trade_date", "stock_code", "close_value"])
+    out = out[out["close_value"] > 0]
+    if out.empty:
+        raise ValueError("observations must contain positive close values")
+    return out.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
+
+
+def _latest_breadth_score(prices: pd.DataFrame, observations: pd.DataFrame | None) -> float:
+    if observations is not None and not observations.empty and "pctchange" in observations.columns:
+        obs = _clean_observation_frame(observations)
+        latest_date = obs["trade_date"].max()
+        latest = obs[obs["trade_date"] == latest_date]
+        pctchange = pd.to_numeric(latest["pctchange"], errors="coerce").dropna()
+        if not pctchange.empty:
+            up_count = int((pctchange > 0).sum())
+            down_count = int((pctchange < 0).sum())
+            denom = up_count + down_count
+            return (up_count - down_count) / denom if denom else 0.0
+    latest_returns = prices.iloc[-1] / prices.iloc[-2] - 1 if len(prices) >= 2 else pd.Series(dtype=float)
+    up_count = int((latest_returns > 0).sum())
+    down_count = int((latest_returns < 0).sum())
+    denom = up_count + down_count
+    return (up_count - down_count) / denom if denom else 0.0
+
+
+def _market_amount_change_20(observations: pd.DataFrame | None) -> float:
+    if observations is None or observations.empty or "amount" not in observations.columns:
+        return 0.0
+    obs = _clean_observation_frame(observations)
+    daily_amount = obs.groupby("trade_date")["amount"].sum(min_count=1).dropna().sort_index()
+    if daily_amount.empty:
+        return 0.0
+    baseline = daily_amount.tail(20).mean()
+    if pd.isna(baseline) or baseline <= 0:
+        return 0.0
+    return float(daily_amount.iloc[-1] / baseline - 1)
+
+
+def _latest_limit_down_count(observations: pd.DataFrame | None) -> tuple[int, int]:
+    if observations is None or observations.empty:
+        return 0, 0
+    obs = _clean_observation_frame(observations)
+    latest_date = obs["trade_date"].max()
+    latest = obs[obs["trade_date"] == latest_date]
+    lowlimit = pd.to_numeric(latest["lowlimit"], errors="coerce")
+    close = pd.to_numeric(latest["close_value"], errors="coerce")
+    is_limit_down = lowlimit.notna() & close.notna() & (close <= lowlimit * 1.001)
+    return int(is_limit_down.sum()), int(len(latest))

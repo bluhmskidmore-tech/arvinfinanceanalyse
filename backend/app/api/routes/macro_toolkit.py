@@ -10,6 +10,7 @@ import duckdb
 import pandas as pd
 from backend.app.core_finance.macro import (
     analyze_cross_market_linkage,
+    classify_low_crowding_market_regime,
     compute_credit_spread_risk,
     compute_crisis_score_payload,
     compute_economic_cycle,
@@ -20,6 +21,7 @@ from backend.app.core_finance.macro import (
     compute_rate_turning_point,
     compute_yield_curve_shape,
     generate_random_prices,
+    low_crowding_multifactor_selection,
     mean_reversion_momentum_strategy,
     moving_average_strategy,
     multi_factor_selection,
@@ -1004,6 +1006,15 @@ def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[di
             index=["AAA", "BBB", "CCC", "DDD"],
         )
         selected = multi_factor_selection(financials, top_pct=0.5, industries_focus=["technology"])
+        sample_prices = prices.copy()
+        sample_prices.columns = financials.index
+        sample_observations = _sample_strategy_observations(sample_prices)
+        low_crowding_selected = low_crowding_multifactor_selection(
+            financials,
+            sample_observations,
+            top_pct=0.5,
+        )
+        low_crowding_regime = classify_low_crowding_market_regime(sample_prices, sample_observations)
         return [
             _strategy_summary(
                 key="moving_average",
@@ -1039,6 +1050,22 @@ def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[di
                 result={
                     "selected_symbols": [str(symbol) for symbol in selected.index.tolist()],
                     "top_score": round(float(selected["score"].iloc[0]), 6) if not selected.empty else None,
+                },
+            ),
+            _strategy_summary(
+                key="low_crowding_regime_multifactor",
+                label="低拥挤度择时多因子",
+                metric_label="样例目标仓位",
+                metric_value=low_crowding_regime["target_position"],
+                evidence=[
+                    f"样例市场状态 {low_crowding_regime['regime']}，仅用于模块可用性检查。",
+                    f"样例低拥挤多因子入选 {len(low_crowding_selected)} 只。",
+                ],
+                result={
+                    "regime": low_crowding_regime["regime"],
+                    "target_position": low_crowding_regime["target_position"],
+                    "selected_symbols": [str(symbol) for symbol in low_crowding_selected.index.tolist()],
+                    "selection_top_pct": 0.5,
                 },
             ),
         ]
@@ -1104,6 +1131,11 @@ def _real_equity_strategy_summaries(price_context: dict[str, object]) -> list[di
             result={"final_value": round(float(mean_reversion.iloc[-1]), 6), **common_result},
         ),
         _real_multi_factor_summary(price_context, prices=prices, financials=financials),
+        _real_low_crowding_regime_multifactor_summary(
+            price_context,
+            prices=prices,
+            financials=financials,
+        ),
     ]
 
 
@@ -1164,6 +1196,96 @@ def _real_multi_factor_summary(
     }
 
 
+def _real_low_crowding_regime_multifactor_summary(
+    price_context: dict[str, object],
+    *,
+    prices: pd.DataFrame,
+    financials: object,
+) -> dict[str, object]:
+    observations = price_context.get("observations")
+    if not isinstance(observations, pd.DataFrame) or observations.empty:
+        return {
+            "key": "low_crowding_regime_multifactor",
+            "label": "低拥挤度择时多因子",
+            "group": "A股策略",
+            "status": "unavailable",
+            "tone": "missing",
+            "primary_metric": None,
+            "evidence": [],
+            "warnings": ["CHOICE_STOCK_OBSERVATIONS_NOT_MATERIALIZED"],
+            "result": {"data_status": "unavailable"},
+        }
+
+    regime = classify_low_crowding_market_regime(prices, observations)
+    base_result = {
+        "data_status": "complete",
+        "price_source": "choice_stock_daily_observation",
+        "as_of_date": price_context["as_of_date"],
+        "regime": regime["regime"],
+        "target_position": regime["target_position"],
+        "regime_score": regime["regime_score"],
+        "breadth_score": regime["breadth_score"],
+        "limit_down_count": regime["limit_down_count"],
+        "amount_change_20": regime["amount_change_20"],
+        "idx_ret_20d": regime["idx_ret_20d"],
+        "stock_count": len(prices.columns),
+        "observation_count": len(prices.index),
+        "tables_used": price_context["tables_used"],
+        "source_versions": price_context["source_versions"],
+        "vendor_versions": price_context["vendor_versions"],
+    }
+    if not isinstance(financials, pd.DataFrame) or financials.empty:
+        return {
+            "key": "low_crowding_regime_multifactor",
+            "label": "低拥挤度择时多因子",
+            "group": "A股策略",
+            "status": "degraded",
+            "tone": "neutral",
+            "primary_metric": {"label": "目标仓位", "value": regime["target_position"], "unit": ""},
+            "evidence": [
+                f"市场状态 {regime['regime']}，仓位建议 {regime['target_position']}。",
+                "因子快照缺失，未执行低拥挤多因子选股。",
+            ],
+            "warnings": ["FACTOR_SNAPSHOT_REQUIRED_FOR_LOW_CROWDING_MULTIFACTOR"],
+            "result": {
+                **base_result,
+                "data_status": "degraded",
+                "missing_factor_inputs": list(REQUIRED_FACTOR_INPUTS),
+            },
+        }
+
+    selected = low_crowding_multifactor_selection(financials, observations)
+    selected_stock_codes = [str(stock_code) for stock_code in selected.index.tolist()]
+    excluded_count = (
+        int(selected["crowding_excluded_count"].iloc[0])
+        if "crowding_excluded_count" in selected.columns and not selected.empty
+        else 0
+    )
+    return {
+        "key": "low_crowding_regime_multifactor",
+        "label": "低拥挤度择时多因子",
+        "group": "A股策略",
+        "status": "complete",
+        "tone": "neutral",
+        "primary_metric": {"label": "目标仓位", "value": regime["target_position"], "unit": ""},
+        "evidence": [
+            f"市场状态 {regime['regime']}，仓位建议 {regime['target_position']}。",
+            f"因子快照 {price_context['as_of_date']}，低拥挤多因子入选 {len(selected_stock_codes)} 只。",
+        ],
+        "warnings": [],
+        "result": {
+            **base_result,
+            "factor_source": "choice_stock_factor_snapshot",
+            "factor_row_count": len(financials.index),
+            "selected_count": len(selected_stock_codes),
+            "selected_stock_codes": selected_stock_codes,
+            "selection_top_pct": 0.1,
+            "crowding_excluded_count": excluded_count,
+            "tables_used": ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+        },
+    }
+
+
 def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
     if duckdb_path is None:
         return None
@@ -1205,6 +1327,12 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
               daily.try_cast_date as trade_date,
               daily.stock_code,
               daily.close_value,
+              daily.amount,
+              daily.pctchange,
+              daily.turn,
+              daily.amplitude,
+              daily.highlimit,
+              daily.lowlimit,
               daily.source_version,
               daily.vendor_version
             from (
@@ -1212,6 +1340,12 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
                 try_cast(trade_date as date) as try_cast_date,
                 stock_code,
                 close_value,
+                amount,
+                pctchange,
+                turn,
+                amplitude,
+                highlimit,
+                lowlimit,
                 source_version,
                 vendor_version
               from choice_stock_daily_observation
@@ -1235,7 +1369,19 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
         return None
     frame = pd.DataFrame(
         rows,
-        columns=["trade_date", "stock_code", "close_value", "source_version", "vendor_version"],
+        columns=[
+            "trade_date",
+            "stock_code",
+            "close_value",
+            "amount",
+            "pctchange",
+            "turn",
+            "amplitude",
+            "highlimit",
+            "lowlimit",
+            "source_version",
+            "vendor_version",
+        ],
     )
     prices = (
         frame.pivot_table(index="trade_date", columns="stock_code", values="close_value", aggfunc="last")
@@ -1246,9 +1392,23 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
     prices = prices.loc[:, (prices > 0).all(axis=0)]
     if len(prices.index) < _EQUITY_PRICE_MIN_OBSERVATIONS or len(prices.columns) == 0:
         return None
+    observations = frame[
+        [
+            "trade_date",
+            "stock_code",
+            "close_value",
+            "amount",
+            "pctchange",
+            "turn",
+            "amplitude",
+            "highlimit",
+            "lowlimit",
+        ]
+    ].copy()
     financials = _load_equity_strategy_factor_snapshot(path, latest_trade_date.isoformat())
     return {
         "prices": prices.astype("float64"),
+        "observations": observations,
         "financials": financials,
         "as_of_date": latest_trade_date.isoformat(),
         "tables_used": [
@@ -1328,6 +1488,29 @@ def _load_equity_strategy_factor_snapshot(
     if frame.empty:
         return None
     return frame.set_index("stock_code").sort_index()
+
+
+def _sample_strategy_observations(prices: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    returns = prices.pct_change().fillna(0.0) * 100
+    for trade_date in prices.index:
+        for stock_code in prices.columns:
+            close = float(prices.loc[trade_date, stock_code])
+            pctchange = float(returns.loc[trade_date, stock_code])
+            rows.append(
+                {
+                    "trade_date": trade_date,
+                    "stock_code": str(stock_code),
+                    "close_value": close,
+                    "amount": close * 100_000.0,
+                    "pctchange": pctchange,
+                    "turn": 1.0 + abs(pctchange) * 0.05,
+                    "amplitude": abs(pctchange) * 0.5,
+                    "highlimit": close * 1.1,
+                    "lowlimit": close * 0.9,
+                }
+            )
+    return pd.DataFrame(rows)
 
 
 def _unique_texts(values: list[object]) -> list[str]:

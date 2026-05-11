@@ -23,6 +23,10 @@ from backend.app.core_finance.livermore_stock_candidates import (
     StockCandidateSnapshot,
     compute_stock_candidates,
 )
+from backend.app.core_finance.livermore_theme_breakout import (
+    ThemeBreakoutSnapshot,
+    compute_theme_breakout,
+)
 from backend.app.core_finance.livermore_strategy import (
     BroadIndexObservation,
     MarketGateSupplement,
@@ -30,6 +34,7 @@ from backend.app.core_finance.livermore_strategy import (
 )
 from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockReadiness,
+    choice_stock_optional_input_status,
     choice_stock_readiness_missing,
 )
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
@@ -171,6 +176,8 @@ def load_livermore_strategy_payload(
         payload["sector_rank"] = stock_outputs.sector_rank_payload
     if stock_outputs.stock_candidates_payload is not None:
         payload["stock_candidates"] = stock_outputs.stock_candidates_payload
+    if stock_outputs.theme_breakout_payload is not None:
+        payload["theme_breakout"] = stock_outputs.theme_breakout_payload
     if stock_outputs.risk_exit_payload is not None:
         payload["risk_exit"] = stock_outputs.risk_exit_payload
     source_versions = [row.source_version for row in history_rows if row.source_version] + stock_outputs.source_versions
@@ -318,6 +325,7 @@ class _ChoiceStockOutputs:
     stock_coverage: ChoiceStockMaterializationCoverage | None
     sector_rank_payload: dict[str, object] | None
     stock_candidates_payload: dict[str, object] | None
+    theme_breakout_payload: dict[str, object] | None
     risk_exit_payload: dict[str, object] | None
     risk_exit_block_reason: str
     stock_candidate_block_reason: str
@@ -325,6 +333,14 @@ class _ChoiceStockOutputs:
     source_versions: list[str]
     vendor_versions: list[str]
     evidence_rows: int
+
+
+@dataclass(frozen=True)
+class _ThemeBreakoutEvidenceProvenance:
+    concept_date_row_count: int = 0
+    concept_matched_row_count: int = 0
+    movement_date_row_count: int = 0
+    movement_matched_row_count: int = 0
 
 
 def _choice_stock_dependency_summary(
@@ -362,6 +378,7 @@ def _load_choice_stock_outputs(
             stock_coverage=None,
             sector_rank_payload=None,
             stock_candidates_payload=None,
+            theme_breakout_payload=None,
             risk_exit_payload=None,
             risk_exit_block_reason="",
             stock_candidate_block_reason="",
@@ -423,6 +440,33 @@ def _load_choice_stock_outputs(
                 snapshots=snapshots,
             ).payload
 
+    theme_breakout_payload: dict[str, object] | None = None
+    if (
+        stock_coverage.full_coverage
+        and sector_rank_payload is not None
+        and market_state not in {"NO_DATA", "PENDING_DATA", "STALE"}
+    ):
+        theme_snapshots, theme_tables, theme_sources, theme_vendors, theme_provenance = _load_theme_breakout_snapshots(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            sector_rank_payload=sector_rank_payload,
+        )
+        evidence_rows += len(theme_snapshots)
+        tables_used.extend(theme_tables)
+        source_versions.extend(theme_sources)
+        vendor_versions.extend(theme_vendors)
+        theme_breakout_payload = {
+            **compute_theme_breakout(
+                as_of_date=as_of_date,
+                snapshots=theme_snapshots,
+            ).payload,
+            "evidence_state": _build_theme_breakout_evidence_state(
+                stock_readiness=stock_readiness,
+                tables_used=theme_tables,
+                provenance=theme_provenance,
+            ),
+        }
+
     risk_exit_payload: dict[str, object] | None = None
     risk_exit_block_reason = ""
     if stock_coverage.full_coverage:
@@ -450,6 +494,7 @@ def _load_choice_stock_outputs(
         stock_coverage=stock_coverage,
         sector_rank_payload=sector_rank_payload,
         stock_candidates_payload=stock_candidates_payload,
+        theme_breakout_payload=theme_breakout_payload,
         risk_exit_payload=risk_exit_payload,
         risk_exit_block_reason=risk_exit_block_reason,
         stock_candidate_block_reason=stock_candidate_block_reason,
@@ -679,6 +724,353 @@ def _load_stock_candidate_snapshots(
     return snapshots, tables_used, source_versions, vendor_versions
 
 
+def _load_theme_breakout_snapshots(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+    sector_rank_payload: dict[str, object],
+) -> tuple[list[ThemeBreakoutSnapshot], list[str], list[str], list[str], _ThemeBreakoutEvidenceProvenance]:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
+    required_tables = {
+        "choice_stock_universe",
+        "choice_stock_sector_membership",
+        "choice_stock_daily_observation",
+    }
+    concept_rows: list[tuple[object, ...]] = []
+    movement_rows: list[tuple[object, ...]] = []
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        if not required_tables.issubset(tables):
+            return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
+        has_limit_quality = "choice_stock_limit_quality" in tables
+        has_concept_membership = "choice_stock_concept_membership" in tables
+        has_intraday_movement = "choice_stock_intraday_movement_event" in tables
+        limit_select = (
+            "coalesce(limits.issurgedlimit, false) as issurgedlimit, "
+            "limits.source_version, limits.vendor_version"
+            if has_limit_quality
+            else "false as issurgedlimit, '' as limit_source_version, '' as limit_vendor_version"
+        )
+        limit_join = (
+            """
+            left join choice_stock_limit_quality limits
+              on limits.stock_code = universe.stock_code
+             and limits.as_of_date = universe.as_of_date
+            """
+            if has_limit_quality
+            else ""
+        )
+        rows = conn.execute(
+            f"""
+            select
+              universe.stock_code,
+              universe.stock_name,
+              membership.sw2021code,
+              membership.sw2021,
+              daily.open_value,
+              daily.high_value,
+              daily.low_value,
+              daily.close_value,
+              daily.pctchange,
+              daily.turn,
+              daily.amplitude,
+              {limit_select},
+              universe.source_version,
+              universe.vendor_version,
+              membership.source_version,
+              membership.vendor_version,
+              daily.source_version,
+              daily.vendor_version
+            from choice_stock_universe universe
+            join choice_stock_sector_membership membership
+              on membership.stock_code = universe.stock_code
+             and membership.as_of_date = universe.as_of_date
+            join choice_stock_daily_observation daily
+              on daily.stock_code = universe.stock_code
+             and cast(daily.trade_date as date) = cast(? as date)
+            {limit_join}
+            where universe.as_of_date = ?
+            order by universe.stock_code asc
+            """,
+            [as_of_date, as_of_date],
+        ).fetchall()
+        if has_concept_membership:
+            concept_rows = conn.execute(
+                """
+                select
+                  stock_code,
+                  concept_code,
+                  concept_name,
+                  source_version,
+                  vendor_version
+                from choice_stock_concept_membership
+                where as_of_date = ?
+                order by stock_code asc, concept_code asc, concept_name asc
+                """,
+                [as_of_date],
+            ).fetchall()
+        if has_intraday_movement:
+            movement_rows = conn.execute(
+                """
+                select
+                  stock_code,
+                  concept_code,
+                  concept_name,
+                  event_time,
+                  event_title,
+                  source_version,
+                  vendor_version
+                from choice_stock_intraday_movement_event
+                where as_of_date = ?
+                order by stock_code asc, concept_code asc, event_time asc
+                """,
+                [as_of_date],
+            ).fetchall()
+    except duckdb.Error:
+        return [], sorted(required_tables | {"choice_stock_limit_quality"}), [], [], _ThemeBreakoutEvidenceProvenance()
+    finally:
+        conn.close()
+
+    sector_rank_by_key: dict[tuple[str, str], int] = {}
+    for item in cast(list[dict[str, object]], sector_rank_payload["items"]):
+        rank = _safe_int(item.get("rank"))
+        if rank is None:
+            continue
+        sector_rank_by_key[(str(item["sector_code"]), str(item["sector_name"]))] = rank
+
+    snapshots: list[ThemeBreakoutSnapshot] = []
+    source_versions: list[str] = []
+    vendor_versions: list[str] = []
+    universe_codes = {str(row[0] or "") for row in rows if str(row[0] or "")}
+    concept_by_stock: dict[str, list[tuple[str, str]]] = {}
+    concept_date_row_count = 0
+    concept_matched_row_count = 0
+    for row in concept_rows:
+        stock_code = str(row[0] or "")
+        concept_code = str(row[1] or "")
+        concept_name = str(row[2] or "")
+        if not stock_code or not (concept_code or concept_name):
+            continue
+        concept_date_row_count += 1
+        if stock_code in universe_codes:
+            concept_matched_row_count += 1
+        concept_by_stock.setdefault(stock_code, []).append((concept_code, concept_name))
+        source_versions.extend(str(value) for value in (row[3],) if value)
+        vendor_versions.extend(str(value) for value in (row[4],) if value)
+
+    movement_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
+    movement_date_row_count = 0
+    movement_matched_row_count = 0
+    for row in movement_rows:
+        stock_code = str(row[0] or "")
+        concept_code = str(row[1] or "")
+        concept_name = str(row[2] or "")
+        if not stock_code:
+            continue
+        movement_date_row_count += 1
+        if stock_code in universe_codes:
+            movement_matched_row_count += 1
+        key = (stock_code, concept_code, concept_name)
+        current = movement_by_key.setdefault(
+            key,
+            {
+                "count": 0,
+                "latest_event_time": "",
+                "latest_event_title": "",
+            },
+        )
+        current["count"] = int(current["count"]) + 1
+        event_time = str(row[3] or "")
+        if event_time >= str(current["latest_event_time"]):
+            current["latest_event_time"] = event_time
+            current["latest_event_title"] = str(row[4] or "")
+        source_versions.extend(str(value) for value in (row[5],) if value)
+        vendor_versions.extend(str(value) for value in (row[6],) if value)
+
+    for row in rows:
+        stock_code = str(row[0] or "")
+        sector_code = str(row[2] or "")
+        sector_name = str(row[3] or "")
+        concepts = concept_by_stock.get(stock_code) or [("", "")]
+        for concept_code, concept_name in concepts:
+            movement = _movement_for_concept(
+                movement_by_key=movement_by_key,
+                stock_code=stock_code,
+                concept_code=concept_code,
+                concept_name=concept_name,
+            )
+            snapshots.append(
+                ThemeBreakoutSnapshot(
+                    stock_code=stock_code,
+                    stock_name=str(row[1] or ""),
+                    sector_code=sector_code,
+                    sector_name=sector_name,
+                    sector_rank=sector_rank_by_key.get((sector_code, sector_name)),
+                    open_value=row[4],
+                    high_value=row[5],
+                    low_value=row[6],
+                    close_value=row[7],
+                    pctchange=row[8],
+                    turn=row[9],
+                    amplitude=row[10],
+                    closed_up_limit=bool(_truthy(row[11])),
+                    concept_code=concept_code,
+                    concept_name=concept_name,
+                    movement_event_count=int(movement["count"]),
+                    latest_event_title=str(movement["latest_event_title"]),
+                    latest_event_time=str(movement["latest_event_time"]),
+                )
+            )
+        source_versions.extend(str(value) for value in (row[12], row[14], row[16], row[18]) if value)
+        vendor_versions.extend(str(value) for value in (row[13], row[15], row[17], row[19]) if value)
+
+    tables_used = [
+        "choice_stock_universe",
+        "choice_stock_sector_membership",
+        "choice_stock_daily_observation",
+    ]
+    if has_limit_quality:
+        tables_used.append("choice_stock_limit_quality")
+    if has_concept_membership:
+        tables_used.append("choice_stock_concept_membership")
+    if has_intraday_movement:
+        tables_used.append("choice_stock_intraday_movement_event")
+    return (
+        snapshots,
+        tables_used,
+        source_versions,
+        vendor_versions,
+        _ThemeBreakoutEvidenceProvenance(
+            concept_date_row_count=concept_date_row_count,
+            concept_matched_row_count=concept_matched_row_count,
+            movement_date_row_count=movement_date_row_count,
+            movement_matched_row_count=movement_matched_row_count,
+        ),
+    )
+
+
+def _build_theme_breakout_evidence_state(
+    *,
+    stock_readiness: ChoiceStockReadiness,
+    tables_used: list[str],
+    provenance: _ThemeBreakoutEvidenceProvenance,
+) -> dict[str, dict[str, object]]:
+    return {
+        "concept_membership": _theme_breakout_evidence_entry(
+            input_family="concept_membership",
+            catalog_status=choice_stock_optional_input_status(stock_readiness, "concept_membership"),
+            table_name="choice_stock_concept_membership",
+            tables_used=tables_used,
+            date_row_count=provenance.concept_date_row_count,
+            matched_row_count=provenance.concept_matched_row_count,
+        ),
+        "intraday_movement": _theme_breakout_evidence_entry(
+            input_family="intraday_movement",
+            catalog_status=choice_stock_optional_input_status(stock_readiness, "intraday_movement"),
+            table_name="choice_stock_intraday_movement_event",
+            tables_used=tables_used,
+            date_row_count=provenance.movement_date_row_count,
+            matched_row_count=provenance.movement_matched_row_count,
+        ),
+    }
+
+
+def _theme_breakout_evidence_entry(
+    *,
+    input_family: str,
+    catalog_status: str,
+    table_name: str,
+    tables_used: list[str],
+    date_row_count: int,
+    matched_row_count: int,
+) -> dict[str, object]:
+    if catalog_status == "catalog_unconfirmed":
+        state = "catalog_unconfirmed"
+    elif table_name not in tables_used:
+        state = "table_missing"
+    elif matched_row_count > 0:
+        state = "matched_rows"
+    else:
+        state = "landed_no_rows"
+    return {
+        "input_family": input_family,
+        "status": state,
+        "state": state,
+        "table": table_name,
+        "table_name": table_name,
+        "row_count": date_row_count,
+        "date_row_count": date_row_count,
+        "matched_row_count": matched_row_count,
+        "message": _theme_breakout_evidence_message(
+            input_family=input_family,
+            state=state,
+            table_name=table_name,
+            date_row_count=date_row_count,
+            matched_row_count=matched_row_count,
+        ),
+    }
+
+
+def _theme_breakout_evidence_message(
+    *,
+    input_family: str,
+    state: str,
+    table_name: str,
+    date_row_count: int,
+    matched_row_count: int,
+) -> str:
+    if state == "catalog_unconfirmed":
+        return f"{input_family} is optional and not confirmed in the Choice stock catalog."
+    if state == "table_missing":
+        return f"{input_family} is confirmed, but {table_name} is not landed in DuckDB."
+    if state == "matched_rows":
+        return f"{input_family} has {matched_row_count} date-matched rows from {table_name}."
+    return f"{input_family} table {table_name} is landed with {date_row_count} date rows but no matched usable rows."
+
+
+def _movement_for_concept(
+    *,
+    movement_by_key: dict[tuple[str, str, str], dict[str, object]],
+    stock_code: str,
+    concept_code: str,
+    concept_name: str,
+) -> dict[str, object]:
+    empty = {
+        "count": 0,
+        "latest_event_time": "",
+        "latest_event_title": "",
+    }
+    if not movement_by_key:
+        return empty
+    exact = movement_by_key.get((stock_code, concept_code, concept_name))
+    if exact is not None:
+        return exact
+    candidates = [
+        value
+        for (code, row_concept_code, row_concept_name), value in movement_by_key.items()
+        if code == stock_code
+        and (
+            (concept_code and row_concept_code == concept_code)
+            or (concept_name and row_concept_name == concept_name)
+            or (not concept_code and not concept_name)
+        )
+    ]
+    if not candidates:
+        return empty
+    latest = max(candidates, key=lambda row: str(row["latest_event_time"]))
+    return {
+        "count": sum(int(row["count"]) for row in candidates),
+        "latest_event_time": latest["latest_event_time"],
+        "latest_event_title": latest["latest_event_title"],
+    }
+
+
 def _load_risk_exit_snapshots(
     *,
     duckdb_path: str,
@@ -867,6 +1259,19 @@ def _build_supported_outputs(
         supported.append("stock_candidates")
     else:
         unsupported.append({"key": "stock_candidates", "reason": stock_reason})
+    if stock_outputs.theme_breakout_payload is not None:
+        supported.append("theme_breakout")
+    else:
+        unsupported.append(
+            {
+                "key": "theme_breakout",
+                "reason": _theme_breakout_unavailable_reason(
+                    market_state=state,
+                    stock_readiness=stock_readiness,
+                    stock_outputs=stock_outputs,
+                ),
+            }
+        )
     if stock_outputs.risk_exit_payload is not None:
         supported.append("risk_exit")
     else:
@@ -1090,6 +1495,16 @@ def _build_data_gaps(
                 ),
             }
         )
+    if stock_outputs.theme_breakout_payload is not None:
+        theme_is_proxy = bool(stock_outputs.theme_breakout_payload.get("is_proxy", True))
+        theme_evidence_ready = _theme_breakout_evidence_ready(stock_outputs.theme_breakout_payload)
+        gaps.append(
+            {
+                "input_family": "theme_taxonomy",
+                "status": "ready" if (not theme_is_proxy and theme_evidence_ready) else "partial",
+                "evidence": _theme_breakout_gap_evidence(stock_outputs.theme_breakout_payload),
+            }
+        )
     gate_state = str(market_gate["state"])
     if gate_state == "NO_DATA":
         gaps.insert(
@@ -1267,6 +1682,29 @@ def _build_diagnostics(
                 "input_family": "stock_universe",
             }
         )
+    if stock_outputs.theme_breakout_payload is not None:
+        theme_is_proxy = bool(stock_outputs.theme_breakout_payload.get("is_proxy", True))
+        theme_evidence_ready = _theme_breakout_evidence_ready(stock_outputs.theme_breakout_payload)
+        if theme_is_proxy:
+            code = "LIVERMORE_THEME_BREAKOUT_PROXY_FORMULA"
+            message = (
+                "Theme breakout radar is proxy-based over landed daily rows and level-1 sectors; "
+                "it is not an intraday or authoritative concept taxonomy feed."
+            )
+        elif not theme_evidence_ready:
+            code = "LIVERMORE_THEME_BREAKOUT_PARTIAL_REAL_EVIDENCE"
+            message = "Theme breakout radar uses landed concept rows, but real concept/movement evidence is still partial."
+        else:
+            code = "LIVERMORE_THEME_BREAKOUT_REAL_CONCEPT_FORMULA"
+            message = "Theme breakout radar uses landed concept membership and intraday movement rows; output remains observation-only."
+        diagnostics.append(
+            {
+                "severity": "warning",
+                "code": code,
+                "message": f"{message} {_theme_breakout_evidence_summary(stock_outputs.theme_breakout_payload)}",
+                "input_family": "theme_taxonomy",
+            }
+        )
     return diagnostics
 
 
@@ -1311,6 +1749,68 @@ def _stock_unavailable_reason(
     if market_state in {"NO_DATA", "PENDING_DATA", "STALE"}:
         return "Market gate is unavailable or stale, so stock candidates cannot be evaluated."
     return ""
+
+
+def _theme_breakout_evidence_entries(payload: dict[str, object]) -> list[dict[str, object]]:
+    evidence_state = payload.get("evidence_state")
+    if not isinstance(evidence_state, dict):
+        return []
+    entries: list[dict[str, object]] = []
+    for input_family in ("concept_membership", "intraday_movement"):
+        entry = evidence_state.get(input_family)
+        if isinstance(entry, dict):
+            entries.append(cast(dict[str, object], entry))
+    return entries
+
+
+def _theme_breakout_evidence_ready(payload: dict[str, object]) -> bool:
+    entries = _theme_breakout_evidence_entries(payload)
+    return bool(entries) and all(str(entry.get("status") or entry.get("state")) == "matched_rows" for entry in entries)
+
+
+def _theme_breakout_evidence_summary(payload: dict[str, object]) -> str:
+    parts: list[str] = []
+    for entry in _theme_breakout_evidence_entries(payload):
+        input_family = str(entry.get("input_family") or "theme_input")
+        status = str(entry.get("status") or entry.get("state") or "unknown")
+        row_count = _safe_int(entry.get("row_count") or entry.get("date_row_count")) or 0
+        matched_count = _safe_int(entry.get("matched_row_count")) or 0
+        parts.append(f"{input_family}={status} rows {row_count}/matched {matched_count}")
+    return "Evidence state: " + "; ".join(parts) + "." if parts else "Evidence state unavailable."
+
+
+def _theme_breakout_gap_evidence(payload: dict[str, object]) -> str:
+    if _theme_breakout_evidence_entries(payload):
+        return _theme_breakout_evidence_summary(payload)
+    if bool(payload.get("is_proxy", True)):
+        return (
+            "Theme breakout radar is using proxy stock-name and Shenwan level-1 sector evidence; "
+            "real concept and intraday movement input state is unavailable."
+        )
+    return "Theme breakout radar is using landed concept membership and intraday movement evidence."
+
+
+def _theme_breakout_unavailable_reason(
+    *,
+    market_state: str,
+    stock_readiness: ChoiceStockReadiness,
+    stock_outputs: _ChoiceStockOutputs,
+) -> str:
+    if not stock_readiness.ready:
+        return _choice_stock_dependency_summary(
+            stock_readiness=stock_readiness,
+            families=["stock_universe", "sector_membership", "sector_strength", "stock_ohlcv", "stock_status"],
+            ready_summary="",
+        )
+    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
+        return "Choice stock catalog is confirmed, but theme breakout inputs are not materialized yet."
+    if not stock_outputs.stock_coverage.full_coverage:
+        return stock_outputs.stock_coverage.message
+    if stock_outputs.sector_rank_payload is None:
+        return "Sector rank is unavailable, so the theme breakout proxy is blocked."
+    if market_state in {"NO_DATA", "PENDING_DATA", "STALE"}:
+        return "Market gate is unavailable or stale, so theme breakout observations cannot be evaluated."
+    return "Theme breakout proxy produced no payload for the resolved inputs."
 
 
 def _stock_unavailable_input_family(stock_outputs: _ChoiceStockOutputs) -> str:
