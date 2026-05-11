@@ -331,6 +331,48 @@ describe("StockAnalysisPage", () => {
             formula_version: "rv_livermore_theme_breakout_proxy_v1",
             is_proxy: true,
             theme_count: 1,
+            evidence_state: {
+              concept_membership: {
+                input_family: "concept_membership",
+                status: "catalog_unconfirmed",
+                row_count: 0,
+                matched_row_count: 0,
+                message: "Optional concept membership is not confirmed in the Choice stock catalog.",
+              },
+              intraday_movement: {
+                input_family: "intraday_movement",
+                status: "table_missing",
+                table: "choice_stock_intraday_movement_event",
+                row_count: 0,
+                matched_row_count: 0,
+                message: "Intraday movement table is not landed for this environment.",
+              },
+            },
+            review_items: [
+              {
+                rank: 1,
+                as_of_date: "2026-05-08",
+                theme_key: "semiconductor_proxy_review",
+                theme_name: "Semiconductor proxy",
+                source_kind: "proxy",
+                parent_sector_code: "801080",
+                parent_sector_name: "Electronic",
+                parent_sector_rank: 9,
+                member_count: 2,
+                advance_count: 2,
+                advance_ratio: 1,
+                strong_stock_count: 2,
+                limit_stock_count: 0,
+                avg_pctchange: 6.25,
+                avg_turn: 4.1,
+                avg_amplitude: 6.8,
+                movement_event_count: 0,
+                failed_gates: ["insufficient_cluster_strength"],
+                observation_only: true,
+                reason: "Review-only proxy cluster missed selection: strong rows 2 below gate 3.",
+                items: [],
+              },
+            ],
             items: [
               {
                 rank: 1,
@@ -382,7 +424,30 @@ describe("StockAnalysisPage", () => {
     expect(section).toHaveTextContent("Electronic #9");
     expect(section).toHaveTextContent("代理题材观察");
     expect(section).toHaveTextContent("Alpha Semiconductor");
+    expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("catalog_unconfirmed");
+    expect(screen.getByTestId("stock-analysis-theme-review-items")).toHaveTextContent("insufficient_cluster_strength");
     expect(section).not.toHaveTextContent("买入");
+  });
+
+  it("keeps theme evidence extras absent when optional payload fields are missing", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "theme_breakout", "risk_exit"],
+          theme_breakout: {
+            as_of_date: "2026-05-08",
+            formula_version: "rv_livermore_theme_breakout_proxy_v1",
+            is_proxy: true,
+            theme_count: 0,
+            items: [],
+          },
+        }),
+      }),
+    });
+
+    await screen.findByTestId("stock-analysis-theme-breakout");
+    expect(screen.queryByTestId("stock-analysis-theme-evidence-state")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("stock-analysis-theme-review-items")).not.toBeInTheDocument();
   });
 
   it("shows staleness banner when quality_flag is not ok", async () => {
@@ -443,6 +508,10 @@ describe("StockAnalysisPage", () => {
     });
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
+    expect(verdict).toHaveTextContent("可复核");
+    expect(verdict).toHaveTextContent("可进入人工复核队列");
+    expect(verdict).toHaveTextContent("不推导策略收益");
     expect(summary).toHaveTextContent("闭环摘要");
     expect(summary).toHaveTextContent("可复核");
     expect(summary).toHaveTextContent("入场观察门");
@@ -480,6 +549,15 @@ describe("StockAnalysisPage", () => {
     });
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
+    expect(verdict).toHaveTextContent("拦截");
+    expect(verdict).toHaveTextContent("闭环阻断，先复核约束项");
+    expect(verdict).toHaveTextContent("保持仅观察输出");
+    expect(decisionPanel).toHaveTextContent("闭环结论优先");
+    expect(decisionPanel.querySelector("h2")).toHaveTextContent("闭环阻断，先复核约束项");
+    expect(decisionPanel.querySelector("h2")).not.toHaveTextContent("今日市场状态");
+    expect(decisionPanel).not.toHaveTextContent("先复核 Alpha");
     expect(summary).toHaveTextContent("拦截");
     expect(summary).toHaveTextContent("阻断");
     expect(summary).toHaveTextContent("已触发");
@@ -501,6 +579,15 @@ describe("StockAnalysisPage", () => {
     });
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
+    expect(verdict).toHaveTextContent("数据不足");
+    expect(verdict).toHaveTextContent("证据不足，不形成有效观察结论");
+    expect(verdict).toHaveTextContent("先补齐宏观反拥挤");
+    expect(decisionPanel).toHaveTextContent("闭环结论优先");
+    expect(decisionPanel.querySelector("h2")).toHaveTextContent("证据不足，不形成有效观察结论");
+    expect(decisionPanel.querySelector("h2")).not.toHaveTextContent("今日市场状态");
+    expect(decisionPanel).not.toHaveTextContent("先复核 Alpha");
     expect(summary).toHaveTextContent("数据不足");
     expect(summary).toHaveTextContent("待补");
     expect(summary).toHaveTextContent("不能视为中性证明");
@@ -528,6 +615,13 @@ describe("StockAnalysisPage", () => {
     });
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
+    expect(verdict).toHaveTextContent("暂缓");
+    expect(verdict).toHaveTextContent("暂缓复核，存在降级边界");
+    expect(verdict).toHaveTextContent("保留观察队列");
+    expect(decisionPanel.querySelector("h2")).toHaveTextContent("暂缓复核，存在降级边界");
+    expect(decisionPanel.querySelector("h2")).not.toHaveTextContent("今日市场状态");
     expect(summary).toHaveTextContent("暂缓");
     expect(summary).toHaveTextContent("降级");
     expect(summary).toHaveTextContent("仍有降级或仅观察边界");

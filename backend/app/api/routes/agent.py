@@ -15,6 +15,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.agent_run_service import (
     create_agent_run,
+    get_agent_run_owner,
     get_agent_run_status,
 )
 from backend.app.services.agent_service import (
@@ -49,9 +50,9 @@ def _apply_auth_context(
         update={
             "context": {
                 **request.context,
-                "user_id": request.context.get("user_id") or auth.user_id,
-                "user_role": request.context.get("user_role") or auth.role,
-                "identity_source": request.context.get("identity_source") or auth.identity_source,
+                "user_id": auth.user_id,
+                "user_role": auth.role,
+                "identity_source": auth.identity_source,
             }
         }
     )
@@ -131,8 +132,15 @@ def create_agent_run_endpoint(
     response_model=AgentRunStatusResponse,
     response_model_exclude_none=True,
 )
-def get_agent_run_endpoint(run_id: str) -> AgentRunStatusResponse:
+def get_agent_run_endpoint(
+    run_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AgentRunStatusResponse:
+    settings = get_settings()
     try:
-        return get_agent_run_status(run_id=run_id, settings=get_settings())
+        owner = get_agent_run_owner(run_id=run_id, settings=settings)
+        if owner is not None and owner != auth.user_id:
+            raise HTTPException(status_code=403, detail="Agent run belongs to a different user.")
+        return get_agent_run_status(run_id=run_id, settings=settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

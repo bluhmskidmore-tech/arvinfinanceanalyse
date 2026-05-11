@@ -1149,12 +1149,46 @@ export type LivermoreThemeBreakoutItem = {
   items: LivermoreThemeBreakoutStockItem[];
 };
 
+export type LivermoreThemeEvidenceStatus =
+  | "catalog_unconfirmed"
+  | "table_missing"
+  | "landed_no_rows"
+  | "matched_rows"
+  | string;
+
+export type LivermoreThemeEvidenceInputState = {
+  input_family?: string;
+  status?: LivermoreThemeEvidenceStatus;
+  state?: LivermoreThemeEvidenceStatus;
+  table?: string;
+  table_name?: string;
+  row_count?: number;
+  date_row_count?: number;
+  matched_row_count?: number;
+  message?: string;
+};
+
+export type LivermoreThemeEvidenceState = {
+  concept_membership?: LivermoreThemeEvidenceInputState;
+  intraday_movement?: LivermoreThemeEvidenceInputState;
+  inputs?: LivermoreThemeEvidenceInputState[];
+  summary?: string;
+};
+
+export type LivermoreThemeBreakoutReviewItem = Omit<LivermoreThemeBreakoutItem, "rank"> & {
+  rank?: number;
+  failed_gates?: string[];
+  failed_gate_codes?: string[];
+};
+
 export type LivermoreThemeBreakoutPayload = {
   as_of_date: string;
   formula_version: string;
   is_proxy: boolean;
   theme_count: number;
+  evidence_state?: LivermoreThemeEvidenceState;
   items: LivermoreThemeBreakoutItem[];
+  review_items?: LivermoreThemeBreakoutReviewItem[];
 };
 
 export type LivermoreRiskExitItem = {

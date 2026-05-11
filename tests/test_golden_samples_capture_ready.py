@@ -927,8 +927,8 @@ def test_product_category_sample_documents_headline_metric_boundary() -> None:
 
     for required in (
         "The approved sample-to-metric bindings are limited to the three headline totals:",
-        "Detail rows, `weighted_yield`, scale, FTP fields, and scenario outputs remain page/sample truth only.",
-        "This sample is now bound to the three headline `metric_id` values, while detail metric expansion remains open.",
+        "Detail rows, `weighted_yield`, scale, and FTP fields are approved directionally by decision 3C, but they remain page/sample truth until the field matrix, numbering, dictionary rows, and tests make them active.",
+        "This sample is now bound to the three headline `metric_id` values; decision 3C approves detail metric expansion directionally, but concrete detail rows wait for the field matrix / numbering / dictionary tests.",
     ):
         assert required in combined
 

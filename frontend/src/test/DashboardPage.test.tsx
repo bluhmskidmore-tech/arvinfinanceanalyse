@@ -405,6 +405,41 @@ describe("DashboardPage", () => {
     expect(within(empty).getByRole("link", { name: "组合久期 看久期" })).toHaveAttribute("href", "/bond-analysis");
   });
 
+  it("reuses first-screen bond headline data when the drilldown is opened", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      mode: "real",
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-04-30",
+          },
+        };
+      },
+      getBondDashboardHeadlineKpis: vi.fn((reportDate) =>
+        base.getBondDashboardHeadlineKpis(reportDate),
+      ),
+    };
+
+    renderDashboard(client);
+
+    await screen.findByTestId("dashboard-cockpit-metric-rail");
+    await waitFor(() => {
+      expect(client.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+    });
+
+    await openDetailDrilldown();
+    expect(await screen.findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(client.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("keeps business income and asset-liability summary cards visible before drilldown", async () => {
     renderDashboard();
 

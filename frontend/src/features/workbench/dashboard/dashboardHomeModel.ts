@@ -6,6 +6,7 @@ import type {
   DashboardHeroMetric,
   DashboardHubCalendarItem,
   DashboardHubTask,
+  DashboardReviewMetaItem,
 } from "./DashboardOverviewSections";
 import type { GovernancePill } from "./GovernancePills";
 import { buildDashboardTodoTasksFromAlerts } from "./dashboardTodoModel";
@@ -34,6 +35,7 @@ export type DashboardHomeModelInput = {
   calendarIsError: boolean;
   isMockMode: boolean;
   heroMetricLimit?: number;
+  heroMetricFallbackDelta?: string;
   alertLimit?: number;
   metricAlertLimit?: number;
   calendarLimit?: number;
@@ -76,10 +78,13 @@ export type DashboardHomeModel = {
   effectiveReportDate: string;
   attentionItems: string[];
   snapshotPartialNote: string | null;
+  snapshotModeLabel: string;
   kpiRibbon: DashboardHomeKpiRibbonItem[];
   judgment: VerdictPayload;
   heroMetrics: DashboardHeroMetric[];
   alerts: DashboardAlert[];
+  reviewCount: number;
+  reviewMetaItems: DashboardReviewMetaItem[];
   focus: DashboardHomeFocus;
   sections: DashboardHomeSection[];
   hiddenOrReservedSections: DashboardHomeSection[];
@@ -98,7 +103,7 @@ export function resolveDashboardHomeEffectiveReportDate(input: {
 
 function buildMetaAttentionText(
   meta: ResultMeta | null | undefined,
-  scope: string,
+  scopeLabel: string,
 ): string | null {
   if (
     !meta ||
@@ -107,17 +112,38 @@ function buildMetaAttentionText(
     return null;
   }
 
-  const parts = [scope];
+  const parts = [scopeLabel];
   if (meta.quality_flag !== "ok") {
-    parts.push(`quality=${meta.quality_flag}`);
+    parts.push(metaQualityLabel(meta.quality_flag));
   }
   if (meta.fallback_mode !== "none") {
-    parts.push(`fallback=${meta.fallback_mode}`);
+    parts.push(`降级=${metaFallbackLabel(meta.fallback_mode)}`);
   }
   if (meta.vendor_status !== "ok") {
-    parts.push(`vendor=${meta.vendor_status}`);
+    parts.push(`供应商=${metaVendorLabel(meta.vendor_status)}`);
   }
   return parts.join(" / ");
+}
+
+function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
+}
+
+function metaVendorLabel(value: ResultMeta["vendor_status"]): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value;
+}
+
+function metaFallbackLabel(value: ResultMeta["fallback_mode"]): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value;
 }
 
 export function collectDashboardAttentionItems(input: {
@@ -126,8 +152,8 @@ export function collectDashboardAttentionItems(input: {
 }): string[] {
   const items: string[] = [];
 
-  const overview = buildMetaAttentionText(input.overviewMeta, "overview");
-  const attribution = buildMetaAttentionText(input.attributionMeta, "attribution");
+  const overview = buildMetaAttentionText(input.overviewMeta, "总览");
+  const attribution = buildMetaAttentionText(input.attributionMeta, "贡献拆解");
 
   if (overview) {
     items.push(overview);
@@ -151,17 +177,30 @@ export function buildDashboardHomeSnapshotPartialNote(input: {
     (domain) => typeof domain === "string" && domain.trim().length > 0,
   );
   if (missing && missing.length > 0) {
-    return `快照含缺域：${missing.join(", ")}`;
+    return `该日部分业务域不可用: ${missing.join(", ")}`;
   }
 
-  return "快照覆盖不完整";
+  return "该日部分业务域不可用";
 }
 
 export function formatDashboardHomeDelta(display: string | undefined, fallback: string): string {
-  if (!display || !display.trim()) {
+  const trimmed = display?.trim() ?? "";
+  const missingDisplayValues = new Set(["—", "-", "N/A", "不可用"]);
+  if (!trimmed || missingDisplayValues.has(trimmed)) {
     return fallback;
   }
-  return display;
+  return display ?? "";
+}
+
+export function formatDashboardHomeSnapshotMode(
+  mode: string | undefined,
+  isLoading: boolean,
+): string {
+  if (isLoading) return "载入中";
+  if (!mode) return "待定";
+  if (mode === "partial") return "部分可用";
+  if (mode === "complete") return "完整";
+  return mode;
 }
 
 export function buildDashboardHomeHeroMetrics(input: {
@@ -192,13 +231,11 @@ function resolveSnapshotStatus(input: {
 }): {
   value: string;
   tone: DashboardHomeKpiRibbonItem["tone"];
-  hint: string;
 } {
   if (input.snapshotLoading) {
     return {
       value: "载入中",
       tone: "warning",
-      hint: "首页快照仍在载入。",
     };
   }
 
@@ -206,7 +243,6 @@ function resolveSnapshotStatus(input: {
     return {
       value: "含缺域",
       tone: "warning",
-      hint: input.snapshotPartialNote,
     };
   }
 
@@ -214,14 +250,12 @@ function resolveSnapshotStatus(input: {
     return {
       value: "含缺域",
       tone: "warning",
-      hint: "首页快照覆盖不完整。",
     };
   }
 
   return {
     value: "完整",
     tone: "ok",
-    hint: "首页快照完整。",
   };
 }
 
@@ -245,18 +279,18 @@ export function buildDashboardHomeKpiRibbon(input: {
     {
       id: "report-date",
       label: "报告日",
-      value: input.effectiveReportDate || "待定",
-      tone: input.effectiveReportDate ? "ok" : "warning",
+      value: input.effectiveReportDate || "最新可用",
+      tone: input.effectiveReportDate ? "info" : "warning",
       hint: input.effectiveReportDate
-        ? "使用请求日或后端返回的快照报告日。"
-        : "尚未解析到可用报告日。",
+        ? `归属日期 ${input.effectiveReportDate}`
+        : "用户选择 / 默认日期",
     },
     {
       id: "snapshot",
       label: "快照",
       value: snapshot.value,
       tone: snapshot.tone,
-      hint: snapshot.hint,
+      hint: input.snapshotPartialNote ?? "首页首屏只保留已落地的受治理结果",
     },
     {
       id: "attention",
@@ -266,16 +300,49 @@ export function buildDashboardHomeKpiRibbon(input: {
       hint:
         input.attentionCount > 0
           ? "做业务判断前先复核治理关注项。"
-          : "未检测到显式质量警示。",
+          : "无质量、降级或供应商警示",
+    },
+    {
+      id: "source",
+      label: "读链路",
+      value: input.isMockMode ? "模拟演示" : "真实链路",
+      tone: input.isMockMode ? "warning" : "ok",
+      hint: input.isMockMode
+        ? "仅用于界面演示，不应作为业务判断依据"
+        : "正式接口",
+    },
+  ];
+}
+
+export function buildDashboardHomeReviewMetaItems(input: {
+  reportDate: string;
+  snapshotMode?: string;
+  snapshotPartialNote: string | null;
+  isSnapshotLoading: boolean;
+  isMockMode: boolean;
+}): DashboardReviewMetaItem[] {
+  const snapshotValue = formatDashboardHomeSnapshotMode(
+    input.snapshotMode,
+    input.isSnapshotLoading,
+  );
+  return [
+    {
+      id: "report-date",
+      label: "报告日",
+      value: input.reportDate || "待定",
+      tone: input.reportDate ? "ok" : "warning",
+    },
+    {
+      id: "snapshot",
+      label: "快照",
+      value: input.snapshotPartialNote ? "含缺域" : snapshotValue,
+      tone: input.snapshotPartialNote ? "warning" : "ok",
     },
     {
       id: "source",
       label: "读链路",
       value: input.isMockMode ? "模拟" : "真实",
       tone: input.isMockMode ? "warning" : "ok",
-      hint: input.isMockMode
-        ? "当前为模拟数据源，不能直接作为业务判断。"
-        : "数据来自正式服务链路。",
     },
   ];
 }
@@ -474,10 +541,10 @@ export function buildDashboardHomeAlerts(input: {
 
   if (input.isMockMode) {
     alerts.push({
-      id: "mock-source",
+      id: "mock-mode",
       title: "当前处于模拟模式",
       detail: "首屏数字仅用于界面演示，不应直接作为业务判断依据。",
-      severity: "medium",
+      severity: "high",
     });
   }
 
@@ -492,10 +559,10 @@ export function buildDashboardHomeAlerts(input: {
 
   if (input.snapshotPartialNote) {
     alerts.push({
-      id: "partial-snapshot",
+      id: "partial-note",
       title: "快照含缺域",
       detail: input.snapshotPartialNote,
-      severity: "high",
+      severity: "medium",
     });
   }
 
@@ -544,6 +611,10 @@ export function buildDashboardHomeModel(input: DashboardHomeModelInput): Dashboa
     snapshotMode: input.snapshotMode,
     domainsMissing: input.snapshotDomainsMissing,
   });
+  const snapshotModeLabel = formatDashboardHomeSnapshotMode(
+    input.snapshotMode,
+    input.isSnapshotLoading,
+  );
 
   const attentionItems = collectDashboardAttentionItems({
     overviewMeta: input.overviewMeta,
@@ -553,6 +624,7 @@ export function buildDashboardHomeModel(input: DashboardHomeModelInput): Dashboa
   const heroMetrics = buildDashboardHomeHeroMetrics({
     metrics: input.metrics,
     limit: input.heroMetricLimit ?? DASHBOARD_HOME_HERO_METRIC_LIMIT,
+    fallbackDelta: input.heroMetricFallbackDelta,
   });
 
   const judgment = buildDashboardHomeJudgment({
@@ -578,6 +650,16 @@ export function buildDashboardHomeModel(input: DashboardHomeModelInput): Dashboa
     snapshotPartialNote,
     maxAlerts: input.alertLimit ?? DASHBOARD_HOME_ALERT_LIMIT,
     metricAlertLimit: input.metricAlertLimit ?? DASHBOARD_HOME_METRIC_ALERT_LIMIT,
+  });
+  const reviewCount = alerts.filter(
+    (alert) => alert.severity === "high" || alert.severity === "medium",
+  ).length;
+  const reviewMetaItems = buildDashboardHomeReviewMetaItems({
+    reportDate: effectiveReportDate,
+    snapshotMode: input.snapshotMode,
+    snapshotPartialNote,
+    isSnapshotLoading: input.isSnapshotLoading,
+    isMockMode: input.isMockMode,
   });
 
   const focus = buildDashboardHomeFocusItems({
@@ -614,10 +696,13 @@ export function buildDashboardHomeModel(input: DashboardHomeModelInput): Dashboa
     effectiveReportDate,
     attentionItems,
     snapshotPartialNote,
+    snapshotModeLabel,
     kpiRibbon,
     judgment,
     heroMetrics,
     alerts,
+    reviewCount,
+    reviewMetaItems,
     focus,
     sections,
     hiddenOrReservedSections,

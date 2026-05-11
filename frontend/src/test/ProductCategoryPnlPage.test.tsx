@@ -390,6 +390,82 @@ describe("ProductCategoryPnlPage", () => {
     expect(monthSelect.options).toHaveLength(0);
   });
 
+  it("Unit 1: disappeared selected date is kept and uses the existing visible error path instead of silently switching", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const selectedDate = "2026-02-28";
+    const replacementDate = "2026-03-31";
+    let staleSelectedDateShouldFail = false;
+    const datesSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [selectedDate, "2026-01-31"],
+        }),
+      )
+      .mockResolvedValue(
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [replacementDate, "2026-01-31"],
+        }),
+      );
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (staleSelectedDateShouldFail && options.reportDate === selectedDate) {
+        throw new Error("unit1-selected-date-disappeared");
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+    const refreshSpy = vi.fn(async () => ({
+      status: "completed",
+      run_id: "product_category_pnl:unit1-date-disappeared",
+      job_name: "product_category_pnl",
+      trigger_mode: "sync-fallback",
+      cache_key: "product_category_pnl.formal",
+      month_count: 2,
+      report_dates: [replacementDate, "2026-01-31"],
+      rule_version: "rv_product_category_pnl_v1",
+      source_version: "sv_test",
+    }));
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: datesSpy,
+      getProductCategoryPnl: pnlSpy,
+      refreshProductCategoryPnl: refreshSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(selectedDate);
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
+      "href",
+      `/ledger-pnl?report_date=${selectedDate}`,
+    );
+
+    staleSelectedDateShouldFail = true;
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    await waitFor(() => expect(datesSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(
+        pnlSpy.mock.calls.some((call) => call[0]?.reportDate === selectedDate && call[0]?.view === "monthly"),
+      ).toBe(true);
+    });
+    expect(pnlSpy.mock.calls.some((call) => call[0]?.reportDate === replacementDate)).toBe(false);
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(selectedDate);
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
+      "href",
+      `/ledger-pnl?report_date=${selectedDate}`,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+    });
+    expect(
+      screen
+        .getAllByRole("button")
+        .some((button) => button.textContent === "\u91cd\u8bd5" || button.textContent === "閲嶈瘯"),
+    ).toBe(true);
+  });
+
   it("shows report date choices as months while keeping month-end values for the API", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
@@ -1497,8 +1573,8 @@ describe("ProductCategoryPnlPage", () => {
     denyBaselinePnl = true;
     await user.click(screen.getByTestId("product-category-refresh-button"));
 
-    const formalTableTitle = await screen.findByText("产品类别损益分析表（单位：亿元）");
-    const formalSection = formalTableTitle.closest("section");
+    const formalLead = await screen.findByTestId("product-category-formal-table-lead");
+    const formalSection = formalLead.nextElementSibling;
     expect(formalSection).toBeTruthy();
 
     await waitFor(() => {

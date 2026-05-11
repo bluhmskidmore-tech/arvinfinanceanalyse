@@ -80,12 +80,28 @@ def _client(monkeypatch, tmp_path: Path, execute):
     return TestClient(app), settings
 
 
-def _wait_for_terminal(client: TestClient, run_id: str) -> dict[str, object]:
+def _wait_for_terminal(client: TestClient, run_id: str, headers: dict[str, str] | None = None) -> dict[str, object]:
     for _ in range(200):
-        payload = client.get(f"/api/agent/runs/{run_id}").json()
+        payload = client.get(f"/api/agent/runs/{run_id}", headers=headers).json()
         status = payload.get("status")
         if status in {"completed", "failed"}:
             return payload
+        time.sleep(0.05)
+    raise AssertionError(f"agent run did not finish: {run_id}")
+
+
+def _wait_for_terminal_record(settings, run_id: str) -> None:
+    from backend.app.repositories.governance_repo import GovernanceRepository
+    from backend.app.services.agent_run_service import AGENT_RUN_STREAM
+
+    for _ in range(200):
+        records = [
+            record
+            for record in GovernanceRepository(base_dir=settings.governance_path).read_all(AGENT_RUN_STREAM)
+            if str(record.get("run_id") or "") == run_id
+        ]
+        if records and str(records[-1].get("status") or "") in {"completed", "failed"}:
+            return
         time.sleep(0.05)
     raise AssertionError(f"agent run did not finish: {run_id}")
 
@@ -97,7 +113,7 @@ def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_p
         calls.append((request, governance_dir, settings.agent_hermes_model))
         return _sample_envelope()
 
-    client, _ = _client(monkeypatch, tmp_path, fake_execute)
+    client, settings = _client(monkeypatch, tmp_path, fake_execute)
 
     response = client.post("/api/agent/runs", json={"question": "ping"})
 
@@ -133,6 +149,62 @@ def test_agent_run_status_returns_404_for_unknown_run(monkeypatch, tmp_path):
 
     assert response.status_code == 404
     assert "Unknown agent run_id=agent_run:nope" in response.json()["detail"]
+
+
+def test_agent_run_status_rejects_different_header_user(monkeypatch, tmp_path):
+    def fake_execute(request, governance_dir, settings):
+        return _sample_envelope()
+
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    client, settings = _client(monkeypatch, tmp_path, fake_execute)
+
+    created = client.post(
+        "/api/agent/runs",
+        json={"question": "ping"},
+        headers={"X-User-Id": "run-owner", "X-User-Role": "reviewer"},
+    ).json()
+    owner_headers = {"X-User-Id": "run-owner", "X-User-Role": "reviewer"}
+    _wait_for_terminal_record(settings, created["run_id"])
+
+    denied = client.get(
+        f"/api/agent/runs/{created['run_id']}",
+        headers={"X-User-Id": "other-user", "X-User-Role": "reviewer"},
+    )
+    allowed = client.get(
+        f"/api/agent/runs/{created['run_id']}",
+        headers=owner_headers,
+    )
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+
+
+def test_agent_run_creation_uses_auth_context_instead_of_request_user_context(monkeypatch, tmp_path):
+    def fake_execute(request, governance_dir, settings):
+        return _sample_envelope()
+
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    client, settings = _client(monkeypatch, tmp_path, fake_execute)
+
+    created = client.post(
+        "/api/agent/runs",
+        json={"question": "ping", "context": {"user_id": "spoofed-user", "user_role": "admin"}},
+        headers={"X-User-Id": "run-owner", "X-User-Role": "reviewer"},
+    ).json()
+    owner_headers = {"X-User-Id": "run-owner", "X-User-Role": "reviewer"}
+    _wait_for_terminal_record(settings, created["run_id"])
+
+    denied = client.get(
+        f"/api/agent/runs/{created['run_id']}",
+        headers={"X-User-Id": "spoofed-user", "X-User-Role": "admin"},
+    )
+    allowed = client.get(
+        f"/api/agent/runs/{created['run_id']}",
+        headers=owner_headers,
+    )
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
 
 
 def test_agent_run_status_prefers_jsonl_terminal_state_over_in_memory_running_cache(monkeypatch, tmp_path):

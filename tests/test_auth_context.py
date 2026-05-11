@@ -38,12 +38,12 @@ def test_get_auth_context_ignores_role_header_by_default(monkeypatch):
 
     ctx = get_auth_context(x_user_id="header-user", x_user_role="reviewer")
 
-    assert ctx.user_id == "header-user"
+    assert ctx.user_id == "anonymous"
     assert ctx.role == "viewer"
-    assert ctx.identity_source == "header"
+    assert ctx.identity_source == "fallback"
 
 
-def test_get_auth_context_accepts_role_header_only_when_enabled(monkeypatch):
+def test_get_auth_context_accepts_user_and_role_headers_only_when_enabled(monkeypatch):
     monkeypatch.delenv("MOSS_USER_ID", raising=False)
     monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")

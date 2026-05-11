@@ -240,8 +240,8 @@ def test_product_category_detail_unit_stays_partial_until_closure_evidence_exist
         "the main page selector scope is explicitly frozen as `monthly` and `ytd`",
         "`qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements",
         "first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1",
-        "three P0 headline metrics are approved in `docs/metric_dictionary.md`",
-        "detail `metric_id` expansion beyond the three approved headline metrics is still missing",
+        "three P0 headline metrics are active in `docs/metric_dictionary.md`",
+        "decision 3C (2026-05-11) approves expanding detail rows into formal metrics for scale, FTP, net income, and yield fields",
         "core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only",
         "productCategoryPnlPageModel.test.ts",
     ):
@@ -273,8 +273,8 @@ def test_product_category_first_stage_field_freeze_is_explicitly_bounded():
         assert field_path in field_freeze
 
     for rule in (
-        "This is a page-level field freeze for detail semantics. It is not a formal `metric_id` approval beyond the three P0-approved headline metrics.",
-        "do not invent detail `metric_id` bindings from this table",
+        "This is a page-level field freeze for detail semantics. It is also the starting field set for the 2026-05-11 detail-metric expansion decision",
+        "do not invent detail `metric_id` numbers from this table; add the approved field matrix and dictionary rows first",
         "do not treat liability sign normalization as backend truth",
         "do not use `available_views` to add first-screen controls",
         "do not recompute `grand_total` in frontend",
@@ -291,9 +291,9 @@ def test_product_category_p0_closure_gate_stays_decision_safe():
 
     for required in (
         "P0 is a closure gate, not a new feature lane.",
-        "P0-approved formal metric ids are `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`.",
-        "detail `metric_id` expansion remains decision-required",
-        "standalone outward `as_of_date` remains backend/API-contract-required",
+        "P0-approved active formal metric ids are currently `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`.",
+        "detail `metric_id` expansion is approved directionally by decision 3C",
+        "standalone outward `as_of_date` is a no-field product/API decision for this page",
         "do not add additional `MTR-*` rows for product-category fields from sample evidence alone",
         "do not infer `as_of_date` from `report_date` or `generated_at`",
         "P0 evidence can lock known stale/fallback behavior, but cannot choose unresolved product copy or API shape",
@@ -305,8 +305,8 @@ def test_product_category_p0_closure_gate_stays_decision_safe():
         "Decision-required P0 items",
         "Cursor-safe P0 items",
         "`MTR-PCP-001`",
-        "detail `metric_id` expansion",
-        "`as_of_date` API shape",
+        "detail metric expansion",
+        "1B no standalone `as_of_date`",
         "stale/fallback/refresh matrix",
     ):
         assert required in blocker_triage
@@ -340,7 +340,7 @@ def test_product_category_metric_dictionary_does_not_promote_unapproved_fields()
         assert field_name in metric_dictionary
 
 
-def test_product_category_as_of_date_decision_is_actual_data_cutoff():
+def test_product_category_as_of_date_decision_has_no_standalone_field():
     page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
 
     time_semantics = page_contract.split("## 10. Time Semantics", maxsplit=1)[1].split(
@@ -351,10 +351,10 @@ def test_product_category_as_of_date_decision_is_actual_data_cutoff():
     for required in (
         "`requested_report_date`: user-requested report date",
         "`resolved_report_date`: backend-returned report date",
-        "`as_of_date`: actual data cutoff used by the result",
+        "`as_of_date`: intentionally not a standalone outward field for product-category PnL",
         "`generated_at`: system generation timestamp",
-        "normal formal monthly case: `requested_report_date == resolved_report_date == as_of_date`",
-        "`as_of_date` must not be inferred from `generated_at`",
+        "Decision 1B (2026-05-11): do not add a standalone outward `as_of_date` field for this page.",
+        "must not present either as a replacement `as_of_date`",
     ):
         assert required in time_semantics
 
@@ -406,9 +406,9 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
         assert stale_statement not in "\n".join((metric_dictionary, page_contracts, readiness))
 
     for required in (
-        "P0 approves only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`; detail `metric_id` expansion remains open.",
-        "Only the three headline product-category metrics are approved; detail fields remain page/sample truth until separately approved.",
-        "Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and decide any future detail metric expansion separately.",
+        "P0 keeps only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003` active; decision 3C approves detail expansion directionally pending matrix / numbering / tests.",
+        "Decision 3C approves detail metric expansion directionally, but only the three headline product-category metrics are dictionary-active until the detail field matrix, numbering, dictionary rows, and tests land.",
+        "Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and carry decision 3C into a detail field matrix before adding any new detail `MTR-PCP-*` rows.",
     ):
         assert required in "\n".join((metric_dictionary, page_contracts, readiness))
 
@@ -445,7 +445,7 @@ def test_product_category_stale_refresh_cross_surface_matrix_is_evidence_only():
     ].split("## 12. Minimum Reconciliation Rules", maxsplit=1)[0]
 
     for required in (
-        "This matrix records only states already covered by tests; it does not define new fallback-date policy, timeout copy, or outward `as_of_date`.",
+        "This matrix records only states already covered by tests plus the 2026-05-11 no-silent-date-switch / no-standalone-as_of_date decisions; it does not define timeout copy.",
         "`/product-category-pnl` formal table",
         "`Unit 9: formal baseline refetch failure shows AsyncSection error; no stale table, summary, or footer`",
         "`/product-category-pnl` refresh control",

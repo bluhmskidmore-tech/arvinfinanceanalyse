@@ -83,6 +83,46 @@ class McpProcess:
         return self.process.stderr.read().decode("utf-8", errors="replace")
 
 
+def _request_initialize(command: str, args: list[str], cwd: Path) -> dict[str, Any]:
+    process = subprocess.Popen(
+        [command, *args],
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}).encode("utf-8")
+        assert process.stdin is not None
+        process.stdin.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+        process.stdin.flush()
+
+        assert process.stdout is not None
+        headers = []
+        while True:
+            line = process.stdout.readline()
+            assert line, process.stderr.read().decode("utf-8", errors="replace") if process.stderr else ""
+            if line in (b"\r\n", b"\n"):
+                break
+            headers.append(line.decode("ascii").strip())
+        length = None
+        for header in headers:
+            if header.lower().startswith("content-length:"):
+                length = int(header.split(":", 1)[1].strip())
+        assert length is not None
+        return dict(json.loads(process.stdout.read(length).decode("utf-8")))
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def _resolve_config_cwd(raw_cwd: str) -> Path:
+    return (REPO_ROOT / raw_cwd).resolve()
+
+
 def test_project_mcp_config_declares_read_only_surfaces() -> None:
     payload = json.loads((REPO_ROOT / ".mcp.json").read_text(encoding="utf-8"))
     servers = payload["mcpServers"]
@@ -96,6 +136,8 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
     }
     assert servers["gitnexus"]["command"] == "node"
     assert servers["gitnexus"]["args"] == ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+    if os.name != "nt":
+        return
     assert servers["moss-metric-contracts"]["command"] == "cmd.exe"
     assert servers["moss-metric-contracts"]["args"] == [
         "/d",
@@ -120,6 +162,23 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
     assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
 
 
+def test_project_mcp_config_pins_mcp_cwd_for_compatible_clients() -> None:
+    if os.name != "nt":
+        return
+
+    payload = json.loads((REPO_ROOT / ".mcp.json").read_text(encoding="utf-8"))
+    servers = payload["mcpServers"]
+
+    for name in (
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "playwright",
+    ):
+        assert _resolve_config_cwd(servers[name]["cwd"]) == REPO_ROOT
+
+
 def test_project_codex_config_declares_read_only_surfaces() -> None:
     payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
     servers = payload["mcp_servers"]
@@ -133,6 +192,8 @@ def test_project_codex_config_declares_read_only_surfaces() -> None:
     }
     assert servers["gitnexus"]["command"] == "node"
     assert servers["gitnexus"]["args"] == ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+    if os.name != "nt":
+        return
     assert servers["moss-metric-contracts"]["command"] == "cmd.exe"
     assert servers["moss-metric-contracts"]["args"] == [
         "/d",
@@ -156,6 +217,43 @@ def test_project_codex_config_declares_read_only_surfaces() -> None:
     ]
     assert servers["playwright"]["command"] == "npx"
     assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+
+
+def test_project_codex_config_pins_mcp_cwd_for_app_launches() -> None:
+    if os.name != "nt":
+        return
+
+    payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
+    servers = payload["mcp_servers"]
+
+    for name in (
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "playwright",
+    ):
+        assert _resolve_config_cwd(servers[name]["cwd"]) == REPO_ROOT
+
+
+def test_moss_codex_mcp_entries_handshake_from_declared_cwd() -> None:
+    if os.name != "nt":
+        return
+
+    payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
+    servers = payload["mcp_servers"]
+
+    for name, expected_server_info_name in (
+        ("moss-metric-contracts", "moss-metric-contracts"),
+        ("moss-lineage-evidence", "moss-lineage-evidence"),
+        ("moss-data-catalog", "moss-data-catalog"),
+    ):
+        response = _request_initialize(
+            servers[name]["command"],
+            list(servers[name]["args"]),
+            _resolve_config_cwd(servers[name]["cwd"]),
+        )
+        assert response["result"]["serverInfo"]["name"] == expected_server_info_name
 
 
 def test_metric_contracts_mcp_exposes_contract_docs() -> None:

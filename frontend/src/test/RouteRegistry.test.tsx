@@ -247,7 +247,9 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-governed-surface")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "驾驶舱" })).toBeInTheDocument();
+    expect(
+      within(await screen.findByRole("navigation")).getByRole("link", { name: /总览工作台/ }),
+    ).toBeInTheDocument();
   });
 
   it("renders the positions route", async () => {

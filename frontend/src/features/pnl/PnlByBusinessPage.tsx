@@ -1257,7 +1257,7 @@ export default function PnlByBusinessPage() {
     return map;
   }, [adbComparisonQuery.data?.assets_breakdown]);
 
-  const ytdRows = ytdResult?.items ?? [];
+  const ytdRows = useMemo(() => ytdResult?.items ?? [], [ytdResult?.items]);
   const formalResult = formalBusinessQuery.data?.result;
   const formalRows = formalResult?.rows ?? [];
   const defaultBusinessRow = useMemo(() => pickDefaultBusinessRow(ytdRows), [ytdRows]);

@@ -5,6 +5,7 @@ import { Collapse } from "antd";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { PageSectionLead, type PageSectionLeadProps } from "../../../components/page/PagePrimitives";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type {
   ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
@@ -347,65 +348,12 @@ function renderSeriesCards(
   );
 }
 
-function resultMetaBasisLabel(value: ResultMeta["basis"] | undefined): string {
-  if (value === "formal") return "正式口径";
-  if (value === "analytical") return "分析口径";
-  return value ?? "待定";
-}
-
 function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string {
   if (value === "ok") return "正常";
   if (value === "warning") return "预警";
   if (value === "error") return "错误";
   if (value === "stale") return "陈旧";
   return value ?? "待定";
-}
-
-function resultMetaVendorLabel(value: ResultMeta["vendor_status"] | undefined): string {
-  if (value === "ok") return "正常";
-  if (value === "vendor_stale") return "供应商陈旧";
-  if (value === "vendor_unavailable") return "供应商不可用";
-  return value ?? "待定";
-}
-
-function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): string {
-  if (value === "none") return "未降级";
-  if (value === "latest_snapshot") return "最新快照降级";
-  return value ?? "待定";
-}
-
-function MetadataPanel({
-  title,
-  meta,
-  extraLine,
-  testId,
-}: {
-  title: string;
-  meta: ResultMeta | undefined;
-  extraLine?: string;
-  testId: string;
-}) {
-  return (
-    <section data-testid={testId} className="market-data-detail-panel">
-      <h2 className="market-data-metadata-panel-title">{title}</h2>
-      <div className="market-data-metadata-panel-grid">
-        <div>追踪编号：{meta?.trace_id ?? "待定"}</div>
-        <div>口径：{resultMetaBasisLabel(meta?.basis)}</div>
-        <div>正式可用：{meta ? (meta.formal_use_allowed ? "是" : "否") : "待定"}</div>
-        <div>结果类型：{meta?.result_kind ?? "待定"}</div>
-        <div>来源版本：{meta?.source_version ?? "待定"}</div>
-        <div>供应商版本：{meta?.vendor_version ?? "待定"}</div>
-        <div>规则版本：{meta?.rule_version ?? "待定"}</div>
-        <div>质量标记：{resultMetaQualityLabel(meta?.quality_flag)}</div>
-        <div>供应商状态：{resultMetaVendorLabel(meta?.vendor_status)}</div>
-        <div>降级模式：{resultMetaFallbackLabel(meta?.fallback_mode)}</div>
-        <div>缓存版本：{meta?.cache_version ?? "待定"}</div>
-        <div>情景标记：{meta ? (meta.scenario_flag ? "是" : "否") : "待定"}</div>
-        <div>生成时间：{meta?.generated_at ?? "待定"}</div>
-        {extraLine ? <div>{extraLine}</div> : null}
-      </div>
-    </section>
-  );
 }
 
 export default function MarketDataPage() {
@@ -1231,24 +1179,26 @@ export default function MarketDataPage() {
               </div>
             </AsyncSection>
 
-            <MetadataPanel
-              title="结果元数据"
-              meta={macroMeta}
-              extraLine={`可见供应商版本：${vendorVersions.join(", ") || "—"}`}
+            <FormalResultMetaPanel
               testId="market-data-result-meta"
-            />
-
-            <MetadataPanel
-              title="外汇观察元数据"
-              meta={fxAnalyticalMeta}
-              testId="market-data-fx-analytical-meta"
-            />
-
-            <MetadataPanel
-              title="联动元数据"
-              meta={macroBondLinkageMeta}
-              extraLine={`报告日：${linkageReportDate || "待定"}`}
-              testId="market-data-linkage-meta"
+              title="结果元信息"
+              sections={[
+                {
+                  key: "macro",
+                  title: `主读面${vendorVersions.length > 0 ? ` · ${vendorVersions.join(", ")}` : ""}`,
+                  meta: macroMeta,
+                },
+                {
+                  key: "fx-analytical",
+                  title: "外汇观察",
+                  meta: fxAnalyticalMeta,
+                },
+                {
+                  key: "linkage",
+                  title: `联动${linkageReportDate ? ` · ${linkageReportDate}` : ""}`,
+                  meta: macroBondLinkageMeta,
+                },
+              ]}
             />
           </div>
         </MarketSectionBlock>

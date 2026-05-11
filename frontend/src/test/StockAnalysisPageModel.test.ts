@@ -19,6 +19,8 @@ import {
   buildSectorFilterSummary,
   buildSectorViewModel,
   buildThemeBreakoutCards,
+  buildThemeBreakoutReviewItems,
+  buildThemeEvidenceStateRows,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 
 const strategyPayload: LivermoreStrategyPayload = {
@@ -414,6 +416,110 @@ describe("stockAnalysisPageModel", () => {
     expect(`${cards[0].summary} ${cards[0].boundaryLabel}`).not.toContain("买入");
   });
 
+  it("builds theme evidence state rows without treating missing inputs as neutral proof", () => {
+    const rows = buildThemeEvidenceStateRows({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: true,
+        theme_count: 0,
+        evidence_state: {
+          concept_membership: {
+            input_family: "concept_membership",
+            status: "catalog_unconfirmed",
+            row_count: 0,
+            matched_row_count: 0,
+            message: "Optional concept membership is not confirmed in the Choice stock catalog.",
+          },
+          intraday_movement: {
+            input_family: "intraday_movement",
+            status: "table_missing",
+            table: "choice_stock_intraday_movement_event",
+            row_count: 0,
+            matched_row_count: 0,
+            message: "Intraday movement table is not landed for this environment.",
+          },
+        },
+        items: [],
+      },
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      key: "concept_membership",
+      status: "catalog_unconfirmed",
+    });
+    expect(rows[0].statusLabel).toContain("catalog");
+    expect(rows[1].detail).toContain("Intraday movement table");
+    expect(rows.map((row) => row.detail).join(" ")).not.toContain("buy");
+  });
+
+  it("builds theme breakout review items with failed gate codes as additive evidence", () => {
+    const reviewItems = buildThemeBreakoutReviewItems({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: true,
+        theme_count: 0,
+        items: [],
+        review_items: [
+          {
+            rank: 1,
+            as_of_date: "2026-05-08",
+            theme_key: "semiconductor_proxy",
+            theme_name: "Semiconductor proxy",
+            source_kind: "proxy",
+            parent_sector_code: "801080",
+            parent_sector_name: "Electronic",
+            parent_sector_rank: 9,
+            member_count: 2,
+            advance_count: 2,
+            advance_ratio: 1,
+            strong_stock_count: 2,
+            limit_stock_count: 0,
+            avg_pctchange: 6.25,
+            avg_turn: 4.1,
+            avg_amplitude: 6.8,
+            movement_event_count: 0,
+            failed_gates: ["insufficient_cluster_strength"],
+            observation_only: true,
+            reason: "Review-only proxy cluster missed selection: strong rows 2 below gate 3.",
+            items: [
+              {
+                stock_code: "688001.SH",
+                stock_name: "Alpha Semiconductor",
+                sector_code: "801080",
+                sector_name: "Electronic",
+                sector_rank: 9,
+                open: 9.6,
+                high: 10.1,
+                low: 9.4,
+                close: 10,
+                pctchange: 6.5,
+                turn: 4.2,
+                amplitude: 7,
+                close_strength: 0.86,
+                closed_up_limit: false,
+                strong: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(reviewItems).toHaveLength(1);
+    expect(reviewItems[0]).toMatchObject({
+      themeKey: "semiconductor_proxy",
+      sourceKindLabel: "proxy",
+    });
+    expect(reviewItems[0].failedGateLabel).toContain("insufficient_cluster_strength");
+    expect(reviewItems[0].summary).toContain("2");
+    expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("buy");
+  });
+
   it("builds a closed-loop summary for complete pass states", () => {
     const summary = buildClosedLoopSummary(
       strategyPayload,
@@ -462,6 +568,13 @@ describe("stockAnalysisPageModel", () => {
       label: "可复核",
       tone: "positive",
     });
+    expect(summary.verdict).toMatchObject({
+      code: "reviewable",
+      label: "可复核",
+      headline: "可进入人工复核队列",
+      tone: "positive",
+    });
+    expect(summary.verdict.nextStep).toContain("不推导策略收益");
     expect(summary.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -549,6 +662,14 @@ describe("stockAnalysisPageModel", () => {
       label: "拦截",
       tone: "negative",
     });
+    expect(summary.verdict).toMatchObject({
+      code: "blocked",
+      label: "拦截",
+      headline: "闭环阻断，先复核约束项",
+      tone: "negative",
+    });
+    expect(summary.verdict.primaryReason).toContain("crowded leaders without breadth confirmation");
+    expect(summary.verdict.nextStep).toContain("仅观察");
     expect(summary.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -599,6 +720,13 @@ describe("stockAnalysisPageModel", () => {
       label: "数据不足",
       tone: "warning",
     });
+    expect(summary.verdict).toMatchObject({
+      code: "insufficient_data",
+      label: "数据不足",
+      headline: "证据不足，不形成有效观察结论",
+      tone: "warning",
+    });
+    expect(summary.verdict.nextStep).toContain("补齐");
     expect(summary.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -662,6 +790,13 @@ describe("stockAnalysisPageModel", () => {
       tone: "warning",
     });
     expect(summary.referenceRating.detail).toContain("降级");
+    expect(summary.verdict).toMatchObject({
+      code: "pause",
+      label: "暂缓",
+      headline: "暂缓复核，存在降级边界",
+      tone: "warning",
+    });
+    expect(summary.verdict.nextStep).toContain("fallback");
   });
 
   it("represents partial replay windows with unsupported, pending, proxy-only, and zero-signal dates", () => {

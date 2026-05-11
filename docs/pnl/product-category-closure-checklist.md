@@ -59,14 +59,14 @@ This first pass is based on:
 
 | Unit | Status | Priority | Short reason |
 | --- | --- | --- | --- |
-| 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates` vs empty list for PnL/adjustments/ledger; `as_of_date` gap + fallback semantics still open |
-| 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, first page-level column freeze, and three headline `metric_id` bindings exist; detail metric expansion and exhaustive detail coverage remain open |
+| 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates`, empty-list behavior, ledger links, no standalone `as_of_date`, and decision 2A no-silent-switch/error-path coverage; broader date-list freshness policy remains out of this unit |
+| 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, first page-level column freeze, and three headline `metric_id` bindings exist; decision 3C approves detail metric expansion, but field matrix / numbering / dictionary rows / tests remain open |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests freeze 409/503/failed-terminal + polling + `product-category-refresh-status` in-flight line (`runPollingTask` `onUpdate`); stale-banner / timeout UX still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | page-level client validation matrix (report_date / account_code / amounts / single-amount happy paths) and backend 422 error shapes are now frozen in tests + checklist; broader copy/edge-case policy still open |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; Unit 5 list/timeline failure semantics frozen (`AsyncSection` + `product-category-audit-list-timeline-async` + `within` assertions: error + no stale rows + retry); dual-control "why" still narrative |
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | list/export query symmetry + real-mode key alignment + client + page Blob pass-through evidence; backend UTF-8 BOM policy + large export + full UI/CSV precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
-| 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
+| 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and no-standalone-`as_of_date` decision; broader stale-banner contract still open |
 | 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | model + page test freeze liability abs vs asset signed money, footer-only grand total, yield unscaled in table; formal-table `AsyncSection` refetch-error semantics now page-frozen; full column matrix remains open |
 | 10. Test Coverage | `PARTIAL` | `P0` | checklist now maps backend -> client -> page -> golden layers; one extra pure-model guard for unknown `category_id` sort; scenario second-sample + golden full-suite still uneven |
 
@@ -91,9 +91,9 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - `frontend/src/test/ProductCategoryPnlPage.test.tsx` - page-level date wiring (mock client only):
     - `Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link`: `getProductCategoryDates` returns `report_dates: ["2026-03-31", "2026-02-28", "2026-01-31"]` (API order); spies show every `getProductCategoryPnl` call uses `reportDate: 2026-03-31` and `view: monthly`, every `getProductCategoryManualAdjustments` call uses `2026-03-31`, and `product-category-ledger-link` is `/ledger-pnl?report_date=2026-03-31`
     - `Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates`: `report_dates: []` with `result_meta.generated_at` set to `2026-05-01T12:00:00Z`; `getProductCategoryPnl` / `getProductCategoryManualAdjustments` are never invoked, ledger link stays `/ledger-pnl`, `product-category-as-of-date-gap` text remains exactly `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY` (no injected `generated_at` / report date), month `<select>` has zero `<option>` rows
+    - `Unit 1: disappeared selected date is kept and uses the existing visible error path instead of silently switching`: first dates response includes `2026-02-28`, the refresh-time dates response removes it and offers `2026-03-31`; the page keeps `2026-02-28`, does not request replacement-date PnL, keeps the ledger link on `2026-02-28`, and surfaces the existing formal-table error path
 - Why not `CLOSED`:
-  - `as_of_date` is still an explicit outward contract gap
-  - fallback-date semantics are not frozen at page level beyond the default-first-list-item rule documented in section 10.1
+  - broader date-list freshness policy outside decision 2A remains governed by the stale/fallback/refresh matrix
 
 ## Unit 2: Detail
 
@@ -110,10 +110,11 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - page-level sample exists in `tests/golden_samples/GS-PROD-CAT-PNL-A/`
   - dedicated detail adapter/selector unit tests: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` (pure selectors in `productCategoryPnlPageModel.ts`: baseline vs scenario row source, grand total overlay, main-page `monthly`/`ytd` scope vs governed `available_views` superset)
   - first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1
-  - three P0 headline metrics are approved in `docs/metric_dictionary.md`: `MTR-PCP-001` (`asset_total.business_net_income`), `MTR-PCP-002` (`liability_total.business_net_income`), and `MTR-PCP-003` (`grand_total.business_net_income`)
+  - three P0 headline metrics are active in `docs/metric_dictionary.md`: `MTR-PCP-001` (`asset_total.business_net_income`), `MTR-PCP-002` (`liability_total.business_net_income`), and `MTR-PCP-003` (`grand_total.business_net_income`)
+  - decision 3C (2026-05-11) approves expanding detail rows into formal metrics for scale, FTP, net income, and yield fields; concrete field matrix / numbering / dictionary rows / tests are still pending and must be added before any new detail `MTR-PCP-*` id is active
   - `frontend/src/test/ProductCategoryPnlPage.test.tsx` - `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` overrides one known backend row (`repo_assets`) with unique raw yuan values and proves the rendered table order is category label, `cnx_scale`, `cny_scale`, `foreign_scale`, `cnx_cash`, `cny_cash`, `cny_ftp`, `cny_net`, `foreign_cash`, `foreign_ftp`, `foreign_net`, `business_net_income`, then unscaled `weighted_yield`; the same test keeps advertised `available_views` as `monthly/qtd/ytd/year_to_report_month_end` while the main page exposes only two view controls
 - Why not `CLOSED`:
-  - detail `metric_id` expansion beyond the three approved headline metrics is still missing
+  - detail `metric_id` expansion is approved but not implemented as dictionary rows / numbering / tests
   - core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only
 
 ## Unit 3: Refresh + Status
@@ -234,11 +235,10 @@ Not proved here: backend BOM policy, large-export limits, streaming behavior, or
   - `result_meta` is present and checked across UI endpoints in `tests/test_result_meta_on_all_ui_endpoints.py`
   - refresh governance records and run lineage are exercised in `tests/test_product_category_pnl_flow.py`
   - the main page now renders baseline/scenario `result_meta` through `product-category-result-meta`, with page tests checking basis, fallback mode, trace id, and scenario flag visibility
-  - a first-screen governance strip (`product-category-governance-strip`) surfaces: explicit `as_of_date` contract gap, non-`none` `fallback_mode`, degraded `vendor_status` / `quality_flag`, and a one-line formal vs scenario `result_meta` distinction when the scenario query is active (`ProductCategoryGovernanceStrip.tsx` + `collectProductCategoryGovernanceNotices` / `formatProductCategoryDualMetaDistinctLine` in `productCategoryPnlPageModel.ts`); page and model unit tests in `ProductCategoryPnlPage.test.tsx` and `productCategoryPnlPageModel.test.ts`
+  - a first-screen governance strip (`product-category-governance-strip`) surfaces: the explicit no-standalone-`as_of_date` decision, non-`none` `fallback_mode`, degraded `vendor_status` / `quality_flag`, and a one-line formal vs scenario `result_meta` distinction when the scenario query is active (`ProductCategoryGovernanceStrip.tsx` + `collectProductCategoryGovernanceNotices` / `formatProductCategoryDualMetaDistinctLine` in `productCategoryPnlPageModel.ts`); page and model unit tests in `ProductCategoryPnlPage.test.tsx` and `productCategoryPnlPageModel.test.ts`
   - truth-chain ADR now fixes row authority in `docs/pnl/adr-product-category-truth-chain.md`
   - page truth contract and golden sample contract now exist under `docs/pnl/`
 - Why not `CLOSED`:
-  - no standalone outward `as_of_date` from the API (page only states the gap; no invented date)
   - page-level non-silent coverage for the strip is in place, but a fuller stale/refresh/cross-endpoint UX contract (e.g. in-flight/stale banner matrix) is not yet frozen
 
 ## Unit 9: Frontend Cross-Field Consistency
@@ -302,16 +302,17 @@ This table links already-covered page assertions to pure helpers; it is not an e
 
 | Page/audit assertion | Pure helper or model anchor | Boundary |
 | --- | --- | --- |
-| `Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link` | `nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate` | First API date and ledger deep-link only; no fallback-date policy |
-| `Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates` | `nextDefaultReportDateIfUnset`; `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY` | Empty-list behavior only; no outward `as_of_date` |
-| `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` | `selectProductCategoryDetailRows`; `PRODUCT_CATEGORY_MAIN_PAGE_VIEWS`; `PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS` | Detail field display and view-scope split only; no new metric IDs |
+| `Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link` | `nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate` | First API date and ledger deep-link; decision 2A also forbids silent switching after a user selection exists |
+| `Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates` | `nextDefaultReportDateIfUnset`; `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY` | Empty-list behavior and no-standalone-`as_of_date` decision only |
+| `Unit 1: disappeared selected date is kept and uses the existing visible error path instead of silently switching` | `nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate` | Decision 2A page coverage; selected date is not replaced by a refreshed dates list |
+| `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` | `selectProductCategoryDetailRows`; `PRODUCT_CATEGORY_MAIN_PAGE_VIEWS`; `PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS` | Detail field display and view-scope split; decision 3C detail metric ids still need matrix/dictionary/tests |
 | `Unit 3: refresh shows in-flight status (queued->running), disables refresh, then records last run id` | `runPollingTask`; `formatProductCategoryRefreshStatusLine` | In-flight polling/status display only; timeout and stale-banner copy remain open |
 | `Unit 9: table business_net_income uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)` | `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal` | Minimal money/yield/footer slice only |
-| `surfaces degraded result_meta (fallback, vendor, quality) in the governance strip, not only inside the meta panel` | `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine` | Visibility of known meta fields only; final stale-banner copy remains open |
+| `surfaces degraded result_meta (fallback, vendor, quality) in the governance strip, not only inside the meta panel` | `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine` | Visibility of known meta fields and no-standalone-`as_of_date` decision; final stale-banner copy remains open |
 | `keeps current and event sort controls independent and resets pagination on time-range apply/reset` | `CURRENT_QUERY_FILTER_KEYS`; `EVENT_QUERY_FILTER_KEYS`; `didFiltersChange` | Audit pagination reset and dual-sort state only; no product rationale for two sort controls |
 | `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` | `buildProductCategoryAuditListExportQuery` | Query symmetry only; no backend BOM or large-export policy |
 | `Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture` | `buildProductCategoryAuditListExportQuery`; `downloadAuditCsv` | One rendered current-state row fixture only; no global every-cell CSV parity |
-| `freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority` | `selectProductCategoryDetailRows`; `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal` | GS-backed row/field slice only; no detail `metric_id` expansion |
+| `freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority` | `selectProductCategoryDetailRows`; `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal` | GS-backed row/field slice only; detail `metric_id` expansion is approved but not yet dictionary-active |
 - Why not `CLOSED`:
   - scenario is still a **companion probe** (`product-category-golden-sample-a.md` + ApiClient scenario test), not a second full page-level golden **matrix** sample
   - **full-repo** golden-sample / e2e verification is explicitly out of scope for this unit's evidence map; remaining unevenness is process-wide, not product-category-only

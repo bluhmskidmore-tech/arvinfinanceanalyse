@@ -31,3 +31,14 @@ def test_release_suite_gates_exec_contract_and_drift_checks():
 
     assert "tests/test_executive_release_contract.py" in module.RELEASE_SUITE_TESTS
     assert "tests/test_golden_sample_release_matrix.py" in module.RELEASE_SUITE_TESTS
+
+
+def test_release_suite_gates_page_finance_and_mcp_boundary_checks():
+    module = load_module(
+        "scripts.backend_release_suite",
+        "scripts/backend_release_suite.py",
+    )
+
+    assert "tests/test_live_route_page_contract_completeness.py" in module.RELEASE_SUITE_TESTS
+    assert "tests/test_no_finance_logic_in_frontend.py" in module.RELEASE_SUITE_TESTS
+    assert "tests/test_project_mcp_servers.py" in module.RELEASE_SUITE_TESTS

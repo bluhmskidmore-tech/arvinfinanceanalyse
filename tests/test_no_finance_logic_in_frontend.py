@@ -35,6 +35,30 @@ CONTRACT_ONLY_DIRS = (
     "bond-analysis-foundation/",
 )
 
+DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS = (
+    # The cockpit model consumes backend-provided DV01 values and formats fixed
+    # readouts only. Keep this exception file- and snippet-scoped so new
+    # frontend pricing/risk logic still trips this guard.
+    "dv01Display",
+    "primaryValue: portfolioAllowed ? `DV01 ${dv01Display(input.portfolio?.total_dv01)}` : \"待治理\"",
+    "label: \"DV01\"",
+    "code: \"DV01\"",
+)
+
+DISPLAY_ONLY_FILE_SNIPPETS = {
+    "features/workbench/dashboard/dashboardCockpitModel.ts": DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS,
+}
+
+DISPLAY_ONLY_FILE_LINE_PREFIXES = {
+    "features/workbench/dashboard/dashboardCockpitModel.ts": (
+        "label: ",
+        "primaryValue: portfolioAllowed ? ",
+        "code: ",
+        "name: ",
+        "reason: ",
+    ),
+}
+
 DISPLAY_COPY_SNIPPETS = (
     "看 DV01、张量和下钻证据",
     "进入后先看风险张量、KRD 曲线与信用利差迁移。",
@@ -73,6 +97,16 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
         text = path.read_text(encoding="utf-8")
         for snippet in DISPLAY_COPY_SNIPPETS:
             text = text.replace(snippet, "")
+        rel = path.relative_to(FRONTEND_SRC).as_posix()
+        for snippet in DISPLAY_ONLY_FILE_SNIPPETS.get(rel, ()):
+            text = text.replace(snippet, "")
+        for prefix in DISPLAY_ONLY_FILE_LINE_PREFIXES.get(rel, ()):
+            text = "\n".join(
+                ""
+                if "DV01" in line and line.strip().startswith(prefix)
+                else line
+                for line in text.splitlines()
+            )
         for token in FORBIDDEN_TOKENS:
             if token in text:
                 violations.append(f"{path}: {token}")

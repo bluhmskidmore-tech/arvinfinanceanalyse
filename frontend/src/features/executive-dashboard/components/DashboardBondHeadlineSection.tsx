@@ -14,6 +14,7 @@ import {
   cockpitBodyStyle,
   cockpitInsetCardStyle,
 } from "./DashboardCockpitSection.styles";
+import { dashboardBondHeadlineQueryKey } from "./dashboardBondHeadlineQuery";
 import { GridContainer, GridItem } from "../../../components/GridContainer";
 import { KpiCard, type KpiCardProps } from "../../../components/KpiCard";
 
@@ -68,11 +69,13 @@ export function DashboardBondHeadlineSection({
 }: DashboardBondHeadlineSectionProps) {
   const client = useApiClient();
   const enabled = Boolean(reportDate.trim());
+  const normalizedReportDate = reportDate.trim();
   const query = useQuery({
-    queryKey: ["dashboard", "bond-headline-kpis", client.mode, reportDate],
-    queryFn: () => client.getBondDashboardHeadlineKpis(reportDate.trim()),
+    queryKey: dashboardBondHeadlineQueryKey(client.mode, normalizedReportDate),
+    queryFn: () => client.getBondDashboardHeadlineKpis(normalizedReportDate),
     enabled,
     retry: false,
+    staleTime: 60_000,
   });
 
   const payload = query.data?.result;

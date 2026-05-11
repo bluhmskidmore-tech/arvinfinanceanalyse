@@ -1694,9 +1694,11 @@ describe("productCategoryPnlPageModel", () => {
     expect(toneForProductCategoryValue(null)).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.default);
   });
 
-  it("exposes a stable as_of_date gap string for the page (no invented as_of_date)", () => {
+  it("exposes the no-standalone-as_of_date decision without inventing a replacement date", () => {
     expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("归属日期");
-    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("无独立外显");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("不提供独立 as_of_date");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("报告日期");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("生成时间");
   });
 
   it("collects governance notices for fallback, vendor, and quality degradation from result_meta", () => {

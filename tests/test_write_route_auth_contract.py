@@ -17,6 +17,7 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
 
     sqlite_path = tmp_path / "auth-scope-contract.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     get_settings.cache_clear()
 
     from backend.app.repositories.user_scope_repo import UserScopeRepository
@@ -127,6 +128,47 @@ def test_refresh_route_does_not_require_scope_grant(method, path, body, tmp_path
     headers = {"X-User-Id": "test-refresh-user"}
     response = client.post(path, json=body, headers=headers)
     assert response.status_code != 403, f"Refresh route {path} should not require permissions, got 403"
+
+
+def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    import backend.app.api.routes.macro_vendor as route_module
+
+    calls: list[int] = []
+
+    def fake_choice_refresh(*, backfill_days: int):
+        calls.append(backfill_days)
+        return {"status": "completed", "warnings": []}
+
+    monkeypatch.setattr(route_module.refresh_choice_macro_snapshot, "fn", fake_choice_refresh, raising=False)
+    monkeypatch.setattr(
+        route_module,
+        "_run_public_cross_asset_headline_refresh",
+        lambda: {"status": "completed", "warnings": []},
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    denied = client.post(
+        "/ui/macro/choice-series/refresh?backfill_days=2",
+        headers={"X-User-Id": "macro-user"},
+    )
+    assert denied.status_code == 403
+    assert calls == []
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="macro-user",
+        role=None,
+        resource="macro_vendor.choice_series",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/ui/macro/choice-series/refresh?backfill_days=2",
+        headers={"X-User-Id": "macro-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert calls == [2]
 
 
 def test_macro_toolkit_script_run_requires_matching_scope_grant(tmp_path, monkeypatch):

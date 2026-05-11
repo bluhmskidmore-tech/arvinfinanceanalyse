@@ -70,6 +70,9 @@ jobs:
       - name: Frontend debt audit
         run: npm run debt:audit
 
+      - name: Production build
+        run: npm run build
+
   lint:
     name: Frontend Lint
     runs-on: ubuntu-latest

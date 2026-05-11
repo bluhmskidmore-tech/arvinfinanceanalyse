@@ -6,7 +6,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.macro_vendor_service import (
     choice_macro_formal_envelope,
     choice_macro_latest_envelope,
@@ -75,6 +75,15 @@ def choice_series_refresh(
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
     settings = get_settings()
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_vendor.choice_series",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     choice_refresh = getattr(refresh_choice_macro_snapshot, "fn", refresh_choice_macro_snapshot)
     choice_payload = choice_refresh(backfill_days=backfill_days)
     public_payload = _run_public_cross_asset_headline_refresh()

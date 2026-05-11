@@ -536,7 +536,7 @@ class AnalysisViewTool:
             tables_used=[],
             filters_applied={key: value for key, value in request.filters.items() if value not in (None, "")},
             row_count=0,
-            quality_flag="warning",
+            quality_flag="error",
         )
         result_meta = AgentResultMeta(
             trace_id=self._trace_id(f"agent.{intent}"),
@@ -547,7 +547,7 @@ class AnalysisViewTool:
             vendor_version="vv_none",
             rule_version="rv_agent_mvp_v1",
             cache_version=f"cv_agent_{intent}_v1",
-            quality_flag="warning",
+            quality_flag="error",
             scenario_flag=False,
             tables_used=[],
             filters_applied=evidence.filters_applied,

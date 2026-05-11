@@ -28,7 +28,7 @@ def get_auth_context(
     header_user_id = (x_user_id or "").strip()
     env_user_id = os.environ.get("MOSS_USER_ID", "").strip()
 
-    if header_user_id:
+    if _header_trust_enabled() and header_user_id:
         user_id = header_user_id
         identity_source = "header"
     elif env_user_id:
@@ -41,7 +41,7 @@ def get_auth_context(
     header_user_role = (x_user_role or "").strip()
     env_user_role = os.environ.get("MOSS_USER_ROLE", "").strip()
 
-    if _role_header_trust_enabled() and header_user_role:
+    if _header_trust_enabled() and header_user_role:
         role = header_user_role
     else:
         role = env_user_role or DEFAULT_AUTH_ROLE
@@ -74,5 +74,9 @@ def ensure_user_allowed(
     raise PermissionError(f"User is not allowed to {action} {resource}.")
 
 
-def _role_header_trust_enabled() -> bool:
+def _header_trust_enabled() -> bool:
     return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _role_header_trust_enabled() -> bool:
+    return _header_trust_enabled()

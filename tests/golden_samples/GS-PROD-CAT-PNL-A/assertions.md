@@ -36,7 +36,7 @@ The approved sample-to-metric bindings are limited to the three headline totals:
 - `MTR-PCP-002`: `result.liability_total.business_net_income`.
 - `MTR-PCP-003`: `result.grand_total.business_net_income`.
 
-Detail rows, `weighted_yield`, scale, FTP fields, and scenario outputs remain page/sample truth only.
+Detail rows, `weighted_yield`, scale, and FTP fields are approved directionally by decision 3C, but they remain page/sample truth until the field matrix, numbering, dictionary rows, and tests make them active. Scenario outputs remain analytical scenario payloads.
 
 ## Companion scenario probe
 

@@ -88,16 +88,41 @@ def create_agent_run(
 
 
 def get_agent_run_status(*, run_id: str, settings: Any) -> AgentRunStatusResponse:
+    return _status_from_run_record(run_id=run_id, settings=settings)
+
+
+def get_agent_run_owner(*, run_id: str, settings: Any) -> str | None:
+    record = _latest_run_record(run_id=run_id, settings=settings)
+    if record is None:
+        raise ValueError(f"Unknown agent run_id={run_id}")
+    request = record.get("request")
+    if not isinstance(request, dict):
+        return None
+    context = request.get("context")
+    if not isinstance(context, dict):
+        return None
+    user_id = str(context.get("user_id") or "").strip()
+    return user_id or None
+
+
+def _status_from_run_record(*, run_id: str, settings: Any) -> AgentRunStatusResponse:
+    record = _latest_run_record(run_id=run_id, settings=settings)
+    if record is None:
+        raise ValueError(f"Unknown agent run_id={run_id}")
+    return _status_from_record(record)
+
+
+def _latest_run_record(*, run_id: str, settings: Any) -> dict[str, object] | None:
     records = _load_run_records(settings, run_id=run_id)
     if records:
         latest_record = records[-1]
         _remember_run_record(latest_record)
-        return _status_from_record(latest_record)
+        return latest_record
 
     cached_record = _load_cached_run_record(run_id)
     if cached_record is not None:
-        return _status_from_record(cached_record)
-    raise ValueError(f"Unknown agent run_id={run_id}")
+        return cached_record
+    return None
 
 
 def _execute_agent_run(

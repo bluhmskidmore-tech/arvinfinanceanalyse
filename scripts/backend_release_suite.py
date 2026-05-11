@@ -37,6 +37,9 @@ RELEASE_SUITE_TESTS = [
     "tests/test_golden_samples_capture_ready.py",
     "tests/test_executive_release_contract.py",
     "tests/test_golden_sample_release_matrix.py",
+    "tests/test_live_route_page_contract_completeness.py",
+    "tests/test_no_finance_logic_in_frontend.py",
+    "tests/test_project_mcp_servers.py",
 ]
 
 
@@ -44,6 +47,7 @@ def _release_suite_env() -> dict[str, str]:
     return {
         "MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS": "1",
         "MOSS_SKIP_POSTGRES_MIGRATIONS": "1",
+        "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST": "1",
     }
 
 

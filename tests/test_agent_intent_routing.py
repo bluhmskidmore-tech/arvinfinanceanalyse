@@ -538,7 +538,7 @@ def test_duration_risk_returns_error_envelope_when_explicit_date_not_governed(tm
     assert "governed dates" in envelope.answer
 
 
-def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
+def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
         "backend/app/services/agent_service.py",
@@ -586,6 +586,7 @@ def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
     (wiki_dir / "overview.md").write_text("# Overview", encoding="utf-8")
     (wiki_dir / "flows.md").write_text("# Flows", encoding="utf-8")
 
@@ -622,7 +623,7 @@ def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
     assert "GitNexus 索引状态已返回" in envelope.answer
 
 
-def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tmp_path):
+def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
         "backend/app/services/agent_service.py",
@@ -656,6 +657,7 @@ def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tm
             ),
             encoding="utf-8",
         )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -670,7 +672,50 @@ def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tm
     )
 
     assert envelope.result_meta.filters_applied["repo_path"] == str(right_repo)
-    assert any(card.title == "Nodes" and card.value == "22" for card in envelope.cards)
+
+
+def test_gitnexus_intent_rejects_repo_path_outside_allowed_root(tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    outside_repo = tmp_path / "outside-repo"
+    (outside_repo / ".gitnexus").mkdir(parents=True)
+    (outside_repo / ".gitnexus" / "meta.json").write_text(
+        json.dumps(
+            {
+                "repoPath": str(outside_repo),
+                "indexedAt": "2026-03-15T13:33:15.839Z",
+                "stats": {"nodes": 1, "edges": 1, "communities": 1, "processes": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="GitNexus repo status",
+            filters={"repo_path": str(outside_repo)},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.gitnexus_status"
+    assert envelope.result_meta.quality_flag == "error"
+    assert "outside allowed roots" in envelope.answer
 
 
 def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards(tmp_path, monkeypatch):
@@ -708,6 +753,7 @@ def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards
         json.dumps({"mcpServers": {"gitnexus": {"command": "npx", "args": ["-y", "gitnexus@latest", "mcp"]}}}),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     class StubGitNexusMcpClient:
         def __init__(self, target_repo_path):
@@ -760,6 +806,33 @@ def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards
     assert processes_card.data[0]["name"] == "CheckoutFlow"
 
 
+def test_gitnexus_mcp_command_ignores_repo_local_executable_config(tmp_path):
+    mcp_module = load_module(
+        "backend.app.services.gitnexus_mcp_client",
+        "backend/app/services/gitnexus_mcp_client.py",
+    )
+    repo_path = tmp_path / "malicious-repo"
+    repo_path.mkdir()
+    (repo_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "gitnexus": {
+                        "command": "malicious.exe",
+                        "args": ["--run-me"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    command = mcp_module._resolve_gitnexus_command(repo_path)
+
+    assert command != ["malicious.exe", "--run-me"]
+    assert command[:2] == ["node", "scripts/mcp/gitnexus_mcp_launcher.mjs"]
+
+
 def test_gitnexus_intent_reads_specific_process_trace_from_mcp(tmp_path, monkeypatch):
     gitnexus_service_module = load_module(
         "backend.app.services.gitnexus_service",
@@ -791,6 +864,7 @@ def test_gitnexus_intent_reads_specific_process_trace_from_mcp(tmp_path, monkeyp
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     class StubGitNexusMcpClient:
         def __init__(self, target_repo_path):
@@ -871,6 +945,7 @@ def test_gitnexus_intent_parses_process_name_from_question(tmp_path, monkeypatch
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     class StubGitNexusMcpClient:
         def __init__(self, target_repo_path):

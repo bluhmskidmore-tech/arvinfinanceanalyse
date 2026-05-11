@@ -20,11 +20,11 @@ This baseline deliberately keeps broader system readiness as supporting context 
 
 | Evidence source | What it contributes | Limit |
 | --- | --- | --- |
-| `docs/pnl/product-category-page-truth-contract.md` | Page truth chain, field freeze, row-authority prohibitions, explicit gaps | P0 approves only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`; detail `metric_id` expansion remains open. |
+| `docs/pnl/product-category-page-truth-contract.md` | Page truth chain, field freeze, row-authority prohibitions, explicit gaps | P0 keeps only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003` active; decision 3C approves detail expansion directionally pending matrix / numbering / tests. |
 | `docs/pnl/product-category-closure-checklist.md` | Unit-by-unit closure status and evidence map | All units remain `PARTIAL` at this baseline |
 | `docs/pnl/product-category-remaining-blockers.md` | Blocker class and cursor-safe next work | Product/API decision rows remain blocked |
-| `docs/page_contracts.md` | Page contract binding for `PAGE-PROD-CAT-PNL-001` | Keeps `as_of_date` and detail `metric_id` gaps explicit |
-| `docs/metric_dictionary.md` | Cross-sample dictionary stance | Only the three headline product-category metrics are approved; detail fields remain page/sample truth until separately approved. |
+| `docs/page_contracts.md` | Page contract binding for `PAGE-PROD-CAT-PNL-001` | Records decision 1B no standalone outward `as_of_date` and the decision 3C detail-metric boundary |
+| `docs/metric_dictionary.md` | Cross-sample dictionary stance | Only the three headline product-category metrics are dictionary-active until decision 3C field matrix / numbering / tests are added. |
 | `tests/golden_samples/GS-PROD-CAT-PNL-A/` | Capture-ready sample pack | Scenario remains a companion probe, not a second full sample |
 | `tests/test_product_category_pnl_flow.py` | Backend route/materialization/scenario/manual-adjustment coverage | Targeted product-category flow, not full-system closure |
 | `frontend/src/test/ProductCategoryPnlPage.test.tsx` | Main page behavior and governance strip evidence | Mock/client UI evidence, not source-authority evidence |
@@ -63,15 +63,15 @@ Relevant interpretation:
 
 - The formal read model has current local materialization evidence.
 - Prior stale/failed records remain important for UI/state closure because stale/failed refresh states must stay visible rather than silently ignored.
-- This evidence does not define timeout copy, fallback-date semantics, or permanent API policy.
+- This evidence does not define timeout copy or permanent API policy; decision 2A now defines no silent switch after a selected date disappears.
 
 ## Explicit Gaps Preserved
 
 Do not treat this baseline as resolving these blockers:
 
-- detail product-category `metric_id` expansion beyond `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003` is still missing
-- standalone outward `as_of_date` is still missing
-- fallback-date semantics remain a product/API decision
+- decision 3C detail product-category `metric_id` expansion still needs field matrix / numbering / dictionary rows / tests before new rows become active
+- standalone outward `as_of_date` is intentionally not provided for this page under decision 1B
+- decision 2A selected-date-disappears behavior still needs visible page coverage
 - refresh timeout messaging remains a product decision
 - CSV BOM / large-export policy remains a backend/API decision
 - destructive revoke confirmation remains a product decision

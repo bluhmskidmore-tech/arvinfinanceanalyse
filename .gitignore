@@ -29,6 +29,17 @@ data_input/
 *.pkl
 *.log
 
+## Local visual verification artifacts
+.playwright-mcp/
+/dashboard-*.png
+/stock-analysis-*.png
+/team-performance-*.png
+/macro-toolkit-*.png
+/agent-conversation-smoke.png
+/frontend/dashboard-home-pnl-links.png
+/frontend/test-results/
+/frontend/vitest-*.json
+
 ## Node / frontend build state
 node_modules/
 frontend/node_modules/

@@ -1961,9 +1961,9 @@ export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
   return `/ledger-pnl?report_date=${encodeURIComponent(reportDate)}`;
 }
 
-/** Page-visible copy: standalone `as_of_date` is a known outward contract gap (see truth contract §10). */
+/** Page-visible copy: product-category PnL intentionally has no standalone `as_of_date` field. */
 export const PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY =
-  "归属日期：无独立外显字段（显式合同缺口；勿用本页报告日或生成时间代替）。";
+  "归属日期：本页不提供独立 as_of_date；请分别查看报告日期和生成时间，二者不互相代替。";
 
 export type ProductCategoryGovernanceNotice = {
   id: "fallback_mode" | "vendor_status" | "quality_flag";

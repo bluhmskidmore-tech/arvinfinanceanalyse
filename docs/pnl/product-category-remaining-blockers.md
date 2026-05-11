@@ -15,9 +15,7 @@ Each row is one blocker. **Class** is the primary owner type.
 
 | Unit | Blocker (from checklist) | Class | Minimal next action | Cursor-safe? | Suggested scope (if actionable) |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `as_of_date` is still an explicit outward contract gap | 2 | Expose `as_of_date` (or equivalent) on governed envelopes **or** record a permanent “no field” decision in API/truth docs | No | `backend/.../product_category_pnl.py`, schemas, `docs/pnl/product-category-page-truth-contract.md` |
-| 1 | fallback-date semantics are not frozen at page level beyond the default-first-list-item rule | 1 | Decide intended behavior when dates list is partial, stale, or conflicts with refresh | No | Then freeze in `docs/pnl/…` + targeted tests |
-| 2 | detail `metric_id` expansion beyond the three approved headline metrics is still missing | 1 | Approve whether row-level `business_net_income`, yield, scale, or FTP fields should become formal metrics | No | `docs/pnl/product-category-page-truth-contract.md` § open gaps |
+| 2 | decision 3C approves detail metric expansion but field matrix / numbering / dictionary rows / tests are not implemented | 3 | Create the detail metric matrix for scale, FTP, net income, and yield fields; then add concrete `MTR-PCP-*` rows and tests | Yes, after choosing numbering within the approved matrix | `docs/metric_dictionary.md`, `productCategoryPnlPageModel.test.ts`, golden assertions |
 | 2 | exhaustive detail semantics are not fully page-frozen | 4 | Add page/model tests per approved headline metric row set; extend golden assertions | Yes (for the three approved headline metrics) | `productCategoryPnlPageModel.test.ts`, `ProductCategoryPnlPage.test.tsx`, `GS-PROD-CAT-PNL-A/` |
 | 3 | no page-level explicit stale-state banner contract exists | 4 | Write UX contract (when banner shows, copy, dismiss) then implement | Partially (doc+test skeleton only) | `docs/pnl/…`, then `ProductCategoryPnlPage.tsx` + page tests |
 | 3 | long-running refresh UX … timeout messaging vs `runPollingTask` generic timeout | 1 | Decide timeout user messaging and whether to surface run_id after timeout | No | `ProductCategoryPnlPage.tsx`, `runPollingTask`/`config`, tests |
@@ -28,7 +26,6 @@ Each row is one blocker. **Class** is the primary owner type.
 | 6 | no frozen behavior for very large exports | 2 | Define limits/streaming/timeouts; implement + test | No | Backend route + flow tests |
 | 6 | no explicit e2e contract that UI money strings equal CSV in every cell | 4 | New fixture-scoped rendered-row vs export-row assertion is complete; broader golden/integration coverage waits for a governed sample that defines more cells | Partially complete | `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`, optionally `GS-PROD-CAT-PNL-A/` later |
 | 7 | no confirmation modal for destructive revoke | 1 | Decide if friction is required | No | `ProductCategoryPnlPage.tsx`, audit page, tests |
-| 8 | no standalone outward `as_of_date` from the API | 2 | Same as Unit 1 `as_of_date` gap | No | Backend + truth docs |
 | 8 | fuller stale/refresh/cross-endpoint UX contract … not yet frozen | 4 | Spec matrix (states × surfaces); then tests | Partially | `docs/pnl/…`, frontend tests |
 | 9 | exhaustive column × row matrix not page-frozen | 4 | GS-backed narrow row/field matrix is complete; expand tests only after Unit 2 metric approval | Partially complete | Model + page tests |
 | 9 | test rows tied to mock `category_id` / `side`, not cross-domain inference | 4 | GS-backed `repo_assets` / `repo_liabilities` cases are complete; add broader fixture cases only when domain catalog evidence is stable | Partially complete | `productCategoryPnlPageModel.test.ts`, mocks |
@@ -40,32 +37,30 @@ Each row is one blocker. **Class** is the primary owner type.
 
 | Class | Count |
 | --- | ---: |
-| 1 Product decision | 7 |
-| 2 Backend/API contract | 5 |
-| 3 Frontend implementation | 0 |
-| 4 Evidence/test/documentation | 8 |
+| 1 Product decision | 4 |
+| 2 Backend/API contract | 2 |
+| 3 Frontend implementation | 1 |
+| 4 Evidence/test/documentation | 9 |
 | 5 Out of scope (this branch) | 1 |
-| **Total blockers** | **21** |
+| **Total blockers** | **17** |
 
-*Note:* Class 3 is empty as written: open items are either policy/API (1–2), evidence (4), or explicitly deferred (5). Frontend code changes follow after 1/2/4 clarify.
+*Note:* Class 3 now contains the decision 3C implementation matrix. The remaining open items are policy/API (1-2), implementation after an approved boundary (3), evidence (4), or explicitly deferred (5).
 
 ## P0 execution boundary
 
 P0 is about closure discipline for the already-governed product-category page.
 It is not permission to invent metric definitions, API fields, or product copy.
+Current active product-category metric ids remain `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`; decision 3C only opens the implementation matrix for future detail rows.
 
 ### Decision-required P0 items
 
-- headline `metric_id` approval is limited to `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`; detail `metric_id` expansion remains decision-required.
-- `as_of_date` API shape: expose a standalone outward field, or record a permanent no-field decision.
-- fallback-date behavior when the date list is partial, stale, or conflicts with refresh.
 - timeout / long-running refresh copy beyond the already-tested queued/running/failed states.
 
 ### Cursor-safe P0 items
 
-- keep the stale/fallback/refresh matrix aligned with tests and mark unresolved cells decision-required.
-- keep golden-sample assertions clear that `GS-PROD-CAT-PNL-A` approves only the three headline metrics; detail rows remain page/sample truth.
-- add regression tests that prevent product-category fields from being promoted to `MTR-*` rows without approval.
+- keep the stale/fallback/refresh matrix aligned with tests and mark unresolved copy/severity cells decision-required.
+- keep golden-sample assertions clear that detail metric expansion is approved directionally but not dictionary-active until the 3C field matrix lands.
+- add regression tests that prevent product-category fields from being promoted to `MTR-*` rows without the 3C field matrix / numbering / dictionary rows.
 - document current evidence links across truth contract, checklist, golden sample, and page/model tests.
 - Unit 5/7 surface cross-link note is now recorded in `docs/pnl/product-category-page-truth-contract.md` section 9.3 and `docs/pnl/product-category-closure-checklist.md`.
 
@@ -83,12 +78,12 @@ It is not permission to invent metric definitions, API fields, or product copy.
 - Unit 6 fixture-scoped UI-to-CSV parity: `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` and `docs/pnl/product-category-closure-checklist.md`
 - Unit 9 GS-backed row/field matrix: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` and `docs/pnl/product-category-closure-checklist.md`
 - Unit 4 backend validation error-shape evidence: `tests/test_product_category_pnl_flow.py` and `docs/pnl/product-category-closure-checklist.md`
+- Unit 1 decision 2A disappeared-selected-date page coverage: `frontend/src/test/ProductCategoryPnlPage.test.tsx` and `docs/pnl/product-category-closure-checklist.md`
+- 2026-05-11 decisions recorded: 1B no standalone `as_of_date`, 2A no silent selected-date switch, 3C approve detail metric expansion pending implementation matrix
 - governance regression tests: `tests/test_governance_doc_contract.py` and `tests/test_golden_samples_capture_ready.py`
 
 ## Blockers that need user/product decision (Class 1)
 
-- Unit 1: fallback-date semantics  
-- Unit 2: detail `metric_id` expansion beyond the three approved headline metrics
 - Unit 3: long-running refresh / timeout messaging  
 - Unit 4: validation copy / edge-case rules beyond two empty-payload tests  
 - Unit 5: dual-sort rationale (documentation of intent)  
@@ -96,4 +91,4 @@ It is not permission to invent metric definitions, API fields, or product copy.
 
 ## Next cursor-safe tasks
 
-No remaining cursor-safe P0 task is ready without product/API input. Next work should start from the decision-required blockers above, especially fallback-date semantics, outward `as_of_date`, detail `metric_id` expansion, refresh timeout/stale copy, Unit 4 extended validation copy, dual-sort rationale, and revoke confirmation policy.
+1. **Unit 2 decision 3C implementation matrix:** draft the detail metric field matrix for scale, FTP, net income, and yield fields before adding any new `MTR-PCP-*` rows.

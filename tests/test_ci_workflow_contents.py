@@ -18,3 +18,9 @@ def test_ci_workflow_uses_bounded_backend_release_suite():
 
     assert "python scripts/backend_release_suite.py --governance-audit-output governance-lineage-audit.json" in workflow
     assert "pytest tests/ -x -q --tb=short" not in workflow
+
+
+def test_ci_workflow_runs_frontend_production_build():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "npm run build" in workflow

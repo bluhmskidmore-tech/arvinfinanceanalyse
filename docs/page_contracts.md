@@ -1313,7 +1313,7 @@
 - `requested_report_date`：查询参数 `report_date`
 - `resolved_report_date`：当前为 `result.report_date`
 - `generated_at`：`result_meta.generated_at`
-- `as_of_date`：当前未作为独立 outward 字段；视为显式合同缺口，不得隐式假设
+- `as_of_date`：按 2026-05-11 decision 1B 不作为独立 outward 字段；不得用 `report_date` 或 `generated_at` 替代
 - 禁止静默回落；退化必须可见（见 truth contract §10）
 
 ### E. Endpoint / DTO 与正式性边界
@@ -1328,7 +1328,7 @@
 
 ### F. 指标与字段锚点
 
-- P0 headline `metric_id` 主表绑定已经在 `docs/metric_dictionary.md` 中批准；detail 字段仍以 truth contract **field freeze** 为准，禁止在前端重算或推断：
+- P0 headline `metric_id` 主表绑定已经在 `docs/metric_dictionary.md` 中批准；decision 3C 已方向性批准 detail metric 扩展，但 detail 字段在矩阵/编号/字典行/测试落地前仍以 truth contract **field freeze** 为准，禁止在前端重算或推断：
   - 头表：`MTR-PCP-001` -> `result.asset_total.business_net_income`；`MTR-PCP-002` -> `result.liability_total.business_net_income`；`MTR-PCP-003` -> `result.grand_total.business_net_income`
   - 行：`category_id`、`category_name`、`side`、`level`、`view`、`report_date`、`business_net_income`、`children` 等（truth contract §9）
 - 对账等式见 truth contract §12（含 asset+liability 与 grand_total 一致性等）。
@@ -1348,6 +1348,130 @@
 - 后端/流程：`tests/test_product_category_pnl_flow.py`、`tests/test_product_category_mapping_contract.py`
 - 前端：`frontend/src/test/ProductCategoryPnlPage.test.tsx` 等（见 `product-category-closure-checklist.md`）
 - capture-ready：`tests/test_golden_samples_capture_ready.py` 中 `GS-PROD-CAT-PNL-A`
+
+## 14.1 PAGE-AGENT-001 Agent Workbench
+
+### A. Page identity
+
+- Page ID: `PAGE-AGENT-001`
+- Primary front-end route: `/agent`
+- Status: `active`
+- Primary APIs:
+  - `POST /api/agent/runs`
+  - `GET /api/agent/runs/{run_id}`
+  - `POST /api/agent/query` for local/synchronous compatibility paths
+
+### B. Primary business question
+
+- The page answers: what can the governed MOSS agent read, explain, and trace for the current user and selected context?
+- It must preserve the boundary between analytical/read-only agent output and formal business metrics.
+- It must not present an agent answer as a formal financial result unless `result_meta.formal_use_allowed` explicitly allows it.
+
+### C. Data chain
+
+- Frontend route `frontend/src/features/agent/AgentWorkbenchPage.tsx` builds an `AgentQueryRequest`.
+- Managed runs call `POST /api/agent/runs`, then poll `GET /api/agent/runs/{run_id}`.
+- Local compatibility calls use `POST /api/agent/query`.
+- Backend route `backend/app/api/routes/agent.py` delegates to `backend/app/services/agent_run_service.py` and `backend/app/services/agent_service.py`.
+- Responses are `AgentEnvelope` payloads with `answer`, `cards`, `evidence`, `result_meta`, `next_drill`, and optional `suggested_actions`.
+
+### D. Units, dates, and status
+
+- Units are not computed in the page. Numeric cards must display the unit supplied by the returned envelope or the originating governed intent.
+- Dates use the request context and the backend `result_meta.generated_at`; page context dates remain filters, not independent truth.
+- Empty state: no answer/cards means show an empty conversation state, not synthetic financial numbers.
+- Failure state: disabled provider, rejected request, failed run, or forbidden run ownership must be visible to the user.
+- Stale/fallback state: `quality_flag != ok`, `fallback_mode != none`, or vendor degradation must remain visible through evidence/result metadata.
+
+### E. Tests
+
+- Frontend: `frontend/src/test/AgentWorkbenchPage.test.tsx`, `frontend/src/test/AgentPlaceholderPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Backend: `tests/test_agent_api_contract.py`, `tests/test_agent_enabled_path_smoke.py`, `tests/test_agent_runs_api.py`, `tests/test_agent_intent_routing.py`.
+
+## 14.2 PAGE-BAL-MOVE-001 Balance Movement Analysis
+
+### A. Page identity
+
+- Page ID: `PAGE-BAL-MOVE-001`
+- Primary front-end route: `/balance-movement-analysis`
+- Status: `active`
+- Primary APIs:
+  - `GET /ui/balance-movement-analysis/dates`
+  - `GET /ui/balance-movement-analysis`
+  - `POST /ui/balance-movement-analysis/refresh`
+
+### B. Primary business question
+
+- The page answers: what changed in asset, liability, and net balance between reporting periods, and which accounting or business dimensions explain the movement?
+- It must separate accounting basis movement, business category movement, structure migration, maturity structure, and concentration views.
+- It must not replace `PAGE-BALANCE-001` formal balance truth; it explains movement for selected report dates and currency basis.
+
+### C. Data chain
+
+- Frontend page `frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx` reads dates through `client.getBalanceMovementDates`.
+- The selected `report_date` and `currency_basis` call `client.getBalanceMovementAnalysis`.
+- Domain client `frontend/src/api/balanceMovementClient.ts` maps the UI route to the `/ui/balance-movement-analysis*` endpoints.
+- Backend route `backend/app/api/routes/accounting_asset_movement.py` returns the governed balance movement envelope and refresh entrypoint.
+
+### D. Units, dates, and status
+
+- Amount fields are displayed in yuan-derived units as provided by the backend model; page-level summaries convert to visible business units only for presentation.
+- `requested_report_date` is the selected route/query value. `resolved_report_date` is the backend result date returned by the detail payload.
+- `currency_basis` must stay visible when it affects amounts.
+- Empty state: no report dates or no rows must show an explicit no-data state.
+- Failure state: date load/detail load/refresh failure must show a user-visible error and must not backfill with demo rows.
+- Stale/fallback state: `result_meta.quality_flag`, `fallback_mode`, source/version, and refresh status remain part of the governance line.
+
+### E. Tests
+
+- Frontend: `frontend/src/test/BalanceMovementAnalysisPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Backend: `tests/test_accounting_asset_movement_api.py`, `tests/test_result_meta_on_all_ui_endpoints.py`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.3 PAGE-LIAB-ANALYTICS-001 Liability Analytics
+
+### A. Page identity
+
+- Page ID: `PAGE-LIAB-ANALYTICS-001`
+- Primary front-end route: `/liability-analytics`
+- Status: `active`
+- Primary APIs:
+  - `GET /ui/liability/risk-buckets`
+  - `GET /ui/liability/yield-metrics`
+  - `GET /ui/liability/yield-by-period`
+  - `GET /ui/liability/counterparty`
+  - `GET /ui/liability/business-context`
+  - `GET /ui/liability/cockpit-warnings`
+  - `GET /ui/liability/contribution-split`
+
+### B. Primary business question
+
+- The page answers: how are funding liabilities structured, concentrated, and priced, and what pressure do they place on NIM, liquidity, and near-term maturity risk?
+- It combines daily liability analysis with monthly average-balance views.
+- It must not treat reserved compatibility endpoints as formal truth, and it must surface any synthetic or derived section boundary.
+
+### C. Data chain
+
+- Frontend page `frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.tsx` initializes report dates from balance-analysis dates.
+- Daily view calls liability risk, yield, counterparty, knowledge, warning, and contribution endpoints.
+- Monthly view calls liabilities monthly and liability average-balance monthly endpoints through the API client.
+- Backend route `backend/app/api/routes/liability_analytics.py` delegates to liability analytics and liability knowledge services.
+- Frontend adapters in `frontend/src/features/liability-analytics/adapters/` shape counterparty and section-state view models.
+
+### D. Units, dates, and status
+
+- Amounts are displayed as yuan-derived business units such as yi yuan after explicit frontend presentation conversion; source numeric fields remain backend-provided values.
+- Yield, liability cost, market liability cost, NIM, and spread values must preserve percent/bp semantics from backend numeric payloads.
+- `requested_report_date` is the selected report date. Monthly mode uses selected year/month and average daily balance semantics.
+- Empty state: missing report dates, missing liability rows, or missing monthly rows must show no-data states.
+- Failure state: date load, daily core query, monthly query, and knowledge-query failures must be visible and retryable where supported.
+- Stale/fallback state: quality/fallback/vendor metadata and synthetic section notes must remain visible; the page may explain derived sections but may not hide pending metric definitions.
+
+### E. Tests
+
+- Frontend: `frontend/src/test/LiabilityAnalyticsPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`, `frontend/src/features/liability-analytics/adapters/liabilityAdapter.test.ts`.
+- Backend: `tests/test_result_meta_on_all_ui_endpoints.py` and liability analytics route/service tests where present.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 15. 当前缺口
 

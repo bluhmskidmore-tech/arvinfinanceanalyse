@@ -56,7 +56,7 @@ The sample must be captured against this chain:
 - `asset_total.category_id == "asset_total"`
 - `liability_total.category_id == "liability_total"`
 - `grand_total.category_id == "grand_total"`
-- This sample is now bound to the three headline `metric_id` values, while detail metric expansion remains open.
+- This sample is now bound to the three headline `metric_id` values; decision 3C approves detail metric expansion directionally, but concrete detail rows wait for the field matrix / numbering / dictionary tests.
 - `MTR-PCP-001`: `result.asset_total.business_net_income`
 - `MTR-PCP-002`: `result.liability_total.business_net_income`
 - `MTR-PCP-003`: `result.grand_total.business_net_income`
@@ -88,8 +88,8 @@ The sample must be captured against this chain:
 
 This sample is now `capture-ready`, but these gaps remain visible:
 
-- the page still lacks a standalone outward `as_of_date`
-- detail rows, yield, scale, FTP fields, and scenario outputs are not approved as additional `metric_id` bindings
+- standalone outward `as_of_date` is intentionally not provided for this page under decision 1B
+- detail rows, yield, scale, FTP fields, and scenario outputs are approved directionally by decision 3C but are not active `metric_id` bindings until the field matrix / numbering / dictionary tests land
 - scenario comparison is defined as a companion probe, not yet a separate frozen sample
 
 ## 8. Expected Pack Shape

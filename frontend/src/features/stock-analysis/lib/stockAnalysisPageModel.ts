@@ -6,6 +6,8 @@ import type {
   LivermoreSignalConfluencePayload,
   LivermoreStockCandidateItem,
   LivermoreStrategyPayload,
+  LivermoreThemeBreakoutReviewItem,
+  LivermoreThemeEvidenceInputState,
   LivermoreThemeBreakoutItem,
   ResultMeta,
 } from "../../../api/contracts";
@@ -151,10 +153,21 @@ export type StockDecisionReferenceRating = {
   detail: string;
 };
 
+export type StockClosedLoopVerdict = {
+  code: StockDecisionReferenceRatingCode;
+  tone: StockClosedLoopTone;
+  label: string;
+  headline: string;
+  primaryReason: string;
+  nextStep: string;
+  evidence: string[];
+};
+
 export type StockClosedLoopSummary = {
   summaryLabel: string;
   boundaryCount: number;
   referenceRating: StockDecisionReferenceRating;
+  verdict: StockClosedLoopVerdict;
   items: StockClosedLoopSummaryItem[];
 };
 
@@ -227,6 +240,27 @@ export type StockThemeBreakoutCard = {
   avgPctChangeLabel: string;
   movementLabel: string;
   latestEventLabel: string;
+  leaders: StockThemeBreakoutLeader[];
+};
+
+export type StockThemeEvidenceStateRow = {
+  key: string;
+  label: string;
+  status: string;
+  statusLabel: string;
+  detail: string;
+  rowCountLabel: string;
+};
+
+export type StockThemeBreakoutReviewItem = {
+  rank: number;
+  themeKey: string;
+  themeName: string;
+  sourceKindLabel: string;
+  parentSectorLabel: string;
+  summary: string;
+  failedGateLabel: string;
+  reason: string;
   leaders: StockThemeBreakoutLeader[];
 };
 
@@ -552,6 +586,109 @@ export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): Stoc
       leaders,
     };
   });
+}
+
+const themeEvidenceInputLabels: Record<string, string> = {
+  concept_membership: "Concept membership",
+  intraday_movement: "Intraday movement",
+};
+
+const themeEvidenceStatusLabels: Record<string, string> = {
+  catalog_unconfirmed: "catalog unconfirmed",
+  table_missing: "table missing",
+  landed_no_rows: "landed no rows",
+  matched_rows: "matched rows",
+};
+
+function themeEvidenceInputs(payload: LivermoreStrategyPayload): LivermoreThemeEvidenceInputState[] {
+  const state = payload.theme_breakout?.evidence_state;
+  if (state == null) return [];
+
+  const rows: LivermoreThemeEvidenceInputState[] = [];
+  if (state.concept_membership != null) {
+    rows.push({
+      ...state.concept_membership,
+      input_family: state.concept_membership.input_family || "concept_membership",
+    });
+  }
+  if (state.intraday_movement != null) {
+    rows.push({
+      ...state.intraday_movement,
+      input_family: state.intraday_movement.input_family || "intraday_movement",
+    });
+  }
+
+  const seen = new Set(rows.map((row) => row.input_family));
+  for (const row of state.inputs ?? []) {
+    const inputFamily = row.input_family ?? "theme_input";
+    if (!seen.has(inputFamily)) {
+      rows.push(row);
+      seen.add(inputFamily);
+    }
+  }
+  return rows;
+}
+
+export function buildThemeEvidenceStateRows(payload: LivermoreStrategyPayload): StockThemeEvidenceStateRow[] {
+  return themeEvidenceInputs(payload).map((row, index) => {
+    const inputFamily = row.input_family ?? `theme_input_${index + 1}`;
+    const rowCount = finiteCount(row.row_count ?? row.date_row_count);
+    const matchedCount = finiteCount(row.matched_row_count);
+    const status = String(row.status ?? row.state ?? "unknown");
+    const tableText = row.table ?? row.table_name ? ` / ${row.table ?? row.table_name}` : "";
+    return {
+      key: inputFamily,
+      label: themeEvidenceInputLabels[inputFamily] ?? inputFamily,
+      status,
+      statusLabel: themeEvidenceStatusLabels[status] ?? status,
+      detail: row.message?.trim() || `${inputFamily}${tableText} status ${status}.`,
+      rowCountLabel: `rows ${rowCount} / matched ${matchedCount}`,
+    };
+  });
+}
+
+function themeReviewLeaders(item: LivermoreThemeBreakoutReviewItem): StockThemeBreakoutLeader[] {
+  return [...(item.items ?? [])]
+    .sort((left, right) => {
+      if (left.closed_up_limit !== right.closed_up_limit) {
+        return left.closed_up_limit ? -1 : 1;
+      }
+      if (right.pctchange !== left.pctchange) return right.pctchange - left.pctchange;
+      return right.turn - left.turn;
+    })
+    .slice(0, 5)
+    .map((stock) => ({
+      stockCode: stock.stock_code,
+      stockName: stock.stock_name,
+      pctChange: formatPercent(stock.pctchange),
+      turn: formatNumber(stock.turn, 2),
+      closeStrength: formatRatioAsPercent(stock.close_strength, 0),
+      tags: [
+        stock.closed_up_limit ? "涨停" : null,
+        stock.strong ? "强势" : null,
+      ].filter((tag): tag is string => Boolean(tag)),
+    }));
+}
+
+export function buildThemeBreakoutReviewItems(payload: LivermoreStrategyPayload): StockThemeBreakoutReviewItem[] {
+  return [...(payload.theme_breakout?.review_items ?? [])]
+    .sort((left, right) => (left.rank ?? 9999) - (right.rank ?? 9999))
+    .map((item, index) => {
+      const failedGates = item.failed_gates ?? item.failed_gate_codes ?? [];
+      return {
+        rank: item.rank ?? index + 1,
+        themeKey: item.theme_key,
+        themeName: item.theme_name,
+        sourceKindLabel: item.source_kind ?? (payload.theme_breakout?.is_proxy ? "proxy" : "real_concept"),
+        parentSectorLabel: `${item.parent_sector_name} #${item.parent_sector_rank}`,
+        summary: `${item.member_count} review rows, ${item.strong_stock_count} strong, ${
+          item.limit_stock_count
+        } limit-up, avg ${formatPercent(item.avg_pctchange)}`,
+        failedGateLabel: `failed gates ${failedGates.length > 0 ? failedGates.join(", ") : "pending"}`,
+        reason: item.reason,
+        leaders: themeReviewLeaders(item),
+      };
+    });
 }
 
 export function buildDecisionSummary(
@@ -1026,11 +1163,72 @@ export function buildClosedLoopSummary(
   ];
 
   const boundaryCount = items.filter((item) => item.tone !== "positive").length;
+  const referenceRating = buildDecisionReferenceRating(items);
   return {
     summaryLabel: boundaryCount > 0 ? `${boundaryCount} 项待复核` : "全部通过",
     boundaryCount,
-    referenceRating: buildDecisionReferenceRating(items),
+    referenceRating,
+    verdict: buildClosedLoopVerdict(referenceRating, items),
     items,
+  };
+}
+
+function buildClosedLoopVerdict(
+  rating: StockDecisionReferenceRating,
+  items: StockClosedLoopSummaryItem[],
+): StockClosedLoopVerdict {
+  const blockedItem = items.find((item) => item.key === "adversarial_gate" && item.tone === "negative");
+  const negativeItem = items.find((item) => item.tone === "negative");
+  const warningItem = items.find((item) => item.tone === "warning");
+  const primaryItem =
+    (rating.code === "blocked" ? blockedItem : undefined) ??
+    negativeItem ??
+    warningItem ??
+    items.find((item) => item.key === "entry_gate") ??
+    items[0];
+  const evidence = items.slice(0, 4).map((item) => `${item.label}: ${item.statusLabel}`);
+
+  if (rating.code === "blocked") {
+    return {
+      code: rating.code,
+      tone: rating.tone,
+      label: rating.label,
+      headline: "闭环阻断，先复核约束项",
+      primaryReason: primaryItem?.detail ?? rating.detail,
+      nextStep: "保持仅观察输出，优先处理阻断门、退出触发和降级来源。",
+      evidence,
+    };
+  }
+  if (rating.code === "insufficient_data") {
+    return {
+      code: rating.code,
+      tone: rating.tone,
+      label: rating.label,
+      headline: "证据不足，不形成有效观察结论",
+      primaryReason: primaryItem?.detail ?? rating.detail,
+      nextStep: "先补齐宏观反拥挤、回放窗口或血缘证据，再进入人工复核。",
+      evidence,
+    };
+  }
+  if (rating.code === "pause") {
+    return {
+      code: rating.code,
+      tone: rating.tone,
+      label: rating.label,
+      headline: "暂缓复核，存在降级边界",
+      primaryReason: primaryItem?.detail ?? rating.detail,
+      nextStep: "保留观察队列，但先复核降级、fallback、proxy-only 或 pending 日期。",
+      evidence,
+    };
+  }
+  return {
+    code: rating.code,
+    tone: rating.tone,
+    label: rating.label,
+    headline: "可进入人工复核队列",
+    primaryReason: rating.detail,
+    nextStep: "继续按仅观察口径复核候选、退出观察和回放证据，不推导策略收益。",
+    evidence,
   };
 }
 

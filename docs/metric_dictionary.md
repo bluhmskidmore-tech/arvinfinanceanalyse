@@ -33,7 +33,7 @@
 - preview / vendor / analytical-only 扩张面
 - `product-category PnL` 的字段级 truth freeze
   - `GS-PROD-CAT-PNL-A` 当前以 `docs/pnl/product-category-page-truth-contract.md`、`docs/page_contracts.md -> PAGE-PROD-CAT-PNL-001`、`MTR-PCP-001` / `MTR-PCP-002` / `MTR-PCP-003` 和样本断言为权威
-  - Only the three headline product-category metrics are approved; detail fields remain page/sample truth until separately approved.
+  - Decision 3C approves detail metric expansion directionally, but only the three headline product-category metrics are dictionary-active until the detail field matrix, numbering, dictionary rows, and tests land.
 
 ## 3. 编制依据
 
@@ -361,19 +361,19 @@
 
 ### 12.3.1 Product-category metric promotion guard
 
-`GS-PROD-CAT-PNL-A` and `PAGE-PROD-CAT-PNL-001` currently freeze page/sample truth only.
-P0 now approves only the three headline product-category metrics below.
+`GS-PROD-CAT-PNL-A` and `PAGE-PROD-CAT-PNL-001` freeze the current page/sample truth.
+P0 keeps only the three headline product-category metrics below dictionary-active; decision 3C approves detail metric expansion directionally, pending field matrix, numbering, dictionary rows, and tests.
 
 | metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `MTR-PCP-001` | 产品分类资产端净收益 | business | `formal` | `ProductCategoryPnlPayload.asset_total.business_net_income` | `/product-category-pnl` headline | 金额；亿元展示；不由前端重算 | `report_date` + `view` 绑定；`as_of_date` 按页面合同表示实际采用的数据截面 | `tests/test_product_category_pnl_flow.py`; `tests/test_golden_samples_capture_ready.py` |
-| `MTR-PCP-002` | 产品分类负债端净收益 | business | `formal` | `ProductCategoryPnlPayload.liability_total.business_net_income` | `/product-category-pnl` headline | 金额；亿元展示；负债符号处理仅限展示 | `report_date` + `view` 绑定；`as_of_date` 按页面合同表示实际采用的数据截面 | `frontend/src/test/ProductCategoryPnlPage.test.tsx`; `tests/test_golden_samples_capture_ready.py` |
-| `MTR-PCP-003` | 产品分类总净收益 | business | `formal` | `ProductCategoryPnlPayload.grand_total.business_net_income` | `/product-category-pnl` headline/footer | 金额；亿元展示；使用后端总计，不由前端以资产+负债重算 | `report_date` + `view` 绑定；`as_of_date` 按页面合同表示实际采用的数据截面 | `frontend/src/test/ProductCategoryPnlPage.test.tsx`; `tests/test_golden_samples_capture_ready.py` |
+| `MTR-PCP-001` | 产品分类资产端净收益 | business | `formal` | `ProductCategoryPnlPayload.asset_total.business_net_income` | `/product-category-pnl` headline | 金额；亿元展示；不由前端重算 | `report_date` + `view` 绑定；本页按 decision 1B 不提供独立 outward `as_of_date` | `tests/test_product_category_pnl_flow.py`; `tests/test_golden_samples_capture_ready.py` |
+| `MTR-PCP-002` | 产品分类负债端净收益 | business | `formal` | `ProductCategoryPnlPayload.liability_total.business_net_income` | `/product-category-pnl` headline | 金额；亿元展示；负债符号处理仅限展示 | `report_date` + `view` 绑定；本页按 decision 1B 不提供独立 outward `as_of_date` | `frontend/src/test/ProductCategoryPnlPage.test.tsx`; `tests/test_golden_samples_capture_ready.py` |
+| `MTR-PCP-003` | 产品分类总净收益 | business | `formal` | `ProductCategoryPnlPayload.grand_total.business_net_income` | `/product-category-pnl` headline/footer | 金额；亿元展示；使用后端总计，不由前端以资产+负债重算 | `report_date` + `view` 绑定；本页按 decision 1B 不提供独立 outward `as_of_date` | `frontend/src/test/ProductCategoryPnlPage.test.tsx`; `tests/test_golden_samples_capture_ready.py` |
 
 Guardrails:
 
 - category_id / side / view / report_date are dimensions, not separate metrics
-- do not promote row-level `business_net_income`, `weighted_yield`, `cnx_scale`, or other product-category detail fields to additional `MTR-*` rows without approval
+- do not promote row-level `business_net_income`, `weighted_yield`, `cnx_scale`, or other product-category detail fields to additional `MTR-*` rows until the decision 3C field matrix, numbering, dictionary rows, and tests are added
 - scenario outputs remain analytical scenario payloads, not formal dictionary metrics
 - update `docs/pnl/product-category-page-truth-contract.md` and targeted tests before adding any further formal product-category `metric_id`
 
@@ -393,7 +393,7 @@ Guardrails:
 | `GS-EXEC-OVERVIEW-A` | `PAGE-EXEC-OVERVIEW-001` / `/ui/home/overview` | `MTR-EXEC-001`, `MTR-EXEC-002`, `MTR-EXEC-003`, `MTR-EXEC-004` | `caliber_label` 形状为当前 executive contract truth，不新增指标 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-PNL-ATTR-A` | `PAGE-EXEC-PNL-ATTR-001` / `/ui/pnl/attribution` | `MTR-EXEC-101`; `MTR-EXEC-102`~`MTR-EXEC-106` 当前只冻结 segment id presence，不冻结段值 | title 与 segment inventory 为样本结构真值 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
-| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003` | detail rows, category tree, `result_meta`, and companion scenario probe remain page/sample truth only；权威见 `docs/pnl/product-category-page-truth-contract.md` | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003` | detail rows, category tree, `result_meta`, and companion scenario probe remain page/sample truth until the decision 3C detail matrix creates active dictionary rows；权威见 `docs/pnl/product-category-page-truth-contract.md` | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 
 ### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
 
@@ -421,7 +421,7 @@ Guardrails:
 
 1. 用本文件里的指标集合，先给 6 到 7 个 in-scope 页面写页面契约
 2. 为高风险指标补“页面展示规范”和“fallback 可见性”字段
-3. Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and decide any future detail metric expansion separately.
+3. Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and carry decision 3C into a detail field matrix before adding any new detail `MTR-PCP-*` rows.
 
 ## 14. 版本说明
 
@@ -452,7 +452,7 @@ Guardrails:
 | `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | 当前首屏实现已改为产品分类正式 PnL，和 `PAGE-OPS-001` 旧文字不一致 |
 | `cashflow-projection` | 新增 4 条 `candidate`：`MTR-CFP-001`~`MTR-CFP-004` | `PAGE-CONTRACT-PENDING:/cashflow-projection` | `none` | live 只读链路已接通，字段与 schema 可追溯 |
 | `concentration-monitor` | 新增 4 条 `candidate`：`MTR-CON-001`~`MTR-CON-004` | `PAGE-CONTRACT-PENDING:/concentration-monitor` | `none` | 首屏 4 张卡片均来自 `credit-spread-migration` 结果 |
-| `product-category-pnl` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-PROD-CAT-PNL-001` | `GS-PROD-CAT-PNL-A` | 继续只批准三条 headline metric，不扩 detail |
+| `product-category-pnl` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-PROD-CAT-PNL-001` | `GS-PROD-CAT-PNL-A` | 三条 headline metric 仍是当前唯一 active rows；detail 扩展按 decision 3C 进入矩阵/编号/测试后再落字典 |
 | `kpi-performance` | 新增 1 条 `candidate`：`MTR-KPI-001` | `PAGE-CONTRACT-PENDING:/kpi` | `none` | summary endpoint 已存在，但页面尚未冻结独立 headline strip |
 | `team-performance` | 新增 1 条 `candidate`：`MTR-TEAM-001` | `PAGE-CONTRACT-PENDING:/team-performance` | `none` | 仅登记“已映射部室”；其余 workbook-local / text-state 卡片显式排除 |
 | `platform-config` | 新增 3 条 `candidate`：`MTR-PLT-001`~`MTR-PLT-003` | `PAGE-CONTRACT-PENDING:/platform-config` | `none` | 只登记数值型数据源摘要卡片；健康 / 环境文本卡片不升格 |
@@ -518,7 +518,7 @@ Guardrails:
 ### 15.3 复用、排除与对齐说明
 
 - `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 仍记录 balance overview + macro / FX strip，已与当前实现不一致。
-- `product-category-pnl`: 继续只复用已批准的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 仍不升格为更多 `MTR-*`。
+- `product-category-pnl`: 继续只复用当前 active 的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 只有在 decision 3C field matrix / numbering / tests 落地后才可升格为更多 `MTR-*`。
 - `positions`: `区间起`、`区间止`、`业务种类`、`产品类型`、`客户搜索`、`方向/对手方` 属过滤上下文，`status=excluded`，不写入 `MTR-*`。
 - `average-balance`: 页面文案明确为“分析口径子视图，不提升为正式口径”；因此本节新增条目全部只登记为 `candidate`。
 - `market-data`: `稳定回收`、`降级可用`、`稳定最新日`、`稳定缺口`、`外汇观察分组`、`外汇观察序列`、`联动报告日` 仍是 mixed-source / analytical-only / hard-coded display surface，`status=excluded`；`PAGE-MKT-001` 仍保留 `GAP-MKT-DATA`。

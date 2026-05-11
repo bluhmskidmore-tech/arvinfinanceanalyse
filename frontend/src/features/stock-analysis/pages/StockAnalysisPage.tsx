@@ -22,6 +22,8 @@ import {
   buildSectorTableSortComparator,
   buildSectorViewModel,
   buildThemeBreakoutCards,
+  buildThemeBreakoutReviewItems,
+  buildThemeEvidenceStateRows,
 } from "../lib/stockAnalysisPageModel";
 import type { StockSectorRow, StockSectorViewKind } from "../lib/stockAnalysisPageModel";
 import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
@@ -192,6 +194,16 @@ export default function StockAnalysisPage() {
     [strategyPayload],
   );
 
+  const themeEvidenceRows = useMemo(
+    () => (strategyPayload ? buildThemeEvidenceStateRows(strategyPayload) : []),
+    [strategyPayload],
+  );
+
+  const themeBreakoutReviewItems = useMemo(
+    () => (strategyPayload ? buildThemeBreakoutReviewItems(strategyPayload) : []),
+    [strategyPayload],
+  );
+
   const sectorOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const card of reviewQueue) {
@@ -299,6 +311,14 @@ export default function StockAnalysisPage() {
 
   const topBars = sectorViewRows.slice(0, 5);
   const bottomBars = sectorViewRows.slice(Math.max(sectorViewRows.length - 5, 0));
+  const firstScreenNextAction =
+    closedLoopSummary && closedLoopSummary.verdict.code !== "reviewable"
+      ? `闭环结论优先：${closedLoopSummary.verdict.nextStep}`
+      : decisionSummary?.nextReviewAction;
+  const firstScreenHeadline =
+    closedLoopSummary && closedLoopSummary.verdict.code !== "reviewable"
+      ? closedLoopSummary.verdict.headline
+      : decisionSummary?.headline;
 
   const invalidateStockAnalysis = () => {
     queryClient.invalidateQueries({ queryKey: ["stock-analysis"] }).catch(() => undefined);
@@ -440,8 +460,10 @@ export default function StockAnalysisPage() {
               <div className="stock-analysis-page__decision-main">
                 <div>
                   <p className="stock-analysis-page__eyebrow">今日判断</p>
-                  <h2>{decisionSummary.headline}</h2>
-                  <p className="stock-analysis-page__decision-next">{decisionSummary.nextReviewAction}</p>
+                  <h2>{firstScreenHeadline}</h2>
+                  {firstScreenNextAction ? (
+                    <p className="stock-analysis-page__decision-next">{firstScreenNextAction}</p>
+                  ) : null}
                 </div>
                 <div className="stock-analysis-page__decision-meta" aria-label="今日判断摘要">
                   <span>{decisionSummary.gateLabel}</span>
@@ -476,6 +498,23 @@ export default function StockAnalysisPage() {
                   data-testid="stock-analysis-closed-loop-summary"
                   aria-label="闭环摘要"
                 >
+                  <div
+                    className="stock-analysis-page__closed-loop-verdict"
+                    data-tone={closedLoopSummary.verdict.tone}
+                    data-testid="stock-analysis-closed-loop-verdict"
+                  >
+                    <div>
+                      <span>{closedLoopSummary.verdict.label}</span>
+                      <strong>{closedLoopSummary.verdict.headline}</strong>
+                      <p>{closedLoopSummary.verdict.primaryReason}</p>
+                    </div>
+                    <ul aria-label="闭环结论证据">
+                      {closedLoopSummary.verdict.evidence.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                    <small>{closedLoopSummary.verdict.nextStep}</small>
+                  </div>
                   <div className="stock-analysis-page__section-head">
                     <div>
                       <h3>闭环摘要</h3>
@@ -923,6 +962,79 @@ export default function StockAnalysisPage() {
                   </p>
                 )}
               </section>
+
+              {themeEvidenceRows.length > 0 ? (
+                <section className="stock-analysis-page__panel stock-analysis-page__panel--evidence" data-testid="stock-analysis-theme-evidence-state">
+                  <div className="stock-analysis-page__section-head">
+                    <div>
+                      <h2>Theme evidence state</h2>
+                      <p>Shows whether real concept and intraday evidence is confirmed, landed, and date-matched.</p>
+                    </div>
+                    <span className="stock-analysis-page__pill">Evidence</span>
+                  </div>
+                  <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                    {themeEvidenceRows.map((row) => (
+                      <li key={row.key}>
+                        <span>
+                          <strong>{row.label}</strong>
+                          <small>
+                            {row.status} / {row.rowCountLabel}
+                          </small>
+                        </span>
+                        <em>{row.detail}</em>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {themeBreakoutReviewItems.length > 0 ? (
+                <section className="stock-analysis-page__panel stock-analysis-page__panel--evidence" data-testid="stock-analysis-theme-review-items">
+                  <div className="stock-analysis-page__section-head">
+                    <div>
+                      <h2>Theme miss review</h2>
+                      <p>Review-only clusters that were strong enough to inspect but failed one or more selection gates.</p>
+                    </div>
+                    <span className="stock-analysis-page__pill">Review only</span>
+                  </div>
+                  <div className="stock-analysis-page__candidate-grid">
+                    {themeBreakoutReviewItems.map((item) => (
+                      <article className="stock-analysis-page__candidate" key={item.themeKey}>
+                        <div className="stock-analysis-page__candidate-head">
+                          <div>
+                            <h3>
+                              Review #{item.rank} {item.themeName}
+                            </h3>
+                            <p>{item.parentSectorLabel}</p>
+                            <div className="stock-analysis-page__pattern-tag">{item.summary}</div>
+                          </div>
+                          <span>{item.sourceKindLabel}</span>
+                        </div>
+                        <div className="stock-analysis-page__decision-meta">
+                          <span>{item.failedGateLabel}</span>
+                        </div>
+                        <p className="stock-analysis-page__review-focus">{item.reason}</p>
+                        {item.leaders.length > 0 ? (
+                          <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                            {item.leaders.map((leader) => (
+                              <li key={leader.stockCode}>
+                                <span>
+                                  <strong>{leader.stockName}</strong>
+                                  <small>
+                                    {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度{" "}
+                                    {leader.closeStrength}
+                                  </small>
+                                </span>
+                                <em>{leader.tags.join(" / ") || "Review"}</em>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--evidence"

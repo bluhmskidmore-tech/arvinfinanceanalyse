@@ -105,6 +105,63 @@ describe("dashboardHomeModel helpers", () => {
     expect(hero[0]!.delta).toBe("N/A");
   });
 
+  it("falls back hero delta when the adapter display is a placeholder dash", () => {
+    const hero = buildDashboardHomeHeroMetrics({
+      metrics: [
+        overviewMetric({
+          id: "m-placeholder",
+          delta: numeric({ display: "—" }),
+        }),
+      ],
+      fallbackDelta: "读链路",
+    });
+
+    expect(hero[0]!.delta).toBe("读链路");
+  });
+
+  it.each(["-", "N/A", "不可用"])(
+    "falls back hero delta when the adapter display is %s",
+    (display) => {
+      const hero = buildDashboardHomeHeroMetrics({
+        metrics: [
+          overviewMetric({
+            id: `m-${display}`,
+            delta: numeric({ display }),
+          }),
+        ],
+        fallbackDelta: "读链路",
+      });
+
+      expect(hero[0]!.delta).toBe("读链路");
+    },
+  );
+
+  it("lets the composed home model carry page-specific hero metric fallback copy", () => {
+    const output = buildDashboardHomeModel({
+      metrics: [
+        overviewMetric({
+          id: "yield",
+          delta: numeric({ display: "" }),
+        }),
+      ],
+      baseVerdict: null,
+      isSnapshotLoading: false,
+      calendarEvents: [],
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+      heroMetricFallbackDelta: "读链路",
+    });
+
+    expect(output.heroMetrics).toEqual([
+      expect.objectContaining({
+        id: "yield",
+        delta: "读链路",
+        linkTo: "/pnl-by-business",
+      }),
+    ]);
+  });
+
   it("collects attention items only when meta is degraded", () => {
     const healthy = collectDashboardAttentionItems({
       overviewMeta: resultMeta(),
@@ -121,7 +178,9 @@ describe("dashboardHomeModel helpers", () => {
 
     expect(healthy).toEqual([]);
     expect(degraded).toHaveLength(1);
-    expect(degraded[0]).toContain("overview");
+    expect(degraded[0]).toContain("总览");
+    expect(degraded[0]).toContain("陈旧");
+    expect(degraded[0]).toContain("降级=最新快照降级");
   });
 
   it("builds snapshot partial note from mode or missing domains", () => {
@@ -129,12 +188,12 @@ describe("dashboardHomeModel helpers", () => {
       buildDashboardHomeSnapshotPartialNote({
         snapshotMode: "partial",
       }),
-    ).toBe("快照覆盖不完整");
+    ).toBe("该日部分业务域不可用");
     expect(
       buildDashboardHomeSnapshotPartialNote({
         domainsMissing: ["Macro", "Auction"],
       }),
-    ).toBe("快照含缺域：Macro, Auction");
+    ).toBe("该日部分业务域不可用: Macro, Auction");
   });
 
   it("builds warning-level KPI ribbon for partial data and mock source", () => {
@@ -152,7 +211,7 @@ describe("dashboardHomeModel helpers", () => {
     expect(pills[1]?.value).toBe("含缺域");
     expect(pills[1]?.tone).toBe("warning");
     expect(pills[2]?.tone).toBe("warning");
-    expect(pills[3]?.value).toBe("模拟");
+    expect(pills[3]?.value).toBe("模拟演示");
     expect(pills[3]?.tone).toBe("warning");
   });
 
@@ -201,6 +260,28 @@ describe("dashboardHomeModel helpers", () => {
     expect(alerts[3]).toMatchObject({ id: "metric-warning", severity: "medium" });
   });
 
+  it("keeps page-facing alert ids and priorities stable for mock and partial states", () => {
+    const alerts = buildDashboardHomeAlerts({
+      metrics: [],
+      isMockMode: true,
+      attentionItems: [],
+      snapshotPartialNote: "该日部分业务域不可用: Macro",
+    });
+
+    expect(alerts).toEqual([
+      expect.objectContaining({
+        id: "mock-mode",
+        title: "当前处于模拟模式",
+        severity: "high",
+      }),
+      expect.objectContaining({
+        id: "partial-note",
+        title: "快照含缺域",
+        severity: "medium",
+      }),
+    ]);
+  });
+
   it("maps alerts and calendar items into focus with item caps", () => {
     const focus = buildDashboardHomeFocusItems({
       alerts: [
@@ -241,8 +322,15 @@ describe("buildDashboardHomeModel", () => {
     expect(output.effectiveReportDate).toBe("");
     expect(output.attentionItems).toEqual([]);
     expect(output.snapshotPartialNote).toBeNull();
+    expect(output.snapshotModeLabel).toBe("载入中");
     expect(output.heroMetrics).toEqual([]);
     expect(output.alerts).toEqual([]);
+    expect(output.reviewCount).toBe(0);
+    expect(output.reviewMetaItems).toEqual([
+      expect.objectContaining({ id: "report-date", value: "待定", tone: "warning" }),
+      expect.objectContaining({ id: "snapshot", value: "载入中", tone: "ok" }),
+      expect.objectContaining({ id: "source", value: "真实", tone: "ok" }),
+    ]);
     expect(output.focus.tasks).toEqual([]);
     expect(output.focus.calendarItems).toEqual([]);
     expect(output.focus.calendarState.status).toBe("no-data");
@@ -269,6 +357,13 @@ describe("buildDashboardHomeModel", () => {
     });
 
     expect(output.meta.reportDate).toBe("2026-04-08");
+    expect(output.snapshotModeLabel).toBe("strict");
+    expect(output.reviewCount).toBe(0);
+    expect(output.reviewMetaItems).toEqual([
+      expect.objectContaining({ id: "report-date", value: "2026-04-08", tone: "ok" }),
+      expect.objectContaining({ id: "snapshot", value: "strict", tone: "ok" }),
+      expect.objectContaining({ id: "source", value: "真实", tone: "ok" }),
+    ]);
     expect(output.sections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

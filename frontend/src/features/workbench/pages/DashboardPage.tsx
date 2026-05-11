@@ -10,13 +10,15 @@ import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDash
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { DashboardBondCounterpartySection } from "../../executive-dashboard/components/DashboardBondCounterpartySection";
-import { DashboardBondHeadlineSection } from "../../executive-dashboard/components/DashboardBondHeadlineSection";
+import {
+  DashboardBondHeadlineSection,
+} from "../../executive-dashboard/components/DashboardBondHeadlineSection";
+import { dashboardBondHeadlineQueryKey } from "../../executive-dashboard/components/dashboardBondHeadlineQuery";
 import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import { BondAnalyticsOverviewMidCharts } from "../../bond-analytics/components/BondAnalyticsOverviewMidCharts";
 import {
   DashboardAlertCenterPanel,
-  type DashboardCalendarPanelState,
   DashboardGlobalJudgmentPanel,
   DashboardModuleEntryGrid,
   DashboardModuleSnapshotPanel,
@@ -24,10 +26,8 @@ import {
   DashboardProductCategoryYtdCards,
   DashboardTasksCalendarPanels,
   type DashboardAlert,
-  type DashboardHeroMetric,
   type DashboardModuleSnapshotItem,
   type DashboardReviewAlert,
-  type DashboardReviewMetaItem,
 } from "../dashboard/DashboardOverviewSections";
 import {
   DashboardJudgmentBand,
@@ -40,11 +40,9 @@ import {
 } from "../dashboard/DashboardCockpitSections";
 import { DashboardCoreMetricsSection } from "../dashboard/DashboardCoreMetricsSection";
 import { DashboardDailyChangesSection } from "../dashboard/DashboardDailyChangesSection";
-import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
+import { GovernancePills } from "../dashboard/GovernancePills";
 import { buildDashboardCockpitModel } from "../dashboard/dashboardCockpitModel";
 import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
-import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
-import { buildDashboardTodoTasksFromAlerts } from "../dashboard/dashboardTodoModel";
 import { workbenchNavigation } from "../../../mocks/navigation";
 import { AgentPanel } from "../../agent/AgentPanel";
 
@@ -64,71 +62,6 @@ function LazyPanelFallback({ title }: { title: string }) {
       <div />
     </AsyncSection>
   );
-}
-
-function isAttentionMeta(meta: ResultMeta | null | undefined) {
-  if (!meta) {
-    return false;
-  }
-  return (
-    meta.quality_flag !== "ok" ||
-    meta.fallback_mode !== "none" ||
-    meta.vendor_status !== "ok"
-  );
-}
-
-function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
-  if (value === "ok") return "正常";
-  if (value === "warning") return "预警";
-  if (value === "error") return "错误";
-  if (value === "stale") return "陈旧";
-  return value;
-}
-
-function metaVendorLabel(value: ResultMeta["vendor_status"]): string {
-  if (value === "ok") return "正常";
-  if (value === "vendor_stale") return "供应商数据陈旧";
-  if (value === "vendor_unavailable") return "供应商不可用";
-  return value;
-}
-
-function metaFallbackLabel(value: ResultMeta["fallback_mode"]): string {
-  if (value === "none") return "未降级";
-  if (value === "latest_snapshot") return "最新快照降级";
-  return value;
-}
-
-function describeAttention(meta: ResultMeta | null | undefined, title: string) {
-  if (!meta || !isAttentionMeta(meta)) {
-    return null;
-  }
-
-  const parts = [title, metaQualityLabel(meta.quality_flag)];
-  if (meta.fallback_mode !== "none") {
-    parts.push(`降级=${metaFallbackLabel(meta.fallback_mode)}`);
-  }
-  if (meta.vendor_status !== "ok") {
-    parts.push(`供应商=${metaVendorLabel(meta.vendor_status)}`);
-  }
-  return parts.join(" / ");
-}
-
-function formatSnapshotMode(
-  mode: string | undefined,
-  isLoading: boolean,
-): string {
-  if (isLoading) return "载入中";
-  if (!mode) return "待定";
-  if (mode === "partial") return "部分可用";
-  if (mode === "complete") return "完整";
-  return mode;
-}
-
-function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
-  if (display && display.trim() && display.trim() !== "—") {
-    return display;
-  }
-  return fallbackLabel;
 }
 
 const DASHBOARD_KEY_CALENDAR_LOOKBACK_DAYS = 7;
@@ -174,36 +107,6 @@ function reviewSourceHint(path: string): string {
 
 function reviewReadinessLabel(path: string): string {
   return lookupWorkbenchSection(path)?.readinessLabel ?? "待接入";
-}
-
-function buildDashboardReviewMetaItems(input: {
-  reportDate: string;
-  snapshotMode?: string;
-  snapshotPartialNote: string | null;
-  isSnapshotLoading: boolean;
-  isMockMode: boolean;
-}): DashboardReviewMetaItem[] {
-  const snapshotValue = formatSnapshotMode(input.snapshotMode, input.isSnapshotLoading);
-  return [
-    {
-      id: "report-date",
-      label: "报告日",
-      value: input.reportDate || "待定",
-      tone: input.reportDate ? "ok" : "warning",
-    },
-    {
-      id: "snapshot",
-      label: "快照",
-      value: input.snapshotPartialNote ? "含缺域" : snapshotValue,
-      tone: input.snapshotPartialNote ? "warning" : "ok",
-    },
-    {
-      id: "source",
-      label: "读链路",
-      value: input.isMockMode ? "模拟" : "真实",
-      tone: input.isMockMode ? "warning" : "ok",
-    },
-  ];
 }
 
 function sanitizeVerdictLinks(verdict: VerdictPayload): VerdictPayload {
@@ -405,32 +308,13 @@ export default function DashboardPage() {
     ],
   );
 
+  const snapshotResult = snapshotQuery.data?.result;
   const overviewMeta = adapterOutput.overview.meta;
   const attributionMeta = adapterOutput.attribution.meta;
-  const attentionItems = [
-    describeAttention(overviewMeta, "总览"),
-    describeAttention(attributionMeta, "贡献拆解"),
-  ].filter((item): item is string => Boolean(item));
+  const initialEffectiveReportDate =
+    snapshotResult?.report_date?.trim() || reportDate.trim();
 
-  const snapshotResult = snapshotQuery.data?.result;
-  const effectiveReportDate = useMemo(() => {
-    const snap = snapshotResult?.report_date?.trim();
-    const manual = reportDate.trim();
-    return snap || manual || "";
-  }, [reportDate, snapshotResult?.report_date]);
-
-  const snapshotPartialNote = useMemo(() => {
-    if (!snapshotResult) return null;
-    if (snapshotResult.mode === "partial" || snapshotResult.domains_missing.length > 0) {
-      const missing = snapshotResult.domains_missing.length
-        ? snapshotResult.domains_missing.join(", ")
-        : "";
-      return `该日部分业务域不可用${missing ? `: ${missing}` : ""}`;
-    }
-    return null;
-  }, [snapshotResult]);
-
-  const supplementalReportDate = effectiveReportDate || undefined;
+  const supplementalReportDate = initialEffectiveReportDate || undefined;
 
   const coreMetricsQuery = useQuery({
     queryKey: ["dashboard", "core-metrics", client.mode, supplementalReportDate ?? "pending-snapshot"],
@@ -456,12 +340,10 @@ export default function DashboardPage() {
   });
 
   const bondHeadlineQuery = useQuery({
-    queryKey: [
-      "dashboard",
-      "cockpit-bond-headline",
+    queryKey: dashboardBondHeadlineQueryKey(
       client.mode,
       supplementalReportDate ?? "pending-snapshot",
-    ],
+    ),
     queryFn: () => client.getBondDashboardHeadlineKpis(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
@@ -482,11 +364,11 @@ export default function DashboardPage() {
   });
 
   const coreMetricsDateMismatch = reportDateMismatch(
-    effectiveReportDate,
+    initialEffectiveReportDate,
     coreMetricsQuery.data?.result.report_date,
   );
   const dailyChangesDateMismatch = reportDateMismatch(
-    effectiveReportDate,
+    initialEffectiveReportDate,
     dailyChangesQuery.data?.result.report_date,
   );
 
@@ -538,10 +420,11 @@ export default function DashboardPage() {
         isSnapshotLoading: snapshotQuery.isLoading,
         calendarEvents: researchCalendarQuery.data,
         calendarIsLoading:
-          !effectiveReportDate ||
+          !initialEffectiveReportDate ||
           (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
         calendarIsError: researchCalendarQuery.isError,
         isMockMode: client.mode !== "real",
+        heroMetricFallbackDelta: "读链路",
       }),
     [
       adapterOutput.verdict,
@@ -549,7 +432,7 @@ export default function DashboardPage() {
       client.mode,
       coreMetricsQuery.data?.result.report_date,
       dailyChangesQuery.data?.result.report_date,
-      effectiveReportDate,
+      initialEffectiveReportDate,
       overviewMeta,
       reportDate,
       researchCalendarQuery.data,
@@ -562,6 +445,10 @@ export default function DashboardPage() {
       sanitizedOverviewMetrics,
     ],
   );
+
+  const effectiveReportDate = dashboardHome.effectiveReportDate;
+  const snapshotPartialNote = dashboardHome.snapshotPartialNote;
+  const attentionItems = dashboardHome.attentionItems;
 
   const dashboardCockpit = useMemo(
     () =>
@@ -588,81 +475,6 @@ export default function DashboardPage() {
       snapshotResult?.mode,
     ],
   );
-
-  const businessBalanceMetrics = useMemo<DashboardHeroMetric[]>(
-    () =>
-      sanitizedOverviewMetrics.map((metric) => ({
-        id: metric.id,
-        label: metric.label,
-        caliberLabel: metric.caliberLabel,
-        value: metric.value.display,
-        note: metric.detail,
-        delta: formatHeroDelta(metric.delta.display, "读链路"),
-        tone: metric.tone,
-        history: metric.history,
-        linkTo: metric.id === "yield" ? "/pnl-by-business" : null,
-      })),
-    [sanitizedOverviewMetrics],
-  );
-
-  const governancePills = useMemo<GovernancePill[]>(() => {
-    const dateValue = effectiveReportDate || "最新可用";
-    const dateHint = snapshotResult?.report_date
-      ? `归属日期 ${snapshotResult.report_date}`
-      : "用户选择 / 默认日期";
-
-    const snapshotMode = formatSnapshotMode(
-      snapshotResult?.mode,
-      snapshotQuery.isLoading,
-    );
-    const snapshotValue = snapshotPartialNote ? "含缺域" : snapshotMode;
-    const snapshotHint =
-      snapshotPartialNote ?? "首页首屏只保留已落地的受治理结果";
-
-    const attentionValue =
-      attentionItems.length > 0 ? `${attentionItems.length} 项关注` : "通过";
-    const attentionHint =
-      attentionItems.length > 0
-        ? attentionItems.join(" / ")
-        : "无质量、降级或供应商警示";
-
-    const sourceValue = client.mode === "real" ? "真实链路" : "模拟演示";
-    const sourceHint =
-      client.mode === "real" ? "正式接口" : "仅用于界面演示，不应作为业务判断依据";
-
-    return [
-      { id: "report-date", label: "报告日", value: dateValue, tone: "info", hint: dateHint },
-      {
-        id: "snapshot",
-        label: "快照",
-        value: snapshotValue,
-        tone: snapshotPartialNote ? "warning" : "ok",
-        hint: snapshotHint,
-      },
-      {
-        id: "attention",
-        label: "治理",
-        value: attentionValue,
-        tone: attentionItems.length > 0 ? "warning" : "ok",
-        hint: attentionHint,
-      },
-      {
-        id: "source",
-        label: "读链路",
-        value: sourceValue,
-        tone: client.mode === "real" ? "ok" : "warning",
-        hint: sourceHint,
-      },
-    ];
-  }, [
-    attentionItems,
-    client.mode,
-    effectiveReportDate,
-    snapshotPartialNote,
-    snapshotQuery.isLoading,
-    snapshotResult?.mode,
-    snapshotResult?.report_date,
-  ]);
 
   const fallbackVerdict = useMemo<VerdictPayload>(
     () => ({
@@ -698,24 +510,6 @@ export default function DashboardPage() {
   const reviewVerdict = useMemo(
     () => sanitizeVerdictLinks(adapterOutput.verdict ?? fallbackVerdict),
     [adapterOutput.verdict, fallbackVerdict],
-  );
-
-  const reviewMetaItems = useMemo(
-    () =>
-      buildDashboardReviewMetaItems({
-        reportDate: effectiveReportDate,
-        snapshotMode: snapshotResult?.mode,
-        snapshotPartialNote,
-        isSnapshotLoading: snapshotQuery.isLoading,
-        isMockMode: client.mode !== "real",
-      }),
-    [
-      client.mode,
-      effectiveReportDate,
-      snapshotPartialNote,
-      snapshotQuery.isLoading,
-      snapshotResult?.mode,
-    ],
   );
 
   const reviewEvidenceLabel = useMemo(
@@ -826,99 +620,9 @@ export default function DashboardPage() {
     [sanitizedOverviewMetrics],
   );
 
-  const dashboardAlerts = useMemo<DashboardAlert[]>(() => {
-    const alerts: DashboardAlert[] = [];
-    const metrics = sanitizedOverviewMetrics;
-
-    if (client.mode !== "real") {
-      alerts.push({
-        id: "mock-mode",
-        title: "当前处于模拟模式",
-        detail: "首屏数字仅用于界面演示，不应直接作为业务判断依据。",
-        severity: "high",
-      });
-    }
-
-    attentionItems.forEach((item, index) => {
-      alerts.push({
-        id: `attention-${index}`,
-        title: "治理状态待复核",
-        detail: item,
-        severity: "high",
-      });
-    });
-
-    if (snapshotPartialNote) {
-      alerts.push({
-        id: "partial-note",
-        title: "快照含缺域",
-        detail: snapshotPartialNote,
-        severity: "medium",
-      });
-    }
-
-    metrics
-      .filter((metric) => metric.tone === "warning" || metric.tone === "negative")
-      .slice(0, 3)
-      .forEach((metric) => {
-        alerts.push({
-          id: `metric-${metric.id}`,
-          title: metric.label,
-          detail: `${metric.value.display} / ${metric.detail}`,
-          severity: metric.tone === "negative" ? "high" : "medium",
-        });
-      });
-
-    if (alerts.length === 0) {
-      alerts.push({
-        id: "no-strong-alert",
-        title: "当前无强治理预警",
-        detail: "可以先基于首屏指标做方向性判断，再按模块下钻核实来源。",
-        severity: "low",
-      });
-    }
-
-    return alerts.slice(0, 4);
-  }, [
-    sanitizedOverviewMetrics,
-    attentionItems,
-    client.mode,
-    snapshotPartialNote,
-  ]);
-
   const reviewAlerts = useMemo(
-    () => buildReviewAlerts(dashboardAlerts),
-    [dashboardAlerts],
-  );
-
-  const dashboardCalendar = useMemo(
-    () =>
-      buildDashboardKeyCalendarModel({
-        events: researchCalendarQuery.data,
-        isLoading:
-          !effectiveReportDate ||
-          (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
-        isError: researchCalendarQuery.isError,
-      }),
-    [
-      effectiveReportDate,
-      researchCalendarQuery.data,
-      researchCalendarQuery.isError,
-      researchCalendarQuery.isLoading,
-    ],
-  );
-
-  const dashboardCalendarState = useMemo<DashboardCalendarPanelState>(
-    () => ({
-      status: dashboardCalendar.status,
-      message: dashboardCalendar.message,
-    }),
-    [dashboardCalendar.message, dashboardCalendar.status],
-  );
-
-  const dashboardTasks = useMemo(
-    () => buildDashboardTodoTasksFromAlerts(dashboardAlerts),
-    [dashboardAlerts],
+    () => buildReviewAlerts(dashboardHome.alerts),
+    [dashboardHome.alerts],
   );
 
   const agentPanelFilters = useMemo(
@@ -929,9 +633,6 @@ export default function DashboardPage() {
     [allowPartial, reportDate],
   );
 
-  const statusReviewCount = dashboardAlerts.filter(
-    (alert) => alert.severity === "high" || alert.severity === "medium",
-  ).length;
   const toolbarModeLabel = client.mode === "real" ? "管理视角" : "演示视角";
   const shouldRenderDetailDrilldown = client.mode !== "real" || isDetailDrilldownOpen;
 
@@ -1057,17 +758,17 @@ export default function DashboardPage() {
             <span className="dashboard-home-section-eyebrow">状态 / 可信度</span>
             <h2 className="dashboard-home-section-title">治理状态</h2>
           </div>
-          <GovernancePills pills={governancePills} />
+          <GovernancePills pills={dashboardHome.kpiRibbon} />
           <div className="dashboard-command-status__grid">
             <article className="dashboard-home-inset dashboard-command-status__metric">
               <span className="dashboard-home-muted-label">待复核</span>
-              <strong className="dashboard-home-value">{statusReviewCount}</strong>
+              <strong className="dashboard-home-value">{dashboardHome.reviewCount}</strong>
               <p className="dashboard-home-muted">高/中优先级事项</p>
             </article>
             <article className="dashboard-home-inset dashboard-command-status__metric">
               <span className="dashboard-home-muted-label">快照</span>
               <strong className="dashboard-home-value">
-                {formatSnapshotMode(snapshotResult?.mode, snapshotQuery.isLoading)}
+                {dashboardHome.snapshotModeLabel}
               </strong>
               <p className="dashboard-home-muted">
                 {snapshotPartialNote || "覆盖状态可用于首屏判断"}
@@ -1156,7 +857,7 @@ export default function DashboardPage() {
             同日报告日的经营口径复核；年度看业务种类，月度看产品分类。
           </p>
         </div>
-        <DashboardOverviewHeroStrip metrics={businessBalanceMetrics} />
+        <DashboardOverviewHeroStrip metrics={dashboardHome.heroMetrics} />
         <DashboardProductCategoryYtdCards
           state={adapterOutput.productCategoryYtd.state}
           vm={adapterOutput.productCategoryYtd.vm}
@@ -1188,7 +889,7 @@ export default function DashboardPage() {
             <div className="dashboard-overview-command-grid">
               <DashboardGlobalJudgmentPanel
                 verdict={reviewVerdict}
-                metaItems={reviewMetaItems}
+                metaItems={dashboardHome.reviewMetaItems}
                 evidenceLabel={reviewEvidenceLabel}
               />
               <DashboardModuleSnapshotPanel items={moduleSnapshotItems} />
@@ -1215,9 +916,9 @@ export default function DashboardPage() {
               </section>
 
               <DashboardTasksCalendarPanels
-                tasks={dashboardTasks}
-                calendarItems={dashboardCalendar.items}
-                calendarState={dashboardCalendarState}
+                tasks={dashboardHome.focus.tasks}
+                calendarItems={dashboardHome.focus.calendarItems}
+                calendarState={dashboardHome.focus.calendarState}
               />
             </div>
 

@@ -270,8 +270,8 @@ export default function YieldAnalysisPage() {
   const nonstdClassTopRows = useMemo(() => aggregatePnL.by_asset_class_nonstd.slice(0, 12), [aggregatePnL]);
 
   const yieldData = yieldQuery.data;
-  const history = yieldData?.history ?? [];
-  const scatter = yieldData?.scatter ?? [];
+  const history = useMemo(() => yieldData?.history ?? [], [yieldData?.history]);
+  const scatter = useMemo(() => yieldData?.scatter ?? [], [yieldData?.scatter]);
 
   const yieldErrorMessage = yieldQuery.isError
     ? yieldQuery.error instanceof Error

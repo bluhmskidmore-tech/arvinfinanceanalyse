@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -211,10 +212,23 @@ def _request_wants_mcp_bundle(
 
 
 def _normalize_repo_path(raw_path: str) -> Path:
-    candidate = Path(raw_path.strip().strip("\"'"))
+    candidate = Path(raw_path.strip().strip("\"'")).resolve()
     if candidate.name == ".gitnexus":
-        return candidate.parent
+        candidate = candidate.parent
+    if not any(candidate == root or root in candidate.parents for root in _allowed_repo_roots()):
+        raise ValueError(f"GitNexus repo_path is outside allowed roots: {candidate}")
     return candidate
+
+
+def _allowed_repo_roots() -> list[Path]:
+    configured = os.environ.get("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", "").strip()
+    roots = [_REPO_ROOT.resolve()]
+    if configured:
+        for item in configured.split(os.pathsep):
+            value = item.strip()
+            if value:
+                roots.append(Path(value).resolve())
+    return roots
 
 
 def _gitnexus_mcp_configured(repo_path: Path) -> bool:

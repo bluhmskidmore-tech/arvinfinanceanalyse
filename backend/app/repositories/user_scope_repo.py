@@ -16,7 +16,10 @@ class UserScopeRepository:
 
     def __post_init__(self) -> None:
         self.dsn = _normalize_sqlalchemy_dsn(self.dsn)
-        self.engine = create_engine(self.dsn, future=True)
+        connect_args: dict[str, object] = {}
+        if self.dsn.startswith("postgresql+psycopg://"):
+            connect_args["connect_timeout"] = 1
+        self.engine = create_engine(self.dsn, future=True, connect_args=connect_args)
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
             Base.metadata.create_all(self.engine, tables=[UserRoleScope.__table__])
