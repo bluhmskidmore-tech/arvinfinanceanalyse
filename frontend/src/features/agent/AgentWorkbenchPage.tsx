@@ -1,7 +1,12 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
-import type { AgentPageContext, AgentQueryRequest, AgentSuggestedAction } from "../../api/contracts";
+import type {
+  AgentConversationContext,
+  AgentPageContext,
+  AgentQueryRequest,
+  AgentSuggestedAction,
+} from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
 import { AgentEvidencePanel } from "./components/AgentEvidencePanel";
@@ -73,6 +78,8 @@ type AgentQueryError =
 type AgentConversationTurn = {
   id: string;
   question: string;
+  conversationContext?: AgentConversationContext;
+  retryMode?: "ordinary";
   agentRun: AgentRunPayload | null;
   result: AgentQueryResult | null;
   error: AgentQueryError | null;
@@ -138,7 +145,9 @@ const AGENT_RUN_STATUSES = new Set<AgentRunStatus>([
 ]);
 
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
+const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
 const MAX_AGENT_CONTEXT_TURNS = 4;
+const MAX_AGENT_STORED_TURNS = 4;
 const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
@@ -208,6 +217,31 @@ function isAgentSuggestedAction(value: unknown): value is AgentSuggestedAction {
   );
 }
 
+function isAgentConversationContext(value: unknown): value is AgentConversationContext {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.recent_turns) &&
+    value.recent_turns.every(
+      (turn) =>
+        isRecord(turn) &&
+        typeof turn.question === "string" &&
+        typeof turn.answer === "string" &&
+        (turn.run_id === undefined || turn.run_id === null || typeof turn.run_id === "string") &&
+        (turn.trace_id === undefined || turn.trace_id === null || typeof turn.trace_id === "string"),
+    )
+  );
+}
+
+function isAgentQueryError(value: unknown): value is AgentQueryError {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  if (value.kind === "request") {
+    return typeof value.message === "string";
+  }
+  return value.kind === "disabled" && typeof value.detail === "string" && typeof value.phase === "string";
+}
+
 function isDisabledPayload(value: unknown): value is {
   enabled: false;
   phase: string;
@@ -270,10 +304,16 @@ function normalizeAgentRunPayload(payload: AgentRunPayload): AgentRunPayload {
   return payload;
 }
 
-function createAgentConversationTurn(question: string): AgentConversationTurn {
+function createAgentConversationTurn(
+  question: string,
+  conversationContext?: AgentConversationContext,
+  retryMode?: "ordinary",
+): AgentConversationTurn {
   return {
     id: `turn:${Date.now()}:${Math.random().toString(16).slice(2)}`,
     question,
+    conversationContext,
+    retryMode,
     agentRun: null,
     result: null,
     error: null,
@@ -289,18 +329,71 @@ function trimAgentContextText(value: string, limit: number) {
   return `${normalized.slice(0, limit - 3)}...`;
 }
 
-function buildConversationContext(turns: AgentConversationTurn[]) {
+function buildConversationContext(turns: AgentConversationTurn[]): AgentConversationContext | undefined {
   const history = turns
     .filter((turn) => turn.question.trim() && turn.result?.answer.trim())
     .slice(-MAX_AGENT_CONTEXT_TURNS)
-    .map((turn) => ({
-      question: trimAgentContextText(turn.question, MAX_AGENT_CONTEXT_QUESTION_LENGTH),
-      answer: trimAgentContextText(turn.result?.answer ?? "", MAX_AGENT_CONTEXT_ANSWER_LENGTH),
-      run_id: turn.agentRun?.run_id ?? null,
-      trace_id: turn.result?.result_meta.trace_id ?? null,
-    }));
+    .map((turn) => {
+      const traceId = turn.result?.result_meta.trace_id;
+      return {
+        question: trimAgentContextText(turn.question, MAX_AGENT_CONTEXT_QUESTION_LENGTH),
+        answer: trimAgentContextText(turn.result?.answer ?? "", MAX_AGENT_CONTEXT_ANSWER_LENGTH),
+        run_id: turn.agentRun?.run_id ?? null,
+        trace_id: typeof traceId === "string" ? traceId : null,
+      };
+    });
 
   return history.length > 0 ? { recent_turns: history } : undefined;
+}
+
+function buildRestoredManagedTurn(payload: AgentRunPayload): AgentConversationTurn {
+  const restoredQuestion = payload.question?.trim() || formatManagedRunRestoreQuestion(payload.provider);
+  const nextError: AgentQueryError | null =
+    payload.status === "failed"
+      ? {
+          kind: "request",
+          message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
+        }
+      : null;
+  return {
+    id: `restored:${payload.run_id}`,
+    question: restoredQuestion,
+    retryMode: "ordinary",
+    agentRun: payload,
+    result: payload.status === "completed" && payload.result ? payload.result : null,
+    error: nextError,
+    activeSuggestedActionPayload: null,
+  };
+}
+
+function mergeRestoredManagedTurn(
+  currentTurns: AgentConversationTurn[],
+  payload: AgentRunPayload,
+): AgentConversationTurn[] {
+  const restoredTurn = buildRestoredManagedTurn(payload);
+  const matchingIndex = currentTurns.findIndex(
+    (turn) =>
+      turn.agentRun?.run_id === payload.run_id ||
+      turn.id === restoredTurn.id ||
+      (turn.retryMode === "ordinary" &&
+        !turn.agentRun &&
+        turn.question.trim() &&
+        payload.question?.trim() === turn.question.trim()),
+  );
+  if (matchingIndex < 0) {
+    return [...currentTurns, restoredTurn].slice(-MAX_AGENT_STORED_TURNS);
+  }
+
+  const nextTurns = [...currentTurns];
+  const currentTurn = nextTurns[matchingIndex];
+  nextTurns[matchingIndex] = {
+    ...restoredTurn,
+    id: currentTurn.id,
+    question: currentTurn.question.trim() ? currentTurn.question : restoredTurn.question,
+    conversationContext: currentTurn.conversationContext,
+    retryMode: currentTurn.retryMode ?? restoredTurn.retryMode,
+  };
+  return nextTurns.slice(-MAX_AGENT_STORED_TURNS);
 }
 
 function buildErrorMessage(error: unknown) {
@@ -697,7 +790,7 @@ function buildAgentRequestBody(
   question: string,
   repoPath: string,
   processName: string,
-  conversationContext?: Record<string, unknown>,
+  conversationContext?: AgentConversationContext,
   pageContext?: AgentPageContext,
 ): AgentQueryRequest {
   return {
@@ -831,6 +924,71 @@ function persistStoredRepoPaths(storageKey: string, paths: string[]) {
   window.localStorage.setItem(storageKey, JSON.stringify(paths));
 }
 
+function normalizeStoredConversationTurns(value: unknown): AgentConversationTurn[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .flatMap((item): AgentConversationTurn[] => {
+      if (!isRecord(item) || typeof item.id !== "string" || typeof item.question !== "string") {
+        return [];
+      }
+      const result = isAgentQueryResult(item.result) ? normalizeAgentResult(item.result) : null;
+      const agentRun = isAgentRunPayload(item.agentRun) ? normalizeAgentRunPayload(item.agentRun) : null;
+      const error = isAgentQueryError(item.error) ? item.error : null;
+      const conversationContext = isAgentConversationContext(item.conversationContext)
+        ? item.conversationContext
+        : undefined;
+      return [
+        {
+          id: item.id,
+          question: item.question,
+          conversationContext,
+          retryMode: item.retryMode === "ordinary" ? "ordinary" : undefined,
+          agentRun,
+          result,
+          error,
+          activeSuggestedActionPayload: null,
+        },
+      ];
+    })
+    .slice(-MAX_AGENT_STORED_TURNS);
+}
+
+function loadStoredConversationTurns() {
+  if (typeof window === "undefined") {
+    return [] as AgentConversationTurn[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY);
+    return normalizeStoredConversationTurns(raw ? (JSON.parse(raw) as unknown) : []);
+  } catch {
+    return [];
+  }
+}
+
+function serializeConversationTurn(turn: AgentConversationTurn) {
+  return {
+    id: turn.id,
+    question: turn.question,
+    ...(turn.conversationContext ? { conversationContext: turn.conversationContext } : {}),
+    ...(turn.retryMode ? { retryMode: turn.retryMode } : {}),
+    ...(turn.agentRun ? { agentRun: turn.agentRun } : {}),
+    ...(turn.result ? { result: turn.result } : {}),
+    ...(turn.error ? { error: turn.error } : {}),
+  };
+}
+
+function persistStoredConversationTurns(turns: AgentConversationTurn[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const storedTurns = turns.slice(-MAX_AGENT_STORED_TURNS).map(serializeConversationTurn);
+  window.localStorage.setItem(AGENT_CONVERSATION_TURNS_KEY, JSON.stringify(storedTurns));
+}
+
 function loadLatestAgentRunId() {
   if (typeof window === "undefined") {
     return "";
@@ -945,7 +1103,9 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
   const [query, setQuery] = useState("");
-  const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>([]);
+  const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>(() =>
+    loadStoredConversationTurns(),
+  );
   const [ordinaryConversationMode, setOrdinaryConversationMode] =
     useState<AgentOrdinaryConversationMode>("unknown");
   const [repoPath, setRepoPath] = useState(() => loadRecentRepoPaths()[0] ?? "");
@@ -960,6 +1120,8 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   const [error, setError] = useState<AgentQueryError | null>(null);
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const shouldFocusComposerRef = useRef(false);
   const processStateRequestVersionRef = useRef(0);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
@@ -1037,6 +1199,14 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     );
   }
 
+  function focusComposerInput() {
+    composerInputRef.current?.focus();
+  }
+
+  useEffect(() => {
+    persistStoredConversationTurns(conversationTurns);
+  }, [conversationTurns]);
+
   useEffect(() => {
     if (!filteredProcesses.length) {
       setSelectedProcess("");
@@ -1074,6 +1244,20 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   ]);
 
   useEffect(() => {
+    if (!hasConversation || loading || !shouldFocusComposerRef.current) {
+      return;
+    }
+    shouldFocusComposerRef.current = false;
+    focusComposerInput();
+  }, [
+    hasConversation,
+    loading,
+    latestConversationTurn?.id,
+    latestConversationTurn?.result,
+    latestConversationTurn?.error,
+  ]);
+
+  useEffect(() => {
     const latestRunId = loadLatestAgentRunId();
     if (!latestRunId) {
       return;
@@ -1094,23 +1278,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         }
         setOrdinaryConversationMode("managed");
         setAgentRun(payload);
-        const restoredQuestion = payload.question?.trim() || formatManagedRunRestoreQuestion(payload.provider);
-        setConversationTurns([
-          {
-            id: `restored:${payload.run_id}`,
-            question: restoredQuestion,
-            agentRun: payload,
-            result: payload.status === "completed" && payload.result ? payload.result : null,
-            error:
-              payload.status === "failed"
-                ? {
-                    kind: "request",
-                    message: payload.error_message || formatManagedRunFailureMessage(payload.provider),
-                  }
-                : null,
-            activeSuggestedActionPayload: null,
-          },
-        ]);
+        setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, payload));
         if (payload.status === "completed" && payload.result) {
           setResult(payload.result);
         }
@@ -1185,14 +1353,13 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       throw new Error("智能体返回结果格式无效。");
     }
 
-    persistLatestAgentRunId(payload.run_id);
     return normalizeAgentRunPayload(payload);
   }
 
   async function executeManagedAgentRun(
     question: string,
     turnId: string,
-    conversationContext?: Record<string, unknown>,
+    conversationContext?: AgentConversationContext,
     options?: {
       rethrowLocalProviderFallback?: boolean;
     },
@@ -1210,7 +1377,18 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     setResult(null);
     try {
       const finalPayload = await runPollingTask<AgentRunPayload>({
-        start: () => createAgentRun(requestBody),
+        start: async () => {
+          const payload = await createAgentRun(requestBody);
+          setOrdinaryConversationMode("managed");
+          setAgentRun(payload);
+          setConversationTurns((currentTurns) => {
+            const nextTurns = currentTurns.map((turn) => (turn.id === turnId ? { ...turn, agentRun: payload } : turn));
+            persistStoredConversationTurns(nextTurns);
+            return nextTurns;
+          });
+          persistLatestAgentRunId(payload.run_id);
+          return payload;
+        },
         getStatus: fetchAgentRunStatus,
         getIntervalMs: getAgentRunPollIntervalMs,
         maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
@@ -1286,7 +1464,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     question: string,
     mode: "query" | "processes" = "query",
     turnId?: string,
-    conversationContext?: Record<string, unknown>,
+    conversationContext?: AgentConversationContext,
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
@@ -1368,7 +1546,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   async function executeLocalSyncConversation(
     question: string,
     turnId: string,
-    conversationContext?: Record<string, unknown>,
+    conversationContext?: AgentConversationContext,
   ) {
     const syncRunId = `agent_run:sync:${turnId}`;
     const runningSyncRun = buildLocalSyncAgentRun(syncRunId, question, "running");
@@ -1412,7 +1590,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   async function executeOrdinaryConversation(
     question: string,
     turnId: string,
-    conversationContext?: Record<string, unknown>,
+    conversationContext?: AgentConversationContext,
   ) {
     if (ordinaryConversationMode === "local_sync") {
       await executeLocalSyncConversation(question, turnId, conversationContext);
@@ -1436,6 +1614,36 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     }
   }
 
+  function canRetryAgentTurn(turn: AgentConversationTurn) {
+    return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.error);
+  }
+
+  async function retryAgentTurn(turn: AgentConversationTurn) {
+    if (loading || !canRetryAgentTurn(turn)) {
+      return;
+    }
+
+    setAgentWaitSeconds(0);
+    setLoading(true);
+    setError(null);
+    setAgentRun(null);
+    setResult(null);
+    shouldFocusComposerRef.current = true;
+    updateConversationTurn(turn.id, (currentTurn) => ({
+      ...currentTurn,
+      agentRun: null,
+      result: null,
+      error: null,
+      activeSuggestedActionPayload: null,
+    }));
+
+    try {
+      await executeOrdinaryConversation(turn.question, turn.id, turn.conversationContext);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (loading) {
@@ -1453,10 +1661,11 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     }
 
     const context = buildConversationContext(conversationTurns);
-    const turn = createAgentConversationTurn(question);
+    const turn = createAgentConversationTurn(question, context, "ordinary");
     setAgentWaitSeconds(0);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
     setQuery("");
+    shouldFocusComposerRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -1779,6 +1988,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   function applyQuickExample(nextQuery: string) {
     setQuery(nextQuery);
     setError(null);
+    focusComposerInput();
   }
 
   function applyRecentRepoPath(nextRepoPath: string) {
@@ -1805,6 +2015,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     if (action.type === "inspect_drill" || action.type === "refine_query") {
       setQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       setError(null);
+      focusComposerInput();
       return;
     }
     updateConversationTurn(turnId, (turn) => ({
@@ -1982,6 +2193,16 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         <div className="agent-callout agent-callout--error" role="alert">
           <strong>请求没有送达</strong>
           <span>{turn.error.message}</span>
+          {canRetryAgentTurn(turn) ? (
+            <button
+              type="button"
+              className="agent-callout__action"
+              onClick={() => void retryAgentTurn(turn)}
+              disabled={loading}
+            >
+              重试这一轮
+            </button>
+          ) : null}
         </div>
       );
     }
@@ -2086,6 +2307,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
           query={query}
           onQueryChange={setQuery}
           onSubmit={handleSubmit}
+          inputRef={composerInputRef}
         />
       ) : null}
 
@@ -2162,6 +2384,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
             query={query}
             onQueryChange={setQuery}
             onSubmit={handleSubmit}
+            inputRef={composerInputRef}
           />
         </div>
       ) : null}

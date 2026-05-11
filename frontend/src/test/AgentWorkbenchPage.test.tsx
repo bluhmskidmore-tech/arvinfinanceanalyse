@@ -14,6 +14,7 @@ const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
+const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
 const MAX_PINNED_REPO_PATHS = 5;
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -450,6 +451,163 @@ describe("AgentWorkbenchPage", () => {
       "/api/agent/runs",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("retries a failed ordinary conversation turn in place", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(
+        {
+          detail: "temporary managed run outage",
+        },
+        500,
+      ),
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "retry recovered managed answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_retry_turn",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:retry",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary retry question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+
+    expect(await screen.findByText("retry recovered managed answer")).toBeInTheDocument();
+    expect(screen.queryByText("智能体查询失败（500）")).not.toBeInTheDocument();
+    expect(screen.getAllByText("ordinary retry question")).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(2);
+    expect(JSON.parse(String(runPostCalls[1]?.[1]?.body))).toMatchObject({
+      question: "ordinary retry question",
+    });
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+  });
+
+  it("retries a failed follow-up with its captured conversation context", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "first managed answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_retry_context_first",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:retry-context-first",
+    );
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(
+        {
+          detail: "temporary managed run outage",
+        },
+        500,
+      ),
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "follow-up retry recovered",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_retry_context_second",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:retry-context-second",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "first context question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("first managed answer")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "follow-up needs retry");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+    expect(await screen.findByText("follow-up retry recovered")).toBeInTheDocument();
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(3);
+    const capturedContext = {
+      conversation: {
+        recent_turns: [
+          {
+            question: "first context question",
+            answer: "first managed answer",
+            run_id: "agent_run:retry-context-first",
+            trace_id: "tr_retry_context_first",
+          },
+        ],
+      },
+    };
+    expect(JSON.parse(String(runPostCalls[1]?.[1]?.body))).toMatchObject({
+      question: "follow-up needs retry",
+      context: capturedContext,
+    });
+    expect(JSON.parse(String(runPostCalls[2]?.[1]?.body))).toMatchObject({
+      question: "follow-up needs retry",
+      context: capturedContext,
+    });
   });
 
   it("sends ordinary text directly through local query after Risk Memo workflow completes", async () => {
@@ -1577,6 +1735,291 @@ describe("AgentWorkbenchPage", () => {
     expect(conversation).toHaveTextContent("这是更像对话的一次回答。");
     expect(conversation).toHaveTextContent("已完成");
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+    expect(document.activeElement).toBe(screen.getByLabelText("agent-question-input"));
+  });
+
+  it("sends recent turn context with the next follow-up question", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "第一轮回答：主要风险来自久期。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_first_turn",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:first",
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "第二轮回答：继续解释上一轮结论。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_second_turn",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:second",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("第一轮回答：主要风险来自久期。")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "那这说明什么？");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("第二轮回答：继续解释上一轮结论。")).toBeInTheDocument();
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(2);
+    const [, secondOptions] = runPostCalls[1] ?? [];
+    expect(JSON.parse(String(secondOptions?.body))).toMatchObject({
+      question: "那这说明什么？",
+      context: {
+        conversation: {
+          recent_turns: [
+            {
+              question: "帮我判断今天的主要风险",
+              answer: "第一轮回答：主要风险来自久期。",
+              run_id: "agent_run:first",
+              trace_id: "tr_first_turn",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("restores saved conversation turns and continues with restored context", async () => {
+    const user = userEvent.setup();
+    const restoredResult = {
+      answer: "restored first answer",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_restored_first",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    };
+    window.localStorage.setItem(
+      AGENT_CONVERSATION_TURNS_KEY,
+      JSON.stringify([
+        {
+          id: "turn:restored:first",
+          question: "restored first question",
+          retryMode: "ordinary",
+          agentRun: buildManagedRunPayload(restoredResult, "agent_run:restored-first"),
+          result: restoredResult,
+          error: null,
+        },
+      ]),
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "answer after restored context",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_restored_follow_up",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:restored-follow-up",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByText("restored first question")).toBeInTheDocument();
+    expect(screen.getByText("restored first answer")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "follow-up after refresh");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("answer after restored context")).toBeInTheDocument();
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(1);
+    expect(JSON.parse(String(runPostCalls[0]?.[1]?.body))).toMatchObject({
+      question: "follow-up after refresh",
+      context: {
+        conversation: {
+          recent_turns: [
+            {
+              question: "restored first question",
+              answer: "restored first answer",
+              run_id: "agent_run:restored-first",
+              trace_id: "tr_restored_first",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("ignores invalid saved conversation cache", () => {
+    window.localStorage.setItem(AGENT_CONVERSATION_TURNS_KEY, "{not-json");
+
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+  });
+
+  it("merges a latest-run restore into a saved pending turn and preserves retry context", async () => {
+    const user = userEvent.setup();
+    const restoredResult = buildLocalOrdinaryTextResult("saved context answer");
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:pending-follow-up");
+    window.localStorage.setItem(
+      AGENT_CONVERSATION_TURNS_KEY,
+      JSON.stringify([
+        {
+          id: "turn:saved-context",
+          question: "saved context question",
+          retryMode: "ordinary",
+          agentRun: buildManagedRunPayload(restoredResult, "agent_run:saved-context"),
+          result: restoredResult,
+          error: null,
+        },
+        {
+          id: "turn:pending-follow-up",
+          question: "pending follow-up question",
+          retryMode: "ordinary",
+          conversationContext: {
+            recent_turns: [
+              {
+                question: "saved context question",
+                answer: "saved context answer",
+                run_id: "agent_run:saved-context",
+                trace_id: "tr_local_sync_query",
+              },
+            ],
+          },
+          error: null,
+        },
+      ]),
+    );
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        run_id: "agent_run:pending-follow-up",
+        status: "failed",
+        question: "pending follow-up question",
+        provider: "hermes",
+        model: "gpt-5.5",
+        transport: "bridge",
+        toolsets: "file",
+        error_message: "restore found failed run",
+      }),
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "retry after restore answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_retry_after_restore",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:retry-after-restore",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    expect(await screen.findByText("restore found failed run")).toBeInTheDocument();
+    expect(screen.getAllByText("pending follow-up question")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+    expect(await screen.findByText("retry after restore answer")).toBeInTheDocument();
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(1);
+    expect(JSON.parse(String(runPostCalls[0]?.[1]?.body))).toMatchObject({
+      question: "pending follow-up question",
+      context: {
+        conversation: {
+          recent_turns: [
+            {
+              question: "saved context question",
+              answer: "saved context answer",
+              run_id: "agent_run:saved-context",
+              trace_id: "tr_local_sync_query",
+            },
+          ],
+        },
+      },
+    });
   });
 
   it("shows a local acknowledgement immediately while the managed runtime accepts the run", async () => {
@@ -1605,6 +2048,20 @@ describe("AgentWorkbenchPage", () => {
 
   it("restores the latest managed Hermes run after a refresh", async () => {
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore");
+    const olderResult = buildLocalOrdinaryTextResult("older saved answer");
+    window.localStorage.setItem(
+      AGENT_CONVERSATION_TURNS_KEY,
+      JSON.stringify([
+        {
+          id: "turn:older-saved",
+          question: "older saved question",
+          retryMode: "ordinary",
+          agentRun: buildManagedRunPayload(olderResult, "agent_run:older-saved"),
+          result: olderResult,
+          error: null,
+        },
+      ]),
+    );
     fetchMock.mockResolvedValueOnce(
       buildJsonResponse(
         buildManagedRunPayload(
@@ -1638,7 +2095,8 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     expect(await screen.findByText("刷新后恢复的 Hermes 结果。")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("agent_run:restore");
+    expect(screen.getByText("older saved answer")).toBeInTheDocument();
+    expect(screen.getByText(/agent_run:restore/)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/agent/runs/agent_run%3Arestore",
       expect.objectContaining({ method: "GET" }),

@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent, Ref } from "react";
 
 import { shellTokens as t } from "../../../theme/tokens";
 
@@ -24,6 +24,7 @@ type AgentQueryFormProps = {
   query: string;
   onQueryChange: (value: string) => void;
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
+  inputRef?: Ref<HTMLTextAreaElement>;
 };
 
 function formatQuickExampleLabel(example: string) {
@@ -68,6 +69,7 @@ export function AgentQueryForm({
   query,
   onQueryChange,
   onSubmit,
+  inputRef,
 }: AgentQueryFormProps) {
   const primaryQuickExamples = quickExamples.slice(0, primaryQuickExampleCount);
   const advancedQuickExamples = quickExamples.slice(primaryQuickExampleCount);
@@ -102,6 +104,7 @@ export function AgentQueryForm({
         <textarea
           aria-label="agent-question-input"
           className="agent-chat-composer__input"
+          ref={inputRef}
           rows={compact ? 2 : 3}
           placeholder={buildPromptPlaceholder(pageContext)}
           value={query}
