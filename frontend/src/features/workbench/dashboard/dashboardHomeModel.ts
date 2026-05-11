@@ -26,6 +26,8 @@ export type DashboardHomeModelInput = {
   snapshotReportDate?: string;
   snapshotMode?: string;
   snapshotDomainsMissing?: readonly string[] | null;
+  coreMetricsReportDate?: string | null;
+  dailyChangesReportDate?: string | null;
   isSnapshotLoading: boolean;
   calendarEvents?: readonly ResearchCalendarEvent[] | null;
   calendarIsLoading: boolean;
@@ -46,7 +48,31 @@ export type DashboardHomeFocus = {
   calendarState: DashboardCalendarPanelState;
 };
 
+export type DashboardHomeSectionStatus =
+  | "landed"
+  | "supplemental"
+  | "reserved"
+  | "demo"
+  | "blocked";
+
+export type DashboardHomeSection = {
+  id: string;
+  label: string;
+  status: DashboardHomeSectionStatus;
+  firstScreenAllowed: boolean;
+  reason: string;
+};
+
+export type DashboardHomeMeta = {
+  reportDate: string;
+  snapshotMode: string;
+  sourceMode: "real" | "mock";
+  attentionCount: number;
+  snapshotPartialNote: string | null;
+};
+
 export type DashboardHomeModel = {
+  meta: DashboardHomeMeta;
   effectiveReportDate: string;
   attentionItems: string[];
   snapshotPartialNote: string | null;
@@ -55,6 +81,8 @@ export type DashboardHomeModel = {
   heroMetrics: DashboardHeroMetric[];
   alerts: DashboardAlert[];
   focus: DashboardHomeFocus;
+  sections: DashboardHomeSection[];
+  hiddenOrReservedSections: DashboardHomeSection[];
 };
 
 export function resolveDashboardHomeEffectiveReportDate(input: {
@@ -252,6 +280,148 @@ export function buildDashboardHomeKpiRibbon(input: {
   ];
 }
 
+function isSameReportDate(expected: string, actual: string | null | undefined): boolean {
+  const left = expected.trim();
+  const right = actual?.trim() ?? "";
+  return left.length > 0 && right.length > 0 && left === right;
+}
+
+function supplementalSection(input: {
+  id: string;
+  label: string;
+  effectiveReportDate: string;
+  actualReportDate?: string | null;
+}): DashboardHomeSection {
+  if (!input.effectiveReportDate.trim()) {
+    return {
+      id: input.id,
+      label: input.label,
+      status: "blocked",
+      firstScreenAllowed: false,
+      reason: "等待首页快照报告日后才能请求同日补充读面。",
+    };
+  }
+
+  if (!input.actualReportDate?.trim()) {
+    return {
+      id: input.id,
+      label: input.label,
+      status: "supplemental",
+      firstScreenAllowed: false,
+      reason: "仅作为下钻补充；数据返回前不参与首屏判断。",
+    };
+  }
+
+  if (!isSameReportDate(input.effectiveReportDate, input.actualReportDate)) {
+    return {
+      id: input.id,
+      label: input.label,
+      status: "blocked",
+      firstScreenAllowed: false,
+      reason: `补充读面报告日 ${input.actualReportDate} 与首页快照 ${input.effectiveReportDate} 不一致。`,
+    };
+  }
+
+  return {
+    id: input.id,
+    label: input.label,
+    status: "supplemental",
+    firstScreenAllowed: false,
+    reason: "同报告日补充读面，只能在下钻区展示，不提升为首屏主结论。",
+  };
+}
+
+export function buildDashboardHomeSections(input: {
+  effectiveReportDate: string;
+  metricsCount: number;
+  coreMetricsReportDate?: string | null;
+  dailyChangesReportDate?: string | null;
+}): DashboardHomeSection[] {
+  const overviewStatus: DashboardHomeSectionStatus =
+    input.metricsCount > 0 ? "landed" : "blocked";
+
+  return [
+    {
+      id: "judgment",
+      label: "本日判断",
+      status: "landed",
+      firstScreenAllowed: true,
+      reason: "来自 /ui/home/snapshot verdict 或快照状态确定性降级。",
+    },
+    {
+      id: "governance",
+      label: "治理状态",
+      status: "landed",
+      firstScreenAllowed: true,
+      reason: "来自首页快照 result_meta 与 domains_effective_date。",
+    },
+    {
+      id: "overview_metrics",
+      label: "核心经营指标",
+      status: overviewStatus,
+      firstScreenAllowed: true,
+      reason:
+        overviewStatus === "landed"
+          ? "来自首页快照 overview.metrics。"
+          : "首页快照没有返回可展示指标；首屏只能显示空态，不能用补充接口替代。",
+    },
+    {
+      id: "product_category_headline",
+      label: "经营贡献摘要",
+      status: "landed",
+      firstScreenAllowed: true,
+      reason: "随首页快照返回；前端仅展示，不在页面重算。",
+    },
+    supplementalSection({
+      id: "core_metrics",
+      label: "债券 / 同业核心指标",
+      effectiveReportDate: input.effectiveReportDate,
+      actualReportDate: input.coreMetricsReportDate,
+    }),
+    supplementalSection({
+      id: "daily_changes",
+      label: "日 / 周 / 月变动",
+      effectiveReportDate: input.effectiveReportDate,
+      actualReportDate: input.dailyChangesReportDate,
+    }),
+    {
+      id: "market_context",
+      label: "市场上下文",
+      status: "supplemental",
+      firstScreenAllowed: false,
+      reason: "市场/宏观数据不绑定首页严格报告日，只能作为下钻上下文。",
+    },
+    {
+      id: "research_calendar",
+      label: "关键事件日历",
+      status: "supplemental",
+      firstScreenAllowed: false,
+      reason: "事件日历按自然日期窗口展示，不参与首页报告日判断。",
+    },
+    {
+      id: "risk_overview",
+      label: "executive 风险概览",
+      status: "reserved",
+      firstScreenAllowed: false,
+      reason: "当前边界为 reserved/excluded surface，不发 live 首页请求。",
+    },
+    {
+      id: "contribution",
+      label: "executive 贡献",
+      status: "reserved",
+      firstScreenAllowed: false,
+      reason: "当前边界为 reserved/excluded surface，不发 live 首页请求。",
+    },
+    {
+      id: "alerts",
+      label: "executive 告警",
+      status: "reserved",
+      firstScreenAllowed: false,
+      reason: "当前边界为 reserved/excluded surface，不发 live 首页请求。",
+    },
+  ];
+}
+
 function normalizeVerdictFallback(input: VerdictPayload | null | undefined): VerdictPayload {
   return (
     input ?? {
@@ -419,7 +589,28 @@ export function buildDashboardHomeModel(input: DashboardHomeModelInput): Dashboa
     focusTaskLimit: input.focusTaskLimit ?? DASHBOARD_HOME_FOCUS_TASK_LIMIT,
   });
 
+  const sections = buildDashboardHomeSections({
+    effectiveReportDate,
+    metricsCount: input.metrics?.length ?? 0,
+    coreMetricsReportDate: input.coreMetricsReportDate,
+    dailyChangesReportDate: input.dailyChangesReportDate,
+  });
+  const hiddenOrReservedSections = sections.filter(
+    (section) =>
+      !section.firstScreenAllowed ||
+      section.status === "blocked" ||
+      section.status === "reserved" ||
+      section.status === "demo",
+  );
+
   return {
+    meta: {
+      reportDate: effectiveReportDate,
+      snapshotMode: input.snapshotMode ?? "unknown",
+      sourceMode: input.isMockMode ? "mock" : "real",
+      attentionCount: attentionItems.length,
+      snapshotPartialNote,
+    },
     effectiveReportDate,
     attentionItems,
     snapshotPartialNote,
@@ -428,5 +619,7 @@ export function buildDashboardHomeModel(input: DashboardHomeModelInput): Dashboa
     heroMetrics,
     alerts,
     focus,
+    sections,
+    hiddenOrReservedSections,
   };
 }

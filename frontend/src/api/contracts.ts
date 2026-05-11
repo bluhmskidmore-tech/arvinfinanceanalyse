@@ -48,6 +48,7 @@ export type ResultMeta = {
   vendor_status: "ok" | "vendor_stale" | "vendor_unavailable";
   fallback_mode: "none" | "latest_snapshot";
   scenario_flag: boolean;
+  as_of_date?: string | null;
   generated_at: string;
   tables_used?: string[];
   filters_applied?: Record<string, unknown>;
@@ -4018,4 +4019,3 @@ export type BondBusinessTypeMetricsResult = {
 };
 
 export type BondBusinessTypeMetricsPayload = ApiEnvelope<BondBusinessTypeMetricsResult>;
-

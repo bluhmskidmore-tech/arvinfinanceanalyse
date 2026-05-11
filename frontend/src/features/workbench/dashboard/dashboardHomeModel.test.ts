@@ -248,4 +248,63 @@ describe("buildDashboardHomeModel", () => {
     expect(output.focus.calendarState.status).toBe("no-data");
     expect(output.judgment.tone).toBe("neutral");
   });
+
+  it("classifies first-screen, supplemental, and reserved dashboard sections", () => {
+    const output = buildDashboardHomeModel({
+      metrics: [overviewMetric({ id: "aum", label: "资产规模" })],
+      baseVerdict: null,
+      overviewMeta: resultMeta(),
+      attributionMeta: resultMeta(),
+      requestedReportDate: "",
+      snapshotReportDate: "2026-04-08",
+      snapshotMode: "strict",
+      snapshotDomainsMissing: [],
+      coreMetricsReportDate: "2026-04-07",
+      dailyChangesReportDate: "2026-04-08",
+      isSnapshotLoading: false,
+      calendarEvents: [],
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+
+    expect(output.meta.reportDate).toBe("2026-04-08");
+    expect(output.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "judgment",
+          status: "landed",
+          firstScreenAllowed: true,
+        }),
+        expect.objectContaining({
+          id: "overview_metrics",
+          status: "landed",
+          firstScreenAllowed: true,
+        }),
+        expect.objectContaining({
+          id: "core_metrics",
+          status: "blocked",
+          firstScreenAllowed: false,
+        }),
+        expect.objectContaining({
+          id: "daily_changes",
+          status: "supplemental",
+          firstScreenAllowed: false,
+        }),
+        expect.objectContaining({
+          id: "risk_overview",
+          status: "reserved",
+          firstScreenAllowed: false,
+        }),
+        expect.objectContaining({
+          id: "market_context",
+          status: "supplemental",
+          firstScreenAllowed: false,
+        }),
+      ]),
+    );
+    expect(output.hiddenOrReservedSections.map((section) => section.id)).toEqual(
+      expect.arrayContaining(["core_metrics", "market_context", "risk_overview"]),
+    );
+  });
 });

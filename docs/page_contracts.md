@@ -118,6 +118,7 @@
 - 路由：
   - 前端：`/`
   - 后端依赖：
+    - `/ui/home/snapshot`
     - `/ui/home/overview`
     - `/ui/home/summary`
     - `/ui/pnl/attribution`
@@ -151,18 +152,41 @@
 
 | section_key | 名称 | 目的 | 数据来源 |
 | --- | --- | --- | --- |
-| `overview` | 经营总览 | 先给出管理层的关键经营 KPI | `/ui/home/overview` |
-| `summary` | 全局判断 | 给出本周管理摘要 | `/ui/home/summary` |
-| `pnl_attribution` | 收益归因 | 给出管理层可读的归因段值 | `/ui/pnl/attribution` |
-| `module_snapshot` | 模块快照 | 引导进入专业工作台 | 前端静态/组合 |
+| `judgment` | 本日判断 | 基于首页快照和治理状态给出是否可判断 | `/ui/home/snapshot.result.verdict` |
+| `governance` | 治理状态 | 显示报告日、快照、质量、读链路 | `/ui/home/snapshot.result_meta` + `domains_effective_date` |
+| `overview_metrics` | 核心经营指标 | 先给出管理层的关键经营 KPI | `/ui/home/snapshot.result.overview.metrics` |
+| `product_category_headline` | 经营贡献摘要 | 展示随 snapshot 下发的产品分类损益摘要 | `/ui/home/snapshot.result.product_category_*` |
 
 #### 可选 section
 
 | section_key | 名称 | 启用条件 | 备注 |
 | --- | --- | --- | --- |
-| `risk_overview` | 风险概览 | 仅当 `/ui/risk/overview` 不返回 `503` 时 | 当前默认 excluded |
-| `alerts` | 预警中心 | 仅当 `/ui/home/alerts` 不返回 `503` 时 | 当前默认 excluded |
-| `contribution` | 团队/账户/策略贡献 | 仅当 `/ui/home/contribution` 不返回 `503` 时 | 当前默认 excluded |
+| `core_metrics` | 债券 / 同业核心指标 | 仅当补充读面报告日等于首页快照 `report_date` | `supplemental`，只能在下钻区展示 |
+| `daily_changes` | 日 / 周 / 月变动 | 仅当补充读面报告日等于首页快照 `report_date` | `supplemental`，只能在下钻区展示 |
+| `market_context` | 市场上下文 | 不作为报告日判断依据 | `supplemental`，只能在下钻区展示 |
+| `research_calendar` | 关键事件日历 | 不作为报告日判断依据 | `supplemental`，只能在下钻区展示 |
+| `risk_overview` | 风险概览 | 当前不启用 | `reserved`，不发 live 首页请求 |
+| `alerts` | 预警中心 | 当前不启用 | `reserved`，不发 live 首页请求 |
+| `contribution` | 团队/账户/策略贡献 | 当前不启用 | `reserved`，不发 live 首页请求 |
+
+#### Snapshot MVP section 状态矩阵
+
+本轮驾驶舱 MVP 使用统一 section 状态，避免把未治理读面伪装成首屏结论：
+
+| section_key | 状态 | 首屏展示 | 业务规则 |
+| --- | --- | --- | --- |
+| `judgment` | `landed` | 是 | 来自 `/ui/home/snapshot` verdict；若 mock / warning / partial，则降级为复核判断。 |
+| `governance` | `landed` | 是 | 来自 `/ui/home/snapshot.result_meta`、`domains_effective_date`、`domains_missing`。 |
+| `overview_metrics` | `landed` / `blocked` | 是 | 仅使用 snapshot overview；为空时显示空态，不得用 `core_metrics` 顶替。 |
+| `product_category_headline` | `landed` | 是 | 随 snapshot 下发；前端只展示，不重算。 |
+| `core_metrics` | `supplemental` / `blocked` | 否 | 补充读面报告日必须等于首页快照 `report_date`；不一致则 `blocked`。 |
+| `daily_changes` | `supplemental` / `blocked` | 否 | 补充读面报告日必须等于首页快照 `report_date`；不一致则 `blocked`。 |
+| `market_context` | `supplemental` | 否 | 市场/宏观数据不绑定首页严格报告日，只能作为下钻上下文。 |
+| `research_calendar` | `supplemental` | 否 | 自然日事件窗口，只能作为下钻上下文。 |
+| `risk_overview` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+| `contribution` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+| `alerts` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+| 静态演示内容 | `demo` | 否 | 只能留在占位或演示区，不进入首屏判断。 |
 
 #### 禁止 section
 
@@ -172,17 +196,17 @@
 ### D. 筛选与时间语义
 
 - 页面主筛选：
-  - 当前前端固定展示 placeholder filter，不形成统一 report_date 参数入口
+  - `report_date` 日期选择器；默认不传参，由 `/ui/home/snapshot` 选择最新严格交集日期
 - `requested_report_date`：
-  - 当前 dashboard 页没有统一主动传参；由各 executive endpoint 默认行为决定
+  - 用户手动选择时传给 `/ui/home/snapshot`
 - `resolved_report_date`：
-  - 依赖各 executive endpoint 的返回
+  - `/ui/home/snapshot.result.report_date`
 - `as_of_date`：
-  - 当前未统一
+  - 本轮先使用 `domains_effective_date` 显示各核心域有效日期
 - `generated_at`：
-  - 来自各 endpoint 的 `result_meta.generated_at`
+  - 来自 `/ui/home/snapshot.result_meta.generated_at`
 - latest fallback 是否允许：
-  - 允许，但必须被业务可见
+  - strict 默认使用最新严格交集；手动开启 partial 才允许含缺域
 - latest fallback 是否必须可见：
   - 是
 
@@ -190,6 +214,7 @@
 
 | 用途 | Endpoint | Response DTO | basis | 备注 |
 | --- | --- | --- | --- | --- |
+| 首页统一快照 | `/ui/home/snapshot` | `HomeSnapshotPayload` | `analytical` | 本轮驾驶舱 MVP 的主入口；默认最新严格交集 |
 | 总览 | `/ui/home/overview` | `OverviewPayload` | `analytical` | 当前已纳入 cutover |
 | 摘要 | `/ui/home/summary` | `SummaryPayload` | `analytical` | 当前已纳入 cutover |
 | 收益归因 | `/ui/pnl/attribution` | `PnlAttributionPayload` | `analytical` | 当前已纳入 cutover |
@@ -215,13 +240,14 @@
 ### G. 状态合同
 
 - Loading：
-  - dashboard 可逐块 loading，不要求全页阻塞
+  - snapshot 主链 loading 时首屏显示空态和治理 loading，不用补充接口造结论
 - Empty：
-  - 已纳入 cutover 的 executive surface 不应以“空且正常”掩盖缺失；应回到 backend contract
+  - `overview_metrics` 为空时显示空态；不得使用 `core_metrics` 或 demo 数字顶替首屏 KPI
 - Stale / fallback：
   - 若已晋升 surface 出现 `fallback_mode != none` 或 `vendor_status != ok`，dashboard 必须可见
 - Error / fail-closed：
   - excluded surface 返回 `503` 时，该 section 直接不显示，不得渲染为 live 正常卡片
+  - `core_metrics` / `daily_changes` 与首页快照报告日不一致时必须阻断展示，只能提示报告日不一致
 
 ### H. 对账与黄金样本
 
@@ -237,8 +263,10 @@
 
 - 页面：
   - `frontend/src/test/DashboardPage.test.tsx`
+  - `frontend/src/features/workbench/dashboard/dashboardHomeModel.test.ts`
 - 后端：
   - `tests/test_executive_dashboard_endpoints.py`
+  - `tests/test_home_snapshot_endpoint.py`
 
 ## 6. PAGE-BALANCE-001 资产负债分析
 
@@ -1121,7 +1149,7 @@
 ### H. 测试与黄金样本
 
 - 现有测试锚点：`frontend/src/test/BondDashboardPage.test.tsx`、`tests/test_bond_dashboard_api_contract.py`、`tests/test_bond_dashboard_headlines_contract.py`、`tests/test_bond_analytics_api.py`、`tests/test_result_meta_source_surface_followup.py`
-- 黄金样本状态：`GS-BOND-HEADLINE-A` 仅为 **candidate / blocked-by-contract-gap**（见 `docs/golden_sample_catalog.md` §5.1），目标表面为 `/api/bond-analytics/portfolio-headlines`。仓库**当前没有** `tests/golden_samples/GS-BOND-HEADLINE-A/` 目录，因此它只是后续候选样本，不是已冻结、也不是 capture-ready 包；只有在样本目录实际落地并被 `tests/test_golden_samples_capture_ready.py` 收录后，才可提升状态。Headline / 风险卡与正式 `MTR-*` 的字典级绑定见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***。**本文件只记录阻塞与候选状态，不扩写未来样本字段断言。**
+- 黄金样本状态：`GS-BOND-HEADLINE-A` 现已作为 **capture-ready** 页面样本绑定到 `GET /api/bond-dashboard/headline-kpis`，样本目录位于 `tests/golden_samples/GS-BOND-HEADLINE-A/`，并已纳入 `tests/test_golden_samples_capture_ready.py`。该样本冻结的是 bond-dashboard 首屏 headline DTO 真值与空态行为；Headline / 风险卡与正式 `MTR-*` 的字典级绑定仍见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***，本次样本冻结**不**自动批准新的字典级 metric 映射。
 
 ## 13.7 PAGE-POS-001 持仓
 

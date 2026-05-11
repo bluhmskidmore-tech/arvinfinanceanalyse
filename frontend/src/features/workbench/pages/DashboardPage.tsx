@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
-import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
@@ -31,15 +31,18 @@ import {
   type DashboardReviewMetaItem,
 } from "../dashboard/DashboardOverviewSections";
 import {
-  DashboardAnalysisGrid,
   DashboardJudgmentBand,
-  DashboardKpiRibbon,
-  DashboardStructureRiskFocus,
 } from "../dashboard/DashboardHomeSections";
-import { DashboardMarketStrip } from "../dashboard/DashboardMarketStrip";
+import {
+  DashboardCockpitLowerGrid,
+  DashboardCockpitMainGrid,
+  DashboardCockpitMarketTicker,
+  DashboardCockpitMetricRail,
+} from "../dashboard/DashboardCockpitSections";
 import { DashboardCoreMetricsSection } from "../dashboard/DashboardCoreMetricsSection";
 import { DashboardDailyChangesSection } from "../dashboard/DashboardDailyChangesSection";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
+import { buildDashboardCockpitModel } from "../dashboard/dashboardCockpitModel";
 import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
 import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
 import { buildDashboardTodoTasksFromAlerts } from "../dashboard/dashboardTodoModel";
@@ -111,24 +114,6 @@ function describeAttention(meta: ResultMeta | null | undefined, title: string) {
   return parts.join(" / ");
 }
 
-function headerButtonStyle(kind: "primary" | "secondary") {
-  const isPrimary = kind === "primary";
-  return {
-    height: 28,
-    padding: "0 12px",
-    borderRadius: 4,
-    border: isPrimary
-      ? `1px solid ${shellTokens.colorAccent}`
-      : `1px solid ${shellTokens.colorBorderSoft}`,
-    background: isPrimary ? shellTokens.colorAccentSoft : shellTokens.colorBgSurface,
-    color: isPrimary ? shellTokens.colorAccent : shellTokens.colorTextSecondary,
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-    lineHeight: 1,
-  } as const;
-}
-
 function formatSnapshotMode(
   mode: string | undefined,
   isLoading: boolean,
@@ -145,12 +130,6 @@ function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
     return display;
   }
   return fallbackLabel;
-}
-
-function heroMetricToneToPillTone(tone: DashboardHeroMetric["tone"]): GovernancePill["tone"] {
-  if (tone === "positive") return "ok";
-  if (tone === "warning" || tone === "negative") return "warning";
-  return "info";
 }
 
 const DASHBOARD_KEY_CALENDAR_LOOKBACK_DAYS = 7;
@@ -325,10 +304,51 @@ function todayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+function reportDateMismatch(expected: string, actual: string | undefined): boolean {
+  const expectedTrimmed = expected.trim();
+  const actualTrimmed = actual?.trim() ?? "";
+  return expectedTrimmed.length > 0 && actualTrimmed.length > 0 && expectedTrimmed !== actualTrimmed;
+}
+
+function DashboardSupplementalBlockedSection({
+  testId,
+  title,
+  expectedReportDate,
+  actualReportDate,
+}: {
+  testId: string;
+  title: string;
+  expectedReportDate: string;
+  actualReportDate: string;
+}) {
+  return (
+    <section
+      data-testid={testId}
+      className="dashboard-home-panel dashboard-metric-shell dashboard-supplemental-blocked"
+    >
+      <header className="dashboard-metric-header">
+        <span className="dashboard-home-section-eyebrow dashboard-metric-eyebrow-label">
+          下钻补充
+        </span>
+        <div className="dashboard-metric-title-row">
+          <h2 className="dashboard-business-balance-summary__title dashboard-metric-section-title">
+            {title}
+          </h2>
+        </div>
+      </header>
+      <p className="dashboard-home-muted">
+        该补充读面报告日 {actualReportDate} 与首页快照 {expectedReportDate}{" "}
+        不一致，暂不展示为驾驶舱判断依据。
+      </p>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState("");
   const [allowPartial, setAllowPartial] = useState(false);
+  const [isDetailDrilldownOpen, setIsDetailDrilldownOpen] = useState(false);
   const requestedDateLabel = reportDate || "latest";
 
   const snapshotQuery = useQuery({
@@ -339,20 +359,6 @@ export default function DashboardPage() {
         allowPartial,
       }),
     retry: false,
-  });
-
-  const coreMetricsQuery = useQuery({
-    queryKey: ["dashboard", "core-metrics", client.mode, reportDate],
-    queryFn: () => client.getCoreMetrics({ reportDate: reportDate || undefined }),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const dailyChangesQuery = useQuery({
-    queryKey: ["dashboard", "daily-changes", client.mode, reportDate],
-    queryFn: () => client.getDailyChanges({ reportDate: reportDate || undefined }),
-    retry: false,
-    staleTime: 60_000,
   });
 
   const { overviewEnv, attributionEnv } = useMemo(() => {
@@ -424,6 +430,66 @@ export default function DashboardPage() {
     return null;
   }, [snapshotResult]);
 
+  const supplementalReportDate = effectiveReportDate || undefined;
+
+  const coreMetricsQuery = useQuery({
+    queryKey: ["dashboard", "core-metrics", client.mode, supplementalReportDate ?? "pending-snapshot"],
+    queryFn: () => client.getCoreMetrics({ reportDate: supplementalReportDate }),
+    retry: false,
+    staleTime: 60_000,
+    enabled: Boolean(supplementalReportDate),
+  });
+
+  const dailyChangesQuery = useQuery({
+    queryKey: ["dashboard", "daily-changes", client.mode, supplementalReportDate ?? "pending-snapshot"],
+    queryFn: () => client.getDailyChanges({ reportDate: supplementalReportDate }),
+    retry: false,
+    staleTime: 60_000,
+    enabled: Boolean(supplementalReportDate),
+  });
+
+  const marketRatesQuery = useQuery({
+    queryKey: ["dashboard", "cockpit-market-rates", client.mode],
+    queryFn: () => client.getMarketDataRates(),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const bondHeadlineQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "cockpit-bond-headline",
+      client.mode,
+      supplementalReportDate ?? "pending-snapshot",
+    ],
+    queryFn: () => client.getBondDashboardHeadlineKpis(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: Boolean(supplementalReportDate),
+  });
+
+  const portfolioHeadlinesQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "cockpit-portfolio-headlines",
+      client.mode,
+      supplementalReportDate ?? "pending-snapshot",
+    ],
+    queryFn: () => client.getBondAnalyticsPortfolioHeadlines(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: Boolean(supplementalReportDate),
+  });
+
+  const coreMetricsDateMismatch = reportDateMismatch(
+    effectiveReportDate,
+    coreMetricsQuery.data?.result.report_date,
+  );
+  const dailyChangesDateMismatch = reportDateMismatch(
+    effectiveReportDate,
+    dailyChangesQuery.data?.result.report_date,
+  );
+
   const calendarAnchorDate = todayIsoDate();
   const calendarStartDate = addDaysToIsoDate(
     calendarAnchorDate,
@@ -467,6 +533,8 @@ export default function DashboardPage() {
         snapshotReportDate: snapshotResult?.report_date,
         snapshotMode: snapshotResult?.mode,
         snapshotDomainsMissing: snapshotResult?.domains_missing,
+        coreMetricsReportDate: coreMetricsQuery.data?.result.report_date ?? null,
+        dailyChangesReportDate: dailyChangesQuery.data?.result.report_date ?? null,
         isSnapshotLoading: snapshotQuery.isLoading,
         calendarEvents: researchCalendarQuery.data,
         calendarIsLoading:
@@ -479,27 +547,46 @@ export default function DashboardPage() {
       adapterOutput.verdict,
       attributionMeta,
       client.mode,
+      coreMetricsQuery.data?.result.report_date,
+      dailyChangesQuery.data?.result.report_date,
       effectiveReportDate,
       overviewMeta,
       reportDate,
       researchCalendarQuery.data,
       researchCalendarQuery.isError,
       researchCalendarQuery.isLoading,
-      sanitizedOverviewMetrics,
       snapshotQuery.isLoading,
       snapshotResult?.domains_missing,
       snapshotResult?.mode,
       snapshotResult?.report_date,
+      sanitizedOverviewMetrics,
     ],
   );
 
-  const heroMetrics = useMemo<DashboardHeroMetric[]>(
+  const dashboardCockpit = useMemo(
     () =>
-      dashboardHome.heroMetrics.map((metric) => ({
-        ...metric,
-        delta: formatHeroDelta(metric.delta, "读链路"),
-      })),
-    [dashboardHome.heroMetrics],
+      buildDashboardCockpitModel({
+        reportDate: effectiveReportDate,
+        snapshotMode: snapshotResult?.mode,
+        isMockMode: client.mode !== "real",
+        coreMetrics: coreMetricsQuery.data?.result ?? null,
+        dailyChanges: dailyChangesQuery.data?.result ?? null,
+        bondHeadline: bondHeadlineQuery.data?.result ?? null,
+        portfolio: portfolioHeadlinesQuery.data?.result ?? null,
+        marketPoints: marketRatesQuery.data?.result.series ?? null,
+        calendarItems: researchCalendarQuery.data ?? null,
+      }),
+    [
+      bondHeadlineQuery.data?.result,
+      client.mode,
+      coreMetricsQuery.data?.result,
+      dailyChangesQuery.data?.result,
+      effectiveReportDate,
+      marketRatesQuery.data?.result.series,
+      portfolioHeadlinesQuery.data?.result,
+      researchCalendarQuery.data,
+      snapshotResult?.mode,
+    ],
   );
 
   const businessBalanceMetrics = useMemo<DashboardHeroMetric[]>(
@@ -517,18 +604,6 @@ export default function DashboardPage() {
       })),
     [sanitizedOverviewMetrics],
   );
-
-  const homeKpiRibbonItems = useMemo<GovernancePill[]>(() => {
-    const metricItems = heroMetrics.map((metric) => ({
-      id: `metric-${metric.id}`,
-      label: metric.label,
-      value: metric.value,
-      tone: heroMetricToneToPillTone(metric.tone),
-      hint: [metric.caliberLabel, metric.note].filter(Boolean).join(" / "),
-    }));
-
-    return metricItems.length > 0 ? metricItems : dashboardHome.kpiRibbon;
-  }, [dashboardHome.kpiRibbon, heroMetrics]);
 
   const governancePills = useMemo<GovernancePill[]>(() => {
     const dateValue = effectiveReportDate || "最新可用";
@@ -854,118 +929,144 @@ export default function DashboardPage() {
     [allowPartial, reportDate],
   );
 
+  const statusReviewCount = dashboardAlerts.filter(
+    (alert) => alert.severity === "high" || alert.severity === "medium",
+  ).length;
+  const toolbarModeLabel = client.mode === "real" ? "管理视角" : "演示视角";
+  const shouldRenderDetailDrilldown = client.mode !== "real" || isDetailDrilldownOpen;
+
   return (
     <section data-testid="fixed-income-dashboard-page" className="dashboard-home-shell">
-      <PageHeader
-        testId="dashboard-executive-hero"
-        className="dashboard-executive-hero dashboard-home-topbar"
-        density="compact"
-        titleTestId="dashboard-executive-hero-title"
-        title="驾驶舱"
-        eyebrow="总览驾驶舱"
-        description={`观察日期 ${effectiveReportDate || "最新可用"}。首页先做状态判断、风险分流和专题下钻，不在首屏堆叠所有明细。`}
-        badgeLabel={client.mode === "real" ? "管理视角" : "演示视角"}
-        badgeTone={client.mode === "real" ? "positive" : "accent"}
-        actions={
-          <div
-            className="dashboard-home-actions"
-          >
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                color: shellTokens.colorTextMuted,
-                fontSize: 11,
-                fontWeight: 600,
-              }}
-            >
-              报告日
-              <input
-                aria-label="报告日"
-                type="date"
-                value={reportDate}
-                onChange={(event) => setReportDate(event.target.value)}
-                style={{
-                  height: 28,
-                  padding: "0 8px",
-                  borderRadius: 4,
-                  border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: shellTokens.colorBgSurface,
-                  color: shellTokens.colorTextPrimary,
-                  fontSize: 12,
-                  ...tabularNumsStyle,
-                }}
-              />
-            </label>
-            <label
-              style={{
-                display: "inline-flex",
-                gap: 6,
-                alignItems: "center",
-                color: shellTokens.colorTextSecondary,
-                fontSize: 11,
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              <input
-                aria-label="允许历史日（含缺域）"
-                type="checkbox"
-                checked={allowPartial}
-                onChange={(event) => setAllowPartial(event.target.checked)}
-                style={{ margin: 0 }}
-              />
-              含缺域
-            </label>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 1,
-                height: 18,
-                background: shellTokens.colorBorderSoft,
-                margin: "0 4px",
-              }}
-            />
-            <Link
-              data-testid="dashboard-bank-ledger-header-link"
-              to="/bank-ledger-dashboard"
-              style={{
-                ...headerButtonStyle("secondary"),
-                display: "inline-flex",
-                alignItems: "center",
-                textDecoration: "none",
-              }}
-            >
-              银行台账
-            </Link>
-            <button
-              type="button"
-              onClick={() => void snapshotQuery.refetch()}
-              style={headerButtonStyle("primary")}
-            >
-              刷新
-            </button>
-            <button
-              type="button"
-              disabled
-              style={{
-                ...headerButtonStyle("secondary"),
-                opacity: 0.5,
-                cursor: "not-allowed",
-              }}
-            >
-              导出
-            </button>
-          </div>
-        }
+      <header
+        data-testid="dashboard-home-toolbar"
+        className="dashboard-home-toolbar"
       >
-        <div style={{ display: "grid", gap: designTokens.space[3] }}>
-          <GovernancePills pills={governancePills} />
+        <div className="dashboard-home-toolbar__identity">
+          <h1
+            data-testid="dashboard-executive-hero-title"
+            className="dashboard-home-toolbar__title"
+          >
+            驾驶舱
+          </h1>
+          <span className="dashboard-home-toolbar__eyebrow">
+            报告日 {effectiveReportDate || "最新可用"}
+          </span>
         </div>
-      </PageHeader>
+        <div className="dashboard-home-actions">
+          <span
+            className={
+              client.mode === "real"
+                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
+                : "dashboard-home-view-pill dashboard-governance-tone-warning"
+            }
+          >
+            {toolbarModeLabel}
+          </span>
+          <label className="dashboard-home-control">
+            <span>报告日</span>
+            <input
+              aria-label="报告日"
+              type="date"
+              value={reportDate}
+              onChange={(event) => setReportDate(event.target.value)}
+              className="dashboard-home-date-input"
+              style={tabularNumsStyle}
+            />
+          </label>
+          <label className="dashboard-home-check">
+            <input
+              aria-label="允许历史日（含缺域）"
+              type="checkbox"
+              checked={allowPartial}
+              onChange={(event) => setAllowPartial(event.target.checked)}
+            />
+            含缺域
+          </label>
+          <span aria-hidden="true" className="dashboard-home-actions__divider" />
+          <Link
+            data-testid="dashboard-bank-ledger-header-link"
+            to="/bank-ledger-dashboard"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            银行台账
+          </Link>
+          <Link
+            to="/source-preview"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            报表中心
+          </Link>
+          <Link
+            to="/platform-config"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            中台配置
+          </Link>
+          <button
+            type="button"
+            onClick={() => void snapshotQuery.refetch()}
+            className="dashboard-home-action-button dashboard-home-action-button--primary"
+          >
+            刷新
+          </button>
+          <button
+            type="button"
+            disabled
+            className="dashboard-home-action-button dashboard-home-action-button--disabled"
+          >
+            导出
+          </button>
+        </div>
+      </header>
 
-      <DashboardMarketStrip />
+      <DashboardCockpitMarketTicker
+        items={dashboardCockpit.marketTicker}
+        isLoading={marketRatesQuery.isLoading}
+        isError={marketRatesQuery.isError}
+        onRetry={() => void marketRatesQuery.refetch()}
+      />
+
+      <section
+        data-testid="dashboard-command-deck"
+        className="dashboard-command-deck"
+      >
+        <div
+          data-testid="dashboard-executive-hero"
+          className="dashboard-command-deck__hero"
+        >
+          <DashboardJudgmentBand
+            verdict={dashboardHome.judgment}
+            className="dashboard-executive-hero dashboard-command-deck__judgment"
+          />
+        </div>
+
+        <aside
+          data-testid="dashboard-command-status-stack"
+          className="dashboard-home-panel dashboard-command-status"
+        >
+          <div className="dashboard-home-section-heading">
+            <span className="dashboard-home-section-eyebrow">状态 / 可信度</span>
+            <h2 className="dashboard-home-section-title">治理状态</h2>
+          </div>
+          <GovernancePills pills={governancePills} />
+          <div className="dashboard-command-status__grid">
+            <article className="dashboard-home-inset dashboard-command-status__metric">
+              <span className="dashboard-home-muted-label">待复核</span>
+              <strong className="dashboard-home-value">{statusReviewCount}</strong>
+              <p className="dashboard-home-muted">高/中优先级事项</p>
+            </article>
+            <article className="dashboard-home-inset dashboard-command-status__metric">
+              <span className="dashboard-home-muted-label">快照</span>
+              <strong className="dashboard-home-value">
+                {formatSnapshotMode(snapshotResult?.mode, snapshotQuery.isLoading)}
+              </strong>
+              <p className="dashboard-home-muted">
+                {snapshotPartialNote || "覆盖状态可用于首屏判断"}
+              </p>
+            </article>
+          </div>
+        </aside>
+      </section>
 
       {(client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote) && (
         <section
@@ -993,8 +1094,46 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <DashboardJudgmentBand verdict={dashboardHome.judgment} />
-      <DashboardKpiRibbon items={homeKpiRibbonItems} />
+      <DashboardCockpitMetricRail items={dashboardCockpit.metricRail} />
+      <DashboardCockpitMainGrid
+        ticker={dashboardCockpit.marketTicker}
+        cards={dashboardCockpit.analysisCards}
+        waterfall={dashboardCockpit.waterfall}
+      />
+      <DashboardCockpitLowerGrid
+        portfolioMix={dashboardCockpit.portfolioMix}
+        riskItems={dashboardCockpit.riskItems}
+        calendarItems={dashboardCockpit.calendarItems}
+        watchRows={dashboardCockpit.watchRows}
+      />
+      <section
+        data-testid="dashboard-business-detail-strip"
+        className="dashboard-business-detail-strip dashboard-cockpit-business-strip"
+      >
+        {coreMetricsDateMismatch ? (
+          <DashboardSupplementalBlockedSection
+            testId="dashboard-core-metrics-blocked"
+            title="债券 / 同业核心指标"
+            expectedReportDate={effectiveReportDate}
+            actualReportDate={coreMetricsQuery.data?.result.report_date ?? "未知"}
+          />
+        ) : (
+          <DashboardCoreMetricsSection
+            query={coreMetricsQuery}
+            reportDate={effectiveReportDate}
+          />
+        )}
+        {dailyChangesDateMismatch ? (
+          <DashboardSupplementalBlockedSection
+            testId="dashboard-daily-changes-blocked"
+            title="日 / 周 / 月变动"
+            expectedReportDate={effectiveReportDate}
+            actualReportDate={dailyChangesQuery.data?.result.report_date ?? "未知"}
+          />
+        ) : (
+          <DashboardDailyChangesSection query={dailyChangesQuery} />
+        )}
+      </section>
       <section
         data-testid="dashboard-business-balance-summary"
         className="dashboard-business-balance-summary dashboard-home-panel"
@@ -1017,89 +1156,95 @@ export default function DashboardPage() {
           onRetry={() => void snapshotQuery.refetch()}
         />
       </section>
-      <DashboardCoreMetricsSection query={coreMetricsQuery} reportDate={reportDate} />
-      <DashboardDailyChangesSection query={dailyChangesQuery} />
-      <DashboardAnalysisGrid alerts={dashboardHome.alerts} />
-      <DashboardStructureRiskFocus focus={dashboardHome.focus} />
 
-      <section data-testid="dashboard-detail-drilldown" className="dashboard-detail-drilldown">
-        <div className="dashboard-detail-drilldown__header">
+      <details
+        data-testid="dashboard-detail-drilldown"
+        className="dashboard-detail-drilldown dashboard-progressive-disclosure"
+        open={isDetailDrilldownOpen}
+        onToggle={(event) => setIsDetailDrilldownOpen(event.currentTarget.open)}
+      >
+        <summary className="dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary">
           <div className="dashboard-home-section-heading">
             <span className="dashboard-home-section-eyebrow">明细穿透</span>
             <h2 className="dashboard-detail-drilldown__title">下钻复核区</h2>
           </div>
-          <p className="dashboard-home-muted">
-            用于解释首屏结论、定位数据证据、进入专题页复核；这里不补未经确认的业务指标。
-          </p>
-        </div>
+          <span className="dashboard-progressive-disclosure__description">
+            解释首屏结论、定位数据证据、进入专题页复核
+          </span>
+          <span className="dashboard-progressive-disclosure__cue">展开</span>
+        </summary>
 
-        <div className="dashboard-overview-command-grid">
-          <DashboardGlobalJudgmentPanel
-            verdict={reviewVerdict}
-            metaItems={reviewMetaItems}
-            evidenceLabel={reviewEvidenceLabel}
-          />
-          <DashboardModuleSnapshotPanel items={moduleSnapshotItems} />
-          <DashboardAlertCenterPanel alerts={reviewAlerts} />
-        </div>
-
-        <div className="dashboard-overview-support-grid">
-          <section
-            data-testid="dashboard-governed-surface"
-            style={{
-              display: "grid",
-              gap: designTokens.space[3],
-              padding: designTokens.space[4],
-              borderRadius: designTokens.radius.md,
-              border: `1px solid ${shellTokens.colorBorderSoft}`,
-              background: shellTokens.colorBgSurface,
-            }}
-          >
-            <PageSectionLead
-              eyebrow="经营贡献"
-              title="经营贡献拆解"
-              description="首页保留一个足够快的经营贡献视图，用来判断是否需要继续进入正式损益拆解工作台；不会在这里伪造未接入的业务结论。"
-              style={{ marginTop: 0 }}
-            />
-            <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
-              <PnlAttributionSection
-                attribution={adapterOutput.attribution}
-                onRetry={() => void snapshotQuery.refetch()}
+        {shouldRenderDetailDrilldown ? (
+          <>
+            <div className="dashboard-overview-command-grid">
+              <DashboardGlobalJudgmentPanel
+                verdict={reviewVerdict}
+                metaItems={reviewMetaItems}
+                evidenceLabel={reviewEvidenceLabel}
               />
-            </Suspense>
-          </section>
+              <DashboardModuleSnapshotPanel items={moduleSnapshotItems} />
+              <DashboardAlertCenterPanel alerts={reviewAlerts} />
+            </div>
 
-          <DashboardTasksCalendarPanels
-            tasks={dashboardTasks}
-            calendarItems={dashboardCalendar.items}
-            calendarState={dashboardCalendarState}
-          />
-        </div>
+            <div className="dashboard-overview-support-grid">
+              <section
+                data-testid="dashboard-governed-surface"
+                style={{
+                  display: "grid",
+                  gap: designTokens.space[3],
+                  padding: designTokens.space[4],
+                  borderRadius: designTokens.radius.md,
+                  border: `1px solid ${shellTokens.colorBorderSoft}`,
+                  background: shellTokens.colorBgSurface,
+                }}
+              >
+                <PageSectionLead
+                  eyebrow="经营贡献"
+                  title="经营贡献拆解"
+                  description="首页保留一个足够快的经营贡献视图，用来判断是否需要继续进入正式损益拆解工作台；不会在这里伪造未接入的业务结论。"
+                  style={{ marginTop: 0 }}
+                />
+                <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
+                  <PnlAttributionSection
+                    attribution={adapterOutput.attribution}
+                    onRetry={() => void snapshotQuery.refetch()}
+                  />
+                </Suspense>
+              </section>
 
-        <BondAnalyticsOverviewMidCharts
-          reportDate={effectiveReportDate}
-          periodType="MoM"
-          assetClass="all"
-          accountingClass="all"
-        />
+              <DashboardTasksCalendarPanels
+                tasks={dashboardTasks}
+                calendarItems={dashboardCalendar.items}
+                calendarState={dashboardCalendarState}
+              />
+            </div>
 
-        <div className="dashboard-overview-live-grid">
-          <div className="dashboard-span-wide">
-            <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
-          </div>
-          <DashboardNewsDigestSection />
-          <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
-          <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
-        </div>
+            <BondAnalyticsOverviewMidCharts
+              reportDate={effectiveReportDate}
+              periodType="MoM"
+              assetClass="all"
+              accountingClass="all"
+            />
 
-        <DashboardModuleEntryGrid />
+            <div className="dashboard-overview-live-grid">
+              <div className="dashboard-span-wide">
+                <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
+              </div>
+              <DashboardNewsDigestSection />
+              <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
+              <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
+            </div>
 
-        <AgentPanel
-          pageId="dashboard"
-          reportDate={effectiveReportDate || null}
-          currentFilters={agentPanelFilters}
-        />
-      </section>
+            <DashboardModuleEntryGrid />
+
+            <AgentPanel
+              pageId="dashboard"
+              reportDate={effectiveReportDate || null}
+              currentFilters={agentPanelFilters}
+            />
+          </>
+        ) : null}
+      </details>
 
     </section>
   );

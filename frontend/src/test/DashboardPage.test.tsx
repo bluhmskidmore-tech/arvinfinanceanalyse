@@ -58,6 +58,16 @@ function numericWithRawYuanDisplay(raw: number) {
   };
 }
 
+function coreMetricCard(totalAmount: number, rate: number, changeAmount: number, changePct: number) {
+  return {
+    total_amount: formatRawAsNumeric({ raw: totalAmount, unit: "yuan", sign_aware: false }),
+    weighted_avg_rate: formatRawAsNumeric({ raw: rate, unit: "pct", sign_aware: false }),
+    change_amount: formatRawAsNumeric({ raw: changeAmount, unit: "yuan", sign_aware: true }),
+    change_pct: formatRawAsNumeric({ raw: changePct, unit: "pct", sign_aware: true }),
+    top_3_details: [],
+  };
+}
+
 function expectTitlesInOrder(container: HTMLElement, titles: string[]) {
   const nodes = titles.map((title) => within(container).getByText(title));
   for (let index = 0; index < nodes.length - 1; index += 1) {
@@ -90,6 +100,14 @@ function localTodayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+async function openDetailDrilldown() {
+  const detail = await screen.findByTestId("dashboard-detail-drilldown");
+  const summary = detail.querySelector("summary");
+  expect(summary).not.toBeNull();
+  fireEvent.click(summary as HTMLElement);
+  return detail;
+}
+
 describe("DashboardPage", () => {
   it("renders the governed dashboard shell while snapshot query is unresolved", async () => {
     const base = createApiClient({ mode: "mock" });
@@ -118,6 +136,66 @@ describe("DashboardPage", () => {
     });
     releaseSnapshot?.();
     expect(screen.queryByTestId("dashboard-governed-meta")).not.toBeInTheDocument();
+  });
+
+  it("does not promote core metrics into first-screen snapshot metrics when snapshot overview is empty", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const fallbackClient: ApiClient = {
+      ...base,
+      mode: "real",
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            overview: {
+              ...envelope.result.overview,
+              metrics: [],
+            },
+          },
+        };
+      },
+      getCoreMetrics: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_dashboard_core_metrics_fallback",
+          basis: "analytical" as const,
+          result_kind: "dashboard.core_metrics",
+          formal_use_allowed: false,
+          source_version: "sv_core_metrics_test",
+          vendor_version: "vv_core_metrics_test",
+          rule_version: "rv_core_metrics_test",
+          cache_version: "cv_core_metrics_test",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-08T08:00:00Z",
+        },
+        result: {
+          report_date: "2026-04-08",
+          bond_investments: coreMetricCard(12_300_000_000, 0.025, 100_000_000, 0.01),
+          interbank_assets: coreMetricCard(8_800_000_000, 0.018, 0, 0),
+          interbank_liabilities: coreMetricCard(6_600_000_000, 0.016, -200_000_000, -0.03),
+        },
+      })),
+    };
+
+    renderDashboard(fallbackClient);
+
+    const heroStrip = await screen.findByTestId("dashboard-overview-hero-strip");
+    expect(within(heroStrip).getByTestId("dashboard-overview-hero-empty")).toBeInTheDocument();
+
+    const metricRail = await screen.findByTestId("dashboard-cockpit-metric-rail");
+    expect(
+      within(metricRail).queryByTestId("dashboard-cockpit-metric-core-bond-investments"),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(fallbackClient.getCoreMetrics).toHaveBeenCalledWith({
+        reportDate: "2026-04-18",
+      });
+    });
   });
 
   it("derives today todo items from high and medium dashboard alerts", async () => {
@@ -168,20 +246,28 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
-    const marketStrip = await screen.findByTestId("dashboard-market-strip");
+    const toolbar = await screen.findByTestId("dashboard-home-toolbar");
+    const commandDeck = await screen.findByTestId("dashboard-command-deck");
+    const executiveHero = await screen.findByTestId("dashboard-executive-hero");
     const judgmentBand = await screen.findByTestId("dashboard-judgment-band");
-    const kpiRibbon = await screen.findByTestId("dashboard-kpi-ribbon");
+    const statusStack = await screen.findByTestId("dashboard-command-status-stack");
+    const marketTicker = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    const metricRail = await screen.findByTestId("dashboard-cockpit-metric-rail");
+    const mainGrid = await screen.findByTestId("dashboard-cockpit-main-grid");
+    const businessDetailStrip = await screen.findByTestId("dashboard-business-detail-strip");
+    const lowerGrid = await screen.findByTestId("dashboard-cockpit-lower-grid");
     const businessBalanceSummary = await screen.findByTestId("dashboard-business-balance-summary");
-    const analysisGrid = await screen.findByTestId("dashboard-analysis-grid");
-    const structureRiskFocus = await screen.findByTestId("dashboard-structure-risk-focus");
+    const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
 
     expectTestIdsInOrder(page, [
-      "dashboard-market-strip",
-      "dashboard-judgment-band",
-      "dashboard-kpi-ribbon",
+      "dashboard-home-toolbar",
+      "dashboard-cockpit-market-ticker",
+      "dashboard-command-deck",
+      "dashboard-cockpit-metric-rail",
+      "dashboard-cockpit-main-grid",
+      "dashboard-cockpit-lower-grid",
+      "dashboard-business-detail-strip",
       "dashboard-business-balance-summary",
-      "dashboard-analysis-grid",
-      "dashboard-structure-risk-focus",
       "dashboard-detail-drilldown",
     ]);
 
@@ -193,13 +279,36 @@ describe("DashboardPage", () => {
     expect(within(pills).getByTestId("governance-pill-source")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-data-warning")).toBeInTheDocument();
 
-    expect(marketStrip).toBeInTheDocument();
+    expect(toolbar).toBeInTheDocument();
+    expect(commandDeck).toContainElement(executiveHero);
+    expect(executiveHero).toContainElement(judgmentBand);
+    expect(commandDeck).toContainElement(statusStack);
+    expect(page).toContainElement(marketTicker);
     expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
     expect(judgmentBand).toBeInTheDocument();
-    expect(kpiRibbon).toBeInTheDocument();
+    expect(metricRail).toBeInTheDocument();
+    expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-curve-panel"));
+    expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-judgment-cards"));
+    expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-waterfall"));
+    expect(
+      within(businessDetailStrip).queryByTestId("dashboard-core-metrics-section") ??
+        within(businessDetailStrip).getByTestId("dashboard-core-metrics-blocked"),
+    ).toBeInTheDocument();
+    expect(
+      within(businessDetailStrip).queryByTestId("dashboard-daily-changes-section") ??
+        within(businessDetailStrip).getByTestId("dashboard-daily-changes-blocked"),
+    ).toBeInTheDocument();
+    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-portfolio-panel"));
+    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-risk-panel"));
+    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-calendar-panel"));
+    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-watch-table"));
     expect(businessBalanceSummary).toBeInTheDocument();
-    expect(analysisGrid).toBeInTheDocument();
-    expect(structureRiskFocus).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
+    expect(detailDrilldown.tagName.toLowerCase()).toBe("details");
+    expect(detailDrilldown).not.toHaveAttribute("open");
+    expect(within(detailDrilldown).queryByTestId("dashboard-business-detail-strip")).not.toBeInTheDocument();
+    expect(within(detailDrilldown).queryByTestId("dashboard-structure-risk-focus")).not.toBeInTheDocument();
+    expect(within(detailDrilldown).queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
   });
 
   it("keeps business income and asset-liability summary cards visible before drilldown", async () => {
@@ -209,9 +318,11 @@ describe("DashboardPage", () => {
     const summary = await screen.findByTestId("dashboard-business-balance-summary");
 
     expectTestIdsInOrder(page, [
-      "dashboard-kpi-ribbon",
+      "dashboard-cockpit-metric-rail",
+      "dashboard-cockpit-main-grid",
+      "dashboard-cockpit-lower-grid",
       "dashboard-business-balance-summary",
-      "dashboard-analysis-grid",
+      "dashboard-detail-drilldown",
     ]);
     expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
     expect(within(summary).getByTestId("dashboard-product-category-ytd")).toBeInTheDocument();
@@ -229,11 +340,16 @@ describe("DashboardPage", () => {
     expect(detail).toHaveTextContent("解释首屏结论");
     expect(detail).toHaveTextContent("定位数据证据");
     expect(detail).toHaveTextContent("进入专题页复核");
-    expectTestIdsInOrder(page, ["dashboard-structure-risk-focus", "dashboard-detail-drilldown"]);
+    expectTestIdsInOrder(page, ["dashboard-cockpit-lower-grid", "dashboard-detail-drilldown"]);
+
+    fireEvent.click(within(detail).getByText("下钻复核区"));
 
     expect(await within(detail).findByTestId("dashboard-global-judgment")).toBeInTheDocument();
     expect(await within(detail).findByTestId("dashboard-module-snapshot")).toBeInTheDocument();
     expect(await within(detail).findByTestId("dashboard-alert-center")).toBeInTheDocument();
+    expect(within(detail).queryByTestId("dashboard-business-detail-strip")).not.toBeInTheDocument();
+    expect(within(detail).queryByTestId("dashboard-structure-risk-focus")).not.toBeInTheDocument();
+    expect(within(detail).queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
     expect(await within(detail).findByTestId("dashboard-governed-surface")).toBeInTheDocument();
     expect(await within(detail).findByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
     expect(await within(detail).findByTestId("bond-analytics-overview-mid-charts")).toBeInTheDocument();
@@ -279,18 +395,17 @@ describe("DashboardPage", () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
-      getChoiceMacroLatest: vi.fn(async () => {
+      getMarketDataRates: vi.fn(async () => {
         throw new Error("macro source unavailable");
       }),
     };
 
     renderDashboard(client);
 
-    const strip = await screen.findByTestId("dashboard-market-strip");
-    const unavailable = await within(strip).findByTestId("dashboard-market-strip-unavailable");
-
+    const strip = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    const unavailable = await within(strip).findByTestId("dashboard-cockpit-market-ticker-unavailable");
     expect(unavailable).toHaveTextContent("市场数据暂不可用");
-    expect(unavailable).toHaveTextContent("下方明细穿透仍可继续查看");
+    expect(unavailable).toHaveTextContent("不使用替代数字");
     expect(within(strip).getByRole("button", { name: "重试" })).toBeEnabled();
     expect(within(strip).queryByText("数据加载失败")).not.toBeInTheDocument();
   });
@@ -299,7 +414,10 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-executive-hero")).toHaveClass("dashboard-executive-hero");
+    expect(screen.getByTestId("dashboard-executive-hero")).toContainElement(
+      screen.getByTestId("dashboard-judgment-band"),
+    );
+    expect(screen.getByTestId("dashboard-judgment-band")).toHaveClass("dashboard-executive-hero");
     expect(screen.getByTestId("dashboard-bank-ledger-header-link")).toHaveAttribute(
       "href",
       "/bank-ledger-dashboard",
@@ -349,7 +467,7 @@ describe("DashboardPage", () => {
       within(moduleEntryGrid).getByRole("link", { name: /中台配置/ }),
     ).toHaveAttribute("href", "/platform-config");
     expect(await screen.findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-macro-spot-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-cockpit-market-ticker-items")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-news-digest-list")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-liability-counterparty-section")).toBeInTheDocument();
@@ -404,7 +522,8 @@ describe("DashboardPage", () => {
 
     renderDashboard(governedClient);
 
-    expect(await screen.findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
+    const detail = await openDetailDrilldown();
+    expect(await within(detail).findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
     await waitFor(() => {
       expect(getPositionsCounterpartyBonds).toHaveBeenCalledWith({
         startDate: "2026-01-01",
@@ -508,7 +627,8 @@ describe("DashboardPage", () => {
 
     renderDashboard(governedClient);
 
-    const bondSection = await screen.findByTestId("dashboard-bond-counterparty-section");
+    const detail = await openDetailDrilldown();
+    const bondSection = await within(detail).findByTestId("dashboard-bond-counterparty-section");
     expect(await within(bondSection).findByText("区间累计")).toBeInTheDocument();
     expect(await within(bondSection).findByText("日均合计")).toBeInTheDocument();
     expect(await within(bondSection).findByText("加权付息率")).toBeInTheDocument();
@@ -516,7 +636,7 @@ describe("DashboardPage", () => {
     expect(await within(bondSection).findByText("1.97%")).toBeInTheDocument();
     expect(await within(bondSection).findByText("1.85%")).toBeInTheDocument();
 
-    const liabilitySection = await screen.findByTestId("dashboard-liability-counterparty-section");
+    const liabilitySection = await within(detail).findByTestId("dashboard-liability-counterparty-section");
     expect(await within(liabilitySection).findByText("Top1 占比")).toBeInTheDocument();
     expect(await within(liabilitySection).findByText("银行占比")).toBeInTheDocument();
     expect(await within(liabilitySection).findByText("中国农业银行股份有限公司")).toBeInTheDocument();
@@ -594,6 +714,8 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(reportDatePill).toHaveTextContent("2026-03-31");
     });
+
+    await openDetailDrilldown();
 
     await waitFor(() => {
       expect(getPositionsCounterpartyBonds).toHaveBeenCalledWith({

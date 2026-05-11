@@ -262,6 +262,106 @@ class TestHomeSnapshotEnvelope:
         assert headline.operating_income.raw == pytest.approx(1325000000.0)
         assert headline.intermediate_business_income.raw == pytest.approx(500000000.0)
 
+    def test_home_snapshot_includes_product_category_ytd_from_fallback_resolver(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Snapshot payload must expose the same YTD headline built by the fallback resolver."""
+        from backend.app.schemas.product_category_pnl import (
+            ProductCategoryPnlPayload,
+            ProductCategoryPnlRow,
+        )
+
+        es = _executive_service()
+
+        def row_dict(cid: str, bni: str) -> dict[str, object]:
+            return {
+                "category_id": cid,
+                "category_name": cid,
+                "side": "all" if cid == "grand_total" else "asset",
+                "level": 0,
+                "view": "ytd",
+                "report_date": "2026-04-08",
+                "baseline_ftp_rate_pct": "1.60",
+                "cnx_scale": "0",
+                "cny_scale": "0",
+                "foreign_scale": "0",
+                "cnx_cash": "0",
+                "cny_cash": "0",
+                "foreign_cash": "0",
+                "cny_ftp": "0",
+                "foreign_ftp": "0",
+                "cny_net": "0",
+                "foreign_net": "0",
+                "business_net_income": bni,
+                "weighted_yield": None,
+                "is_total": True,
+                "children": [],
+                "scenario_rate_pct": None,
+            }
+
+        at = row_dict("asset_total", "325000000")
+        lt = {**row_dict("liability_total", "0"), "side": "liability"}
+        gt = row_dict("grand_total", "325000000")
+        im = row_dict("intermediate_business_income", "25000000")
+        pc_payload = ProductCategoryPnlPayload(
+            report_date="2026-04-08",
+            view="ytd",
+            available_views=["ytd", "monthly"],
+            scenario_rate_pct=None,
+            rows=[
+                ProductCategoryPnlRow.model_validate(im),
+                ProductCategoryPnlRow.model_validate(at),
+                ProductCategoryPnlRow.model_validate(lt),
+                ProductCategoryPnlRow.model_validate(gt),
+            ],
+            asset_total=ProductCategoryPnlRow.model_validate(at),
+            liability_total=ProductCategoryPnlRow.model_validate(lt),
+            grand_total=ProductCategoryPnlRow.model_validate(gt),
+        )
+
+        def fake_resolve(_duck: str, _gov: str, rd: str, _ftp: float):
+            assert rd == "2026-04-08"
+            return pc_payload
+
+        monkeypatch.setattr(es, "resolve_product_category_ytd_payload_for_home_snapshot", fake_resolve)
+        monkeypatch.setattr(es, "_build_product_category_monthly_headline", lambda _rd: None)
+
+        with patch.object(es, "_list_domain_dates") as mock_dates:
+            mock_dates.return_value = {
+                "balance_sheet": {"2026-04-08"},
+                "pnl": {"2026-04-08"},
+            }
+            with patch.object(es, "executive_overview") as mock_ov:
+                with patch.object(es, "executive_pnl_attribution") as mock_attr:
+                    mock_ov.return_value = {
+                        "result_meta": {},
+                        "result": {"title": "operating overview", "metrics": []},
+                    }
+                    mock_attr.return_value = {
+                        "result_meta": {},
+                        "result": {
+                            "title": "attribution",
+                            "total": {
+                                "raw": 0.0,
+                                "unit": "yuan",
+                                "display": "0",
+                                "precision": 0,
+                                "sign_aware": False,
+                            },
+                            "segments": [],
+                        },
+                    }
+                    env = es.home_snapshot_envelope(
+                        report_date="2026-04-08",
+                        allow_partial=False,
+                    )
+
+        headline = env["result"]["product_category_ytd"]
+        assert headline is not None
+        assert headline["summary_pnl"]["raw"] == pytest.approx(325000000.0)
+        assert headline["intermediate_business_income"]["raw"] == pytest.approx(25000000.0)
+        assert "grand_total.business_net_income" in headline["summary_pnl_detail"]
+
     def test_build_product_category_monthly_headline_matches_monthly_grand_total(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
