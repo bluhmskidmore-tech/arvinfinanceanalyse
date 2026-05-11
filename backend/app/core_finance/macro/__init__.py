@@ -1,5 +1,6 @@
 from .credit_spread_percentile import compute_credit_spread_percentile
 from .credit_spread_risk import compute_credit_spread_risk
+from .crisis_score import compute_crisis_score_payload
 from .cross_market_linkage import analyze_cross_market_linkage
 from .economic_cycle import compute_economic_cycle
 from .equity_strategies import (
@@ -21,6 +22,7 @@ __all__ = [
     "analyze_cross_market_linkage",
     "compute_credit_spread_percentile",
     "compute_credit_spread_risk",
+    "compute_crisis_score_payload",
     "compute_economic_cycle",
     "compute_factors",
     "compute_leading_indicator",

@@ -687,6 +687,136 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     }
   });
 
+  it("Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const fixtureRow = {
+      adjustment_id: "pca-audit-unit6-row",
+      event_type: "created",
+      created_at: "2026-04-10T10:30:00Z",
+      stream: "product_category_pnl_adjustments",
+      report_date: "2026-02-28",
+      operator: "DELTA",
+      approval_status: "approved",
+      account_code: "51402010001",
+      currency: "CNX",
+      account_name: "unit-6-visible-row",
+    } as const;
+    const exportCsvRow = [
+      fixtureRow.adjustment_id,
+      fixtureRow.event_type,
+      fixtureRow.created_at,
+      fixtureRow.report_date,
+      fixtureRow.operator,
+      fixtureRow.approval_status,
+      fixtureRow.account_code,
+      fixtureRow.currency,
+      fixtureRow.account_name,
+    ]
+      .map((value) => `"${value}"`)
+      .join(",");
+    const exportCsv = [
+      "Current State",
+      "adjustment_id,event_type,created_at,report_date,operator,approval_status,account_code,currency,account_name",
+      exportCsvRow,
+      "",
+      "Event Timeline",
+      "adjustment_id,event_type,created_at,report_date,operator,approval_status,account_code,currency,account_name",
+      exportCsvRow,
+    ].join("\n");
+    const exportSpy = vi.fn(async () => ({
+      filename: "unit-6-ui-csv-consistency.csv",
+      content: exportCsv,
+    }));
+    const listSpy = vi.fn(async () => ({
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 1,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [fixtureRow],
+      events: [fixtureRow],
+    }));
+    const OriginalBlob = globalThis.Blob;
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    let capturedCsv = "";
+    class MockBlob {
+      readonly size: number;
+      readonly type: string;
+
+      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+        capturedCsv = parts.map((part) => String(part)).join("");
+        this.size = capturedCsv.length;
+        this.type = options?.type ?? "";
+      }
+    }
+    globalThis.Blob = MockBlob as unknown as typeof Blob;
+    const createObjectUrl = vi.fn(() => "blob:unit-6-ui-csv");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const element = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          value: clickSpy,
+          configurable: true,
+        });
+      }
+      return element as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+
+    try {
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      await screen.findByTestId("audit-current-state");
+      const rowContainer = screen
+        .getByTestId(`audit-edit-${fixtureRow.adjustment_id}`)
+        .closest("div");
+      expect(rowContainer).not.toBeNull();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.account_code)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.account_name)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.currency)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.operator)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.approval_status)).toBeInTheDocument();
+
+      await user.click(screen.getByTestId("audit-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalledWith("2026-02-28", {
+          adjustmentId: "",
+          adjustmentIdExact: false,
+          accountCode: "",
+          approvalStatus: "",
+          eventType: "",
+          currentSortField: "created_at",
+          currentSortDir: "desc",
+          eventSortField: "created_at",
+          eventSortDir: "desc",
+          createdAtFrom: "",
+          createdAtTo: "",
+        });
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+      });
+
+      expect(capturedCsv).toContain(exportCsvRow);
+    } finally {
+      createElementSpy.mockRestore();
+      globalThis.Blob = OriginalBlob;
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
   it("pages current-state rows and exports the filtered audit dataset", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });

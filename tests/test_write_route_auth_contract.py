@@ -24,6 +24,7 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
     repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
     if grant:
         repo.grant_scope(user_id="*", role=None, resource="*", action="*")
+    return sqlite_path
 
 
 MUTATION_ROUTES = [
@@ -72,6 +73,8 @@ MUTATION_ROUTES = [
     ("POST", "/api/news/tushare-npr/ingest", None),
     ("POST", "/ui/market-data/livermore/position-snapshot", {"as_of_date": "2026-04-30", "csv_path": "livermore/positions.csv"}),
     ("POST", "/ui/market-data/livermore/position-snapshot/manual", {"as_of_date": "2026-04-30", "positions": [{"stock_code": "000001.SZ", "stock_name": "Alpha", "entry_cost": 10.5, "bars_since_entry": 6}]}),
+    ("POST", "/ui/macro/toolkit/cffex-member-rank/refresh", {"trade_date": "2026-04-10", "contracts": ["T.CFE"], "sources": ["choice"]}),
+    ("POST", "/ui/macro/toolkit/scripts/debug_wind/run", {"timeout_seconds": 30}),
 ]
 
 RESERVED_MUTATION_PATHS = {
@@ -124,3 +127,112 @@ def test_refresh_route_does_not_require_scope_grant(method, path, body, tmp_path
     headers = {"X-User-Id": "test-refresh-user"}
     response = client.post(path, json=body, headers=headers)
     assert response.status_code != 403, f"Refresh route {path} should not require permissions, got 403"
+
+
+def test_macro_toolkit_script_run_requires_matching_scope_grant(tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    from backend.app.services import macro_toolkit_service
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="script-user",
+        role=None,
+        resource="macro_toolkit.script",
+        action="execute",
+        scope_key="script",
+        scope_value="debug_wind",
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "run_macro_toolkit_script",
+        lambda **_kwargs: {"status": "completed", "exit_code": 0, "stdout": "", "stderr": "", "output_files": []},
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    allowed = client.post(
+        "/ui/macro/toolkit/scripts/debug_wind/run",
+        json={"timeout_seconds": 30},
+        headers={"X-User-Id": "script-user"},
+    )
+    denied = client.post(
+        "/ui/macro/toolkit/scripts/signal-aggregator/run",
+        json={"timeout_seconds": 30},
+        headers={"X-User-Id": "script-user"},
+    )
+
+    assert allowed.status_code == 200, allowed.text
+    assert denied.status_code == 403, denied.text
+
+
+def test_macro_toolkit_script_run_rejects_argv_even_with_matching_scope_grant(tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    from backend.app.services import macro_toolkit_service
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="script-user",
+        role=None,
+        resource="macro_toolkit.script",
+        action="execute",
+        scope_key="script",
+        scope_value="debug_wind",
+    )
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "run_macro_toolkit_script",
+        lambda **kwargs: calls.append(kwargs)
+        or {"status": "completed", "exit_code": 0, "stdout": "", "stderr": "", "output_files": []},
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/macro/toolkit/scripts/debug_wind/run",
+        json={"argv": ["--output", "tmp/out.json"], "timeout_seconds": 30},
+        headers={"X-User-Id": "script-user"},
+    )
+
+    assert response.status_code == 400, response.text
+    assert "arguments" in response.text
+    assert calls == []
+
+
+def test_macro_toolkit_cffex_refresh_accepts_explicit_refresh_grant(tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    import backend.app.api.routes.macro_toolkit as route_module
+    from backend.app.services import macro_toolkit_service
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="cffex-user",
+        role=None,
+        resource="macro_toolkit.cffex_member_rank",
+        action="refresh",
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "refresh_cffex_member_rank",
+        lambda **_kwargs: macro_toolkit_service.MacroToolkitActionResult(
+            payload={"trade_date": "2026-04-10", "row_count": 2},
+            quality_flag="ok",
+            fallback_mode="none",
+            as_of_date="2026-04-10",
+        ),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "ok", "latest_trade_date": "2026-04-10"},
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/macro/toolkit/cffex-member-rank/refresh",
+        json={"trade_date": "2026-04-10", "contracts": ["T.CFE"], "sources": ["choice"]},
+        headers={"X-User-Id": "cffex-user"},
+    )
+
+    assert response.status_code == 200, response.text

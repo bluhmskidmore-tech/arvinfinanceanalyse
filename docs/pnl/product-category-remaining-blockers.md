@@ -21,18 +21,17 @@ Each row is one blocker. **Class** is the primary owner type.
 | 2 | exhaustive detail semantics are not fully page-frozen | 4 | Add page/model tests per approved headline metric row set; extend golden assertions | Yes (for the three approved headline metrics) | `productCategoryPnlPageModel.test.ts`, `ProductCategoryPnlPage.test.tsx`, `GS-PROD-CAT-PNL-A/` |
 | 3 | no page-level explicit stale-state banner contract exists | 4 | Write UX contract (when banner shows, copy, dismiss) then implement | Partially (doc+test skeleton only) | `docs/pnl/…`, then `ProductCategoryPnlPage.tsx` + page tests |
 | 3 | long-running refresh UX … timeout messaging vs `runPollingTask` generic timeout | 1 | Decide timeout user messaging and whether to surface run_id after timeout | No | `ProductCategoryPnlPage.tsx`, `runPollingTask`/`config`, tests |
-| 4 | no explicit page-level closure contract for every create-field combination | 4 | Matrix test or doc table: field → validation → API called? | Yes | `ProductCategoryPnlPage.test.tsx`, checklist |
 | 4 | long copy/UX for validation beyond the two primary empty-payload cases is not exhaustively specified | 1 | Approve validation messages and edge-case rules | No | Page copy + tests once approved |
 | 5 | product rationale for two independent sort controls … narrative gap | 1 | Document product “why” for dual sort vs single model | No | `docs/pnl/…` (ADR or truth contract) |
 | 5 | broader stale/failure matrix (partial degradation, export vs list under error, main-page list parity) | 4 | Add tests/docs for each matrix cell once behaviors are defined | Partially | Audit + main page tests, checklist |
 | 6 | backend/global UTF-8 BOM policy for generated CSV not specified | 2 | Record server BOM rule; align tests | No | Backend export + `docs/pnl/…` |
 | 6 | no frozen behavior for very large exports | 2 | Define limits/streaming/timeouts; implement + test | No | Backend route + flow tests |
-| 6 | no explicit e2e contract that UI money strings equal CSV in every cell | 4 | Golden or integration test comparing rendered vs export sample | Yes (given fixtures) | `GS-PROD-CAT-PNL-A/` or dedicated test |
+| 6 | no explicit e2e contract that UI money strings equal CSV in every cell | 4 | New fixture-scoped rendered-row vs export-row assertion is complete; broader golden/integration coverage waits for a governed sample that defines more cells | Partially complete | `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`, optionally `GS-PROD-CAT-PNL-A/` later |
 | 7 | no confirmation modal for destructive revoke | 1 | Decide if friction is required | No | `ProductCategoryPnlPage.tsx`, audit page, tests |
 | 8 | no standalone outward `as_of_date` from the API | 2 | Same as Unit 1 `as_of_date` gap | No | Backend + truth docs |
 | 8 | fuller stale/refresh/cross-endpoint UX contract … not yet frozen | 4 | Spec matrix (states × surfaces); then tests | Partially | `docs/pnl/…`, frontend tests |
-| 9 | exhaustive column × row matrix not page-frozen | 4 | Expand tests after Unit 2 metric approval | Yes (given metrics) | Model + page tests |
-| 9 | test rows tied to mock `category_id` / `side`, not cross-domain inference | 4 | Add fixture-driven cases when domain catalog is stable | Yes | `productCategoryPnlPageModel.test.ts`, mocks |
+| 9 | exhaustive column × row matrix not page-frozen | 4 | GS-backed narrow row/field matrix is complete; expand tests only after Unit 2 metric approval | Partially complete | Model + page tests |
+| 9 | test rows tied to mock `category_id` / `side`, not cross-domain inference | 4 | GS-backed `repo_assets` / `repo_liabilities` cases are complete; add broader fixture cases only when domain catalog evidence is stable | Partially complete | `productCategoryPnlPageModel.test.ts`, mocks |
 | 10 | scenario is companion probe, not second full golden matrix sample | 4 | Add `GS-…` scenario pack or extend assertions | Yes | `tests/golden_samples/`, `product-category-golden-sample-a.md` |
 | 10 | full-repo golden/e2e uneven (process-wide) | 5 | Track outside product-category closure; don’t block unit closure on it | Yes | Repo CI docs (if any); not this branch |
 | 10 | exhaustive page assertion ↔ pure helper pairing not claimed | 4 | Optionally add traceability table in docs | Yes | This file or checklist Unit 10 |
@@ -44,9 +43,9 @@ Each row is one blocker. **Class** is the primary owner type.
 | 1 Product decision | 7 |
 | 2 Backend/API contract | 5 |
 | 3 Frontend implementation | 0 |
-| 4 Evidence/test/documentation | 9 |
+| 4 Evidence/test/documentation | 8 |
 | 5 Out of scope (this branch) | 1 |
-| **Total blockers** | **22** |
+| **Total blockers** | **21** |
 
 *Note:* Class 3 is empty as written: open items are either policy/API (1–2), evidence (4), or explicitly deferred (5). Frontend code changes follow after 1/2/4 clarify.
 
@@ -81,6 +80,9 @@ It is not permission to invent metric definitions, API fields, or product copy.
 - Unit 10 page-to-helper traceability: `docs/pnl/product-category-closure-checklist.md`
 - Unit 9 fixture-driven row matrix: `docs/pnl/product-category-closure-checklist.md`
 - Unit 6 CSV precision scope note: `docs/pnl/product-category-closure-checklist.md`
+- Unit 6 fixture-scoped UI-to-CSV parity: `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` and `docs/pnl/product-category-closure-checklist.md`
+- Unit 9 GS-backed row/field matrix: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` and `docs/pnl/product-category-closure-checklist.md`
+- Unit 4 backend validation error-shape evidence: `tests/test_product_category_pnl_flow.py` and `docs/pnl/product-category-closure-checklist.md`
 - governance regression tests: `tests/test_governance_doc_contract.py` and `tests/test_golden_samples_capture_ready.py`
 
 ## Blockers that need user/product decision (Class 1)
@@ -94,6 +96,4 @@ It is not permission to invent metric definitions, API fields, or product copy.
 
 ## Next cursor-safe tasks
 
-1. **Unit 6 UI-to-CSV every-cell comparison:** add fixture-driven rendered-UI-vs-export assertions only if the fixture defines both surfaces. Do not invent backend BOM or large-export policy.
-2. **Unit 9 broader fixture expansion:** add more row fixtures only after domain catalog evidence is stable. Do not infer from adjacent holdings domains.
-3. **Unit 8 final stale UX copy:** implement only after product approves fallback-date policy, timeout wording, and severity copy.
+No remaining cursor-safe P0 task is ready without product/API input. Next work should start from the decision-required blockers above, especially fallback-date semantics, outward `as_of_date`, detail `metric_id` expansion, refresh timeout/stale copy, Unit 4 extended validation copy, dual-sort rationale, and revoke confirmation policy.

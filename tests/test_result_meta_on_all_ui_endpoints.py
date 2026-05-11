@@ -140,6 +140,7 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
         ("/ui/balance-movement-analysis/dates", {}),
         ("/ui/balance-analysis/dates", {}),
         ("/ui/preview/macro-foundation", {}),
+        ("/ui/macro/toolkit/adversarial-signal", {}),
         ("/ui/macro/choice-series/latest", {}),
         ("/ui/market-data/fx/formal-status", {}),
         ("/ui/market-data/fx/analytical", {}),

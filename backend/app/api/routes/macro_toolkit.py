@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-import contextlib
-import io
-import os
-import subprocess
-import sys
 import uuid
 from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime, timedelta
@@ -16,6 +11,7 @@ import pandas as pd
 from backend.app.core_finance.macro import (
     analyze_cross_market_linkage,
     compute_credit_spread_risk,
+    compute_crisis_score_payload,
     compute_economic_cycle,
     compute_leading_indicator,
     compute_liquidity_stress_test,
@@ -39,35 +35,20 @@ from backend.app.core_finance.macro.toolkit import DEFAULT_DATA_SOURCES
 from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
 from backend.app.core_finance.macro.toolkit.runner import (
     OMITTED_SOURCE_SCRIPTS,
-    PROJECT_ROOT,
     TOOLKIT_ROOT,
     MacroToolkitScript,
-    get_toolkit_script,
     iter_toolkit_scripts,
-    run_toolkit_script,
 )
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
-from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
-from backend.app.security.auth_context import AuthContext, get_auth_context
-from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
-from backend.app.tasks.choice_stock_materialize import (
-    materialize_choice_stock_factor_snapshot,
-    materialize_choice_stock_inputs,
-)
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
+from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
+from backend.app.services.formal_result_runtime import build_result_envelope
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
-
-CHOICE_STOCK_REFRESH_JOB_NAME = "choice_stock_refresh"
-CHOICE_STOCK_REFRESH_CACHE_KEY = "choice_stock.history_and_factor_snapshot"
-CHOICE_STOCK_REFRESH_CACHE_VERSION = "choice_stock_refresh_v1"
-CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
-CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
-_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running"}
 
 _SOURCE_CHECK_ALIASES = (
     "sh000300",
@@ -147,6 +128,17 @@ _CAPABILITY_DEFINITIONS = (
         "frontend_status": "partial",
         "data_aliases": ("DR007.IB", "M0041813"),
         "next_step": "接入资产/负债期限桶，避免只用市场代理指标。",
+    },
+    {
+        "key": "crisis_score_cn",
+        "legacy_module": "Crisis",
+        "label": "Crisis Score",
+        "group": "stress",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("sh000300", "S0059760", "S0059747", "M0067855", "NH0100.NHF", "DR007.IB", "M0041653"),
+        "next_step": "Expose the migrated crisis_score_cn model in the macro analysis result cards.",
     },
     {
         "key": "cross_market_linkage",
@@ -261,11 +253,12 @@ def macro_toolkit_analysis() -> dict[str, object]:
     indicators = _analysis_indicators(settings.duckdb_path)
     indicator_by_key = {str(item["key"]): item for item in indicators}
     output_files = _output_files()
-    signal_cards = _analysis_signal_cards(indicator_by_key, output_files)
+    analysis_date = _latest_indicator_date(indicators)
     capability_results = _macro_capability_results(
         settings.duckdb_path,
-        report_date=_latest_indicator_date(indicators),
+        report_date=analysis_date,
     )
+    signal_cards = _analysis_signal_cards(indicator_by_key, output_files, capability_results)
     hit_count = sum(1 for item in indicators if item["latest_value"] is not None)
     coverage = {
         "indicator_count": len(indicators),
@@ -279,7 +272,7 @@ def macro_toolkit_analysis() -> dict[str, object]:
         "macro_toolkit.analysis",
         {
             "default_data_sources": list(DEFAULT_DATA_SOURCES),
-            "as_of_date": _latest_indicator_date(indicators),
+            "as_of_date": analysis_date,
             "conclusion": conclusion,
             "coverage": coverage,
             "indicators": indicators,
@@ -302,13 +295,38 @@ def macro_toolkit_analysis() -> dict[str, object]:
     )
 
 
+@router.get("/adversarial-signal")
+def macro_toolkit_adversarial_signal() -> dict[str, object]:
+    payload, meta = macro_adversarial_signal_service.load_macro_adversarial_signal_payload(
+        output_dir=OUTPUT_DIR
+    )
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"macro-toolkit-adversarial-signal-{uuid.uuid4().hex[:12]}",
+        result_kind="macro_toolkit.adversarial_signal",
+        cache_version="cv_macro_adversarial_signal_v1",
+        source_version=str(meta.get("source_version") or "macro_toolkit.adversarial_signal.missing"),
+        rule_version="rv_macro_adversarial_signal_v1",
+        result_payload=payload,
+        quality_flag=str(meta.get("quality_flag") or "warning"),
+        vendor_version=str(meta.get("vendor_version") or "macro_toolkit.local_csv"),
+        vendor_status=str(meta.get("vendor_status") or "vendor_unavailable"),
+        fallback_mode=str(meta.get("fallback_mode") or "none"),
+        tables_used=list(meta.get("tables_used") or []),
+        evidence_rows=int(meta.get("evidence_rows") or 0),
+        as_of_date=str(meta.get("as_of_date")) if meta.get("as_of_date") else None,
+    )
+
+
 @router.post("/cffex-member-rank/refresh")
 def macro_toolkit_refresh_cffex_member_rank(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     request: CffexMemberRankRefreshRequest | None = None,
 ) -> dict[str, object]:
     refresh_request = request or CffexMemberRankRefreshRequest()
     settings = get_settings()
-    result = materialize_cffex_member_rank(
+    _ensure_cffex_member_rank_refresh_allowed(auth, settings)
+    refresh = macro_toolkit_service.refresh_cffex_member_rank(
         duckdb_path=settings.duckdb_path,
         trade_date=refresh_request.trade_date,
         contracts=tuple(refresh_request.contracts or DEFAULT_CFFEX_CONTRACTS),
@@ -317,9 +335,12 @@ def macro_toolkit_refresh_cffex_member_rank(
     return _envelope(
         "macro_toolkit.cffex_member_rank_refresh",
         {
-            "refresh": result,
+            "refresh": refresh.payload,
             "cffex_member_rank": _cffex_member_rank_status(settings.duckdb_path),
         },
+        quality_flag=refresh.quality_flag,
+        fallback_mode=refresh.fallback_mode,
+        as_of_date=refresh.as_of_date,
     )
 
 
@@ -340,66 +361,45 @@ def macro_toolkit_refresh_choice_stock(
     as_of_date = refresh_request.as_of_date or _default_choice_stock_refresh_as_of_date(settings.duckdb_path)
     permission = _choice_stock_refresh_permission_payload(auth)
     try:
-        with acquire_lock(
-            _choice_stock_refresh_trigger_lock(as_of_date=as_of_date),
-            base_dir=settings.governance_path,
-            timeout_seconds=0.1,
-        ):
-            existing = _latest_choice_stock_inflight_refresh(settings.governance_path, as_of_date=as_of_date)
-            if existing is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Choice stock refresh already in progress for as_of_date={as_of_date}.",
-                )
-
-            queued_at = datetime.now(UTC).isoformat()
-            run_id = f"{CHOICE_STOCK_REFRESH_JOB_NAME}:{as_of_date}:{uuid.uuid4().hex[:12]}"
-            queued_payload = _choice_stock_refresh_run_payload(
-                run_id=run_id,
-                status="queued",
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                refresh_history=refresh_request.refresh_history,
-                refresh_factors=refresh_request.refresh_factors,
-                factor_max_stock_count=refresh_request.factor_max_stock_count,
-                permission=permission,
-            )
-            _append_choice_stock_refresh_run(settings.governance_path, queued_payload)
-            background_tasks.add_task(
-                _run_choice_stock_refresh_job,
-                duckdb_path=str(settings.duckdb_path),
-                catalog_path=str(settings.choice_stock_catalog_file),
-                governance_path=str(settings.governance_path),
-                run_id=run_id,
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                refresh_history=refresh_request.refresh_history,
-                refresh_factors=refresh_request.refresh_factors,
-                factor_max_stock_count=refresh_request.factor_max_stock_count,
-                permission=permission,
-            )
-            return _envelope(
-                "macro_toolkit.choice_stock_refresh",
-                {
-                    "refresh": queued_payload,
-                    "choice_stock_refresh": _choice_stock_refresh_overview(
-                        settings.duckdb_path,
-                        settings.governance_path,
-                        permission=permission,
-                    ),
-                },
-            )
-    except TimeoutError:
+        refresh = macro_toolkit_service.queue_choice_stock_refresh(
+            background_tasks=background_tasks,
+            duckdb_path=str(settings.duckdb_path),
+            catalog_path=str(settings.choice_stock_catalog_file),
+            governance_path=str(settings.governance_path),
+            as_of_date=as_of_date,
+            refresh_history=refresh_request.refresh_history,
+            refresh_factors=refresh_request.refresh_factors,
+            factor_max_stock_count=refresh_request.factor_max_stock_count,
+            permission=permission,
+        )
+    except macro_toolkit_service.MacroToolkitConflictError:
         raise HTTPException(
             status_code=409,
             detail=f"Choice stock refresh already in progress for as_of_date={as_of_date}.",
         ) from None
+    return _envelope(
+        "macro_toolkit.choice_stock_refresh",
+        {
+            "refresh": refresh.payload,
+            "choice_stock_refresh": _choice_stock_refresh_overview(
+                settings.duckdb_path,
+                settings.governance_path,
+                permission=permission,
+            ),
+        },
+        quality_flag=refresh.quality_flag,
+        fallback_mode=refresh.fallback_mode,
+        as_of_date=refresh.as_of_date,
+    )
 
 
 @router.get("/choice-stock/refresh-status")
 def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -> dict[str, object]:
     settings = get_settings()
-    status = _choice_stock_refresh_status(settings.governance_path, run_id=run_id)
+    try:
+        status = _choice_stock_refresh_status(settings.governance_path, run_id=run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _envelope(
         "macro_toolkit.choice_stock_refresh_status",
         {
@@ -410,71 +410,62 @@ def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -
 
 
 @router.post("/scripts/{name}/run")
-def macro_toolkit_run(name: str, request: MacroToolkitRunRequest | None = None) -> dict[str, object]:
+def macro_toolkit_run(
+    name: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    request: MacroToolkitRunRequest | None = None,
+) -> dict[str, object]:
     run_request = request or MacroToolkitRunRequest()
+    settings = get_settings()
+    _ensure_macro_toolkit_script_execute_allowed(auth, settings, script_name=name)
+    if run_request.argv:
+        raise HTTPException(
+            status_code=400,
+            detail="Script arguments are not allowed for HTTP macro toolkit runs.",
+        )
     try:
-        script = get_toolkit_script(name)
+        return macro_toolkit_service.run_macro_toolkit_script(
+            name=name,
+            argv=run_request.argv,
+            timeout_seconds=run_request.timeout_seconds,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    env = os.environ.copy()
-    existing_python_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (str(TOOLKIT_ROOT), str(PROJECT_ROOT), existing_python_path) if part
-    )
+
+def _ensure_cffex_member_rank_refresh_allowed(auth: AuthContext, settings: object) -> None:
     try:
-        completed = subprocess.run(
-            [sys.executable, str(script.path), *run_request.argv],
-            cwd=str(TOOLKIT_ROOT),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=run_request.timeout_seconds,
-            check=False,
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_toolkit.cffex_member_rank",
+            action="refresh",
         )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "status": "timeout",
-            "script": _script_payload(script),
-            "exit_code": None,
-            "stdout": _tail_text(exc.stdout),
-            "stderr": _tail_text(exc.stderr),
-            "output_files": _output_files(),
-            "message": f"script exceeded {run_request.timeout_seconds}s timeout",
-        }
-    except OSError as exc:
-        stdout_text, stderr_text, exit_code = _run_toolkit_script_inline(script.name, run_request.argv)
-        return {
-            "status": "completed" if exit_code == 0 else "failed",
-            "script": _script_payload(script),
-            "exit_code": exit_code,
-            "stdout": _tail_text(stdout_text),
-            "stderr": _tail_text(f"{stderr_text}\nsubprocess fallback: {exc}".strip()),
-            "output_files": _output_files(),
-        }
-    stdout_text = completed.stdout
-    stderr_text = completed.stderr
-
-    return {
-        "status": "completed" if completed.returncode == 0 else "failed",
-        "script": _script_payload(script),
-        "exit_code": completed.returncode,
-        "stdout": _tail_text(stdout_text),
-        "stderr": _tail_text(stderr_text),
-        "output_files": _output_files(),
-    }
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-def _run_toolkit_script_inline(name: str, argv: list[str]) -> tuple[str, str, int]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
+def _ensure_macro_toolkit_script_execute_allowed(
+    auth: AuthContext,
+    settings: object,
+    *,
+    script_name: str,
+) -> None:
     try:
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            run_toolkit_script(name, argv)
-    except Exception as exc:  # pragma: no cover - returned to UI as script stderr
-        stderr.write(f"\ninline runner failed: {exc}")
-        return stdout.getvalue(), stderr.getvalue(), 1
-    return stdout.getvalue(), stderr.getvalue(), 0
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_toolkit.script",
+            action="execute",
+            scope_key="script",
+            scope_value=script_name,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _script_payload(script: MacroToolkitScript) -> dict[str, object]:
@@ -601,97 +592,8 @@ def _script_warnings(cffex_status: dict[str, object]) -> list[str]:
     return ["中金所席位排名表尚未初始化；运行 CFFEX refresh 会创建正式表并用 Choice/Tushare 补齐。"]
 
 
-def _run_choice_stock_refresh_job(
-    *,
-    duckdb_path: str,
-    catalog_path: str,
-    governance_path: str,
-    run_id: str,
-    as_of_date: str,
-    queued_at: str,
-    refresh_history: bool,
-    refresh_factors: bool,
-    factor_max_stock_count: int | None,
-    permission: dict[str, object],
-) -> None:
-    started_at = datetime.now(UTC).isoformat()
-    _append_choice_stock_refresh_run(
-        governance_path,
-        _choice_stock_refresh_run_payload(
-            run_id=run_id,
-            status="running",
-            as_of_date=as_of_date,
-            queued_at=queued_at,
-            started_at=started_at,
-            refresh_history=refresh_history,
-            refresh_factors=refresh_factors,
-            factor_max_stock_count=factor_max_stock_count,
-            permission=permission,
-        ),
-    )
-    history_result: dict[str, object] | None = None
-    factor_result: dict[str, object] | None = None
-    try:
-        if refresh_history:
-            history_result = materialize_choice_stock_inputs(
-                as_of_date=as_of_date,
-                duckdb_path=duckdb_path,
-                catalog_path=catalog_path,
-            )
-        if refresh_factors:
-            factor_result = materialize_choice_stock_factor_snapshot(
-                as_of_date=as_of_date,
-                duckdb_path=duckdb_path,
-                max_stock_count=factor_max_stock_count,
-            )
-        finished_at = datetime.now(UTC).isoformat()
-        _append_choice_stock_refresh_run(
-            governance_path,
-            _choice_stock_refresh_run_payload(
-                run_id=run_id,
-                status="completed",
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                started_at=started_at,
-                finished_at=finished_at,
-                refresh_history=refresh_history,
-                refresh_factors=refresh_factors,
-                factor_max_stock_count=factor_max_stock_count,
-                history_row_count=_result_row_count(history_result),
-                factor_row_count=_result_row_count(factor_result),
-                source_version=_latest_result_field("source_version", factor_result, history_result),
-                vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
-                permission=permission,
-            ),
-        )
-    except Exception as exc:
-        finished_at = datetime.now(UTC).isoformat()
-        _append_choice_stock_refresh_run(
-            governance_path,
-            _choice_stock_refresh_run_payload(
-                run_id=run_id,
-                status="failed",
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                started_at=started_at,
-                finished_at=finished_at,
-                refresh_history=refresh_history,
-                refresh_factors=refresh_factors,
-                factor_max_stock_count=factor_max_stock_count,
-                history_row_count=_result_row_count(history_result),
-                factor_row_count=_result_row_count(factor_result),
-                source_version=_latest_result_field("source_version", factor_result, history_result),
-                vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
-                error_message=f"{type(exc).__name__}: {exc}",
-                failure_category=type(exc).__name__,
-                failure_reason=str(exc),
-                permission=permission,
-            ),
-        )
-
-
 def _append_choice_stock_refresh_run(governance_path: str | Path, payload: dict[str, object]) -> None:
-    GovernanceRepository(base_dir=governance_path).append(CACHE_BUILD_RUN_STREAM, payload)
+    macro_toolkit_service.append_choice_stock_refresh_run(governance_path, payload)
 
 
 def _choice_stock_refresh_run_payload(
@@ -714,33 +616,25 @@ def _choice_stock_refresh_run_payload(
     failure_reason: str | None = None,
     permission: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    created_at = datetime.now(UTC).isoformat()
-    return {
-        "run_id": run_id,
-        "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
-        "status": status,
-        "cache_key": CHOICE_STOCK_REFRESH_CACHE_KEY,
-        "cache_version": CHOICE_STOCK_REFRESH_CACHE_VERSION,
-        "lock": CHOICE_STOCK_REFRESH_LOCK,
-        "source_version": _optional_result_text(source_version),
-        "vendor_version": _optional_result_text(vendor_version),
-        "rule_version": CHOICE_STOCK_REFRESH_RULE_VERSION,
-        "report_date": as_of_date,
-        "queued_at": queued_at,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "error_message": error_message,
-        "failure_category": failure_category,
-        "failure_reason": failure_reason,
-        "created_at": created_at,
-        "refresh_history": refresh_history,
-        "refresh_factors": refresh_factors,
-        "factor_max_stock_count": factor_max_stock_count,
-        "history_row_count": history_row_count,
-        "factor_row_count": factor_row_count,
-        "permission": permission or _choice_stock_refresh_permission_payload(),
-        "trigger_mode": _choice_stock_refresh_trigger_mode(status),
-    }
+    return macro_toolkit_service.build_choice_stock_refresh_run_payload(
+        run_id=run_id,
+        status=status,
+        as_of_date=as_of_date,
+        queued_at=queued_at,
+        started_at=started_at,
+        finished_at=finished_at,
+        refresh_history=refresh_history,
+        refresh_factors=refresh_factors,
+        factor_max_stock_count=factor_max_stock_count,
+        history_row_count=history_row_count,
+        factor_row_count=factor_row_count,
+        source_version=source_version,
+        vendor_version=vendor_version,
+        error_message=error_message,
+        failure_category=failure_category,
+        failure_reason=failure_reason,
+        permission=permission,
+    )
 
 
 def _choice_stock_refresh_status(
@@ -748,43 +642,7 @@ def _choice_stock_refresh_status(
     *,
     run_id: str = "",
 ) -> dict[str, object]:
-    run_id_text = str(run_id or "").strip()
-    records = _choice_stock_refresh_records(governance_path)
-    if run_id_text:
-        matching = [record for record in records if str(record.get("run_id") or "") == run_id_text]
-        if not matching:
-            raise HTTPException(status_code=404, detail=f"Choice stock refresh run not found: {run_id_text}")
-        return _normalize_choice_stock_refresh_record(matching[-1])
-    if not records:
-        return {
-            "status": "idle",
-            "run_id": None,
-            "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
-            "cache_key": CHOICE_STOCK_REFRESH_CACHE_KEY,
-            "trigger_mode": "idle",
-            "permission": _choice_stock_refresh_permission_payload(),
-        }
-    return _normalize_choice_stock_refresh_record(records[-1])
-
-
-def _choice_stock_refresh_records(governance_path: str | Path) -> list[dict[str, object]]:
-    try:
-        rows = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)
-    except Exception:
-        return []
-    return [
-        row
-        for row in rows
-        if str(row.get("job_name") or "") == CHOICE_STOCK_REFRESH_JOB_NAME
-        and str(row.get("cache_key") or "") == CHOICE_STOCK_REFRESH_CACHE_KEY
-    ]
-
-
-def _choice_stock_refresh_trigger_lock(*, as_of_date: str) -> LockDefinition:
-    return LockDefinition(
-        key=f"{CHOICE_STOCK_REFRESH_LOCK}:{as_of_date}:trigger",
-        ttl_seconds=30,
-    )
+    return macro_toolkit_service.choice_stock_refresh_status(governance_path, run_id=run_id)
 
 
 def _latest_choice_stock_inflight_refresh(
@@ -792,43 +650,14 @@ def _latest_choice_stock_inflight_refresh(
     *,
     as_of_date: str,
 ) -> dict[str, object] | None:
-    by_run_id: dict[str, dict[str, object]] = {}
-    for record in _choice_stock_refresh_records(governance_path):
-        if str(record.get("report_date") or "") != as_of_date:
-            continue
-        by_run_id[str(record.get("run_id") or "")] = record
-    for record in reversed(list(by_run_id.values())):
-        if str(record.get("status") or "") in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES:
-            return record
-    return None
-
-
-def _normalize_choice_stock_refresh_record(record: dict[str, object]) -> dict[str, object]:
-    normalized = dict(record)
-    normalized["trigger_mode"] = _choice_stock_refresh_trigger_mode(str(normalized.get("status") or ""))
-    normalized.setdefault("permission", _choice_stock_refresh_permission_payload())
-    return normalized
-
-
-def _choice_stock_refresh_trigger_mode(status: str) -> str:
-    normalized = str(status or "").strip()
-    if normalized in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES:
-        return "async"
-    if normalized:
-        return "terminal"
-    return "idle"
+    return macro_toolkit_service.latest_choice_stock_inflight_refresh(
+        governance_path,
+        as_of_date=as_of_date,
+    )
 
 
 def _choice_stock_refresh_permission_payload(auth: AuthContext | None = None) -> dict[str, object]:
-    return {
-        "mode": "identity_only",
-        "allowed": True,
-        "user_id": auth.user_id if auth else None,
-        "role": auth.role if auth else None,
-        "identity_source": auth.identity_source if auth else None,
-        "resource": "choice_stock.refresh",
-        "actions": ["history", "factor_snapshot"],
-    }
+    return macro_toolkit_service.build_choice_stock_refresh_permission_payload(auth)
 
 
 def _choice_stock_refresh_overview(
@@ -837,135 +666,15 @@ def _choice_stock_refresh_overview(
     *,
     permission: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
-        "permission": permission or _choice_stock_refresh_permission_payload(),
-        "refresh": _choice_stock_refresh_status(governance_path),
-        "daily_observation": _choice_stock_daily_observation_status(duckdb_path),
-        "factor_snapshot": _choice_stock_factor_snapshot_status(duckdb_path),
-        "default_factor_max_stock_count": None,
-    }
-
-
-def _choice_stock_daily_observation_status(duckdb_path: str | Path) -> dict[str, object]:
-    path = Path(duckdb_path)
-    if not path.exists():
-        return _choice_stock_table_status("missing_database")
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _choice_stock_table_status("unreadable_database")
-    try:
-        if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
-            return _choice_stock_table_status("missing_table")
-        row = conn.execute(
-            """
-            select
-              count(*) as row_count,
-              count(distinct stock_code) as stock_count,
-              count(distinct trade_date) as trade_date_count,
-              max(trade_date) as latest_trade_date
-            from choice_stock_daily_observation
-            """
-        ).fetchone()
-    except duckdb.Error:
-        return _choice_stock_table_status("unreadable_table")
-    finally:
-        conn.close()
-    row_count = _int_or_zero(row[0] if row else 0)
-    return {
-        "materialized": row_count > 0,
-        "status": "ok" if row_count > 0 else "empty_table",
-        "row_count": row_count,
-        "stock_count": _int_or_zero(row[1] if row else 0),
-        "trade_date_count": _int_or_zero(row[2] if row else 0),
-        "latest_trade_date": str(row[3])[:10] if row and row[3] is not None else None,
-    }
-
-
-def _choice_stock_factor_snapshot_status(duckdb_path: str | Path) -> dict[str, object]:
-    path = Path(duckdb_path)
-    if not path.exists():
-        return _choice_stock_table_status("missing_database")
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _choice_stock_table_status("unreadable_database")
-    try:
-        if not _duckdb_table_exists(conn, "choice_stock_factor_snapshot"):
-            return _choice_stock_table_status("missing_table")
-        row = conn.execute(
-            """
-            select
-              count(*) as row_count,
-              count(distinct stock_code) as stock_count,
-              max(as_of_date) as as_of_date
-            from choice_stock_factor_snapshot
-            """
-        ).fetchone()
-    except duckdb.Error:
-        return _choice_stock_table_status("unreadable_table")
-    finally:
-        conn.close()
-    row_count = _int_or_zero(row[0] if row else 0)
-    return {
-        "materialized": row_count > 0,
-        "status": "ok" if row_count > 0 else "empty_table",
-        "row_count": row_count,
-        "stock_count": _int_or_zero(row[1] if row else 0),
-        "as_of_date": str(row[2])[:10] if row and row[2] is not None else None,
-    }
-
-
-def _choice_stock_table_status(status: str) -> dict[str, object]:
-    return {
-        "materialized": False,
-        "status": status,
-        "row_count": 0,
-        "stock_count": 0,
-    }
+    return macro_toolkit_service.choice_stock_refresh_overview(
+        duckdb_path,
+        governance_path,
+        permission=permission,
+    )
 
 
 def _default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
-    path = Path(duckdb_path)
-    if path.exists():
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-            try:
-                if _duckdb_table_exists(conn, "choice_stock_daily_observation"):
-                    row = conn.execute("select max(trade_date) from choice_stock_daily_observation").fetchone()
-                    if row and row[0] is not None:
-                        return str(row[0])[:10]
-            finally:
-                conn.close()
-        except duckdb.Error:
-            pass
-    return date.today().isoformat()
-
-
-def _result_row_count(result: dict[str, object] | None) -> int | None:
-    if not result:
-        return None
-    value = result.get("row_count")
-    return None if value is None else int(value)
-
-
-def _latest_result_field(
-    field_name: str,
-    *results: dict[str, object] | None,
-) -> object | None:
-    for result in results:
-        if result and result.get(field_name):
-            return result[field_name]
-    return None
-
-
-def _optional_result_text(value: object | None) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
-def _int_or_zero(value: object) -> int:
-    return int(value or 0)
+    return macro_toolkit_service.default_choice_stock_refresh_as_of_date(duckdb_path)
 
 
 def _capability_plan(duckdb_path: str | Path) -> list[dict[str, object]]:
@@ -1052,6 +761,21 @@ _WIDE_SERIES_ALIASES = (
     ("industrial_yoy", "M0000545"),
     ("credit_spread_aaa_3y", "S0059670"),
     ("dr007", "DR007.IB"),
+)
+
+_CRISIS_SCORE_INPUTS = (
+    {"field": "hs300", "label": "HS300 close", "alias": "sh000300", "warning": "HS300_MISSING"},
+    {"field": "aa_5y", "label": "AA credit yield 5Y", "alias": "S0059760", "warning": "AA_5Y_MISSING"},
+    {"field": "gov_5y", "label": "Treasury yield 5Y", "alias": "S0059747", "warning": "GOV_5Y_MISSING"},
+    {"field": "usdcny", "label": "USD/CNY", "alias": "M0067855", "warning": "USDCNY_MISSING"},
+    {"field": "nanhua", "label": "Nanhua commodity index", "alias": "NH0100.NHF", "warning": "NANHUA_MISSING"},
+    {"field": "dr007", "label": "DR007", "alias": "DR007.IB", "warning": "DR007_MISSING"},
+    {
+        "field": "reverse_repo_7d",
+        "label": "7D reverse repo",
+        "alias": "M0041653",
+        "warning": "REVERSE_REPO_7D_MISSING",
+    },
 )
 
 _CAPABILITY_INPUT_REQUIREMENTS = {
@@ -1206,6 +930,10 @@ def _macro_capability_results(
                 report_date=parsed_report_date,
                 total_assets=total_assets,
             ),
+        ),
+        "crisis_score_cn": _run_capability(
+            "crisis_score_cn",
+            lambda: _compute_crisis_score_capability(duckdb_path, parsed_report_date),
         ),
         "cross_market_linkage": _run_capability(
             "cross_market_linkage",
@@ -1638,6 +1366,76 @@ def _strategy_summary(
         "warnings": resolved_warnings,
         "result": {"data_status": data_status, **result},
     }
+
+
+def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date) -> dict[str, object]:
+    start = report_date - timedelta(days=420)
+    series_data: dict[str, list[tuple[date, float]]] = {}
+    inputs: list[dict[str, object]] = []
+    for config in _CRISIS_SCORE_INPUTS:
+        alias = str(config["alias"])
+        frame = load_series_by_alias(
+            alias,
+            start=start.isoformat(),
+            end=report_date.isoformat(),
+            duckdb_path=duckdb_path,
+        )
+        points = _frame_to_crisis_points(frame)
+        field = str(config["field"])
+        series_data[field] = points
+        latest = frame.sort_values("date").iloc[-1] if not frame.empty else None
+        latest_date = str(latest["date"])[:10] if latest is not None else None
+        latest_value = _float_or_none(latest["value"]) if latest is not None else None
+        inputs.append(
+            {
+                "field": field,
+                "label": str(config["label"]),
+                "aliases": [alias],
+                "warning": str(config["warning"]),
+                "required": True,
+                "available": bool(points),
+                "row_count": int(len(frame)),
+                "latest_date": latest_date,
+                "series_id": str(latest["series_id"]) if latest is not None else None,
+                "source": str(latest["vendor_name"]) if latest is not None else None,
+                "value": latest_value,
+            }
+        )
+
+    result = compute_crisis_score_payload(series_data, report_date=report_date)
+    missing_inputs = [
+        str(item["warning"])
+        for item in inputs
+        if item["required"] and not item["available"]
+    ]
+    warnings = [str(item) for item in result.get("warnings", []) if item]
+    for warning in missing_inputs:
+        if warning not in warnings:
+            warnings.append(warning)
+    enriched = dict(result)
+    enriched["warnings"] = warnings
+    if missing_inputs and str(enriched.get("data_status") or "").lower() == "complete":
+        enriched["data_status"] = "degraded"
+    enriched["input_evidence"] = {
+        "inputs": inputs,
+        "missing_inputs": missing_inputs,
+        "sources": _unique_sorted_texts(item.get("source") for item in inputs),
+        "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
+    }
+    return enriched
+
+
+def _frame_to_crisis_points(frame: pd.DataFrame) -> list[tuple[date, float]]:
+    points: list[tuple[date, float]] = []
+    if frame.empty:
+        return points
+    for _, row in frame.sort_values("date").iterrows():
+        sample_date = _coerce_frame_date(row.get("date"))
+        value = _float_or_none(row.get("value"))
+        if sample_date is None or value is None:
+            continue
+        points.append((sample_date, value))
+    return points
 
 
 def _run_capability(
@@ -2101,6 +1899,15 @@ def _capability_result_tone(key: str, result: dict[str, object], status: str) ->
             return "negative"
         if stress == "LOW":
             return "positive"
+    if key == "crisis_score_cn":
+        score = _float_or_none(result.get("crisis_score"))
+        if score is None:
+            return "missing"
+        if score >= 1:
+            return "negative"
+        if score < 0:
+            return "positive"
+        return "neutral"
     if key == "cross_market_linkage":
         risk = str(result.get("overall_risk") or "")
         if risk == "HIGH":
@@ -2127,6 +1934,7 @@ def _capability_result_score(key: str, result: dict[str, object]) -> float | Non
     score_fields = {
         "monetary_policy_stance": "stance_score",
         "credit_spread_risk": "risk_score",
+        "crisis_score_cn": "crisis_score",
         "leading_indicator": "lei_index",
         "liquidity_stress": "stress_score",
         "rate_turning_point": "percentile_1y",
@@ -2177,6 +1985,8 @@ def _capability_primary_metric(
         return _metric("LEI", result.get("lei_index"), "")
     if key == "liquidity_stress":
         return _metric("压力分", result.get("stress_score"), "")
+    if key == "crisis_score_cn":
+        return _metric("Crisis Score", result.get("crisis_score"), "")
     if key == "cross_market_linkage":
         return _metric("联动风险", result.get("overall_risk"), "")
     if key == "rate_turning_point":
@@ -2232,6 +2042,14 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
                 _format_evidence("stress", result.get("stress_score"), ""),
                 _format_evidence("short_gap_ratio", result.get("short_term_gap_ratio"), ""),
                 _format_evidence("negative_buckets", result.get("negative_bucket_count"), ""),
+            ]
+        )
+    if key == "crisis_score_cn":
+        return _compact_evidence(
+            [
+                _format_evidence("score", result.get("crisis_score"), ""),
+                f"regime={result.get('regime')}",
+                _format_evidence("percentile", result.get("percentile"), "%"),
             ]
         )
     if key == "cross_market_linkage":
@@ -2465,14 +2283,35 @@ def _indicator_payload(config: dict[str, str], frame: pd.DataFrame) -> dict[str,
 def _analysis_signal_cards(
     indicator_by_key: dict[str, dict[str, object]],
     output_files: list[dict[str, object]],
+    capability_results: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     cards = [
+        _crisis_score_card(capability_results),
         _liquidity_card(indicator_by_key),
         _risk_appetite_card(indicator_by_key),
         _credit_card(indicator_by_key),
         _script_output_card(output_files),
     ]
     return cards
+
+
+def _crisis_score_card(capability_results: list[dict[str, object]]) -> dict[str, object]:
+    crisis = next((item for item in capability_results if item.get("key") == "crisis_score_cn"), None)
+    if crisis is None:
+        return _signal_card("crisis_score_cn", "Crisis Score", "数据不足", "missing", None, ["Crisis Score 未接入"])
+    result = crisis.get("result") if isinstance(crisis.get("result"), dict) else {}
+    score = _float_or_none(crisis.get("score"))
+    regime = str(result.get("regime") or crisis.get("headline") or "数据不足")
+    evidence = crisis.get("evidence") if isinstance(crisis.get("evidence"), list) else []
+    warnings = crisis.get("warnings") if isinstance(crisis.get("warnings"), list) else []
+    return _signal_card(
+        "crisis_score_cn",
+        "Crisis Score",
+        regime,
+        str(crisis.get("tone") or "neutral"),
+        round(score, 2) if score is not None else None,
+        [str(item) for item in (evidence or warnings)[:3]],
+    )
 
 
 def _liquidity_card(indicator_by_key: dict[str, dict[str, object]]) -> dict[str, object]:
@@ -2619,14 +2458,14 @@ def _number(item: dict[str, object] | None, field: str) -> float | None:
     return float(item[field])
 
 
-def _tail_text(value: str | bytes | None, limit: int = 12000) -> str:
-    if value is None:
-        return ""
-    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
-    return text[-limit:]
-
-
-def _envelope(result_kind: str, result: dict[str, object]) -> dict[str, object]:
+def _envelope(
+    result_kind: str,
+    result: dict[str, object],
+    *,
+    quality_flag: str | None = None,
+    fallback_mode: str | None = None,
+    as_of_date: str | None = None,
+) -> dict[str, object]:
     generated_at = datetime.now(UTC).isoformat()
     tables_used = [
         "fact_choice_macro_daily",
@@ -2650,26 +2489,23 @@ def _envelope(result_kind: str, result: dict[str, object]) -> dict[str, object]:
         tables_used.append("choice_stock_factor_snapshot")
     if "choice_stock_refresh" in result:
         tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
-    return {
-        "result_meta": {
-            "trace_id": f"macro-toolkit-{uuid.uuid4().hex[:12]}",
-            "basis": "analytical",
-            "result_kind": result_kind,
-            "formal_use_allowed": False,
-            "source_version": "macro_toolkit_registry",
-            "vendor_version": "choice+tushare",
-            "rule_version": "rv_macro_toolkit_ui_v1",
-            "cache_version": "none",
-            "quality_flag": "ok",
-            "vendor_status": "ok",
-            "fallback_mode": "none",
-            "scenario_flag": False,
-            "generated_at": generated_at,
-            "tables_used": tables_used,
-            "evidence_rows": _evidence_rows(result),
-        },
-        "result": result,
-    }
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"macro-toolkit-{uuid.uuid4().hex[:12]}",
+        result_kind=result_kind,
+        cache_version="none",
+        source_version="macro_toolkit_registry",
+        rule_version="rv_macro_toolkit_ui_v1",
+        result_payload=result,
+        quality_flag=quality_flag or "ok",
+        vendor_version="choice+tushare",
+        vendor_status="ok",
+        fallback_mode=fallback_mode or "none",
+        tables_used=tables_used,
+        evidence_rows=_evidence_rows(result),
+        as_of_date=as_of_date,
+        generated_at=generated_at,
+    )
 
 
 def _evidence_rows(result: dict[str, object]) -> int | None:

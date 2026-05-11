@@ -350,7 +350,7 @@
 
 当前状态：
 
-- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 12 个 capture-ready 样本包。
+- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 13 个 capture-ready 样本包。
 - 该矩阵只使用本文件已有 `metric_id`，不新增或猜测产品分类指标。
 - 仍有部分样本是结构 / warning / narrative freeze，不等同于完整指标字典冻结。
 
@@ -385,6 +385,7 @@ Guardrails:
 | `GS-BAL-WORKBOOK-A` | `PAGE-BALANCE-001` / `/ui/balance-analysis/workbook` | 当前断言不冻结具体 `metric_id`；相关字典字段见 `MTR-BAL-004`~`MTR-BAL-006`, `MTR-BAL-103`~`MTR-BAL-105`, `MTR-BAL-201`~`MTR-BAL-203` | workbook `tables[].key`、`operational_sections` 与禁止 `advanced_attribution_bundle` 属结构真值 | `tests/test_balance_analysis_api.py`; `tests/test_balance_analysis_workbook_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-PNL-OVERVIEW-A` | `PAGE-PNL-001` / `/api/pnl/overview` | `MTR-PNL-001`, `MTR-PNL-002`, `MTR-PNL-003`, `MTR-PNL-004`, `MTR-PNL-005`, `MTR-PNL-101`, `MTR-PNL-102` | result_meta lineage 为 contract truth | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-PNL-DATA-A` | `PAGE-PNL-001` / `/api/pnl/data` | `MTR-PNL-001`, `MTR-PNL-002`, `MTR-PNL-003`, `MTR-PNL-004`, `MTR-PNL-005`, `MTR-PNL-103`, `MTR-PNL-104` | row shape、`formal_fi_rows` 与 `nonstd_bridge_rows` 数量为样本结构真值 | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-BOND-HEADLINE-A` | `PAGE-BOND-001` / `GET /api/bond-dashboard/headline-kpis` | 无；capture-ready 页面样本不自动批准 bond headline / risk 字段的字典级 `metric_id` 绑定 | headline DTO、环比字段、空态行为与 `result_meta` evidence 为页面 / 样本真值 | `tests/test_bond_dashboard_api_contract.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/BondDashboardPage.test.tsx` |
 | `GS-BRIDGE-A` | `PAGE-BRIDGE-001` / `/api/pnl/bridge` | `MTR-BRG-003`, `MTR-BRG-008`, `MTR-BRG-009`, `MTR-BRG-010`, `MTR-BRG-011`, `MTR-BRG-012`, `MTR-BRG-013`, `MTR-BRG-101` | 当前 phase-3 partial delivery warning 是 warning profile truth，不新增指标 | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-BRIDGE-WARN-B` | `PAGE-BRIDGE-001` / `/api/pnl/bridge` warning profile | `MTR-BRG-001`, `MTR-BRG-002`, `MTR-BRG-011`, `MTR-BRG-012`, `MTR-BRG-013` | current/prior balance fallback、`balance_diagnostics`、warning 文案为样本真值；不新增质量指标 | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-RISK-A` | `PAGE-RISK-001` / `/api/risk/tensor` | `MTR-RSK-001`, `MTR-RSK-008`, `MTR-RSK-009`, `MTR-RSK-012`, `MTR-RSK-013`, `MTR-RSK-014`, `MTR-RSK-015`, `MTR-RSK-016`, `MTR-RSK-017`, `MTR-RSK-018`, `MTR-RSK-020`, `MTR-RSK-101` | result_meta quality line 为 envelope truth | `tests/test_risk_tensor_api.py`; `tests/test_risk_tensor_service.py`; `tests/test_golden_samples_capture_ready.py` |
@@ -399,8 +400,8 @@ Guardrails:
 说明：
 
 - 绑定只使用本文件 **已定义** 且语义可追溯的 `metric_id`。
-- `BondDashboardPage.tsx` 的 Headline / `RiskIndicatorsPanel` 所用 DTO 字段名可能与 balance / risk tensor **字面相似**。`docs/page_contracts.md` 已有 **`PAGE-BOND-001`**（§13.6），但在字典主表建立与正式余额 / 风险张量等的 **可审计同源**、且 `GS-BOND-HEADLINE-A` 仍为 candidate 前，**不得**将债券驾驶舱展示字段 **升格**为新 `MTR-*` 行，也不得宣称与 `GS-RISK-A` / `GS-BOND-HEADLINE-A` 自动等价。
-- `GS-BOND-HEADLINE-A` 在 **metric 映射齐套**、存在 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前 **保持 blocked**（与 `docs/golden_sample_catalog.md` 一致）；本表不将其提升为 capture-ready。
+- `BondDashboardPage.tsx` 的 Headline / `RiskIndicatorsPanel` 所用 DTO 字段名可能与 balance / risk tensor **字面相似**。`docs/page_contracts.md` 已有 **`PAGE-BOND-001`**（§13.6），即使 `GS-BOND-HEADLINE-A` 已冻结为 capture-ready 页面样本，**仍不得**将债券驾驶舱展示字段直接 **升格**为新 `MTR-*` 行，也不得宣称与 `GS-RISK-A` / `GS-BOND-HEADLINE-A` 自动等价；字典级同源仍需单独审计。
+- `GS-BOND-HEADLINE-A` 现已存在 `tests/golden_samples/GS-BOND-HEADLINE-A/` 且已纳入 capture-ready gate；本表将其视为 **page/sample truth** 已冻结，但**不**据此批准 bond headline/risk 字段的字典级 `metric_id` 绑定。
 - **`PAGE-MKT-001` / `GAP-MKT-DATA` 补充（文档事实）**：`/market-data` 除 `getMarketDataRates` 等接线片段外，仍存在**硬编码**利率/资金/期货/成交表示意表（见 `docs/page_contracts.md` §13.8.J）；`ncd-funding-proxy` 为 **Shibor funding proxy** 而非全量 NCD 矩阵；Livermore `risk_exit` 以前端展示的后端 `unsupported_outputs` / 缺口为准；**不**在本文件新增未审批的 `MTR-*`、数值或 golden 断言。
 
 | 前端路由 | page_id | 页面 / API 证据 | 可绑定 `metric_id` | `sample_id` | 测试文件（golden gate 含 `tests/test_golden_samples_capture_ready.py` 时单列） |
@@ -408,7 +409,7 @@ Guardrails:
 | `/operations-analysis` | `PAGE-OPS-001` | `frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx` → `client.getBalanceAnalysisOverview`（`positionScope: "all"`, `currencyBasis: "CNY"`） | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | 同页 → `client.getBalanceAnalysisSummary`（分页汇总行） | `MTR-BAL-004`, `MTR-BAL-005`, `MTR-BAL-006`, `MTR-BAL-103`；请求口径 `MTR-BAL-104`, `MTR-BAL-105` | **无** 独立 capture-ready 包；与 `GS-BAL-OVERVIEW-A` 仅共享 formal 族与 `report_date` 语义，不对 summary 表做 frozen JSON 逐项锁死 | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | 同页 → `getMacroFoundation` / `getChoiceMacroLatest` / `getFxFormalStatus` / `getChoiceNewsEvents` / PnL refresh 状态 | **GAP-OPS-MACRO-FX**：市场与运营条未纳入本版字典 `MTR-*` | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
-| `/bond-dashboard` | `PAGE-BOND-001` | `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` → `getBondDashboardHeadlineKpis`；`frontend/src/features/bond-dashboard/components/HeadlineKpis.tsx`（`total_market_value`, `unrealized_pnl`, `weighted_ytm`, …） | **GAP-BOND-DASH-HL**：**页面契约已有**；Headline 与 `MTR-BAL-001` 等 formal 字段 **未建立字典级同源** | `GS-BOND-HEADLINE-A` **blocked**（无 `tests/golden_samples/GS-BOND-HEADLINE-A/`，非 capture-ready） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001` | `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` → `getBondDashboardHeadlineKpis`；`frontend/src/features/bond-dashboard/components/HeadlineKpis.tsx`（`total_market_value`, `unrealized_pnl`, `weighted_ytm`, …） | **GAP-BOND-DASH-HL**：**页面契约已有**；Headline 与 `MTR-BAL-001` 等 formal 字段 **未建立字典级同源** | `GS-BOND-HEADLINE-A` **capture-ready**（冻结 `GET /api/bond-dashboard/headline-kpis` 的页面 headline DTO；非字典级 metric 批准） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/bond-dashboard` | `PAGE-BOND-001` | 同页 → `getBondDashboardRiskIndicators`；`RiskIndicatorsPanel.tsx`（`total_market_value`, `total_dv01`, `credit_ratio`, …） | **GAP-BOND-DASH-RISK**：**页面契约已有**；与 `MTR-RSK-*`（`GS-RISK-A` / risk tensor）是否同源 **未冻结** | —（不自动继承 `GS-RISK-A`） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
@@ -428,3 +429,101 @@ Guardrails:
 - 日期：`2026-04-24`
 - 性质：docs-only first pass + capture-ready sample binding + Wave 1 工作台四路由文档绑定（§12.5）
 - 约束：仅反映当前仓库已落地指标，不代表未来所有页面或所有域已建字典
+
+## 15. 2026-05-10 Live 页面 headline KPI 补录
+
+说明：
+
+- 本节只补 12 个 live 页面当前首屏 headline KPI 的 `metric_id` 登记，不修改 `docs/page_contracts.md`、不扩 `GS-*` 样本矩阵、也不回写任何代码。
+- 本次会话未提供 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog` MCP；以下条目仅依据仓库内可读证据：`docs/page_contracts.md`、`docs/calc_rules.md`、`docs/data_contracts.md`、页面 `pages/*.tsx` / adapter / client、`backend/app/schemas/*.py`、相关 route。
+- `status=candidate` 表示页面首屏已显示、字段可追溯到 live endpoint，但 page contract / golden sample / 业务审批闭环仍未完成；因此统一保留 `pending_confirmation=true`。
+- `status=excluded` 表示当前页面虽展示该卡片，但它是过滤上下文、文本状态、workbook-local 汇总、或 analytical-only / mixed-source 说明面，不在本次补录中升格为正式 `MTR-*`。
+- 本节不会改写 §12.4 capture-ready 绑定；除 `GS-BOND-HEADLINE-A` 与已存在的 `GS-PROD-CAT-PNL-A` 外，不新增任何 `bound_sample_id`。
+
+### 15.1 页面覆盖矩阵
+
+| page | headline 处理方式 | route / bound page | sample 绑定 | 备注 |
+| --- | --- | --- | --- | --- |
+| `bond-dashboard` | 新增 4 条 `candidate`：`MTR-BOND-001`~`MTR-BOND-004` | `PAGE-BOND-001` | `GS-BOND-HEADLINE-A` | 页面 headline DTO 已 freeze，但 §12.5 仍将字典级批准视为 gap，因此保留 `pending_confirmation=true` |
+| `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `none` | 首屏当前是筛选上下文；本次只登记两个列表总数指标 |
+| `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `none` | 页面文案已明确为分析口径子视图，不提升为正式口径 |
+| `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-CONTRACT-PENDING:/ledger-pnl` | `none` | live 只读链路已接通，但缺独立 `PAGE-*` 合同 |
+| `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数；其余卡片仍受 `GAP-MKT-DATA` 约束 |
+| `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | 当前首屏实现已改为产品分类正式 PnL，和 `PAGE-OPS-001` 旧文字不一致 |
+| `cashflow-projection` | 新增 4 条 `candidate`：`MTR-CFP-001`~`MTR-CFP-004` | `PAGE-CONTRACT-PENDING:/cashflow-projection` | `none` | live 只读链路已接通，字段与 schema 可追溯 |
+| `concentration-monitor` | 新增 4 条 `candidate`：`MTR-CON-001`~`MTR-CON-004` | `PAGE-CONTRACT-PENDING:/concentration-monitor` | `none` | 首屏 4 张卡片均来自 `credit-spread-migration` 结果 |
+| `product-category-pnl` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-PROD-CAT-PNL-001` | `GS-PROD-CAT-PNL-A` | 继续只批准三条 headline metric，不扩 detail |
+| `kpi-performance` | 新增 1 条 `candidate`：`MTR-KPI-001` | `PAGE-CONTRACT-PENDING:/kpi` | `none` | summary endpoint 已存在，但页面尚未冻结独立 headline strip |
+| `team-performance` | 新增 1 条 `candidate`：`MTR-TEAM-001` | `PAGE-CONTRACT-PENDING:/team-performance` | `none` | 仅登记“已映射部室”；其余 workbook-local / text-state 卡片显式排除 |
+| `platform-config` | 新增 3 条 `candidate`：`MTR-PLT-001`~`MTR-PLT-003` | `PAGE-CONTRACT-PENDING:/platform-config` | `none` | 只登记数值型数据源摘要卡片；健康 / 环境文本卡片不升格 |
+
+### 15.2 新增 `metric_id`
+
+#### 15.2.1 `bond-dashboard`
+
+- `MTR-BOND-001` 债券持仓规模: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-dashboard/headline-kpis`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-BOND-001`; `bound_sample_id=GS-BOND-HEADLINE-A`; `pending_confirmation=true`.
+- `MTR-BOND-002` 未实现损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-dashboard/headline-kpis`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-BOND-001`; `bound_sample_id=GS-BOND-HEADLINE-A`; `pending_confirmation=true`.
+- `MTR-BOND-003` 加权到期收益率: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=signed percent; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-dashboard/headline-kpis`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-BOND-001`; `bound_sample_id=GS-BOND-HEADLINE-A`; `pending_confirmation=true`.
+- `MTR-BOND-004` 加权久期: `status=candidate`; `display_unit=年`; `precision=2`; `sign_rule=unsigned years`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-dashboard/headline-kpis`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-BOND-001`; `bound_sample_id=GS-BOND-HEADLINE-A`; `pending_confirmation=true`.
+
+#### 15.2.2 `positions`
+
+- `MTR-POS-001` 债券持仓记录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/positions/bonds`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-POS-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-POS-002` 同业持仓记录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/positions/interbank`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-POS-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.3 `average-balance`
+
+- `MTR-ADB-001` 区间日均总资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-ADB-002` 区间日均总负债: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-ADB-003` 年初至今利差: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=signed percent; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/monthly`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.4 `ledger-pnl`
+
+- `MTR-LPN-001` 核心损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/ledger-pnl`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-LPN-002` 全量损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/ledger-pnl`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-LPN-003` 净资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/ledger-pnl`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.5 `market-data`
+
+- `MTR-MKT-001` 宏观序列目录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/macro-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-MKT-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.6 `cashflow-projection`
+
+- `MTR-CFP-001` 久期缺口: `status=candidate`; `display_unit=年`; `precision=2`; `sign_rule=signed years; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/cashflow-projection`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CFP-002` 资产久期: `status=candidate`; `display_unit=年`; `precision=2`; `sign_rule=unsigned years`; `null_rule=null -> --`; `source_endpoint=GET /api/cashflow-projection`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CFP-003` 负债久期: `status=candidate`; `display_unit=年`; `precision=2`; `sign_rule=unsigned years`; `null_rule=null -> --`; `source_endpoint=GET /api/cashflow-projection`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CFP-004` 1bp 敏感度: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/cashflow-projection`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.7 `concentration-monitor`
+
+- `MTR-CON-001` 发行人 HHI 指数: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CON-002` 发行人前五集中度: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CON-003` 信用债占比: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CON-004` 评级 AA 及以下占比: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.8 `kpi-performance`
+
+- `MTR-KPI-001` 期间总得分: `status=candidate`; `display_unit=分`; `precision=2`; `sign_rule=unsigned score`; `null_rule=null -> --`; `source_endpoint=GET /api/kpi/values/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/kpi`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.9 `team-performance`
+
+- `MTR-TEAM-001` 已映射部室: `status=candidate`; `display_unit=个`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/pnl/by-business-ytd + GET /ui/pnl/product-category + page-local workbook mapping`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/team-performance`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+#### 15.2.10 `platform-config`
+
+- `MTR-PLT-001` 数据源数量: `status=candidate`; `display_unit=个`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/source-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/platform-config`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-PLT-002` 异常来源: `status=candidate`; `display_unit=个`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/source-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/platform-config`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-PLT-003` 人工复核行: `status=candidate`; `display_unit=行`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/source-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/platform-config`; `bound_sample_id=none`; `pending_confirmation=true`.
+
+### 15.3 复用、排除与对齐说明
+
+- `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 仍记录 balance overview + macro / FX strip，已与当前实现不一致。
+- `product-category-pnl`: 继续只复用已批准的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 仍不升格为更多 `MTR-*`。
+- `positions`: `区间起`、`区间止`、`业务种类`、`产品类型`、`客户搜索`、`方向/对手方` 属过滤上下文，`status=excluded`，不写入 `MTR-*`。
+- `average-balance`: 页面文案明确为“分析口径子视图，不提升为正式口径”；因此本节新增条目全部只登记为 `candidate`。
+- `market-data`: `稳定回收`、`降级可用`、`稳定最新日`、`稳定缺口`、`外汇观察分组`、`外汇观察序列`、`联动报告日` 仍是 mixed-source / analytical-only / hard-coded display surface，`status=excluded`；`PAGE-MKT-001` 仍保留 `GAP-MKT-DATA`。
+- `bond-dashboard`: 本节只补 `HeadlineKpis.tsx` 首屏 strip；`RiskIndicatorsPanel` 与资产结构等副面板仍保持页面 truth / sample truth，不在本轮升格。
+- `cashflow-projection`: `权益久期` 与 `再投资风险（12M）` 同样是 live 首屏卡片，但本轮只先登记四个更稳定的 headline KPI；其余两项可在补 page contract 时再补。
+- `team-performance`: `工作簿总得分`、`部室数量`、`证据状态` 依赖 workbook-local 指标、映射种子或文本状态，`status=excluded`；本轮只登记“已映射部室”这一条 mixed-source candidate。
+- `platform-config`: `系统状态`、`存活探测`、`简易状态`、`系统环境` 仅为 status / environment text card，`status=excluded`；本轮只登记来源摘要数值卡片。
+- `kpi-performance`: owner、period label、metric table 行数属于上下文 / 表格事实，不单列为 headline KPI；本轮只登记 `GET /api/kpi/values/summary` 可直接给出的 `期间总得分`。

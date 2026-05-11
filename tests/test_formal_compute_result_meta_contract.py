@@ -47,6 +47,74 @@ def test_build_formal_result_envelope_serializes_meta_and_result_payload():
     assert envelope["result"]["report_dates"] == ["2025-12-31"]
 
 
+def test_build_formal_result_envelope_does_not_derive_as_of_date_from_report_date():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+    meta = runtime_mod.build_formal_result_meta(
+        trace_id="tr_balance_analysis_report_date",
+        result_kind="balance-analysis.detail",
+        cache_version="cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        source_version="sv_balance_20251231",
+        rule_version="rv_balance_analysis_formal_materialize_v1",
+        vendor_version="vv_none",
+        generated_at="2026-05-10T12:00:00Z",
+    )
+
+    envelope = runtime_mod.build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={"report_date": "2025-12-31"},
+    )
+
+    assert envelope["result_meta"]["as_of_date"] is None
+
+
+def test_build_formal_result_envelope_does_not_derive_as_of_date_from_data_as_of_date():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+    meta = runtime_mod.build_formal_result_meta(
+        trace_id="tr_balance_analysis_data_as_of_date",
+        result_kind="balance-analysis.detail",
+        cache_version="cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        source_version="sv_balance_20251231",
+        rule_version="rv_balance_analysis_formal_materialize_v1",
+        vendor_version="vv_none",
+        generated_at="2026-05-10T12:00:00Z",
+    )
+
+    envelope = runtime_mod.build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={"data_as_of_date": "2026-04-30"},
+    )
+
+    assert envelope["result_meta"]["as_of_date"] is None
+
+
+def test_build_formal_result_envelope_preserves_explicit_as_of_date():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+    meta = runtime_mod.build_formal_result_meta(
+        trace_id="tr_balance_analysis_explicit_as_of_date",
+        result_kind="balance-analysis.detail",
+        cache_version="cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        source_version="sv_balance_20251231",
+        rule_version="rv_balance_analysis_formal_materialize_v1",
+        vendor_version="vv_none",
+    ).model_copy(update={"as_of_date": "2026-05-01"})
+
+    envelope = runtime_mod.build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={"report_date": "2025-12-31", "data_as_of_date": "2026-04-30"},
+    )
+
+    assert envelope["result_meta"]["as_of_date"] == "2026-05-01"
+
+
 def test_build_formal_result_meta_from_lineage_uses_lineage_and_defaults():
     runtime_mod = load_module(
         "backend.app.services.formal_result_runtime",
@@ -209,4 +277,3 @@ def test_build_formal_result_envelope_from_lineage_can_pin_default_cache_version
     assert envelope["result_meta"]["rule_version"] == "rv_pnl_manifest"
     assert envelope["result_meta"]["vendor_version"] == "vv_pnl_manifest"
     assert envelope["result"]["report_date"] == "2025-12-31"
-

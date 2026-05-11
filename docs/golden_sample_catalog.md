@@ -38,7 +38,7 @@
 
 ## 3. 第一批范围
 
-本批覆盖 `tests/golden_samples/` 下 **12** 个目录所对应的主链（含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
+本批覆盖 `tests/golden_samples/` 下 **13** 个目录所对应的主链（含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
@@ -54,7 +54,7 @@
 不纳入本批：
 
 - `/` 驾驶舱聚合页
-- `/api/bond-analytics/portfolio-headlines`（`GS-BOND-HEADLINE-A` 仍为 **blocked-by-contract-gap**）
+- `/api/bond-dashboard/headline-kpis`（`GS-BOND-HEADLINE-A` 已为 **capture-ready** 页面样本）
 - `/ui/risk/overview`
 - `/ui/home/alerts`
 - `/ui/home/contribution`
@@ -76,6 +76,7 @@ tests/golden_samples/
   GS-BAL-WORKBOOK-A/
   GS-PNL-OVERVIEW-A/
   GS-PNL-DATA-A/
+  GS-BOND-HEADLINE-A/
   GS-PROD-CAT-PNL-A/
   GS-BRIDGE-A/
   GS-BRIDGE-WARN-B/
@@ -95,7 +96,7 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
-与 `tests/test_golden_samples_capture_ready.py` 中注册的 12 个 `sample_id` 对齐（含 `GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B` 与 `GS-PROD-CAT-PNL-A`）。
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 13 个 `sample_id` 对齐（含 `GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A` 与 `GS-PROD-CAT-PNL-A`）。
 
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -103,6 +104,7 @@ tests/golden_samples/
 | `GS-BAL-WORKBOOK-A` | `/ui/balance-analysis/workbook` | `capture-ready` | `2025-12-31` | `tests/test_balance_analysis_api.py`、`tests/test_balance_analysis_workbook_contract.py` | 结构样本 |
 | `GS-PNL-OVERVIEW-A` | `/api/pnl/overview` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-PNL-DATA-A` | `/api/pnl/data` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 明细样本 |
+| `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | `2026-03-31` | `tests/test_bond_dashboard_api_contract.py`、`tests/test_golden_samples_capture_ready.py` | bond-dashboard headline 页面样本 |
 | `GS-PROD-CAT-PNL-A` | `GET /ui/pnl/product-category` | `capture-ready` | `2026-02-28` | `tests/test_product_category_pnl_flow.py`、`tests/test_golden_samples_capture_ready.py` | formal 明细/主表样本 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py`（warning profile） | `warning-profile` 样本 |
@@ -112,11 +114,11 @@ tests/golden_samples/
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | narrative 样本 |
 
-## 5.1 已在计划中、但本批延后的样本
+## 5.1 Bond dashboard headline sample status
 
-| sample_id | surface | status | 延后原因 |
+| sample_id | surface | status | 说明 |
 | --- | --- | --- | --- |
-| `GS-BOND-HEADLINE-A` | `/api/bond-analytics/portfolio-headlines` | `blocked-by-contract-gap` / **candidate** | **`PAGE-BOND-001` 专章已存在**；**直至** Headline/风险卡等在 `docs/metric_dictionary.md` 建立可冻结 `MTR-*` 同源、且本包具备 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前，不提升为与 Batch A 同级的“主包就绪”样本（**当前无该目录**） |
+| `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | 冻结 bond-dashboard 首屏 headline DTO 真值、环比字段与空态行为；**不**自动批准 `GAP-BOND-DASH-HL` 的字典级 `MTR-*` 绑定 |
 
 ## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
 
@@ -127,7 +129,7 @@ tests/golden_samples/
 | `/operations-analysis` | `PAGE-OPS-001` | `MTR-BAL-001`~`003`, `MTR-BAL-101`~`102`（overview 切片） | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | `MTR-BAL-004`~`006`, `MTR-BAL-103`；筛选口径 `MTR-BAL-104`~`105`（summary 表） | —（无专包；不与 frozen JSON 逐项锁死） | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | —（macro / FX / news / 运营条） | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
-| `/bond-dashboard` | `PAGE-BOND-001`（见 `page_contracts` §13.6） | —（Headline / 风险卡见字典 **GAP-BOND-DASH-***；**无** capture-ready 黄金包目录） | `GS-BOND-HEADLINE-A` **仍为 blocked-by-contract-gap**（无 `tests/golden_samples/GS-BOND-HEADLINE-A/`） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001`（见 `page_contracts` §13.6） | —（Headline / 风险卡见字典 **GAP-BOND-DASH-***；字典级 metric 同源仍待单独批准） | `GS-BOND-HEADLINE-A` **capture-ready**（冻结 `GET /api/bond-dashboard/headline-kpis`；非 `MTR-*` 批准） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/positions` | `PAGE-POS-001`（见 §13.7） | —（**GAP-POS-LIST**：`MTR-*` / 样本仍未钉死） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
@@ -476,7 +478,7 @@ tests/golden_samples/
 
 ## 9. 当前结论
 
-仓库中已有 **12** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类与两类 warning profile）；治理重点转为：**契约/字典/冻结 JSON 一致性**。
+仓库中已有 **13** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类与两类 warning profile）；治理重点转为：**契约/字典/冻结 JSON 一致性**。
 
 因此下一步是维护与对账，而不是再扩张“计划-only”文档：
 

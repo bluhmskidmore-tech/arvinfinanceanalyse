@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -46,16 +47,26 @@ def _assert_paths_equal(
         assert _extract(actual, path) == _extract(expected, path), path
 
 
+def _row_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [str(row["category_id"]) for row in rows]
+
+
+def _rows_by_category(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(row["category_id"]): row for row in rows}
+
+
 def _clear_runtime_modules() -> None:
     for name in [
         "backend.app.main",
         "backend.app.api",
+        "backend.app.api.routes.bond_dashboard",
         "backend.app.api.routes.balance_analysis",
         "backend.app.api.routes.executive",
         "backend.app.api.routes.pnl",
         "backend.app.api.routes.product_category_pnl",
         "backend.app.api.routes.risk_tensor",
         "backend.app.services.balance_analysis_service",
+        "backend.app.services.bond_dashboard_service",
         "backend.app.services.pnl_service",
         "backend.app.services.pnl_bridge_service",
         "backend.app.services.product_category_pnl_service",
@@ -146,6 +157,82 @@ def _setup_risk_warn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_risk_tensor_api.py",
     )
     module._configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch)
+
+
+def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    module = load_module(
+        "tests._golden_bond_dashboard_api",
+        "tests/test_bond_dashboard_api_contract.py",
+    )
+
+    duckdb_path = tmp_path / "bond-headline.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    repo.replace_bond_analytics_rows(
+        report_date="2026-03-30",
+        rows=[
+            module._make_bond_analytics_row(
+                report_date="2026-03-30",
+                instrument_code="RATE_PREV",
+                portfolio_name="P1",
+                asset_class_std="rate",
+                market_value=Decimal("120"),
+                ytm=Decimal("0.025"),
+                modified_duration=Decimal("3"),
+                bond_type_label="Gov",
+            ),
+            module._make_bond_analytics_row(
+                report_date="2026-03-30",
+                instrument_code="CREDIT_PREV",
+                portfolio_name="P2",
+                asset_class_std="credit",
+                market_value=Decimal("180"),
+                ytm=Decimal("0.035"),
+                modified_duration=Decimal("5"),
+                bond_type_label="Credit",
+            ),
+        ],
+    )
+    repo.replace_bond_analytics_rows(
+        report_date="2026-03-31",
+        rows=[
+            module._make_bond_analytics_row(
+                report_date="2026-03-31",
+                instrument_code="RATE_CUR",
+                portfolio_name="P1",
+                asset_class_std="rate",
+                market_value=Decimal("100"),
+                ytm=Decimal("0.02"),
+                modified_duration=Decimal("2"),
+                bond_type_label="Gov",
+            ),
+            module._make_bond_analytics_row(
+                report_date="2026-03-31",
+                instrument_code="CREDIT_CUR",
+                portfolio_name="P2",
+                asset_class_std="credit",
+                market_value=Decimal("300"),
+                ytm=Decimal("0.04"),
+                modified_duration=Decimal("6"),
+                bond_type_label="Credit",
+            ),
+            module._make_bond_analytics_row(
+                report_date="2026-03-31",
+                instrument_code="OTHER_CUR",
+                portfolio_name="P3",
+                asset_class_std="other",
+                market_value=Decimal("600"),
+                ytm=Decimal("0"),
+                modified_duration=Decimal("0"),
+                bond_type_label="Other",
+            ),
+        ],
+    )
 
 
 def _setup_exec_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -544,7 +631,46 @@ def _validate_product_category_scenario(
     assert actual["result"]["view"] == "monthly"
     assert actual["result"]["available_views"] == baseline_expected["result"]["available_views"]
     assert actual["result"]["scenario_rate_pct"] == 2.5
-    assert actual["result"]["asset_total"]["cny_ftp"] != baseline_expected["result"]["asset_total"]["cny_ftp"]
+    actual_rows = actual["result"]["rows"]
+    baseline_rows = baseline_expected["result"]["rows"]
+    assert len(actual_rows) == len(baseline_rows)
+    assert _row_ids(actual_rows) == _row_ids(baseline_rows)
+
+    scenario_row_map = _rows_by_category(actual_rows)
+    baseline_row_map = _rows_by_category(baseline_rows)
+    scenario_only_fields = {
+        "cny_ftp",
+        "foreign_ftp",
+        "cny_net",
+        "foreign_net",
+        "business_net_income",
+        "scenario_rate_pct",
+    }
+
+    for actual_row, baseline_row in zip(actual_rows, baseline_rows, strict=True):
+        assert actual_row["children"] == baseline_row["children"], actual_row["category_id"]
+        for field, value in baseline_row.items():
+            if field not in scenario_only_fields:
+                assert actual_row[field] == value, (actual_row["category_id"], field)
+        assert Decimal(str(actual_row["scenario_rate_pct"])) == Decimal("2.5"), actual_row["category_id"]
+
+    for total_key in ("asset_total", "liability_total", "grand_total"):
+        assert actual["result"][total_key] == scenario_row_map[total_key]
+
+    assert scenario_row_map["bond_investment"]["children"] == baseline_row_map["bond_investment"]["children"]
+    assert Decimal(str(scenario_row_map["bond_tpl"]["cny_ftp"])) != Decimal(str(baseline_row_map["bond_tpl"]["cny_ftp"]))
+    assert Decimal(str(scenario_row_map["bond_ac"]["cny_ftp"])) != Decimal(str(baseline_row_map["bond_ac"]["cny_ftp"]))
+    assert Decimal(str(scenario_row_map["bond_valuation_spread"]["cny_ftp"])) == Decimal(
+        str(baseline_row_map["bond_valuation_spread"]["cny_ftp"])
+    )
+    assert scenario_row_map["bond_valuation_spread"]["weighted_yield"] is None
+    assert Decimal(str(scenario_row_map["asset_total"]["cny_ftp"])) != Decimal(str(baseline_row_map["asset_total"]["cny_ftp"]))
+    assert Decimal(str(actual["result"]["liability_total"]["cny_ftp"])) != Decimal(
+        str(baseline_expected["result"]["liability_total"]["cny_ftp"])
+    )
+    assert Decimal(str(actual["result"]["grand_total"]["cny_ftp"])) != Decimal(
+        str(baseline_expected["result"]["grand_total"]["cny_ftp"])
+    )
 
 
 def _validate_bridge(actual: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -632,6 +758,33 @@ def _validate_risk_warn(actual: dict[str, Any], expected: dict[str, Any]) -> Non
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
+            ("result",),
+        ],
+    )
+
+
+def _validate_bond_headline(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("data_source",),
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result_meta", "next_drill"),
+            ("result_meta", "source_surface"),
             ("result",),
         ],
     )
@@ -740,6 +893,7 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-RISK-A": CaptureReadyCase(setup=_setup_risk, validator=_validate_risk),
     "GS-BRIDGE-WARN-B": CaptureReadyCase(setup=_setup_bridge_warn, validator=_validate_bridge_warn),
     "GS-RISK-WARN-B": CaptureReadyCase(setup=_setup_risk_warn, validator=_validate_risk_warn),
+    "GS-BOND-HEADLINE-A": CaptureReadyCase(setup=_setup_bond_headline, validator=_validate_bond_headline),
     "GS-EXEC-OVERVIEW-A": CaptureReadyCase(setup=_setup_exec_overview, validator=_validate_exec_overview),
     "GS-EXEC-PNL-ATTR-A": CaptureReadyCase(setup=_setup_exec_pnl_attr, validator=_validate_exec_pnl_attr),
     "GS-EXEC-SUMMARY-A": CaptureReadyCase(setup=_setup_exec_summary, validator=_validate_exec_summary),

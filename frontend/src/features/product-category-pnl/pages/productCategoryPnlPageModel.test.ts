@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
-import type { ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
+import type { ProductCategoryPnlPayload, ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
 
 import {
@@ -33,6 +35,13 @@ import {
   selectProductCategoryTrendReportPoints,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
+
+const GOLDEN_SAMPLE_A_RESPONSE = JSON.parse(
+  readFileSync(
+    "../tests/golden_samples/GS-PROD-CAT-PNL-A/response.json",
+    "utf8",
+  ),
+) as { result: ProductCategoryPnlPayload };
 
 function resultMeta(overrides: Partial<ResultMeta>): ResultMeta {
   return {
@@ -1585,6 +1594,72 @@ describe("productCategoryPnlPageModel", () => {
         "-123456789",
       ),
     ).toBe("-1.23");
+  });
+
+  it("freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority", () => {
+    const baselineRows = GOLDEN_SAMPLE_A_RESPONSE.result.rows.map((sampleRow) => {
+      if (sampleRow.category_id === "repo_liabilities") {
+        return {
+          ...sampleRow,
+          business_net_income: "-123456789",
+          cny_net: "-223456789",
+          cny_ftp: "-323456789",
+          weighted_yield: "1.41",
+        };
+      }
+      if (sampleRow.category_id === "repo_assets") {
+        return {
+          ...sampleRow,
+          business_net_income: "-123456789",
+          cny_net: "-223456789",
+          cny_ftp: "-323456789",
+          weighted_yield: "1.47",
+        };
+      }
+      return sampleRow;
+    });
+    const detailRows = selectProductCategoryDetailRows(baselineRows, undefined);
+    const grandTotal = selectDisplayedProductCategoryGrandTotal(
+      undefined,
+      GOLDEN_SAMPLE_A_RESPONSE.result.grand_total,
+    );
+
+    const matrix = detailRows
+      .filter((rowItem) =>
+        rowItem.category_id === "repo_assets" || rowItem.category_id === "repo_liabilities",
+      )
+      .map((rowItem) => ({
+        categoryId: rowItem.category_id,
+        side: rowItem.side,
+        businessNetIncomeDisplay: formatProductCategoryRowDisplayValue(
+          rowItem,
+          rowItem.business_net_income,
+        ),
+        cnyNetDisplay: formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_net),
+        cnyFtpDisplay: formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
+        weightedYieldDisplay: formatProductCategoryYieldValue(rowItem.weighted_yield),
+      }));
+
+    expect(matrix).toEqual([
+      {
+        categoryId: "repo_assets",
+        side: "asset",
+        businessNetIncomeDisplay: "-1.23",
+        cnyNetDisplay: "-2.23",
+        cnyFtpDisplay: "-3.23",
+        weightedYieldDisplay: "1.47",
+      },
+      {
+        categoryId: "repo_liabilities",
+        side: "liability",
+        businessNetIncomeDisplay: "1.23",
+        cnyNetDisplay: "2.23",
+        cnyFtpDisplay: "3.23",
+        weightedYieldDisplay: "1.41",
+      },
+    ]);
+    expect(detailRows.some((rowItem) => rowItem.category_id === "grand_total")).toBe(false);
+    expect(grandTotal).toBe(GOLDEN_SAMPLE_A_RESPONSE.result.grand_total);
   });
 
   it("formats nullish values as dash and passes through invalid decimal-like strings unchanged", () => {

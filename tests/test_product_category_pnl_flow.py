@@ -1600,6 +1600,55 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     get_settings.cache_clear()
 
 
+def test_manual_adjustment_create_contract_returns_422_for_backend_validation_errors(
+    tmp_path, monkeypatch
+):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    valid_payload = {
+        "report_date": "2026-02-28",
+        "operator": "DELTA",
+        "approval_status": "approved",
+        "account_code": "51402010001",
+        "currency": "CNX",
+        "account_name": "Test account",
+    }
+
+    missing_amounts = client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json=valid_payload,
+    )
+    assert missing_amounts.status_code == 422
+    assert any(
+        item["loc"] == ["body"]
+        and item["type"] == "value_error"
+        and "At least one adjustment value is required." in item["msg"]
+        for item in missing_amounts.json()["detail"]
+    )
+
+    blank_account = client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json={**valid_payload, "account_code": "", "monthly_pnl": "1"},
+    )
+    assert blank_account.status_code == 422
+    assert any(
+        item["loc"] == ["body", "account_code"]
+        and item["type"] == "string_too_short"
+        for item in blank_account.json()["detail"]
+    )
+
+    invalid_currency = client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json={**valid_payload, "currency": "USD", "monthly_pnl": "1"},
+    )
+    assert invalid_currency.status_code == 422
+    assert any(
+        item["loc"] == ["body", "currency"]
+        and item["type"] == "literal_error"
+        for item in invalid_currency.json()["detail"]
+    )
+    get_settings.cache_clear()
+
+
 def test_manual_adjustment_list_supports_exact_id_and_current_state_paging(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"

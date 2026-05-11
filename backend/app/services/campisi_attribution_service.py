@@ -114,7 +114,7 @@ def _meta_warn(result_kind: str):
     )
 
 
-def _curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
+def curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
     """将 YieldCurveRepository.fetch_curve 的 {tenor: rate_pct} 转为 campisi.py 需要的 market dict。"""
     market: dict[str, Any] = {}
     for tenor, field in _TREASURY_TENOR_MAP.items():
@@ -122,6 +122,10 @@ def _curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
         if val is not None:
             market[field] = float(val)
     return market
+
+
+# Private alias kept for backward compatibility with existing internal callers.
+_curve_to_market_dict = curve_to_market_dict
 
 
 def fetch_credit_spread_market(curve_repo: YieldCurveRepository, trade_date: str) -> dict[str, Any]:
@@ -399,7 +403,7 @@ def _is_missing(value: Any) -> bool:
         return False
 
 
-def _merge_positions(
+def merge_positions(
     rows_start: list[dict[str, Any]],
     rows_end: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -447,6 +451,10 @@ def _merge_positions(
         })
 
     return merged
+
+
+# Private alias kept for backward compatibility with existing internal callers.
+_merge_positions = merge_positions
 
 
 def _build_input_quality(

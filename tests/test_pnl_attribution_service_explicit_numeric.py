@@ -4,6 +4,8 @@ validator is defense-in-depth, not the live code path."""
 from __future__ import annotations
 
 import importlib
+from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import pytest
@@ -32,6 +34,26 @@ class _EmptyRepo:
 
     def fetch_curve(self, *_args, **_kwargs) -> dict[str, Any] | None:
         return None
+
+
+class _CampisiRepo:
+    def list_report_dates(self) -> list[str]:
+        return ["2026-01-31", "2026-01-01"]
+
+    def fetch_bond_analytics_rows(self, *, report_date: str) -> list[dict[str, Any]]:
+        return [{"instrument_code": f"BOND-{report_date}"}]
+
+    def fetch_curve(self, *_args, **_kwargs) -> dict[str, Any] | None:
+        return {"3Y": 2.5}
+
+
+@dataclass
+class _CampisiCoreResult:
+    num_days: int
+    totals: dict[str, float]
+    by_asset_class: list[dict[str, Any]]
+    by_bond: list[dict[str, Any]]
+    diagnostics: list[str]
 
 
 @pytest.fixture(autouse=True)
@@ -142,6 +164,74 @@ def test_campisi_envelope_empty():
         "selection_contribution_pct",
     ):
         _assert_numeric_dict(result[k])
+
+
+def test_campisi_envelope_adapts_core_result(monkeypatch: pytest.MonkeyPatch):
+    mod = _pnl_svc()
+    repo = _CampisiRepo()
+    calls: dict[str, Any] = {}
+
+    monkeypatch.setattr(mod, "_bond_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: repo)
+    monkeypatch.setattr(
+        mod,
+        "merge_positions",
+        lambda rows_start, rows_end: [{"bond_code": "BOND1", "market_value_start": 1000.0}],
+    )
+    monkeypatch.setattr(mod, "fetch_credit_spread_market", lambda _repo, _trade_date: {"credit_spread_aaa_3y": 50.0})
+
+    def _fake_core(**kwargs: Any) -> _CampisiCoreResult:
+        calls.update(kwargs)
+        return _CampisiCoreResult(
+            num_days=30,
+            totals={
+                "market_value_start": 1000.0,
+                "total_return": 107.0,
+                "income_return": 60.0,
+                "treasury_effect": -10.0,
+                "spread_effect": 57.0,
+                "selection_effect": 0.0,
+            },
+            by_asset_class=[
+                {
+                    "asset_class": "credit AAA",
+                    "market_value_start": 1000.0,
+                    "weight_pct": 100.0,
+                    "total_return": 107.0,
+                    "total_return_pct": 10.7,
+                    "income_return": 60.0,
+                    "income_return_pct": 6.0,
+                    "treasury_effect": -10.0,
+                    "treasury_effect_pct": -1.0,
+                    "spread_effect": 57.0,
+                    "spread_effect_pct": 5.7,
+                    "selection_effect": 0.0,
+                    "selection_effect_pct": 0.0,
+                }
+            ],
+            by_bond=[],
+            diagnostics=["BOND1: accrued interest missing"],
+        )
+
+    monkeypatch.setattr(mod, "_core_campisi", _fake_core)
+
+    env = mod.campisi_attribution_envelope(start_date="2026-01-01", end_date="2026-01-31", lookback_days=30)
+    result = env["result"]
+
+    assert calls["positions_merged"] == [{"bond_code": "BOND1", "market_value_start": 1000.0}]
+    assert calls["market_start"]["treasury_3y"] == 2.5
+    assert calls["market_end"]["credit_spread_aaa_3y"] == 50.0
+    assert calls["start_date"] == date(2026, 1, 1)
+    assert calls["end_date"] == date(2026, 1, 31)
+    assert result["num_days"] == 30
+    assert result["primary_driver"] == "mixed"
+    assert result["warnings"] == ["BOND1: accrued interest missing", mod.WARN]
+    assert result["total_income"]["raw"] == 60.0
+    assert result["total_return_pct"]["raw"] == pytest.approx(0.107)
+    assert result["total_return_pct"]["display"] == "+10.70%"
+    assert result["income_contribution_pct"]["raw"] == pytest.approx(0.560748)
+    assert result["items"][0]["category"] == "credit AAA"
+    assert result["items"][0]["weight"]["raw"] == 1.0
 
 
 def test_promote_helper_passthrough_already_promoted():

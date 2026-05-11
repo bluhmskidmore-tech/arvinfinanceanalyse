@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import inspect
 import py_compile
 import sys
 import time
+from datetime import date
 
 import duckdb
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from backend.app.core_finance.macro.crisis_score import (
+    classify_crisis_score,
+    compute_crisis_indicators,
+    compute_crisis_score,
+    compute_crisis_score_payload,
+)
+import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.core_finance.macro.toolkit import get_toolkit_script, iter_toolkit_scripts
 from backend.app.core_finance.macro.toolkit.runner import OMITTED_SOURCE_SCRIPTS, SCRIPTS_DIR, TOOLKIT_ROOT
@@ -16,7 +26,7 @@ from backend.app.core_finance.macro.toolkit.system_sources import load_series_by
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
 from backend.app.repositories.governance_repo import GovernanceRepository
-from backend.app.services import cffex_member_rank_service
+from backend.app.services import cffex_member_rank_service, macro_toolkit_service
 
 
 def test_macro_toolkit_registry_points_to_migrated_scripts() -> None:
@@ -40,6 +50,71 @@ def test_macro_toolkit_registry_points_to_migrated_scripts() -> None:
 def test_migrated_macro_toolkit_scripts_compile() -> None:
     for path in sorted(SCRIPTS_DIR.glob("*.py")):
         py_compile.compile(str(path), doraise=True)
+
+
+def test_crisis_score_payload_matches_migrated_script_formula(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    script = get_toolkit_script("crisis_score_cn")
+    spec = importlib.util.spec_from_file_location("_legacy_crisis_score_cn", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    dates = pd.date_range("2025-09-01", periods=150, freq="D")
+    hs300_values = []
+    usdcny_values = []
+    nanhua_values = []
+    gov_5y_values = []
+    aa_5y_values = []
+    dr007_values = []
+    repo_7d_values = []
+    for idx, _sample_date in enumerate(dates):
+        stress = max(0.0, (idx - 105) / 45)
+        wave = -1 if idx % 2 else 1
+        hs300_values.append(4100.0 + idx * 1.4 + wave * stress * 110.0)
+        usdcny_values.append(7.05 + idx * 0.0006 + wave * stress * 0.06)
+        nanhua_values.append(980.0 + idx * 0.9 + wave * stress * 44.0)
+        gov_5y = 2.20 + idx * 0.0004
+        gov_5y_values.append(gov_5y)
+        aa_5y_values.append(gov_5y + 0.45 + stress * 0.75)
+        dr007_values.append(1.75 + stress * 0.62)
+        repo_7d_values.append(1.72)
+
+    legacy_data = {
+        "hs300": pd.Series(hs300_values, index=dates),
+        "credit_spread": pd.Series([aa - gov for aa, gov in zip(aa_5y_values, gov_5y_values)], index=dates),
+        "usdcny": pd.Series(usdcny_values, index=dates),
+        "nanhua": pd.Series(nanhua_values, index=dates),
+        "dr007": pd.Series(dr007_values, index=dates),
+        "reverse_repo": pd.Series(repo_7d_values, index=dates),
+    }
+    series_data = {
+        "hs300": [(sample_date.date(), value) for sample_date, value in zip(dates, hs300_values)],
+        "aa_5y": [(sample_date.date(), value) for sample_date, value in zip(dates, aa_5y_values)],
+        "gov_5y": [(sample_date.date(), value) for sample_date, value in zip(dates, gov_5y_values)],
+        "usdcny": [(sample_date.date(), value) for sample_date, value in zip(dates, usdcny_values)],
+        "nanhua": [(sample_date.date(), value) for sample_date, value in zip(dates, nanhua_values)],
+        "dr007": [(sample_date.date(), value) for sample_date, value in zip(dates, dr007_values)],
+        "reverse_repo_7d": [(sample_date.date(), value) for sample_date, value in zip(dates, repo_7d_values)],
+    }
+
+    legacy_indicators = legacy.compute_indicators(legacy_data, vol_window=20)
+    indicators = compute_crisis_indicators(series_data, vol_window=20)
+    pd.testing.assert_frame_equal(indicators, legacy_indicators, check_exact=False, check_freq=False, rtol=1e-12, atol=1e-12)
+
+    legacy_score = legacy.compute_crisis_score(legacy_indicators, z_window=120)
+    score = compute_crisis_score(indicators, z_window=120, min_z_observations=60)
+    pd.testing.assert_frame_equal(score, legacy_score, check_exact=False, check_freq=False, rtol=1e-12, atol=1e-12)
+
+    latest_score = float(legacy_score["crisis_score"].dropna().iloc[-1])
+    payload = compute_crisis_score_payload(series_data, report_date=dates[-1].date())
+    assert payload["data_status"] == "complete"
+    assert payload["available_component_count"] == 5
+    assert payload["warnings"] == []
+    assert payload["crisis_score"] == round(latest_score, 4)
+    assert payload["regime"] == legacy.classify_regime(latest_score)[0]
+    for sample_score in (-0.1, 0.5, 1.5, 2.5, 3.5):
+        assert classify_crisis_score(sample_score)[0] == legacy.classify_regime(sample_score)[0]
 
 
 def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monkeypatch) -> None:
@@ -70,6 +145,60 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     assert ppi["value"].tolist() == [-2.3]
     assert m2["series_id"].tolist() == ["tushare.macro.cn_money.monthly"]
     assert m2["value"].tolist() == [8.1]
+    get_settings.cache_clear()
+
+
+def test_system_source_layer_reads_crisis_external_backfill_aliases(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into std_external_macro_daily values
+              ('NHCI.NH', 'tushare', 'macro', '2026-04-10',
+               3099.99, 'daily', 'index', 'sv_tushare_crisis',
+               'vv_tushare_index_daily', 'rv_macro_crisis_external_backfill_v1',
+               'crisis-backfill-test', 'data/raw/tushare/crisis-backfill/NHCI.NH.json',
+               current_timestamp),
+          ('legacy.wind_market_db.reverse_repo_7d', 'moss_derived', 'macro', '2026-04-11',
+               1.72, 'daily', '%', 'sv_legacy_market_db_crisis',
+               'vv_legacy_market_db', 'rv_macro_crisis_external_backfill_v1',
+               'crisis-backfill-test', 'D:/MOSS-SYSTEM-V1/data_warehouse/market.db',
+               current_timestamp)
+            """
+        )
+        conn.execute(
+            """
+            insert into external_data_catalog values
+              ('NHCI.NH', 'Nanhua commodity index (Tushare)', 'tushare',
+               'tushare_index_daily', 'macro', 'daily', 'index', 'on_demand',
+               'live_backfill', 'data/raw/tushare/crisis-backfill/NHCI.NH.json',
+               'std_external_macro_daily', 'vw_external_macro_daily',
+               'select * from std_external_macro_daily where series_id = ''NHCI.NH''',
+               'crisis-score-backfill-test', current_timestamp),
+              ('legacy.wind_market_db.reverse_repo_7d', 'Open market reverse repo 7D (legacy market DB)', 'wind_legacy_market_db',
+               'legacy_market_db', 'macro', 'daily', '%', 'legacy_backfill',
+               'local_snapshot', 'D:/MOSS-SYSTEM-V1/data_warehouse/market.db',
+               'std_external_macro_daily', 'vw_external_macro_daily',
+               'select * from std_external_macro_daily where series_id = ''legacy.wind_market_db.reverse_repo_7d''',
+               'crisis-score-backfill-test', current_timestamp)
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    nanhua = load_series_by_alias("NH0100.NHF")
+    reverse_repo = load_series_by_alias("M0041653", start="2026-04-11")
+
+    assert nanhua["series_id"].tolist() == ["NHCI.NH"]
+    assert nanhua["vendor_name"].tolist() == ["tushare"]
+    assert nanhua["value"].tolist() == [3099.99]
+    assert reverse_repo["series_id"].tolist() == ["legacy.wind_market_db.reverse_repo_7d"]
+    assert reverse_repo["vendor_name"].tolist() == ["moss_derived"]
+    assert reverse_repo["value"].tolist() == [1.72]
     get_settings.cache_clear()
 
 
@@ -228,6 +357,7 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert payload["result"]["conclusion"]["stance"]
     assert payload["result"]["coverage"]["hit_count"] >= 6
     assert {item["key"] for item in payload["result"]["signal_cards"]} == {
+        "crisis_score_cn",
         "liquidity",
         "risk_appetite",
         "credit",
@@ -240,6 +370,7 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "credit_spread_risk",
         "leading_indicator",
         "liquidity_stress",
+        "crisis_score_cn",
         "cross_market_linkage",
         "rate_turning_point",
         "economic_cycle",
@@ -345,6 +476,34 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
 
 
+def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_crisis_score_history(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    crisis = next(item for item in payload["capability_results"] if item["key"] == "crisis_score_cn")
+    assert crisis["status"] == "complete"
+    assert crisis["primary_metric"]["label"] == "Crisis Score"
+    assert crisis["result"]["available_component_count"] == 5
+    assert crisis["result"]["crisis_score"] >= 1
+    assert "fact_choice_macro_daily" in response.json()["result_meta"]["tables_used"]
+
+    signal = next(item for item in payload["signal_cards"] if item["key"] == "crisis_score_cn")
+    assert signal["tone"] == "negative"
+
+
 def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_factor(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -422,8 +581,6 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     get_settings.cache_clear()
-
-    route_globals = _macro_toolkit_refresh_endpoint().__globals__
     calls: list[tuple[str, dict[str, object]]] = []
 
     def fake_materialize_choice_stock_inputs(**kwargs: object) -> dict[str, object]:
@@ -446,9 +603,9 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
             "vendor_version": "vv_factor",
         }
 
-    monkeypatch.setitem(route_globals, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
-    monkeypatch.setitem(
-        route_globals,
+    monkeypatch.setattr(macro_toolkit_service, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
+    monkeypatch.setattr(
+        macro_toolkit_service,
         "materialize_choice_stock_factor_snapshot",
         fake_materialize_choice_stock_factor_snapshot,
     )
@@ -512,10 +669,9 @@ def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monke
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     get_settings.cache_clear()
-    route_globals = _macro_toolkit_refresh_endpoint().__globals__
     GovernanceRepository(base_dir=governance_path).append(
-        route_globals["CACHE_BUILD_RUN_STREAM"],
-        route_globals["_choice_stock_refresh_run_payload"](
+        macro_toolkit_service.CACHE_BUILD_RUN_STREAM,
+        macro_toolkit_service.build_choice_stock_refresh_run_payload(
             run_id="choice_stock_refresh:2026-04-30:existing",
             status="running",
             as_of_date="2026-04-30",
@@ -542,12 +698,53 @@ def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monke
     assert response.json()["detail"] == "Choice stock refresh already in progress for as_of_date=2026-04-30."
 
 
-def _macro_toolkit_refresh_endpoint():
-    return next(
-        route.endpoint
-        for route in macro_toolkit_router.routes
-        if getattr(route.endpoint, "__name__", "") == "macro_toolkit_refresh_choice_stock"
+def test_macro_toolkit_routes_delegate_high_risk_orchestration() -> None:
+    source_expectations = {
+        "macro_toolkit_run": ["subprocess.run", "run_toolkit_script(", "sys.executable"],
+        "macro_toolkit_refresh_cffex_member_rank": ["materialize_cffex_member_rank("],
+        "macro_toolkit_refresh_choice_stock": ["acquire_lock(", "add_task(", "materialize_choice_stock"],
+    }
+    for endpoint in macro_toolkit_router.routes:
+        name = getattr(endpoint.endpoint, "__name__", "")
+        if name not in source_expectations:
+            continue
+        source = inspect.getsource(endpoint.endpoint)
+        for forbidden in source_expectations[name]:
+            assert forbidden not in source, f"{name} should delegate {forbidden}"
+
+
+def test_macro_toolkit_cffex_refresh_uses_service_meta_overrides(monkeypatch) -> None:
+    monkeypatch.setattr(macro_toolkit_route, "_ensure_cffex_member_rank_refresh_allowed", lambda *_args, **_kwargs: None)
+
+    def fake_refresh_cffex_member_rank(**_kwargs: object) -> macro_toolkit_service.MacroToolkitActionResult:
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={"trade_date": "2026-04-10", "row_count": 0, "sources": ["choice"]},
+            quality_flag="warning",
+            fallback_mode="latest_snapshot",
+            as_of_date="2026-04-10",
+        )
+
+    monkeypatch.setattr(macro_toolkit_service, "refresh_cffex_member_rank", fake_refresh_cffex_member_rank)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "stale", "latest_trade_date": "2026-04-10"},
     )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    response = client.post(
+        "/ui/macro/toolkit/cffex-member-rank/refresh",
+        json={"trade_date": "2026-04-10", "contracts": ["T.CFE"], "sources": ["choice"]},
+        headers={"X-User-Id": "macro-refresh-user"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert payload["result_meta"]["as_of_date"] == "2026-04-10"
 
 
 def _wait_for_choice_stock_refresh_status(
@@ -616,6 +813,7 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", lambda *_args, **_kwargs: None)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -625,6 +823,7 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
         response = client.post(
             "/ui/macro/toolkit/scripts/debug_wind/run",
             json={"timeout_seconds": 30},
+            headers={"X-User-Id": "macro-script-user"},
         )
     finally:
         get_settings.cache_clear()
@@ -970,6 +1169,47 @@ def _seed_choice_tushare_macro_db(path) -> None:
                'select * from vw_external_macro_daily where series_id = ''tushare.macro.cn_money.monthly''',
                'm2b.tushare_macro.v1', current_timestamp)
             """
+        )
+    finally:
+        conn.close()
+
+
+def _seed_crisis_score_history(path) -> None:
+    conn = duckdb.connect(str(path), read_only=False)
+    try:
+        start_date = date(2025, 12, 12)
+        rows: list[tuple[object, ...]] = []
+        for offset in range(120):
+            trade_date = (start_date + pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
+            stress = max(0.0, (offset - 89) / 30)
+            alternating = -1 if offset % 2 else 1
+            hs300 = 4100 + offset * 1.5 + alternating * stress * 140
+            usdcny = 7.05 + offset * 0.0005 + alternating * stress * 0.08
+            nanhua = 980 + offset * 0.8 + alternating * stress * 50
+            gov_5y = 2.20 + offset * 0.0005
+            aa_5y = gov_5y + 0.48 + stress * 0.80
+            dr007 = 1.75 + stress * 0.70
+            repo_7d = 1.72
+            rows.extend(
+                [
+                    ("CA.CSI300", "CSI 300 close", trade_date, hs300, "daily", "index"),
+                    ("EMM00058124", "USD/CNY spot", trade_date, usdcny, "daily", "CNY/USD"),
+                    ("NH0100.NHF", "Nanhua commodity index", trade_date, nanhua, "daily", "index"),
+                    ("legacy.yield.choice.treasury.5Y", "China treasury yield 5Y", trade_date, gov_5y, "daily", "%"),
+                    ("legacy.yield.choice.aa_credit.5Y", "China AA credit yield 5Y", trade_date, aa_5y, "daily", "%"),
+                    ("CA.DR007", "DR007", trade_date, dr007, "daily", "%"),
+                    ("M001", "Open market reverse repo 7D", trade_date, repo_7d, "daily", "%"),
+                ]
+            )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (
+              ?, ?, ?, ?, ?, ?,
+              'sv_crisis_score_test', 'vv_choice_crisis_score_test',
+              'rv_choice_macro_thin_slice_v1', 'ok', 'crisis-score-test'
+            )
+            """,
+            rows,
         )
     finally:
         conn.close()

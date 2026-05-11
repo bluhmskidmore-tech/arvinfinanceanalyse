@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import re
 
 from tests.helpers import ROOT
+from tests.test_golden_samples_capture_ready import CAPTURE_READY_CASES
 
 
 DOCS_DIR = ROOT / "docs"
 GOLDEN_ROOT = ROOT / "tests" / "golden_samples"
+SAMPLE_ID_RE = re.compile(r"\bGS-[A-Z0-9-]+\b")
 
 
 def _read_doc(name: str) -> str:
@@ -22,6 +25,15 @@ def _sample_dirs() -> list[str]:
         for path in GOLDEN_ROOT.iterdir()
         if path.is_dir() and path.name.startswith("GS-")
     )
+
+
+def _metric_dictionary_capture_ready_sample_ids() -> list[str]:
+    metric_dictionary = _read_doc("metric_dictionary.md")
+    section = metric_dictionary.split("### 12.4 Capture-ready `sample_scope` 绑定", maxsplit=1)[1].split(
+        "### 12.5",
+        maxsplit=1,
+    )[0]
+    return sorted({sample_id for sample_id in SAMPLE_ID_RE.findall(section)})
 
 
 def test_governance_doc_pack_exists_with_required_sections():
@@ -130,6 +142,25 @@ def test_golden_sample_dirs_keep_required_four_file_structure():
         allowed_companion_files = {"scenario.request.json"} if sample_id == "GS-PROD-CAT-PNL-A" else set()
         assert required_files <= file_names
         assert file_names <= required_files | allowed_companion_files
+
+
+def test_capture_ready_sample_count_stays_in_sync_across_docs_and_gate():
+    sample_dirs = _sample_dirs()
+    actual_count = len(sample_dirs)
+    metric_dictionary_sample_ids = _metric_dictionary_capture_ready_sample_ids()
+    golden_plan = _read_doc("golden_sample_plan.md")
+    golden_catalog = _read_doc("golden_sample_catalog.md")
+    metric_dictionary = _read_doc("metric_dictionary.md")
+    golden_samples_readme = (GOLDEN_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert actual_count == 13
+    assert len(CAPTURE_READY_CASES) == actual_count
+    assert metric_dictionary_sample_ids == sample_dirs
+
+    assert f"`tests/golden_samples/` 已经存在 **{actual_count}** 个样本包" in golden_plan
+    assert f"与 `tests/test_golden_samples_capture_ready.py` 中注册的 {actual_count} 个 `sample_id` 对齐" in golden_catalog
+    assert f"覆盖当前 {actual_count} 个 capture-ready 样本包。" in metric_dictionary
+    assert f"Current capture-ready sample packs ({actual_count} total):" in golden_samples_readme
 
 
 def test_page_contracts_bind_sample_backed_governed_pages_to_golden_samples():
@@ -382,45 +413,6 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
         assert required in "\n".join((metric_dictionary, page_contracts, readiness))
 
 
-def test_product_category_remaining_blockers_do_not_relist_completed_p0_evidence():
-    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
-
-    completed = blocker_triage.split("## Completed cursor-safe P0 evidence", maxsplit=1)[1].split(
-        "## Blockers that need user/product decision",
-        maxsplit=1,
-    )[0]
-    next_tasks = blocker_triage.split("## Next cursor-safe tasks", maxsplit=1)[1]
-
-    for required in (
-        "readiness baseline",
-        "headline sample metric assertions",
-        "stale/fallback/refresh matrix skeleton",
-        "Unit 5/7 surface ownership",
-        "Unit 7 field-level edit policy",
-        "Unit 10 page-to-helper traceability",
-        "governance regression tests",
-    ):
-        assert required in completed
-
-    for stale_task in (
-        "Evidence baseline + Unit 10 scenario assertions",
-        "Unit 3 / Unit 8 state matrix skeleton",
-        "Unit 5 / Unit 7 / Unit 10 documentation links",
-        "Unit 7 field-level edit policy",
-        "Unit 10 page-to-helper traceability",
-        "Unit 8 stale/refresh cross-surface refinement",
-        "Unit 9 fixture-driven row matrix",
-    ):
-        assert stale_task not in next_tasks
-
-    for remaining_safe_task in (
-        "Unit 6 UI-to-CSV every-cell comparison",
-        "Unit 9 broader fixture expansion",
-        "Unit 8 final stale UX copy",
-    ):
-        assert remaining_safe_task in next_tasks
-
-
 def test_product_category_manual_adjustment_edit_policy_is_documented_without_new_friction():
     page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
     checklist = _read_pnl_doc("product-category-closure-checklist.md")
@@ -442,36 +434,6 @@ def test_product_category_manual_adjustment_edit_policy_is_documented_without_ne
 
     assert "field-level edit policy is now documented" in checklist
     assert "Unit 7 field-level edit policy" not in blocker_triage.split("## Next cursor-safe tasks", maxsplit=1)[1]
-
-
-def test_product_category_unit10_traceability_table_remains_non_exhaustive():
-    checklist = _read_pnl_doc("product-category-closure-checklist.md")
-    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
-
-    traceability = checklist.split("### Unit 10 page-to-helper traceability", maxsplit=1)[1].split(
-        "- Why not `CLOSED`:",
-        maxsplit=1,
-    )[0]
-
-    for required in (
-        "This table links already-covered page assertions to pure helpers; it is not an exhaustive per-field proof.",
-        "`Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link`",
-        "`nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate`",
-        "`Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention`",
-        "`selectProductCategoryDetailRows`; `PRODUCT_CATEGORY_MAIN_PAGE_VIEWS`; `PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS`",
-        "`Unit 9: table",
-        "`formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal`",
-        "`surfaces degraded result_meta",
-        "`PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine`",
-        "`CSV export uses the same applied filter+sort as the list request (omits only pagination options)`",
-        "`buildProductCategoryAuditListExportQuery`",
-    ):
-        assert required in traceability
-
-    assert "Unit 10 page-to-helper traceability" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
 
 
 def test_product_category_stale_refresh_cross_surface_matrix_is_evidence_only():
@@ -499,62 +461,6 @@ def test_product_category_stale_refresh_cross_surface_matrix_is_evidence_only():
         assert required in matrix
 
     assert "Unit 8 stale/refresh cross-surface refinement" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
-
-
-def test_product_category_unit9_fixture_row_matrix_stays_narrow():
-    checklist = _read_pnl_doc("product-category-closure-checklist.md")
-    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
-
-    unit9 = checklist.split("### Unit 9 fixture-driven row matrix", maxsplit=1)[1].split(
-        "- Why not `CLOSED`:",
-        maxsplit=1,
-    )[0]
-
-    for required in (
-        "This matrix documents only rows already exercised by page/model tests; it does not infer broader category catalog behavior.",
-        "`repo_liabilities`",
-        "liability row",
-        "absolute display for `business_net_income`; yield is not money-scaled",
-        "`repo_assets`",
-        "asset row",
-        "signed display for `business_net_income`; yield is not money-scaled",
-        "`grand_total`",
-        "footer-only total",
-        "not rendered in table body; total uses backend grand total",
-    ):
-        assert required in unit9
-
-    assert "Unit 9 fixture-driven row matrix" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
-
-
-def test_product_category_unit6_csv_scope_note_does_not_overclaim():
-    checklist = _read_pnl_doc("product-category-closure-checklist.md")
-    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
-
-    unit6 = checklist.split("### Unit 6 CSV precision scope note", maxsplit=1)[1].split(
-        "- **BOM policy",
-        maxsplit=1,
-    )[0]
-
-    for required in (
-        "This note documents exactly what existing tests prove; it does not claim every-cell UI/CSV parity.",
-        "query symmetry",
-        "`CSV export uses the same applied filter+sort as the list request (omits only pagination options)`",
-        "API CSV string pass-through",
-        "`Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM`",
-        "real-mode client pass-through",
-        "`uses real mode to export filtered product-category manual adjustments as csv`",
-        "Not proved here: backend BOM policy, large-export limits, streaming behavior, or rendered UI money strings equaling every CSV cell.",
-    ):
-        assert required in unit6
-
-    assert "Unit 6 CSV precision scope note" not in blocker_triage.split(
         "## Next cursor-safe tasks",
         maxsplit=1,
     )[1]

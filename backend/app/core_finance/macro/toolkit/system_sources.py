@@ -29,16 +29,18 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "m0067855": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY", "USDCNY"),
     "usd/cny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY"),
     "usdcny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY"),
-    "m0041653": ("cn_repo_7d", "M001", "公开市场7天逆回购利率"),
-    "cn-repo-7d": ("M001", "m0041653", "公开市场7天逆回购利率"),
-    "m001": ("cn_repo_7d", "m0041653", "公开市场7天逆回购利率"),
+    "nh0100.nhf": ("NHCI.NH", "tushare.index_daily.NHCI.NH.close"),
+    "nhci.nh": ("NH0100.NHF", "tushare.index_daily.NHCI.NH.close"),
+    "m0041653": ("cn_repo_7d", "M001", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
+    "cn-repo-7d": ("M001", "m0041653", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
+    "m001": ("cn_repo_7d", "m0041653", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
     "公开市场7天逆回购利率": ("M001", "cn_repo_7d", "m0041653"),
     "m0041813": ("NCD.SHIBOR.3M", "shibor:3m"),
     "dr007.ib": ("CA.DR007", "repo_rate_query:FDR007", "DR007.IB"),
     "s0059743": ("EMM00166458", "legacy.yield.choice.treasury.1Y"),
     "s0059745": ("EMM00588704", "legacy.yield.choice.treasury.2Y"),
     "s0059746": ("EMM00166460", "legacy.yield.choice.treasury.3Y"),
-    "s0059747": ("EMM00166462", "legacy.yield.choice.treasury.5Y"),
+    "s0059747": ("EMM00166462", "legacy.yield.choice.treasury.5Y", "tushare.yc_cb.1001.CB.5Y"),
     "s0059748": ("EMM00166464", "legacy.yield.choice.treasury.7Y"),
     "s0059749": ("EMM00166466", "E1000180", "legacy.yield.choice.treasury.10Y"),
     "s0059751": ("EMM00166468", "legacy.yield.choice.treasury.20Y"),
@@ -55,7 +57,7 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "s0059670": ("legacy.yield.moss_derived.credit_spread_aaa.3Y",),
     "s0059671": ("legacy.yield.moss_derived.credit_spread_aa_plus.3Y",),
     "s0059672": ("legacy.yield.moss_derived.credit_spread_aa.3Y",),
-    "s0059760": ("legacy.yield.choice.aa_credit.5Y", "EMM00166683"),
+    "s0059760": ("legacy.yield.choice.aa_credit.5Y", "EMM00166683", "legacy.yield.wind_legacy_market_db.aa_credit.5Y"),
 }
 
 _SOURCE_PRIORITY = {
@@ -63,6 +65,7 @@ _SOURCE_PRIORITY = {
     "fx_daily_mid": 0,
     "public_bond_zh_us_rate": 0,
     "public_repo_rate_query": 0,
+    "wind_legacy_market_db": 1,
     "tushare": 1,
     "moss_derived": 2,
 }
@@ -91,7 +94,7 @@ def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFra
         frames = [
             _load_choice_frame(conn),
             _load_choice_snapshot_frame(conn),
-            _load_tushare_frame(conn),
+            _load_external_macro_frame(conn),
             _load_fx_frame(conn),
             _load_legacy_yield_curve_frame(conn),
         ]
@@ -219,7 +222,7 @@ def _load_choice_snapshot_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame
     return _normalize_frame(snapshot)
 
 
-def _load_tushare_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _load_external_macro_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "std_external_macro_daily"):
         return _empty_frame()
 
@@ -229,7 +232,7 @@ def _load_tushare_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
           series_id, vendor_name, trade_date, value_numeric, frequency, unit,
           source_version, vendor_version, rule_version, ingest_batch_id as run_id
         from std_external_macro_daily
-        where lower(vendor_name) = 'tushare'
+        where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
         """
     ).fetchdf()
     if std.empty:
@@ -242,7 +245,7 @@ def _load_tushare_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
             """
             select series_id, max(series_name) as catalog_series_name
             from external_data_catalog
-            where lower(vendor_name) = 'tushare'
+            where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
             group by series_id
             """
         ).fetchdf()

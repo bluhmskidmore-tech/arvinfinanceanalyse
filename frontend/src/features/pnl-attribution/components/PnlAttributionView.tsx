@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
-import type { Numeric } from "../../../api/contracts";
 import { FilterBar } from "../../../components/FilterBar";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type {
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
@@ -29,6 +29,12 @@ import { CampisiMaturityBucketPanel } from "./CampisiMaturityBucketPanel";
 import { PnLCompositionChart } from "./PnLCompositionChart";
 import { TPLMarketChart } from "./TPLMarketChart";
 import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
+import {
+  formatMetaDateLabel,
+  formatYiNumeric,
+  numericRaw,
+  type PnlAttributionTab,
+} from "./pnlAttributionViewModel";
 
 const shellStyle = {
   display: "flex",
@@ -90,57 +96,6 @@ const tabBarStyle = {
   alignItems: "center",
 };
 
-const metaStripStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: designTokens.space[3],
-  marginTop: designTokens.space[4],
-  padding: designTokens.space[4],
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.primary[50],
-} as const;
-
-const metaCellStyle = {
-  display: "grid",
-  gap: designTokens.space[1],
-} as const;
-
-const metaLabelStyle = {
-  fontSize: designTokens.fontSize[11],
-  fontWeight: 700,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-  color: designTokens.color.neutral[600],
-} as const;
-
-const metaValueStyle = {
-  fontSize: designTokens.fontSize[13],
-  color: designTokens.color.neutral[900],
-  lineHeight: designTokens.lineHeight.normal,
-} as const;
-
-function metaQualityLabel(value: ResultMeta["quality_flag"]) {
-  const labels: Record<ResultMeta["quality_flag"], string> = {
-    ok: "正常",
-    warning: "预警",
-    error: "错误",
-    stale: "陈旧",
-    missing: "缺失",
-  };
-  return labels[value] ?? value;
-}
-
-function fallbackModeLabel(value: ResultMeta["fallback_mode"]) {
-  if (value === "none") {
-    return "未降级";
-  }
-  if (value === "latest_snapshot") {
-    return "最新快照降级";
-  }
-  return value;
-}
-
 function tabStyle(active: boolean, variant: "default" | "advanced" = "default") {
   const base = {
     padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
@@ -166,25 +121,6 @@ function tabStyle(active: boolean, variant: "default" | "advanced" = "default") 
   };
 }
 
-function numericRaw(value: Numeric | null | undefined): number | null | undefined {
-  if (value === null || value === undefined) {
-    return undefined;
-  }
-  return value.raw ?? undefined;
-}
-
-function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "—";
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
-}
-
-function formatYiNumeric(value: Numeric | null | undefined): string {
-  return formatYi(numericRaw(value));
-}
-
 function SectionLead(props: {
   eyebrow: string;
   title: string;
@@ -200,50 +136,13 @@ function SectionLead(props: {
   );
 }
 
-function formatMetaDateLabel(
-  activeTab: Tab,
-  options: {
-    volumeRateData: VolumeRateAttributionPayload | null;
-    tplMarketData: TPLMarketCorrelationPayload | null;
-    compositionData: PnlCompositionPayload | null;
-    advancedSummary: AdvancedAttributionSummary | null;
-  },
-) {
-  if (activeTab === "volume-rate") {
-    return {
-      label: "当前期间",
-      value: options.volumeRateData?.current_period ?? "—",
-    };
-  }
-  if (activeTab === "tpl-market") {
-    const start = options.tplMarketData?.start_period;
-    const end = options.tplMarketData?.end_period;
-    return {
-      label: "观察区间",
-      value: start && end ? `${start} ~ ${end}` : "—",
-    };
-  }
-  if (activeTab === "composition") {
-    return {
-      label: "报告日期",
-      value: options.compositionData?.report_date ?? options.compositionData?.report_period ?? "—",
-    };
-  }
-  return {
-    label: "报告日期",
-    value: options.advancedSummary?.report_date ?? "—",
-  };
-}
-
-type Tab = "volume-rate" | "tpl-market" | "composition" | "advanced";
-
 type Props = {
   reportDate?: string;
 };
 
 export function PnlAttributionView({ reportDate }: Props) {
   const client = useApiClient();
-  const [activeTab, setActiveTab] = useState<Tab>("volume-rate");
+  const [activeTab, setActiveTab] = useState<PnlAttributionTab>("volume-rate");
   const [compareType, setCompareType] = useState<"mom" | "yoy">("mom");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -351,6 +250,7 @@ export function PnlAttributionView({ reportDate }: Props) {
     compositionData,
     advancedSummary,
   });
+  const currentViewMetaTitle = `${currentViewDate.label}：${currentViewDate.value}`;
   const advancedMetaRows: [string, ResultMeta | null][] =
     activeTab === "advanced"
       ? [
@@ -363,6 +263,11 @@ export function PnlAttributionView({ reportDate }: Props) {
           ["Campisi 到期桶", campisiMaturityMeta],
         ]
       : [];
+  const advancedMetaSections = advancedMetaRows.map(([title, meta], index) => ({
+    key: `advanced-${index}`,
+    title,
+    meta,
+  }));
 
   const volumeRateState: DataSectionState = derivePnlDataSectionState({
     meta: volumeRateMeta,
@@ -592,41 +497,26 @@ export function PnlAttributionView({ reportDate }: Props) {
       />
 
       {currentViewMeta ? (
-        <div data-testid="pnl-attribution-current-view-meta" style={metaStripStyle}>
-          <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>{currentViewDate.label}</span>
-            <span style={metaValueStyle}>{currentViewDate.value}</span>
-          </div>
-          <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>生成时间</span>
-            <span style={metaValueStyle}>{currentViewMeta.generated_at}</span>
-          </div>
-          <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>质量标记</span>
-            <span style={metaValueStyle}>{metaQualityLabel(currentViewMeta.quality_flag)}</span>
-          </div>
-          <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>降级模式</span>
-            <span style={metaValueStyle}>{fallbackModeLabel(currentViewMeta.fallback_mode)}</span>
-          </div>
-        </div>
+        <FormalResultMetaPanel
+          testId="pnl-attribution-current-view-meta"
+          title="当前视图结果元信息"
+          sections={[
+            {
+              key: activeTab,
+              title: currentViewMetaTitle,
+              meta: currentViewMeta,
+            },
+          ]}
+        />
       ) : null}
 
       {activeTab === "advanced" ? (
-        <div data-testid="pnl-attribution-advanced-view-meta" style={metaStripStyle}>
-          {advancedMetaRows.map(([title, meta]) => (
-            <div key={title} style={metaCellStyle}>
-              <span style={metaLabelStyle}>{title}</span>
-              <span style={metaValueStyle}>
-                {meta
-                  ? `${metaQualityLabel(meta.quality_flag)} · ${fallbackModeLabel(meta.fallback_mode)} · ${meta.generated_at}`
-                  : loading
-                    ? "加载中…"
-                    : "—"}
-              </span>
-            </div>
-          ))}
-        </div>
+        <FormalResultMetaPanel
+          testId="pnl-attribution-advanced-view-meta"
+          title="高级归因结果元信息"
+          emptyText={loading ? "加载中…" : "当前还没有可展示的高级归因元信息。"}
+          sections={advancedMetaSections}
+        />
       ) : null}
 
       {activeTab === "volume-rate" && volumeRateData && !loading && !error ? (

@@ -62,7 +62,7 @@ This first pass is based on:
 | 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates` vs empty list for PnL/adjustments/ledger; `as_of_date` gap + fallback semantics still open |
 | 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, first page-level column freeze, and three headline `metric_id` bindings exist; detail metric expansion and exhaustive detail coverage remain open |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests freeze 409/503/failed-terminal + polling + `product-category-refresh-status` in-flight line (`runPollingTask` `onUpdate`); stale-banner / timeout UX still open |
-| 4. Manual Adjustment Create | `PARTIAL` | `P0` | page-level client validation matrix (report_date / account_code / amounts / single-amount happy paths) is now frozen in tests + checklist; backend error shapes + broader copy still open |
+| 4. Manual Adjustment Create | `PARTIAL` | `P0` | page-level client validation matrix (report_date / account_code / amounts / single-amount happy paths) and backend 422 error shapes are now frozen in tests + checklist; broader copy/edge-case policy still open |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; Unit 5 list/timeline failure semantics frozen (`AsyncSection` + `product-category-audit-list-timeline-async` + `within` assertions: error + no stale rows + retry); dual-control "why" still narrative |
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | list/export query symmetry + real-mode key alignment + client + page Blob pass-through evidence; backend UTF-8 BOM policy + large export + full UI/CSV precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
@@ -142,6 +142,7 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - backend create path and read-model effect are exercised in `tests/test_product_category_pnl_flow.py`
   - page form submission is tested in `frontend/src/test/ProductCategoryPnlPage.test.tsx`
   - real-mode client serialization is tested in `frontend/src/test/ApiClient.test.ts` (full happy-path body and explicit `null` optional amount fields in JSON)
+  - backend create validation error shapes are frozen in `tests/test_product_category_pnl_flow.py` - `test_manual_adjustment_create_contract_returns_422_for_backend_validation_errors`: missing all amount fields returns HTTP 422 with `loc: ["body"]`, `type: "value_error"`, and the existing `At least one adjustment value is required.` schema message; blank `account_code` returns `loc: ["body", "account_code"]` / `type: "string_too_short"`; invalid `currency` returns `loc: ["body", "currency"]` / `type: "literal_error"`
   - **Client-side create validation matrix (implemented copy only; `product-category-manual-error`):**
 
     | Rule | Expected message | `createProductCategoryManualAdjustment` called? | Page test |
@@ -154,7 +155,6 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - after successful create, `runRefreshWorkflow` is evidenced by: one `refreshProductCategoryPnl` and a second `getProductCategoryDates` fetch (code path also `refetch`es baseline/adjustments/scenario; page test stably pins `getProductCategoryDates` initial + post-refresh)
 - Why not `CLOSED`:
   - long copy/UX for validation beyond the matrix above is not exhaustively specified
-  - backend-side validation and error shapes for create are not fully page-frozen here (frontend matrix covers `handleManualAdjustmentSubmit` guards only)
 
 ## Unit 5: Manual Adjustment List
 
@@ -186,6 +186,7 @@ Every **Why not CLOSED** bullet for Units 1-10 is classified (product vs API vs 
   - audit-page export flow is exercised in `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`
   - `buildProductCategoryAuditListExportQuery` in `ProductCategoryAdjustmentAuditPage.tsx` is the single object passed to `exportProductCategoryManualAdjustmentsCsv` and matches the list request's filter+sort options without `adjustment_limit` / `adjustment_offset` / `limit` / `offset` (see `buildProductCategoryAuditListExportQuery` + `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` in `ProductCategoryAdjustmentAuditPage.test.tsx`)
   - **Page-level CSV pass-through (no frontend numeric rewrite; no BOM prepended by the download path):** `downloadAuditCsv` in `ProductCategoryAdjustmentAuditPage.tsx` is documented as passing the API string into `Blob` as a single part without prepending a BOM (BOM in the file, if any, is defined by the server response); **`Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM`** intercepts `Blob` and asserts the string body equals the mocked `exportProductCategoryManualAdjustmentsCsv` `content` byte-for-byte (including long decimal digits) and the first code point is not U+FEFF when the mock omits a BOM
+  - **Fixture-scoped UI-to-CSV consistency:** `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` - **`Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture`** pins one current-state row fixture and asserts the same backend-owned fields visible in the rendered row (`account_code`, `account_name`, `currency`, `operator`, `approval_status`) are present in the exported CSV row for the same selected report month / filter state
   - **`frontend/src/test/ApiClient.test.ts` - `uses real mode to export filtered product-category manual adjustments as csv`:** `payload.content` is strictly `===` the `response().text` string; when that string has no leading BOM, `payload.content.codePointAt(0) !== 0xFEFF` (client does not insert a BOM in this path)
   - **`uses the same filter and sort query keys for real-mode list and export (export omits pagination only)`:** for every key present on the export URL, values match the list call; `adjustment_limit` / `adjustment_offset` / `limit` / `offset` are absent on export
 
@@ -198,6 +199,7 @@ This note documents exactly what existing tests prove; it does not claim every-c
 | query symmetry | `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` | proves filter/sort query parity only |
 | API CSV string pass-through | `Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM` | proves frontend Blob creation does not rewrite numbers or prepend BOM |
 | real-mode client pass-through | `uses real mode to export filtered product-category manual adjustments as csv` | proves `response().text` is returned as `payload.content` |
+| fixture row parity | `Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture` | proves one current-state row fixture shows the same backend strings in the UI and export; not a global every-cell guarantee |
 
 Not proved here: backend BOM policy, large-export limits, streaming behavior, or rendered UI money strings equaling every CSV cell.
 - **BOM policy (closure stance):** no governed rule is recorded for whether the **backend** CSV is UTF-8 with or without a leading BOM; the **frontend** path shown above only forwards `text()` to `content` and into `new Blob([content], ...)` without adding `\uFEFF`. Whether production exports include a BOM is **unknown** from these tests and must not be invented here.
@@ -247,6 +249,7 @@ Not proved here: backend BOM policy, large-export limits, streaming behavior, or
   - the main page is relatively disciplined and mostly renders backend-returned rows
   - display order is explicit in `ProductCategoryPnlPage.tsx`
   - liability display normalization and number formatting are centralized in `productCategoryPnlPageModel` (`formatProductCategoryRowDisplayValue`, etc.) and covered by `productCategoryPnlPageModel.test.ts` (e.g. liability vs asset sign rules, `grand_total` removed from `selectProductCategoryDetailRows`, yield vs money scaling)
+  - `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` - `freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority` loads `tests/golden_samples/GS-PROD-CAT-PNL-A/response.json` and freezes only the already-approved slice: `repo_assets` vs `repo_liabilities` use the same fixture row identities while `business_net_income`, `cny_net`, and `cny_ftp` stay asset-signed vs liability-absolute at display time; `weighted_yield` remains percent-formatted (not money-scaled); `grand_total` stays excluded from detail rows and remains sourced from `result.grand_total`
   - `frontend/src/test/ProductCategoryPnlPage.test.tsx` - `ProductCategoryPnlPage > Unit 9: table business_net_income uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)`:
     - overrides `getProductCategoryPnl` so `repo_liabilities` / `repo_assets` share the same raw yuan string for `business_net_income` (`-123456789`)
     - rendered business_net_income column (second-to-last tbody cell): liability row `1.23` (absolute), asset row `-1.23` (signed)
@@ -261,9 +264,9 @@ This matrix documents only rows already exercised by page/model tests; it does n
 
 | Fixture row | Row kind | Frozen display slice | Evidence |
 | --- | --- | --- | --- |
-| `repo_liabilities` | liability row | absolute display for `business_net_income`; yield is not money-scaled | `Unit 9: table business_net_income uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)` |
-| `repo_assets` | asset row | signed display for `business_net_income`; yield is not money-scaled | same Unit 9 page test |
-| `grand_total` | footer-only total | not rendered in table body; total uses backend grand total | same Unit 9 page test + `selectDisplayedProductCategoryGrandTotal` model test |
+| `repo_liabilities` | liability row | absolute display for `business_net_income`; yield is not money-scaled; GS-backed model test also freezes liability-absolute `cny_net` and `cny_ftp` display | `freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority` + Unit 9 page test |
+| `repo_assets` | asset row | signed display for `business_net_income`; yield is not money-scaled; GS-backed model test also freezes asset-signed `cny_net` and `cny_ftp` display | same GS-backed model test + Unit 9 page test |
+| `grand_total` | footer-only total | not rendered in table body; total uses backend grand total; GS-backed model test anchors `result.grand_total` authority | same GS-backed model test + Unit 9 page test |
 - Why not `CLOSED`:
   - exhaustive column-by-column cross-field matrix (every metric x row kind) is not page-frozen; only a minimal Unit 9 slice is evidenced
   - `category_id` / `side` in the test are taken from the existing mock's known rows (`repo_liabilities` / `repo_assets`), not inferred from other domains
@@ -302,9 +305,13 @@ This table links already-covered page assertions to pure helpers; it is not an e
 | `Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link` | `nextDefaultReportDateIfUnset`; `buildLedgerPnlHrefForReportDate` | First API date and ledger deep-link only; no fallback-date policy |
 | `Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates` | `nextDefaultReportDateIfUnset`; `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY` | Empty-list behavior only; no outward `as_of_date` |
 | `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` | `selectProductCategoryDetailRows`; `PRODUCT_CATEGORY_MAIN_PAGE_VIEWS`; `PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS` | Detail field display and view-scope split only; no new metric IDs |
+| `Unit 3: refresh shows in-flight status (queued->running), disables refresh, then records last run id` | `runPollingTask`; `formatProductCategoryRefreshStatusLine` | In-flight polling/status display only; timeout and stale-banner copy remain open |
 | `Unit 9: table business_net_income uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)` | `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal` | Minimal money/yield/footer slice only |
 | `surfaces degraded result_meta (fallback, vendor, quality) in the governance strip, not only inside the meta panel` | `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine` | Visibility of known meta fields only; final stale-banner copy remains open |
+| `keeps current and event sort controls independent and resets pagination on time-range apply/reset` | `CURRENT_QUERY_FILTER_KEYS`; `EVENT_QUERY_FILTER_KEYS`; `didFiltersChange` | Audit pagination reset and dual-sort state only; no product rationale for two sort controls |
 | `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` | `buildProductCategoryAuditListExportQuery` | Query symmetry only; no backend BOM or large-export policy |
+| `Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture` | `buildProductCategoryAuditListExportQuery`; `downloadAuditCsv` | One rendered current-state row fixture only; no global every-cell CSV parity |
+| `freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority` | `selectProductCategoryDetailRows`; `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal` | GS-backed row/field slice only; no detail `metric_id` expansion |
 - Why not `CLOSED`:
   - scenario is still a **companion probe** (`product-category-golden-sample-a.md` + ApiClient scenario test), not a second full page-level golden **matrix** sample
   - **full-repo** golden-sample / e2e verification is explicitly out of scope for this unit's evidence map; remaining unevenness is process-wide, not product-category-only

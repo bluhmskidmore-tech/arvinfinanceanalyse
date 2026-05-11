@@ -5,6 +5,8 @@ type FormalResultMetaSection = {
   key: string;
   title: string;
   meta: ResultMeta | null | undefined;
+  vendor_status?: ResultMeta["vendor_status"];
+  fallback_mode?: ResultMeta["fallback_mode"];
 };
 
 type FormalResultMetaPanelProps = {
@@ -57,11 +59,25 @@ const labelStyle = {
   textTransform: "uppercase",
 } as const;
 
-const headingStyle = {
+const cardHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 8,
   marginTop: 8,
+} as const;
+
+const headingStyle = {
   color: t.colorTextPrimary,
   fontSize: 14,
   fontWeight: 600,
+} as const;
+
+const badgeRowStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  justifyContent: "flex-end",
+  gap: 6,
 } as const;
 
 const listStyle = {
@@ -73,6 +89,18 @@ const listStyle = {
   fontSize: 13,
   lineHeight: 1.6,
 } as const;
+
+const badgeBaseStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px 8px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 600,
+  border: `1px solid ${t.colorBorderSoft}`,
+} as const;
+
+const missingAsOfDateLabel = "未提供";
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
@@ -90,10 +118,19 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function formatAsOfDate(value: ResultMeta["as_of_date"]): string {
+  if (value === null || value === undefined || value === "") {
+    return missingAsOfDateLabel;
+  }
+  return formatValue(value);
+}
+
 function formatMetaField(key: string, value: unknown): string {
   if (key === "basis") {
     if (value === "formal") return "正式口径";
     if (value === "analytical") return "分析口径";
+    if (value === "scenario") return "情景口径";
+    if (value === "ledger") return "台账口径";
   }
   if (key === "quality_flag") {
     const labels: Record<string, string> = {
@@ -101,6 +138,7 @@ function formatMetaField(key: string, value: unknown): string {
       warning: "预警",
       error: "错误",
       stale: "陈旧",
+      missing: "缺失",
     };
     if (typeof value === "string" && labels[value]) return labels[value];
   }
@@ -132,6 +170,7 @@ const metaLabelMap: Record<string, string> = {
   vendor_version: "供应商版本",
   rule_version: "规则版本",
   cache_version: "缓存版本",
+  as_of_date: "数据截至日",
   generated_at: "生成时间",
   tables_used: "使用表",
   filters_applied: "应用筛选",
@@ -146,6 +185,61 @@ function hasEvidence(meta: ResultMeta) {
     typeof meta.evidence_rows === "number" ||
     (meta.next_drill?.length ?? 0) > 0
   );
+}
+
+function badgeTone(
+  kind: "vendor_status" | "fallback_mode",
+  value: string | undefined,
+) {
+  if (kind === "vendor_status") {
+    if (value === "vendor_stale") {
+      return {
+        background: "#fff7e6",
+        color: "#ad6800",
+        borderColor: "#ffd591",
+      };
+    }
+    if (value === "vendor_unavailable") {
+      return {
+        background: "#fff1f0",
+        color: "#cf1322",
+        borderColor: "#ffa39e",
+      };
+    }
+  }
+  if (kind === "fallback_mode" && value === "latest_snapshot") {
+    return {
+      background: "#fff7e6",
+      color: "#ad6800",
+      borderColor: "#ffd591",
+    };
+  }
+  return {
+    background: "#f6ffed",
+    color: "#389e0d",
+    borderColor: "#b7eb8f",
+  };
+}
+
+function buildBadges(section: FormalResultMetaSection) {
+  const meta = section.meta;
+  const vendorStatus = section.vendor_status ?? meta?.vendor_status;
+  const fallbackMode = section.fallback_mode ?? meta?.fallback_mode;
+
+  return [
+    {
+      key: "vendor_status",
+      value: vendorStatus,
+      label: formatMetaField("vendor_status", vendorStatus),
+      title: `供应商状态：${formatMetaField("vendor_status", vendorStatus)}`,
+    },
+    {
+      key: "fallback_mode",
+      value: fallbackMode,
+      label: formatMetaField("fallback_mode", fallbackMode),
+      title: `降级模式：${formatMetaField("fallback_mode", fallbackMode)}`,
+    },
+  ].filter((badge) => typeof badge.value === "string");
 }
 
 export function FormalResultMetaPanel({
@@ -169,6 +263,10 @@ export function FormalResultMetaPanel({
         <div style={sectionGridStyle}>
           {visibleSections.map((section) => {
             const meta = section.meta!;
+            const vendorStatus = section.vendor_status ?? meta.vendor_status;
+            const fallbackMode = section.fallback_mode ?? meta.fallback_mode;
+            const badges = buildBadges(section);
+
             return (
               <article
                 key={section.key}
@@ -176,7 +274,28 @@ export function FormalResultMetaPanel({
                 style={cardStyle}
               >
                 <div style={labelStyle}>溯源</div>
-                <div style={headingStyle}>{section.title}</div>
+                <div style={cardHeaderStyle}>
+                  <div style={headingStyle}>{section.title}</div>
+                  {badges.length > 0 ? (
+                    <div style={badgeRowStyle}>
+                      {badges.map((badge) => {
+                        const tone = badgeTone(
+                          badge.key as "vendor_status" | "fallback_mode",
+                          badge.value,
+                        );
+                        return (
+                          <span
+                            key={badge.key}
+                            title={badge.title}
+                            style={{ ...badgeBaseStyle, ...tone }}
+                          >
+                            {badge.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
                 <dl style={listStyle}>
                   <dt>{metaLabelMap.basis}</dt>
                   <dd style={{ margin: 0 }}>{formatMetaField("basis", meta.basis)}</dd>
@@ -189,9 +308,9 @@ export function FormalResultMetaPanel({
                   <dt>{metaLabelMap.quality_flag}</dt>
                   <dd style={{ margin: 0 }}>{formatMetaField("quality_flag", meta.quality_flag)}</dd>
                   <dt>{metaLabelMap.vendor_status}</dt>
-                  <dd style={{ margin: 0 }}>{formatMetaField("vendor_status", meta.vendor_status)}</dd>
+                  <dd style={{ margin: 0 }}>{formatMetaField("vendor_status", vendorStatus)}</dd>
                   <dt>{metaLabelMap.fallback_mode}</dt>
-                  <dd style={{ margin: 0 }}>{formatMetaField("fallback_mode", meta.fallback_mode)}</dd>
+                  <dd style={{ margin: 0 }}>{formatMetaField("fallback_mode", fallbackMode)}</dd>
                   <dt>{metaLabelMap.trace_id}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.trace_id)}</dd>
                   <dt>{metaLabelMap.source_version}</dt>
@@ -202,6 +321,8 @@ export function FormalResultMetaPanel({
                   <dd style={{ margin: 0 }}>{formatValue(meta.rule_version)}</dd>
                   <dt>{metaLabelMap.cache_version}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.cache_version)}</dd>
+                  <dt>{metaLabelMap.as_of_date}</dt>
+                  <dd style={{ margin: 0 }}>{formatAsOfDate(meta.as_of_date)}</dd>
                   <dt>{metaLabelMap.generated_at}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.generated_at)}</dd>
                   {hasEvidence(meta) ? (

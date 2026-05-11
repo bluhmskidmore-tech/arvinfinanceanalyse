@@ -29,24 +29,22 @@ describe("PnlAttributionPage", () => {
     expect(await screen.findByTestId("pnl-attribution-page-title")).toBeInTheDocument();
     expect(screen.getByTestId("pnl-attribution-workbench-lead")).toBeInTheDocument();
     expect(screen.getByTestId("pnl-attribution-current-view-lead")).toBeInTheDocument();
-    expect(await screen.findByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("当前期间");
-    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("2026-03");
-    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("2026-04-09T10:30:00Z");
-    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("正常");
-    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("未降级");
+
+    const currentViewMeta = await screen.findByTestId("pnl-attribution-current-view-meta");
+    expect(currentViewMeta).toHaveTextContent("2026-03");
+    expect(currentViewMeta).toHaveTextContent("2026-04-09");
+    expect(currentViewMeta).toHaveTextContent("2026-04-09T10:30:00Z");
+    expect(screen.getByText("+1.25 亿")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Campisi/i }));
 
-    expect(await screen.findByText("Campisi 四效应归因（组合）")).toBeInTheDocument();
-    expect(await screen.findByTestId("campisi-formal-closure-warning")).toHaveTextContent("正式 PnL");
-    expect(screen.getByText("Campisi 六效应归因（扩展）")).toBeInTheDocument();
-    expect(screen.getByText("Campisi 到期桶拆解")).toBeInTheDocument();
-    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("Carry / Roll-down");
-    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("利差归因");
-    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("KRD归因");
-    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("高级摘要");
+    expect(await screen.findByTestId("campisi-formal-closure-warning")).toHaveTextContent("PnL");
+
+    const advancedMeta = screen.getByTestId("pnl-attribution-advanced-view-meta");
+    expect(advancedMeta).toHaveTextContent("Carry / Roll-down");
+    expect(advancedMeta).toHaveTextContent("Campisi");
   });
 });

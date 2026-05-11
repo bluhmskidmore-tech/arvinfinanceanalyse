@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import getpass
 import os
 from dataclasses import dataclass
 from typing import Annotated
@@ -10,11 +9,15 @@ from fastapi import Header
 from backend.app.governance.settings import Settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 
+DEFAULT_AUTH_USER_ID = "anonymous"
+DEFAULT_AUTH_ROLE = "viewer"
+ROLE_HEADER_TRUST_ENV = "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST"
+
 
 @dataclass(frozen=True)
 class AuthContext:
-    user_id: str = "phase1-dev-user"
-    role: str = "admin"
+    user_id: str = DEFAULT_AUTH_USER_ID
+    role: str = DEFAULT_AUTH_ROLE
     identity_source: str = "fallback"
 
 
@@ -24,11 +27,6 @@ def get_auth_context(
 ) -> AuthContext:
     header_user_id = (x_user_id or "").strip()
     env_user_id = os.environ.get("MOSS_USER_ID", "").strip()
-    system_user_id = (
-        os.environ.get("USERNAME", "").strip()
-        or os.environ.get("USER", "").strip()
-        or _safe_getpass_user()
-    )
 
     if header_user_id:
         user_id = header_user_id
@@ -36,18 +34,18 @@ def get_auth_context(
     elif env_user_id:
         user_id = env_user_id
         identity_source = "env"
-    elif system_user_id:
-        user_id = system_user_id
-        identity_source = "system"
     else:
-        user_id = AuthContext().user_id
+        user_id = DEFAULT_AUTH_USER_ID
         identity_source = "fallback"
 
-    role = (
-        (x_user_role or "").strip()
-        or os.environ.get("MOSS_USER_ROLE", "").strip()
-        or AuthContext().role
-    )
+    header_user_role = (x_user_role or "").strip()
+    env_user_role = os.environ.get("MOSS_USER_ROLE", "").strip()
+
+    if _role_header_trust_enabled() and header_user_role:
+        role = header_user_role
+    else:
+        role = env_user_role or DEFAULT_AUTH_ROLE
+
     return AuthContext(user_id=user_id, role=role, identity_source=identity_source)
 
 
@@ -76,8 +74,5 @@ def ensure_user_allowed(
     raise PermissionError(f"User is not allowed to {action} {resource}.")
 
 
-def _safe_getpass_user() -> str:
-    try:
-        return str(getpass.getuser() or "").strip()
-    except Exception:
-        return ""
+def _role_header_trust_enabled() -> bool:
+    return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}

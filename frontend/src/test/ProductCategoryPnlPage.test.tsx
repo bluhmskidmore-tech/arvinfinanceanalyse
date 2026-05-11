@@ -178,7 +178,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(metaPanel).toHaveTextContent("product_category_pnl.detail");
     expect(metaPanel).toHaveTextContent("mock_product_category_pnl.detail");
     expect(screen.getByTestId("product-category-governance-strip")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-as-of-date-gap")).toHaveTextContent(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY);
+    const asOfGap = screen.getByTestId("product-category-as-of-date-gap");
+    expect(asOfGap).toHaveTextContent(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY);
+    expect(asOfGap.textContent).not.toContain("2026-02-28");
     expect(
       screen.queryByTestId("product-category-governance-notice-fallback_mode"),
     ).not.toBeInTheDocument();
@@ -1536,7 +1538,7 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：1.60%");
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
-        "scenario",
+        "场景覆盖",
       );
     });
   });
@@ -1602,7 +1604,7 @@ describe("ProductCategoryPnlPage", () => {
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.00");
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("0.52");
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
-        "scenario",
+        "场景覆盖",
       );
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
         "是",

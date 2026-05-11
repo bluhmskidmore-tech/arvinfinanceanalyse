@@ -7,7 +7,10 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from backend.app.core_finance.pnl_attribution import workbench as pa_wb
-from backend.app.core_finance.campisi import campisi_attribution as _core_campisi
+from backend.app.core_finance.campisi import (
+    campisi_attribution as _core_campisi,
+    classify_primary_driver,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -33,9 +36,9 @@ from backend.app.schemas.pnl_attribution import (
     VolumeRateAttributionPayload,
 )
 from backend.app.services.campisi_attribution_service import (
-    _curve_to_market_dict,
-    _merge_positions,
+    curve_to_market_dict,
     fetch_credit_spread_market,
+    merge_positions,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
 
@@ -665,26 +668,14 @@ def _core_campisi_result_to_path_a_payload(
     tot_s = float(totals.get("spread_effect") or 0.0)
     tot_sel = float(totals.get("selection_effect") or 0.0)
 
+    # Relative zero-guard: effects may cancel to a tiny residual while each part is large.
+    # Use 1e-6 × max(|total_mv|, |part|) as the "effectively zero" threshold for total_return.
+    _share_eps = max(abs(total_mv), abs(tot_inc), abs(tot_t), abs(tot_s), abs(tot_sel)) * 1e-6
+
     def _share(part: float) -> float:
-        if abs(total_return) < 1e-12:
+        if abs(total_return) <= _share_eps:
             return 0.0
         return part / total_return * 100.0
-
-    parts = [
-        ("income", tot_inc),
-        ("treasury", tot_t),
-        ("spread", tot_s),
-        ("selection", tot_sel),
-    ]
-    ordered = sorted(parts, key=lambda kv: abs(kv[1]), reverse=True)
-    top_name, top_val = ordered[0]
-    second_val = ordered[1][1] if len(ordered) > 1 else 0.0
-    if abs(top_val) < 1e-12:
-        primary = "unknown"
-    elif abs(abs(top_val) - abs(second_val)) / abs(top_val) < 0.10:
-        primary = "mixed"
-    else:
-        primary = top_name
 
     items: list[dict[str, Any]] = []
     for b in result.by_asset_class or []:
@@ -714,7 +705,7 @@ def _core_campisi_result_to_path_a_payload(
             }
         )
 
-    total_return_pct = (total_return / total_mv * 100.0) if abs(total_mv) > 1e-12 else 0.0
+    total_return_pct = (total_return / total_mv * 100.0) if abs(total_mv) >= 1e-9 else 0.0
 
     payload: dict[str, Any] = {
         "report_date": report_date,
@@ -732,7 +723,7 @@ def _core_campisi_result_to_path_a_payload(
         "treasury_contribution_pct": round(_share(tot_t), 4),
         "spread_contribution_pct": round(_share(tot_s), 4),
         "selection_contribution_pct": round(_share(tot_sel), 4),
-        "primary_driver": primary,
+        "primary_driver": classify_primary_driver(tot_inc, tot_t, tot_s, tot_sel),
         "interpretation": "Campisi 四效应（单券级，AC 类仅票息）：收入、国债平移、信用利差、选券残差。",
         "items": items,
     }
@@ -779,7 +770,7 @@ def campisi_attribution_envelope(
 
     rows_start = bond.fetch_bond_analytics_rows(report_date=anchor_start)
     rows_end = bond.fetch_bond_analytics_rows(report_date=anchor_end)
-    positions = _merge_positions(rows_start, rows_end)
+    positions = merge_positions(rows_start, rows_end)
 
     if not positions:
         payload = _empty_path_a_payload(anchor_start, anchor_end)
@@ -790,8 +781,8 @@ def campisi_attribution_envelope(
             result_payload=_with_optional_warnings(p, warn=True),
         )
 
-    treasury_start = _curve_to_market_dict(curve.fetch_curve(anchor_start, "treasury"))
-    treasury_end = _curve_to_market_dict(curve.fetch_curve(anchor_end, "treasury"))
+    treasury_start = curve_to_market_dict(curve.fetch_curve(anchor_start, "treasury"))
+    treasury_end = curve_to_market_dict(curve.fetch_curve(anchor_end, "treasury"))
     spread_start = fetch_credit_spread_market(curve, anchor_start)
     spread_end = fetch_credit_spread_market(curve, anchor_end)
     market_start: dict[str, Any] = {**treasury_start, **spread_start}
@@ -811,9 +802,12 @@ def campisi_attribution_envelope(
         period_start=anchor_start,
         period_end=anchor_end,
     )
-    warn = False  # positions non-empty here; diagnostics (if any) surface via payload["warnings"]
+    diagnostics = list(payload.get("warnings") or [])
+    warn = bool(diagnostics)  # diagnostics (e.g. accrued_interest_missing) must surface as quality_flag=warning
     promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
     p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
+    if diagnostics:
+        p["warnings"] = diagnostics
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.campisi") if warn else _meta_ok("pnl_attribution.campisi"),
         result_payload=_with_optional_warnings(p, warn=warn),
