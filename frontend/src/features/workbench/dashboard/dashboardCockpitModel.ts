@@ -32,6 +32,7 @@ export type DashboardCockpitTickerItem = {
   label: string;
   value: string;
   delta: string;
+  unitLabel: string;
   tradeDate: string;
   status: Extract<DashboardCockpitSectionStatus, "landed" | "stale" | "blocked">;
   tone: DashboardCockpitTone;
@@ -70,6 +71,8 @@ export type DashboardCockpitPortfolioItem = {
   id: string;
   label: string;
   value: string;
+  marketValue: string;
+  duration: string;
   detail: string;
   status: DashboardCockpitSectionStatus;
 };
@@ -79,6 +82,7 @@ export type DashboardCockpitRiskItem = {
   label: string;
   value: string;
   hint: string;
+  level: number;
   status: DashboardCockpitSectionStatus;
   tone: DashboardCockpitTone;
 };
@@ -100,6 +104,8 @@ export type DashboardCockpitWatchRow = {
   dailyChange: string;
   rating: string;
   reason: string;
+  route: string;
+  actionLabel: string;
   status: DashboardCockpitSectionStatus;
 };
 
@@ -200,6 +206,13 @@ function formatWithCommas(value: number, digits: number): string {
   });
 }
 
+function formatCompactNumber(value: number, digits = 2): string {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
 function numericDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
   const display = formattedDisplay(value);
   if (display) return display;
@@ -275,6 +288,22 @@ function changeTone(value: number | null | undefined): DashboardCockpitTone {
   return "neutral";
 }
 
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function scaledLevel(value: NumericLike, maxRaw: number): number {
+  const raw = numericRaw(value);
+  if (raw == null || maxRaw <= 0) return 0;
+  return clampPercent((Math.abs(raw) / maxRaw) * 100);
+}
+
+function percentLevel(value: NumericLike): number {
+  const raw = numericRaw(value);
+  if (raw == null) return 0;
+  return clampPercent(Math.abs(raw) <= 1 ? Math.abs(raw) * 100 : Math.abs(raw));
+}
+
 function buildSupplementalSection(input: {
   id: string;
   label: string;
@@ -326,6 +355,41 @@ function labelForMarketPoint(point: ChoiceMacroLatestPoint): string {
   return configured?.label ?? point.series_name ?? point.series_id;
 }
 
+function cleanMarketUnit(unit: string | null | undefined): string {
+  const cleanUnit = unit?.trim() ?? "";
+  return cleanUnit && cleanUnit.toLowerCase() !== "unknown" ? cleanUnit : "";
+}
+
+function isInlineMarketUnit(unit: string): boolean {
+  return unit === "%" || unit.toLowerCase() === "bp";
+}
+
+function marketUnitLabel(point: ChoiceMacroLatestPoint): string {
+  const unit = cleanMarketUnit(point.unit);
+  if (unit.toLowerCase() === "index") return "指数";
+  return unit && !isInlineMarketUnit(unit) ? unit : "";
+}
+
+function formatMarketTickerValue(point: ChoiceMacroLatestPoint): string {
+  const unit = cleanMarketUnit(point.unit);
+  if (!unit || isInlineMarketUnit(unit)) {
+    return formatChoiceMacroValue(point, { spaceBeforeUnit: false, emptyDisplay: EMPTY_DISPLAY });
+  }
+  return formatCompactNumber(point.value_numeric);
+}
+
+function formatMarketTickerDelta(point: ChoiceMacroLatestPoint): string {
+  const unit = cleanMarketUnit(point.unit);
+  if (point.latest_change == null) {
+    return EMPTY_DISPLAY;
+  }
+  if (!unit || isInlineMarketUnit(unit)) {
+    return formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: EMPTY_DISPLAY });
+  }
+  const sign = point.latest_change > 0 ? "+" : "";
+  return `${sign}${formatCompactNumber(point.latest_change)}`;
+}
+
 function pickMarketPoints(points: readonly ChoiceMacroLatestPoint[]): ChoiceMacroLatestPoint[] {
   const candidates = points.filter((point) => (point.refresh_tier ?? "stable") !== "isolated");
   const selected: ChoiceMacroLatestPoint[] = [];
@@ -362,8 +426,9 @@ function buildMarketTicker(
     return {
       id: point.series_id,
       label: labelForMarketPoint(point),
-      value: formatChoiceMacroValue(point, { spaceBeforeUnit: true, emptyDisplay: EMPTY_DISPLAY }),
-      delta: formatChoiceMacroDelta(point, { spaceBeforeUnit: true, emptyDisplay: EMPTY_DISPLAY }),
+      value: formatMarketTickerValue(point),
+      delta: formatMarketTickerDelta(point),
+      unitLabel: marketUnitLabel(point),
       tradeDate: point.trade_date,
       status: sameTradeDate ? "landed" : "stale",
       tone: changeTone(point.latest_change),
@@ -390,7 +455,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       label: "久期(年)",
       value: durationDisplay(headline?.kpis.weighted_duration ?? portfolio?.weighted_duration),
       delta: headline?.prev_report_date ? `较 ${headline.prev_report_date}` : "同日读面",
-      hint: "债券 headline / portfolio",
+      hint: "债券组合口径",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
       tone: "neutral",
     },
@@ -399,7 +464,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       label: "组合到期收益率",
       value: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio?.weighted_ytm),
       delta: "同报告日",
-      hint: "债券 headline KPI",
+      hint: "同日报告口径",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
       tone: "positive",
     },
@@ -408,7 +473,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       label: "信用利差(BP)",
       value: bpDisplay(headline?.kpis.credit_spread_median),
       delta: "同报告日",
-      hint: "债券 headline KPI",
+      hint: "同日报告口径",
       status: headlineAllowed ? "supplemental" : "blocked",
       tone: "warning",
     },
@@ -417,7 +482,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       label: "组合DV01",
       value: dv01Display(headline?.kpis.total_dv01 ?? portfolio?.total_dv01),
       delta: "元/1bp",
-      hint: "portfolio headlines",
+      hint: "组合风险口径",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
       tone: "neutral",
     },
@@ -426,7 +491,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       label: "票息/Carry",
       value: percentDisplay(headline?.kpis.weighted_coupon ?? portfolio?.weighted_coupon),
       delta: "近似 carry",
-      hint: "当前无正式 carry+roll 口径，使用票息上下文",
+      hint: "票息上下文",
       status: headlineAllowed || portfolioAllowed ? "supplemental" : "blocked",
       tone: "neutral",
     },
@@ -435,7 +500,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       label: "日净变动",
       value: numericDisplay(dayChange?.net_change),
       delta: "债券/同业合计",
-      hint: "daily changes",
+      hint: "日变动口径",
       status: changesAllowed ? "supplemental" : "blocked",
       tone: numericTone(dayChange?.net_change),
     },
@@ -446,7 +511,7 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
         headline?.kpis.total_market_value ?? portfolio?.total_market_value ?? core?.bond_investments.total_amount,
       ),
       delta: core ? "含规模读面" : "债券读面",
-      hint: "headline / core metrics",
+      hint: "规模口径",
       status: headlineAllowed || portfolioAllowed || coreAllowed ? "supplemental" : "blocked",
       tone: "neutral",
     },
@@ -591,7 +656,9 @@ function buildPortfolioMix(
         id: "portfolio-blocked",
         label: "组合结构",
         value: EMPTY_DISPLAY,
-        detail: "portfolio headlines 未返回同日报告日。",
+        marketValue: EMPTY_DISPLAY,
+        duration: EMPTY_DISPLAY,
+        detail: "组合结构读面未返回同日报告日。",
         status: "blocked",
       },
     ];
@@ -601,12 +668,14 @@ function buildPortfolioMix(
     .filter((item) => hasNumericValue(item.weight) || hasNumericValue(item.market_value))
     .slice(0, 4)
     .map((item) => ({
-    id: item.asset_class,
-    label: ASSET_CLASS_LABELS[item.asset_class] ?? item.asset_class,
-    value: percentDisplay(item.weight),
-    detail: `${yuanYiDisplay(item.market_value)} / 久期 ${durationDisplay(item.duration)}`,
-    status: "supplemental" as const,
-  }));
+      id: item.asset_class,
+      label: ASSET_CLASS_LABELS[item.asset_class] ?? item.asset_class,
+      value: percentDisplay(item.weight),
+      marketValue: yuanYiDisplay(item.market_value),
+      duration: durationDisplay(item.duration),
+      detail: `${yuanYiDisplay(item.market_value)} / 久期 ${durationDisplay(item.duration)}`,
+      status: "supplemental" as const,
+    }));
 
   if (rows.length === 0) {
     return [
@@ -614,6 +683,8 @@ function buildPortfolioMix(
         id: "portfolio-empty",
         label: "组合结构",
         value: EMPTY_DISPLAY,
+        marketValue: EMPTY_DISPLAY,
+        duration: EMPTY_DISPLAY,
         detail: "同日报告日已返回，但缺少可展示的资产分类数值。",
         status: "blocked",
       },
@@ -635,6 +706,7 @@ function buildRiskItems(
         label: "风险摘要",
         value: EMPTY_DISPLAY,
         hint: "风险读面报告日不一致或未返回。",
+        level: 0,
         status: "blocked",
         tone: "warning",
       },
@@ -655,6 +727,7 @@ function buildRiskItems(
         label: "风险摘要",
         value: EMPTY_DISPLAY,
         hint: "同日报告日已返回，但风险字段缺少可展示数值。",
+        level: 0,
         status: "blocked",
         tone: "warning",
       },
@@ -667,6 +740,7 @@ function buildRiskItems(
       label: "DV01",
       value: dv01Display(portfolio.total_dv01),
       hint: "元/1bp",
+      level: scaledLevel(portfolio.total_dv01, 150_000_000),
       status: "supplemental",
       tone: "neutral",
     },
@@ -675,6 +749,7 @@ function buildRiskItems(
       label: "久期",
       value: durationDisplay(portfolio.weighted_duration),
       hint: "组合加权",
+      level: scaledLevel(portfolio.weighted_duration, 7),
       status: "supplemental",
       tone: "neutral",
     },
@@ -683,6 +758,7 @@ function buildRiskItems(
       label: "发行人Top5",
       value: percentDisplay(portfolio.issuer_top5_weight),
       hint: "集中度",
+      level: percentLevel(portfolio.issuer_top5_weight),
       status: "supplemental",
       tone: "warning",
     },
@@ -691,6 +767,7 @@ function buildRiskItems(
       label: "信用占比",
       value: percentDisplay(portfolio.credit_weight),
       hint: "资产结构",
+      level: percentLevel(portfolio.credit_weight),
       status: "supplemental",
       tone: "neutral",
     },
@@ -726,7 +803,9 @@ function buildWatchRows(input: DashboardCockpitModelInput): DashboardCockpitWatc
         yieldValue: EMPTY_DISPLAY,
         dailyChange: EMPTY_DISPLAY,
         rating: "--",
-        reason: "缺少同日报告日债券 headline / portfolio 读面。",
+        reason: "缺少同日报告日债券组合读面。",
+        route: "/platform-config",
+        actionLabel: "治理字段",
         status: "blocked",
       },
     ];
@@ -735,35 +814,41 @@ function buildWatchRows(input: DashboardCockpitModelInput): DashboardCockpitWatc
   return [
     {
       id: "portfolio-duration-watch",
-      code: "PORT-DUR",
-      name: "组合久期观察",
+      code: "久期",
+      name: "组合久期",
       maturity: durationDisplay(input.bondHeadline?.kpis.weighted_duration ?? input.portfolio?.weighted_duration),
       yieldValue: percentDisplay(input.bondHeadline?.kpis.weighted_ytm ?? input.portfolio?.weighted_ytm),
       dailyChange: numericDisplay(dayChange?.net_change),
       rating: "组合",
       reason: "长端利率与久期共同复核。",
+      route: "/bond-analysis",
+      actionLabel: "看久期",
       status: "supplemental",
     },
     {
       id: "portfolio-credit-watch",
-      code: "PORT-CRD",
-      name: "信用仓位观察",
+      code: "信用",
+      name: "信用仓位",
       maturity: percentDisplay(input.portfolio?.credit_weight),
       yieldValue: bpDisplay(input.bondHeadline?.kpis.credit_spread_median),
       dailyChange: percentDisplay(input.portfolio?.issuer_top5_weight),
       rating: "信用",
       reason: "信用利差与集中度共同复核。",
+      route: "/bond-analysis",
+      actionLabel: "看信用",
       status: "supplemental",
     },
     {
       id: "portfolio-dv01-watch",
-      code: "PORT-RSK",
-      name: "DV01与票息观察",
+      code: "DV01",
+      name: "DV01票息",
       maturity: dv01Display(input.bondHeadline?.kpis.total_dv01 ?? input.portfolio?.total_dv01),
       yieldValue: percentDisplay(input.bondHeadline?.kpis.weighted_coupon ?? input.portfolio?.weighted_coupon),
       dailyChange: numericDisplay(dayChange?.bond_investments_change),
       rating: "风险",
       reason: "DV01、票息与债券规模变动共同复核。",
+      route: "/risk-tensor",
+      actionLabel: "看风险",
       status: "supplemental",
     },
   ];
@@ -782,8 +867,8 @@ export function buildDashboardCockpitModel(input: DashboardCockpitModelInput): D
       status: input.isMockMode ? "demo" : "landed",
       firstScreenAllowed: !input.isMockMode,
       reason: input.isMockMode
-        ? "当前为 mock mode，仅用于界面演示。"
-        : `主报告日 ${reportDate || "待定"}，模式 ${input.snapshotMode || "unknown"}。`,
+        ? "当前为演示模式，仅用于界面演示。"
+        : `主报告日 ${reportDate || "待定"}，模式 ${input.snapshotMode || "待确认"}。`,
     },
     {
       id: "market_context",

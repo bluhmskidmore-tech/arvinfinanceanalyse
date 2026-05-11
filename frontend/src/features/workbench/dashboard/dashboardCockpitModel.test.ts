@@ -200,6 +200,10 @@ describe("buildDashboardCockpitModel", () => {
     expect(model.firstScreenSections.map((section) => section.id)).toContain("core_metrics");
     expect(model.metricRail.map((item) => item.label)).toContain("组合DV01");
     expect(model.analysisCards).toHaveLength(4);
+    expect(model.watchRows.map((row) => row.code)).toEqual(["久期", "信用", "DV01"]);
+    expect(model.watchRows.map((row) => row.actionLabel)).toEqual(["看久期", "看信用", "看风险"]);
+    expect(model.watchRows.map((row) => row.route)).toEqual(["/bond-analysis", "/bond-analysis", "/risk-tensor"]);
+    expect(model.watchRows.map((row) => row.code).join(" ")).not.toMatch(/PORT-/i);
   });
 
   it("blocks mismatched report-date sections and marks stale market context", () => {
@@ -219,6 +223,14 @@ describe("buildDashboardCockpitModel", () => {
           value_numeric: 113.89,
           unit: "USD/bbl",
         }),
+        macroPoint({
+          series_id: "CA.CSI300",
+          series_name: "沪深300",
+          trade_date: "2026-04-27",
+          value_numeric: 4871.91,
+          latest_change: -28.6,
+          unit: "index",
+        }),
       ],
       calendarItems: [],
     });
@@ -228,7 +240,40 @@ describe("buildDashboardCockpitModel", () => {
     expect(statusById(model.sections, "bond_headline")).toBe("blocked");
     expect(statusById(model.sections, "portfolio_headline")).toBe("blocked");
     expect(model.firstScreenSections.map((section) => section.id)).not.toContain("core_metrics");
-    expect(model.marketTicker[0]).toMatchObject({ id: "CA.BRENT", status: "stale" });
+    expect(model.marketTicker[0]).toMatchObject({
+      id: "CA.BRENT",
+      value: "113.89",
+      delta: "+0.01",
+      unitLabel: "USD/bbl",
+      status: "stale",
+    });
+    expect(model.marketTicker.find((item) => item.id === "CA.CSI300")).toMatchObject({
+      unitLabel: "指数",
+      delta: "-28.6",
+    });
+    expect(model.waterfall.every((item) => item.status === "blocked")).toBe(true);
+    expect(model.portfolioMix).toEqual([
+      expect.objectContaining({
+        id: "portfolio-blocked",
+        status: "blocked",
+        value: "--",
+      }),
+    ]);
+    expect(model.riskItems).toEqual([
+      expect.objectContaining({
+        id: "portfolio-risk-blocked",
+        status: "blocked",
+        value: "--",
+      }),
+    ]);
+    expect(model.watchRows).toEqual([
+      expect.objectContaining({
+        id: "watch-blocked",
+        status: "blocked",
+        route: "/platform-config",
+        actionLabel: "治理字段",
+      }),
+    ]);
   });
 
   it("keeps reserved/demo surfaces out of the first-screen sections", () => {
@@ -268,6 +313,8 @@ describe("buildDashboardCockpitModel", () => {
     expect(model.portfolioMix[0]).toMatchObject({
       label: "信用债",
       value: "29.25%",
+      marketValue: "1,005.70 亿",
+      duration: "2.40",
       detail: "1,005.70 亿 / 久期 2.40",
       status: "supplemental",
     });
@@ -282,16 +329,33 @@ describe("buildDashboardCockpitModel", () => {
       "41.35%",
       "29.25%",
     ]);
+    expect(model.riskItems.map((item) => item.level)).toEqual([71, 59, 41, 29]);
     expect(model.watchRows[0]).toMatchObject({
+      code: "久期",
+      name: "组合久期",
       maturity: "4.14",
       yieldValue: "2.57%",
       dailyChange: "+2.95 亿",
+      route: "/bond-analysis",
+      actionLabel: "看久期",
     });
     expect(model.watchRows[1]).toMatchObject({
+      code: "信用",
+      name: "信用仓位",
       maturity: "29.25%",
       yieldValue: "239bp",
       dailyChange: "41.35%",
+      route: "/bond-analysis",
+      actionLabel: "看信用",
     });
+
+    const cockpitCopy = [
+      ...model.metricRail.map((item) => item.hint),
+      ...model.portfolioMix.map((item) => item.detail),
+      ...model.riskItems.map((item) => item.hint),
+      ...model.watchRows.map((row) => row.reason),
+    ].join(" ");
+    expect(cockpitCopy).not.toMatch(/headline|portfolio headlines|daily changes|adapter|mock/i);
   });
 
   it("renders compact blocked placeholders when same-day portfolio rows are unusable", () => {

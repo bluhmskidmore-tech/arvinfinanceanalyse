@@ -1,4 +1,7 @@
 import type { CSSProperties } from "react";
+import { Link } from "react-router-dom";
+
+import "./DashboardCockpitSections.css";
 
 import type {
   DashboardCockpitAnalysisCard,
@@ -31,8 +34,21 @@ function parseDisplayNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function buildMiniChartPoints(values: readonly number[], width = 360, height = 118): string {
-  if (values.length === 0) return "";
+type MiniChartPoint = {
+  x: number;
+  y: number;
+};
+
+const MINI_CHART_WIDTH = 720;
+const MINI_CHART_HEIGHT = 132;
+const MINI_CHART_PLOT_HEIGHT = 118;
+
+function buildMiniChartCoordinates(
+  values: readonly number[],
+  width = MINI_CHART_WIDTH,
+  height = MINI_CHART_PLOT_HEIGHT,
+): MiniChartPoint[] {
+  if (values.length === 0) return [];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const spread = max - min || 1;
@@ -42,12 +58,36 @@ function buildMiniChartPoints(values: readonly number[], width = 360, height = 1
     .map((value, index) => {
       const x = index * step;
       const y = height - ((value - min) / spread) * (height - 22) - 11;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+      return { x, y };
+    });
 }
 
-const PORTFOLIO_COLORS = ["#2f7eea", "#f05a28", "#19a66a", "#8b9bb4"];
+function serializeMiniChartPoints(points: readonly MiniChartPoint[]): string {
+  return points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+}
+
+function buildMiniChartArea(points: readonly MiniChartPoint[], height = MINI_CHART_PLOT_HEIGHT): string {
+  if (points.length === 0) return "";
+  const baseline = height - 4;
+  const first = points[0];
+  const last = points[points.length - 1];
+  return [
+    `${first.x.toFixed(1)},${baseline.toFixed(1)}`,
+    serializeMiniChartPoints(points),
+    `${last.x.toFixed(1)},${baseline.toFixed(1)}`,
+  ].join(" ");
+}
+
+const PORTFOLIO_COLORS = ["#2b66b1", "#d35b2a", "#208b63", "#8795a8"];
+const CURVE_SERIES_IDS = new Set([
+  "CA.CN_GOV_10Y",
+  "E1000180",
+  "EMM00166466",
+  "EMM00166502",
+  "CA.DR007",
+  "M002",
+  "EMM00167613",
+]);
 
 function buildDonutGradient(
   items: Array<{ value: number; color: string }>,
@@ -65,6 +105,13 @@ function buildDonutGradient(
     return `${item.color} ${start.toFixed(1)}deg ${end.toFixed(1)}deg`;
   });
   return `conic-gradient(${segments.join(", ")})`;
+}
+
+function formatChartAxisValue(value: number): string {
+  const absValue = Math.abs(value);
+  if (absValue >= 100) return value.toFixed(0);
+  if (absValue >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 type DashboardCockpitMarketTickerProps = {
@@ -135,7 +182,10 @@ export function DashboardCockpitMarketTicker({
                 toneClass(item.tone),
               )}
             >
-              <span className="dashboard-cockpit-label">{item.label}</span>
+              <span className="dashboard-cockpit-market-ticker__label-line">
+                <span className="dashboard-cockpit-label">{item.label}</span>
+                {item.unitLabel ? <span className="dashboard-cockpit-unit">{item.unitLabel}</span> : null}
+              </span>
               <strong className="dashboard-cockpit-number">{item.value}</strong>
               <span className="dashboard-cockpit-delta">{item.delta}</span>
               <span className="dashboard-cockpit-date">
@@ -201,13 +251,35 @@ export function DashboardCockpitMainGrid({
 }
 
 function DashboardCockpitCurvePanel({ ticker }: { ticker: readonly DashboardCockpitTickerItem[] }) {
-  const rateItems = ticker.slice(0, 6);
+  const curveItems = ticker.filter((item) => CURVE_SERIES_IDS.has(item.id));
+  const rateItems = (curveItems.length >= 2 ? curveItems : ticker).slice(0, 6);
   const chartItems = rateItems
     .map((item) => ({ item, numericValue: parseDisplayNumber(item.value) }))
     .filter((entry): entry is { item: DashboardCockpitTickerItem; numericValue: number } =>
       entry.numericValue !== null,
     );
-  const chartPoints = buildMiniChartPoints(chartItems.map((entry) => entry.numericValue));
+  const numericValues = chartItems.map((entry) => entry.numericValue);
+  const valuePoints = buildMiniChartCoordinates(chartItems.map((entry) => entry.numericValue));
+  const changePoints = buildMiniChartCoordinates(
+    chartItems.map((entry) => parseDisplayNumber(entry.item.delta) ?? 0),
+  );
+  const valuePolyline = serializeMiniChartPoints(valuePoints);
+  const changePolyline = serializeMiniChartPoints(changePoints);
+  const valueArea = buildMiniChartArea(valuePoints);
+  const lastValuePoint = valuePoints[valuePoints.length - 1] ?? null;
+  const lastValue = chartItems[chartItems.length - 1]?.item.value ?? "";
+  const minValue = numericValues.length > 0 ? Math.min(...numericValues) : 0;
+  const maxValue = numericValues.length > 0 ? Math.max(...numericValues) : 0;
+  const midValue = (minValue + maxValue) / 2;
+  const axisTicks = [maxValue, midValue, minValue].map(formatChartAxisValue);
+  const chartStats = [
+    { label: "高", value: formatChartAxisValue(maxValue) },
+    { label: "低", value: formatChartAxisValue(minValue) },
+    { label: "区间", value: formatChartAxisValue(maxValue - minValue) },
+  ];
+  const chartSummary = chartItems
+    .map(({ item }) => `${item.label} ${item.value} ${item.delta}`)
+    .join("；");
 
   return (
     <section data-testid="dashboard-cockpit-curve-panel" className="dashboard-cockpit-card dashboard-cockpit-panel">
@@ -216,23 +288,75 @@ function DashboardCockpitCurvePanel({ ticker }: { ticker: readonly DashboardCock
           <span className="dashboard-cockpit-eyebrow">收益率曲线与日变动</span>
           <h2 className="dashboard-cockpit-title">行情曲线</h2>
         </div>
-        <span className="dashboard-cockpit-badge">trade_date</span>
+        <span className="dashboard-cockpit-badge">交易日</span>
       </div>
       {chartItems.length >= 2 ? (
-        <div className="dashboard-cockpit-mini-chart" aria-hidden="true">
-          <svg viewBox="0 0 360 132" role="img">
-            <line x1="0" y1="18" x2="360" y2="18" />
-            <line x1="0" y1="64" x2="360" y2="64" />
-            <line x1="0" y1="110" x2="360" y2="110" />
-            <polyline points={chartPoints} />
-            {chartPoints.split(" ").map((point, index) => {
-              const [x, y] = point.split(",");
-              return <circle key={`${point}-${index}`} cx={x} cy={y} r="3.4" />;
-            })}
+        <div className="dashboard-cockpit-mini-chart" role="img" aria-label={chartSummary}>
+          <svg viewBox={`0 0 ${MINI_CHART_WIDTH} ${MINI_CHART_HEIGHT}`} aria-hidden="true">
+            <line className="dashboard-cockpit-mini-chart__grid" x1="0" y1="18" x2={MINI_CHART_WIDTH} y2="18" />
+            <line className="dashboard-cockpit-mini-chart__grid" x1="0" y1="64" x2={MINI_CHART_WIDTH} y2="64" />
+            <line className="dashboard-cockpit-mini-chart__grid" x1="0" y1="110" x2={MINI_CHART_WIDTH} y2="110" />
+            <line className="dashboard-cockpit-mini-chart__vgrid" x1="180" y1="12" x2="180" y2="118" />
+            <line className="dashboard-cockpit-mini-chart__vgrid" x1="360" y1="12" x2="360" y2="118" />
+            <line className="dashboard-cockpit-mini-chart__vgrid" x1="540" y1="12" x2="540" y2="118" />
+            <line className="dashboard-cockpit-mini-chart__rule" x1="0" y1="118" x2={MINI_CHART_WIDTH} y2="118" />
+            <polygon className="dashboard-cockpit-mini-chart__area" points={valueArea} />
+            <polyline
+              className="dashboard-cockpit-mini-chart__line dashboard-cockpit-mini-chart__line--value"
+              points={valuePolyline}
+            />
+            <polyline
+              className="dashboard-cockpit-mini-chart__line dashboard-cockpit-mini-chart__line--change"
+              points={changePolyline}
+            />
+            {valuePoints.map((point, index) => (
+              <g key={`${point.x}-${point.y}-${index}`}>
+                <circle
+                  className="dashboard-cockpit-mini-chart__dot"
+                  cx={point.x.toFixed(1)}
+                  cy={point.y.toFixed(1)}
+                />
+                <title>
+                  {chartItems[index]?.item.label} {chartItems[index]?.item.value} / {chartItems[index]?.item.delta}
+                </title>
+              </g>
+            ))}
+            {lastValuePoint ? (
+              <text
+                className="dashboard-cockpit-mini-chart__value-label"
+                x={Math.max(588, lastValuePoint.x - 96).toFixed(1)}
+                y={Math.max(14, lastValuePoint.y - 8).toFixed(1)}
+              >
+                {lastValue}
+              </text>
+            ) : null}
           </svg>
+          <div className="dashboard-cockpit-mini-chart__stats" aria-hidden="true">
+            {chartStats.map((stat) => (
+              <span key={stat.label}>
+                {stat.label}
+                <strong>{stat.value}</strong>
+              </span>
+            ))}
+          </div>
+          <div className="dashboard-cockpit-mini-chart__legend">
+            <span>
+              <i className="dashboard-cockpit-mini-chart__legend-dot dashboard-cockpit-mini-chart__legend-dot--value" />
+              数值
+            </span>
+            <span>
+              <i className="dashboard-cockpit-mini-chart__legend-dot dashboard-cockpit-mini-chart__legend-dot--change" />
+              日变动
+            </span>
+          </div>
           <div className="dashboard-cockpit-mini-chart__axis">
             {chartItems.map(({ item }) => (
               <span key={item.id}>{item.label}</span>
+            ))}
+          </div>
+          <div className="dashboard-cockpit-mini-chart__y-axis" aria-hidden="true">
+            {axisTicks.map((tick, index) => (
+              <span key={`${tick}-${index}`}>{tick}</span>
             ))}
           </div>
         </div>
@@ -260,9 +384,9 @@ function DashboardCockpitJudgmentCards({ cards }: { cards: readonly DashboardCoc
       <div className="dashboard-cockpit-panel-head">
         <div>
           <span className="dashboard-cockpit-eyebrow">利率 / 曲线 / 信用 / 资金</span>
-          <h2 className="dashboard-cockpit-title">本日判断组</h2>
+          <h2 className="dashboard-cockpit-title">判断矩阵</h2>
         </div>
-        <span className="dashboard-cockpit-badge">按契约准入</span>
+        <span className="dashboard-cockpit-badge">同日报告</span>
       </div>
       <div className="dashboard-cockpit-judgment-cards__grid">
         {cards.map((card) => (
@@ -305,10 +429,10 @@ function DashboardCockpitWaterfall({ items }: { items: readonly DashboardCockpit
     <section data-testid="dashboard-cockpit-waterfall" className="dashboard-cockpit-card dashboard-cockpit-panel">
       <div className="dashboard-cockpit-panel-head">
         <div>
-          <span className="dashboard-cockpit-eyebrow">收益/规模归因</span>
-          <h2 className="dashboard-cockpit-title">经营贡献拆解</h2>
+          <span className="dashboard-cockpit-eyebrow">收益 / 规模</span>
+          <h2 className="dashboard-cockpit-title">经营拆解</h2>
         </div>
-        <span className="dashboard-cockpit-badge">非正式损益归因</span>
+        <span className="dashboard-cockpit-badge">经营口径</span>
       </div>
       <div className="dashboard-cockpit-waterfall__bars">
         {parsedItems.map(({ item, numericValue }) => {
@@ -316,17 +440,28 @@ function DashboardCockpitWaterfall({ items }: { items: readonly DashboardCockpit
             numericValue === null || maxAbsValue === 0
               ? 0
               : Math.max(8, Math.round((Math.abs(numericValue) / maxAbsValue) * 100));
+          const barHeight =
+            numericValue === null || maxAbsValue === 0
+              ? 0
+              : Math.max(10, Math.round((Math.abs(numericValue) / maxAbsValue) * 76));
+          const isNegative = numericValue !== null && numericValue < 0;
 
           return (
-          <article
-            key={item.id}
-            className={cx("dashboard-cockpit-waterfall__bar", statusClass(item.status), toneClass(item.tone))}
-            style={{ "--bar-width": `${barWidth}%` } as CSSProperties}
-          >
-            <span>{item.label}</span>
-            <i aria-hidden="true" />
-            <strong>{item.value}</strong>
-          </article>
+            <article
+              key={item.id}
+              className={cx(
+                "dashboard-cockpit-waterfall__bar",
+                isNegative && "dashboard-cockpit-waterfall__bar--negative",
+                numericValue === null && "dashboard-cockpit-waterfall__bar--empty",
+                statusClass(item.status),
+                toneClass(item.tone),
+              )}
+              style={{ "--bar-width": `${barWidth}%`, "--bar-height": `${barHeight}px` } as CSSProperties}
+            >
+              <span>{item.label}</span>
+              <i aria-hidden="true" />
+              <strong>{item.value}</strong>
+            </article>
           );
         })}
       </div>
@@ -351,7 +486,7 @@ export function DashboardCockpitLowerGrid({
     <section data-testid="dashboard-cockpit-lower-grid" className="dashboard-cockpit-lower-grid">
       <DashboardCockpitPortfolioPanel items={portfolioMix} />
       <DashboardCockpitRiskPanel items={riskItems} />
-      <DashboardCockpitCalendarPanel items={calendarItems} />
+      <DashboardCockpitCalendarPanel items={calendarItems} watchRows={watchRows} />
       <DashboardCockpitWatchTable rows={watchRows} />
     </section>
   );
@@ -370,6 +505,17 @@ function DashboardCockpitPortfolioPanel({ items }: { items: readonly DashboardCo
     );
   const gradient = buildDonutGradient(chartItems);
   const leadItem = chartItems[0]?.item;
+  const durationItems = items
+    .map((item, index) => ({
+      item,
+      durationValue: parseDisplayNumber(item.duration),
+      color: PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length],
+    }))
+    .filter(
+      (entry): entry is { item: DashboardCockpitPortfolioItem; durationValue: number; color: string } =>
+        entry.durationValue !== null && entry.item.status !== "blocked",
+    );
+  const maxDuration = Math.max(1, ...durationItems.map((entry) => entry.durationValue));
 
   return (
     <section data-testid="dashboard-cockpit-portfolio-panel" className="dashboard-cockpit-card dashboard-cockpit-panel">
@@ -393,19 +539,61 @@ function DashboardCockpitPortfolioPanel({ items }: { items: readonly DashboardCo
           <strong>{leadItem?.value ?? "--"}</strong>
         </div>
         <div className="dashboard-cockpit-portfolio-list">
-          {items.map((item, index) => (
-            <article key={item.id} className={cx("dashboard-cockpit-portfolio-row", statusClass(item.status))}>
-              <i
-                aria-hidden="true"
-                style={{ "--swatch": PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length] } as CSSProperties}
-              />
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <em>{item.detail}</em>
-            </article>
-          ))}
+          <div className="dashboard-cockpit-portfolio-list__head" aria-hidden="true">
+            <span>资产</span>
+            <span>权重</span>
+            <span>市值</span>
+            <span>久期</span>
+          </div>
+          {items.map((item, index) => {
+            const swatch = PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length];
+            const mixWidth = Math.max(0, Math.min(100, parseDisplayNumber(item.value) ?? 0));
+            return (
+              <article key={item.id} className={cx("dashboard-cockpit-portfolio-row", statusClass(item.status))}>
+                <i
+                  aria-hidden="true"
+                  style={{ "--swatch": swatch } as CSSProperties}
+                />
+                <span className="dashboard-cockpit-portfolio-row__label">{item.label}</span>
+                <strong className="dashboard-cockpit-portfolio-row__weight">{item.value}</strong>
+                <b
+                  className="dashboard-cockpit-portfolio-row__bar"
+                  aria-hidden="true"
+                  style={{ "--mix-width": `${mixWidth}%`, "--swatch": swatch } as CSSProperties}
+                />
+                <em className="dashboard-cockpit-portfolio-row__market">{item.marketValue}</em>
+                <em className="dashboard-cockpit-portfolio-row__duration">{item.duration}</em>
+              </article>
+            );
+          })}
         </div>
       </div>
+      {durationItems.length > 0 ? (
+        <div data-testid="dashboard-cockpit-portfolio-duration-band" className="dashboard-cockpit-portfolio-duration-band">
+          <div className="dashboard-cockpit-portfolio-duration-band__head">
+            <span>久期带</span>
+            <em>资产分类对照</em>
+          </div>
+          <div className="dashboard-cockpit-portfolio-duration-band__rows">
+            {durationItems.map(({ item, durationValue, color }) => (
+              <article key={item.id}>
+                <span>{item.label}</span>
+                <b aria-hidden="true">
+                  <i
+                    style={
+                      {
+                        "--duration-width": `${Math.max(8, Math.round((durationValue / maxDuration) * 100))}%`,
+                        "--swatch": color,
+                      } as CSSProperties
+                    }
+                  />
+                </b>
+                <strong>{item.duration}</strong>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -424,10 +612,12 @@ function DashboardCockpitRiskPanel({ items }: { items: readonly DashboardCockpit
           <article
             key={item.id}
             className={cx("dashboard-cockpit-risk-item", statusClass(item.status), toneClass(item.tone))}
+            style={{ "--risk-level": `${item.level}%` } as CSSProperties}
           >
             <span>{item.label}</span>
             <strong>{item.value}</strong>
             <em>{item.hint}</em>
+            <b className="dashboard-cockpit-risk-item__meter" aria-hidden="true" />
           </article>
         ))}
       </div>
@@ -435,23 +625,50 @@ function DashboardCockpitRiskPanel({ items }: { items: readonly DashboardCockpit
   );
 }
 
-function DashboardCockpitCalendarPanel({ items }: { items: readonly DashboardCockpitCalendarItem[] }) {
+function DashboardCockpitCalendarPanel({
+  items,
+  watchRows,
+}: {
+  items: readonly DashboardCockpitCalendarItem[];
+  watchRows: readonly DashboardCockpitWatchRow[];
+}) {
+  const reviewRows = watchRows.filter((row) => row.status !== "blocked").slice(0, 3);
+
   return (
-    <section data-testid="dashboard-cockpit-calendar-panel" className="dashboard-cockpit-card dashboard-cockpit-panel">
+    <section
+      data-testid="dashboard-cockpit-calendar-panel"
+      className="dashboard-cockpit-card dashboard-cockpit-panel dashboard-cockpit-calendar-panel"
+    >
       <div className="dashboard-cockpit-panel-head">
         <div>
           <span className="dashboard-cockpit-eyebrow">今日关注</span>
           <h2 className="dashboard-cockpit-title">事件与交易要点</h2>
         </div>
       </div>
-      <div className="dashboard-cockpit-calendar-list">
+      <div
+        className={cx(
+          "dashboard-cockpit-calendar-list",
+          items.length === 0 && "dashboard-cockpit-calendar-list--empty",
+        )}
+      >
         {items.length === 0 ? (
           <div
             data-testid="dashboard-cockpit-calendar-empty"
             className="dashboard-cockpit-calendar-empty"
           >
-            <strong>暂无同源日历上下文</strong>
-            <span>日历不参与本日判断，等待供应/事件读面治理。</span>
+            <strong>无同日事件</strong>
+            <span>日历仅作上下文，不写入本日判断</span>
+            {reviewRows.length > 0 ? (
+              <div className="dashboard-cockpit-calendar-review" aria-label="观察清单复核入口">
+                <b>转入观察清单</b>
+                {reviewRows.map((row) => (
+                  <Link key={row.id} className="dashboard-cockpit-calendar-review__link" to={row.route}>
+                    <span>{row.name}</span>
+                    <em>{row.actionLabel}</em>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : (
           items.map((item) => (
@@ -473,34 +690,55 @@ function DashboardCockpitWatchTable({ rows }: { rows: readonly DashboardCockpitW
       <div className="dashboard-cockpit-panel-head">
         <div>
           <span className="dashboard-cockpit-eyebrow">重点债券 / 品种观察</span>
-          <h2 className="dashboard-cockpit-title">下钻入口</h2>
+          <h2 className="dashboard-cockpit-title">观察清单</h2>
         </div>
       </div>
       <div className="dashboard-cockpit-watch__table" role="table">
         <div className="dashboard-cockpit-watch__row dashboard-cockpit-watch__row--head" role="row">
-          <span role="columnheader">代码</span>
+          <span role="columnheader">对象</span>
           <span role="columnheader">名称</span>
           <span role="columnheader">久期/期限</span>
           <span role="columnheader">收益率</span>
           <span role="columnheader">变动</span>
           <span role="columnheader">评级</span>
-          <span role="columnheader">关注理由</span>
+          <span role="columnheader">动作</span>
         </div>
-        {rows.map((row) => (
-          <div
-            key={row.id}
-            className={cx("dashboard-cockpit-watch__row", statusClass(row.status))}
-            role="row"
-          >
-            <span role="cell">{row.code}</span>
-            <strong role="cell">{row.name}</strong>
-            <span role="cell">{row.maturity}</span>
-            <span role="cell">{row.yieldValue}</span>
-            <span role="cell">{row.dailyChange}</span>
-            <span role="cell">{row.rating}</span>
-            <span role="cell">{row.reason}</span>
-          </div>
-        ))}
+        {rows.map((row) => {
+          const change = parseDisplayNumber(row.dailyChange);
+          const changeClass =
+            change == null
+              ? null
+              : change > 0
+                ? "dashboard-cockpit-watch__change--positive"
+                : change < 0
+                  ? "dashboard-cockpit-watch__change--negative"
+                  : "dashboard-cockpit-watch__change--flat";
+
+          return (
+            <div
+              key={row.id}
+              className={cx("dashboard-cockpit-watch__row", statusClass(row.status))}
+              role="row"
+            >
+              <span role="cell">{row.code}</span>
+              <strong role="cell">{row.name}</strong>
+              <span role="cell">{row.maturity}</span>
+              <span role="cell">{row.yieldValue}</span>
+              <span className={cx("dashboard-cockpit-watch__change", changeClass)} role="cell">
+                {row.dailyChange}
+              </span>
+              <span className="dashboard-cockpit-watch__rating" role="cell">
+                {row.rating}
+              </span>
+              <span className="dashboard-cockpit-watch__reason" role="cell" title={row.reason}>
+                <span>{row.reason}</span>
+                <Link className="dashboard-cockpit-watch__action" to={row.route}>
+                  {row.actionLabel}
+                </Link>
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

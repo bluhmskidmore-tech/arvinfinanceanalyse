@@ -5,8 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { shellTokens } from "../../../theme/tokens";
+import { tabularNumsStyle } from "../../../theme/designSystem";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -347,6 +346,7 @@ function DashboardSupplementalBlockedSection({
 export default function DashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState("");
+  const [toolbarSearch, setToolbarSearch] = useState("");
   const [allowPartial, setAllowPartial] = useState(false);
   const [isDetailDrilldownOpen, setIsDetailDrilldownOpen] = useState(false);
   const requestedDateLabel = reportDate || "latest";
@@ -946,12 +946,21 @@ export default function DashboardPage() {
             data-testid="dashboard-executive-hero-title"
             className="dashboard-home-toolbar__title"
           >
-            驾驶舱
+            债券分析
           </h1>
           <span className="dashboard-home-toolbar__eyebrow">
             报告日 {effectiveReportDate || "最新可用"}
           </span>
         </div>
+        <label className="dashboard-home-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            aria-label="搜索债券、指标、报告"
+            placeholder="搜索债券 / 指标 / 报告"
+            value={toolbarSearch}
+            onChange={(event) => setToolbarSearch(event.target.value)}
+          />
+        </label>
         <div className="dashboard-home-actions">
           <span
             className={
@@ -967,7 +976,7 @@ export default function DashboardPage() {
             <input
               aria-label="报告日"
               type="date"
-              value={reportDate}
+              value={reportDate || effectiveReportDate || ""}
               onChange={(event) => setReportDate(event.target.value)}
               className="dashboard-home-date-input"
               style={tabularNumsStyle}
@@ -1073,21 +1082,21 @@ export default function DashboardPage() {
           data-testid="dashboard-data-warning"
           className="dashboard-home-warning"
         >
-          <div style={{ fontWeight: 700, fontSize: designTokens.fontSize[12], letterSpacing: "0.04em" }}>
+          <div className="dashboard-home-warning__title">
             数据状态 · 需人工复核
           </div>
           {client.mode !== "real" ? (
-            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+            <div className="dashboard-home-warning__body">
               当前页面正在使用模拟数据源，首页数字仅用于界面演示，不应直接作为业务判断依据。
             </div>
           ) : null}
           {attentionItems.length > 0 ? (
-            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+            <div className="dashboard-home-warning__body">
               {attentionItems.join("；")}
             </div>
           ) : null}
           {snapshotPartialNote ? (
-            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+            <div className="dashboard-home-warning__body">
               {snapshotPartialNote}
             </div>
           ) : null}
@@ -1136,7 +1145,7 @@ export default function DashboardPage() {
       </section>
       <section
         data-testid="dashboard-business-balance-summary"
-        className="dashboard-business-balance-summary dashboard-home-panel"
+        className="dashboard-business-balance-summary dashboard-business-balance-summary--terminal dashboard-home-panel"
       >
         <div className="dashboard-business-balance-summary__header">
           <div className="dashboard-home-section-heading">
@@ -1144,7 +1153,7 @@ export default function DashboardPage() {
             <h2 className="dashboard-business-balance-summary__title">经营与资产负债摘要</h2>
           </div>
           <p className="dashboard-home-muted">
-            年度损益入口跳转到业务种类损益（不扣减 FTP）；月度产品分类损益入口跳转到产品分类损益月度视图。
+            同日报告日的经营口径复核；年度看业务种类，月度看产品分类。
           </p>
         </div>
         <DashboardOverviewHeroStrip metrics={businessBalanceMetrics} />
@@ -1189,14 +1198,7 @@ export default function DashboardPage() {
             <div className="dashboard-overview-support-grid">
               <section
                 data-testid="dashboard-governed-surface"
-                style={{
-                  display: "grid",
-                  gap: designTokens.space[3],
-                  padding: designTokens.space[4],
-                  borderRadius: designTokens.radius.md,
-                  border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: shellTokens.colorBgSurface,
-                }}
+                className="dashboard-governed-surface"
               >
                 <PageSectionLead
                   eyebrow="经营贡献"

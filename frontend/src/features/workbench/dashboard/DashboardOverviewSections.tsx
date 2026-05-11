@@ -343,6 +343,7 @@ export function DashboardOverviewHeroStrip({
         return (
           <article
             key={metric.id}
+            className="dashboard-overview-hero-card"
             style={{
               position: "relative",
               overflow: "hidden",
@@ -450,6 +451,7 @@ export function DashboardOverviewHeroStrip({
               }}
             >
               <strong
+                className="dashboard-overview-hero-card__value"
                 style={{
                   ...tabularNumsStyle,
                   color: shellTokens.colorTextPrimary,
@@ -481,6 +483,7 @@ export function DashboardOverviewHeroStrip({
               </svg>
             </div>
             <span
+              className="dashboard-overview-hero-card__note"
               style={{
                 color: shellTokens.colorTextMuted,
                 fontSize: 11,
@@ -1251,7 +1254,11 @@ export function DashboardProductCategoryYtdCards({
     : "与产品分类损益「中间业务收入」分类行（ytd）一致。";
 
   return (
-    <section data-testid="dashboard-product-category-ytd" style={panelStyle}>
+    <section
+      data-testid="dashboard-product-category-ytd"
+      className="dashboard-product-category-ytd-panel"
+      style={panelStyle}
+    >
       <DashboardSectionHeader eyebrow="产品经营" title="汇总损益与月度损益" />
       {statusHint ? (
         <p
@@ -1280,7 +1287,7 @@ export function DashboardProductCategoryYtdCards({
           marginTop: designTokens.space[3],
         }}
       >
-        <article style={cardShell}>
+        <article className="dashboard-product-category-ytd-card" style={cardShell}>
           <span style={sectionLabelStyle}>
             {showMonthlyValue ? monthlyVm.monthlyIncomeLabel : "月度损益"}
           </span>
@@ -1298,7 +1305,7 @@ export function DashboardProductCategoryYtdCards({
             {monthlyDetail}
           </p>
         </article>
-        <article style={cardShell}>
+        <article className="dashboard-product-category-ytd-card" style={cardShell}>
           <span style={sectionLabelStyle}>
             {showValues ? vm.summaryPnlLabel : "汇总损益"}
           </span>
@@ -1316,7 +1323,7 @@ export function DashboardProductCategoryYtdCards({
             {summaryPnlDetail}
           </p>
         </article>
-        <article style={cardShell}>
+        <article className="dashboard-product-category-ytd-card" style={cardShell}>
           <span style={sectionLabelStyle}>
             {showValues ? vm.intermediateLabel : "中间业务收入"}
           </span>
