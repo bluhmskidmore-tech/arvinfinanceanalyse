@@ -39,14 +39,14 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", () => ({
   BondAnalyticsFilterActionStrip: (props: {
-    reportDate: string;
-    periodType: string;
     onRefreshAnalytics?: () => void;
+    assetClass: string;
+    accountingClass: string;
   }) => (
     <div
       data-testid="mock-bond-filter-action-strip"
-      data-report-date={props.reportDate}
-      data-period-type={props.periodType}
+      data-asset-class={props.assetClass}
+      data-accounting-class={props.accountingClass}
     >
       <button type="button" data-testid="mock-filter-refresh" onClick={() => props.onRefreshAnalytics?.()}>
         trigger refresh
@@ -197,8 +197,8 @@ describe("BondAnalyticsOverviewPanels", () => {
     expect(market).toHaveAttribute("data-truth-title", "真值与证据");
 
     const filter = screen.getByTestId("mock-bond-filter-action-strip");
-    expect(filter).toHaveAttribute("data-report-date", "2026-03-31");
-    expect(filter).toHaveAttribute("data-period-type", "MoM");
+    expect(filter).toHaveAttribute("data-asset-class", "all");
+    expect(filter).toHaveAttribute("data-accounting-class", "all");
 
     await user.click(screen.getByTestId("mock-filter-refresh"));
     expect(onRefreshAnalytics).toHaveBeenCalledTimes(1);

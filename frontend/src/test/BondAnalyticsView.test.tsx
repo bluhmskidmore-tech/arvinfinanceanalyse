@@ -152,6 +152,13 @@ describe("BondAnalyticsView", () => {
     renderBondAnalyticsView();
 
     expect(
+      await screen.findByTestId("bond-analysis-toolbar", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
+    ).toHaveClass("dashboard-home-toolbar");
+    expect(screen.getByRole("heading", { name: "债券分析", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新" })).toHaveTextContent("刷新");
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+
+    expect(
       await screen.findByTestId("bond-analysis-top-cockpit", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toBeInTheDocument();
 

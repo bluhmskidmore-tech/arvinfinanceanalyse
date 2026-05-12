@@ -4,7 +4,6 @@ import type {
   BondAnalyticsAccountingClassFilter,
   BondAnalyticsAssetClassFilter,
   BondAnalyticsScenarioSetFilter,
-  PeriodType,
 } from "../types";
 import {
   BOND_ANALYTICS_ACCOUNTING_CLASS_FILTER_OPTIONS,
@@ -13,15 +12,9 @@ import {
   BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS,
   FIELD,
   panelStyle,
-  PERIOD_OPTIONS,
 } from "./bondAnalyticsCockpitTokens";
 
 export interface BondAnalyticsFilterActionStripProps {
-  dateOptions: Array<{ value: string; label: string }>;
-  reportDate: string;
-  onReportDateChange: (value: string) => void;
-  periodType: PeriodType;
-  onPeriodTypeChange: (value: PeriodType) => void;
   assetClass: BondAnalyticsAssetClassFilter;
   onAssetClassChange: (value: BondAnalyticsAssetClassFilter) => void;
   accountingClass: BondAnalyticsAccountingClassFilter;
@@ -37,11 +30,6 @@ export interface BondAnalyticsFilterActionStripProps {
 }
 
 export function BondAnalyticsFilterActionStrip({
-  dateOptions,
-  reportDate,
-  onReportDateChange,
-  periodType,
-  onPeriodTypeChange,
   assetClass,
   onAssetClassChange,
   accountingClass,
@@ -62,48 +50,21 @@ export function BondAnalyticsFilterActionStrip({
       style={panelStyle("#fcfdff")}
       styles={{ body: { paddingBlock: 12 } }}
     >
-      <div
-        data-testid="bond-analysis-command-bar"
-        style={{ display: "grid", gap: 12 }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={FIELD}>报表日期</div>
-              <Select
-                value={reportDate}
-                onChange={onReportDateChange}
-                options={dateOptions}
-                style={{ width: 172 }}
-                size="small"
-                placeholder="选择报表日"
-              />
+      <div data-testid="bond-analysis-command-bar" style={{ display: "grid", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "grid", gap: 4 }}>
+            <div style={FIELD}>下钻参数</div>
+            <div style={{ color: "#52657f", fontSize: 12, lineHeight: 1.6 }}>
+              报告日、期间和刷新放在页面顶部；这里保留收益拆解、KRD 和信用迁移的下钻参数。
             </div>
-            <div>
-              <div style={FIELD}>统计区间</div>
-              <Select
-                value={periodType}
-                onChange={(value) => onPeriodTypeChange(value as PeriodType)}
-                options={PERIOD_OPTIONS}
-                style={{ width: 132 }}
-                size="small"
-              />
-            </div>
-          {onRefreshAnalytics ? (
-            <div>
-              <div style={FIELD}>刷新</div>
-              <Button
-                type="default"
-                size="small"
-                loading={isAnalyticsRefreshing}
-                disabled={isAnalyticsRefreshing}
-                onClick={() => onRefreshAnalytics()}
-                data-testid="bond-analytics-refresh-button"
-              >
-                刷新分析
-              </Button>
-            </div>
-          ) : null}
           </div>
           <div
             style={{
@@ -134,7 +95,7 @@ export function BondAnalyticsFilterActionStrip({
               textTransform: "uppercase",
             }}
           >
-            高级筛选
+            展开高级筛选
           </summary>
           <div
             style={{
@@ -176,7 +137,7 @@ export function BondAnalyticsFilterActionStrip({
               />
             </div>
             <div>
-              <div style={FIELD}>信用迁移 ·利差(bp)</div>
+              <div style={FIELD}>信用迁移 · 利差(bp)</div>
               <Select
                 value={spreadScenarios}
                 onChange={onSpreadScenariosChange}
@@ -185,6 +146,18 @@ export function BondAnalyticsFilterActionStrip({
                 size="small"
               />
             </div>
+            {onRefreshAnalytics ? (
+              <Button
+                type="default"
+                size="small"
+                loading={isAnalyticsRefreshing}
+                disabled={isAnalyticsRefreshing}
+                onClick={() => onRefreshAnalytics()}
+                data-testid="bond-analytics-refresh-button"
+              >
+                刷新分析
+              </Button>
+            ) : null}
           </div>
         </details>
       </div>

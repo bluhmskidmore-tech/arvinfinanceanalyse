@@ -14,11 +14,6 @@ function renderStrip(ui: ReactElement) {
   );
 }
 
-const dateOptions = [
-  { value: "2026-03-31", label: "2026-03-31" },
-  { value: "2026-02-28", label: "2026-02-28" },
-];
-
 function mockAnalyticsFilterProps() {
   return {
     assetClass: "all" as const,
@@ -33,20 +28,13 @@ function mockAnalyticsFilterProps() {
 }
 
 describe("BondAnalyticsFilterActionStrip", () => {
-  it("renders primary controls, exposes advanced filters progressively, and wires callbacks", async () => {
+  it("keeps only advanced filters below the homepage toolbar and wires callbacks", async () => {
     const user = userEvent.setup();
-    const onReportDateChange = vi.fn();
-    const onPeriodTypeChange = vi.fn();
     const onRefreshAnalytics = vi.fn();
     const analyticsProps = mockAnalyticsFilterProps();
 
     renderStrip(
       <BondAnalyticsFilterActionStrip
-        dateOptions={dateOptions}
-        reportDate="2026-03-31"
-        onReportDateChange={onReportDateChange}
-        periodType="MoM"
-        onPeriodTypeChange={onPeriodTypeChange}
         {...analyticsProps}
         onRefreshAnalytics={onRefreshAnalytics}
         isAnalyticsRefreshing={false}
@@ -56,40 +44,17 @@ describe("BondAnalyticsFilterActionStrip", () => {
     );
 
     expect(screen.getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
-    expect(screen.getByText("报表日期")).toBeInTheDocument();
-    expect(screen.getByText("统计区间")).toBeInTheDocument();
-    expect(screen.getByText("刷新分析")).toBeInTheDocument();
+    expect(screen.getByText("下钻参数")).toBeInTheDocument();
+    expect(screen.getByText("展开高级筛选")).toBeInTheDocument();
     expect(screen.getByText("尚未捕获刷新运行。")).toBeInTheDocument();
-    expect(screen.getByText("高级筛选")).toBeInTheDocument();
+    expect(screen.queryByText("报告日期")).not.toBeInTheDocument();
+    expect(screen.queryByText("统计区间")).not.toBeInTheDocument();
 
-    expect(screen.getByTitle("2026-03-31")).toBeInTheDocument();
-    expect(screen.getByTitle("月度环比")).toBeInTheDocument();
-
-    const comboboxes = screen.getAllByRole("combobox");
-    expect(comboboxes.length).toBeGreaterThanOrEqual(2);
-
-    fireEvent.mouseDown(comboboxes[0]!);
-    const dateOption = await screen.findByTitle("2026-02-28");
-    await user.click(dateOption);
-
-    await waitFor(() => {
-      expect(onReportDateChange).toHaveBeenCalled();
-      expect(onReportDateChange.mock.calls[0]?.[0]).toBe("2026-02-28");
-    });
-
-    fireEvent.mouseDown(screen.getAllByRole("combobox")[1]!);
-    const periodOption = await screen.findByTitle("年初至今");
-    await user.click(periodOption);
-
-    await waitFor(() => {
-      expect(onPeriodTypeChange).toHaveBeenCalledWith("YTD");
-    });
-
-    await user.click(screen.getByText("高级筛选"));
+    await user.click(screen.getByText("展开高级筛选"));
     const advancedComboboxes = screen.getAllByRole("combobox");
-    expect(advancedComboboxes).toHaveLength(6);
+    expect(advancedComboboxes).toHaveLength(4);
 
-    fireEvent.mouseDown(advancedComboboxes[2]!);
+    fireEvent.mouseDown(advancedComboboxes[0]!);
     const assetOption = await screen.findByTitle("利率债");
     await user.click(assetOption);
     await waitFor(() => {
@@ -103,11 +68,6 @@ describe("BondAnalyticsFilterActionStrip", () => {
   it("shows refreshing copy when analytics refresh is in flight", () => {
     render(
       <BondAnalyticsFilterActionStrip
-        dateOptions={dateOptions}
-        reportDate="2026-03-31"
-        onReportDateChange={vi.fn()}
-        periodType="MoM"
-        onPeriodTypeChange={vi.fn()}
         {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={vi.fn()}
         isAnalyticsRefreshing
@@ -122,11 +82,6 @@ describe("BondAnalyticsFilterActionStrip", () => {
   it("shows latest run id when provided", () => {
     render(
       <BondAnalyticsFilterActionStrip
-        dateOptions={dateOptions}
-        reportDate="2026-03-31"
-        onReportDateChange={vi.fn()}
-        periodType="MoM"
-        onPeriodTypeChange={vi.fn()}
         {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={vi.fn()}
         isAnalyticsRefreshing={false}
@@ -141,11 +96,6 @@ describe("BondAnalyticsFilterActionStrip", () => {
   it("surfaces analytics refresh errors in the refresh state panel", () => {
     render(
       <BondAnalyticsFilterActionStrip
-        dateOptions={dateOptions}
-        reportDate="2026-03-31"
-        onReportDateChange={vi.fn()}
-        periodType="MoM"
-        onPeriodTypeChange={vi.fn()}
         {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={vi.fn()}
         isAnalyticsRefreshing={false}

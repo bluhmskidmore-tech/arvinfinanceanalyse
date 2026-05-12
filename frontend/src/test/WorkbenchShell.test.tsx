@@ -175,6 +175,7 @@ describe("WorkbenchShell", () => {
     renderShellAt("/bond-analysis");
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
@@ -206,17 +207,17 @@ describe("WorkbenchShell", () => {
   });
 
   it("renders a global terminal bar that separates page context from shell market ticker", async () => {
-    renderShellAt("/bond-analysis?report_date=2026-03-31");
+    renderShellAt("/cross-asset");
 
-    expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
 
     const terminalBar = screen.getByTestId("workbench-terminal-bar");
     const pageContext = within(terminalBar).getByTestId("workbench-page-context");
     const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
     const operatorZone = within(terminalBar).getByTestId("workbench-operator-zone");
 
-    expect(pageContext).toHaveTextContent("债券分析");
-    expect(pageContext).toHaveTextContent("2026-03-31");
+    expect(pageContext).toHaveTextContent("跨资产驱动");
+    expect(pageContext).toHaveTextContent("默认路由");
 
     expect(marketTicker).toHaveTextContent("市场快讯");
     expect(marketTicker).toHaveTextContent("10年国债");
@@ -227,18 +228,18 @@ describe("WorkbenchShell", () => {
     expect(operatorZone).toHaveTextContent("中台配置");
   });
 
-  it("uses backend bond dates and macro latest endpoints for shell report date and ticker values", async () => {
+  it("keeps bond-analysis page-owned by suppressing shell date and ticker endpoints", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsDates: async () => ({
+      getBondAnalyticsDates: vi.fn(async () => ({
         result_meta: createResultMeta({
           result_kind: "bond_analytics.dates",
         }),
         result: {
           report_dates: ["2026-02-28"],
         },
-      }),
-      getChoiceMacroLatest: async () => ({
+      })),
+      getChoiceMacroLatest: vi.fn(async () => ({
         result_meta: createResultMeta({
           result_kind: "macro.choice.latest",
         }),
@@ -287,27 +288,15 @@ describe("WorkbenchShell", () => {
             },
           ],
         },
-      }),
+      })),
     };
 
     renderShellAt("/bond-analysis", client);
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
-    const terminalBar = screen.getByTestId("workbench-terminal-bar");
-    const pageContext = within(terminalBar).getByTestId("workbench-page-context");
-    const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
-
-    await waitFor(() => {
-      expect(pageContext).toHaveTextContent("2026-02-28");
-      expect(marketTicker).toHaveTextContent("1.88%");
-      expect(marketTicker).toHaveTextContent("-2bp");
-      expect(marketTicker).toHaveTextContent("1.81%");
-      expect(marketTicker).toHaveTextContent("-5bp");
-      expect(marketTicker).toHaveTextContent("1.75%");
-      expect(marketTicker).toHaveTextContent("+1bp");
-      expect(marketTicker).toHaveTextContent("7.18");
-      expect(marketTicker).toHaveTextContent("+0.02CNY/USD");
-    });
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
+    expect(client.getBondAnalyticsDates).not.toHaveBeenCalled();
+    expect(client.getChoiceMacroLatest).not.toHaveBeenCalled();
   });
 
   it("keeps shell ticker fallback when macro latest payload has no result", async () => {
@@ -316,7 +305,7 @@ describe("WorkbenchShell", () => {
       getChoiceMacroLatest: async () => ({}),
     } as unknown as ApiClient;
 
-    renderShellAt("/bond-analysis", client);
+    renderShellAt("/cross-asset", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
     expect(marketTicker).toHaveTextContent("10年国债");
@@ -379,7 +368,7 @@ describe("WorkbenchShell", () => {
       }),
     };
 
-    renderShellAt("/bond-analysis?report_date=2026-02-28", client);
+    renderShellAt("/cross-asset", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
 
@@ -520,7 +509,7 @@ describe("WorkbenchShell", () => {
       }),
     };
 
-    renderShellAt("/bond-analysis?report_date=2026-02-28", client);
+    renderShellAt("/cross-asset", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
 

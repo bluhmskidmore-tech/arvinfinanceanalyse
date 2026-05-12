@@ -44,11 +44,11 @@ export interface BondAnalyticsOverviewPanelsProps {
 }
 
 export function BondAnalyticsOverviewPanels({
-  dateOptions,
+  dateOptions: _dateOptions,
   reportDate,
-  onReportDateChange,
+  onReportDateChange: _onReportDateChange,
   periodType,
-  onPeriodTypeChange,
+  onPeriodTypeChange: _onPeriodTypeChange,
   assetClass,
   onAssetClassChange,
   accountingClass,
@@ -71,14 +71,6 @@ export function BondAnalyticsOverviewPanels({
       <div style={{ display: "grid", gap: dt.space[3] }} data-testid="bond-analysis-top-cockpit">
         <BondAnalyticsMacroMarketBar />
 
-        <BondAnalyticsMarketContextStrip
-          reportDate={reportDate}
-          periodType={periodType}
-          leadModuleLabel={overviewModel.activeModuleContext.label}
-          leadPromotionLabel="Drill available"
-          truthStrip={overviewModel.truthStrip}
-        />
-
         <BondAnalyticsInstitutionalCockpit
           reportDate={reportDate}
           actionAttribution={actionAttributionResult}
@@ -86,24 +78,12 @@ export function BondAnalyticsOverviewPanels({
           onOpenModuleDetail={onOpenModuleDetail}
         />
 
-        <BondAnalyticsFilterActionStrip
-          dateOptions={dateOptions}
+        <BondAnalyticsMarketContextStrip
           reportDate={reportDate}
-          onReportDateChange={onReportDateChange}
           periodType={periodType}
-          onPeriodTypeChange={onPeriodTypeChange}
-          assetClass={assetClass}
-          onAssetClassChange={onAssetClassChange}
-          accountingClass={accountingClass}
-          onAccountingClassChange={onAccountingClassChange}
-          scenarioSet={scenarioSet}
-          onScenarioSetChange={onScenarioSetChange}
-          spreadScenarios={spreadScenarios}
-          onSpreadScenariosChange={onSpreadScenariosChange}
-          onRefreshAnalytics={onRefreshAnalytics}
-          isAnalyticsRefreshing={isAnalyticsRefreshing}
-          analyticsRefreshError={analyticsRefreshError}
-          lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
+          leadModuleLabel={overviewModel.activeModuleContext.label}
+          leadPromotionLabel="Drill available"
+          truthStrip={overviewModel.truthStrip}
         />
 
         <BondAnalyticsOverviewMidCharts
@@ -124,6 +104,21 @@ export function BondAnalyticsOverviewPanels({
           <RiskTrendChart />
           <BondEventCalendar items={calendarItems} />
         </div>
+
+        <BondAnalyticsFilterActionStrip
+          assetClass={assetClass}
+          onAssetClassChange={onAssetClassChange}
+          accountingClass={accountingClass}
+          onAccountingClassChange={onAccountingClassChange}
+          scenarioSet={scenarioSet}
+          onScenarioSetChange={onScenarioSetChange}
+          spreadScenarios={spreadScenarios}
+          onSpreadScenariosChange={onSpreadScenariosChange}
+          onRefreshAnalytics={onRefreshAnalytics}
+          isAnalyticsRefreshing={isAnalyticsRefreshing}
+          analyticsRefreshError={analyticsRefreshError}
+          lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
+        />
       </div>
     </div>
   );

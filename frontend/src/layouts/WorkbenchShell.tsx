@@ -361,8 +361,10 @@ export function WorkbenchShell() {
     currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isDashboardCockpitShell = currentSection.key === "dashboard";
-  const showShellMarketTicker = !isDashboardCockpitShell;
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
+  const useCockpitShellFrame = isDashboardCockpitShell || isBondAnalysisMinimalShell;
+  const showShellTerminalBar = !isBondAnalysisMinimalShell;
+  const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   const isBalanceMovementAnalysisCompactChrome =
@@ -399,7 +401,7 @@ export function WorkbenchShell() {
   const bondAnalyticsDatesQuery = useQuery({
     queryKey: ["workbench-shell", "bond-analytics-dates", client.mode],
     queryFn: () => client.getBondAnalyticsDates(),
-    enabled: isBondAnalysisMinimalShell && !explicitReportDate,
+    enabled: showShellTerminalBar && isBondAnalysisMinimalShell && !explicitReportDate,
     retry: false,
     staleTime: 60_000,
   });
@@ -445,7 +447,7 @@ export function WorkbenchShell() {
     <>
     <DataModeRibbon />
     <div
-      className={`workbench-shell-grid${isDashboardCockpitShell ? " workbench-shell-grid--cockpit" : ""}`}
+      className={`workbench-shell-grid${useCockpitShellFrame ? " workbench-shell-grid--cockpit" : ""}`}
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",
@@ -872,6 +874,7 @@ export function WorkbenchShell() {
       </aside>
 
       <div className="workbench-main-column">
+        {showShellTerminalBar ? (
         <header
           data-testid="workbench-terminal-bar"
           style={{
@@ -1062,6 +1065,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
         </header>
+        ) : null}
         {showWorkspaceHeroCard ? (
           <header
             style={{
