@@ -447,7 +447,9 @@ export function WorkbenchShell() {
     <>
     <DataModeRibbon />
     <div
-      className={`workbench-shell-grid${useCockpitShellFrame ? " workbench-shell-grid--cockpit" : ""}`}
+      className={`workbench-shell-grid${
+        useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"
+      }`}
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",

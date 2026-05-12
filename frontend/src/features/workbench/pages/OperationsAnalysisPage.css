@@ -136,19 +136,16 @@
   }
 }
 
-/* Visible layout pilot — background-forward (primary/success washes, DESIGN § intentional light decoration) */
+/* Compact cockpit alignment for the shared decision hero and status strip. */
 .operations-analysis-page__hero-main .moss-page-v2-decision-hero {
-  padding: 18px 18px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(24, 80, 161, 0.18);
+  padding: 14px 16px;
+  border: 1px solid rgba(115, 132, 153, 0.28);
   border-left: 3px solid var(--ops-blue);
+  border-radius: var(--moss-radius-sm);
   background:
-    radial-gradient(ellipse 125% 90% at 0% -10%, rgba(24, 80, 161, 0.14), transparent 58%),
-    radial-gradient(ellipse 95% 80% at 100% 110%, rgba(48, 102, 72, 0.1), transparent 52%),
-    linear-gradient(165deg, rgba(255, 255, 255, 0.97) 0%, rgba(225, 236, 250, 0.88) 42%, rgba(241, 248, 244, 0.86) 100%);
-  box-shadow:
-    0 8px 28px rgba(22, 35, 46, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    repeating-linear-gradient(0deg, transparent 0 22px, rgba(115, 132, 153, 0.055) 22px 23px),
+    linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
+  box-shadow: 0 1px 5px rgba(15, 45, 80, 0.035);
 }
 
 .operations-analysis-page__hero-main .moss-page-v2-decision-hero__question {
@@ -157,12 +154,10 @@
 }
 
 .operations-analysis-page__hero-main .moss-page-v2-data-status {
-  padding: 12px 16px;
-  border: 1px solid var(--ops-soft-line);
+  padding: 8px 10px;
+  border: 1px solid rgba(115, 132, 153, 0.24);
   border-left: 3px solid var(--ops-green);
-  border-radius: 14px;
-  background:
-    radial-gradient(ellipse 100% 180% at 0% 50%, rgba(48, 102, 72, 0.16), transparent 55%),
-    linear-gradient(95deg, rgba(236, 248, 240, 0.98) 0%, rgba(255, 255, 255, 0.72) 100%);
-  box-shadow: 0 4px 16px rgba(22, 35, 46, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: none;
 }

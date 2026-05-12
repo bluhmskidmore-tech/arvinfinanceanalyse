@@ -3,6 +3,29 @@
   gap: var(--moss-space-4);
 }
 
+.product-category-branch-switcher {
+  margin-bottom: 0 !important;
+}
+
+.product-category-branch-switcher button {
+  min-height: 32px;
+  padding: 7px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.product-category-branch-switcher button[aria-pressed="true"] {
+  border-color: var(--moss-color-primary-200);
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-primary-800);
+}
+
 .product-category-page-shell > .moss-page-v2-data-status,
 .product-category-page-shell > [data-testid="product-category-result-meta"],
 .product-category-page-shell > [data-testid="product-category-manual-form"] {
@@ -20,8 +43,8 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(var(--moss-color-primary-rgb), 0.11), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.58), transparent 58%);
+    linear-gradient(90deg, rgba(var(--moss-color-primary-rgb), 0.065), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.44), transparent 52%);
 }
 
 .product-category-contract-hero > * {
@@ -30,9 +53,30 @@
 
 .product-category-contract-hero a,
 .product-category-contract-hero button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid var(--moss-color-neutral-300);
   border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-800);
+  cursor: pointer;
   font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.product-category-contract-hero a {
+  border-color: transparent;
+  background: transparent;
+}
+
+.product-category-contract-hero button:hover,
+.product-category-contract-hero a:hover {
+  border-color: var(--moss-color-primary-200);
+  color: var(--moss-color-primary-800);
 }
 
 .product-category-derived-plan {

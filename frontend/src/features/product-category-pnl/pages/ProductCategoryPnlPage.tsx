@@ -1687,7 +1687,7 @@ export default function ProductCategoryPnlPage() {
   if (selectedBranch === "monthly_operating_analysis") {
     return (
       <section data-testid="product-category-page">
-        <FilterBar style={{ marginBottom: 16 }}>
+        <FilterBar className="product-category-branch-switcher" style={{ marginBottom: 16 }}>
           <button
             type="button"
             data-testid="product-category-branch-product-category-pnl"
@@ -1712,7 +1712,7 @@ export default function ProductCategoryPnlPage() {
 
   return (
     <section data-testid="product-category-page" className="product-category-page-shell">
-      <FilterBar style={{ marginBottom: 16 }}>
+      <FilterBar className="product-category-branch-switcher" style={{ marginBottom: 16 }}>
         <button
           type="button"
           data-testid="product-category-branch-product-category-pnl"

@@ -1,21 +1,21 @@
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 
-/** 与浅色工作台一致：白底块用浅阴影分层，避免与底同色的 1px 硬框线（含市场数据等内嵌卡） */
+/** 与首页驾驶舱一致：白底、浅边线、低阴影，控制页面面板密度。 */
 export const pageSurfacePanelStyle = {
-  padding: 24,
-  borderRadius: shellTokens.radiusPanel,
+  padding: 16,
+  borderRadius: designTokens.radius.sm,
   background: shellTokens.colorBgSurface,
-  border: "none",
-  boxShadow: shellTokens.shadowPanel,
+  border: "1px solid rgba(115, 132, 153, 0.24)",
+  boxShadow: "0 1px 5px rgba(15, 45, 80, 0.035)",
 } as const;
 
 export const pageInsetCardStyle = {
-  padding: 16,
-  borderRadius: 16,
-  border: "none",
-  background: shellTokens.colorBgCanvas,
-  boxShadow: designTokens.shadow.card,
+  padding: 12,
+  borderRadius: designTokens.radius.sm,
+  border: "1px solid rgba(115, 132, 153, 0.22)",
+  background: shellTokens.colorBgSurface,
+  boxShadow: "none",
 } as const;
 
 /** Opt-in Phase-1 primitives 使用 global.css class，此为稳定类名字符串供测试与消费者引用 */

@@ -5,12 +5,14 @@
 }
 
 .macro-toolkit-page .moss-page-v2-decision-hero {
-  padding: 18px;
-  border: 1px solid var(--moss-color-neutral-200);
+  padding: 14px 16px;
+  border: 1px solid rgba(115, 132, 153, 0.28);
   border-left: 3px solid var(--moss-color-primary-600);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
-  box-shadow: 0 6px 20px rgba(22, 35, 46, 0.06);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 22px, rgba(115, 132, 153, 0.055) 22px 23px),
+    linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
+  box-shadow: 0 1px 5px rgba(15, 45, 80, 0.035);
 }
 
 .macro-toolkit-hero-grid {
