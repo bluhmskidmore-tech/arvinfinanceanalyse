@@ -1044,3 +1044,47 @@
     grid-template-columns: 1fr;
   }
 }
+
+.stock-analysis-page__mean-reversion-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--sa-color-border-subtle);
+}
+
+.stock-analysis-page__mean-reversion-row:last-of-type {
+  border-bottom: none;
+}
+
+.stock-analysis-page__mean-reversion-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.stock-analysis-page__mean-reversion-dd {
+  color: var(--sa-danger-text);
+}
+
+.stock-analysis-page__factor-screen-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--sa-color-border-subtle);
+}
+
+.stock-analysis-page__factor-screen-row:last-of-type {
+  border-bottom: none;
+}
+
+.stock-analysis-page__factor-screen-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}

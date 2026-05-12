@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from backend.app.repositories.choice_client import ChoiceClient
 from tests.helpers import load_module
 
@@ -77,6 +78,21 @@ def _seed_choice_macro_history(
 
 def _write_csv(path, content: str) -> None:
     path.write_text(content.strip() + "\n", encoding="utf-8-sig")
+
+
+def _ready_choice_stock_readiness() -> ChoiceStockReadiness:
+    return ChoiceStockReadiness(
+        ready=True,
+        status="ready",
+        catalog_path="unit-test-choice-stock-catalog.json",
+        missing_input_families=[],
+        unconfirmed_fields=[],
+        optional_input_status={
+            "concept_membership": "catalog_unconfirmed",
+            "intraday_movement": "catalog_unconfirmed",
+        },
+        message="Choice stock catalog is confirmed for unit tests.",
+    )
 
 
 def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
@@ -313,9 +329,18 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "Choice stock catalog is missing" in unsupported_by_key["sector_rank"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["stock_candidates"]["reason"]
+    assert "Choice stock catalog is missing" in unsupported_by_key["mean_reversion_candidates"]["reason"]
+    assert "choice_stock_factor_snapshot" in unsupported_by_key["factor_screen_candidates"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["theme_breakout"]["reason"]
     unsupported_keys = {row["key"] for row in result["unsupported_outputs"]}
-    assert unsupported_keys == {"sector_rank", "stock_candidates", "theme_breakout", "risk_exit"}
+    assert unsupported_keys == {
+        "sector_rank",
+        "stock_candidates",
+        "mean_reversion_candidates",
+        "factor_screen_candidates",
+        "theme_breakout",
+        "risk_exit",
+    }
     gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
     assert gap_by_family["breadth"]["status"] == "missing"
     assert gap_by_family["limit_up_quality"]["status"] == "missing"
@@ -379,6 +404,7 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monk
     assert "stock_candidates" not in result
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "Choice stock catalog is incomplete" in unsupported_by_key["stock_candidates"]["reason"]
+    assert "Choice stock catalog is incomplete" in unsupported_by_key["mean_reversion_candidates"]["reason"]
     get_settings.cache_clear()
 
 
@@ -450,6 +476,178 @@ def test_livermore_api_returns_explicit_stale_state_and_requested_date_resolutio
     assert condition_by_key["csi300_close_gt_ma60"]["status"] == "stale"
     assert any(row["code"] == "LIVERMORE_BROAD_INDEX_STALE" for row in result["diagnostics"])
     get_settings.cache_clear()
+
+
+def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enrichment_tables(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-04-30",
+                    f"60000{i}.SH",
+                    10.0 + i,
+                    1.1 + i * 0.1,
+                    0.8 + i * 0.05,
+                    0.08 + i * 0.01,
+                    0.25 + i * 0.02,
+                    0.01 + i * 0.01,
+                    0.05 + i * 0.02,
+                    0.18 + i * 0.01,
+                    0.01 + i * 0.002,
+                    "电力设备",
+                )
+                for i in range(1, 8)
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    payload = result["factor_screen_candidates"]
+    assert payload["as_of_date"] == "2026-04-30"
+    assert payload["factor_snapshot_as_of_date"] == "2026-04-30"
+    assert payload["observation_only"] is True
+    assert payload["candidate_count"] >= 1
+    assert payload["items"][0]["stock_name"].endswith(".SH")
+    assert "choice_stock_factor_snapshot" in envelope["result_meta"]["tables_used"]
+    assert "choice_stock_universe" not in envelope["result_meta"]["tables_used"]
+    assert "choice_stock_sector_membership" not in envelope["result_meta"]["tables_used"]
+    assert result["supported_outputs"] == ["market_gate", "factor_screen_candidates"]
+    unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
+    assert "factor_screen_candidates" not in unsupported_by_key
+
+
+def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_path, monkeypatch) -> None:
+    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              sw2021code varchar,
+              sw2021 varchar
+            )
+            """
+        )
+        factor_rows = [
+            (
+                "2026-04-30",
+                f"60001{i}.SH",
+                9.0 + i,
+                1.0 + i * 0.1,
+                0.7 + i * 0.05,
+                0.09 + i * 0.01,
+                0.28 + i * 0.02,
+                0.02 + i * 0.01,
+                0.06 + i * 0.02,
+                0.16 + i * 0.01,
+                0.012 + i * 0.002,
+                "电子",
+            )
+            for i in range(1, 8)
+        ]
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            factor_rows,
+        )
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?, ?)",
+            [("2026-05-08", row[1], f"Name {idx}") for idx, row in enumerate(factor_rows, start=1)],
+        )
+        conn.executemany(
+            "insert into choice_stock_sector_membership values (?, ?, ?, ?)",
+            [("2026-05-08", row[1], "801080", "电子") for row in factor_rows],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    payload = result["factor_screen_candidates"]
+    assert payload["as_of_date"] == "2026-04-30"
+    assert payload["factor_snapshot_as_of_date"] == "2026-04-30"
+    assert payload["items"][0]["sector_code"] == "801080"
+    tables_used = envelope["result_meta"]["tables_used"]
+    assert "choice_stock_factor_snapshot" in tables_used
+    assert "choice_stock_universe" in tables_used
+    assert "choice_stock_sector_membership" in tables_used
 
 
 def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolved_date_inputs(

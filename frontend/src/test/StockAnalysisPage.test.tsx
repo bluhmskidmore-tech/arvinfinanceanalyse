@@ -450,6 +450,62 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByTestId("stock-analysis-theme-review-items")).not.toBeInTheDocument();
   });
 
+  it("renders factor screen candidates with coverage boundaries and no trading action copy", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: [
+            "market_gate",
+            "sector_rank",
+            "stock_candidates",
+            "factor_screen_candidates",
+            "risk_exit",
+          ],
+          factor_screen_candidates: {
+            as_of_date: "2026-04-30",
+            formula_version: "rv_factor_screen_candidates_v1",
+            market_state: "WARM",
+            input_stock_count: 643,
+            candidate_count: 1,
+            coverage_note: "因子数据覆盖 643/5201 只，仅在有因子数据的股票中筛选",
+            items: [
+              {
+                rank: 1,
+                stock_code: "600000.SH",
+                stock_name: "Factor Alpha",
+                sector_code: "801730",
+                sector_name: "电力设备",
+                industry: "电力设备",
+                score: 0.8123,
+                pe: 12.4,
+                pb: 1.6,
+                roe: 0.143,
+                gross_margin: 0.32,
+                three_month_return: 0.056,
+                twelve_month_return: 0.184,
+                dividend_yield: 0.021,
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    await user.click(await screen.findByText(/多因子选股/));
+
+    expect(await screen.findByText("Factor Alpha")).toBeInTheDocument();
+    expect(screen.getByText("600000.SH")).toBeInTheDocument();
+    expect(screen.getAllByText(/因子数据覆盖 643\/5201 只/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("得分 0.812")).toBeInTheDocument();
+
+    const page = screen.getByTestId("stock-analysis-page");
+    expect(page).not.toHaveTextContent("买入");
+    expect(page).not.toHaveTextContent("卖出");
+    expect(page).not.toHaveTextContent("下单");
+    expect(page).not.toHaveTextContent("调仓指令");
+  });
+
   it("shows staleness banner when quality_flag is not ok", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),

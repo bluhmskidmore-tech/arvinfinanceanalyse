@@ -1009,6 +1009,8 @@ export type LivermoreOutputKey =
   | "market_gate"
   | "sector_rank"
   | "stock_candidates"
+  | "mean_reversion_candidates"
+  | "factor_screen_candidates"
   | "theme_breakout"
   | "risk_exit";
 
@@ -1227,6 +1229,62 @@ export type LivermoreRiskExitPayload = {
   watch_items?: LivermoreRiskExitWatchItem[];
 };
 
+export type MeanReversionCandidateItem = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  close: number;
+  drawdown_20d: number;
+  drawdown_60d: number;
+  ma5: number;
+  ma10: number;
+  close_strength: number;
+  vol_ratio: number;
+  score: number;
+};
+
+export type MeanReversionCandidatesPayload = {
+  as_of_date: string;
+  formula_version: string;
+  market_state: LivermoreMarketGateState;
+  input_stock_count: number;
+  candidate_count: number;
+  excluded_stock_count: number;
+  insufficient_history_count: number;
+  items: MeanReversionCandidateItem[];
+};
+
+export type FactorScreenCandidateItem = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  industry: string;
+  score: number;
+  pe: number | null;
+  pb: number | null;
+  roe: number | null;
+  gross_margin: number | null;
+  three_month_return: number | null;
+  twelve_month_return: number | null;
+  dividend_yield: number | null;
+};
+
+export type FactorScreenCandidatesPayload = {
+  as_of_date: string;
+  factor_snapshot_as_of_date?: string;
+  formula_version: string;
+  market_state: LivermoreMarketGateState;
+  observation_only?: boolean;
+  input_stock_count: number;
+  candidate_count: number;
+  coverage_note: string;
+  items: FactorScreenCandidateItem[];
+};
+
 export type LivermoreStrategyPayload = {
   as_of_date: string | null;
   requested_as_of_date: string | null;
@@ -1240,6 +1298,8 @@ export type LivermoreStrategyPayload = {
   unsupported_outputs: LivermoreUnsupportedOutput[];
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
+  mean_reversion_candidates?: MeanReversionCandidatesPayload;
+  factor_screen_candidates?: FactorScreenCandidatesPayload;
   theme_breakout?: LivermoreThemeBreakoutPayload;
   risk_exit?: LivermoreRiskExitPayload;
 };
@@ -2352,6 +2412,18 @@ export type BalanceAnalysisSummaryRow = {
   accrued_interest_amount: DecimalLike;
 };
 
+export type BalanceAnalysisMetricDefinition = {
+  key: string;
+  label: string;
+  source_field: string;
+  raw_unit: "yuan";
+  display_unit: "yi_yuan";
+  basis: "formal";
+  source_surface: "formal_balance";
+  applies_to: Array<"overview" | "summary" | "detail">;
+  description: string;
+};
+
 export type BalanceAnalysisOverviewPayload = {
   report_date: string;
   position_scope: BalancePositionScope;
@@ -2369,6 +2441,7 @@ export type BalanceAnalysisOverviewPayload = {
   liability_total_amortized_cost_amount: DecimalLike;
   asset_total_accrued_interest_amount: DecimalLike;
   liability_total_accrued_interest_amount: DecimalLike;
+  metric_definitions?: BalanceAnalysisMetricDefinition[];
   calibration?: BalancePageCalibration | null;
 };
 

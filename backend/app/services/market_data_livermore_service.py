@@ -23,6 +23,13 @@ from backend.app.core_finance.livermore_stock_candidates import (
     StockCandidateSnapshot,
     compute_stock_candidates,
 )
+from backend.app.core_finance.factor_screen_candidates import (
+    compute_factor_screen_candidates,
+)
+from backend.app.core_finance.mean_reversion_candidates import (
+    MeanReversionSnapshot,
+    compute_mean_reversion_candidates,
+)
 from backend.app.core_finance.livermore_theme_breakout import (
     ThemeBreakoutSnapshot,
     compute_theme_breakout,
@@ -106,6 +113,7 @@ def load_livermore_strategy_payload(
     duckdb_path: str,
     as_of_date: date | None,
     stock_readiness: ChoiceStockReadiness | None = None,
+    backfill_mode: bool = False,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness or choice_stock_readiness_missing("")
     history_rows, broad_index_tables = _load_broad_index_history(
@@ -126,6 +134,7 @@ def load_livermore_strategy_payload(
         as_of_date=effective_as_of_date,
         market_state=str(market_gate["state"]),
         stock_readiness=resolved_stock_readiness,
+        backfill_mode=backfill_mode,
     )
     diagnostics = _build_diagnostics(
         requested_as_of_date=requested_text,
@@ -176,6 +185,10 @@ def load_livermore_strategy_payload(
         payload["sector_rank"] = stock_outputs.sector_rank_payload
     if stock_outputs.stock_candidates_payload is not None:
         payload["stock_candidates"] = stock_outputs.stock_candidates_payload
+    if stock_outputs.mean_reversion_payload is not None:
+        payload["mean_reversion_candidates"] = stock_outputs.mean_reversion_payload
+    if stock_outputs.factor_screen_payload is not None:
+        payload["factor_screen_candidates"] = stock_outputs.factor_screen_payload
     if stock_outputs.theme_breakout_payload is not None:
         payload["theme_breakout"] = stock_outputs.theme_breakout_payload
     if stock_outputs.risk_exit_payload is not None:
@@ -325,6 +338,9 @@ class _ChoiceStockOutputs:
     stock_coverage: ChoiceStockMaterializationCoverage | None
     sector_rank_payload: dict[str, object] | None
     stock_candidates_payload: dict[str, object] | None
+    mean_reversion_payload: dict[str, object] | None
+    factor_screen_payload: dict[str, object] | None
+    factor_screen_block_reason: str
     theme_breakout_payload: dict[str, object] | None
     risk_exit_payload: dict[str, object] | None
     risk_exit_block_reason: str
@@ -341,6 +357,14 @@ class _ThemeBreakoutEvidenceProvenance:
     concept_matched_row_count: int = 0
     movement_date_row_count: int = 0
     movement_matched_row_count: int = 0
+
+
+@dataclass(frozen=True)
+class _FactorScreenLoadResult:
+    rows: list[dict[str, object]]
+    snapshot_as_of_date: str | None
+    tables_used: list[str]
+    unavailable_reason: str = ""
 
 
 def _choice_stock_dependency_summary(
@@ -371,6 +395,7 @@ def _load_choice_stock_outputs(
     as_of_date: str | None,
     market_state: str,
     stock_readiness: ChoiceStockReadiness,
+    backfill_mode: bool = False,
 ) -> _ChoiceStockOutputs:
     if not stock_readiness.ready or as_of_date is None:
         return _ChoiceStockOutputs(
@@ -378,6 +403,9 @@ def _load_choice_stock_outputs(
             stock_coverage=None,
             sector_rank_payload=None,
             stock_candidates_payload=None,
+            mean_reversion_payload=None,
+            factor_screen_payload=None,
+            factor_screen_block_reason="choice_stock_factor_snapshot is unavailable because no resolved as_of_date is available.",
             theme_breakout_payload=None,
             risk_exit_payload=None,
             risk_exit_block_reason="",
@@ -388,15 +416,27 @@ def _load_choice_stock_outputs(
             evidence_rows=0,
         )
 
-    sector_coverage = load_choice_stock_materialization_coverage(
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-        required_items=SECTOR_REQUIRED_ITEMS,
-    )
-    stock_coverage = load_choice_stock_materialization_coverage(
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-    )
+    if backfill_mode:
+        # 回填模式：跳过 audit 表的精确日期检查，直接用最近可用快照
+        sector_coverage = ChoiceStockMaterializationCoverage(
+            as_of_date=as_of_date,
+            full_coverage=True,
+            status="ready",
+            completed_request_items=[],
+            missing_request_items=[],
+            message=f"backfill_mode: skipping coverage check for {as_of_date}",
+        )
+        stock_coverage = sector_coverage
+    else:
+        sector_coverage = load_choice_stock_materialization_coverage(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            required_items=SECTOR_REQUIRED_ITEMS,
+        )
+        stock_coverage = load_choice_stock_materialization_coverage(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+        )
     tables_used: list[str] = []
     source_versions: list[str] = []
     vendor_versions: list[str] = []
@@ -439,6 +479,47 @@ def _load_choice_stock_outputs(
                 market_state=market_state,
                 snapshots=snapshots,
             ).payload
+
+    mean_reversion_payload: dict[str, object] | None = None
+    if stock_coverage.full_coverage and market_state in {"OFF", "WARM"}:
+        mr_snapshots = _load_mean_reversion_snapshots(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+        )
+        if mr_snapshots:
+            mr_result = compute_mean_reversion_candidates(
+                as_of_date=as_of_date,
+                market_state=market_state,
+                snapshots=mr_snapshots,
+            )
+            evidence_rows += len(mr_snapshots)
+            mean_reversion_payload = mr_result.payload
+            tables_used.extend(
+                [
+                    "choice_stock_daily_observation",
+                    "choice_stock_universe",
+                    "choice_stock_sector_membership",
+                ]
+            )
+
+    factor_screen_payload: dict[str, object] | None = None
+    factor_screen_block_reason = ""
+    factor_load = _load_factor_screen_rows(duckdb_path=duckdb_path, as_of_date=as_of_date)
+    if factor_load.rows and factor_load.snapshot_as_of_date is not None:
+        fs_result = compute_factor_screen_candidates(
+            as_of_date=factor_load.snapshot_as_of_date,
+            market_state=market_state,
+            rows=factor_load.rows,
+        )
+        factor_screen_payload = {
+            **fs_result.payload,
+            "factor_snapshot_as_of_date": factor_load.snapshot_as_of_date,
+            "observation_only": True,
+        }
+        tables_used.extend(factor_load.tables_used)
+        evidence_rows += len(factor_load.rows)
+    else:
+        factor_screen_block_reason = factor_load.unavailable_reason
 
     theme_breakout_payload: dict[str, object] | None = None
     if (
@@ -494,6 +575,9 @@ def _load_choice_stock_outputs(
         stock_coverage=stock_coverage,
         sector_rank_payload=sector_rank_payload,
         stock_candidates_payload=stock_candidates_payload,
+        mean_reversion_payload=mean_reversion_payload,
+        factor_screen_payload=factor_screen_payload,
+        factor_screen_block_reason=factor_screen_block_reason,
         theme_breakout_payload=theme_breakout_payload,
         risk_exit_payload=risk_exit_payload,
         risk_exit_block_reason=risk_exit_block_reason,
@@ -539,9 +623,11 @@ def _load_sector_rank_inputs(
             join choice_stock_daily_observation daily
               on daily.stock_code = membership.stock_code
              and cast(daily.trade_date as date) = cast(? as date)
-            where membership.as_of_date = ?
+            where membership.as_of_date = (
+                select max(as_of_date) from choice_stock_sector_membership
+            )
             """,
-            [as_of_date, as_of_date],
+            [as_of_date],
         ).fetchall()
     except duckdb.Error:
         return [], ["choice_stock_sector_membership", "choice_stock_daily_observation"], [], []
@@ -613,16 +699,20 @@ def _load_stock_candidate_snapshots(
             from choice_stock_universe universe
             join choice_stock_sector_membership membership
               on membership.stock_code = universe.stock_code
-             and membership.as_of_date = universe.as_of_date
+             and membership.as_of_date = (
+                 select max(as_of_date) from choice_stock_sector_membership
+             )
             join choice_stock_daily_observation daily
               on daily.stock_code = universe.stock_code
              and cast(daily.trade_date as date) = cast(? as date)
             join choice_stock_limit_quality limits
               on limits.stock_code = universe.stock_code
              and limits.as_of_date = universe.as_of_date
-            where universe.as_of_date = ?
+            where universe.as_of_date = (
+                select max(as_of_date) from choice_stock_universe
+            )
             """,
-            [as_of_date, as_of_date],
+            [as_of_date],
         ).fetchall()
         stock_codes = [str(row[0]) for row in current_rows if row[0]]
         if not stock_codes:
@@ -722,6 +812,295 @@ def _load_stock_candidate_snapshots(
         "choice_stock_limit_quality",
     ]
     return snapshots, tables_used, source_versions, vendor_versions
+
+
+def _load_mean_reversion_snapshots(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+) -> list[MeanReversionSnapshot]:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return []
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return []
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        required_tables = {
+            "choice_stock_universe",
+            "choice_stock_sector_membership",
+            "choice_stock_daily_observation",
+        }
+        if not required_tables.issubset(tables):
+            return []
+        current_rows = conn.execute(
+            """
+            select
+              daily.stock_code,
+              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
+              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
+              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
+              daily.close_value,
+              daily.low_value,
+              daily.high_value,
+              daily.volume
+            from choice_stock_daily_observation daily
+            left join choice_stock_universe universe
+              on universe.stock_code = daily.stock_code
+             and universe.as_of_date = (
+                 select max(as_of_date) from choice_stock_universe
+             )
+            left join choice_stock_sector_membership membership
+              on membership.stock_code = daily.stock_code
+             and membership.as_of_date = (
+                 select max(as_of_date) from choice_stock_sector_membership
+             )
+            where cast(daily.trade_date as date) = cast(? as date)
+              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+            """,
+            [as_of_date],
+        ).fetchall()
+        stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
+        if not stock_codes:
+            return []
+        placeholders = ",".join("?" for _ in stock_codes)
+        history_rows = conn.execute(
+            f"""
+            select stock_code, close_value, volume
+            from choice_stock_daily_observation
+            where stock_code in ({placeholders})
+              and cast(trade_date as date) <= cast(? as date)
+              and trim(coalesce(tradestatus, '')) = 'Trading'
+            order by stock_code asc, cast(trade_date as date) asc
+            """,
+            [*stock_codes, as_of_date],
+        ).fetchall()
+    except duckdb.Error:
+        return []
+    finally:
+        conn.close()
+
+    history_by_code: dict[str, dict[str, list[object]]] = {}
+    for row in history_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.setdefault(code, {"close": [], "volume": []})
+        bucket["close"].append(row[1])
+        bucket["volume"].append(row[2])
+
+    snapshots: list[MeanReversionSnapshot] = []
+    for row in current_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.get(code, {"close": [], "volume": []})
+        closes = bucket["close"]
+        vols = bucket["volume"]
+        if len(closes) > 65:
+            closes = closes[-65:]
+            vols = vols[-65:]
+        if len(closes) != len(vols):
+            continue
+        snapshots.append(
+            MeanReversionSnapshot(
+                stock_code=code,
+                stock_name=str(row[1] or code),
+                sector_code=str(row[2] or ""),
+                sector_name=str(row[3] or ""),
+                close_value=row[4],
+                low_value=row[5],
+                high_value=row[6],
+                volume=row[7],
+                close_history=closes,
+                volume_history=vols,
+            )
+        )
+    return snapshots
+
+
+def _load_factor_screen_rows(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+) -> _FactorScreenLoadResult:
+    """Load factor snapshot rows for the given date (or latest available)."""
+    path = Path(duckdb_path)
+    if not path.exists():
+        return _FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="DuckDB file is missing; choice_stock_factor_snapshot cannot be read.",
+        )
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return _FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="DuckDB file could not be opened; choice_stock_factor_snapshot cannot be read.",
+        )
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        if "choice_stock_factor_snapshot" not in tables:
+            return _FactorScreenLoadResult(
+                rows=[],
+                snapshot_as_of_date=None,
+                tables_used=[],
+                unavailable_reason="choice_stock_factor_snapshot table is missing.",
+            )
+        required_factor_columns = [
+            "as_of_date",
+            "stock_code",
+            "pe",
+            "pb",
+            "ps",
+            "roe",
+            "gross_margin",
+            "three_month_return",
+            "twelve_month_return",
+            "volatility",
+            "dividend_yield",
+            "industry",
+        ]
+        factor_columns = _table_columns(conn, "choice_stock_factor_snapshot")
+        missing_factor_columns = [col for col in required_factor_columns if col not in factor_columns]
+        if missing_factor_columns:
+            return _FactorScreenLoadResult(
+                rows=[],
+                snapshot_as_of_date=None,
+                tables_used=["choice_stock_factor_snapshot"],
+                unavailable_reason=(
+                    "choice_stock_factor_snapshot is missing required columns: "
+                    f"{', '.join(missing_factor_columns)}."
+                ),
+            )
+        latest = conn.execute(
+            """
+            SELECT MAX(as_of_date) FROM choice_stock_factor_snapshot
+            WHERE as_of_date <= ?
+        """,
+            [as_of_date],
+        ).fetchone()
+        if not latest or not latest[0]:
+            return _FactorScreenLoadResult(
+                rows=[],
+                snapshot_as_of_date=None,
+                tables_used=["choice_stock_factor_snapshot"],
+                unavailable_reason=f"choice_stock_factor_snapshot has no rows on or before {as_of_date}.",
+            )
+        snap_date = latest[0]
+        tables_used = ["choice_stock_factor_snapshot"]
+        has_universe = _table_has_columns(conn, "choice_stock_universe", ["stock_code", "stock_name", "as_of_date"])
+        has_sector = _table_has_columns(
+            conn,
+            "choice_stock_sector_membership",
+            ["stock_code", "sw2021code", "sw2021", "as_of_date"],
+        )
+        if has_universe:
+            tables_used.append("choice_stock_universe")
+        if has_sector:
+            tables_used.append("choice_stock_sector_membership")
+
+        stock_name_expr = "COALESCE(u.stock_name, f.stock_code)" if has_universe else "f.stock_code"
+        universe_join = (
+            """
+            LEFT JOIN (
+                SELECT stock_code, stock_name
+                FROM choice_stock_universe
+                WHERE as_of_date = (SELECT MAX(as_of_date) FROM choice_stock_universe)
+            ) u ON f.stock_code = u.stock_code
+            """
+            if has_universe
+            else ""
+        )
+        sector_code_expr = "COALESCE(s.sw2021code, '')" if has_sector else "''"
+        sector_name_expr = "COALESCE(s.sw2021, f.industry, '')" if has_sector else "COALESCE(f.industry, '')"
+        sector_join = (
+            """
+            LEFT JOIN (
+                SELECT stock_code, sw2021code, sw2021
+                FROM choice_stock_sector_membership
+                WHERE as_of_date = (SELECT MAX(as_of_date) FROM choice_stock_sector_membership)
+            ) s ON f.stock_code = s.stock_code
+            """
+            if has_sector
+            else ""
+        )
+
+        rows = conn.execute(
+            f"""
+            SELECT
+                f.stock_code,
+                {stock_name_expr} AS stock_name,
+                f.pe, f.pb, f.ps, f.roe, f.gross_margin,
+                f.three_month_return, f.twelve_month_return,
+                f.volatility, f.dividend_yield,
+                f.industry,
+                {sector_code_expr} AS sector_code,
+                {sector_name_expr} AS sector_name
+            FROM choice_stock_factor_snapshot f
+            {universe_join}
+            {sector_join}
+            WHERE f.as_of_date = ?
+        """,
+            [snap_date],
+        ).fetchall()
+
+        cols = [
+            "stock_code",
+            "stock_name",
+            "pe",
+            "pb",
+            "ps",
+            "roe",
+            "gross_margin",
+            "three_month_return",
+            "twelve_month_return",
+            "volatility",
+            "dividend_yield",
+            "industry",
+            "sector_code",
+            "sector_name",
+        ]
+        mapped_rows = [dict(zip(cols, row)) for row in rows]
+        if not mapped_rows:
+            return _FactorScreenLoadResult(
+                rows=[],
+                snapshot_as_of_date=str(snap_date),
+                tables_used=tables_used,
+                unavailable_reason=f"choice_stock_factor_snapshot has no usable rows for snapshot {snap_date}.",
+            )
+        return _FactorScreenLoadResult(
+            rows=mapped_rows,
+            snapshot_as_of_date=str(snap_date),
+            tables_used=tables_used,
+        )
+    except duckdb.Error:
+        return _FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=["choice_stock_factor_snapshot"],
+            unavailable_reason="DuckDB query failed while reading choice_stock_factor_snapshot.",
+        )
+    finally:
+        conn.close()
+
+
+def _table_has_columns(conn: duckdb.DuckDBPyConnection, table_name: str, columns: list[str]) -> bool:
+    available = _table_columns(conn, table_name)
+    return set(columns).issubset(available)
+
+
+def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()}
+    except duckdb.Error:
+        return set()
 
 
 def _load_theme_breakout_snapshots(
@@ -1228,6 +1607,33 @@ def _risk_exit_input_block_reason(
         conn.close()
 
 
+def _mean_reversion_unavailable_reason(
+    *,
+    market_state: str,
+    stock_readiness: ChoiceStockReadiness,
+    stock_outputs: _ChoiceStockOutputs,
+) -> str:
+    if market_state in {"HOT", "OVERHEAT"}:
+        return (
+            "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT "
+            "because the defended-trend candidate bundle already covers overheated tape."
+        )
+    if not stock_readiness.ready:
+        return _choice_stock_dependency_summary(
+            stock_readiness=stock_readiness,
+            families=["stock_universe", "stock_ohlcv", "stock_status"],
+            ready_summary="",
+        )
+    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
+        return "Choice stock catalog is confirmed, but mean reversion daily inputs are not materialized yet."
+    if not stock_outputs.stock_coverage.full_coverage:
+        return stock_outputs.stock_coverage.message
+    return (
+        "Mean reversion inputs are landed, but no Trading-status A-share rows produced "
+        "watchlist snapshots for this as_of_date."
+    )
+
+
 def _build_supported_outputs(
     state: str,
     *,
@@ -1259,6 +1665,29 @@ def _build_supported_outputs(
         supported.append("stock_candidates")
     else:
         unsupported.append({"key": "stock_candidates", "reason": stock_reason})
+    if stock_outputs.mean_reversion_payload is not None:
+        supported.append("mean_reversion_candidates")
+    else:
+        unsupported.append(
+            {
+                "key": "mean_reversion_candidates",
+                "reason": _mean_reversion_unavailable_reason(
+                    market_state=state,
+                    stock_readiness=stock_readiness,
+                    stock_outputs=stock_outputs,
+                ),
+            }
+        )
+    if stock_outputs.factor_screen_payload is not None:
+        supported.append("factor_screen_candidates")
+    else:
+        unsupported.append(
+            {
+                "key": "factor_screen_candidates",
+                "reason": stock_outputs.factor_screen_block_reason
+                or "choice_stock_factor_snapshot has no usable rows for the resolved as_of_date.",
+            }
+        )
     if stock_outputs.theme_breakout_payload is not None:
         supported.append("theme_breakout")
     else:

@@ -189,6 +189,10 @@ export default function StockAnalysisPage() {
     return [...queue].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
   }, [strategyPayload]);
 
+  const gateState = strategyPayload?.market_gate.state;
+  const meanReversionPayload = strategyPayload?.mean_reversion_candidates;
+  const factorScreenPayload = strategyPayload?.factor_screen_candidates;
+
   const themeBreakoutCards = useMemo(
     () => (strategyPayload ? buildThemeBreakoutCards(strategyPayload) : []),
     [strategyPayload],
@@ -1186,6 +1190,114 @@ export default function StockAnalysisPage() {
                     该行业暂无候选复核项，可切换到其他行业复核。
                   </p>
                 ) : null}
+              </section>
+
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                data-testid="stock-analysis-mean-reversion"
+                aria-label="超跌反弹观察池"
+              >
+                <Collapse
+                  ghost
+                  bordered={false}
+                  items={[
+                    {
+                      key: "mean-reversion",
+                      label: `超跌反弹观察池  · ${meanReversionPayload?.candidate_count ?? 0} 只  · 仅在 OFF/WARM 市场激活`,
+                      children: (
+                        <div className="stock-analysis-page__mean-reversion">
+                          {gateState === "HOT" || gateState === "OVERHEAT" ? (
+                            <p className="stock-analysis-page__empty">当前市场偏热，超跌反弹策略未激活</p>
+                          ) : null}
+                          {gateState !== "HOT" && gateState !== "OVERHEAT" && !meanReversionPayload ? (
+                            <p className="stock-analysis-page__empty">数据未就绪</p>
+                          ) : null}
+                          {gateState !== "HOT" &&
+                          gateState !== "OVERHEAT" &&
+                          meanReversionPayload &&
+                          meanReversionPayload.items.length === 0 ? (
+                            <p className="stock-analysis-page__empty">当前无符合条件的超跌反弹候选股</p>
+                          ) : null}
+                          {gateState !== "HOT" &&
+                          gateState !== "OVERHEAT" &&
+                          meanReversionPayload &&
+                          meanReversionPayload.items.length > 0 ? (
+                            <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                              {meanReversionPayload.items.map((row) => (
+                                <li key={row.stock_code} className="stock-analysis-page__mean-reversion-row">
+                                  <div>
+                                    <strong>#{row.rank}</strong>{" "}
+                                    <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
+                                    {row.stock_name}{" "}
+                                    <small className="stock-analysis-page__tabular">
+                                      {row.sector_name || row.sector_code || "—"}
+                                    </small>
+                                  </div>
+                                  <div className="stock-analysis-page__mean-reversion-metrics stock-analysis-page__tabular">
+                                    <span className="stock-analysis-page__mean-reversion-dd">
+                                      20日回撤 {(row.drawdown_20d * 100).toFixed(1)}%
+                                    </span>
+                                    <span>收盘强度 {(row.close_strength * 100).toFixed(0)}%</span>
+                                    <span>量比 {row.vol_ratio.toFixed(1)}x</span>
+                                    <span>得分 {row.score.toFixed(2)}</span>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="stock-analysis-page__footnote">
+                            超跌反弹观察：基于价格回撤 + 企稳信号 + 放量特征的纯技术面筛选，仅作复核观察，不给出操作性动作提示。市场状态
+                            HOT/OVERHEAT 时自动停用。
+                          </p>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "factor-screen",
+                      label: `多因子选股  · ${factorScreenPayload?.candidate_count ?? 0} 只  · ${factorScreenPayload?.coverage_note ?? "数据未就绪"}`,
+                      children: (
+                        <div className="stock-analysis-page__factor-screen">
+                          {!factorScreenPayload ? (
+                            <p className="stock-analysis-page__empty">因子数据未就绪</p>
+                          ) : factorScreenPayload.items.length === 0 ? (
+                            <p className="stock-analysis-page__empty">当前无符合条件的多因子候选股</p>
+                          ) : (
+                            <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                              {factorScreenPayload.items.map((row) => (
+                                <li key={row.stock_code} className="stock-analysis-page__factor-screen-row">
+                                  <div>
+                                    <strong>#{row.rank}</strong>{" "}
+                                    <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
+                                    {row.stock_name}{" "}
+                                    <small className="stock-analysis-page__tabular">
+                                      {row.sector_name || row.industry || "—"}
+                                    </small>
+                                  </div>
+                                  <div className="stock-analysis-page__factor-screen-metrics stock-analysis-page__tabular">
+                                    <span>得分 {row.score.toFixed(3)}</span>
+                                    {row.pe != null && <span>PE {row.pe.toFixed(1)}</span>}
+                                    {row.roe != null && <span>ROE {(row.roe * 100).toFixed(1)}%</span>}
+                                    {row.three_month_return != null && (
+                                      <span>3月 {(row.three_month_return * 100).toFixed(1)}%</span>
+                                    )}
+                                    {row.dividend_yield != null && row.dividend_yield > 0 && (
+                                      <span>股息 {(row.dividend_yield * 100).toFixed(2)}%</span>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <p className="stock-analysis-page__footnote">
+                            多因子选股：综合价值（PE/PB/PS倒数）、质量（ROE/毛利率）、动量（3月/12月收益）、低波动、股息五个因子加权评分，
+                            取前10%。{factorScreenPayload?.coverage_note ?? ""}
+                            。仅作复核观察，不给出操作性动作提示。
+                          </p>
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
               </section>
             </div>
 
