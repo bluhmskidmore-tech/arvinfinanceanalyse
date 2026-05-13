@@ -27,6 +27,7 @@ import {
 } from "../lib/stockAnalysisPageModel";
 import type { StockSectorRow, StockSectorViewKind } from "../lib/stockAnalysisPageModel";
 import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
+import { buildConsensusSummary, consensusStrategyLabel, lookupStockStrategyRanks } from "../lib/buildConsensusSummary";
 import { StockDetailDrawer } from "../components/StockDetailDrawer";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockAnalysisPage.css";
@@ -117,7 +118,10 @@ export default function StockAnalysisPage() {
     sectorCode?: string;
     sectorName?: string;
     distanceToBreakoutPct?: string;
-    source?: "review_queue" | "risk_exit";
+    source?: "review_queue" | "risk_exit" | "mean_reversion" | "factor_screen" | "consensus";
+    livermoreRank?: number | null;
+    meanReversionRank?: number | null;
+    factorScreenRank?: number | null;
   } | null>(null);
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [sectorSeriesCollapseKeys, setSectorSeriesCollapseKeys] = useState<string[]>([]);
@@ -192,6 +196,11 @@ export default function StockAnalysisPage() {
   const gateState = strategyPayload?.market_gate.state;
   const meanReversionPayload = strategyPayload?.mean_reversion_candidates;
   const factorScreenPayload = strategyPayload?.factor_screen_candidates;
+
+  const consensusSummary = useMemo(
+    () => buildConsensusSummary(strategyPayload),
+    [strategyPayload],
+  );
 
   const themeBreakoutCards = useMemo(
     () => (strategyPayload ? buildThemeBreakoutCards(strategyPayload) : []),
@@ -1041,6 +1050,125 @@ export default function StockAnalysisPage() {
               ) : null}
 
               <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                data-testid="stock-analysis-consensus"
+                aria-label="多策略共振推荐"
+              >
+                <Collapse
+                  ghost
+                  bordered={false}
+                  defaultActiveKey={consensusSummary.items.length > 0 ? ["consensus"] : undefined}
+                  items={[
+                    {
+                      key: "consensus",
+                      label: `多策略共振推荐  · ${consensusSummary.doubleCount} 只 (3套: ${consensusSummary.tripleCount})`,
+                      children: (
+                        <div className="stock-analysis-page__consensus">
+                          <div className="stock-analysis-page__consensus-stats">
+                            <span>
+                              趋势 <strong>{consensusSummary.strategyCounts.livermore}</strong> 只
+                            </span>
+                            <span>
+                              超跌反弹 <strong>{consensusSummary.strategyCounts.mean_reversion}</strong> 只
+                            </span>
+                            <span>
+                              多因子 <strong>{consensusSummary.strategyCounts.factor_screen}</strong> 只
+                            </span>
+                            <span>
+                              合计去重 <strong>{consensusSummary.totalUnion}</strong> 只
+                            </span>
+                          </div>
+
+                          {!consensusSummary.hasAnyStrategy ? (
+                            <p className="stock-analysis-page__empty">当前无任何策略输出候选股</p>
+                          ) : consensusSummary.items.length === 0 ? (
+                            <p className="stock-analysis-page__empty">
+                              当前没有被 2 套及以上策略共同选中的股票
+                            </p>
+                          ) : (
+                            <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                              {consensusSummary.items.map((row) => {
+                                const isTriple = row.consensusCount >= 3;
+                                const openDetail = () => {
+                                  setDetailSelection({
+                                    code: row.stockCode,
+                                    name: row.stockName,
+                                    sectorName: row.sectorName,
+                                    source: "consensus",
+                                    livermoreRank: row.livermoreRank,
+                                    meanReversionRank: row.meanReversionRank,
+                                    factorScreenRank: row.factorScreenRank,
+                                  });
+                                };
+                                return (
+                                  <li
+                                    key={row.stockCode}
+                                    className={`stock-analysis-page__consensus-row stock-analysis-page__row--clickable${
+                                      isTriple ? " stock-analysis-page__consensus-row--triple" : ""
+                                    }`}
+                                    data-testid={`consensus-row-${row.stockCode}`}
+                                    onClick={openDetail}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        openDetail();
+                                      }
+                                    }}
+                                  >
+                                    <div className="stock-analysis-page__consensus-head">
+                                      <span
+                                        className={`stock-analysis-page__consensus-badge${
+                                          isTriple ? " stock-analysis-page__consensus-badge--triple" : ""
+                                        }`}
+                                      >
+                                        {isTriple ? "三策略共振" : "双策略共振"}
+                                      </span>
+                                      <strong>
+                                        <span className="stock-analysis-page__tabular">
+                                          {row.stockCode}
+                                        </span>{" "}
+                                        {row.stockName}
+                                      </strong>
+                                      <small className="stock-analysis-page__tabular">
+                                        {row.sectorName || "—"}
+                                      </small>
+                                      <span className="stock-analysis-page__consensus-strategies">
+                                        {row.strategies.map((kind) => (
+                                          <span key={kind} className="stock-analysis-page__consensus-badge">
+                                            {consensusStrategyLabel(kind)}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    </div>
+                                    <div className="stock-analysis-page__consensus-ranks">
+                                      {row.livermoreRank != null && (
+                                        <span>趋势 #{row.livermoreRank}</span>
+                                      )}
+                                      {row.meanReversionRank != null && (
+                                        <span>超跌反弹 #{row.meanReversionRank}</span>
+                                      )}
+                                      {row.factorScreenRank != null && (
+                                        <span>多因子 #{row.factorScreenRank}</span>
+                                      )}
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                          <p className="stock-analysis-page__footnote">
+                            被多套策略同时选中的股票信号更强，但仍需结合板块环境与个股基本面独立复核，不构成操作建议。
+                          </p>
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              </section>
+
+              <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
                 data-testid="stock-analysis-review-queue"
               >
@@ -1110,7 +1238,8 @@ export default function StockAnalysisPage() {
                               type="default"
                               size="small"
                               data-testid={`stock-candidate-review-chart-${card.stockCode}`}
-                              onClick={() =>
+                              onClick={() => {
+                                const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
                                 setDetailSelection({
                                   code: card.stockCode,
                                   name: card.stockName,
@@ -1119,8 +1248,11 @@ export default function StockAnalysisPage() {
                                   sectorName: card.sectorName,
                                   distanceToBreakoutPct: card.distanceToBreakoutPct,
                                   source: "review_queue",
-                                })
-                              }
+                                  livermoreRank: card.rank,
+                                  meanReversionRank: ranks.meanReversionRank,
+                                  factorScreenRank: ranks.factorScreenRank,
+                                });
+                              }}
                             >
                               复核 K 线
                             </Button>
@@ -1224,7 +1356,41 @@ export default function StockAnalysisPage() {
                           meanReversionPayload.items.length > 0 ? (
                             <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                               {meanReversionPayload.items.map((row) => (
-                                <li key={row.stock_code} className="stock-analysis-page__mean-reversion-row">
+                                <li
+                                  key={row.stock_code}
+                                  className="stock-analysis-page__mean-reversion-row stock-analysis-page__row--clickable"
+                                  onClick={() => {
+                                    const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stock_code);
+                                    setDetailSelection({
+                                      code: row.stock_code,
+                                      name: row.stock_name,
+                                      sectorCode: row.sector_code,
+                                      sectorName: row.sector_name,
+                                      source: "mean_reversion",
+                                      livermoreRank: ranks.livermoreRank,
+                                      meanReversionRank: row.rank,
+                                      factorScreenRank: ranks.factorScreenRank,
+                                    });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stock_code);
+                                      setDetailSelection({
+                                        code: row.stock_code,
+                                        name: row.stock_name,
+                                        sectorCode: row.sector_code,
+                                        sectorName: row.sector_name,
+                                        source: "mean_reversion",
+                                        livermoreRank: ranks.livermoreRank,
+                                        meanReversionRank: row.rank,
+                                        factorScreenRank: ranks.factorScreenRank,
+                                      });
+                                    }
+                                  }}
+                                >
                                   <div>
                                     <strong>#{row.rank}</strong>{" "}
                                     <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
@@ -1264,7 +1430,41 @@ export default function StockAnalysisPage() {
                           ) : (
                             <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                               {factorScreenPayload.items.map((row) => (
-                                <li key={row.stock_code} className="stock-analysis-page__factor-screen-row">
+                                <li
+                                  key={row.stock_code}
+                                  className="stock-analysis-page__factor-screen-row stock-analysis-page__row--clickable"
+                                  onClick={() => {
+                                    const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stock_code);
+                                    setDetailSelection({
+                                      code: row.stock_code,
+                                      name: row.stock_name,
+                                      sectorCode: row.sector_code,
+                                      sectorName: row.sector_name || row.industry,
+                                      source: "factor_screen",
+                                      livermoreRank: ranks.livermoreRank,
+                                      meanReversionRank: ranks.meanReversionRank,
+                                      factorScreenRank: row.rank,
+                                    });
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stock_code);
+                                      setDetailSelection({
+                                        code: row.stock_code,
+                                        name: row.stock_name,
+                                        sectorCode: row.sector_code,
+                                        sectorName: row.sector_name || row.industry,
+                                        source: "factor_screen",
+                                        livermoreRank: ranks.livermoreRank,
+                                        meanReversionRank: ranks.meanReversionRank,
+                                        factorScreenRank: row.rank,
+                                      });
+                                    }
+                                  }}
+                                >
                                   <div>
                                     <strong>#{row.rank}</strong>{" "}
                                     <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
@@ -1328,20 +1528,28 @@ export default function StockAnalysisPage() {
                         key={`${row.stockCode}:${row.status}:${row.reason}`}
                         role="button"
                         tabIndex={0}
-                        onClick={() =>
+                        onClick={() => {
+                          const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
                           setDetailSelection({
                             code: row.stockCode,
                             name: row.stockName,
                             source: "risk_exit",
-                          })
-                        }
+                            livermoreRank: ranks.livermoreRank,
+                            meanReversionRank: ranks.meanReversionRank,
+                            factorScreenRank: ranks.factorScreenRank,
+                          });
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
+                            const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
                             setDetailSelection({
                               code: row.stockCode,
                               name: row.stockName,
                               source: "risk_exit",
+                              livermoreRank: ranks.livermoreRank,
+                              meanReversionRank: ranks.meanReversionRank,
+                              factorScreenRank: ranks.factorScreenRank,
                             });
                           }
                         }}
@@ -1472,10 +1680,22 @@ export default function StockAnalysisPage() {
         reviewContext={
           detailSelection
             ? {
-                sourceLabel: detailSelection.source === "risk_exit" ? "风险退出观察" : "复核队列",
+                sourceLabel:
+                  detailSelection.source === "risk_exit"
+                    ? "风险退出观察"
+                    : detailSelection.source === "mean_reversion"
+                      ? "超跌反弹观察"
+                      : detailSelection.source === "factor_screen"
+                        ? "多因子选股"
+                        : detailSelection.source === "consensus"
+                          ? "多策略共振"
+                          : "复核队列",
                 sectorName: detailSelection.sectorName,
                 reviewRank: detailSelection.reviewRank,
                 distanceToBreakoutPct: detailSelection.distanceToBreakoutPct,
+                livermoreRank: detailSelection.livermoreRank,
+                meanReversionRank: detailSelection.meanReversionRank,
+                factorScreenRank: detailSelection.factorScreenRank,
               }
             : null
         }

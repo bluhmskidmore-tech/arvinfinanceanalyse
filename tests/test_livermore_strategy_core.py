@@ -40,7 +40,7 @@ def test_market_gate_pending_when_fewer_than_60_points() -> None:
     assert condition_by_key["limit_up_quality_positive"]["status"] == "missing"
 
 
-def test_market_gate_warm_when_two_trend_conditions_pass() -> None:
+def test_market_gate_pending_when_supplement_inputs_are_missing() -> None:
     gate = evaluate_market_gate(
         _history(
             start=date(2026, 1, 1),
@@ -48,7 +48,7 @@ def test_market_gate_warm_when_two_trend_conditions_pass() -> None:
         )
     )
 
-    assert gate["state"] == "WARM"
+    assert gate["state"] == "PENDING_DATA"
     assert gate["passed_conditions"] == 2
     assert gate["available_conditions"] == 2
     assert gate["required_conditions"] == 4
@@ -82,7 +82,7 @@ def test_market_gate_overheat_when_supplement_covers_breadth_and_limit_up() -> N
     assert condition_by_key["limit_up_quality_positive"]["status"] == "pass"
 
 
-def test_market_gate_ignores_supplement_when_trade_date_mismatches() -> None:
+def test_market_gate_pending_when_supplement_trade_date_mismatches() -> None:
     start = date(2026, 1, 1)
     closes = [3000.0 + day * 10 for day in range(65)]
     history = _history(start=start, closes=closes)
@@ -94,7 +94,7 @@ def test_market_gate_ignores_supplement_when_trade_date_mismatches() -> None:
             limit_up_quality_ok=True,
         ),
     )
-    assert gate["state"] == "WARM"
+    assert gate["state"] == "PENDING_DATA"
     assert gate["available_conditions"] == 2
     condition_by_key = {row["key"]: row for row in gate["conditions"]}
     assert condition_by_key["breadth_5d_positive"]["status"] == "missing"

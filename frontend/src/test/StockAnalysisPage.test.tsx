@@ -1012,6 +1012,7 @@ describe("StockAnalysisPage", () => {
       {
         stock_code: "000002.SZ",
         stock_name: "Beta",
+        livermore_rank: 2,
         review_rank: 2,
         sector_code: "801002",
         sector_name: "新能源车",

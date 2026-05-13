@@ -114,6 +114,8 @@ const outputLabels: Record<LivermoreOutputKey, string> = {
   market_gate: "市场门控",
   sector_rank: "板块排序",
   stock_candidates: "个股候选",
+  mean_reversion_candidates: "超跌反弹观察池",
+  factor_screen_candidates: "多因子选股",
   theme_breakout: "题材突变",
   risk_exit: "风险退出",
 };

@@ -37,6 +37,37 @@
   color: var(--sa-accent-text, #1d4ed8);
 }
 
+/* 多策略命中徽章 */
+.stock-detail-drawer__strategy-ranks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.stock-detail-drawer__strategy-ranks-label {
+  color: var(--sa-muted, #6b7280);
+  font-weight: 500;
+  margin-right: 2px;
+}
+
+.stock-detail-drawer__strategy-ranks-badge {
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: rgba(99, 102, 241, 0.12);
+  color: rgb(79, 70, 229);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.stock-detail-drawer__strategy-ranks-badge--consensus {
+  background: rgba(245, 158, 11, 0.18);
+  color: rgb(180, 83, 9);
+  font-weight: 600;
+}
+
 .stock-detail-drawer__lookback {
   display: flex;
   flex-direction: column;

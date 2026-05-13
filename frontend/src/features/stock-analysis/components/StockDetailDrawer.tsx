@@ -104,6 +104,9 @@ export type StockDetailDrawerProps = {
     sectorName?: string;
     reviewRank?: number;
     distanceToBreakoutPct?: string;
+    livermoreRank?: number | null;
+    meanReversionRank?: number | null;
+    factorScreenRank?: number | null;
   } | null;
   onClose: () => void;
 };
@@ -219,6 +222,42 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                   {reviewContext.sectorName ? <span>{reviewContext.sectorName}</span> : null}
                   {reviewContext.distanceToBreakoutPct ? (
                     <span>距观察位 {reviewContext.distanceToBreakoutPct}</span>
+                  ) : null}
+                </div>
+              ) : null}
+              {reviewContext &&
+              (reviewContext.livermoreRank != null ||
+                reviewContext.meanReversionRank != null ||
+                reviewContext.factorScreenRank != null) ? (
+                <div
+                  className="stock-detail-drawer__strategy-ranks"
+                  data-testid="stock-detail-strategy-ranks"
+                  aria-label="多策略命中"
+                >
+                  <span className="stock-detail-drawer__strategy-ranks-label">策略命中</span>
+                  {reviewContext.livermoreRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      趋势 #{reviewContext.livermoreRank}
+                    </span>
+                  ) : null}
+                  {reviewContext.meanReversionRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      超跌反弹 #{reviewContext.meanReversionRank}
+                    </span>
+                  ) : null}
+                  {reviewContext.factorScreenRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      多因子 #{reviewContext.factorScreenRank}
+                    </span>
+                  ) : null}
+                  {[
+                    reviewContext.livermoreRank,
+                    reviewContext.meanReversionRank,
+                    reviewContext.factorScreenRank,
+                  ].filter((v) => v != null).length >= 2 ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge stock-detail-drawer__strategy-ranks-badge--consensus">
+                      共振
+                    </span>
                   ) : null}
                 </div>
               ) : null}

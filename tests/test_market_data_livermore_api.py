@@ -323,7 +323,7 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert result["strategy_name"] == "Livermore A-Share Defended Trend"
     assert result["requested_as_of_date"] is None
     assert result["as_of_date"] == "2026-04-06"
-    assert result["market_gate"]["state"] == "WARM"
+    assert result["market_gate"]["state"] == "PENDING_DATA"
     assert result["supported_outputs"] == ["market_gate"]
     assert "stock_candidates" not in result
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
