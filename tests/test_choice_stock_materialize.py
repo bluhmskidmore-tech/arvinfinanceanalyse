@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -13,6 +14,7 @@ from backend.app.repositories.duckdb_migrations import register_all
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 from backend.app.tasks.choice_stock_materialize import (
     _DefaultChoiceStockClient,
+    _load_tushare_financial_factors,
     ensure_choice_stock_schema,
     load_choice_stock_materialization_coverage,
     materialize_choice_stock_factor_snapshot,
@@ -346,21 +348,61 @@ class FakeTushareStockClient:
 
     def fina_indicator(self, **kwargs: object) -> pd.DataFrame:
         self.calls.append(("fina_indicator", kwargs))
-        stock_code = str(kwargs["ts_code"])
         values = {
             "000001.SZ": {"roe": 18.0, "grossprofit_margin": 42.0},
             "600000.SH": {"roe": 12.0, "grossprofit_margin": 35.0},
         }
-        return pd.DataFrame(
-            [
+        codes: list[str]
+        raw = kwargs.get("ts_code")
+        if raw is None:
+            codes = sorted(values.keys())
+        else:
+            codes = [part.strip() for part in str(raw).split(",") if part.strip()]
+        rows = []
+        for stock_code in codes:
+            row_values = values[stock_code]
+            rows.append(
                 {
                     "ts_code": stock_code,
                     "ann_date": "20260401",
                     "end_date": "20260331",
-                    **values[stock_code],
+                    **row_values,
                 }
-            ]
-        )
+            )
+        return pd.DataFrame(rows)
+
+
+class TsRequiredFinaFakeTushare(FakeTushareStockClient):
+    """Simulates APIs that refuse fina_indicator without ts_code (comma-batch path)."""
+
+    def fina_indicator(self, **kwargs: object) -> pd.DataFrame:
+        if kwargs.get("ts_code") is None:
+            self.calls.append(("fina_indicator", kwargs))
+            raise RuntimeError("参数有误, ts_code")
+        return super().fina_indicator(**kwargs)
+
+
+def test_load_tushare_financial_factors_uses_single_unscoped_batch_call_when_available() -> None:
+    client = FakeTushareStockClient()
+    codes = ["000001.SZ", "600000.SH"]
+    out = _load_tushare_financial_factors(client, "2026-04-28", codes)
+    fins = [c for c in client.calls if c[0] == "fina_indicator"]
+    assert len(fins) == 1
+    assert fins[0][1].get("ts_code") is None
+    assert out["000001.SZ"]["roe"] == pytest.approx(0.18)
+    assert out["600000.SH"]["gross_margin"] == pytest.approx(0.35)
+
+
+def test_load_tushare_financial_factors_batches_comma_ts_code_when_scope_required() -> None:
+    client = TsRequiredFinaFakeTushare()
+    codes = ["000001.SZ", "600000.SH"]
+    out = _load_tushare_financial_factors(client, "2026-04-28", codes)
+    fins = [c for c in client.calls if c[0] == "fina_indicator"]
+    assert len(fins) == 2
+    assert fins[0][1].get("ts_code") is None
+    comma_arg = fins[1][1].get("ts_code") or ""
+    assert "," in str(comma_arg)
+    assert out["000001.SZ"]["roe"] == pytest.approx(0.18)
 
 
 def test_default_choice_stock_client_keeps_sector_call_local(monkeypatch) -> None:
@@ -728,6 +770,7 @@ def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path:
         as_of_date="2026-04-28",
         duckdb_path=str(duckdb_path),
         tushare_client=tushare_client,
+        use_choice_financial_fallback=False,
     )
 
     assert result["status"] == "completed"
@@ -758,7 +801,7 @@ def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path:
     assert rows[1][10] == 0.025
 
 
-def test_choice_stock_factor_snapshot_skips_nan_vendor_factor_values(tmp_path: Path) -> None:
+def test_choice_stock_factor_snapshot_keeps_rows_when_dividend_yield_missing(tmp_path: Path) -> None:
     class NanDividendTushareStockClient(FakeTushareStockClient):
         def daily_basic(self, **kwargs: object) -> pd.DataFrame:
             frame = super().daily_basic(**kwargs)
@@ -781,17 +824,128 @@ def test_choice_stock_factor_snapshot_skips_nan_vendor_factor_values(tmp_path: P
         as_of_date="2026-04-28",
         duckdb_path=str(duckdb_path),
         tushare_client=tushare_client,
+        use_choice_financial_fallback=False,
     )
 
-    assert result["row_count"] == 1
+    assert result["row_count"] == 2
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
         rows = conn.execute(
-            "select stock_code from choice_stock_factor_snapshot order by stock_code"
+            "select stock_code, dividend_yield from choice_stock_factor_snapshot order by stock_code"
         ).fetchall()
     finally:
         conn.close()
-    assert rows == [("600000.SH",)]
+
+    assert rows[0][0] == "000001.SZ"
+    assert rows[0][1] is None or (isinstance(rows[0][1], float) and math.isnan(rows[0][1]))
+    assert rows[1][0] == "600000.SH"
+    assert rows[1][1] is not None
+
+
+class SparseFinaFakeTushare(FakeTushareStockClient):
+    """Emits fina_indicator rows without 000001.SZ — exercises Choice css patching."""
+
+    def fina_indicator(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("fina_indicator", kwargs))
+        frame = FakeTushareStockClient.fina_indicator(self, **kwargs)
+        return frame[frame["ts_code"] != "000001.SZ"].reset_index(drop=True)
+
+
+class CssFinancialPatchClient:
+    def __init__(self) -> None:
+        self.css_calls: list[tuple[str, str, str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        codes_text = str(codes)
+        indicators_text = str(indicators)
+        self.css_calls.append((codes_text, indicators_text, options))
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={"000001.SZ": [16.0, 44.5]},
+        )
+
+
+def test_choice_stock_factor_snapshot_merges_choice_css_financials(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss_css_fin.duckdb"
+    _write_confirmed_catalog(catalog_path)
+
+    sparse_tushare = SparseFinaFakeTushare()
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=PermissionDeniedCsdChoiceStockClient(),
+        tushare_client=sparse_tushare,
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                (
+                    trade_date,
+                    stock_code,
+                    close_value,
+                    close_value,
+                    close_value,
+                    close_value,
+                    1000.0,
+                    close_value * 1000,
+                    0.0,
+                    1.0,
+                    0.0,
+                    "Trading",
+                    "",
+                    "",
+                    '["daily_ohlcv_amount"]',
+                    "sv_history",
+                    "vv_history",
+                    "rv_history",
+                    "run-history",
+                )
+                for trade_date, close_a, close_b in [
+                    ("2025-04-28", 5.25, 10.5),
+                    ("2026-01-28", 7.0, 14.0),
+                ]
+                for stock_code, close_value in (("000001.SZ", close_a), ("600000.SH", close_b))
+            ],
+        )
+    finally:
+        conn.close()
+
+    choice_css = CssFinancialPatchClient()
+    result = materialize_choice_stock_factor_snapshot(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        tushare_client=sparse_tushare,
+        choice_stock_client=choice_css,
+        use_choice_financial_fallback=True,
+    )
+
+    assert result["status"] == "completed"
+    assert choice_css.css_calls, "expected Choice css fallback for sparse fina_indicator coverage"
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select stock_code, roe, gross_margin
+            from choice_stock_factor_snapshot order by stock_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_code = {str(r[0]): (r[1], r[2]) for r in rows}
+    assert by_code["000001.SZ"][0] == pytest.approx(0.16)
+    assert by_code["000001.SZ"][1] == pytest.approx(0.445)
+    assert by_code["600000.SH"][0] == pytest.approx(0.12)
+    assert by_code["600000.SH"][1] == pytest.approx(0.35)
 
 
 def test_choice_stock_materialize_accepts_choice_sector_flat_codes_payload(tmp_path: Path) -> None:

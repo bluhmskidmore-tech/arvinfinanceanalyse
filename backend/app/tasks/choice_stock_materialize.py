@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -39,6 +40,11 @@ REQUIRED_CHOICE_STOCK_REQUEST_ITEMS: tuple[tuple[str, str], ...] = (
     ("limit_up_quality", "point_in_time_limit_streaks"),
 )
 CHOICE_STOCK_CSD_CODE_CHUNK_SIZE = 300
+FINA_INDICATOR_TS_CODE_CHUNK_SIZE = 320
+CHOICE_CSS_FINANCIAL_CHUNK_SIZE = max(50, min(400, int(os.environ.get("MOSS_CHOICE_CSS_FINANCIAL_CHUNK", "280"))))
+CHOICE_CSS_FINANCIAL_INDICATORS = (
+    os.environ.get("MOSS_CHOICE_CSS_FINANCIAL_INDICATORS", "ROEWA,GPMARGIN").strip() or "ROEWA,GPMARGIN"
+)
 CHOICE_CSD_PERMISSION_DENIED_ERROR_CODE = 10001012
 TUSHARE_FALLBACK_AUDIT_STATUS = "completed_tushare_fallback"
 
@@ -367,6 +373,8 @@ def materialize_choice_stock_factor_snapshot(
     as_of_date: str | date,
     duckdb_path: str | None = None,
     tushare_client: object | None = None,
+    choice_stock_client: object | None = None,
+    use_choice_financial_fallback: bool = True,
     max_stock_count: int | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
@@ -390,6 +398,36 @@ def materialize_choice_stock_factor_snapshot(
         client = tushare_client or _DefaultTushareStockClient()
         daily_basic = _load_tushare_daily_basic_factors(client, resolved_date, stock_codes)
         financial = _load_tushare_financial_factors(client, resolved_date, stock_codes)
+        choice_fallback_used = False
+        vendor_inputs = ["tushare.daily_basic", "tushare.fina_indicator"]
+        if use_choice_financial_fallback and CHOICE_CSS_FINANCIAL_INDICATORS.strip():
+            needs_choice = sorted(
+                {
+                    code
+                    for code in stock_codes
+                    if financial.get(code, {}).get("roe") is None
+                    or financial.get(code, {}).get("gross_margin") is None
+                }
+            )
+            if needs_choice:
+                try:
+                    c_client = choice_stock_client if choice_stock_client is not None else _DefaultChoiceStockClient()
+                    patch = _load_choice_css_financial_factors(c_client, resolved_date, needs_choice)
+                    choice_fallback_used = bool(patch)
+                    for stock_code, values in patch.items():
+                        merged = dict(financial.get(stock_code, {}))
+                        if merged.get("roe") is None and values.get("roe") is not None:
+                            merged["roe"] = values["roe"]
+                        if merged.get("gross_margin") is None and values.get("gross_margin") is not None:
+                            merged["gross_margin"] = values["gross_margin"]
+                        financial[stock_code] = merged
+                    if choice_fallback_used:
+                        vendor_inputs.append(f"choice.css({CHOICE_CSS_FINANCIAL_INDICATORS})")
+                except Exception:
+                    logger.exception(
+                        "Choice css financial fallback failed for %s (continuing with Tushare financials only)",
+                        resolved_date,
+                    )
         rows = _build_factor_snapshot_rows(
             as_of_date=resolved_date,
             universe_rows=universe_rows,
@@ -399,8 +437,8 @@ def materialize_choice_stock_factor_snapshot(
         )
         if not rows:
             raise RuntimeError(
-                f"No complete stock factor rows could be materialized for {resolved_date}; "
-                "check Tushare daily_basic/fina_indicator coverage."
+                f"No stock factor rows could be materialized for {resolved_date}; "
+                "check choice_stock_universe coverage."
             )
 
         source_version = _build_source_version(
@@ -408,10 +446,14 @@ def materialize_choice_stock_factor_snapshot(
                 "as_of_date": resolved_date,
                 "rows": rows,
                 "input_tables": ["choice_stock_universe", "choice_stock_sector_membership", "choice_stock_daily_observation"],
-                "vendor_inputs": ["tushare.daily_basic", "tushare.fina_indicator"],
+                "vendor_inputs": vendor_inputs,
             }
         )
-        vendor_version = f"vv_tushare_stock_factor_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
+        vv_tag = "choice_tushare" if choice_fallback_used else "tushare"
+        vendor_version = (
+            f"vv_{vv_tag}_stock_factor_{resolved_date.replace('-', '')}_"
+            f"{source_version.removeprefix('sv_choice_stock_')}"
+        )
         completed_at = datetime.now(UTC).isoformat()
 
         conn.execute("begin transaction")
@@ -615,28 +657,217 @@ def _load_tushare_daily_basic_factors(
     return rows
 
 
+def _financial_factors_from_fina_indicator_records(
+    records: list[dict[str, object]],
+    *,
+    stock_code_set: set[str],
+    as_of_date: str,
+) -> dict[str, dict[str, float]]:
+    as_of_compact = _compact_date(as_of_date)
+    by_code: dict[str, list[tuple[str, dict[str, object]]]] = {}
+    for record in records:
+        stock_code = _record_text(record, "ts_code")
+        if stock_code not in stock_code_set:
+            continue
+        ann_date = _compact_or_empty(_record_text(record, "ann_date"))
+        end_date = _compact_or_empty(_record_text(record, "end_date"))
+        effective_date = ann_date or end_date
+        if effective_date and effective_date > as_of_compact:
+            continue
+        by_code.setdefault(stock_code, []).append((effective_date, record))
+
+    rows: dict[str, dict[str, float]] = {}
+    for stock_code, pairs in by_code.items():
+        if not pairs:
+            continue
+        selected = sorted(pairs, key=lambda item: item[0], reverse=True)[0][1]
+        rows[stock_code] = {
+            "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
+            "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
+        }
+    return rows
+
+
+def _financial_factors_from_fina_indicator_frame(
+    frame: object | None,
+    *,
+    stock_code_set: set[str],
+    as_of_date: str,
+) -> dict[str, dict[str, float]]:
+    if frame is None:
+        return {}
+    records = _records_from_tabular_payload(frame)
+    return _financial_factors_from_fina_indicator_records(
+        records,
+        stock_code_set=stock_code_set,
+        as_of_date=as_of_date,
+    )
+
+
+def _choice_stock_factor_css_options(as_of_date: str, *, base_options: str) -> str:
+    compact_trade_date = as_of_date.replace("-", "")[:8]
+    extras = f"TradeDate={compact_trade_date},Ispandas=0"
+    return _merge_choice_request_options(base_options.strip(), extras)
+
+
+def _choice_client_default_options(client_like: object) -> str:
+    inner = getattr(client_like, "_choice_client", client_like)
+    settings_obj = getattr(inner, "settings", None)
+    if settings_obj is None:
+        return ""
+    raw = getattr(settings_obj, "choice_request_options", "") or ""
+    return str(raw).strip()
+
+
+def _load_choice_css_financial_factors(
+    client: object,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> dict[str, dict[str, float]]:
+    """Point-in-time ROE / gross margin via Choice css (covers sparse Tushare fina_indicator).
+
+    Override indicator list via env ``MOSS_CHOICE_CSS_FINANCIAL_INDICATORS``
+    (default ``ROEWA,GPMARGIN`` — ``ROE`` / ``GROSSPROFITMARGIN`` alone often return error 10000013).
+    """
+    indicators_raw = CHOICE_CSS_FINANCIAL_INDICATORS.strip()
+    if not indicators_raw or not stock_codes:
+        return {}
+
+    indicator_tokens = [token.strip().upper() for token in indicators_raw.split(",") if token.strip()]
+    if not indicator_tokens:
+        return {}
+
+    options = _choice_stock_factor_css_options(
+        as_of_date,
+        base_options=_choice_client_default_options(client),
+    )
+    merged: dict[str, dict[str, float]] = {}
+    chunk_size = max(40, CHOICE_CSS_FINANCIAL_CHUNK_SIZE)
+
+    for chunk in _stock_code_chunks(sorted({str(code) for code in stock_codes if str(code)}), chunk_size):
+        try:
+            result = client.css(",".join(chunk), indicators_raw, options=options)
+        except Exception:
+            logger.exception("Choice css financial chunk raised (%s codes)", len(chunk))
+            continue
+        if int(getattr(result, "ErrorCode", 0)) != 0:
+            logger.warning(
+                "Choice css financial chunk skipped: error=%s %s",
+                getattr(result, "ErrorCode", "?"),
+                getattr(result, "ErrorMsg", ""),
+            )
+            continue
+
+        parsed = _extract_result_rows(result, default_date=as_of_date)
+        for row in parsed:
+            stock_code = _text(
+                row.get("stock_code") or row.get("CODE") or row.get("SECUCODE") or row.get("SECURITYCODE")
+            )
+            upper = {str(key).upper(): value for key, value in row.items()}
+            if not stock_code:
+                stock_code = _text(
+                    upper.get("STOCK_CODE")
+                    or upper.get("SECUCODE")
+                    or upper.get("SECURITYCODE")
+                    or upper.get("CODE")
+                )
+            if not stock_code:
+                continue
+
+            roe_val: float | None = None
+            gm_val: float | None = None
+            for tok in indicator_tokens:
+                if tok not in upper:
+                    continue
+                numeric = _percent_points_to_ratio(upper[tok])
+                if numeric is None:
+                    continue
+                if "ROE" in tok:
+                    roe_val = numeric
+                elif tok == "GPMARGIN" or ("GPMARGIN" in tok) or ("GROSS" in tok and "MARGIN" in tok):
+                    gm_val = numeric
+
+            bucket: dict[str, float] = {}
+            if roe_val is not None:
+                bucket["roe"] = roe_val
+            if gm_val is not None:
+                bucket["gross_margin"] = gm_val
+            if bucket:
+                merged[stock_code] = bucket
+    return merged
+
+
 def _load_tushare_financial_factors(
     client: object,
     as_of_date: str,
     stock_codes: list[str],
 ) -> dict[str, dict[str, float]]:
+    stock_code_set = set(stock_codes)
     start_date = _compact_date((date.fromisoformat(as_of_date) - timedelta(days=730)).isoformat())
     end_date = _compact_date(as_of_date)
-    rows: dict[str, dict[str, float]] = {}
-    for stock_code in stock_codes:
-        frame = cast(Any, client).fina_indicator(
-            ts_code=stock_code,
-            start_date=start_date,
-            end_date=end_date,
-            fields="ts_code,ann_date,end_date,roe,grossprofit_margin",
+    fields = "ts_code,ann_date,end_date,roe,grossprofit_margin"
+    rows: dict[str, dict[str, float]] | None = None
+
+    try:
+        frame = cast(Any, client).fina_indicator(start_date=start_date, end_date=end_date, fields=fields)
+        if frame is None:
+            raise RuntimeError("fina_indicator returned None")
+        batch_rows = _financial_factors_from_fina_indicator_frame(
+            frame,
+            stock_code_set=stock_code_set,
+            as_of_date=as_of_date,
         )
-        selected = _latest_fina_indicator_record(frame, as_of_date=as_of_date)
-        if selected is None:
-            continue
-        rows[stock_code] = {
-            "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
-            "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
-        }
+        if not batch_rows:
+            raise RuntimeError("fina_indicator batch returned no usable rows")
+        rows = batch_rows
+    except Exception:
+        rows = None
+
+    if rows is None:
+        try:
+            chunk_rows: dict[str, dict[str, float]] = {}
+            step = max(1, int(FINA_INDICATOR_TS_CODE_CHUNK_SIZE))
+            for offset in range(0, len(stock_codes), step):
+                chunk = stock_codes[offset : offset + step]
+                frame = cast(Any, client).fina_indicator(
+                    ts_code=",".join(chunk),
+                    start_date=start_date,
+                    end_date=end_date,
+                    fields=fields,
+                )
+                if frame is None:
+                    raise RuntimeError("fina_indicator returned None")
+                part = _financial_factors_from_fina_indicator_frame(
+                    frame,
+                    stock_code_set=stock_code_set,
+                    as_of_date=as_of_date,
+                )
+                chunk_rows.update(part)
+            rows = chunk_rows if chunk_rows else None
+        except Exception:
+            rows = None
+
+    if rows is None:
+        rows = {}
+        fallback_codes = list(stock_codes)[:500]
+        for stock_code in fallback_codes:
+            try:
+                frame = cast(Any, client).fina_indicator(
+                    ts_code=stock_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    fields=fields,
+                )
+                selected = _latest_fina_indicator_record(frame, as_of_date=as_of_date)
+                if selected is None:
+                    continue
+                rows[stock_code] = {
+                    "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
+                    "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
+                }
+            except Exception:
+                continue
+
     return rows
 
 
@@ -684,22 +915,9 @@ def _build_factor_snapshot_rows(
             "dividend_yield": basic_values.get("dividend_yield"),
             "industry": industry,
         }
-        if industry and all(row.get(key) is not None for key in _FACTOR_SNAPSHOT_REQUIRED_NUMERIC_KEYS):
+        if stock_code:
             rows.append(row)
     return sorted(rows, key=lambda row: str(row["stock_code"]))
-
-
-_FACTOR_SNAPSHOT_REQUIRED_NUMERIC_KEYS = (
-    "pe",
-    "pb",
-    "ps",
-    "roe",
-    "gross_margin",
-    "three_month_return",
-    "twelve_month_return",
-    "volatility",
-    "dividend_yield",
-)
 
 
 def _find_request(
