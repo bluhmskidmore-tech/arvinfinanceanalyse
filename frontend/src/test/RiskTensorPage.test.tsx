@@ -100,10 +100,17 @@ describe("RiskTensorPage", () => {
     expect(kpi).toHaveTextContent("待接入");
     expect(kpi).toHaveTextContent("8.88");
     expect(screen.getByText("集中度")).toBeInTheDocument();
-    expect(screen.getByText("流动性缺口（市值）")).toBeInTheDocument();
+    expect(screen.queryByText("流动性缺口（市值）")).not.toBeInTheDocument();
+    expect(screen.queryByText("30 日内到期市值")).not.toBeInTheDocument();
+    expect(screen.queryByText("90 日内到期市值")).not.toBeInTheDocument();
+    expect(screen.getByText("流动性现金流缺口")).toBeInTheDocument();
+    expect(screen.getByText("30 日资产现金流 - 负债现金流")).toBeInTheDocument();
+    expect(screen.getByText("90 日资产现金流 - 负债现金流")).toBeInTheDocument();
     expect(screen.getByText("Issuer concentration above desk threshold")).toBeInTheDocument();
+    expect(screen.getByText("质量标记：预警")).toBeInTheDocument();
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toBeVisible();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_2026-02-28");
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("sv_tensor_test");
 

@@ -218,6 +218,74 @@ def test_risk_tensor_service_uses_shared_formal_result_runtime_helper():
     assert "build_formal_result_meta(" not in src
 
 
+def test_risk_tensor_repository_does_not_backfill_missing_regulatory_dv01_from_portfolio(tmp_path):
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "legacy-risk.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+              report_date varchar,
+              portfolio_dv01 decimal(24, 8),
+              krd_1y decimal(24, 8),
+              krd_3y decimal(24, 8),
+              krd_5y decimal(24, 8),
+              krd_7y decimal(24, 8),
+              krd_10y decimal(24, 8),
+              krd_30y decimal(24, 8),
+              cs01 decimal(24, 8),
+              portfolio_convexity decimal(24, 8),
+              portfolio_modified_duration decimal(24, 8),
+              issuer_concentration_hhi decimal(24, 8),
+              issuer_top5_weight decimal(24, 8),
+              liquidity_gap_30d decimal(24, 8),
+              liquidity_gap_90d decimal(24, 8),
+              liquidity_gap_30d_ratio decimal(24, 8),
+              total_market_value decimal(24, 8),
+              bond_count integer,
+              quality_flag varchar,
+              warnings_json varchar,
+              source_version varchar,
+              upstream_source_version varchar,
+              rule_version varchar,
+              cache_version varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_risk_tensor_daily (
+              report_date, portfolio_dv01, krd_1y, krd_3y, krd_5y, krd_7y,
+              krd_10y, krd_30y, cs01, portfolio_convexity, portfolio_modified_duration,
+              issuer_concentration_hhi, issuer_top5_weight, liquidity_gap_30d,
+              liquidity_gap_90d, liquidity_gap_30d_ratio, total_market_value,
+              bond_count, quality_flag, warnings_json, source_version,
+              upstream_source_version, rule_version, cache_version, trace_id
+            ) values (
+              ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100,
+              1, 'ok', '[]', 'sv_legacy', 'sv_bond_snap_1',
+              'rv_risk_tensor_formal_materialize_v2',
+              'cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2',
+              'tr_legacy'
+            )
+            """,
+            [REPORT_DATE, Decimal("12.34")],
+        )
+    finally:
+        conn.close()
+
+    row = repo_mod.RiskTensorRepository(str(duckdb_path)).fetch_risk_tensor_row(REPORT_DATE)
+
+    assert row is not None
+    assert row["portfolio_dv01"] == Decimal("12.34000000")
+    assert row["regulatory_dv01"] is None
+
+
 def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
     service_mod = load_module(

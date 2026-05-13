@@ -548,17 +548,17 @@ export default function RiskTensorPage() {
                 color: "#162033",
               }}
             >
-              流动性缺口（市值）
+              流动性现金流缺口
             </h2>
             <div style={summaryGridStyle}>
               <KpiCard
-                title="30 日内到期市值"
+                title="30 日资产现金流 - 负债现金流"
                 value={displayStr(result.liquidity_gap_30d)}
                 detail="liquidity_gap_30d。"
                 tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_30d))}
               />
               <KpiCard
-                title="90 日内到期市值"
+                title="90 日资产现金流 - 负债现金流"
                 value={displayStr(result.liquidity_gap_90d)}
                 detail="liquidity_gap_90d。"
                 tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_90d))}
