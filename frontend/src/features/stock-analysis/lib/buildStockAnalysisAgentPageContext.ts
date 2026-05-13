@@ -15,7 +15,10 @@ export type BuildStockAnalysisAgentPageContextInput = {
     reviewRank?: number;
     sectorCode?: string;
     sectorName?: string;
-    source?: "review_queue" | "risk_exit";
+    source?: "review_queue" | "risk_exit" | "mean_reversion" | "factor_screen" | "consensus";
+    livermoreRank?: number | null;
+    meanReversionRank?: number | null;
+    factorScreenRank?: number | null;
   } | null;
 };
 
@@ -53,6 +56,15 @@ export function buildStockAnalysisAgentPageContext(
     }
     if (input.detailSelection.source != null) {
       row.source = input.detailSelection.source;
+    }
+    if (input.detailSelection.livermoreRank != null) {
+      row.livermore_rank = input.detailSelection.livermoreRank;
+    }
+    if (input.detailSelection.meanReversionRank != null) {
+      row.mean_reversion_rank = input.detailSelection.meanReversionRank;
+    }
+    if (input.detailSelection.factorScreenRank != null) {
+      row.factor_screen_rank = input.detailSelection.factorScreenRank;
     }
     selected_rows.push(row);
   }

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import router as api_router
 from backend.app.governance.settings import get_settings
+from backend.app.observability import setup_opentelemetry
 from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured
 from backend.app.storage_bootstrap import run_startup_storage_migrations
 
@@ -24,6 +25,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+setup_opentelemetry(app)
 _settings = get_settings()
 app.add_middleware(
     CORSMiddleware,

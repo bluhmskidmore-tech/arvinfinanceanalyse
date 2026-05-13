@@ -27,3 +27,9 @@ def test_lifespan_warms_hermes_bridge_after_storage_startup(monkeypatch):
     asyncio.run(run_lifespan())
 
     assert calls == ["storage", ("warm", settings), "inside"]
+
+
+def test_main_app_sets_disabled_otel_status_by_default() -> None:
+    module = load_module("backend.app.main", "backend/app/main.py")
+
+    assert module.app.state.moss_otel.status == "disabled"

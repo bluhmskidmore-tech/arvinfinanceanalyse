@@ -11,7 +11,10 @@
     "style:audit": "node ../scripts/audit_frontend_style_diff.mjs",
     "style:inventory": "node ../scripts/audit_frontend_style_inventory.mjs",
     "lint": "eslint .",
+    "lint:openapi": "spectral lint ../.codex-tmp/openapi.json -r ../.spectral.yaml",
     "test": "vitest run",
+    "test:a11y-smoke": "playwright test -c playwright.config.mjs",
+    "test:a11y-smoke:headed": "playwright test -c playwright.config.mjs --headed",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -29,6 +32,9 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "@playwright/test": "^1.60.0",
+    "@stoplight/spectral-cli": "^6.15.1",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.0.0",

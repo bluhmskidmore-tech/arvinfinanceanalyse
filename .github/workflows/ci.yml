@@ -73,6 +73,15 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Frontend accessibility smoke
+        env:
+          MOSS_PLAYWRIGHT_USE_WEB_SERVER: "1"
+          MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
+        run: npm run test:a11y-smoke
+
   lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
@@ -101,3 +110,78 @@ jobs:
 
       - name: ESLint
         run: npx eslint .
+
+  api-contract:
+    name: API Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend dependencies
+        run: pip install -e "./backend[dev]"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend tooling
+        working-directory: frontend
+        run: npm ci
+
+      - name: Export OpenAPI contract
+        run: python scripts/api_contract_check.py export-openapi --output .codex-tmp/openapi.json
+
+      - name: Lint OpenAPI contract
+        run: npx --prefix frontend spectral lint .codex-tmp/openapi.json -r .spectral.yaml
+
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz |
+            sudo tar -xz -C /usr/local/bin gitleaks
+
+      - name: Run Gitleaks
+        run: python scripts/supply_chain_security_scan.py --tool gitleaks
+
+      - name: Run supply-chain scan plan
+        run: python scripts/supply_chain_security_scan.py --dry-run
+
+      - name: Upload secret scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: test_output/security-scans/gitleaks-report.json
+
+  osv:
+    name: OSV Dependency Scan
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.0
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    with:
+      scan-args: |-
+        --lockfile=backend/uv.lock
+        --lockfile=frontend/package-lock.json

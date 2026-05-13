@@ -27,6 +27,14 @@ dev = [
   "pandas>=2.2,<3",
   "pytest>=8.3,<9",
 ]
+otel = [
+    "opentelemetry-api>=1.39,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.39,<2",
+    "opentelemetry-instrumentation-fastapi>=0.60b0,<1",
+    "opentelemetry-instrumentation-requests>=0.60b0,<1",
+    "opentelemetry-instrumentation-sqlalchemy>=0.60b0,<1",
+    "opentelemetry-sdk>=1.39,<2",
+]
 
 [build-system]
 requires = ["setuptools>=69", "wheel"]

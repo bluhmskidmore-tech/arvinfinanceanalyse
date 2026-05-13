@@ -67,6 +67,34 @@ describe("buildStockAnalysisAgentPageContext", () => {
     expect(ctx.selected_rows).toEqual([{ stock_code: "000002.SZ" }]);
   });
 
+  it("preserves multi-strategy detail ranks for agent review", () => {
+    const ctx = buildStockAnalysisAgentPageContext({
+      asOfDate: "2026-04-30",
+      sectorFilterSectorCode: null,
+      sectorView: "score",
+      detailSelection: {
+        code: "000003.SZ",
+        name: "Gamma Co",
+        sectorName: "Robotics",
+        source: "consensus",
+        livermoreRank: 2,
+        meanReversionRank: 5,
+        factorScreenRank: null,
+      },
+    });
+
+    expect(ctx.selected_rows).toEqual([
+      {
+        stock_code: "000003.SZ",
+        stock_name: "Gamma Co",
+        sector_name: "Robotics",
+        source: "consensus",
+        livermore_rank: 2,
+        mean_reversion_rank: 5,
+      },
+    ]);
+  });
+
   it("marks filtered review queue context without a selected stock", () => {
     const ctx = buildStockAnalysisAgentPageContext({
       asOfDate: "2026-04-30",

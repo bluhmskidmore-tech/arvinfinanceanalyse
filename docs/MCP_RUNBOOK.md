@@ -17,12 +17,14 @@ thread/session after changing MCP config.
 | `moss-metric-contracts` | Read-only access to page contracts, metric dictionary, calc rules, product-category truth docs, and golden-sample catalog. | `cmd.exe /d /s /c scripts\mcp\moss_contracts.cmd` |
 | `moss-lineage-evidence` | Read-only access to governance JSONL streams, latest evidence records, and lineage search. | `cmd.exe /d /s /c scripts\mcp\moss_lineage.cmd` |
 | `moss-data-catalog` | Read-only DuckDB table inventory, schema registry, table description, and available date lookup. | `cmd.exe /d /s /c scripts\mcp\moss_catalog.cmd` |
+| `moss-data-quality` | Read-only DuckDB quality summaries: row counts, null counts, date coverage, and golden-sample hints. | `cmd.exe /d /s /c scripts\mcp\moss_data_quality.cmd` |
 | `playwright` | Browser/page QA through Playwright MCP. | `npx -y @playwright/mcp@latest` |
 
 ## Boundaries
 
 - The local MOSS servers are read-only.
 - `moss-data-catalog` only uses `information_schema` and fixed date-list queries; it does not accept arbitrary SQL.
+- `moss-data-quality` validates table identifiers, rejects unknown tables/views, and only runs bounded read-only profiling queries.
 - `moss-lineage-evidence` reads whitelisted governance streams only.
 - `moss-metric-contracts` reads whitelisted docs and golden-sample metadata only.
 - Browser MCP can interact with a running frontend, but it does not change backend data by itself.
@@ -52,6 +54,11 @@ Data catalog:
 - `moss://data-catalog/schema-registry`
 - `moss://data-catalog/tables`
 
+Data quality:
+
+- `moss://data-quality/summary`
+- `moss://data-quality/targets`
+
 ## Useful Tools
 
 Metric contracts:
@@ -68,6 +75,11 @@ Data catalog:
 
 - `describe_table`
 - `list_available_dates`
+
+Data quality:
+
+- `list_quality_targets`
+- `get_quality_summary`
 
 ## Page Trace Bundle
 

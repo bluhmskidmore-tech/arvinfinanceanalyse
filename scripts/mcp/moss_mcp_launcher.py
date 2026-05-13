@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def main() -> int:
     if len(sys.argv) < 2:
         print(
-            "usage: moss_mcp_launcher.py <metric-contracts|lineage-evidence|data-catalog>",
+            "usage: moss_mcp_launcher.py <metric-contracts|lineage-evidence|data-catalog|data-quality>",
             file=sys.stderr,
         )
         return 2
@@ -25,7 +25,7 @@ def main() -> int:
     os.chdir(ROOT)
     if mode == "lineage-evidence":
         os.environ.setdefault("MOSS_GOVERNANCE_PATH", str(ROOT / "data" / "governance"))
-    if mode == "data-catalog":
+    if mode in {"data-catalog", "data-quality"}:
         os.environ.setdefault("MOSS_DUCKDB_PATH", str(ROOT / "data" / "moss.duckdb"))
 
     sys.argv = [str(script), mode]

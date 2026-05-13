@@ -26,7 +26,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Read-only project MCP servers for MOSS.")
     parser.add_argument(
         "mode",
-        choices=("metric-contracts", "lineage-evidence", "data-catalog"),
+        choices=("metric-contracts", "lineage-evidence", "data-catalog", "data-quality"),
         help="Project MCP surface to expose.",
     )
     args = parser.parse_args()
@@ -467,11 +467,86 @@ class DataCatalogProvider(McpProvider):
         return super().call_tool(name, arguments)
 
 
+class DataQualityProvider(McpProvider):
+    name = "moss-data-quality"
+
+    def __init__(self) -> None:
+        self._duckdb_path = resolve_path_env("MOSS_DUCKDB_PATH", DEFAULT_DUCKDB_PATH)
+
+    def resources(self) -> list[dict[str, Any]]:
+        return [
+            text_resource(
+                "moss://data-quality/summary",
+                "MOSS DuckDB data-quality summary",
+                "Read-only table/view quality targets and DuckDB availability.",
+                mime_type="application/json",
+            ),
+            text_resource(
+                "moss://data-quality/targets",
+                "MOSS DuckDB quality targets",
+                "Read-only list of table/view targets eligible for quality profiling.",
+                mime_type="application/json",
+            ),
+        ]
+
+    def read_resource(self, uri: str) -> dict[str, Any]:
+        if uri == "moss://data-quality/summary":
+            payload = {
+                "duckdb_path": str(self._duckdb_path),
+                "duckdb_exists": self._duckdb_path.is_file(),
+                "targets": duckdb_quality_targets(self._duckdb_path, limit=80),
+            }
+            return resource_content(uri, json.dumps(payload, ensure_ascii=False, indent=2), "application/json")
+        if uri == "moss://data-quality/targets":
+            payload = {"targets": duckdb_quality_targets(self._duckdb_path, limit=500)}
+            return resource_content(uri, json.dumps(payload, ensure_ascii=False, indent=2), "application/json")
+        raise McpError(-32602, f"Unknown resource: {uri}")
+
+    def tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "list_quality_targets",
+                "description": "List read-only DuckDB tables/views eligible for quality summaries.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    },
+                },
+            },
+            {
+                "name": "get_quality_summary",
+                "description": "Compute a read-only quality summary for one known DuckDB table or view.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "table_name": {"type": "string"},
+                        "column_limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                    "required": ["table_name"],
+                },
+            },
+        ]
+
+    def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == "list_quality_targets":
+            limit = int(arguments.get("limit") or 50)
+            payload = {"targets": duckdb_quality_targets(self._duckdb_path, limit=limit)}
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_quality_summary":
+            table_name = str(arguments.get("table_name") or "").strip()
+            column_limit = int(arguments.get("column_limit") or 25)
+            payload = duckdb_quality_summary(self._duckdb_path, table_name, column_limit=column_limit)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        return super().call_tool(name, arguments)
+
+
 def build_provider(mode: str) -> McpProvider:
     providers: dict[str, Callable[[], McpProvider]] = {
         "metric-contracts": MetricContractsProvider,
         "lineage-evidence": LineageEvidenceProvider,
         "data-catalog": DataCatalogProvider,
+        "data-quality": DataQualityProvider,
     }
     return providers[mode]()
 
@@ -766,27 +841,61 @@ def duckdb_tables(duckdb_path: Path, *, limit: int) -> list[dict[str, Any]]:
         conn.close()
 
 
+def duckdb_quality_targets(duckdb_path: Path, *, limit: int) -> list[dict[str, Any]]:
+    conn = open_duckdb_read_only(duckdb_path)
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            """
+            with date_columns as (
+                select
+                    table_schema,
+                    table_name,
+                    string_agg(column_name, ', ' order by column_name) as date_columns
+                from information_schema.columns
+                where column_name in ('report_date', 'as_of_date')
+                group by table_schema, table_name
+            )
+            select
+                t.table_schema,
+                t.table_name,
+                t.table_type,
+                coalesce(d.date_columns, '') as date_columns
+            from information_schema.tables t
+            left join date_columns d
+                on d.table_schema = t.table_schema
+               and d.table_name = t.table_name
+            where t.table_schema not in ('information_schema', 'pg_catalog')
+            order by t.table_schema, t.table_name
+            limit ?
+            """,
+            [limit],
+        ).fetchall()
+        return [
+            {
+                "table_name": f"{schema}.{table}",
+                "schema": str(schema),
+                "table": str(table),
+                "type": str(table_type),
+                "date_columns": [part.strip() for part in str(date_columns).split(",") if part.strip()],
+            }
+            for schema, table, table_type, date_columns in rows
+        ]
+    finally:
+        conn.close()
+
+
 def describe_duckdb_table(duckdb_path: Path, table_name: str) -> dict[str, Any]:
     validate_identifier(table_name, "table_name")
     conn = require_duckdb(duckdb_path)
     try:
-        schema_name, bare_table_name = split_table_name(table_name)
-        rows = conn.execute(
-            """
-            select column_name, data_type, is_nullable
-            from information_schema.columns
-            where table_schema = ? and table_name = ?
-            order by ordinal_position
-            """,
-            [schema_name, bare_table_name],
-        ).fetchall()
-        if not rows:
-            raise McpError(-32602, f"Unknown table: {table_name}")
+        metadata = duckdb_table_metadata(conn, table_name)
         return {
             "table_name": table_name,
             "columns": [
-                {"name": str(column), "type": str(data_type), "nullable": str(nullable)}
-                for column, data_type, nullable in rows
+                {"name": item["name"], "type": item["type"], "nullable": item["nullable"]}
+                for item in metadata["columns"]
             ],
         }
     finally:
@@ -839,6 +948,135 @@ def require_duckdb(duckdb_path: Path) -> Any:
         return duckdb.connect(str(duckdb_path), read_only=True)
     except Exception as exc:
         raise McpError(-32603, f"Could not open DuckDB read-only: {exc}") from exc
+
+
+def duckdb_table_metadata(conn: Any, table_name: str) -> dict[str, Any]:
+    schema_name, bare_table_name = split_table_name(table_name)
+    object_rows = conn.execute(
+        """
+        select table_type
+        from information_schema.tables
+        where table_schema = ? and table_name = ?
+        """,
+        [schema_name, bare_table_name],
+    ).fetchall()
+    if not object_rows:
+        raise McpError(-32602, f"Unknown table: {table_name}")
+
+    column_rows = conn.execute(
+        """
+        select column_name, data_type, is_nullable
+        from information_schema.columns
+        where table_schema = ? and table_name = ?
+        order by ordinal_position
+        """,
+        [schema_name, bare_table_name],
+    ).fetchall()
+    if not column_rows:
+        raise McpError(-32602, f"Unknown table: {table_name}")
+
+    return {
+        "schema_name": schema_name,
+        "table_name": bare_table_name,
+        "object_type": str(object_rows[0][0]),
+        "columns": [
+            {"name": str(column), "type": str(data_type), "nullable": str(nullable)}
+            for column, data_type, nullable in column_rows
+        ],
+    }
+
+
+def duckdb_quality_summary(duckdb_path: Path, table_name: str, *, column_limit: int) -> dict[str, Any]:
+    validate_identifier(table_name, "table_name")
+    if column_limit < 1 or column_limit > 100:
+        raise McpError(-32602, "column_limit must be between 1 and 100.")
+
+    conn = require_duckdb(duckdb_path)
+    try:
+        metadata = duckdb_table_metadata(conn, table_name)
+        qualified_table = ".".join(
+            quote_identifier(part) for part in (metadata["schema_name"], metadata["table_name"])
+        )
+        columns = metadata["columns"]
+        preview_columns = columns[:column_limit]
+
+        row_count = int(conn.execute(f"select count(*) from {qualified_table}").fetchone()[0])
+        null_counts = duckdb_null_counts(conn, qualified_table, preview_columns)
+        date_coverage = duckdb_date_coverage(conn, qualified_table, columns)
+
+        return {
+            "table_name": f'{metadata["schema_name"]}.{metadata["table_name"]}',
+            "object_type": metadata["object_type"],
+            "row_count": row_count,
+            "column_count": len(columns),
+            "profiled_columns": [column["name"] for column in preview_columns],
+            "columns": columns,
+            "null_counts": null_counts,
+            "date_coverage": date_coverage,
+            "golden_sample_matches": find_golden_sample_mentions(metadata["table_name"], limit=10),
+        }
+    finally:
+        conn.close()
+
+
+def duckdb_null_counts(conn: Any, qualified_table: str, columns: list[dict[str, Any]]) -> dict[str, int]:
+    if not columns:
+        return {}
+    expressions = []
+    aliases = []
+    for index, column in enumerate(columns):
+        alias = f"c{index}"
+        aliases.append((alias, column["name"]))
+        expressions.append(
+            f"sum(case when {quote_identifier(column['name'])} is null then 1 else 0 end) as {quote_identifier(alias)}"
+        )
+    row = conn.execute(f"select {', '.join(expressions)} from {qualified_table}").fetchone()
+    return {column_name: int(row[index]) for index, (_, column_name) in enumerate(aliases)}
+
+
+def duckdb_date_coverage(conn: Any, qualified_table: str, columns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    coverage: dict[str, dict[str, Any]] = {}
+    for column in columns:
+        column_name = column["name"]
+        if column_name not in {"report_date", "as_of_date"}:
+            continue
+        quoted_column = quote_identifier(column_name)
+        row = conn.execute(
+            f"""
+            select
+                cast(min({quoted_column}) as varchar),
+                cast(max({quoted_column}) as varchar),
+                sum(case when {quoted_column} is null then 1 else 0 end),
+                count(distinct {quoted_column}) filter (where {quoted_column} is not null)
+            from {qualified_table}
+            """
+        ).fetchone()
+        coverage[column_name] = {
+            "min": row[0],
+            "max": row[1],
+            "null_count": int(row[2]),
+            "distinct_non_null_count": int(row[3]),
+        }
+    return coverage
+
+
+def find_golden_sample_mentions(query: str, *, limit: int) -> list[dict[str, Any]]:
+    paths = []
+    catalog = REPO_ROOT / "docs" / "golden_sample_catalog.md"
+    if catalog.is_file():
+        paths.append(catalog)
+
+    root = REPO_ROOT / "tests" / "golden_samples"
+    if root.is_dir():
+        for sample_dir in sorted(root.iterdir()):
+            if not sample_dir.is_dir():
+                continue
+            for name in ("request.json", "response.json", "assertions.md"):
+                path = sample_dir / name
+                if path.is_file():
+                    paths.append(path)
+
+    return search_files(paths, query=query, max_results=limit)
 
 
 def validate_identifier(value: str, field: str) -> None:

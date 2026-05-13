@@ -1,0 +1,23 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated repo snapshots and local artifact directories"
+paths = [
+  '''^audit_pack/source_snapshot/''',
+  '''^\.playwright-mcp/''',
+  '''^test_output/''',
+  '''^tmp/''',
+  '''^tmp-governance/''',
+]
+
+[[allowlists]]
+description = "Dependency caches and local virtual environments"
+paths = [
+  '''^node_modules/''',
+  '''^frontend/node_modules/''',
+  '''^\.venv/''',
+  '''^\.pytest_cache/''',
+  '''^\.mypy_cache/''',
+  '''^\.ruff_cache/''',
+]

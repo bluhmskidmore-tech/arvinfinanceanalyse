@@ -132,6 +132,7 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
         "moss-metric-contracts",
         "moss-lineage-evidence",
         "moss-data-catalog",
+        "moss-data-quality",
         "playwright",
     }
     assert servers["gitnexus"]["command"] == "node"
@@ -158,6 +159,13 @@ def test_project_mcp_config_declares_read_only_surfaces() -> None:
         "/s",
         "/c",
         "scripts\\mcp\\moss_catalog.cmd",
+    ]
+    assert servers["moss-data-quality"]["command"] == "cmd.exe"
+    assert servers["moss-data-quality"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_data_quality.cmd",
     ]
     assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
 
@@ -174,6 +182,7 @@ def test_project_mcp_config_pins_mcp_cwd_for_compatible_clients() -> None:
         "moss-metric-contracts",
         "moss-lineage-evidence",
         "moss-data-catalog",
+        "moss-data-quality",
         "playwright",
     ):
         assert _resolve_config_cwd(servers[name]["cwd"]) == REPO_ROOT
@@ -188,6 +197,7 @@ def test_project_codex_config_declares_read_only_surfaces() -> None:
         "moss-metric-contracts",
         "moss-lineage-evidence",
         "moss-data-catalog",
+        "moss-data-quality",
         "playwright",
     }
     assert servers["gitnexus"]["command"] == "node"
@@ -214,6 +224,13 @@ def test_project_codex_config_declares_read_only_surfaces() -> None:
         "/s",
         "/c",
         "scripts\\mcp\\moss_catalog.cmd",
+    ]
+    assert servers["moss-data-quality"]["command"] == "cmd.exe"
+    assert servers["moss-data-quality"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_data_quality.cmd",
     ]
     assert servers["playwright"]["command"] == "npx"
     assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
@@ -231,6 +248,7 @@ def test_project_codex_config_pins_mcp_cwd_for_app_launches() -> None:
         "moss-metric-contracts",
         "moss-lineage-evidence",
         "moss-data-catalog",
+        "moss-data-quality",
         "playwright",
     ):
         assert _resolve_config_cwd(servers[name]["cwd"]) == REPO_ROOT
@@ -247,6 +265,7 @@ def test_moss_codex_mcp_entries_handshake_from_declared_cwd() -> None:
         ("moss-metric-contracts", "moss-metric-contracts"),
         ("moss-lineage-evidence", "moss-lineage-evidence"),
         ("moss-data-catalog", "moss-data-catalog"),
+        ("moss-data-quality", "moss-data-quality"),
     ):
         response = _request_initialize(
             servers[name]["command"],

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
-
 from backend.app.services import adb_analysis_service
+from fastapi import APIRouter, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +37,8 @@ def get_adb(
     return adb_analysis_service.adb_envelope_for_dates(sd.isoformat(), ed.isoformat())
 
 
-@router.get("/adb-comparison")
-@router.get("/adb/comparison")
+@router.get("/adb-comparison", operation_id="get_adb_comparison_legacy")
+@router.get("/adb/comparison", operation_id="get_adb_comparison")
 def adb_comparison(
     start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
     end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),

@@ -20,6 +20,11 @@
       "args": ["/d", "/s", "/c", "scripts\\mcp\\moss_catalog.cmd"],
       "cwd": "."
     },
+    "moss-data-quality": {
+      "command": "cmd.exe",
+      "args": ["/d", "/s", "/c", "scripts\\mcp\\moss_data_quality.cmd"],
+      "cwd": "."
+    },
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest"],
