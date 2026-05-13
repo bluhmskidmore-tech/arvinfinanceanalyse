@@ -3330,7 +3330,7 @@ def _materialize_three_pnl_dates(tmp_path, monkeypatch):
                 "ingest_batch_id": "batch-fi-shared",
                 "trace_id": "trace-fi-shared",
                 "approval_status": "approved",
-                "event_semantics": "realized_formal",
+                "event_semantics": "realized_incremental",
                 "realized_flag": True,
             }
         ],
@@ -4158,7 +4158,7 @@ def _fake_parse_fi_refresh_rows(snapshot) -> list[dict[str, object]]:
             "ingest_batch_id": snapshot.ingest_batch_id,
             "trace_id": f"{snapshot.path.name}:fi:1",
             "approval_status": "approved",
-            "event_semantics": "realized_formal",
+            "event_semantics": "realized_incremental",
             "realized_flag": True,
         }
     ]

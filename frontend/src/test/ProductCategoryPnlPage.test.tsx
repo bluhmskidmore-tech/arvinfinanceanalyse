@@ -1574,7 +1574,7 @@ describe("ProductCategoryPnlPage", () => {
     await user.click(screen.getByTestId("product-category-refresh-button"));
 
     const formalLead = await screen.findByTestId("product-category-formal-table-lead");
-    const formalSection = formalLead.nextElementSibling;
+    const formalSection = formalLead.nextElementSibling as HTMLElement | null;
     expect(formalSection).toBeTruthy();
 
     await waitFor(() => {

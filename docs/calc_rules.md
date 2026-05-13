@@ -264,3 +264,9 @@ PnL Bridge 结构：
 - 不允许 Scenario 结果写入 Formal 事实表
 - 不允许静默降级为 0 且不打标记
 - 不允许未经测试修改 H/A/T、FX、516、发行类排除规则
+
+## PR-2 Formal PnL FVTPL 517 Guard
+
+- For `FVTPL`, `516` is the formal fair-value PnL component.
+- `517` is excluded from formal `total_pnl` by default to avoid double-counting prior `516`.
+- `FVTPL 517` may enter formal `total_pnl` only when `realized_flag=true` and `event_semantics` explicitly proves non-overlap with prior `516`, currently `realized_incremental` or `realized_no_prior_516`.

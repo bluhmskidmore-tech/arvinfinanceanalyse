@@ -37,6 +37,19 @@ SIGN_FLIP_JOURNAL_TYPES: frozenset[str] = frozenset(LEDGER_PNL_ACCOUNT_PREFIXES)
 }
 
 ZERO = Decimal("0")
+_FORMAL_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
+    {
+        "realized_formal",
+        "realized_disposal",
+        "realized_redemption",
+    }
+)
+_FVTPL_NON_OVERLAP_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
+    {
+        "realized_incremental",
+        "realized_no_prior_516",
+    }
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -505,11 +518,10 @@ def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:
 def _is_517_formal_allowed(row: FiPnlRecord) -> bool:
     if not row.realized_flag:
         return False
-    return row.event_semantics.strip().lower() in {
-        "realized_formal",
-        "realized_disposal",
-        "realized_redemption",
-    }
+    event_semantics = row.event_semantics.strip().lower()
+    if row.accounting_basis == ACCOUNTING_BASIS_FVTPL:
+        return event_semantics in _FVTPL_NON_OVERLAP_517_EVENT_SEMANTICS
+    return event_semantics in _FORMAL_517_EVENT_SEMANTICS
 
 
 def _is_manual_adjustment_formal_allowed(row: FiPnlRecord) -> bool:

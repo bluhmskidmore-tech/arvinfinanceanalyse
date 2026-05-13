@@ -85,20 +85,15 @@ function isYieldKpiAllNull(kpi: LiabilityYieldKpi | null | undefined) {
   );
 }
 
-function parseMoney(value: string | number | null | undefined) {
+function formatWan(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
-    return 0;
+    return cellText(null);
   }
   const parsed = Number(String(value).replace(/,/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function sumPnlRows(rows: PnlV1DetailRow[], field: "interest_income" | "fair_value_change" | "capital_gain" | "total_pnl") {
-  return rows.reduce((total, row) => total + parseMoney(row[field]), 0);
-}
-
-function formatWan(value: number) {
-  return (value / 10000).toLocaleString("zh-CN", {
+  if (!Number.isFinite(parsed)) {
+    return String(value);
+  }
+  return (parsed / 10000).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -149,6 +144,13 @@ export default function FormalPnlV1Page() {
     retry: false,
   });
 
+  const overviewQuery = useQuery({
+    queryKey: ["pnl", "overview", client.mode, basis, selectedReportDate],
+    enabled: Boolean(selectedReportDate),
+    queryFn: () => client.getFormalPnlOverview(selectedReportDate, basis),
+    retry: false,
+  });
+
   const yieldQuery = useQuery({
     queryKey: ["pnl", "yield-metrics", client.mode, selectedReportDate],
     enabled: Boolean(selectedReportDate) && dataTab === "yield",
@@ -159,26 +161,16 @@ export default function FormalPnlV1Page() {
   const allRows = useMemo(() => dataQuery.data?.result.rows ?? [], [dataQuery.data?.result.rows]);
   const formalRows = useMemo(() => allRows.filter((row) => row.source === "FI"), [allRows]);
   const nonstdRows = useMemo(() => allRows.filter((row) => row.source === "NonStd"), [allRows]);
-  const pnlTotals = useMemo(
-    () => ({
-      formalRowCount: formalRows.length,
-      nonstdRowCount: nonstdRows.length,
-      interestIncome: sumPnlRows(formalRows, "interest_income"),
-      fairValueChange: sumPnlRows(formalRows, "fair_value_change"),
-      capitalGain: sumPnlRows(formalRows, "capital_gain"),
-      totalPnl: sumPnlRows(formalRows, "total_pnl"),
-    }),
-    [formalRows, nonstdRows.length],
-  );
+  const overview = overviewQuery.data?.result ?? null;
 
-  const overviewLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
-  const overviewError = datesQuery.isError || dataQuery.isError;
+  const overviewLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && overviewQuery.isLoading);
+  const overviewError = datesQuery.isError || overviewQuery.isError;
   const overviewEmpty =
     !datesQuery.isLoading &&
-    !dataQuery.isLoading &&
+    !overviewQuery.isLoading &&
     !datesQuery.isError &&
-    !dataQuery.isError &&
-    (!selectedReportDate || allRows.length === 0);
+    !overviewQuery.isError &&
+    (!selectedReportDate || overview === null);
 
   const dataLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
   const dataError = datesQuery.isError || dataQuery.isError;
@@ -268,7 +260,7 @@ export default function FormalPnlV1Page() {
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
       }
-      await Promise.all([datesQuery.refetch(), dataQuery.refetch()]);
+      await Promise.all([datesQuery.refetch(), overviewQuery.refetch(), dataQuery.refetch()]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新损益失败");
     } finally {
@@ -388,49 +380,49 @@ export default function FormalPnlV1Page() {
           isError={overviewError}
           isEmpty={overviewEmpty}
           onRetry={() => {
-            void Promise.all([datesQuery.refetch(), dataQuery.refetch()]);
+            void Promise.all([datesQuery.refetch(), overviewQuery.refetch()]);
           }}
         >
           <div data-testid="pnl-overview-cards" className="formal-pnl-v1-summary-grid">
             <KpiCard
               title="固收明细行数"
-              value={cellText(pnlTotals.formalRowCount)}
+              value={cellText(overview?.formal_fi_row_count)}
               detail="正式固收明细行数（后端计数）。"
               unit="行"
             />
             <KpiCard
               title="非标桥接行数"
-              value={cellText(pnlTotals.nonstdRowCount)}
+              value={cellText(overview?.nonstd_bridge_row_count)}
               detail="非标桥接明细行数（后端计数）。"
               unit="行"
             />
             <KpiCard
               title="利息收入 (514)"
-              value={formatWan(pnlTotals.interestIncome)}
+              value={formatWan(overview?.interest_income_514)}
               detail="后端返回的汇总金额字符串。"
               unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(pnlTotals.interestIncome))}
+              tone={toneFromSignedDisplayString(formatWan(overview?.interest_income_514))}
             />
             <KpiCard
               title="公允价值变动 (516)"
-              value={formatWan(pnlTotals.fairValueChange)}
+              value={formatWan(overview?.fair_value_change_516)}
               detail="后端返回的汇总金额字符串。"
               unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(pnlTotals.fairValueChange))}
+              tone={toneFromSignedDisplayString(formatWan(overview?.fair_value_change_516))}
             />
             <KpiCard
               title="资本利得 (517)"
-              value={formatWan(pnlTotals.capitalGain)}
+              value={formatWan(overview?.capital_gain_517)}
               detail="后端返回的汇总金额字符串。"
               unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(pnlTotals.capitalGain))}
+              tone={toneFromSignedDisplayString(formatWan(overview?.capital_gain_517))}
             />
             <KpiCard
               title="损益合计"
-              value={formatWan(pnlTotals.totalPnl)}
+              value={formatWan(overview?.total_pnl)}
               detail="后端返回的汇总损益字符串。"
               unit="万元"
-              tone={toneFromSignedDisplayString(formatWan(pnlTotals.totalPnl))}
+              tone={toneFromSignedDisplayString(formatWan(overview?.total_pnl))}
             />
           </div>
         </AsyncSection>
@@ -522,6 +514,7 @@ export default function FormalPnlV1Page() {
       <FormalResultMetaPanel
         testId="pnl-result-meta-panel"
         sections={[
+          { key: "overview", title: "Pnl overview", meta: overviewQuery.data?.result_meta },
           { key: "dates", title: "报告日列表", meta: datesQuery.data?.result_meta },
           { key: "data", title: "V1明细口径", meta: dataQuery.data?.result_meta },
         ]}

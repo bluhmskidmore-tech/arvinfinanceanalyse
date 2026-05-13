@@ -9,6 +9,7 @@ import { ApiClientProvider, createApiClient, type ApiClient } from "../api/clien
 import type {
   ApiBasis,
   PnlDatesPayload,
+  PnlOverviewPayload,
   PnlV1DataPayload,
   PnlV1DetailRow,
   ResultMeta,
@@ -96,6 +97,26 @@ function sampleNonstdRow(): PnlV1DetailRow {
   };
 }
 
+function sampleOverviewPayload(reportDate = "2025-12-31"): PnlOverviewPayload {
+  return {
+    report_date: reportDate,
+    formal_fi_row_count: 7,
+    nonstd_bridge_row_count: 2,
+    interest_income_514: "22000.00",
+    fair_value_change_516: "33000.00",
+    capital_gain_517: "44000.00",
+    manual_adjustment: "55000.00",
+    total_pnl: "98765.00",
+  };
+}
+
+function buildOverviewEnvelope(reportDate = "2025-12-31", basis: ApiBasis = "formal") {
+  return {
+    result_meta: buildMeta("pnl.overview", `tr_pnl_overview_${reportDate}`, basis),
+    result: sampleOverviewPayload(reportDate),
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -130,11 +151,15 @@ describe("PnlPage", () => {
       result_meta: buildMeta("pnl.v1_data", "tr_pnl_data"),
       result: dataPayload,
     }));
+    const getFormalPnlOverview = vi.fn(async (reportDate: string, basis?: ApiBasis) =>
+      buildOverviewEnvelope(reportDate, basis ?? "formal"),
+    );
 
     renderPnlPage({
       ...base,
       getFormalPnlDates,
       getPnlV1Data,
+      getFormalPnlOverview,
     });
 
     const dateSelect = await screen.findByLabelText("pnl-report-date");
@@ -157,10 +182,12 @@ describe("PnlPage", () => {
 
     await waitFor(() => {
       expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
     });
 
     const overview = await screen.findByTestId("pnl-overview-cards");
-    expect(overview).toHaveTextContent("0.12");
+    expect(overview).toHaveTextContent("9.88");
+    expect(overview).not.toHaveTextContent("0.12");
     expect(overview).toHaveTextContent("万元");
 
     const fiTable = await screen.findByTestId("pnl-formal-fi-table");
@@ -208,33 +235,40 @@ describe("PnlPage", () => {
         ],
       } satisfies PnlV1DataPayload,
     }));
+    const getFormalPnlOverview = vi.fn(async (reportDate: string, basis?: ApiBasis) =>
+      buildOverviewEnvelope(reportDate, basis ?? "formal"),
+    );
 
     renderPnlPage({
       ...base,
       getFormalPnlDates,
       getPnlV1Data,
+      getFormalPnlOverview,
     });
 
     const dateSelect = await screen.findByLabelText("pnl-report-date");
 
     await waitFor(() => {
       expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
     });
 
     await user.selectOptions(dateSelect, "2025-11-30");
 
     await waitFor(() => {
       expect(getPnlV1Data).toHaveBeenCalledWith("2025-11-30");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-11-30", "formal");
     });
 
     const overview = await screen.findByTestId("pnl-overview-cards");
-    expect(overview).toHaveTextContent("0.12");
+    expect(overview).toHaveTextContent("9.88");
 
     const fiTable = await screen.findByTestId("pnl-formal-fi-table");
     expect(fiTable).toHaveTextContent("240002.IB");
 
     const metaPanel = await screen.findByTestId("pnl-result-meta-panel");
     expect(metaPanel).toHaveTextContent("V1");
+    expect(metaPanel).toHaveTextContent("tr_pnl_overview_2025-11-30");
     expect(metaPanel).toHaveTextContent("tr_pnl_data_2025-11-30");
     expect(metaPanel).toHaveTextContent("sv_pnl_test");
     expect(metaPanel).toHaveTextContent("rv_pnl_test");
@@ -267,25 +301,31 @@ describe("PnlPage", () => {
         ],
       } satisfies PnlV1DataPayload,
     }));
+    const getFormalPnlOverview = vi.fn(async (reportDate: string, basis?: ApiBasis) =>
+      buildOverviewEnvelope(reportDate, basis ?? "formal"),
+    );
 
     renderPnlPage({
       ...base,
       getFormalPnlDates,
       getPnlV1Data,
+      getFormalPnlOverview,
     });
 
     await screen.findByTestId("pnl-overview-cards");
 
     expect(getFormalPnlDates).toHaveBeenCalledWith("formal");
     expect(getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
+    expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
 
     await user.click(screen.getByRole("button", { name: "分析口径" }));
 
     await waitFor(() => {
       expect(getFormalPnlDates).toHaveBeenCalledWith("analytical");
+      expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "analytical");
     });
 
-    expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("0.12");
+    expect(screen.getByTestId("pnl-overview-cards")).toHaveTextContent("9.88");
     expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("240001.IB");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("analytical");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_pnl_data_formal");
@@ -303,6 +343,9 @@ describe("PnlPage", () => {
     renderPnlPage({
       ...base,
       getFormalPnlDates: vi.fn(() => datesRequest.promise),
+      getFormalPnlOverview: vi.fn(async (reportDate: string, basis?: ApiBasis) =>
+        buildOverviewEnvelope(reportDate, basis ?? "formal"),
+      ),
     });
 
     await waitFor(() => {
@@ -336,6 +379,9 @@ describe("PnlPage", () => {
       getFormalPnlDates: vi.fn(async () => {
         throw new Error("pnl dates failed");
       }),
+      getFormalPnlOverview: vi.fn(async (reportDate: string, basis?: ApiBasis) =>
+        buildOverviewEnvelope(reportDate, basis ?? "formal"),
+      ),
     });
 
     await waitFor(() => {
@@ -345,6 +391,49 @@ describe("PnlPage", () => {
 
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("结果元信息 / 证据");
     expect(screen.getByLabelText("pnl-report-date")).toBeDisabled();
+  });
+
+  it("renders unavailable overview headline values without converting them to zero", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlPage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_dates_null_overview"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: ["2025-12-31"],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlV1Data: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.v1_data", "tr_data_null_overview"),
+        result: {
+          report_date: "2025-12-31",
+          source_tables: ["data_input/pnl"],
+          rows: [
+            {
+              ...sampleFormalFiRow(),
+              total_pnl: "999999.99",
+            },
+          ],
+        } satisfies PnlV1DataPayload,
+      })),
+      getFormalPnlOverview: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.overview", "tr_overview_null"),
+        result: {
+          ...sampleOverviewPayload("2025-12-31"),
+          total_pnl: "",
+        },
+      })),
+    });
+
+    const overview = await screen.findByTestId("pnl-overview-cards");
+
+    expect(overview).toHaveTextContent("—");
+    expect(overview).not.toHaveTextContent("0.00");
+    expect(overview).not.toHaveTextContent("100.00");
+    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_overview_null");
   });
 
   it("triggers pnl refresh for the selected report date, polls status, and refetches queries", async () => {
@@ -419,6 +508,13 @@ describe("PnlPage", () => {
           ],
         } satisfies PnlV1DataPayload,
       });
+    const getFormalPnlOverview = vi
+      .fn()
+      .mockResolvedValueOnce(buildOverviewEnvelope("2025-12-31"))
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("pnl.overview", "tr_overview_refetched"),
+        result: sampleOverviewPayload("2025-12-31"),
+      });
 
     const refreshFormalPnl = vi.fn(async () => ({
       status: "queued",
@@ -443,6 +539,7 @@ describe("PnlPage", () => {
       ...base,
       getFormalPnlDates,
       getPnlV1Data,
+      getFormalPnlOverview,
       refreshFormalPnl,
       getFormalPnlImportStatus,
     });
@@ -460,6 +557,7 @@ describe("PnlPage", () => {
     await waitFor(() => {
       expect(getFormalPnlDates).toHaveBeenCalledTimes(2);
       expect(getPnlV1Data).toHaveBeenCalledTimes(2);
+      expect(getFormalPnlOverview).toHaveBeenCalledTimes(2);
     });
 
     pollingSpy.mockRestore();
@@ -495,6 +593,9 @@ describe("PnlPage", () => {
           rows: [sampleFormalFiRow(), sampleNonstdRow()],
         } satisfies PnlV1DataPayload,
       })),
+      getFormalPnlOverview: vi.fn(async (reportDate: string, basis?: ApiBasis) =>
+        buildOverviewEnvelope(reportDate, basis ?? "formal"),
+      ),
       refreshFormalPnl: vi.fn(async () => ({
         status: "queued",
         run_id: "pnl_materialize:timeout-run",
