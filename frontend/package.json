@@ -29,7 +29,7 @@
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.0.0",
-    "xlsx": "^0.18.5"
+    "write-excel-file": "^4.0.6"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",

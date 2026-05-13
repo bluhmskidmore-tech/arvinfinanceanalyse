@@ -1186,6 +1186,8 @@ export default function PnlByBusinessPage() {
     ...EMPTY_MANUAL_ADJUSTMENT_DRAFT,
   }));
   const [adjustmentError, setAdjustmentError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business", "dates", client.mode],
@@ -1536,30 +1538,38 @@ export default function PnlByBusinessPage() {
       (viewMode === "ytd" && ytdRows.length === 0) ||
       (viewMode === "formal" && formalRows.length === 0));
 
-  const handleExportExcel = () => {
-    if (!selectedReportDate) {
+  const handleExportExcel = async () => {
+    if (!selectedReportDate || exportingExcel) {
       return;
     }
-    downloadPnlByBusinessExcel({
-      viewMode,
-      reportDate: selectedReportDate,
-      year: selectedYear,
-      periodStart: ytdResult?.period_start_date,
-      periodEnd: ytdResult?.period_end_date,
-      periodLabel: ytdResult?.period_label,
-      ytdRows: businessQuery.isSuccess ? ytdRows : [],
-      adbAvgByBusinessType,
-      formalRows: formalBusinessQuery.isSuccess ? formalRows : [],
-      months: monthlyBusinessQuery.isSuccess ? monthlyBusinessMonths : [],
-      adjustments: manualAdjustmentQuery.isSuccess ? currentAdjustments : [],
-      adjustmentEvents: manualAdjustmentQuery.isSuccess ? adjustmentEvents : [],
-      bondBucketRows: bondBucketQuery.isSuccess ? bondBucketRows : [],
-      bondBucketMonthlyRows: bondBucketMonthlyQuery.isSuccess ? bondBucketMonthlyRows : [],
-      negativeFtpRows: negativeFtpInstrumentQuery.isSuccess ? negativeFtpInstrumentRows : [],
-      analysisDimension: analysisQuery.isSuccess ? analysisDimension : undefined,
-      analysisRows: analysisQuery.isSuccess ? analysisRows : [],
-      selectedBusinessLabel: selectedBusinessRow?.business_type,
-    });
+    setExportError("");
+    setExportingExcel(true);
+    try {
+      await downloadPnlByBusinessExcel({
+        viewMode,
+        reportDate: selectedReportDate,
+        year: selectedYear,
+        periodStart: ytdResult?.period_start_date,
+        periodEnd: ytdResult?.period_end_date,
+        periodLabel: ytdResult?.period_label,
+        ytdRows: businessQuery.isSuccess ? ytdRows : [],
+        adbAvgByBusinessType,
+        formalRows: formalBusinessQuery.isSuccess ? formalRows : [],
+        months: monthlyBusinessQuery.isSuccess ? monthlyBusinessMonths : [],
+        adjustments: manualAdjustmentQuery.isSuccess ? currentAdjustments : [],
+        adjustmentEvents: manualAdjustmentQuery.isSuccess ? adjustmentEvents : [],
+        bondBucketRows: bondBucketQuery.isSuccess ? bondBucketRows : [],
+        bondBucketMonthlyRows: bondBucketMonthlyQuery.isSuccess ? bondBucketMonthlyRows : [],
+        negativeFtpRows: negativeFtpInstrumentQuery.isSuccess ? negativeFtpInstrumentRows : [],
+        analysisDimension: analysisQuery.isSuccess ? analysisDimension : undefined,
+        analysisRows: analysisQuery.isSuccess ? analysisRows : [],
+        selectedBusinessLabel: selectedBusinessRow?.business_type,
+      });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "导出 Excel 失败");
+    } finally {
+      setExportingExcel(false);
+    }
   };
 
   const exportExcelDisabled =
@@ -1567,6 +1577,7 @@ export default function PnlByBusinessPage() {
     loading ||
     error ||
     empty ||
+    exportingExcel ||
     (viewMode === "ytd" && !businessQuery.isSuccess) ||
     (viewMode === "formal" && !formalBusinessQuery.isSuccess);
 
@@ -1619,8 +1630,13 @@ export default function PnlByBusinessPage() {
             disabled={exportExcelDisabled}
             onClick={handleExportExcel}
           >
-            导出 Excel
+            {exportingExcel ? "导出中..." : "导出 Excel"}
           </button>
+          {exportError ? (
+            <p className="pnl-by-business-export-error" role="alert">
+              {exportError}
+            </p>
+          ) : null}
         </div>
       </FilterBar>
 

@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import XLSX from "xlsx";
+import writeExcelFile from "write-excel-file/node";
 
 const WAN = 10_000;
 const YI = 100_000_000;
@@ -66,11 +66,6 @@ async function resolveApiBase() {
   );
 }
 
-function sheetFromAoA(name, aoa) {
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  return { name: name.slice(0, 31), ws };
-}
-
 function desktopPath(filename) {
   const desk =
     process.env.USERPROFILE && fs.existsSync(path.join(process.env.USERPROFILE, "Desktop"))
@@ -113,7 +108,7 @@ async function main() {
     console.warn("月度接口跳过:", e.message);
   }
 
-  const wb = XLSX.utils.book_new();
+  const sheets = [];
 
   const meta = [
     ["业务种类损益 — 桌面导出（脚本）"],
@@ -124,7 +119,7 @@ async function main() {
     ["说明", "金额列：万元 = 接口元 / 10000；亿元 = 元 / 1e8"],
     [],
   ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(meta), "导出说明");
+  sheets.push({ sheet: "导出说明", data: meta });
 
   const ytdHeader = [
     "业务种类",
@@ -153,7 +148,7 @@ async function main() {
       row.row_key,
     ]);
   }
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ytdRows), "YTD年累计");
+  sheets.push({ sheet: "YTD年累计", data: ytdRows });
 
   const months = Array.isArray(monthly.months) ? monthly.months : [];
   const monHeader = [
@@ -198,12 +193,12 @@ async function main() {
     }
   }
   if (monRows.length > 1) {
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(monRows), "月度业务种类");
+    sheets.push({ sheet: "月度业务种类", data: monRows });
   }
 
   const filename = `业务种类损益_${reportDate}_YTD_桌面导出.xlsx`;
   const out = desktopPath(filename);
-  XLSX.writeFile(wb, out);
+  await writeExcelFile(sheets).toFile(out);
   console.log("已写入:", out);
 }
 

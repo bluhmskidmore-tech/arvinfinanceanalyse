@@ -2,8 +2,16 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
+const { downloadPnlByBusinessExcelMock } = vi.hoisted(() => ({
+  downloadPnlByBusinessExcelMock: vi.fn(),
+}));
+
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="pnl-routes-echarts-stub" />,
+}));
+
+vi.mock("../features/pnl/pnlByBusinessExport", () => ({
+  downloadPnlByBusinessExcel: downloadPnlByBusinessExcelMock,
 }));
 
 import { createApiClient, type ApiClient } from "../api/client";
@@ -695,6 +703,63 @@ describe("pnl routed pages smoke", () => {
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
     expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");
     expect(screen.getByTestId("pnl-by-business-formal-table-footer")).toHaveTextContent("全表合计");
+  });
+
+  it("passes loaded /pnl-by-business data to the Excel export helper", async () => {
+    downloadPnlByBusinessExcelMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const client = buildPnlClient();
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
+        businessKey: "asset_zqtz_policy_financial_bond",
+        dimension: "instrument",
+      });
+    });
+
+    await user.click(screen.getByLabelText("pnl-by-business-export-excel"));
+
+    await waitFor(() => {
+      expect(downloadPnlByBusinessExcelMock).toHaveBeenCalledTimes(1);
+    });
+    expect(downloadPnlByBusinessExcelMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewMode: "ytd",
+        reportDate: "2025-12-31",
+        year: 2025,
+        periodStart: "2025-12-01",
+        periodEnd: "2025-12-31",
+        periodLabel: "2025年12月累计",
+        ytdRows: expect.arrayContaining([expect.objectContaining({ business_type: "政策性金融债" })]),
+        months: expect.arrayContaining([expect.objectContaining({ month_key: "2025-12" })]),
+        adjustments: expect.arrayContaining([expect.objectContaining({ reason: "复核后补录" })]),
+        bondBucketRows: expect.arrayContaining([expect.objectContaining({ dimension_label: "利率债" })]),
+        negativeFtpRows: expect.arrayContaining([expect.objectContaining({ dimension_label: "240001.IB 负FTP资产" })]),
+        analysisDimension: "monthly",
+        analysisRows: expect.arrayContaining([expect.objectContaining({ dimension_label: "2025-12-31" })]),
+        selectedBusinessLabel: "政策性金融债",
+      }),
+    );
+  });
+
+  it("surfaces Excel export failures on /pnl-by-business", async () => {
+    downloadPnlByBusinessExcelMock.mockRejectedValueOnce(new Error("writer failed"));
+    const user = userEvent.setup();
+    const client = buildPnlClient();
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-12-31");
+    });
+
+    await user.click(screen.getByLabelText("pnl-by-business-export-excel"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("writer failed");
   });
 
   it("records and displays manual adjustment audit history on /pnl-by-business", async () => {

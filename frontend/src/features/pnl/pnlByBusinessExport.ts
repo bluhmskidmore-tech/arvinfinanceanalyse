@@ -1,4 +1,5 @@
-import * as XLSX from "xlsx";
+import writeExcelFile from "write-excel-file/browser";
+import type { Sheet, SheetData } from "write-excel-file/browser";
 
 import type {
   PnlByBusinessMonthlyBucket,
@@ -11,7 +12,8 @@ import type {
 import { inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
-type SheetAoA = (string | number | null | undefined)[][];
+type SheetAoA = SheetData;
+export type PnlByBusinessExportSheet = Sheet<Blob>;
 
 const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
@@ -121,12 +123,11 @@ export type PnlByBusinessExcelExportArgs = {
   selectedBusinessLabel?: string | null;
 };
 
-function appendSheet(wb: XLSX.WorkBook, name: string, aoa: SheetAoA) {
+function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: SheetAoA) {
   if (aoa.length === 0) {
     return;
   }
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  XLSX.utils.book_append_sheet(wb, ws, safeSheetName(name));
+  sheets.push({ sheet: safeSheetName(name), data: aoa });
 }
 
 function buildYtdMainSheet(
@@ -426,8 +427,8 @@ function buildMetaRows(args: PnlByBusinessExcelExportArgs, ytdCalendarDays: numb
   return lines;
 }
 
-export function buildPnlByBusinessWorkbook(args: PnlByBusinessExcelExportArgs): XLSX.WorkBook {
-  const wb = XLSX.utils.book_new();
+export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): PnlByBusinessExportSheet[] {
+  const wb: PnlByBusinessExportSheet[] = [];
   const ytdCalendarDays =
     args.periodStart && args.periodEnd ? inclusiveCalendarDays(args.periodStart, args.periodEnd) : null;
 
@@ -489,20 +490,8 @@ export function buildPnlByBusinessWorkbook(args: PnlByBusinessExcelExportArgs): 
   return wb;
 }
 
-export function downloadPnlByBusinessExcel(args: PnlByBusinessExcelExportArgs): void {
-  const wb = buildPnlByBusinessWorkbook(args);
+export async function downloadPnlByBusinessExcel(args: PnlByBusinessExcelExportArgs): Promise<void> {
+  const sheets = buildPnlByBusinessSheets(args);
   const filename = `业务种类损益_${args.reportDate}_${args.viewMode === "ytd" ? "YTD" : "formal"}.xlsx`;
-  const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  const blob = new Blob([buf], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+  await writeExcelFile(sheets).toFile(filename);
 }
