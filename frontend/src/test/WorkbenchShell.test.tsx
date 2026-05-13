@@ -9,6 +9,7 @@ import {
   primaryWorkbenchNavigationGroups,
   secondaryWorkbenchNavigation,
 } from "../mocks/navigation";
+import { shellTokens } from "../theme/tokens";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
@@ -543,6 +544,17 @@ describe("WorkbenchShell", () => {
     expect(supportHrefs).toContain("/reports");
   });
 
+  it("marks the active support entry in the warm cockpit rail", async () => {
+    renderShellAt("/platform-config");
+
+    expect(await screen.findByText("platform body")).toBeInTheDocument();
+    const supportNav = screen.getByTestId("workbench-support-nav");
+    const platformLink = within(supportNav).getByRole("link", { name: /中台配置/ });
+
+    expect(platformLink).toHaveAttribute("href", "/platform-config");
+    expect(platformLink).toHaveAttribute("data-active", "true");
+  });
+
   it("does not render the portfolio decision surface outside the portfolio group", async () => {
     renderShellAt("/platform-config");
 
@@ -590,6 +602,19 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+  });
+
+  it("uses the cockpit shell frame on /dashboard with stable shell chrome hooks", async () => {
+    renderShellAt("/dashboard");
+
+    expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
+    const layoutRoot = screen.getByTestId("workbench-group-nav").closest(".workbench-shell-grid--cockpit");
+    expect(layoutRoot).not.toBeNull();
+    expect(screen.getByText("MOSS").closest("aside")).toHaveStyle({
+      background: shellTokens.railBg,
+    });
+    expect(screen.getByTestId("workbench-support-nav")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-terminal-bar")).toBeInTheDocument();
   });
 
   it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {

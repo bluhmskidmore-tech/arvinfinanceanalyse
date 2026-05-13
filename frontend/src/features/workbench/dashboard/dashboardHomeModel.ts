@@ -410,7 +410,7 @@ export function buildDashboardHomeSections(input: {
   return [
     {
       id: "judgment",
-      label: "本日判断",
+      label: "今日判断",
       status: "landed",
       firstScreenAllowed: true,
       reason: "来自 /ui/home/snapshot verdict 或快照状态确定性降级。",

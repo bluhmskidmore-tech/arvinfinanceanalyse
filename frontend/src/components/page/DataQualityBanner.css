@@ -7,15 +7,15 @@
 }
 
 .data-quality-banner--partial {
-  background: var(--color-warning-bg, #fff8e1);
-  border: 1px solid var(--color-warning-border, #ffe082);
-  color: var(--color-warning-text, #6d4c00);
+  background: var(--moss-color-warning-50);
+  border: 1px solid var(--moss-color-warning-200);
+  color: var(--moss-color-warning-900);
 }
 
 .data-quality-banner--degraded {
-  background: var(--color-error-bg, #fff3e0);
-  border: 1px solid var(--color-error-border, #ffab91);
-  color: var(--color-error-text, #bf360c);
+  background: var(--moss-color-danger-50);
+  border: 1px solid var(--moss-color-danger-200);
+  color: var(--moss-color-danger-800);
 }
 
 .data-quality-banner__label {

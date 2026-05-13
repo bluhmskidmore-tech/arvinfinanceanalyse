@@ -247,6 +247,7 @@ describe("DashboardPage", () => {
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     const toolbar = await screen.findByTestId("dashboard-home-toolbar");
+    const toolbarTitle = await screen.findByTestId("dashboard-executive-hero-title");
     const commandDeck = await screen.findByTestId("dashboard-command-deck");
     const executiveHero = await screen.findByTestId("dashboard-executive-hero");
     const judgmentBand = await screen.findByTestId("dashboard-judgment-band");
@@ -258,18 +259,23 @@ describe("DashboardPage", () => {
     const lowerGrid = await screen.findByTestId("dashboard-cockpit-lower-grid");
     const businessBalanceSummary = await screen.findByTestId("dashboard-business-balance-summary");
     const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
+    const actionLedger = await screen.findByTestId("dashboard-action-ledger");
 
     expectTestIdsInOrder(page, [
       "dashboard-home-toolbar",
-      "dashboard-cockpit-market-ticker",
       "dashboard-command-deck",
+      "dashboard-data-warning",
+      "dashboard-cockpit-market-ticker",
       "dashboard-cockpit-metric-rail",
       "dashboard-cockpit-main-grid",
       "dashboard-cockpit-lower-grid",
       "dashboard-business-detail-strip",
       "dashboard-business-balance-summary",
       "dashboard-detail-drilldown",
+      "dashboard-action-ledger",
     ]);
+    expect(page).toHaveClass("dashboard-home-shell");
+    expect(actionLedger).not.toBeNull();
 
     const pills = await screen.findByTestId("dashboard-governance-pills");
     expect(pills).toBeInTheDocument();
@@ -283,14 +289,23 @@ describe("DashboardPage", () => {
     expect(dataWarning.querySelector(".dashboard-home-warning__body")).toBeInTheDocument();
 
     expect(toolbar).toBeInTheDocument();
+    expect(toolbar).toContainElement(toolbarTitle);
+    expect(toolbarTitle.tagName.toLowerCase()).toBe("h1");
+    expect(toolbarTitle).toHaveClass("dashboard-home-toolbar__title");
+    expect(toolbarTitle).toHaveTextContent("经营驾驶舱");
     expect(commandDeck).toContainElement(executiveHero);
+    expect(commandDeck).toHaveClass("dashboard-command-deck");
     expect(executiveHero).toContainElement(judgmentBand);
+    expect(judgmentBand).toHaveClass("dashboard-executive-hero");
+    expect(judgmentBand).toHaveTextContent("今日判断");
     expect(commandDeck).toContainElement(statusStack);
     expect(page).toContainElement(marketTicker);
+    expect(marketTicker).toHaveClass("dashboard-warm-evidence-workspace");
     expect(marketTicker.querySelector(".dashboard-cockpit-unit")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
     expect(judgmentBand).toBeInTheDocument();
-    expect(metricRail).toBeInTheDocument();
+    expect(metricRail).toHaveClass("dashboard-warm-kpi-ledger");
+    expect(mainGrid).toHaveClass("dashboard-warm-cockpit-main");
     expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-curve-panel"));
     expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-judgment-cards"));
     expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-waterfall"));
@@ -309,6 +324,7 @@ describe("DashboardPage", () => {
         within(businessDetailStrip).getByTestId("dashboard-daily-changes-blocked"),
     ).toBeInTheDocument();
     expect(businessDetailStrip).toHaveClass("dashboard-cockpit-business-strip");
+    expect(lowerGrid).toHaveClass("dashboard-warm-cockpit-assist");
     expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-portfolio-panel"));
     expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-risk-panel"));
     expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-calendar-panel"));

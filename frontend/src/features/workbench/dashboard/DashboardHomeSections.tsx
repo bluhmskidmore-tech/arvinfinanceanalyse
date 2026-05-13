@@ -97,6 +97,45 @@ function DashboardSectionHeader({
   );
 }
 
+export type DashboardHomeSemanticSectionProps = {
+  testId?: string;
+  eyebrow: string;
+  title: string;
+  description?: ReactNode;
+  className?: string;
+  bodyClassName?: string;
+  headerExtra?: ReactNode;
+  children: ReactNode;
+};
+
+export function DashboardHomeSemanticSection({
+  testId,
+  eyebrow,
+  title,
+  description,
+  className,
+  bodyClassName,
+  headerExtra,
+  children,
+}: DashboardHomeSemanticSectionProps) {
+  return (
+    <section
+      data-testid={testId}
+      className={cx("dashboard-home-semantic-section", className)}
+    >
+      <div className="dashboard-home-semantic-section__header">
+        <DashboardSectionHeader eyebrow={eyebrow} title={title} extra={headerExtra} />
+        {description ? (
+          <p className="dashboard-home-muted dashboard-home-semantic-section__description">
+            {description}
+          </p>
+        ) : null}
+      </div>
+      <div className={cx("dashboard-home-semantic-section__body", bodyClassName)}>{children}</div>
+    </section>
+  );
+}
+
 export type DashboardJudgmentBandProps = {
   verdict: VerdictPayload;
   eyebrow?: string;
@@ -106,8 +145,8 @@ export type DashboardJudgmentBandProps = {
 
 export function DashboardJudgmentBand({
   verdict,
-  eyebrow = "本日判断",
-  title = "本日判断",
+  eyebrow = "今日判断",
+  title = "今日判断",
   className,
 }: DashboardJudgmentBandProps) {
   return (

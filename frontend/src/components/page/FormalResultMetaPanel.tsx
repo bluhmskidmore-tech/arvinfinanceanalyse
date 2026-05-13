@@ -1,4 +1,5 @@
 import type { ResultMeta } from "../../api/contracts";
+import { designTokens as dt } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 
 type FormalResultMetaSection = {
@@ -47,7 +48,7 @@ const sectionGridStyle = {
 const cardStyle = {
   borderRadius: 14,
   border: `1px solid ${t.colorBorderSoft}`,
-  background: "#f7f9fc",
+  background: t.colorBgApp,
   padding: 14,
 } as const;
 
@@ -194,30 +195,30 @@ function badgeTone(
   if (kind === "vendor_status") {
     if (value === "vendor_stale") {
       return {
-        background: "#fff7e6",
-        color: "#ad6800",
-        borderColor: "#ffd591",
+        background: t.colorBgWarningSoft,
+        color: t.colorTextWarning,
+        borderColor: t.colorBorderWarning,
       };
     }
     if (value === "vendor_unavailable") {
       return {
-        background: "#fff1f0",
-        color: "#cf1322",
-        borderColor: "#ffa39e",
+        background: t.colorBgDangerSoft,
+        color: dt.color.danger[700],
+        borderColor: dt.color.danger[200],
       };
     }
   }
   if (kind === "fallback_mode" && value === "latest_snapshot") {
     return {
-      background: "#fff7e6",
-      color: "#ad6800",
-      borderColor: "#ffd591",
+      background: t.colorBgWarningSoft,
+      color: t.colorTextWarning,
+      borderColor: t.colorBorderWarning,
     };
   }
   return {
-    background: "#f6ffed",
-    color: "#389e0d",
-    borderColor: "#b7eb8f",
+    background: t.colorBgSuccessSoft,
+    color: dt.color.success[700],
+    borderColor: dt.color.success[200],
   };
 }
 

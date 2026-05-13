@@ -119,6 +119,7 @@ type DashboardCockpitMarketTickerProps = {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  className?: string;
 };
 
 export function DashboardCockpitMarketTicker({
@@ -126,6 +127,7 @@ export function DashboardCockpitMarketTicker({
   isLoading,
   isError,
   onRetry,
+  className,
 }: DashboardCockpitMarketTickerProps) {
   const hasStale = items.some((item) => item.status === "stale");
   const statusLabel = isLoading
@@ -141,7 +143,7 @@ export function DashboardCockpitMarketTicker({
   return (
     <section
       data-testid="dashboard-cockpit-market-ticker"
-      className="dashboard-cockpit-card dashboard-cockpit-market-ticker"
+      className={cx("dashboard-cockpit-card dashboard-cockpit-market-ticker", className)}
     >
       <div className="dashboard-cockpit-strip-head">
         <div>
@@ -202,13 +204,17 @@ export function DashboardCockpitMarketTicker({
 
 type DashboardCockpitMetricRailProps = {
   items: readonly DashboardCockpitMetricItem[];
+  className?: string;
 };
 
-export function DashboardCockpitMetricRail({ items }: DashboardCockpitMetricRailProps) {
+export function DashboardCockpitMetricRail({
+  items,
+  className,
+}: DashboardCockpitMetricRailProps) {
   return (
     <section
       data-testid="dashboard-cockpit-metric-rail"
-      className="dashboard-cockpit-card dashboard-cockpit-metric-rail"
+      className={cx("dashboard-cockpit-card dashboard-cockpit-metric-rail", className)}
     >
       {items.map((item) => (
         <article
@@ -234,15 +240,20 @@ type DashboardCockpitMainGridProps = {
   ticker: readonly DashboardCockpitTickerItem[];
   cards: readonly DashboardCockpitAnalysisCard[];
   waterfall: readonly DashboardCockpitWaterfallItem[];
+  className?: string;
 };
 
 export function DashboardCockpitMainGrid({
   ticker,
   cards,
   waterfall,
+  className,
 }: DashboardCockpitMainGridProps) {
   return (
-    <section data-testid="dashboard-cockpit-main-grid" className="dashboard-cockpit-main-grid">
+    <section
+      data-testid="dashboard-cockpit-main-grid"
+      className={cx("dashboard-cockpit-main-grid", className)}
+    >
       <DashboardCockpitCurvePanel ticker={ticker} />
       <DashboardCockpitJudgmentCards cards={cards} />
       <DashboardCockpitWaterfall items={waterfall} />
@@ -474,6 +485,7 @@ type DashboardCockpitLowerGridProps = {
   riskItems: readonly DashboardCockpitRiskItem[];
   calendarItems: readonly DashboardCockpitCalendarItem[];
   watchRows: readonly DashboardCockpitWatchRow[];
+  className?: string;
 };
 
 export function DashboardCockpitLowerGrid({
@@ -481,9 +493,13 @@ export function DashboardCockpitLowerGrid({
   riskItems,
   calendarItems,
   watchRows,
+  className,
 }: DashboardCockpitLowerGridProps) {
   return (
-    <section data-testid="dashboard-cockpit-lower-grid" className="dashboard-cockpit-lower-grid">
+    <section
+      data-testid="dashboard-cockpit-lower-grid"
+      className={cx("dashboard-cockpit-lower-grid", className)}
+    >
       <DashboardCockpitPortfolioPanel items={portfolioMix} />
       <DashboardCockpitRiskPanel items={riskItems} />
       <DashboardCockpitCalendarPanel items={calendarItems} watchRows={watchRows} />

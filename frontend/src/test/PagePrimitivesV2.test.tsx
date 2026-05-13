@@ -13,7 +13,8 @@ import {
   PageV2Shell,
   PageV2SurfacePanel,
 } from "../components/page/PagePrimitives";
-import { PAGE_V2_CONTRACT } from "../components/page/PagePrimitiveStyles";
+import { PAGE_V2_CONTRACT, pageSurfacePanelStyle } from "../components/page/PagePrimitiveStyles";
+import { shellTokens } from "../theme/tokens";
 
 describe("PagePrimitives v2 opt-in contract", () => {
   it("keeps the legacy primitives classless while exposing opt-in v2 surfaces", () => {
@@ -49,6 +50,8 @@ describe("PagePrimitives v2 opt-in contract", () => {
     expect(screen.getByTestId("hero")).toHaveClass(PAGE_V2_CONTRACT.decisionHeroRoot);
     expect(screen.getByTestId("hero-title")).toHaveTextContent("组合总览");
     expect(screen.getByTestId("hero-q")).toHaveTextContent("风险维度");
+    expect(screen.getByTestId("hero").querySelector(".moss-page-v2-decision-hero__top")).not.toBeNull();
+    expect(screen.getByTestId("hero").querySelector(".moss-page-v2-decision-hero__actions")).not.toBeNull();
     expect(screen.getByTestId("rd")).toHaveTextContent("截止");
     expect(screen.getByTestId("conc")).toBeTruthy();
     expect(screen.getByRole("button", { name: "导出" })).toBeTruthy();
@@ -81,7 +84,9 @@ describe("PagePrimitives v2 opt-in contract", () => {
     expect(screen.getByTestId("kpis")).toHaveClass(PAGE_V2_CONTRACT.kpiBandRoot);
     expect(screen.getByTestId("kpi-1")).toHaveClass(PAGE_V2_CONTRACT.kpiMetricItem);
     expect(screen.getByTestId("kpi-1")).toHaveTextContent("4.26");
+    expect(screen.getByTestId("kpi-1").querySelector(".moss-page-v2-kpi-metric__value")).not.toBeNull();
 
+    expect(screen.getByTestId("grid")).toHaveClass("moss-page-v2-analysis-grid");
     expect(screen.getByTestId("grid")).toHaveClass("moss-page-v2-analysis-grid--cols-3");
 
     expect(screen.getByTestId("evidence")).toHaveClass(PAGE_V2_CONTRACT.evidencePanelRoot);
@@ -91,5 +96,15 @@ describe("PagePrimitives v2 opt-in contract", () => {
     expect(surf).toHaveAttribute("data-state-variant", "fallback-date");
     expect(surf).toHaveClass(PAGE_V2_CONTRACT.stateSurfaceRoot);
     expect(screen.getByText("兜底报告日生效")).toBeTruthy();
+  });
+
+  it("keeps analysis-grid contract strings aligned with the exported v2 map", () => {
+    expect(PAGE_V2_CONTRACT.analysisGridCols["1"]).toContain("moss-page-v2-analysis-grid");
+    expect(PAGE_V2_CONTRACT.analysisGridCols["2"]).toContain("moss-page-v2-analysis-grid--cols-2");
+    expect(PAGE_V2_CONTRACT.analysisGridCols["3"]).toContain("moss-page-v2-analysis-grid--cols-3");
+  });
+
+  it("keeps the opt-in v2 surface style on the warm cockpit paper token", () => {
+    expect(pageSurfacePanelStyle.background).toBe(shellTokens.colorBgSurface);
   });
 });

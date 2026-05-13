@@ -29,7 +29,6 @@ import {
   visibleWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
-import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import { DataModeRibbon } from "../components/DataModeRibbon";
@@ -94,7 +93,7 @@ function groupButtonStyle(active: boolean) {
     background: active ? shellTokens.railNavActiveBg : "transparent",
     color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextNavIdle,
     border: "none",
-    boxShadow: active ? `inset 4px 0 0 ${designTokens.color.primary[400]}` : "none",
+    boxShadow: active ? `inset 4px 0 0 ${shellTokens.colorAccent}` : "none",
     transition:
       "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;
@@ -107,7 +106,7 @@ function groupSectionPillStyle(active: boolean) {
     gap: 8,
     padding: "8px 12px",
     borderRadius: 14,
-    background: active ? shellTokens.colorAccentSoft : "rgba(245,247,250,0.82)",
+    background: active ? shellTokens.colorAccentSoft : "rgba(255, 253, 248, 0.82)",
     color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
     border: active
       ? `1px solid ${shellTokens.colorBorderStrong}`
@@ -441,7 +440,7 @@ export function WorkbenchShell() {
         .filter((section): section is WorkbenchSection => Boolean(section)),
     }))
     .filter((stage) => stage.sections.length > 0);
-  const contentSurfaceShadow = "0 16px 34px rgba(15, 23, 42, 0.08)";
+  const contentSurfaceShadow = shellTokens.shadowPanel;
 
   return (
     <>
@@ -453,8 +452,7 @@ export function WorkbenchShell() {
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",
-        background:
-          "radial-gradient(circle at top left, rgba(233,240,246,0.92) 0%, rgba(244,247,249,0.98) 38%, rgba(239,243,246,1) 100%)",
+        background: shellTokens.appBackdrop,
       }}
     >
       <aside
@@ -466,7 +464,7 @@ export function WorkbenchShell() {
           padding: isMinimalMainChrome ? "12px" : "14px",
           border: `1px solid ${shellTokens.railBorder}`,
           borderRadius: 20,
-          boxShadow: "0 22px 48px rgba(10, 21, 33, 0.16)",
+          boxShadow: shellTokens.shadowRail,
           background: shellTokens.railBg,
         }}
       >
@@ -866,7 +864,12 @@ export function WorkbenchShell() {
             const active = item.to !== "/" && pathnameResolved === item.to;
 
             return (
-              <NavLink key={item.key} to={item.to} style={supportLinkStyle(active)}>
+              <NavLink
+                key={item.key}
+                to={item.to}
+                data-active={active ? "true" : "false"}
+                style={supportLinkStyle(active)}
+              >
                 <span style={{ fontSize: 11 }}>{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>
               </NavLink>

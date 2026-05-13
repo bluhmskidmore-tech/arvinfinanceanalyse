@@ -647,94 +647,13 @@ export default function DashboardPage() {
             data-testid="dashboard-executive-hero-title"
             className="dashboard-home-toolbar__title"
           >
-            债券分析
+            经营驾驶舱
           </h1>
           <span className="dashboard-home-toolbar__eyebrow">
             报告日 {effectiveReportDate || "最新可用"}
           </span>
         </div>
-        <label className="dashboard-home-search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="搜索债券、指标、报告"
-            placeholder="搜索债券 / 指标 / 报告"
-            value={toolbarSearch}
-            onChange={(event) => setToolbarSearch(event.target.value)}
-          />
-        </label>
-        <div className="dashboard-home-actions">
-          <span
-            className={
-              client.mode === "real"
-                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
-                : "dashboard-home-view-pill dashboard-governance-tone-warning"
-            }
-          >
-            {toolbarModeLabel}
-          </span>
-          <label className="dashboard-home-control">
-            <span>报告日</span>
-            <input
-              aria-label="报告日"
-              type="date"
-              value={reportDate || effectiveReportDate || ""}
-              onChange={(event) => setReportDate(event.target.value)}
-              className="dashboard-home-date-input"
-              style={tabularNumsStyle}
-            />
-          </label>
-          <label className="dashboard-home-check">
-            <input
-              aria-label="允许历史日（含缺域）"
-              type="checkbox"
-              checked={allowPartial}
-              onChange={(event) => setAllowPartial(event.target.checked)}
-            />
-            含缺域
-          </label>
-          <span aria-hidden="true" className="dashboard-home-actions__divider" />
-          <Link
-            data-testid="dashboard-bank-ledger-header-link"
-            to="/bank-ledger-dashboard"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            银行台账
-          </Link>
-          <Link
-            to="/source-preview"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            报表中心
-          </Link>
-          <Link
-            to="/platform-config"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            中台配置
-          </Link>
-          <button
-            type="button"
-            onClick={() => void snapshotQuery.refetch()}
-            className="dashboard-home-action-button dashboard-home-action-button--primary"
-          >
-            刷新
-          </button>
-          <button
-            type="button"
-            disabled
-            className="dashboard-home-action-button dashboard-home-action-button--disabled"
-          >
-            导出
-          </button>
-        </div>
       </header>
-
-      <DashboardCockpitMarketTicker
-        items={dashboardCockpit.marketTicker}
-        isLoading={marketRatesQuery.isLoading}
-        isError={marketRatesQuery.isError}
-        onRetry={() => void marketRatesQuery.refetch()}
-      />
 
       <section
         data-testid="dashboard-command-deck"
@@ -804,13 +723,26 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <DashboardCockpitMetricRail items={dashboardCockpit.metricRail} />
+      <DashboardCockpitMarketTicker
+        className="dashboard-warm-evidence-workspace"
+        items={dashboardCockpit.marketTicker}
+        isLoading={marketRatesQuery.isLoading}
+        isError={marketRatesQuery.isError}
+        onRetry={() => void marketRatesQuery.refetch()}
+      />
+
+      <DashboardCockpitMetricRail
+        className="dashboard-warm-kpi-ledger"
+        items={dashboardCockpit.metricRail}
+      />
       <DashboardCockpitMainGrid
+        className="dashboard-warm-cockpit-main"
         ticker={dashboardCockpit.marketTicker}
         cards={dashboardCockpit.analysisCards}
         waterfall={dashboardCockpit.waterfall}
       />
       <DashboardCockpitLowerGrid
+        className="dashboard-warm-cockpit-assist"
         portfolioMix={dashboardCockpit.portfolioMix}
         riskItems={dashboardCockpit.riskItems}
         calendarItems={dashboardCockpit.calendarItems}
@@ -948,6 +880,87 @@ export default function DashboardPage() {
           </>
         ) : null}
       </details>
+
+      <section
+        data-testid="dashboard-action-ledger"
+        className="dashboard-action-ledger dashboard-warm-action-ledger dashboard-warm-download-ledger"
+        aria-label="dashboard-action-ledger"
+      >
+        <label className="dashboard-home-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            aria-label="搜索债券、指标、报告"
+            placeholder="搜索债券 / 指标 / 报告"
+            value={toolbarSearch}
+            onChange={(event) => setToolbarSearch(event.target.value)}
+          />
+        </label>
+        <div className="dashboard-home-actions">
+          <span
+            className={
+              client.mode === "real"
+                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
+                : "dashboard-home-view-pill dashboard-governance-tone-warning"
+            }
+          >
+            {toolbarModeLabel}
+          </span>
+          <label className="dashboard-home-control">
+            <span>报告日</span>
+            <input
+              aria-label="报告日"
+              type="date"
+              value={reportDate || effectiveReportDate || ""}
+              onChange={(event) => setReportDate(event.target.value)}
+              className="dashboard-home-date-input"
+              style={tabularNumsStyle}
+            />
+          </label>
+          <label className="dashboard-home-check">
+            <input
+              aria-label="允许历史日（含缺域）"
+              type="checkbox"
+              checked={allowPartial}
+              onChange={(event) => setAllowPartial(event.target.checked)}
+            />
+            含缺域
+          </label>
+          <span aria-hidden="true" className="dashboard-home-actions__divider" />
+          <Link
+            data-testid="dashboard-bank-ledger-header-link"
+            to="/bank-ledger-dashboard"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            银行台账
+          </Link>
+          <Link
+            to="/source-preview"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            报表中心
+          </Link>
+          <Link
+            to="/platform-config"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            中台配置
+          </Link>
+          <button
+            type="button"
+            onClick={() => void snapshotQuery.refetch()}
+            className="dashboard-home-action-button dashboard-home-action-button--primary"
+          >
+            刷新
+          </button>
+          <button
+            type="button"
+            disabled
+            className="dashboard-home-action-button dashboard-home-action-button--disabled"
+          >
+            导出
+          </button>
+        </div>
+      </section>
 
     </section>
   );

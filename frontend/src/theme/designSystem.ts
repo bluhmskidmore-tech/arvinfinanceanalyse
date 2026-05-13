@@ -84,6 +84,23 @@ export const designTokens = {
       800: "#374151",
       900: "#1f2937",
     },
+    /**
+     * Warm cockpit palette for shell chrome and editorial surfaces.
+     * Keep isolated from institutional blue scales so dashboard business semantics stay unchanged.
+     */
+    warm: {
+      porcelain: "#f6f1e8",
+      paper: "#fffdf8",
+      stone: "#e4d8c8",
+      taupe: "#b8a38f",
+      charcoal: "#342b27",
+      ink: "#2f2824",
+      terracotta: "#b85c38",
+      sage: "#708c74",
+      burgundy: "#7c3e46",
+      slateBlue: "#667a96",
+      rail: "#f0e6d8",
+    },
     semantic: {
       /** Positive P&L, surplus, favorable move */
       profit: "#2d8a5e",

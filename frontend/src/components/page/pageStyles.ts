@@ -1,4 +1,5 @@
 import { designTokens as dt } from "../../theme/designSystem";
+import { shellTokens as t } from "../../theme/tokens";
 
 export const summaryGridStyle = {
   display: "grid",
@@ -18,7 +19,7 @@ export const tableShellStyle = {
   overflowX: "auto",
   borderRadius: dt.radius.lg,
   border: `1px solid ${dt.color.neutral[200]}`,
-  background: "#ffffff",
+  background: t.colorBgSurface,
 } as const;
 
 export const tableStyle = {

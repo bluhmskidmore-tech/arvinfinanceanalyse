@@ -185,7 +185,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(await screen.findByRole("navigation")).toBeInTheDocument();
     expect(
-      within(screen.getByRole("navigation")).getByRole("link", { name: /总览工作台/ }),
+      within(screen.getByRole("navigation")).getByRole("link", { name: /经营驾驶舱/ }),
     ).toBeInTheDocument();
   });
 
@@ -248,7 +248,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-governed-surface")).toBeInTheDocument();
     expect(
-      within(await screen.findByRole("navigation")).getByRole("link", { name: /总览工作台/ }),
+      within(await screen.findByRole("navigation")).getByRole("link", { name: /经营驾驶舱/ }),
     ).toBeInTheDocument();
   });
 
