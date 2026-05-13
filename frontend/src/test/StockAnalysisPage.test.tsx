@@ -6,6 +6,7 @@ import { createApiClient, type ApiClient } from "../api/client";
 import type {
   ApiEnvelope,
   ConfluenceReplayStatus,
+  LivermoreCandidateHistoryPayload,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
@@ -236,11 +237,175 @@ function buildReplayStatus(overrides: Partial<ConfluenceReplayStatus> = {}): Con
   };
 }
 
+function buildCandidateHistoryPayload(): LivermoreCandidateHistoryPayload {
+  return {
+    stock_code: null,
+    snapshot_from: "2026-05-03",
+    snapshot_to: "2026-05-13",
+    limit: 500,
+    backtest_window_summary: {
+      status: "valid",
+      snapshot_from: "2026-05-03",
+      snapshot_to: "2026-05-13",
+      replay_dates_total: 6,
+      replay_dates_completed: 5,
+      replay_dates_pending: 1,
+      replay_dates_unsupported: 0,
+      replay_dates_proxy_only: 0,
+      completed_rows: 216,
+      pending_rows: 4,
+      unsupported_rows: 0,
+      proxy_only_rows: 0,
+      included_completed_stats_dates: ["2026-05-06", "2026-05-07"],
+      excluded_from_completed_stats_dates: ["2026-05-13"],
+      date_reasons: [],
+    },
+    summary: {
+      row_count: 220,
+      by_signal_kind: {
+        stock_candidate: 36,
+        factor_screen: 180,
+        theme_breakout: 4,
+      },
+      by_signal_kind_horizon_stats: {
+        stock_candidate: {
+          return_1d: {
+            available_count: 30,
+            missing_count: 6,
+            positive_count: 15,
+            non_positive_count: 15,
+            avg_return: 0.014118,
+            win_rate: 0.5,
+          },
+          return_5d: {
+            available_count: 6,
+            missing_count: 30,
+            positive_count: 6,
+            non_positive_count: 0,
+            avg_return: 0.199863,
+            win_rate: 1,
+          },
+          return_20d: {
+            available_count: 0,
+            missing_count: 36,
+            positive_count: 0,
+            non_positive_count: 0,
+            avg_return: null,
+            win_rate: null,
+          },
+        },
+        factor_screen: {
+          return_1d: {
+            available_count: 150,
+            missing_count: 30,
+            positive_count: 56,
+            non_positive_count: 94,
+            avg_return: -0.00036,
+            win_rate: 0.373333,
+          },
+          return_5d: {
+            available_count: 30,
+            missing_count: 150,
+            positive_count: 17,
+            non_positive_count: 13,
+            avg_return: 0.029253,
+            win_rate: 0.566667,
+          },
+          return_20d: {
+            available_count: 0,
+            missing_count: 180,
+            positive_count: 0,
+            non_positive_count: 0,
+            avg_return: null,
+            win_rate: null,
+          },
+        },
+      },
+      decision_usable_stats: {
+        row_count: 216,
+        complete_row_count: 180,
+        pending_row_count: 36,
+        partial_halt_row_count: 0,
+        missing_forward_return_count: 186,
+        avg_return_1d: 0.002536,
+        avg_return_5d: 0.063375,
+        avg_return_20d: null,
+        win_rate_1d: 0.394444,
+        win_rate_5d: 0.633333,
+        win_rate_20d: null,
+        by_signal_kind: {
+          stock_candidate: 36,
+          factor_screen: 180,
+          theme_breakout: 4,
+        },
+        by_signal_kind_horizon_stats: {
+          stock_candidate: {
+            return_1d: {
+              available_count: 30,
+              missing_count: 6,
+              positive_count: 15,
+              non_positive_count: 15,
+              avg_return: 0.014118,
+              win_rate: 0.5,
+            },
+            return_5d: {
+              available_count: 6,
+              missing_count: 30,
+              positive_count: 6,
+              non_positive_count: 0,
+              avg_return: 0.199863,
+              win_rate: 1,
+            },
+            return_20d: {
+              available_count: 0,
+              missing_count: 36,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+          },
+          factor_screen: {
+            return_1d: {
+              available_count: 150,
+              missing_count: 30,
+              positive_count: 56,
+              non_positive_count: 94,
+              avg_return: -0.00036,
+              win_rate: 0.373333,
+            },
+            return_5d: {
+              available_count: 30,
+              missing_count: 150,
+              positive_count: 17,
+              non_positive_count: 13,
+              avg_return: 0.029253,
+              win_rate: 0.566667,
+            },
+            return_20d: {
+              available_count: 0,
+              missing_count: 180,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+          },
+        },
+        included_snapshot_dates: ["2026-05-06", "2026-05-07"],
+        excluded_snapshot_dates: ["2026-05-13"],
+      },
+    },
+    items: [],
+  };
+}
+
 function stockClient(options?: {
   strategy?: LivermoreStrategyPayload;
   strategyError?: Error;
   confluence?: LivermoreSignalConfluencePayload;
   confluenceError?: Error;
+  candidateHistory?: LivermoreCandidateHistoryPayload;
   metaOverrides?: Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
 }): ApiClient {
   return {
@@ -273,6 +438,11 @@ function stockClient(options?: {
         options?.confluence ?? buildConfluencePayload(),
       );
     },
+    getLivermoreCandidateHistory: async (): Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>> =>
+      buildMockApiEnvelope(
+        "market_data.livermore.candidate_history",
+        options?.candidateHistory ?? buildCandidateHistoryPayload(),
+      ),
   };
 }
 
@@ -611,8 +781,8 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("闭环阻断，先复核约束项");
     expect(verdict).toHaveTextContent("保持仅观察输出");
     expect(decisionPanel).toHaveTextContent("闭环结论优先");
-    expect(decisionPanel.querySelector("h2")).toHaveTextContent("闭环阻断，先复核约束项");
-    expect(decisionPanel.querySelector("h2")).not.toHaveTextContent("今日市场状态");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("闭环阻断，先复核约束项");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(decisionPanel).not.toHaveTextContent("先复核 Alpha");
     expect(summary).toHaveTextContent("拦截");
     expect(summary).toHaveTextContent("阻断");
@@ -641,8 +811,8 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("证据不足，不形成有效观察结论");
     expect(verdict).toHaveTextContent("先补齐宏观反拥挤");
     expect(decisionPanel).toHaveTextContent("闭环结论优先");
-    expect(decisionPanel.querySelector("h2")).toHaveTextContent("证据不足，不形成有效观察结论");
-    expect(decisionPanel.querySelector("h2")).not.toHaveTextContent("今日市场状态");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("证据不足，不形成有效观察结论");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(decisionPanel).not.toHaveTextContent("先复核 Alpha");
     expect(summary).toHaveTextContent("数据不足");
     expect(summary).toHaveTextContent("待补");
@@ -676,8 +846,8 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("暂缓");
     expect(verdict).toHaveTextContent("暂缓复核，存在降级边界");
     expect(verdict).toHaveTextContent("保留观察队列");
-    expect(decisionPanel.querySelector("h2")).toHaveTextContent("暂缓复核，存在降级边界");
-    expect(decisionPanel.querySelector("h2")).not.toHaveTextContent("今日市场状态");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("暂缓复核，存在降级边界");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(summary).toHaveTextContent("暂缓");
     expect(summary).toHaveTextContent("降级");
     expect(summary).toHaveTextContent("仍有降级或仅观察边界");
@@ -1021,5 +1191,182 @@ describe("StockAnalysisPage", () => {
     ]);
     expect(submitted?.filters).toEqual({ research_domain: "stock" });
     queryAgentSpy.mockRestore();
+  });
+
+  it("renders strategy replay rows from legacy per-strategy horizon stats", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const trend = within(await screen.findByTestId("stock-analysis-strategy-backtest-stock_candidate"));
+    const panel = screen.getByTestId("stock-analysis-strategy-backtest");
+    expect(panel).toHaveTextContent(/策略回溯表现/);
+    expect(panel).toHaveTextContent(/仅使用已完成回溯日期计算胜率/);
+    expect(panel).toHaveTextContent(/有效样本/);
+    expect(panel).toHaveTextContent(/180 条/);
+    expect(panel).toHaveTextContent(/完成日期 5/);
+
+    expect(trend.getByText("趋势突破")).toBeInTheDocument();
+    expect(trend.getByText("36")).toBeInTheDocument();
+    expect(trend.getByText("50.0% / +1.41% / 30条")).toBeInTheDocument();
+    expect(trend.getByText("100.0% / +19.99% / 6条")).toBeInTheDocument();
+
+    const factor = within(screen.getByTestId("stock-analysis-strategy-backtest-factor_screen"));
+    expect(factor.getByText("多因子")).toBeInTheDocument();
+    expect(factor.getByText("37.3% / -0.04% / 150条")).toBeInTheDocument();
+    expect(factor.getByText("56.7% / +2.93% / 30条")).toBeInTheDocument();
+  });
+
+  it("prefers horizon-usable stats and renders market-state replay rows", async () => {
+    const candidateHistory = buildCandidateHistoryPayload();
+    const summary = candidateHistory.summary!;
+    const decisionUsableStats = summary.decision_usable_stats!;
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        candidateHistory: {
+          ...candidateHistory,
+          summary: {
+            ...summary,
+            decision_usable_stats: {
+              ...decisionUsableStats,
+              by_signal_kind_horizon_stats: {
+                stock_candidate: {
+                  return_1d: {
+                    available_count: 0,
+                    missing_count: 36,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
+                  return_5d: {
+                    available_count: 0,
+                    missing_count: 36,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
+                  return_20d: {
+                    available_count: 0,
+                    missing_count: 36,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
+                },
+              },
+              by_signal_kind_horizon_usable_stats: {
+                stock_candidate: {
+                  return_1d: {
+                    available_count: 12,
+                    missing_count: 24,
+                    positive_count: 9,
+                    non_positive_count: 3,
+                    avg_return: 0.0321,
+                    win_rate: 0.75,
+                  },
+                  return_5d: {
+                    available_count: 4,
+                    missing_count: 32,
+                    positive_count: 2,
+                    non_positive_count: 2,
+                    avg_return: -0.0111,
+                    win_rate: 0.5,
+                  },
+                  return_20d: {
+                    available_count: 0,
+                    missing_count: 36,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
+                },
+              },
+              by_market_state_signal_kind_horizon_stats: {
+                WARM: {
+                  stock_candidate: {
+                    return_1d: {
+                      available_count: 12,
+                      missing_count: 24,
+                      positive_count: 9,
+                      non_positive_count: 3,
+                      avg_return: 0.0321,
+                      win_rate: 0.75,
+                    },
+                    return_5d: {
+                      available_count: 4,
+                      missing_count: 32,
+                      positive_count: 2,
+                      non_positive_count: 2,
+                      avg_return: -0.0111,
+                      win_rate: 0.5,
+                    },
+                    return_20d: {
+                      available_count: 0,
+                      missing_count: 36,
+                      positive_count: 0,
+                      non_positive_count: 0,
+                      avg_return: null,
+                      win_rate: null,
+                    },
+                  },
+                },
+                HOT: {
+                  factor_screen: {
+                    return_1d: {
+                      available_count: 8,
+                      missing_count: 12,
+                      positive_count: 2,
+                      non_positive_count: 6,
+                      avg_return: -0.021,
+                      win_rate: 0.25,
+                    },
+                    return_5d: {
+                      available_count: 6,
+                      missing_count: 14,
+                      positive_count: 3,
+                      non_positive_count: 3,
+                      avg_return: 0.014,
+                      win_rate: 0.5,
+                    },
+                    return_20d: {
+                      available_count: 0,
+                      missing_count: 20,
+                      positive_count: 0,
+                      non_positive_count: 0,
+                      avg_return: null,
+                      win_rate: null,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const stockCandidateRow = await screen.findByTestId("stock-analysis-strategy-backtest-stock_candidate");
+    expect(stockCandidateRow).toHaveTextContent("75.0% / +3.21% / 12条");
+    expect(stockCandidateRow).toHaveTextContent("50.0% / -1.11% / 4条");
+    expect(stockCandidateRow).toHaveTextContent("待补");
+
+    const marketStateTable = await screen.findByTestId("stock-analysis-strategy-backtest-market-state");
+    expect(marketStateTable).toHaveTextContent(/市场状态/);
+    expect(marketStateTable).toHaveTextContent(/策略/);
+
+    const warmRow = within(screen.getByTestId("stock-analysis-strategy-backtest-market-state-WARM-stock_candidate"));
+    expect(warmRow.getByText(/WARM/)).toBeInTheDocument();
+    expect(warmRow.getByText("趋势突破")).toBeInTheDocument();
+    expect(warmRow.getByText("75.0% / +3.21% / 12条")).toBeInTheDocument();
+    expect(warmRow.getByText("50.0% / -1.11% / 4条")).toBeInTheDocument();
+
+    const hotRow = within(screen.getByTestId("stock-analysis-strategy-backtest-market-state-HOT-factor_screen"));
+    expect(hotRow.getByText(/HOT/)).toBeInTheDocument();
+    expect(hotRow.getByText("多因子")).toBeInTheDocument();
+    expect(hotRow.getByText("25.0% / -2.10% / 8条")).toBeInTheDocument();
+    expect(hotRow.getByText("50.0% / +1.40% / 6条")).toBeInTheDocument();
   });
 });

@@ -1364,6 +1364,7 @@ export type LivermoreCandidateHistoryRow = {
   snapshot_as_of_date: string;
   stock_code: string;
   stock_name?: string | null;
+  signal_kind?: string | null;
   candidate_rank: number;
   sector_code?: string | null;
   sector_name?: string | null;
@@ -1425,8 +1426,12 @@ export type LivermoreCandidateHistoryLegacySummary = {
   avg_return_1d?: number | null;
   avg_return_5d?: number | null;
   avg_return_20d?: number | null;
-  horizon_stats?: Record<LivermoreCandidateHistoryHorizonKey, LivermoreCandidateHistoryHorizonStats>;
+  horizon_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
+  horizon_usable_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
   by_signal_kind?: Record<string, number>;
+  by_signal_kind_horizon_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
+  by_signal_kind_horizon_usable_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
+  by_market_state_signal_kind_horizon_stats?: LivermoreCandidateHistoryMarketStateSignalKindHorizonStats;
   decision_usable_stats?: LivermoreCandidateHistoryDecisionUsableStats | null;
 };
 
@@ -1441,6 +1446,21 @@ export type LivermoreCandidateHistoryHorizonStats = {
   win_rate: number | null;
 };
 
+export type LivermoreCandidateHistoryHorizonStatsByKey = Record<
+  LivermoreCandidateHistoryHorizonKey,
+  LivermoreCandidateHistoryHorizonStats
+>;
+
+export type LivermoreCandidateHistorySignalKindHorizonStats = Record<
+  string,
+  LivermoreCandidateHistoryHorizonStatsByKey
+>;
+
+export type LivermoreCandidateHistoryMarketStateSignalKindHorizonStats = Record<
+  string,
+  LivermoreCandidateHistorySignalKindHorizonStats
+>;
+
 export type LivermoreCandidateHistoryDecisionUsableStats = {
   row_count: number;
   complete_row_count: number;
@@ -1453,7 +1473,11 @@ export type LivermoreCandidateHistoryDecisionUsableStats = {
   win_rate_1d: number | null;
   win_rate_5d: number | null;
   win_rate_20d: number | null;
+  horizon_usable_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
   by_signal_kind: Record<string, number>;
+  by_signal_kind_horizon_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
+  by_signal_kind_horizon_usable_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
+  by_market_state_signal_kind_horizon_stats?: LivermoreCandidateHistoryMarketStateSignalKindHorizonStats;
   included_snapshot_dates: string[];
   excluded_snapshot_dates: string[];
 };

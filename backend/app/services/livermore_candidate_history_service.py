@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -21,7 +22,7 @@ RULE_VERSION = "rv_livermore_candidate_history_v1"
 CACHE_VERSION = "cv_livermore_candidate_history_v1"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
-_DEFAULT_SIGNAL_KINDS = ["stock_candidate", "theme_breakout"]
+_DEFAULT_SIGNAL_KINDS = ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
 
 _SELECT_COLUMNS = (
     "snapshot_as_of_date",
@@ -404,11 +405,18 @@ def _build_summary(
         "avg_return_20d": _avg_present(items, "return_20d"),
         "horizon_stats": _build_horizon_stats(items),
         "by_signal_kind": _count_by_signal_kind(items),
+        "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(items),
     }
     if backtest_window_summary is not None and backtest_window_summary.get("status") in {"valid", "partial"}:
+        horizon_usable_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
         summary["decision_usable_stats"] = _build_decision_usable_stats(
             items,
             backtest_window_summary=backtest_window_summary,
+        )
+        summary["horizon_usable_stats"] = _build_horizon_stats(horizon_usable_items)
+        summary["by_signal_kind_horizon_usable_stats"] = _build_signal_kind_horizon_stats(horizon_usable_items)
+        summary["by_market_state_signal_kind_horizon_stats"] = _build_market_state_signal_kind_horizon_stats(
+            horizon_usable_items
         )
     return summary
 
@@ -418,11 +426,7 @@ def _build_decision_usable_stats(
     *,
     backtest_window_summary: dict[str, Any],
 ) -> dict[str, Any]:
-    included_dates = {
-        str(item)[:10]
-        for item in backtest_window_summary.get("included_completed_stats_dates", [])
-        if str(item or "").strip()
-    }
+    included_dates = _decision_usable_dates(backtest_window_summary)
     usable_items = [
         item
         for item in items
@@ -446,6 +450,7 @@ def _build_decision_usable_stats(
         "win_rate_5d": _win_rate_present(usable_items, "return_5d"),
         "win_rate_20d": _win_rate_present(usable_items, "return_20d"),
         "by_signal_kind": _count_by_signal_kind(usable_items),
+        "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(usable_items),
         "included_snapshot_dates": sorted({str(item.get("snapshot_as_of_date") or "")[:10] for item in usable_items}),
         "excluded_snapshot_dates": _decision_excluded_dates(
             items,
@@ -453,6 +458,35 @@ def _build_decision_usable_stats(
             included_dates=included_dates,
         ),
     }
+
+
+def _decision_usable_dates(backtest_window_summary: dict[str, Any]) -> set[str]:
+    return {
+        str(item)[:10]
+        for item in backtest_window_summary.get("included_completed_stats_dates", [])
+        if str(item or "").strip()
+    }
+
+
+def _horizon_usable_items(
+    items: list[dict[str, Any]],
+    *,
+    backtest_window_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    usable_dates = _decision_usable_dates(backtest_window_summary)
+    for reason in backtest_window_summary.get("date_reasons", []):
+        if not isinstance(reason, dict):
+            continue
+        if str(reason.get("status") or "").strip() not in {"completed", "pending"}:
+            continue
+        trade_date = str(reason.get("trade_date") or "").strip()[:10]
+        if trade_date:
+            usable_dates.add(trade_date)
+    return [
+        item
+        for item in items
+        if str(item.get("snapshot_as_of_date") or "").strip()[:10] in usable_dates
+    ]
 
 
 def _classify_replay_date(
@@ -479,7 +513,7 @@ def _classify_replay_date(
                 trade_date=trade_date,
                 status="unsupported",
                 reason_code="missing_daily_limit_flags",
-                message=f"daily_limit_flags absent; stock_candidate and theme_breakout replay unsupported for {trade_date}.",
+                message=f"daily_limit_flags absent; Livermore strategy replay unsupported for {trade_date}.",
                 affects_completed_stats=False,
                 signal_kinds=_DEFAULT_SIGNAL_KINDS,
             )
@@ -497,7 +531,7 @@ def _classify_replay_date(
             trade_date=trade_date,
             status="completed",
             reason_code="no_strategy_signals",
-            message=f"Full replay coverage produced no Livermore stock_candidate or theme_breakout rows for {trade_date}.",
+            message=f"Full replay coverage produced no Livermore strategy signal rows for {trade_date}.",
             affects_completed_stats=True,
             signal_kinds=_DEFAULT_SIGNAL_KINDS,
         )
@@ -562,18 +596,13 @@ def _count_status(items: list[dict[str, Any]], status: str) -> int:
 def _count_by_signal_kind(items: list[dict[str, Any]]) -> dict[str, int]:
     by_signal_kind: dict[str, int] = {}
     for item in items:
-        signal_kind = str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
+        signal_kind = _normalized_signal_kind(item)
         by_signal_kind[signal_kind] = by_signal_kind.get(signal_kind, 0) + 1
     return by_signal_kind
 
 
 def _signal_kinds_for_rows(rows: list[dict[str, Any]]) -> list[str]:
-    signal_kinds = sorted(
-        {
-            str(row.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
-            for row in rows
-        }
-    )
+    signal_kinds = sorted({_normalized_signal_kind(row) for row in rows})
     return signal_kinds or list(_DEFAULT_SIGNAL_KINDS)
 
 
@@ -593,6 +622,31 @@ def _win_rate_present(items: list[dict[str, Any]], key: str) -> float | None:
 
 def _build_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {key: _horizon_stat(items, key) for key in ("return_1d", "return_5d", "return_20d")}
+
+
+def _build_signal_kind_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        signal_kind = _normalized_signal_kind(item)
+        grouped.setdefault(signal_kind, []).append(item)
+    return {signal_kind: _build_horizon_stats(rows) for signal_kind, rows in sorted(grouped.items())}
+
+
+def _build_market_state_signal_kind_horizon_stats(
+    items: list[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
+    grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for item in items:
+        market_state = _market_state_from_signal_evidence(item)
+        signal_kind = _normalized_signal_kind(item)
+        grouped.setdefault(market_state, {}).setdefault(signal_kind, []).append(item)
+    return {
+        market_state: {
+            signal_kind: _build_horizon_stats(rows)
+            for signal_kind, rows in sorted(signal_groups.items())
+        }
+        for market_state, signal_groups in sorted(grouped.items())
+    }
 
 
 def _horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
@@ -619,6 +673,41 @@ def _present_float_values(items: list[dict[str, Any]], key: str) -> list[float]:
         except (TypeError, ValueError):
             continue
     return values
+
+
+def _normalized_signal_kind(item: dict[str, Any]) -> str:
+    return str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
+
+
+def _market_state_from_signal_evidence(item: dict[str, Any]) -> str:
+    evidence = _parse_signal_evidence_json(item.get("signal_evidence_json"))
+    for key in ("market_state", "market_state_kind", "market_gate_state"):
+        value = _normalized_text(evidence.get(key))
+        if value:
+            return value
+    market_gate = evidence.get("market_gate")
+    if isinstance(market_gate, dict):
+        value = _normalized_text(market_gate.get("state"))
+        if value:
+            return value
+    return "unknown"
+
+
+def _parse_signal_evidence_json(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _normalized_text(value: Any) -> str:
+    return str(value or "").strip()
 
 
 def _decision_excluded_dates(

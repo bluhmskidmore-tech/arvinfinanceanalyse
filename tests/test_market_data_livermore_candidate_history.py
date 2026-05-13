@@ -224,9 +224,14 @@ def test_task_happy_path_forward_returns(monkeypatch, tmp_path) -> None:
 
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
-        row = conn.execute("select selection_close, return_1d, return_5d, return_20d, data_status from livermore_candidate_history").fetchone()
+        row = conn.execute(
+            """
+            select selection_close, return_1d, return_5d, return_20d, data_status, signal_evidence_json
+            from livermore_candidate_history
+            """
+        ).fetchone()
         assert row is not None
-        selection_close, r1, r5, r20, dst = row
+        selection_close, r1, r5, r20, dst, signal_evidence_json = row
         assert selection_close == 100.0
         # bar 2026-01-07 closes at 100.1
         assert abs(float(r1) - 0.001) < 1e-9
@@ -249,6 +254,7 @@ def test_task_happy_path_forward_returns(monkeypatch, tmp_path) -> None:
         assert abs(float(r5) - expected_r5) < 1e-9
         assert abs(float(r20) - expected_r20) < 1e-9
         assert dst == "complete"
+        assert json.loads(str(signal_evidence_json))["market_state"] == "HOT"
     finally:
         conn.close()
 
@@ -619,6 +625,97 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
     assert row[19] == "pending"
 
 
+def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "other-strategies.duckdb"
+    snap = date(2026, 5, 1)
+    factor_stock = "000001.SZ"
+    reversion_stock = "000002.SZ"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                (snap.isoformat(), factor_stock, 10.0),
+                ((snap + timedelta(days=1)).isoformat(), factor_stock, 11.0),
+                (snap.isoformat(), reversion_stock, 20.0),
+                ((snap + timedelta(days=1)).isoformat(), reversion_stock, 18.0),
+            ],
+        )
+    finally:
+        conn.close()
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
+        payload["factor_screen_candidates"] = {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": factor_stock,
+                    "stock_name": "Factor A",
+                    "sector_code": "S1",
+                    "sector_name": "Sector",
+                    "industry": "Sector",
+                    "score": 3.2,
+                    "pe": 9.1,
+                    "pb": 1.1,
+                    "roe": 0.15,
+                    "gross_margin": 0.3,
+                }
+            ]
+        }
+        payload["mean_reversion_candidates"] = {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": reversion_stock,
+                    "stock_name": "Reversion B",
+                    "sector_code": "S2",
+                    "sector_name": "Other",
+                    "drawdown_20d": -0.22,
+                    "drawdown_60d": -0.31,
+                    "ma5": 18.8,
+                    "ma10": 18.1,
+                    "close_strength": 0.72,
+                    "vol_ratio": 2.4,
+                    "score": 0.65,
+                }
+            ]
+        }
+        return payload, meta
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["row_count"] == 2
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select signal_kind, stock_code, stock_name, candidate_rank,
+                   strength_pctchange, strength_turn, close_strength, signal_evidence_json, return_1d
+            from livermore_candidate_history
+            order by signal_kind asc
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_kind = {row[0]: row for row in rows}
+    assert set(by_kind) == {"factor_screen", "mean_reversion"}
+    assert by_kind["factor_screen"][1:4] == (factor_stock, "Factor A", 1)
+    assert json.loads(by_kind["factor_screen"][7])["score"] == 3.2
+    assert abs(float(by_kind["factor_screen"][8]) - 0.1) < 1e-12
+    assert by_kind["mean_reversion"][1:4] == (reversion_stock, "Reversion B", 1)
+    assert by_kind["mean_reversion"][4:7] == (-0.22, 2.4, 0.72)
+    assert json.loads(by_kind["mean_reversion"][7])["drawdown_60d"] == -0.31
+    assert abs(float(by_kind["mean_reversion"][8]) - -0.1) < 1e-12
+
+
 def test_task_reports_no_strategy_signals_when_payload_has_no_candidates(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "empty-signals.duckdb"
     snap = date(2026, 5, 1)
@@ -905,7 +1002,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     7.0,
                     0.86,
                     True,
-                    "{}",
+                    '{"market_state":"HOT"}',
                 ),
                 (
                     "2026-05-01",
@@ -939,7 +1036,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     None,
                     0.75,
                     False,
-                    "{}",
+                    "not-json",
                 ),
             ],
         )
@@ -993,6 +1090,60 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
             },
         },
         "by_signal_kind": {"stock_candidate": 1, "theme_breakout": 1},
+        "by_signal_kind_horizon_stats": {
+            "stock_candidate": {
+                "return_1d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.02,
+                    "win_rate": 1.0,
+                },
+                "return_5d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.03,
+                    "win_rate": 1.0,
+                },
+                "return_20d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.04,
+                    "win_rate": 1.0,
+                },
+            },
+            "theme_breakout": {
+                "return_1d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 0,
+                    "non_positive_count": 1,
+                    "avg_return": -0.1,
+                    "win_rate": 0.0,
+                },
+                "return_5d": {
+                    "available_count": 0,
+                    "missing_count": 1,
+                    "positive_count": 0,
+                    "non_positive_count": 0,
+                    "avg_return": None,
+                    "win_rate": None,
+                },
+                "return_20d": {
+                    "available_count": 0,
+                    "missing_count": 1,
+                    "positive_count": 0,
+                    "non_positive_count": 0,
+                    "avg_return": None,
+                    "win_rate": None,
+                },
+            },
+        },
     }
 
 
@@ -1076,7 +1227,7 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                     6.5,
                     0.82,
                     True,
-                    "{}",
+                    '{"market_state":"HOT"}',
                 ),
                 (
                     "2026-05-08",
@@ -1110,7 +1261,7 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                     None,
                     0.75,
                     False,
-                    "{}",
+                    "not-json",
                 ),
             ],
         )
@@ -1271,17 +1422,17 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                 "trade_date": "2026-04-30",
                 "status": "unsupported",
                 "reason_code": "missing_daily_limit_flags",
-                "message": "daily_limit_flags absent; stock_candidate and theme_breakout replay unsupported for 2026-04-30.",
+                "message": "daily_limit_flags absent; Livermore strategy replay unsupported for 2026-04-30.",
                 "affects_completed_stats": False,
-                "signal_kinds": ["stock_candidate", "theme_breakout"],
+                "signal_kinds": ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
             },
             {
                 "trade_date": "2026-05-06",
                 "status": "completed",
                 "reason_code": "no_strategy_signals",
-                "message": "Full replay coverage produced no Livermore stock_candidate or theme_breakout rows for 2026-05-06.",
+                "message": "Full replay coverage produced no Livermore strategy signal rows for 2026-05-06.",
                 "affects_completed_stats": True,
-                "signal_kinds": ["stock_candidate", "theme_breakout"],
+                "signal_kinds": ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
             },
             {
                 "trade_date": "2026-05-07",
@@ -1414,7 +1565,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     None,
                     0.9,
                     False,
-                    "{}",
+                    '{"market_state":"HOT"}',
                 ),
                 (
                     "2026-05-08",
@@ -1448,7 +1599,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     None,
                     0.8,
                     False,
-                    "{}",
+                    "not-json",
                 ),
             ],
         )
@@ -1470,6 +1621,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
     summary = result["summary"]
     assert summary["row_count"] == 2
     assert summary["avg_return_1d"] == 0.005
+    assert summary["by_signal_kind"] == {"stock_candidate": 2}
     assert summary["decision_usable_stats"] == {
         "row_count": 1,
         "complete_row_count": 1,
@@ -1483,8 +1635,148 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
         "win_rate_5d": 1.0,
         "win_rate_20d": 1.0,
         "by_signal_kind": {"stock_candidate": 1},
+        "by_signal_kind_horizon_stats": {
+            "stock_candidate": {
+                "return_1d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.02,
+                    "win_rate": 1.0,
+                },
+                "return_5d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.1,
+                    "win_rate": 1.0,
+                },
+                "return_20d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.2,
+                    "win_rate": 1.0,
+                },
+            }
+        },
         "included_snapshot_dates": ["2026-05-06"],
         "excluded_snapshot_dates": ["2026-05-08"],
+    }
+    assert summary["horizon_usable_stats"] == {
+        "return_1d": {
+            "available_count": 2,
+            "missing_count": 0,
+            "positive_count": 1,
+            "non_positive_count": 1,
+            "avg_return": 0.005,
+            "win_rate": 0.5,
+        },
+        "return_5d": {
+            "available_count": 1,
+            "missing_count": 1,
+            "positive_count": 1,
+            "non_positive_count": 0,
+            "avg_return": 0.1,
+            "win_rate": 1.0,
+        },
+        "return_20d": {
+            "available_count": 1,
+            "missing_count": 1,
+            "positive_count": 1,
+            "non_positive_count": 0,
+            "avg_return": 0.2,
+            "win_rate": 1.0,
+        },
+    }
+    assert summary["by_signal_kind_horizon_usable_stats"] == {
+        "stock_candidate": {
+            "return_1d": {
+                "available_count": 2,
+                "missing_count": 0,
+                "positive_count": 1,
+                "non_positive_count": 1,
+                "avg_return": 0.005,
+                "win_rate": 0.5,
+            },
+            "return_5d": {
+                "available_count": 1,
+                "missing_count": 1,
+                "positive_count": 1,
+                "non_positive_count": 0,
+                "avg_return": 0.1,
+                "win_rate": 1.0,
+            },
+            "return_20d": {
+                "available_count": 1,
+                "missing_count": 1,
+                "positive_count": 1,
+                "non_positive_count": 0,
+                "avg_return": 0.2,
+                "win_rate": 1.0,
+            },
+        }
+    }
+    assert summary["by_market_state_signal_kind_horizon_stats"] == {
+        "HOT": {
+            "stock_candidate": {
+                "return_1d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.02,
+                    "win_rate": 1.0,
+                },
+                "return_5d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.1,
+                    "win_rate": 1.0,
+                },
+                "return_20d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
+                    "non_positive_count": 0,
+                    "avg_return": 0.2,
+                    "win_rate": 1.0,
+                },
+            }
+        },
+        "unknown": {
+            "stock_candidate": {
+                "return_1d": {
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 0,
+                    "non_positive_count": 1,
+                    "avg_return": -0.01,
+                    "win_rate": 0.0,
+                },
+                "return_5d": {
+                    "available_count": 0,
+                    "missing_count": 1,
+                    "positive_count": 0,
+                    "non_positive_count": 0,
+                    "avg_return": None,
+                    "win_rate": None,
+                },
+                "return_20d": {
+                    "available_count": 0,
+                    "missing_count": 1,
+                    "positive_count": 0,
+                    "non_positive_count": 0,
+                    "avg_return": None,
+                    "win_rate": None,
+                },
+            }
+        },
     }
 
 
@@ -1782,7 +2074,7 @@ def test_backtest_window_does_not_treat_missing_history_table_as_zero_signal_dat
             "reason_code": "missing_required_source_table",
             "message": "livermore_candidate_history table absent; cannot distinguish no-signal dates from missing candidate-history materialization for 2026-05-06.",
             "affects_completed_stats": False,
-            "signal_kinds": ["stock_candidate", "theme_breakout"],
+            "signal_kinds": ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
         }
     ]
 

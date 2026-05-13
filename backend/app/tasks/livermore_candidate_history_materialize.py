@@ -19,6 +19,7 @@ FORMULA_VERSION = "fv_livermore_candidate_forward_close_unadjusted_v1"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
 _MAX_CALENDAR_GAP_DAYS_NORMAL = 5
+_MIN_FORWARD_BARS_FOR_HALT_FALLBACK = 5
 _INSERT_COLUMNS = (
     "snapshot_as_of_date",
     "stock_code",
@@ -97,6 +98,7 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
         duckdb_path=str(duckdb_file),
         as_of_date=parsed_as_of,
         stock_readiness=_load_configured_stock_readiness(),
+        backfill_mode=True,
     )
     snapshot_as_of = cast(str | None, payload.get("as_of_date"))
     if not snapshot_as_of:
@@ -346,6 +348,7 @@ def _load_configured_stock_readiness() -> ChoiceStockReadiness:
 
 def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    market_state = _optional_text(_mapping(payload.get("market_gate")).get("state"))
     stock_candidates_raw = payload.get("stock_candidates")
     if isinstance(stock_candidates_raw, dict):
         raw_items = stock_candidates_raw.get("items")
@@ -371,6 +374,7 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                         "closed_up_limit": item.get("closed_up_limit"),
                         "signal_evidence": {
                             "signal_kind": "stock_candidate",
+                            "market_state": market_state,
                             "rank": rank,
                             "stock_code": item.get("stock_code"),
                             "sector_code": item.get("sector_code"),
@@ -416,6 +420,7 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                             "closed_up_limit": stock.get("closed_up_limit"),
                             "signal_evidence": {
                                 "signal_kind": "theme_breakout",
+                                "market_state": market_state,
                                 "theme_key": theme.get("theme_key"),
                                 "theme_name": theme.get("theme_name"),
                                 "theme_source_kind": theme.get("source_kind"),
@@ -430,10 +435,89 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                         }
                     )
 
+    factor_screen_raw = payload.get("factor_screen_candidates")
+    if isinstance(factor_screen_raw, dict):
+        raw_items = factor_screen_raw.get("items")
+        if isinstance(raw_items, list):
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                item = cast(dict[str, object], raw)
+                rank = _safe_int(item.get("rank"), default=1)
+                rows.append(
+                    {
+                        "signal_kind": "factor_screen",
+                        "rank": rank,
+                        "stock_code": item.get("stock_code"),
+                        "stock_name": item.get("stock_name"),
+                        "sector_code": item.get("sector_code"),
+                        "sector_name": item.get("sector_name"),
+                        "sector_rank": None,
+                        "signal_evidence": {
+                            "signal_kind": "factor_screen",
+                            "market_state": market_state,
+                            "rank": rank,
+                            "stock_code": item.get("stock_code"),
+                            "sector_code": item.get("sector_code"),
+                            "industry": item.get("industry"),
+                            "score": item.get("score"),
+                            "pe": item.get("pe"),
+                            "pb": item.get("pb"),
+                            "roe": item.get("roe"),
+                            "gross_margin": item.get("gross_margin"),
+                            "three_month_return": item.get("three_month_return"),
+                            "twelve_month_return": item.get("twelve_month_return"),
+                            "dividend_yield": item.get("dividend_yield"),
+                        },
+                    }
+                )
+
+    mean_reversion_raw = payload.get("mean_reversion_candidates")
+    if isinstance(mean_reversion_raw, dict):
+        raw_items = mean_reversion_raw.get("items")
+        if isinstance(raw_items, list):
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                item = cast(dict[str, object], raw)
+                rank = _safe_int(item.get("rank"), default=1)
+                rows.append(
+                    {
+                        "signal_kind": "mean_reversion",
+                        "rank": rank,
+                        "stock_code": item.get("stock_code"),
+                        "stock_name": item.get("stock_name"),
+                        "sector_code": item.get("sector_code"),
+                        "sector_name": item.get("sector_name"),
+                        "strength_pctchange": item.get("drawdown_20d"),
+                        "strength_turn": item.get("vol_ratio"),
+                        "close_strength": item.get("close_strength"),
+                        "signal_evidence": {
+                            "signal_kind": "mean_reversion",
+                            "market_state": market_state,
+                            "rank": rank,
+                            "stock_code": item.get("stock_code"),
+                            "sector_code": item.get("sector_code"),
+                            "drawdown_20d": item.get("drawdown_20d"),
+                            "drawdown_60d": item.get("drawdown_60d"),
+                            "ma5": item.get("ma5"),
+                            "ma10": item.get("ma10"),
+                            "vol_ratio": item.get("vol_ratio"),
+                            "score": item.get("score"),
+                        },
+                    }
+                )
+
+    signal_order = {
+        "stock_candidate": 0,
+        "theme_breakout": 1,
+        "factor_screen": 2,
+        "mean_reversion": 3,
+    }
     return sorted(
         rows,
         key=lambda row: (
-            0 if _text(row.get("signal_kind")) == "stock_candidate" else 1,
+            signal_order.get(_text(row.get("signal_kind")), 99),
             _safe_int(row.get("theme_rank"), default=9999),
             _safe_int(row.get("rank"), default=9999),
             str(row.get("stock_code") or ""),
@@ -495,11 +579,15 @@ def _forward_returns_for_candidate(
     ).fetchall()
     ordered_dates = [_normalize_trade_date_iso(r[0]) for r in all_rows]
     ordered_dates = [d for d in ordered_dates if d is not None]
-    has_gap = False
+    has_stock_gap = False
+    has_leading_sparse_gap_without_market_context = False
     for a, b in zip(ordered_dates, ordered_dates[1:], strict=False):
         if _calendar_gap_days(a, b) > _MAX_CALENDAR_GAP_DAYS_NORMAL:
-            has_gap = True
-            break
+            if _has_market_dates_between(conn, start_date=a, end_date=b):
+                has_stock_gap = True
+                break
+            if a == snapshot_as_of_date:
+                has_leading_sparse_gap_without_market_context = True
 
     d1 = series[0] if len(series) >= 1 else None
     d5 = series[4] if len(series) >= 5 else None
@@ -510,10 +598,12 @@ def _forward_returns_for_candidate(
     r20 = (d20[1] - selection_close) / selection_close if d20 else None
 
     has_all = r1 is not None and r5 is not None and r20 is not None
-    if has_gap:
+    if has_stock_gap:
         data_status = "partial_halt"
     elif has_all:
         data_status = "complete"
+    elif has_leading_sparse_gap_without_market_context and len(series) >= _MIN_FORWARD_BARS_FOR_HALT_FALLBACK:
+        data_status = "partial_halt"
     else:
         data_status = "pending"
 
@@ -531,6 +621,26 @@ def _forward_returns_for_candidate(
 
 def _calendar_gap_days(prev_iso: str, next_iso: str) -> int:
     return (date.fromisoformat(next_iso[:10]) - date.fromisoformat(prev_iso[:10])).days
+
+
+def _has_market_dates_between(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    start_date: str,
+    end_date: str,
+) -> bool:
+    row = conn.execute(
+        f"""
+        select 1
+        from {TABLE_OBS}
+        where cast(trade_date as date) > cast(? as date)
+          and cast(trade_date as date) < cast(? as date)
+          and close_value is not null
+        limit 1
+        """,
+        [start_date, end_date],
+    ).fetchone()
+    return row is not None
 
 
 def _normalize_trade_date_iso(value: object) -> str | None:

@@ -5,9 +5,19 @@ import dayjs from "dayjs";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  LivermoreCandidateHistoryHorizonKey,
+  LivermoreCandidateHistoryHorizonStats,
+  LivermoreCandidateHistoryPayload,
   LivermoreSectorRankSeriesPoint,
   LivermoreSignalConfluencePayload,
 } from "../../../api/contracts";
+import {
+  AnalysisGrid,
+  DataStatusStrip,
+  KpiBand,
+  PageDecisionHero,
+  PageV2Shell,
+} from "../../../components/page/PagePrimitives";
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateReviewQueue,
@@ -21,6 +31,9 @@ import {
   buildSectorRows,
   buildSectorTableSortComparator,
   buildSectorViewModel,
+  buildStockAnalysisEvidenceStatus,
+  buildStockAnalysisEventMonitorRows,
+  buildStockAnalysisKpiStrip,
   buildThemeBreakoutCards,
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
@@ -50,7 +63,6 @@ function statusLabel(status: string) {
   };
   return labels[status] ?? status;
 }
-
 function riskStatusLabel(status: "triggered" | "watch") {
   return status === "triggered" ? "触发复核" : "观察中";
 }
@@ -97,6 +109,135 @@ function latestSectorSeriesTableRows(series: LivermoreSectorRankSeriesPoint[]): 
     const ra = a.rank ?? 9999;
     const rb = b.rank ?? 9999;
     return ra - rb;
+  });
+}
+
+const strategyBacktestOrder = ["stock_candidate", "factor_screen", "theme_breakout", "mean_reversion"] as const;
+
+const strategyBacktestLabels: Record<string, string> = {
+  stock_candidate: "趋势突破",
+  factor_screen: "多因子",
+  theme_breakout: "题材突变",
+  mean_reversion: "超跌反弹",
+};
+
+const strategyBacktestHorizons: LivermoreCandidateHistoryHorizonKey[] = ["return_1d", "return_5d", "return_20d"];
+const strategyBacktestHorizonLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = {
+  return_1d: "T+1 胜率 / 均值 / 样本",
+  return_5d: "T+5 胜率 / 均值 / 样本",
+  return_20d: "T+20 胜率 / 均值 / 样本",
+};
+const strategyBacktestMarketStateOrder = ["OFF", "WARM", "HOT", "OVERHEAT", "PENDING_DATA", "NO_DATA", "STALE"] as const;
+
+function formatBacktestPercent(value: number | null | undefined, digits = 1): string {
+  if (value == null || Number.isNaN(value)) return "待补";
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatBacktestSignedPercent(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "待补";
+  const pct = value * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+}
+
+function backtestStatsText(stats: LivermoreCandidateHistoryHorizonStats | undefined): string {
+  if (!stats || stats.available_count <= 0) return "待补";
+  return `${formatBacktestPercent(stats.win_rate)} / ${formatBacktestSignedPercent(stats.avg_return)} / ${stats.available_count}条`;
+}
+
+function resolveStrategyBacktestSignalStats(payload: LivermoreCandidateHistoryPayload | null) {
+  const summary = payload?.summary ?? null;
+  const decisionStats = summary?.decision_usable_stats ?? null;
+  return (
+    decisionStats?.by_signal_kind_horizon_usable_stats ??
+    summary?.by_signal_kind_horizon_usable_stats ??
+    decisionStats?.by_signal_kind_horizon_stats ??
+    summary?.by_signal_kind_horizon_stats ??
+    {}
+  );
+}
+
+function buildStrategyBacktestRows(payload: LivermoreCandidateHistoryPayload | null) {
+  const summary = payload?.summary ?? null;
+  const decisionStats = summary?.decision_usable_stats ?? null;
+  const bySignalKind = summary?.by_signal_kind ?? decisionStats?.by_signal_kind ?? {};
+  const bySignalStats = resolveStrategyBacktestSignalStats(payload);
+  const discoveredKinds = Object.keys(bySignalStats).filter(
+    (key) => !(strategyBacktestOrder as readonly string[]).includes(key),
+  );
+  return [...strategyBacktestOrder, ...discoveredKinds].map((kind) => {
+    const statsByHorizon = bySignalStats[kind] ?? {};
+    return {
+      kind,
+      label: strategyBacktestLabels[kind] ?? kind,
+      count: bySignalKind[kind] ?? 0,
+      stats: {
+        return_1d: backtestStatsText(statsByHorizon.return_1d),
+        return_5d: backtestStatsText(statsByHorizon.return_5d),
+        return_20d: backtestStatsText(statsByHorizon.return_20d),
+      },
+    };
+  });
+}
+
+function resolveStrategyBacktestSampleCount(payload: LivermoreCandidateHistoryPayload | null): number {
+  const summary = payload?.summary ?? null;
+  const decisionStats = summary?.decision_usable_stats ?? null;
+  const horizonStats =
+    decisionStats?.horizon_usable_stats ?? summary?.horizon_usable_stats ?? summary?.horizon_stats;
+
+  if (horizonStats) {
+    return Math.max(
+      0,
+      ...strategyBacktestHorizons.map((horizon) => horizonStats[horizon]?.available_count ?? 0),
+    );
+  }
+
+  const bySignalStats = resolveStrategyBacktestSignalStats(payload);
+  return Math.max(
+    0,
+    ...strategyBacktestHorizons.map((horizon) =>
+      Object.values(bySignalStats).reduce(
+        (total, statsByHorizon) => total + (statsByHorizon[horizon]?.available_count ?? 0),
+        0,
+      ),
+    ),
+  );
+}
+
+function buildStrategyBacktestMarketStateRows(payload: LivermoreCandidateHistoryPayload | null) {
+  const summary = payload?.summary ?? null;
+  const decisionStats = summary?.decision_usable_stats ?? null;
+  const byMarketState =
+    decisionStats?.by_market_state_signal_kind_horizon_stats ??
+    summary?.by_market_state_signal_kind_horizon_stats ??
+    {};
+  const orderedStates = strategyBacktestMarketStateOrder.filter((state) => state in byMarketState);
+  const discoveredStates = Object.keys(byMarketState)
+    .filter((state) => !(strategyBacktestMarketStateOrder as readonly string[]).includes(state))
+    .sort();
+
+  return [...orderedStates, ...discoveredStates].flatMap((marketState) => {
+    const bySignalStats = byMarketState[marketState] ?? {};
+    const discoveredKinds = Object.keys(bySignalStats).filter(
+      (key) => !(strategyBacktestOrder as readonly string[]).includes(key),
+    );
+
+    return [...strategyBacktestOrder, ...discoveredKinds]
+      .filter((kind) => kind in bySignalStats)
+      .map((kind) => {
+        const statsByHorizon = bySignalStats[kind] ?? {};
+        return {
+          marketState,
+          kind,
+          label: strategyBacktestLabels[kind] ?? kind,
+          stats: {
+            return_1d: backtestStatsText(statsByHorizon.return_1d),
+            return_5d: backtestStatsText(statsByHorizon.return_5d),
+            return_20d: backtestStatsText(statsByHorizon.return_20d),
+          },
+        };
+      });
   });
 }
 
@@ -262,6 +403,52 @@ export default function StockAnalysisPage() {
     ],
   );
 
+  const firstScreenKpis = useMemo(
+    () =>
+      strategyPayload
+        ? buildStockAnalysisKpiStrip(strategyPayload, confluencePayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
+          })
+        : [],
+    [
+      strategyPayload,
+      confluencePayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+    ],
+  );
+
+  const evidenceStatusRows = useMemo(
+    () =>
+      strategyPayload
+        ? buildStockAnalysisEvidenceStatus(strategyPayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
+            source_version: strategyQuery.data?.result_meta?.source_version,
+            rule_version: strategyQuery.data?.result_meta?.rule_version,
+            trace_id: strategyQuery.data?.result_meta?.trace_id,
+          })
+        : [],
+    [
+      strategyPayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+      strategyQuery.data?.result_meta?.source_version,
+      strategyQuery.data?.result_meta?.rule_version,
+      strategyQuery.data?.result_meta?.trace_id,
+    ],
+  );
+
+  const eventMonitorRows = useMemo(
+    () => (strategyPayload ? buildStockAnalysisEventMonitorRows(strategyPayload, confluencePayload) : []),
+    [strategyPayload, confluencePayload],
+  );
+
   const closedLoopSummary = useMemo(
     () =>
       strategyPayload && !confluenceQuery.isLoading
@@ -361,6 +548,35 @@ export default function StockAnalysisPage() {
   const stockDetailAsOfDate = asOfOverride ?? strategyPayload?.as_of_date ?? undefined;
 
   const effectiveAsOf = asOfOverride ?? strategyPayload?.as_of_date ?? null;
+  const strategyBacktestSnapshotFrom = effectiveAsOf ? dayjs(effectiveAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
+
+  const strategyBacktestQuery = useQuery({
+    queryKey: [
+      "stock-analysis",
+      "livermore-candidate-history-strategy-backtest",
+      strategyBacktestSnapshotFrom ?? "__none",
+      effectiveAsOf ?? "__none",
+    ] as const,
+    queryFn: () =>
+      client.getLivermoreCandidateHistory({
+        snapshotFrom: strategyBacktestSnapshotFrom ?? undefined,
+        snapshotTo: effectiveAsOf ?? undefined,
+        limit: 500,
+      }),
+    enabled: Boolean(effectiveAsOf),
+  });
+
+  const strategyBacktestPayload = strategyBacktestQuery.data?.result ?? null;
+  const strategyBacktestRows = useMemo(() => buildStrategyBacktestRows(strategyBacktestPayload), [strategyBacktestPayload]);
+  const strategyBacktestMarketStateRows = useMemo(
+    () => buildStrategyBacktestMarketStateRows(strategyBacktestPayload),
+    [strategyBacktestPayload],
+  );
+  const strategyBacktestSampleCount = useMemo(
+    () => resolveStrategyBacktestSampleCount(strategyBacktestPayload),
+    [strategyBacktestPayload],
+  );
+  const strategyBacktestWindow = strategyBacktestPayload?.backtest_window_summary ?? null;
 
   const sectorSeriesExpanded = sectorSeriesCollapseKeys.includes("sector-rank-series-multi");
 
@@ -402,199 +618,244 @@ export default function StockAnalysisPage() {
   );
 
   return (
-    <main
-      className="stock-analysis-page"
-      style={stockAnalysisPageCssVars}
-      data-testid="stock-analysis-page"
-    >
-      <header className="stock-analysis-page__header">
-        <p className="stock-analysis-page__eyebrow">A股观察 / Evidence first</p>
-        <div className="stock-analysis-page__header-main">
-          <div>
-            <h1>股票分析</h1>
-            <p>
-              复用 Livermore 与 Choice 股票只读链路，展示市场状态、板块强弱与候选证据；
-              仅供研究复核，不构成交易指令。
-            </p>
+    <PageV2Shell testId="stock-analysis-page" style={stockAnalysisPageCssVars}>
+      <main className="stock-analysis-page">
+        <header className="stock-analysis-page__header">
+          <p className="stock-analysis-page__eyebrow">A股观察 / Evidence first</p>
+          <div className="stock-analysis-page__header-main">
+            <div>
+              <h1>股票分析</h1>
+              <p>
+                复用 Livermore 与 Choice 股票只读链路，展示市场状态、板块强弱与候选证据；
+                仅供研究复核，不构成执行性结论。
+              </p>
+            </div>
+            <div className="stock-analysis-page__header-controls">
+              <span className="stock-analysis-page__badge">仅观察 / 复核 / 研究</span>
+              <Button
+                type="default"
+                className="stock-analysis-page__agent-entry"
+                data-testid="stock-analysis-agent-open"
+                onClick={() => setAgentDrawerOpen(true)}
+                aria-expanded={agentDrawerOpen}
+              >
+                召唤 Agent 复核
+              </Button>
+              <DatePicker
+                allowClear
+                aria-label="as-of-date-picker"
+                data-testid="stock-analysis-as-of-picker"
+                value={pickerDisplay}
+                onChange={(_, iso) => {
+                  setAsOfOverride(Array.isArray(iso) ? (iso[0] ?? null) : iso || null);
+                }}
+              />
+              <Button data-testid="stock-analysis-refresh" onClick={invalidateStockAnalysis}>
+                刷新
+              </Button>
+              {strategyQuery.data?.result_meta?.generated_at ? (
+                <Text type="secondary" className="stock-analysis-page__tabular">
+                  最后更新 {strategyQuery.data.result_meta.generated_at}
+                </Text>
+              ) : null}
+            </div>
           </div>
-          <div className="stock-analysis-page__header-controls">
-            <span className="stock-analysis-page__badge">仅观察 / 复核 / 研究</span>
-            <Button
-              type="default"
-              className="stock-analysis-page__agent-entry"
-              data-testid="stock-analysis-agent-open"
-              onClick={() => setAgentDrawerOpen(true)}
-              aria-expanded={agentDrawerOpen}
-            >
-              召唤 Agent 复核
-            </Button>
-            <DatePicker
-              allowClear
-              aria-label="as-of-date-picker"
-              data-testid="stock-analysis-as-of-picker"
-              value={pickerDisplay}
-              onChange={(_, iso) => {
-                setAsOfOverride(Array.isArray(iso) ? (iso[0] ?? null) : iso || null);
-              }}
-            />
-            <Button data-testid="stock-analysis-refresh" onClick={invalidateStockAnalysis}>
-              刷新
-            </Button>
-            {strategyQuery.data?.result_meta?.generated_at ? (
-              <Text type="secondary" className="stock-analysis-page__tabular">
-                最后更新 {strategyQuery.data.result_meta.generated_at}
-              </Text>
-            ) : null}
-          </div>
-        </div>
-      </header>
+        </header>
 
-      {strategyQuery.isLoading ? (
-        <section className="stock-analysis-page__panel">
-          <p className="stock-analysis-page__state">正在加载股票分析结果。</p>
-        </section>
-      ) : null}
+        {strategyQuery.isLoading ? (
+          <section className="stock-analysis-page__panel">
+            <p className="stock-analysis-page__state">正在加载股票分析结果。</p>
+          </section>
+        ) : null}
 
-      {strategyQuery.isError ? (
-        <section className="stock-analysis-page__panel stock-analysis-page__panel--error">
-          <h2>股票分析结果加载失败。</h2>
-          <p>{errorMessage(strategyQuery.error)}</p>
-        </section>
-      ) : null}
+        {strategyQuery.isError ? (
+          <section className="stock-analysis-page__panel stock-analysis-page__panel--error">
+            <h2>股票分析结果加载失败。</h2>
+            <p>{errorMessage(strategyQuery.error)}</p>
+          </section>
+        ) : null}
 
-      {marketState ? (
-        <>
-          {decisionSummary ? (
-            <section
-              className="stock-analysis-page__panel stock-analysis-page__decision-panel"
-              aria-label="今日判断"
-              data-testid="stock-analysis-decision-panel"
-            >
-              <div className="stock-analysis-page__decision-main">
-                <div>
-                  <p className="stock-analysis-page__eyebrow">今日判断</p>
-                  <h2>{firstScreenHeadline}</h2>
-                  {firstScreenNextAction ? (
-                    <p className="stock-analysis-page__decision-next">{firstScreenNextAction}</p>
-                  ) : null}
-                </div>
-                <div className="stock-analysis-page__decision-meta" aria-label="今日判断摘要">
-                  <span>{decisionSummary.gateLabel}</span>
-                  <span>{decisionSummary.exposureLabel}</span>
-                  <span>{decisionSummary.strongestSectorLabel}</span>
-                  <span>{decisionSummary.weakestSectorLabel}</span>
-                  <span>{decisionSummary.candidateCountLabel}</span>
-                  <span>{decisionSummary.dataFreshnessLabel}</span>
-                </div>
-              </div>
-              <div className="stock-analysis-page__decision-grid">
-                <div>
-                  <span>数据日期</span>
-                  <strong className="stock-analysis-page__tabular">{decisionSummary.asOfLabel}</strong>
-                </div>
-                <div>
-                  <span>口径</span>
-                  <strong>{decisionSummary.basisLabel}</strong>
-                </div>
-                <div>
-                  <span>边界</span>
-                  <strong>{decisionSummary.boundaryLabel}</strong>
-                </div>
-                <div>
-                  <span>门控确认</span>
-                  <strong>{marketState.passedLabel}</strong>
-                </div>
-              </div>
-              {closedLoopSummary ? (
-                <section
-                  className="stock-analysis-page__closed-loop-summary"
-                  data-testid="stock-analysis-closed-loop-summary"
-                  aria-label="闭环摘要"
-                >
-                  <div
-                    className="stock-analysis-page__closed-loop-verdict"
-                    data-tone={closedLoopSummary.verdict.tone}
-                    data-testid="stock-analysis-closed-loop-verdict"
-                  >
-                    <div>
-                      <span>{closedLoopSummary.verdict.label}</span>
-                      <strong>{closedLoopSummary.verdict.headline}</strong>
-                      <p>{closedLoopSummary.verdict.primaryReason}</p>
-                    </div>
-                    <ul aria-label="闭环结论证据">
-                      {closedLoopSummary.verdict.evidence.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                    <small>{closedLoopSummary.verdict.nextStep}</small>
-                  </div>
-                  <div className="stock-analysis-page__section-head">
-                    <div>
-                      <h3>闭环摘要</h3>
-                      <p>{closedLoopSummary.referenceRating.detail}</p>
-                    </div>
-                    <span className="stock-analysis-page__pill" data-tone={closedLoopSummary.referenceRating.tone}>
-                      {closedLoopSummary.referenceRating.label}
+        {marketState ? (
+          <>
+            {decisionSummary ? (
+              <div className="stock-analysis-page__command-deck">
+                <PageDecisionHero
+                  className="stock-analysis-page__decision-panel"
+                  testId="stock-analysis-decision-panel"
+                  eyebrow="今日判断"
+                  title={firstScreenHeadline ?? "暂无有效判断，先保持观察"}
+                  businessQuestion="当前市场处于什么状态，今天该优先复核哪些只读证据？"
+                  reportDateSlot={
+                    <span>
+                      报告日 <strong className="stock-analysis-page__tabular">{decisionSummary.asOfLabel}</strong> /{" "}
+                      {decisionSummary.basisLabel} / {decisionSummary.boundaryLabel}
                     </span>
+                  }
+                  conclusion={firstScreenNextAction ? <span>{firstScreenNextAction}</span> : null}
+                >
+                  <div className="stock-analysis-page__decision-meta" aria-label="今日判断摘要">
+                    <span>{decisionSummary.gateLabel}</span>
+                    <span>{decisionSummary.exposureLabel}</span>
+                    <span>{decisionSummary.strongestSectorLabel}</span>
+                    <span>{decisionSummary.weakestSectorLabel}</span>
+                    <span>{decisionSummary.candidateCountLabel}</span>
+                    <span>{decisionSummary.dataFreshnessLabel}</span>
                   </div>
                   <div className="stock-analysis-page__decision-grid">
-                    {closedLoopSummary.items.map((item) => (
+                    <div>
+                      <span>数据日期</span>
+                      <strong className="stock-analysis-page__tabular">{decisionSummary.asOfLabel}</strong>
+                    </div>
+                    <div>
+                      <span>口径</span>
+                      <strong>{decisionSummary.basisLabel}</strong>
+                    </div>
+                    <div>
+                      <span>边界</span>
+                      <strong>{decisionSummary.boundaryLabel}</strong>
+                    </div>
+                    <div>
+                      <span>门控确认</span>
+                      <strong>{marketState.passedLabel}</strong>
+                    </div>
+                  </div>
+                  {closedLoopSummary ? (
+                    <section
+                      className="stock-analysis-page__closed-loop-summary"
+                      data-testid="stock-analysis-closed-loop-summary"
+                      aria-label="闭环摘要"
+                    >
                       <div
-                        key={item.key}
-                        data-tone={item.tone}
-                        data-testid={item.key === "replay" ? "stock-analysis-replay-status" : undefined}
+                        className="stock-analysis-page__closed-loop-verdict"
+                        data-tone={closedLoopSummary.verdict.tone}
+                        data-testid="stock-analysis-closed-loop-verdict"
                       >
-                        <span>{item.label}</span>
-                        <strong>{item.statusLabel}</strong>
-                        <small>{item.detail}</small>
-                        {item.badges?.map((badge) => (
-                          <small key={badge}>{badge}</small>
+                        <div>
+                          <span>{closedLoopSummary.verdict.label}</span>
+                          <strong>{closedLoopSummary.verdict.headline}</strong>
+                          <p>{closedLoopSummary.verdict.primaryReason}</p>
+                        </div>
+                        <ul aria-label="闭环结论证据">
+                          {closedLoopSummary.verdict.evidence.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                        <small>{closedLoopSummary.verdict.nextStep}</small>
+                      </div>
+                      <div className="stock-analysis-page__closed-loop-compact-head">
+                        <strong>闭环摘要</strong>
+                        <span className="stock-analysis-page__pill" data-tone={closedLoopSummary.referenceRating.tone}>
+                          {closedLoopSummary.referenceRating.label}
+                        </span>
+                        <small>{closedLoopSummary.referenceRating.detail}</small>
+                      </div>
+                      <div className="stock-analysis-page__closed-loop-items">
+                        {closedLoopSummary.items.map((item) => (
+                          <div
+                            key={item.key}
+                            data-tone={item.tone}
+                            data-testid={item.key === "replay" ? "stock-analysis-replay-status" : undefined}
+                          >
+                            <span>{item.label}</span>
+                            <strong>{item.statusLabel}</strong>
+                            <small className="stock-analysis-page__visually-hidden">{item.detail}</small>
+                            {item.badges?.map((badge) => (
+                              <small className="stock-analysis-page__visually-hidden" key={badge}>
+                                {badge}
+                              </small>
+                            ))}
+                          </div>
                         ))}
                       </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              <div className="stock-analysis-page__decision-detail">
-                <section>
-                  <h3>门控条件</h3>
-                  <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
-                    {marketState.conditions.map((condition) => (
-                      <li key={condition.key}>
-                        <span>
-                          <strong>{condition.label}</strong>
-                          <small>{condition.evidence}</small>
-                        </span>
-                        <em>{statusLabel(condition.status)}</em>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                <section>
-                  <h3>需要关注边界</h3>
-                  {marketState.warnings.length > 0 ? (
-                    <ul className="stock-analysis-page__notes">
-                      {marketState.warnings.slice(0, 4).map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="stock-analysis-page__empty">当前无诊断预警。</p>
-                  )}
-                </section>
+                    </section>
+                  ) : null}
+                  <details className="stock-analysis-page__decision-detail">
+                    <summary>门控与边界明细</summary>
+                    <div className="stock-analysis-page__decision-detail-grid">
+                      <section>
+                        <h3>门控条件</h3>
+                        <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                          {marketState.conditions.map((condition) => (
+                            <li key={condition.key}>
+                              <span>
+                                <strong>{condition.label}</strong>
+                                <small>{condition.evidence}</small>
+                              </span>
+                              <em>{statusLabel(condition.status)}</em>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                      <section>
+                        <h3>需要关注边界</h3>
+                        {marketState.warnings.length > 0 ? (
+                          <ul className="stock-analysis-page__notes">
+                            {marketState.warnings.slice(0, 4).map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="stock-analysis-page__empty">当前无诊断预警。</p>
+                        )}
+                      </section>
+                    </div>
+                  </details>
+                </PageDecisionHero>
+                {evidenceStatusRows.length > 0 ? (
+                  <aside className="moss-page-v2-surface stock-analysis-page__command-side">
+                    <DataStatusStrip
+                      testId="stock-analysis-evidence-status-panel"
+                      className="stock-analysis-page__evidence-status-panel"
+                    >
+                      <div className="stock-analysis-page__evidence-status-head">
+                        <h3>证据与状态</h3>
+                        <span>只读证据</span>
+                      </div>
+                      <div className="stock-analysis-page__evidence-status-list">
+                        {evidenceStatusRows.map((item) => (
+                          <div className="stock-analysis-page__evidence-status-row" data-tone={item.tone} key={item.key}>
+                            <span>{item.label}</span>
+                            <strong>{item.statusLabel}</strong>
+                            <small>{item.detail}</small>
+                          </div>
+                        ))}
+                      </div>
+                    </DataStatusStrip>
+                  </aside>
+                ) : null}
               </div>
-            </section>
-          ) : null}
+            ) : null}
 
-          {showStaleBanner ? (
-            <div className="stock-analysis-page__stale-banner" data-testid="stock-analysis-stale-banner" role="status">
-              数据陈旧、通道异常或使用回退快照（quality_flag / vendor_status / fallback_mode）。下方结论仅供复核参考。
-            </div>
-          ) : null}
+            {firstScreenKpis.length > 0 ? (
+              <section aria-label="首屏 KPI">
+                <KpiBand className="stock-analysis-page__kpi-strip" testId="stock-analysis-kpi-strip">
+                  {firstScreenKpis.map((item) => (
+                    <div
+                      className="moss-page-v2-kpi-metric stock-analysis-page__kpi-tile"
+                      data-tone={item.tone}
+                      key={item.key}
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <small>{item.detail}</small>
+                    </div>
+                  ))}
+                </KpiBand>
+              </section>
+            ) : null}
 
-          <div className="stock-analysis-page__workspace">
-            <div className="stock-analysis-page__primary">
-              <section className="stock-analysis-page__panel stock-analysis-page__panel--compact">
+            {showStaleBanner ? (
+              <div className="stock-analysis-page__stale-banner" data-testid="stock-analysis-stale-banner" role="status">
+                数据陈旧、通道异常或使用回退快照（quality_flag / vendor_status / fallback_mode）。下方结论仅供复核参考。
+              </div>
+            ) : null}
+
+            <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
+              <div className="stock-analysis-page__primary">
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                data-testid="stock-analysis-sector-strength-panel"
+              >
                 <div className="stock-analysis-page__section-head">
                   <div>
                     <h2>板块强弱</h2>
@@ -688,7 +949,7 @@ export default function StockAnalysisPage() {
                       </div>
                     </div>
                     <p className="stock-analysis-page__footnote">
-                      视图切换不重拉接口；条形图为单日截面，多日窗口聚合见下方折叠（运行时聚合，sum 累加未复利）。
+                      视图切换不重拉接口；条形图为单日截面，多日窗口可看下方聚合表（运行时聚合，sum 累加未复利）。
                     </p>
 
                     <Collapse
@@ -828,7 +1089,7 @@ export default function StockAnalysisPage() {
                                 ]}
                               />
                               {sectorRankSeriesQuery.isFetching ? (
-                                <Text type="secondary">加载多日板块序列…</Text>
+                                <Text type="secondary">加载多日板块序列中。</Text>
                               ) : null}
                               {sectorRankSeriesQuery.isError ? (
                                 <Alert
@@ -882,16 +1143,16 @@ export default function StockAnalysisPage() {
                                           <td>{row.sector_name}</td>
                                           <td className="stock-analysis-page__tabular">{row.sector_code}</td>
                                           <td className="stock-analysis-page__table-number">
-                                            {row.score ?? "—"}
+                                            {row.score ?? "-"}
                                           </td>
                                           <td className="stock-analysis-page__table-number">
-                                            {row.rank ?? "—"}
+                                            {row.rank ?? "-"}
                                           </td>
                                           <td className="stock-analysis-page__table-number">
-                                            {row.cum_pctchange_window ?? "—"}
+                                            {row.cum_pctchange_window ?? "-"}
                                           </td>
                                           <td className="stock-analysis-page__table-number">
-                                            {row.constituent_count ?? "—"}
+                                            {row.constituent_count ?? "-"}
                                           </td>
                                         </tr>
                                       ))}
@@ -919,7 +1180,7 @@ export default function StockAnalysisPage() {
                 <div className="stock-analysis-page__section-head">
                   <div>
                     <h2>题材突变雷达</h2>
-                    <p>绕开“一级行业前三”硬门槛的观察层，只看现有日线、涨停和名称代理簇，不生成交易指令。</p>
+                    <p>绕开“一线行业前三”硬门槛的观察层，只看现有日线、涨停和名称代理簇，不生成执行性结论。</p>
                   </div>
                   <span className="stock-analysis-page__pill">
                     {(strategyPayload?.theme_breakout?.formula_version ?? "").trim() || "proxy radar"}
@@ -1034,7 +1295,7 @@ export default function StockAnalysisPage() {
                                 <span>
                                   <strong>{leader.stockName}</strong>
                                   <small>
-                                    {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度{" "}
+                                     {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度{" "}
                                     {leader.closeStrength}
                                   </small>
                                 </span>
@@ -1051,8 +1312,8 @@ export default function StockAnalysisPage() {
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-consensus"
-                aria-label="多策略共振推荐"
+                data-testid="stock-analysis-consensus-review-panel"
+                aria-label="多策略共振复核"
               >
                 <Collapse
                   ghost
@@ -1061,9 +1322,9 @@ export default function StockAnalysisPage() {
                   items={[
                     {
                       key: "consensus",
-                      label: `多策略共振推荐  · ${consensusSummary.doubleCount} 只 (3套: ${consensusSummary.tripleCount})`,
+                      label: `多策略共振复核 · ${consensusSummary.doubleCount} 只（3套 ${consensusSummary.tripleCount}）`,
                       children: (
-                        <div className="stock-analysis-page__consensus">
+                        <div className="stock-analysis-page__consensus" data-testid="stock-analysis-consensus">
                           <div className="stock-analysis-page__consensus-stats">
                             <span>
                               趋势 <strong>{consensusSummary.strategyCounts.livermore}</strong> 只
@@ -1132,7 +1393,7 @@ export default function StockAnalysisPage() {
                                         {row.stockName}
                                       </strong>
                                       <small className="stock-analysis-page__tabular">
-                                        {row.sectorName || "—"}
+                                        {row.sectorName || "-"}
                                       </small>
                                       <span className="stock-analysis-page__consensus-strategies">
                                         {row.strategies.map((kind) => (
@@ -1159,13 +1420,115 @@ export default function StockAnalysisPage() {
                             </ul>
                           )}
                           <p className="stock-analysis-page__footnote">
-                            被多套策略同时选中的股票信号更强，但仍需结合板块环境与个股基本面独立复核，不构成操作建议。
+                            被多套策略同时选中的股票信号更强，但仍需结合板块环境与个股基本面独立复核，不构成执行建议。
                           </p>
                         </div>
                       ),
                     },
                   ]}
                 />
+              </section>
+
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                data-testid="stock-analysis-strategy-backtest"
+              >
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>策略回溯表现</h2>
+                    <p>按近 10 个自然日入选快照拆分，仅使用已完成回溯日期计算胜率。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">
+                    {strategyBacktestSnapshotFrom && effectiveAsOf
+                      ? `${strategyBacktestSnapshotFrom} 至 ${effectiveAsOf}`
+                      : "日期待补"}
+                  </span>
+                </div>
+                {strategyBacktestQuery.isLoading ? (
+                  <p className="stock-analysis-page__empty">策略回溯表现加载中。</p>
+                ) : null}
+                {strategyBacktestQuery.isError ? (
+                  <p className="stock-analysis-page__notice">
+                    策略回溯表现暂不可用：{errorMessage(strategyBacktestQuery.error)}
+                  </p>
+                ) : null}
+                {!strategyBacktestQuery.isLoading && !strategyBacktestQuery.isError ? (
+                  <>
+                    <div className="stock-analysis-page__filter-status">
+                      <span>有效样本</span>
+                      <strong>{strategyBacktestSampleCount} 条</strong>
+                      <small>
+                        完成日期 {strategyBacktestWindow?.replay_dates_completed ?? 0} / 待成熟{" "}
+                        {strategyBacktestWindow?.replay_dates_pending ?? 0} / 不支持{" "}
+                        {strategyBacktestWindow?.replay_dates_unsupported ?? 0}
+                      </small>
+                    </div>
+                    <div className="stock-analysis-page__table-wrap">
+                      <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                        <thead>
+                          <tr>
+                            <th scope="col">策略</th>
+                            <th scope="col">入选数</th>
+                            {strategyBacktestHorizons.map((horizon) => (
+                              <th scope="col" key={horizon}>
+                                {strategyBacktestHorizonLabels[horizon]}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {strategyBacktestRows.map((row) => (
+                            <tr key={row.kind} data-testid={`stock-analysis-strategy-backtest-${row.kind}`}>
+                              <td>{row.label}</td>
+                              <td className="stock-analysis-page__table-number">{row.count}</td>
+                              {strategyBacktestHorizons.map((horizon) => (
+                                <td className="stock-analysis-page__table-number" key={horizon}>
+                                  {row.stats[horizon]}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {strategyBacktestMarketStateRows.length > 0 ? (
+                      <div data-testid="stock-analysis-strategy-backtest-market-state">
+                        <p className="stock-analysis-page__footnote">市场状态分段</p>
+                        <div className="stock-analysis-page__table-wrap">
+                          <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                            <thead>
+                              <tr>
+                                <th scope="col">市场状态</th>
+                                <th scope="col">策略</th>
+                                {strategyBacktestHorizons.map((horizon) => (
+                                  <th scope="col" key={horizon}>
+                                    {strategyBacktestHorizonLabels[horizon]}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {strategyBacktestMarketStateRows.map((row) => (
+                                <tr
+                                  key={`${row.marketState}:${row.kind}`}
+                                  data-testid={`stock-analysis-strategy-backtest-market-state-${row.marketState}-${row.kind}`}
+                                >
+                                  <td>{row.marketState}</td>
+                                  <td>{row.label}</td>
+                                  {strategyBacktestHorizons.map((horizon) => (
+                                    <td className="stock-analysis-page__table-number" key={horizon}>
+                                      {row.stats[horizon]}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
               </section>
 
               <section
@@ -1226,10 +1589,10 @@ export default function StockAnalysisPage() {
                           <div>
                             <h3>{card.headline}</h3>
                             <p>
-                              {card.stockCode} · {card.stockName} · {card.sectorName}
+                              {card.stockCode} / {card.stockName} / {card.sectorName}
                             </p>
                             <div className="stock-analysis-page__pattern-tag" title={card.patternNote}>
-                              形态(UI)：{card.pattern} · 距观察位 {card.distanceToBreakoutPct}
+                              形态：{card.pattern} / 距观察位 {card.distanceToBreakoutPct}
                             </div>
                           </div>
                           <div className="stock-analysis-page__candidate-actions">
@@ -1335,20 +1698,20 @@ export default function StockAnalysisPage() {
                   items={[
                     {
                       key: "mean-reversion",
-                      label: `超跌反弹观察池  · ${meanReversionPayload?.candidate_count ?? 0} 只  · 仅在 OFF/WARM 市场激活`,
+                      label: `超跌反弹观察池 · ${meanReversionPayload?.candidate_count ?? 0} 只 · 仅在 OFF/WARM 市场激活`,
                       children: (
                         <div className="stock-analysis-page__mean-reversion">
                           {gateState === "HOT" || gateState === "OVERHEAT" ? (
-                            <p className="stock-analysis-page__empty">当前市场偏热，超跌反弹策略未激活</p>
+                            <p className="stock-analysis-page__empty">当前市场偏热，超跌反弹策略未激活。</p>
                           ) : null}
                           {gateState !== "HOT" && gateState !== "OVERHEAT" && !meanReversionPayload ? (
-                            <p className="stock-analysis-page__empty">数据未就绪</p>
+                            <p className="stock-analysis-page__empty">数据未就绪。</p>
                           ) : null}
                           {gateState !== "HOT" &&
                           gateState !== "OVERHEAT" &&
                           meanReversionPayload &&
                           meanReversionPayload.items.length === 0 ? (
-                            <p className="stock-analysis-page__empty">当前无符合条件的超跌反弹候选股</p>
+                            <p className="stock-analysis-page__empty">当前无符合条件的超跌反弹候选股。</p>
                           ) : null}
                           {gateState !== "HOT" &&
                           gateState !== "OVERHEAT" &&
@@ -1396,7 +1759,7 @@ export default function StockAnalysisPage() {
                                     <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
                                     {row.stock_name}{" "}
                                     <small className="stock-analysis-page__tabular">
-                                      {row.sector_name || row.sector_code || "—"}
+                                      {row.sector_name || row.sector_code || "-"}
                                     </small>
                                   </div>
                                   <div className="stock-analysis-page__mean-reversion-metrics stock-analysis-page__tabular">
@@ -1412,7 +1775,7 @@ export default function StockAnalysisPage() {
                             </ul>
                           ) : null}
                           <p className="stock-analysis-page__footnote">
-                            超跌反弹观察：基于价格回撤 + 企稳信号 + 放量特征的纯技术面筛选，仅作复核观察，不给出操作性动作提示。市场状态
+                            超跌反弹观察：基于价格回撤、企稳信号和放量特征的技术面筛选，仅作复核观察，不给出操作动作提示。市场状态
                             HOT/OVERHEAT 时自动停用。
                           </p>
                         </div>
@@ -1420,13 +1783,13 @@ export default function StockAnalysisPage() {
                     },
                     {
                       key: "factor-screen",
-                      label: `多因子选股  · ${factorScreenPayload?.candidate_count ?? 0} 只  · ${factorScreenPayload?.coverage_note ?? "数据未就绪"}`,
+                      label: `多因子选股 · ${factorScreenPayload?.candidate_count ?? 0} 只 · ${factorScreenPayload?.coverage_note ?? "数据未就绪"}`,
                       children: (
                         <div className="stock-analysis-page__factor-screen">
                           {!factorScreenPayload ? (
-                            <p className="stock-analysis-page__empty">因子数据未就绪</p>
+                            <p className="stock-analysis-page__empty">因子数据未就绪。</p>
                           ) : factorScreenPayload.items.length === 0 ? (
-                            <p className="stock-analysis-page__empty">当前无符合条件的多因子候选股</p>
+                            <p className="stock-analysis-page__empty">当前无符合条件的多因子候选股。</p>
                           ) : (
                             <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                               {factorScreenPayload.items.map((row) => (
@@ -1470,7 +1833,7 @@ export default function StockAnalysisPage() {
                                     <span className="stock-analysis-page__tabular">{row.stock_code}</span>{" "}
                                     {row.stock_name}{" "}
                                     <small className="stock-analysis-page__tabular">
-                                      {row.sector_name || row.industry || "—"}
+                                      {row.sector_name || row.industry || "-"}
                                     </small>
                                   </div>
                                   <div className="stock-analysis-page__factor-screen-metrics stock-analysis-page__tabular">
@@ -1489,9 +1852,9 @@ export default function StockAnalysisPage() {
                             </ul>
                           )}
                           <p className="stock-analysis-page__footnote">
-                            多因子选股：综合价值（PE/PB/PS倒数）、质量（ROE/毛利率）、动量（3月/12月收益）、低波动、股息五个因子加权评分，
-                            取前10%。{factorScreenPayload?.coverage_note ?? ""}
-                            。仅作复核观察，不给出操作性动作提示。
+                            多因子选股：综合价值（PE/PB/PS 倒数）、质量（ROE/毛利率）、动量（3月/12月收益）、低波动、股息五个因子加权评分，
+                            取前 10%。{factorScreenPayload?.coverage_note ?? ""}
+                            仅作复核观察，不给出操作动作提示。
                           </p>
                         </div>
                       ),
@@ -1499,14 +1862,59 @@ export default function StockAnalysisPage() {
                   ]}
                 />
               </section>
-            </div>
 
-            <aside className="stock-analysis-page__rail" aria-label="股票分析辅助信息">
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                data-testid="stock-analysis-events-monitoring"
+              >
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>关键事件与监控</h2>
+                    <p>汇总诊断、缺口、未支持输出和风险触发项，只作为复核队列的事件清单。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">Monitor</span>
+                </div>
+                {eventMonitorRows.length > 0 ? (
+                  <div className="stock-analysis-page__table-wrap">
+                    <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                      <thead>
+                        <tr>
+                          <th scope="col">来源</th>
+                          <th scope="col">级别</th>
+                          <th scope="col">影响域</th>
+                          <th scope="col">事件</th>
+                          <th scope="col">说明</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {eventMonitorRows.map((row) => (
+                          <tr key={row.key} data-level={row.level}>
+                            <td>{row.source}</td>
+                            <td>
+                              <span className="stock-analysis-page__event-level" data-level={row.level}>
+                                {row.level}
+                              </span>
+                            </td>
+                            <td>{row.impact}</td>
+                            <td>{row.event}</td>
+                            <td>{row.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="stock-analysis-page__empty">暂无关键事件，继续以只读证据复核。</p>
+                )}
+              </section>
+              </div>
+
+              <aside className="stock-analysis-page__rail" aria-label="股票分析辅助信息">
               <section className="stock-analysis-page__panel stock-analysis-page__panel--rail" data-testid="stock-analysis-risk-section">
                 <div className="stock-analysis-page__section-head">
                   <div>
                     <h2>风险退出观察</h2>
-                    <p>展示风险退出项、观察项与可用的联动观察，不使用交易动作标签。</p>
+                    <p>展示风险退出项、观察项与可用的联动观察，不使用执行动作标签。</p>
                   </div>
                   <span className="stock-analysis-page__pill">退出观察价</span>
                 </div>
@@ -1560,7 +1968,7 @@ export default function StockAnalysisPage() {
                         </div>
                         <span>{riskStatusLabel(row.status)}</span>
                         <p className="stock-analysis-page__tabular">
-                          最新收盘 {row.latestClose} · 退出观察价 {row.exitWatchPrice} · 距价 {row.distanceToExitPct}{" "}
+                          最新收盘 {row.latestClose} / 退出观察价 {row.exitWatchPrice} / 距价 {row.distanceToExitPct}{" "}
                           <small>({row.exitDistanceBucket})</small>
                         </p>
                         <p>{row.reason}</p>
@@ -1576,7 +1984,10 @@ export default function StockAnalysisPage() {
                 )}
               </section>
 
-              <section className="stock-analysis-page__panel stock-analysis-page__panel--rail">
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--rail"
+                data-testid="stock-analysis-boundary-rail"
+              >
                 <div className="stock-analysis-page__section-head">
                   <div>
                     <h2>数据口径与边界</h2>
@@ -1587,7 +1998,7 @@ export default function StockAnalysisPage() {
                 <div className="stock-analysis-page__toolbar-meta">
                   {metaSegments.map((seg, index) => (
                     <span key={seg.key} className="stock-analysis-page__toolbar-meta-code">
-                      {index > 0 ? " · " : null}
+                      {index > 0 ? " / " : null}
                       {`${seg.key}=${seg.text}`}
                     </span>
                   ))}
@@ -1669,59 +2080,60 @@ export default function StockAnalysisPage() {
                   ) : null}
                 </Drawer>
               </section>
-            </aside>
+              </aside>
+            </AnalysisGrid>
+          </>
+        ) : null}
+        <StockDetailDrawer
+          stockCode={detailSelection?.code ?? null}
+          stockName={detailSelection?.name}
+          asOfDate={stockDetailAsOfDate}
+          reviewContext={
+            detailSelection
+              ? {
+                  sourceLabel:
+                    detailSelection.source === "risk_exit"
+                      ? "风险退出观察"
+                      : detailSelection.source === "mean_reversion"
+                        ? "超跌反弹观察"
+                        : detailSelection.source === "factor_screen"
+                          ? "多因子选股"
+                          : detailSelection.source === "consensus"
+                            ? "多策略共振"
+                            : "复核队列",
+                  sectorName: detailSelection.sectorName,
+                  reviewRank: detailSelection.reviewRank,
+                  distanceToBreakoutPct: detailSelection.distanceToBreakoutPct,
+                  livermoreRank: detailSelection.livermoreRank,
+                  meanReversionRank: detailSelection.meanReversionRank,
+                  factorScreenRank: detailSelection.factorScreenRank,
+                }
+              : null
+          }
+          onClose={() => setDetailSelection(null)}
+        />
+        <Drawer
+          title="Agent 复核当前观察"
+          placement="left"
+          width={480}
+          open={agentDrawerOpen}
+          onClose={() => setAgentDrawerOpen(false)}
+          destroyOnClose
+          className="stock-analysis-page__agent-drawer"
+          data-testid="stock-analysis-agent-drawer"
+          maskClosable
+        >
+          <div style={stockAnalysisPageCssVars} className="stock-analysis-page__agent-drawer-body">
+            <AgentPanel
+              pageId="stock-analysis"
+              currentFilters={stockAnalysisAgentPageContext.current_filters}
+              defaultFilters={{ research_domain: "stock" }}
+              selectedRows={stockAnalysisAgentPageContext.selected_rows}
+              contextNote={stockAnalysisAgentPageContext.context_note ?? null}
+            />
           </div>
-        </>
-      ) : null}
-      <StockDetailDrawer
-        stockCode={detailSelection?.code ?? null}
-        stockName={detailSelection?.name}
-        asOfDate={stockDetailAsOfDate}
-        reviewContext={
-          detailSelection
-            ? {
-                sourceLabel:
-                  detailSelection.source === "risk_exit"
-                    ? "风险退出观察"
-                    : detailSelection.source === "mean_reversion"
-                      ? "超跌反弹观察"
-                      : detailSelection.source === "factor_screen"
-                        ? "多因子选股"
-                        : detailSelection.source === "consensus"
-                          ? "多策略共振"
-                          : "复核队列",
-                sectorName: detailSelection.sectorName,
-                reviewRank: detailSelection.reviewRank,
-                distanceToBreakoutPct: detailSelection.distanceToBreakoutPct,
-                livermoreRank: detailSelection.livermoreRank,
-                meanReversionRank: detailSelection.meanReversionRank,
-                factorScreenRank: detailSelection.factorScreenRank,
-              }
-            : null
-        }
-        onClose={() => setDetailSelection(null)}
-      />
-      <Drawer
-        title="Agent 复核当前观察"
-        placement="left"
-        width={480}
-        open={agentDrawerOpen}
-        onClose={() => setAgentDrawerOpen(false)}
-        destroyOnClose
-        className="stock-analysis-page__agent-drawer"
-        data-testid="stock-analysis-agent-drawer"
-        maskClosable
-      >
-        <div style={stockAnalysisPageCssVars} className="stock-analysis-page__agent-drawer-body">
-          <AgentPanel
-            pageId="stock-analysis"
-            currentFilters={stockAnalysisAgentPageContext.current_filters}
-            defaultFilters={{ research_domain: "stock" }}
-            selectedRows={stockAnalysisAgentPageContext.selected_rows}
-            contextNote={stockAnalysisAgentPageContext.context_note ?? null}
-          />
-        </div>
-      </Drawer>
-    </main>
+        </Drawer>
+      </main>
+    </PageV2Shell>
   );
 }
