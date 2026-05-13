@@ -8,6 +8,11 @@ import type { ApiEnvelope, BondTopHoldingsPayload, ResultMeta } from "../api/con
 import { TopHoldingsView } from "../features/bond-analytics/components/TopHoldingsView";
 import { formatRawAsNumeric } from "../utils/format";
 
+type GetBondAnalyticsTopHoldings = (
+  reportDate: string,
+  topN?: number,
+) => Promise<ApiEnvelope<BondTopHoldingsPayload>>;
+
 const resultMeta = (): ResultMeta => ({
   trace_id: "tr",
   basis: "formal",
@@ -41,7 +46,7 @@ function topHoldingsEnvelope(
   };
 }
 
-function renderView(getTop: ReturnType<typeof vi.fn>) {
+function renderView(getTop: GetBondAnalyticsTopHoldings) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
