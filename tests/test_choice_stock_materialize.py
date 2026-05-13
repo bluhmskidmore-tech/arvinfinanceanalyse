@@ -372,6 +372,99 @@ class FakeTushareStockClient:
         return pd.DataFrame(rows)
 
 
+class MultiDateTushareStockClient(FakeTushareStockClient):
+    def trade_cal(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("trade_cal", kwargs))
+        return pd.DataFrame(
+            [
+                {"cal_date": "20260427", "is_open": 1},
+                {"cal_date": "20260428", "is_open": 1},
+            ]
+        )
+
+    def daily(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("daily", kwargs))
+        trade_date = str(kwargs["trade_date"])
+        values = {
+            "20260427": (10.0, 11.0, 9.0, 10.5, 10.0, 1000.0, 10500.0, 5.0),
+            "20260428": (20.0, 22.0, 18.0, 21.0, 20.0, 2000.0, 42000.0, 5.0),
+        }[trade_date]
+        open_value, high_value, low_value, close_value, pre_close, volume, amount, pct_chg = values
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "000001.SZ",
+                    "trade_date": trade_date,
+                    "open": open_value,
+                    "high": high_value,
+                    "low": low_value,
+                    "close": close_value,
+                    "pre_close": pre_close,
+                    "vol": volume,
+                    "amount": amount,
+                    "pct_chg": pct_chg,
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": trade_date,
+                    "open": open_value * 2,
+                    "high": high_value * 2,
+                    "low": low_value * 2,
+                    "close": close_value * 2,
+                    "pre_close": pre_close * 2,
+                    "vol": volume * 2,
+                    "amount": amount * 2,
+                    "pct_chg": pct_chg,
+                },
+            ]
+        )
+
+    def daily_basic(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("daily_basic", kwargs))
+        trade_date = str(kwargs["trade_date"])
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "000001.SZ",
+                    "trade_date": trade_date,
+                    "turnover_rate": 0.9,
+                    "turnover_rate_f": 1.4,
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": trade_date,
+                    "turnover_rate": 0.8,
+                    "turnover_rate_f": 1.2,
+                },
+            ]
+        )
+
+    def stk_limit(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("stk_limit", kwargs))
+        trade_date = str(kwargs["trade_date"])
+        base = 11.0 if trade_date == "20260427" else 22.0
+        return pd.DataFrame(
+            [
+                {"ts_code": "000001.SZ", "trade_date": trade_date, "up_limit": base, "down_limit": base - 2.0},
+                {"ts_code": "600000.SH", "trade_date": trade_date, "up_limit": base * 2, "down_limit": (base - 2.0) * 2},
+            ]
+        )
+
+
+class FlakyLimitTushareStockClient(MultiDateTushareStockClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self._limit_failures: set[str] = set()
+
+    def stk_limit(self, **kwargs: object) -> pd.DataFrame:
+        trade_date = str(kwargs["trade_date"])
+        if trade_date == "20260427" and trade_date not in self._limit_failures:
+            self._limit_failures.add(trade_date)
+            self.calls.append(("stk_limit", kwargs))
+            raise TimeoutError("temporary Tushare timeout")
+        return super().stk_limit(**kwargs)
+
+
 class TsRequiredFinaFakeTushare(FakeTushareStockClient):
     """Simulates APIs that refuse fina_indicator without ts_code (comma-batch path)."""
 
@@ -711,6 +804,63 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_csd_is_denie
         as_of_date="2026-04-28",
     )
     assert coverage.full_coverage is True
+
+
+def test_choice_stock_tushare_fallback_loads_limit_flags_for_each_trade_date(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    tushare_client = MultiDateTushareStockClient()
+
+    materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=PermissionDeniedCsdChoiceStockClient(),
+        tushare_client=tushare_client,
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, stock_code, highlimit, lowlimit, field_keys_json
+            from choice_stock_daily_observation
+            order by trade_date, stock_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [kwargs["trade_date"] for name, kwargs in tushare_client.calls if name == "stk_limit"] == [
+        "20260427",
+        "20260428",
+    ]
+    assert rows == [
+        ("2026-04-27", "000001.SZ", "11.0", "9.0", '["daily_limit_flags","daily_ohlcv_amount","daily_return_turnover_amplitude","daily_trade_status"]'),
+        ("2026-04-27", "600000.SH", "22.0", "18.0", '["daily_limit_flags","daily_ohlcv_amount","daily_return_turnover_amplitude","daily_trade_status"]'),
+        ("2026-04-28", "000001.SZ", "22.0", "20.0", '["daily_limit_flags","daily_ohlcv_amount","daily_return_turnover_amplitude","daily_trade_status"]'),
+        ("2026-04-28", "600000.SH", "44.0", "40.0", '["daily_limit_flags","daily_ohlcv_amount","daily_return_turnover_amplitude","daily_trade_status"]'),
+    ]
+
+
+def test_choice_stock_tushare_fallback_retries_transient_limit_timeout(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    tushare_client = FlakyLimitTushareStockClient()
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=PermissionDeniedCsdChoiceStockClient(),
+        tushare_client=tushare_client,
+    )
+
+    limit_call_dates = [kwargs["trade_date"] for name, kwargs in tushare_client.calls if name == "stk_limit"]
+    assert result["status"] == "completed"
+    assert limit_call_dates == ["20260427", "20260427", "20260428"]
 
 
 def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path: Path) -> None:

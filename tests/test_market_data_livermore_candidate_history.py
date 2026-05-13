@@ -15,6 +15,7 @@ from backend.app.services.livermore_candidate_history_service import (
 )
 from backend.app.tasks.livermore_candidate_history_materialize import (
     backfill_livermore_candidate_history,
+    ensure_livermore_candidate_history_schema,
     materialize_livermore_candidate_history,
 )
 from tests.helpers import load_module
@@ -74,6 +75,115 @@ def _seed_calendar_observations(
         )
     finally:
         conn.close()
+
+
+def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
+    conn.execute(
+        """
+        create table if not exists choice_stock_request_audit (
+          as_of_date varchar,
+          input_family varchar,
+          field_key varchar,
+          status varchar,
+          row_count integer
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_universe (
+          as_of_date varchar,
+          stock_code varchar,
+          field_key varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_sector_membership (
+          as_of_date varchar,
+          stock_code varchar,
+          field_key varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_limit_quality (
+          as_of_date varchar,
+          stock_code varchar,
+          field_key varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists choice_stock_daily_observation (
+          trade_date varchar,
+          stock_code varchar,
+          field_keys_json varchar,
+          pctchange double,
+          turn double,
+          amplitude double,
+          open_value double,
+          high_value double,
+          low_value double,
+          close_value double,
+          volume double,
+          amount double,
+          tradestatus varchar,
+          highlimit double,
+          lowlimit double
+        )
+        """
+    )
+    conn.executemany(
+        "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
+        [
+            (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
+            (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
+            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
+            (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
+            (trade_date, "stock_status", "daily_trade_status", "completed", 1),
+            (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
+            (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+        ],
+    )
+    conn.execute(
+        "insert into choice_stock_universe values (?, ?, ?)",
+        [trade_date, "000001.SZ", "a_share_universe_sector_001004"],
+    )
+    conn.execute(
+        "insert into choice_stock_sector_membership values (?, ?, ?)",
+        [trade_date, "000001.SZ", "sw2021_industry_membership"],
+    )
+    conn.execute(
+        "insert into choice_stock_limit_quality values (?, ?, ?)",
+        [trade_date, "000001.SZ", "point_in_time_limit_streaks"],
+    )
+    conn.execute(
+        """
+        insert into choice_stock_daily_observation values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            trade_date,
+            "000001.SZ",
+            '["daily_return_turnover_amplitude","daily_ohlcv_amount","daily_trade_status","daily_limit_flags"]',
+            0.01,
+            1.2,
+            0.8,
+            10.0,
+            10.5,
+            9.8,
+            10.2,
+            1000.0,
+            10000.0,
+            "trading",
+            11.0,
+            9.0,
+        ],
+    )
 
 
 def _build_client(tmp_path, monkeypatch) -> TestClient:
@@ -183,6 +293,112 @@ def test_task_partial_halt_long_gap(monkeypatch, tmp_path) -> None:
         assert row[0] == "partial_halt"
         assert row[1] is not None
         assert str(row[2])[:10] == (snap + timedelta(days=10)).isoformat()
+    finally:
+        conn.close()
+
+
+def test_task_does_not_mark_exchange_holiday_gap_as_partial_halt(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "holiday-gap.duckdb"
+    snap = date(2026, 4, 30)
+    stock = "000001.SZ"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                (snap.isoformat(), stock, 10.0),
+                ("2026-05-06", stock, 10.1),
+                ("2026-05-07", stock, 10.2),
+                ("2026-05-08", stock, 10.3),
+                ("2026-05-11", stock, 10.4),
+                ("2026-05-12", stock, 10.5),
+                ("2026-05-13", stock, 10.6),
+                ("2026-05-14", stock, 10.7),
+                ("2026-05-15", stock, 10.8),
+                ("2026-05-18", stock, 10.9),
+                ("2026-05-19", stock, 11.0),
+                ("2026-05-20", stock, 11.1),
+                ("2026-05-21", stock, 11.2),
+                ("2026-05-22", stock, 11.3),
+                ("2026-05-25", stock, 11.4),
+                ("2026-05-26", stock, 11.5),
+                ("2026-05-27", stock, 11.6),
+                ("2026-05-28", stock, 11.7),
+                ("2026-05-29", stock, 11.8),
+                ("2026-06-01", stock, 11.9),
+                ("2026-06-02", stock, 12.0),
+            ],
+        )
+    finally:
+        conn.close()
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        return _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[{"rank": 1, "stock_code": stock, "stock_name": "Holiday", "sector_code": "", "sector_name": ""}],
+        )
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    materialize_livermore_candidate_history(str(db_path))
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = conn.execute("select data_status, forward_trade_date_1d from livermore_candidate_history").fetchone()
+        assert row is not None
+        assert row[0] == "complete"
+        assert str(row[1])[:10] == "2026-05-06"
+    finally:
+        conn.close()
+
+
+def test_task_treats_holiday_gap_with_incomplete_forward_window_as_pending(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "holiday-gap-pending.duckdb"
+    snap = date(2026, 4, 28)
+    stock = "000001.SZ"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                (snap.isoformat(), stock, 10.0),
+                ("2026-04-29", stock, 10.1),
+                ("2026-04-30", stock, 10.2),
+                ("2026-05-06", stock, 10.3),
+                ("2026-05-07", stock, 10.4),
+                ("2026-05-08", stock, 10.5),
+            ],
+        )
+    finally:
+        conn.close()
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        return _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[{"rank": 1, "stock_code": stock, "stock_name": "HolidayPending", "sector_code": "", "sector_name": ""}],
+        )
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    materialize_livermore_candidate_history(str(db_path))
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = conn.execute(
+            "select data_status, forward_trade_date_5d, return_20d from livermore_candidate_history"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "pending"
+        assert str(row[1])[:10] == "2026-05-08"
+        assert row[2] is None
     finally:
         conn.close()
 
@@ -750,6 +966,32 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
         "avg_return_1d": -0.04,
         "avg_return_5d": 0.03,
         "avg_return_20d": 0.04,
+        "horizon_stats": {
+            "return_1d": {
+                "available_count": 2,
+                "missing_count": 0,
+                "positive_count": 1,
+                "non_positive_count": 1,
+                "avg_return": -0.04,
+                "win_rate": 0.5,
+            },
+            "return_5d": {
+                "available_count": 1,
+                "missing_count": 1,
+                "positive_count": 1,
+                "non_positive_count": 0,
+                "avg_return": 0.03,
+                "win_rate": 1.0,
+            },
+            "return_20d": {
+                "available_count": 1,
+                "missing_count": 1,
+                "positive_count": 1,
+                "non_positive_count": 0,
+                "avg_return": 0.04,
+                "win_rate": 1.0,
+            },
+        },
         "by_signal_kind": {"stock_candidate": 1, "theme_breakout": 1},
     }
 
@@ -1058,6 +1300,351 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                 "signal_kinds": ["stock_candidate"],
             },
         ],
+    }
+
+
+def test_backtest_summary_reports_incomplete_coverage_when_audit_is_missing_but_daily_flags_landed(tmp_path) -> None:
+    db_path = tmp_path / "audit-missing.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        ensure_livermore_candidate_history_schema(conn)
+        conn.execute(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date, stock_code, data_status, signal_kind
+            ) values ('2026-05-06', '000001.SZ', 'pending', 'stock_candidate')
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-06")
+        conn.execute("delete from choice_stock_request_audit where as_of_date = '2026-05-06'")
+    finally:
+        conn.close()
+
+    summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-06",
+    )
+
+    reason = summary["date_reasons"][0]
+    assert summary["status"] == "unsupported"
+    assert reason["reason_code"] == "missing_required_source_table"
+    assert "Required source coverage is incomplete for 2026-05-06" in reason["message"]
+    assert "daily_limit_flags absent" not in reason["message"]
+
+
+def test_service_reports_decision_usable_mature_return_stats_for_completed_dates_only(tmp_path) -> None:
+    db_path = tmp_path / "mature-stats.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              candidate_rank integer,
+              sector_code varchar,
+              sector_name varchar,
+              selection_close double,
+              forward_trade_date_1d varchar,
+              forward_trade_date_5d varchar,
+              forward_trade_date_20d varchar,
+              return_1d double,
+              return_5d double,
+              return_20d double,
+              data_status varchar,
+              formula_version varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar,
+              signal_kind varchar,
+              theme_key varchar,
+              theme_name varchar,
+              theme_source_kind varchar,
+              theme_rank integer,
+              stock_rank_in_theme integer,
+              sector_rank integer,
+              strength_pctchange double,
+              strength_turn double,
+              strength_amplitude double,
+              close_strength double,
+              closed_up_limit boolean,
+              signal_evidence_json varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_history values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2026-05-06",
+                    "000001.SZ",
+                    "Winner",
+                    1,
+                    "S1",
+                    "Sector",
+                    10.0,
+                    "2026-05-07",
+                    "2026-05-13",
+                    "2026-06-03",
+                    0.02,
+                    0.10,
+                    0.20,
+                    "complete",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r1",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    1,
+                    None,
+                    None,
+                    None,
+                    0.9,
+                    False,
+                    "{}",
+                ),
+                (
+                    "2026-05-08",
+                    "000002.SZ",
+                    "Pending",
+                    2,
+                    "S1",
+                    "Sector",
+                    20.0,
+                    "2026-05-11",
+                    None,
+                    None,
+                    -0.01,
+                    None,
+                    None,
+                    "pending",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r2",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    1,
+                    None,
+                    None,
+                    None,
+                    0.8,
+                    False,
+                    "{}",
+                ),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-06")
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-08")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-08",
+        limit=20,
+    )
+
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    summary = result["summary"]
+    assert summary["row_count"] == 2
+    assert summary["avg_return_1d"] == 0.005
+    assert summary["decision_usable_stats"] == {
+        "row_count": 1,
+        "complete_row_count": 1,
+        "pending_row_count": 0,
+        "partial_halt_row_count": 0,
+        "missing_forward_return_count": 0,
+        "avg_return_1d": 0.02,
+        "avg_return_5d": 0.1,
+        "avg_return_20d": 0.2,
+        "win_rate_1d": 1.0,
+        "win_rate_5d": 1.0,
+        "win_rate_20d": 1.0,
+        "by_signal_kind": {"stock_candidate": 1},
+        "included_snapshot_dates": ["2026-05-06"],
+        "excluded_snapshot_dates": ["2026-05-08"],
+    }
+
+
+def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_path) -> None:
+    db_path = tmp_path / "horizon-stats.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              candidate_rank integer,
+              sector_code varchar,
+              sector_name varchar,
+              selection_close double,
+              forward_trade_date_1d varchar,
+              forward_trade_date_5d varchar,
+              forward_trade_date_20d varchar,
+              return_1d double,
+              return_5d double,
+              return_20d double,
+              data_status varchar,
+              formula_version varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar,
+              signal_kind varchar,
+              theme_key varchar,
+              theme_name varchar,
+              theme_source_kind varchar,
+              theme_rank integer,
+              stock_rank_in_theme integer,
+              sector_rank integer,
+              strength_pctchange double,
+              strength_turn double,
+              strength_amplitude double,
+              close_strength double,
+              closed_up_limit boolean,
+              signal_evidence_json varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_history values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2026-05-06",
+                    "000001.SZ",
+                    "Winner",
+                    1,
+                    "S1",
+                    "Sector",
+                    10.0,
+                    "2026-05-07",
+                    "2026-05-13",
+                    None,
+                    0.02,
+                    0.10,
+                    None,
+                    "pending",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r1",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    1,
+                    None,
+                    None,
+                    None,
+                    0.9,
+                    False,
+                    "{}",
+                ),
+                (
+                    "2026-05-07",
+                    "000002.SZ",
+                    "Loser",
+                    2,
+                    "S1",
+                    "Sector",
+                    20.0,
+                    "2026-05-08",
+                    None,
+                    None,
+                    -0.01,
+                    None,
+                    None,
+                    "pending",
+                    "fv1",
+                    "sv1",
+                    "vv1",
+                    "rv1",
+                    "r2",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    1,
+                    None,
+                    None,
+                    None,
+                    0.8,
+                    False,
+                    "{}",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-06",
+        snapshot_to="2026-05-07",
+        limit=20,
+    )
+
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    summary = result["summary"]
+    assert summary["horizon_stats"] == {
+        "return_1d": {
+            "available_count": 2,
+            "missing_count": 0,
+            "positive_count": 1,
+            "non_positive_count": 1,
+            "avg_return": 0.005,
+            "win_rate": 0.5,
+        },
+        "return_5d": {
+            "available_count": 1,
+            "missing_count": 1,
+            "positive_count": 1,
+            "non_positive_count": 0,
+            "avg_return": 0.1,
+            "win_rate": 1.0,
+        },
+        "return_20d": {
+            "available_count": 0,
+            "missing_count": 2,
+            "positive_count": 0,
+            "non_positive_count": 0,
+            "avg_return": None,
+            "win_rate": None,
+        },
     }
 
 

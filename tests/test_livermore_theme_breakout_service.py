@@ -185,6 +185,100 @@ def test_theme_breakout_loader_reads_current_stock_rows_with_sector_rank(tmp_pat
     assert provenance.movement_date_row_count == 0
 
 
+def test_theme_breakout_loader_handles_varchar_limit_flags(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              stock_code varchar,
+              stock_name varchar,
+              as_of_date varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              stock_code varchar,
+              as_of_date varchar,
+              sw2021code varchar,
+              sw2021 varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              stock_code varchar,
+              trade_date varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              pctchange double,
+              turn double,
+              amplitude double,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_limit_quality (
+              stock_code varchar,
+              as_of_date varchar,
+              issurgedlimit varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_universe values (?, ?, ?, ?, ?)",
+            ("688001.SH", "Alpha Semiconductor", "2026-05-08", "sv_u", "vv_u"),
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values (?, ?, ?, ?, ?, ?)",
+            ("688001.SH", "2026-05-08", "801080", "Electronic", "sv_s", "vv_s"),
+        )
+        conn.execute(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("688001.SH", "2026-05-08", 9.6, 10.1, 9.4, 10.0, 12.1, 4.2, 7.0, "sv_d", "vv_d"),
+        )
+        conn.execute(
+            "insert into choice_stock_limit_quality values (?, ?, ?, ?, ?)",
+            ("688001.SH", "2026-05-08", "1", "sv_l", "vv_l"),
+        )
+    finally:
+        conn.close()
+
+    snapshots, tables_used, _, _, provenance = _load_theme_breakout_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        sector_rank_payload={
+            "items": [
+                {
+                    "rank": 9,
+                    "sector_code": "801080",
+                    "sector_name": "Electronic",
+                }
+            ]
+        },
+    )
+
+    assert [snapshot.stock_code for snapshot in snapshots] == ["688001.SH"]
+    assert snapshots[0].closed_up_limit is True
+    assert "choice_stock_limit_quality" in tables_used
+    assert provenance.concept_date_row_count == 0
+
+
 def test_theme_breakout_loader_enriches_snapshots_with_real_concept_and_movement_rows(tmp_path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)

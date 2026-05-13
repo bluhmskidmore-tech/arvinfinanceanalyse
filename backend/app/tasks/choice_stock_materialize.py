@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -29,6 +30,9 @@ from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_regist
 logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
+
+TUSHARE_FALLBACK_RETRY_ATTEMPTS = 3
+TUSHARE_FALLBACK_RETRY_DELAY_SECONDS = 1.0
 
 REQUIRED_CHOICE_STOCK_REQUEST_ITEMS: tuple[tuple[str, str], ...] = (
     ("stock_universe", "a_share_universe_sector_001004"),
@@ -1072,7 +1076,9 @@ class _TushareStockFallbackCache:
 
     def _trade_date_values(self) -> list[str]:
         if self._trade_dates is None:
-            frame = cast(Any, self.client).trade_cal(
+            frame = _call_tushare_with_retry(
+                self.client,
+                "trade_cal",
                 exchange="SSE",
                 is_open="1",
                 start_date=_compact_date(self.start_date),
@@ -1091,7 +1097,9 @@ class _TushareStockFallbackCache:
         if self._daily_rows is None:
             rows: dict[tuple[str, str], dict[str, object]] = {}
             for trade_date in self._trade_date_values():
-                frame = cast(Any, self.client).daily(
+                frame = _call_tushare_with_retry(
+                    self.client,
+                    "daily",
                     trade_date=trade_date,
                     fields="ts_code,trade_date,open,high,low,close,pre_close,vol,amount,pct_chg",
                 )
@@ -1108,7 +1116,9 @@ class _TushareStockFallbackCache:
         if self._daily_basic_rows is None:
             rows: dict[tuple[str, str], dict[str, object]] = {}
             for trade_date in self._trade_date_values():
-                frame = cast(Any, self.client).daily_basic(
+                frame = _call_tushare_with_retry(
+                    self.client,
+                    "daily_basic",
                     trade_date=trade_date,
                     fields="ts_code,trade_date,turnover_rate,turnover_rate_f",
                 )
@@ -1124,18 +1134,60 @@ class _TushareStockFallbackCache:
     def _limit_by_key(self) -> dict[tuple[str, str], dict[str, object]]:
         if self._limit_rows is None:
             rows: dict[tuple[str, str], dict[str, object]] = {}
-            frame = cast(Any, self.client).stk_limit(
-                trade_date=_compact_date(self.end_date),
-                fields="ts_code,trade_date,up_limit,down_limit",
-            )
-            for record in _records_from_tabular_payload(frame):
-                stock_code = _record_text(record, "ts_code")
-                if stock_code not in self.stock_codes:
-                    continue
-                key = (_normalize_date(_record_text(record, "trade_date")), stock_code)
-                rows[key] = record
+            for trade_date in self._trade_date_values():
+                frame = _call_tushare_with_retry(
+                    self.client,
+                    "stk_limit",
+                    trade_date=trade_date,
+                    fields="ts_code,trade_date,up_limit,down_limit",
+                )
+                for record in _records_from_tabular_payload(frame):
+                    stock_code = _record_text(record, "ts_code")
+                    if stock_code not in self.stock_codes:
+                        continue
+                    key = (_normalize_date(_record_text(record, "trade_date")), stock_code)
+                    rows[key] = record
             self._limit_rows = rows
         return self._limit_rows
+
+
+def _call_tushare_with_retry(client: object, method_name: str, **kwargs: object) -> object:
+    method = getattr(client, method_name)
+    for attempt in range(1, TUSHARE_FALLBACK_RETRY_ATTEMPTS + 1):
+        try:
+            return method(**kwargs)
+        except Exception as exc:
+            if attempt >= TUSHARE_FALLBACK_RETRY_ATTEMPTS or not _is_retryable_tushare_error(exc):
+                raise
+            logger.warning(
+                "Retrying Tushare %s after transient failure (%s/%s): %s",
+                method_name,
+                attempt,
+                TUSHARE_FALLBACK_RETRY_ATTEMPTS,
+                exc,
+            )
+            time.sleep(TUSHARE_FALLBACK_RETRY_DELAY_SECONDS)
+    raise RuntimeError(f"Tushare {method_name} retry loop exited unexpectedly.")
+
+
+def _is_retryable_tushare_error(error: BaseException) -> bool:
+    current: BaseException | None = error
+    while current is not None:
+        marker_text = f"{current.__class__.__name__} {current}".lower()
+        if any(
+            marker in marker_text
+            for marker in (
+                "timeout",
+                "connection",
+                "temporarily",
+                "remote end closed",
+                "connection reset",
+                "protocolerror",
+            )
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _records_from_tabular_payload(payload: object) -> list[dict[str, object]]:

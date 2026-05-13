@@ -129,15 +129,16 @@ def livermore_candidate_history_envelope(
     lineage_src = _first_nonempty_source_version(items)
     lineage_vend = _first_nonempty_vendor_version(items)
 
+    backtest_window_summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=duckdb_path,
+        stock_code=trimmed_code,
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+    )
     result_payload = {
         "items": items,
-        "summary": _build_summary(items),
-        "backtest_window_summary": livermore_candidate_history_backtest_window_summary(
-            duckdb_path=duckdb_path,
-            stock_code=trimmed_code,
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-        ),
+        "summary": _build_summary(items, backtest_window_summary=backtest_window_summary),
+        "backtest_window_summary": backtest_window_summary,
         "stock_code": trimmed_code,
         "snapshot_from": snapshot_from.strip() if snapshot_from else None,
         "snapshot_to": snapshot_to.strip() if snapshot_to else None,
@@ -383,13 +384,12 @@ def _resolve_replay_trade_dates(
     return observed or row_dates
 
 
-def _build_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
-    by_signal_kind: dict[str, int] = {}
-    for item in items:
-        signal_kind = str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
-        by_signal_kind[signal_kind] = by_signal_kind.get(signal_kind, 0) + 1
-
-    return {
+def _build_summary(
+    items: list[dict[str, Any]],
+    *,
+    backtest_window_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
         "row_count": len(items),
         "complete_count": _count_status(items, "complete"),
         "pending_count": _count_status(items, "pending"),
@@ -402,7 +402,56 @@ def _build_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_return_1d": _avg_present(items, "return_1d"),
         "avg_return_5d": _avg_present(items, "return_5d"),
         "avg_return_20d": _avg_present(items, "return_20d"),
-        "by_signal_kind": by_signal_kind,
+        "horizon_stats": _build_horizon_stats(items),
+        "by_signal_kind": _count_by_signal_kind(items),
+    }
+    if backtest_window_summary is not None and backtest_window_summary.get("status") in {"valid", "partial"}:
+        summary["decision_usable_stats"] = _build_decision_usable_stats(
+            items,
+            backtest_window_summary=backtest_window_summary,
+        )
+    return summary
+
+
+def _build_decision_usable_stats(
+    items: list[dict[str, Any]],
+    *,
+    backtest_window_summary: dict[str, Any],
+) -> dict[str, Any]:
+    included_dates = {
+        str(item)[:10]
+        for item in backtest_window_summary.get("included_completed_stats_dates", [])
+        if str(item or "").strip()
+    }
+    usable_items = [
+        item
+        for item in items
+        if str(item.get("snapshot_as_of_date") or "")[:10] in included_dates
+        and str(item.get("data_status") or "").strip() == "complete"
+    ]
+    return {
+        "row_count": len(usable_items),
+        "complete_row_count": _count_status(usable_items, "complete"),
+        "pending_row_count": _count_status(usable_items, "pending"),
+        "partial_halt_row_count": _count_status(usable_items, "partial_halt"),
+        "missing_forward_return_count": sum(
+            1
+            for item in usable_items
+            if item.get("return_1d") is None or item.get("return_5d") is None or item.get("return_20d") is None
+        ),
+        "avg_return_1d": _avg_present(usable_items, "return_1d"),
+        "avg_return_5d": _avg_present(usable_items, "return_5d"),
+        "avg_return_20d": _avg_present(usable_items, "return_20d"),
+        "win_rate_1d": _win_rate_present(usable_items, "return_1d"),
+        "win_rate_5d": _win_rate_present(usable_items, "return_5d"),
+        "win_rate_20d": _win_rate_present(usable_items, "return_20d"),
+        "by_signal_kind": _count_by_signal_kind(usable_items),
+        "included_snapshot_dates": sorted({str(item.get("snapshot_as_of_date") or "")[:10] for item in usable_items}),
+        "excluded_snapshot_dates": _decision_excluded_dates(
+            items,
+            usable_items=usable_items,
+            included_dates=included_dates,
+        ),
     }
 
 
@@ -425,7 +474,7 @@ def _classify_replay_date(
 
     missing_items = {str(item) for item in getattr(coverage, "missing_request_items", [])}
     if not bool(getattr(coverage, "full_coverage", False)):
-        if "limit_up_quality:daily_limit_flags" in missing_items:
+        if missing_items == {"limit_up_quality:daily_limit_flags"}:
             return _classification(
                 trade_date=trade_date,
                 status="unsupported",
@@ -510,6 +559,14 @@ def _count_status(items: list[dict[str, Any]], status: str) -> int:
     return sum(1 for item in items if str(item.get("data_status") or "").strip() == status)
 
 
+def _count_by_signal_kind(items: list[dict[str, Any]]) -> dict[str, int]:
+    by_signal_kind: dict[str, int] = {}
+    for item in items:
+        signal_kind = str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
+        by_signal_kind[signal_kind] = by_signal_kind.get(signal_kind, 0) + 1
+    return by_signal_kind
+
+
 def _signal_kinds_for_rows(rows: list[dict[str, Any]]) -> list[str]:
     signal_kinds = sorted(
         {
@@ -521,7 +578,38 @@ def _signal_kinds_for_rows(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def _avg_present(items: list[dict[str, Any]], key: str) -> float | None:
-    values = []
+    values = _present_float_values(items, key)
+    if not values:
+        return None
+    return round(sum(values) / len(values), 6)
+
+
+def _win_rate_present(items: list[dict[str, Any]], key: str) -> float | None:
+    values = _present_float_values(items, key)
+    if not values:
+        return None
+    return round(sum(1 for value in values if value > 0) / len(values), 6)
+
+
+def _build_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {key: _horizon_stat(items, key) for key in ("return_1d", "return_5d", "return_20d")}
+
+
+def _horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    values = _present_float_values(items, key)
+    positive_count = sum(1 for value in values if value > 0)
+    return {
+        "available_count": len(values),
+        "missing_count": len(items) - len(values),
+        "positive_count": positive_count,
+        "non_positive_count": len(values) - positive_count,
+        "avg_return": round(sum(values) / len(values), 6) if values else None,
+        "win_rate": round(positive_count / len(values), 6) if values else None,
+    }
+
+
+def _present_float_values(items: list[dict[str, Any]], key: str) -> list[float]:
+    values: list[float] = []
     for item in items:
         raw = item.get(key)
         if raw is None:
@@ -530,9 +618,36 @@ def _avg_present(items: list[dict[str, Any]], key: str) -> float | None:
             values.append(float(raw))
         except (TypeError, ValueError):
             continue
-    if not values:
-        return None
-    return round(sum(values) / len(values), 6)
+    return values
+
+
+def _decision_excluded_dates(
+    items: list[dict[str, Any]],
+    *,
+    usable_items: list[dict[str, Any]],
+    included_dates: set[str],
+) -> list[str]:
+    usable_keys = {
+        (
+            str(item.get("snapshot_as_of_date") or "")[:10],
+            str(item.get("stock_code") or "").strip(),
+            str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate",
+        )
+        for item in usable_items
+    }
+    excluded_dates: set[str] = set()
+    for item in items:
+        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
+        if not snapshot_date:
+            continue
+        row_key = (
+            snapshot_date,
+            str(item.get("stock_code") or "").strip(),
+            str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate",
+        )
+        if snapshot_date not in included_dates or row_key not in usable_keys:
+            excluded_dates.add(snapshot_date)
+    return sorted(excluded_dates)
 
 
 def _empty_backtest_window_summary(

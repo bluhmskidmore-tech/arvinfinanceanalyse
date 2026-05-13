@@ -1131,10 +1131,10 @@ def _load_theme_breakout_snapshots(
         has_concept_membership = "choice_stock_concept_membership" in tables
         has_intraday_movement = "choice_stock_intraday_movement_event" in tables
         limit_select = (
-            "coalesce(limits.issurgedlimit, false) as issurgedlimit, "
+            "coalesce(cast(limits.issurgedlimit as varchar), '') as issurgedlimit, "
             "limits.source_version, limits.vendor_version"
             if has_limit_quality
-            else "false as issurgedlimit, '' as limit_source_version, '' as limit_vendor_version"
+            else "'' as issurgedlimit, '' as limit_source_version, '' as limit_vendor_version"
         )
         limit_join = (
             """

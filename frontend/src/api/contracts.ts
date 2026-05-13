@@ -1425,7 +1425,37 @@ export type LivermoreCandidateHistoryLegacySummary = {
   avg_return_1d?: number | null;
   avg_return_5d?: number | null;
   avg_return_20d?: number | null;
+  horizon_stats?: Record<LivermoreCandidateHistoryHorizonKey, LivermoreCandidateHistoryHorizonStats>;
   by_signal_kind?: Record<string, number>;
+  decision_usable_stats?: LivermoreCandidateHistoryDecisionUsableStats | null;
+};
+
+export type LivermoreCandidateHistoryHorizonKey = "return_1d" | "return_5d" | "return_20d";
+
+export type LivermoreCandidateHistoryHorizonStats = {
+  available_count: number;
+  missing_count: number;
+  positive_count: number;
+  non_positive_count: number;
+  avg_return: number | null;
+  win_rate: number | null;
+};
+
+export type LivermoreCandidateHistoryDecisionUsableStats = {
+  row_count: number;
+  complete_row_count: number;
+  pending_row_count: number;
+  partial_halt_row_count: number;
+  missing_forward_return_count: number;
+  avg_return_1d: number | null;
+  avg_return_5d: number | null;
+  avg_return_20d: number | null;
+  win_rate_1d: number | null;
+  win_rate_5d: number | null;
+  win_rate_20d: number | null;
+  by_signal_kind: Record<string, number>;
+  included_snapshot_dates: string[];
+  excluded_snapshot_dates: string[];
 };
 
 export type LivermoreCandidateHistoryPayload = {
