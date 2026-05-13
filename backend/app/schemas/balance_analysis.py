@@ -17,6 +17,25 @@ BalanceAnalysisWorkbookSectionKind = Literal[
 ]
 BalanceAnalysisSeverity = Literal["low", "medium", "high"]
 BalanceAnalysisDecisionStatus = Literal["pending", "confirmed", "dismissed"]
+BalanceAnalysisMetricRawUnit = Literal["yuan"]
+BalanceAnalysisMetricDisplayUnit = Literal["yi_yuan"]
+BalanceAnalysisMetricBasis = Literal["formal"]
+BalanceAnalysisMetricSourceSurface = Literal["formal_balance"]
+BalanceAnalysisMetricAppliesTo = Literal["overview", "summary", "detail"]
+
+
+class BalanceAnalysisMetricDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+    source_field: str
+    raw_unit: BalanceAnalysisMetricRawUnit
+    display_unit: BalanceAnalysisMetricDisplayUnit
+    basis: BalanceAnalysisMetricBasis
+    source_surface: BalanceAnalysisMetricSourceSurface
+    applies_to: list[BalanceAnalysisMetricAppliesTo]
+    description: str
 
 
 class BalanceAnalysisDetailRow(BaseModel):
@@ -86,6 +105,26 @@ class BalanceAnalysisSummaryTablePayload(BaseModel):
     offset: int
     total_rows: int
     rows: list[BalanceAnalysisTableRow]
+
+
+class BalanceAnalysisOverviewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    position_scope: BalancePositionScope
+    currency_basis: BalanceCurrencyBasis
+    detail_row_count: int
+    summary_row_count: int
+    total_market_value_amount: Decimal
+    total_amortized_cost_amount: Decimal
+    total_accrued_interest_amount: Decimal
+    asset_total_market_value_amount: Decimal
+    liability_total_market_value_amount: Decimal
+    asset_total_amortized_cost_amount: Decimal
+    liability_total_amortized_cost_amount: Decimal
+    asset_total_accrued_interest_amount: Decimal
+    liability_total_accrued_interest_amount: Decimal
+    metric_definitions: list[BalanceAnalysisMetricDefinition]
 
 
 class BalanceAnalysisBasisBreakdownRow(BaseModel):

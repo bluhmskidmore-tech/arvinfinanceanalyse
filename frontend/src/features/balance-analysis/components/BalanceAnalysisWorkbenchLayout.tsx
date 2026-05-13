@@ -67,6 +67,13 @@ const portfolioNavigationItems =
     .find((group) => group.key === "portfolio")
     ?.sections.filter((section) => section.key !== "balance-analysis") ?? [];
 
+function formatMetricDefinitionDisplayUnit(displayUnit: string | undefined): string {
+  if (displayUnit === "yi_yuan") {
+    return "亿元";
+  }
+  return "—";
+}
+
 function formatFormalStatus(meta: ResultMeta | undefined) {
   if (!meta) {
     return "result_meta 未返回";
@@ -77,6 +84,45 @@ function formatFormalStatus(meta: ResultMeta | undefined) {
     meta.quality_flag,
     meta.fallback_mode,
   ].join(" / ");
+}
+
+function formatQualityFlag(meta: ResultMeta | undefined): string {
+  if (!meta?.quality_flag) {
+    return "—";
+  }
+  if (meta.quality_flag === "ok") {
+    return "正常";
+  }
+  if (meta.quality_flag === "warning") {
+    return "预警";
+  }
+  if (meta.quality_flag === "error") {
+    return "错误";
+  }
+  if (meta.quality_flag === "stale") {
+    return "陈旧";
+  }
+  return meta.quality_flag;
+}
+
+function formatFallbackMode(meta: ResultMeta | undefined): string {
+  if (!meta?.fallback_mode) {
+    return "—";
+  }
+  if (meta.fallback_mode === "none") {
+    return "未降级";
+  }
+  if (meta.fallback_mode === "latest_snapshot") {
+    return "最新快照降级";
+  }
+  return meta.fallback_mode;
+}
+
+function formatFormalAllowed(meta: ResultMeta | undefined): string {
+  if (!meta) {
+    return "—";
+  }
+  return meta.formal_use_allowed ? "是" : "否";
 }
 
 function clampPercent(value: number) {
@@ -310,9 +356,98 @@ export default function BalanceAnalysisWorkbenchLayout({
   const topDecision = decisionItems?.rows[0];
   const topRisk = riskAlerts[0];
   const topEvent = calendarEvents[0];
+  const metricDefinitions = overview?.metric_definitions ?? [];
+  const firstMetricDefinition = metricDefinitions[0];
 
   return (
     <div className="balance-workbench" data-testid="balance-workbench">
+      <section
+        data-testid="balance-analysis-command-deck"
+        className="balance-workbench__command-deck"
+      >
+        <section data-testid="balance-analysis-priority-board" className="balance-workbench__judgement">
+          <div data-testid="balance-analysis-daily-judgement">
+            <span className="balance-workbench__eyebrow">正式口径</span>
+            <h2 className="balance-workbench__judgement-title">正式状态判断</h2>
+            <p className="balance-workbench__judgement-lede">
+              当前页先确认正式口径下的规模、质量和治理信号，再进入汇总表与工作簿下钻。
+            </p>
+            <p className="balance-workbench__judgement-copy">
+              {[
+                topRisk ? `风险: ${topRisk.title} / ${topRisk.severity}` : null,
+                topDecision
+                  ? `决策: ${topDecision.title} / ${topDecision.latest_status?.status ?? "未返回状态"}`
+                  : null,
+                topEvent ? `事件: ${topEvent.title} / ${topEvent.event_date}` : null,
+              ]
+                .filter(Boolean)
+                .join("。") || "当前报告日未返回治理异常信号。"}
+            </p>
+          </div>
+        </section>
+
+        <aside
+          aria-labelledby="balance-analysis-status-rail-title"
+          data-testid="balance-analysis-status-rail"
+          className="balance-workbench__status-rail"
+        >
+          <div className="balance-workbench__status-head">
+            <span className="balance-workbench__eyebrow">链路 / 治理状态</span>
+            <strong id="balance-analysis-status-rail-title">
+              {formalStatus?.result_kind ?? "result_meta 未返回"}
+            </strong>
+          </div>
+          <dl className="balance-workbench__status-pills">
+            <div className="balance-workbench__status-pill">
+              <dt>口径</dt>
+              <dd>{formalStatus?.basis ?? "—"}</dd>
+            </div>
+            <div className="balance-workbench__status-pill">
+              <dt>正式可用</dt>
+              <dd>{formatFormalAllowed(formalStatus)}</dd>
+            </div>
+            <div className="balance-workbench__status-pill">
+              <dt>质量</dt>
+              <dd>{formatQualityFlag(formalStatus)}</dd>
+            </div>
+            <div className="balance-workbench__status-pill">
+              <dt>降级</dt>
+              <dd>{formatFallbackMode(formalStatus)}</dd>
+            </div>
+          </dl>
+          <div className="balance-workbench__status-grid">
+            <div className="balance-workbench__status-metric">
+              <span>正式汇总查询</span>
+              <strong>{String(overview?.summary_row_count ?? "—")}</strong>
+              <small>汇总行</small>
+            </div>
+            <div className="balance-workbench__status-metric">
+              <span>正式明细查询</span>
+              <strong>{String(overview?.detail_row_count ?? "—")}</strong>
+              <small>明细行</small>
+            </div>
+            <div className="balance-workbench__status-metric">
+              <span>工作簿摘要卡</span>
+              <strong>{String(workbook?.cards.length ?? 0)}</strong>
+              <small>摘要卡</small>
+            </div>
+            <div className="balance-workbench__status-metric">
+              <span>指标定义</span>
+              <strong>{metricDefinitions.length} 项</strong>
+              <small>
+                {formatMetricDefinitionDisplayUnit(firstMetricDefinition?.display_unit)} /{" "}
+                {firstMetricDefinition?.description ?? "—"}
+              </small>
+            </div>
+          </div>
+          <div className="balance-workbench__status-meta">
+            <span>{formatFormalStatus(formalStatus)}</span>
+            <span>trace_id: {formalStatus?.trace_id ?? "—"}</span>
+          </div>
+          <div className="balance-workbench__filter-note">{compactFilters}</div>
+        </aside>
+      </section>
+
       <div data-testid="balance-analysis-overview-cards" className="balance-workbench__metrics">
         {metrics.map((metric) => (
           <div
@@ -331,33 +466,9 @@ export default function BalanceAnalysisWorkbenchLayout({
         ))}
       </div>
 
-      <section data-testid="balance-analysis-priority-board" className="balance-workbench__judgement">
-        <div data-testid="balance-analysis-daily-judgement">
-          <h2 className="balance-workbench__judgement-title">本日判断横幅</h2>
-          <p className="balance-workbench__judgement-copy">
-            {[
-              topRisk ? `风险: ${topRisk.title} / ${topRisk.severity}` : null,
-              topDecision
-                ? `决策: ${topDecision.title} / ${topDecision.latest_status?.status ?? "未返回状态"}`
-                : null,
-              topEvent ? `事件: ${topEvent.title} / ${topEvent.event_date}` : null,
-            ]
-              .filter(Boolean)
-              .join("。") || "当前报告日未返回治理异常信号。"}
-          </p>
-        </div>
-      </section>
-
-      <div className="balance-workbench__kpis">
-        {kpiBars.length === 0 ? (
-          <div
-            className="balance-workbench-card__empty"
-            data-testid="balance-analysis-kpi-bars-empty"
-          >
-            暂无 KPI 条带数据（不在前端补算条带指标）。
-          </div>
-        ) : (
-          kpiBars.map((bar) => (
+      {kpiBars.length > 0 ? (
+        <div className="balance-workbench__kpis">
+          {kpiBars.map((bar) => (
             <div key={bar.key} data-testid="balance-analysis-kpi-bar" className="balance-workbench__kpi">
               <div className="balance-workbench__kpi-head">
                 <span className="balance-workbench__kpi-label">{bar.label}</span>
@@ -371,21 +482,9 @@ export default function BalanceAnalysisWorkbenchLayout({
               </div>
               <div className="balance-workbench__kpi-detail">{bar.detail}</div>
             </div>
-          ))
-        )}
-      </div>
-
-      <div data-testid="balance-analysis-compact-filters" className="balance-workbench__filters">
-        <div className="balance-workbench__filter-panel">{compactFilters}</div>
-        <div className="balance-workbench__meta-panel">
-          <div className="balance-workbench__meta-row">
-            <strong>result_meta</strong>
-            <span>{formalStatus?.result_kind ?? "—"}</span>
-          </div>
-          <div>{formatFormalStatus(formalStatus)}</div>
-          <div>trace_id: {formalStatus?.trace_id ?? "—"}</div>
+          ))}
         </div>
-      </div>
+      ) : null}
 
       <section data-testid="balance-analysis-workbench-grid" className="balance-workbench__grid">
         {cards.map((card) => (

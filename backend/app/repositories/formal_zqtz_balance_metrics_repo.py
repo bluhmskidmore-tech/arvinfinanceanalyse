@@ -150,6 +150,78 @@ class FormalZqtzBalanceMetricsRepository:
             pass
         return overview
 
+    def fetch_formal_overview_history(
+        self,
+        *,
+        report_dates: list[str],
+        position_scope: str = "asset",
+        currency_basis: str = "CNY",
+    ) -> dict[str, dict[str, object]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        placeholders = ", ".join(["?"] * len(dates))
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            try:
+                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+                    rows = conn.execute(
+                        f"""
+                        select
+                          cast(report_date as varchar) as report_date,
+                          coalesce(sum(market_value_amount), 0) as total_market_value_amount
+                        from fact_formal_zqtz_balance_daily
+                        where position_scope = ?
+                          and currency_basis = ?
+                          and cast(report_date as varchar) in ({placeholders})
+                        group by report_date
+                        """,
+                        [position_scope, currency_basis, *dates],
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f"""
+                        with zqtz as (
+                          select
+                            cast(report_date as varchar) as report_date,
+                            coalesce(sum(market_value_amount), 0) as total_market_value_amount
+                          from fact_formal_zqtz_balance_daily
+                          where position_scope = ?
+                            and currency_basis = ?
+                            and cast(report_date as varchar) in ({placeholders})
+                          group by report_date
+                        ),
+                        tyw as (
+                          select
+                            cast(report_date as varchar) as report_date,
+                            coalesce(sum(principal_amount), 0) as total_market_value_amount
+                          from fact_formal_tyw_balance_daily
+                          where position_scope = ?
+                            and currency_basis = ?
+                            and cast(report_date as varchar) in ({placeholders})
+                          group by report_date
+                        )
+                        select
+                          coalesce(zqtz.report_date, tyw.report_date) as report_date,
+                          coalesce(zqtz.total_market_value_amount, 0)
+                            + coalesce(tyw.total_market_value_amount, 0) as total_market_value_amount
+                        from zqtz
+                        full outer join tyw using (report_date)
+                        """,
+                        [position_scope, currency_basis, *dates, position_scope, currency_basis, *dates],
+                    ).fetchall()
+            finally:
+                conn.close()
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
+        return {
+            str(report_date): {
+                "report_date": str(report_date),
+                "total_market_value_amount": total_market_value_amount,
+            }
+            for report_date, total_market_value_amount in rows
+        }
+
     def fetch_latest_zqtz_asset_market_value(
         self,
         *,

@@ -40,6 +40,8 @@ from backend.app.schemas.balance_analysis import (
     BalanceAnalysisDetailRow,
     BalanceAnalysisEventCalendarRow,
     BalanceAnalysisEventCalendarSection,
+    BalanceAnalysisMetricDefinition,
+    BalanceAnalysisOverviewPayload,
     BalanceAnalysisPayload,
     BalanceAnalysisRiskAlertRow,
     BalanceAnalysisRiskAlertsSection,
@@ -90,6 +92,77 @@ class BalanceAnalysisRefreshServiceError(RuntimeError):
 
 class BalanceAnalysisRefreshConflictError(RuntimeError):
     pass
+
+
+def _balance_analysis_metric_definitions() -> list[BalanceAnalysisMetricDefinition]:
+    return [
+        BalanceAnalysisMetricDefinition(
+            key="asset_total_market_value_amount",
+            label="资产市值合计",
+            source_field="market_value_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="asset_total_amortized_cost_amount",
+            label="资产摊余成本合计",
+            source_field="amortized_cost_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式资产头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="asset_total_accrued_interest_amount",
+            label="资产应计利息合计",
+            source_field="accrued_interest_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式资产头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="liability_total_market_value_amount",
+            label="负债市值合计",
+            source_field="market_value_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式负债头寸市值金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="liability_total_amortized_cost_amount",
+            label="负债摊余成本合计",
+            source_field="amortized_cost_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式负债头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="liability_total_accrued_interest_amount",
+            label="负债应计利息合计",
+            source_field="accrued_interest_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式负债头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+        ),
+    ]
 
 
 def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[str, object]:
@@ -216,6 +289,23 @@ def balance_analysis_overview_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
+    payload = BalanceAnalysisOverviewPayload(
+        report_date=str(overview["report_date"]),
+        position_scope=str(overview["position_scope"]),  # type: ignore[arg-type]
+        currency_basis=str(overview["currency_basis"]),  # type: ignore[arg-type]
+        detail_row_count=int(overview["detail_row_count"]),
+        summary_row_count=int(overview["summary_row_count"]),
+        total_market_value_amount=_as_decimal(overview["total_market_value_amount"]),
+        total_amortized_cost_amount=_as_decimal(overview["total_amortized_cost_amount"]),
+        total_accrued_interest_amount=_as_decimal(overview["total_accrued_interest_amount"]),
+        asset_total_market_value_amount=_as_decimal(overview["asset_total_market_value_amount"]),
+        liability_total_market_value_amount=_as_decimal(overview["liability_total_market_value_amount"]),
+        asset_total_amortized_cost_amount=_as_decimal(overview["asset_total_amortized_cost_amount"]),
+        liability_total_amortized_cost_amount=_as_decimal(overview["liability_total_amortized_cost_amount"]),
+        asset_total_accrued_interest_amount=_as_decimal(overview["asset_total_accrued_interest_amount"]),
+        liability_total_accrued_interest_amount=_as_decimal(overview["liability_total_accrued_interest_amount"]),
+        metric_definitions=_balance_analysis_metric_definitions(),
+    )
     env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_overview_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.overview",
@@ -227,22 +317,7 @@ def balance_analysis_overview_envelope(
             field_name=field_name,
             report_date=report_date,
         ),
-        result_payload={
-            "report_date": str(overview["report_date"]),
-            "position_scope": str(overview["position_scope"]),
-            "currency_basis": str(overview["currency_basis"]),
-            "detail_row_count": int(overview["detail_row_count"]),
-            "summary_row_count": int(overview["summary_row_count"]),
-            "total_market_value_amount": _as_decimal(overview["total_market_value_amount"]),
-            "total_amortized_cost_amount": _as_decimal(overview["total_amortized_cost_amount"]),
-            "total_accrued_interest_amount": _as_decimal(overview["total_accrued_interest_amount"]),
-            "asset_total_market_value_amount": _as_decimal(overview["asset_total_market_value_amount"]),
-            "liability_total_market_value_amount": _as_decimal(overview["liability_total_market_value_amount"]),
-            "asset_total_amortized_cost_amount": _as_decimal(overview["asset_total_amortized_cost_amount"]),
-            "liability_total_amortized_cost_amount": _as_decimal(overview["liability_total_amortized_cost_amount"]),
-            "asset_total_accrued_interest_amount": _as_decimal(overview["asset_total_accrued_interest_amount"]),
-            "liability_total_accrued_interest_amount": _as_decimal(overview["liability_total_accrued_interest_amount"]),
-        },
+        result_payload=payload.model_dump(mode="json"),
     )
     return {
         **env,

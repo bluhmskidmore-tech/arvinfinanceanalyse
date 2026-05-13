@@ -13,6 +13,7 @@ import type {
   BalanceAnalysisBasisBreakdownPayload,
   BalanceAnalysisDecisionItemsPayload,
   BalanceAnalysisDetailRow,
+  BalanceAnalysisMetricDefinition,
   BalanceAnalysisOverviewPayload,
   BalanceAnalysisPayload,
   BalanceAnalysisSummaryTablePayload,
@@ -24,6 +25,11 @@ import type {
 } from "../api/contracts";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 import { routerFuture } from "../router/routerFuture";
+import {
+  buildBalanceDetailGridRows,
+  getBalanceDetailGridRowId,
+  getBalanceSummaryGridRowId,
+} from "../features/balance-analysis/pages/balanceAnalysisGridRows";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="balance-analysis-echarts-stub" />,
@@ -644,6 +650,52 @@ function buildBalanceMovementResponse(): ApiEnvelope<BalanceMovementPayload> {
 }
 
 describe("BalanceAnalysisPage", () => {
+  it("builds stable grid row ids from row dimensions when row_key is reused", () => {
+    const baseSummaryRow: BalanceAnalysisSummaryTablePayload["rows"][number] = {
+      row_key: "zqtz:reused:CNY:asset",
+      source_family: "zqtz",
+      display_name: "240001.IB",
+      owner_name: "利率债组合",
+      category_name: "交易账户",
+      position_scope: "asset",
+      currency_basis: "CNY",
+      invest_type_std: "A",
+      accounting_basis: "FVOCI",
+      detail_row_count: 3,
+      market_value_amount: "72000000000.00",
+      amortized_cost_amount: "64800000000.00",
+      accrued_interest_amount: "3600000000.00",
+    };
+
+    expect(getBalanceSummaryGridRowId(baseSummaryRow)).not.toBe(
+      getBalanceSummaryGridRowId({ ...baseSummaryRow, display_name: "240002.IB" }),
+    );
+
+    const baseDetailRow: BalanceAnalysisDetailRow = {
+      source_family: "zqtz",
+      report_date: "2026-04-30",
+      row_key: "zqtz:reused:CNY:asset",
+      display_name: "240001.IB",
+      position_scope: "asset",
+      currency_basis: "CNY",
+      invest_type_std: "A",
+      accounting_basis: "FVOCI",
+      market_value_amount: "72000000000.00",
+      amortized_cost_amount: "64800000000.00",
+      accrued_interest_amount: "3600000000.00",
+      is_issuance_like: false,
+    };
+
+    expect(getBalanceDetailGridRowId(baseDetailRow)).not.toBe(
+      getBalanceDetailGridRowId({ ...baseDetailRow, accounting_basis: "AC" }),
+    );
+
+    expect(buildBalanceDetailGridRows([baseDetailRow, { ...baseDetailRow }]).map((row) => row.__gridId)).toEqual([
+      `${getBalanceDetailGridRowId(baseDetailRow)}|0`,
+      `${getBalanceDetailGridRowId(baseDetailRow)}|1`,
+    ]);
+  });
+
   it("defers below-fold analytical queries until first-screen balance signals settle", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const overviewDeferred = createDeferred<ApiEnvelope<BalanceAnalysisOverviewPayload>>();
@@ -780,6 +832,103 @@ describe("BalanceAnalysisPage", () => {
     });
   });
 
+  it("shows the summary table without waiting for the workbook payload", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const workbookDeferred = createDeferred<ApiEnvelope<BalanceAnalysisWorkbookPayload>>();
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates"),
+      result: {
+        report_dates: ["2025-12-31"],
+      },
+    }));
+    const getOverviewSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.overview", "tr_balance_overview"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        detail_row_count: 7,
+        summary_row_count: 3,
+        total_market_value_amount: "542644495360.584",
+        total_amortized_cost_amount: "536720941400.052",
+        total_accrued_interest_amount: "226236994.44",
+        asset_total_market_value_amount: "358071509295.064",
+        liability_total_market_value_amount: "184572986065.52",
+        asset_total_amortized_cost_amount: "351498551773.792",
+        liability_total_amortized_cost_amount: "185222389626.26",
+        asset_total_accrued_interest_amount: "212240408.23",
+        liability_total_accrued_interest_amount: "13996586.21",
+      },
+    }));
+    const getWorkbookSpy = vi.fn(() => workbookDeferred.promise);
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
+      result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all",
+        currency_basis: "CNY",
+        details: [],
+        summary: [],
+      },
+    }));
+    const getBasisBreakdownSpy = vi.fn(
+      async (): Promise<ApiEnvelope<BalanceAnalysisBasisBreakdownPayload>> => ({
+        result_meta: buildMeta("balance-analysis.basis-breakdown", "tr_balance_basis"),
+        result: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          rows: [],
+        },
+      }),
+    );
+    const getAdvancedAttributionSpy = vi.fn(
+      async (): Promise<ApiEnvelope<BalanceAnalysisAdvancedAttributionBundlePayload>> => ({
+        result_meta: buildMeta("balance-analysis.advanced-attribution", "tr_balance_advanced"),
+        result: {
+          report_date: "2025-12-31",
+          mode: "analytical",
+          scenario_name: null,
+          scenario_inputs: {},
+          upstream_summaries: {},
+          status: "not_ready",
+          missing_inputs: [],
+          blocked_components: [],
+          warnings: [],
+        },
+      }),
+    );
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
+      getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisSummaryByBasis: getBasisBreakdownSpy,
+      getBalanceAnalysisAdvancedAttribution: getAdvancedAttributionSpy,
+      getBalanceAnalysisDecisionItems: vi.fn(async () => buildDecisionItemsResponse()),
+    });
+
+    const summaryTable = await screen.findByTestId("balance-analysis-summary-table");
+    await waitFor(() => {
+      expect(getSummarySpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "all",
+        currencyBasis: "CNY",
+        limit: 2,
+        offset: 0,
+      });
+      expect(summaryTable).toHaveTextContent("利率债组合");
+    });
+    expect(getWorkbookSpy).toHaveBeenCalled();
+    expect(getDetailSpy).not.toHaveBeenCalled();
+    expect(getBasisBreakdownSpy).not.toHaveBeenCalled();
+    expect(getAdvancedAttributionSpy).not.toHaveBeenCalled();
+  });
+
   it("renders cockpit cards and a paginated summary table from the dedicated summary query", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const getDatesSpy = vi.fn(async () => ({
@@ -805,6 +954,30 @@ describe("BalanceAnalysisPage", () => {
         liability_total_amortized_cost_amount: "185222389626.26",
         asset_total_accrued_interest_amount: "212240408.23",
         liability_total_accrued_interest_amount: "13996586.21",
+        metric_definitions: [
+          {
+            key: "asset_total_market_value_amount",
+            label: "资产市值合计",
+            source_field: "market_value_amount",
+            raw_unit: "yuan",
+            display_unit: "yi_yuan",
+            basis: "formal",
+            source_surface: "formal_balance",
+            applies_to: ["overview", "summary", "detail"],
+            description: "正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+          },
+          {
+            key: "liability_total_accrued_interest_amount",
+            label: "负债应计利息合计",
+            source_field: "accrued_interest_amount",
+            raw_unit: "yuan",
+            display_unit: "yi_yuan",
+            basis: "formal",
+            source_surface: "formal_balance",
+            applies_to: ["overview", "summary", "detail"],
+            description: "正式负债头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+          },
+        ] satisfies BalanceAnalysisMetricDefinition[],
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => {
@@ -918,20 +1091,22 @@ describe("BalanceAnalysisPage", () => {
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
     expect(screen.getByTestId("balance-workbench")).toBeInTheDocument();
-    expect(screen.getByTestId("balance-analysis-kpi-bars-empty")).toBeInTheDocument();
-    expect(screen.getByTestId("balance-analysis-kpi-bars-empty")).toHaveTextContent(
-      "暂无 KPI 条带数据",
-    );
+    expect(screen.getByTestId("balance-analysis-command-deck")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-status-rail")).toBeInTheDocument();
+    expect(screen.queryByTestId("balance-analysis-kpi-bars-empty")).not.toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-workbench-grid")).toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-page-title")).toHaveTextContent("资产负债分析");
     expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
-      "正式/分析口径",
+      "正式链路",
     );
-    expect(screen.getByRole("heading", { name: "正式状态摘要" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "本日判断横幅" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "正式状态摘要" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正式状态判断" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
     const pageText = screen.getByTestId("balance-analysis-page").textContent ?? "";
+    expect(pageText.indexOf("资产负债分析")).toBeLessThan(pageText.indexOf("正式状态判断"));
+    expect(pageText.indexOf("正式状态判断")).toBeLessThan(pageText.indexOf("资产市值合计"));
+    expect(pageText.indexOf("资产市值合计")).toBeLessThan(pageText.indexOf("资产负债结构"));
     expect(pageText.indexOf("正式汇总驾驶舱")).toBeLessThan(pageText.indexOf("辅助分析口径"));
     expect(screen.getByTestId("balance-analysis-supplemental-panels")).not.toHaveAttribute("open");
 
@@ -956,6 +1131,13 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("1,845.73");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("7");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("3");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("正式汇总查询");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("正式明细查询");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("工作簿摘要卡");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("指标定义");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("2 项");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("亿元");
+      expect(screen.getByTestId("balance-analysis-status-rail")).toHaveTextContent("正式资产头寸市值金额合计");
     });
 
     expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
@@ -2285,8 +2467,11 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("72.00");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("债券资产(剔除发行类)");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("1,000.00");
-      expect(screen.getByTestId("balance-analysis-page")).toHaveTextContent("质量 陈旧");
-      expect(screen.getByTestId("balance-analysis-page")).toHaveTextContent("降级 最新快照降级");
+      const statusRail = screen.getByTestId("balance-analysis-status-rail");
+      expect(within(statusRail).getByText("质量")).toBeInTheDocument();
+      expect(within(statusRail).getByText("陈旧")).toBeInTheDocument();
+      expect(within(statusRail).getByText("降级")).toBeInTheDocument();
+      expect(within(statusRail).getByText("最新快照降级")).toBeInTheDocument();
     });
   });
 

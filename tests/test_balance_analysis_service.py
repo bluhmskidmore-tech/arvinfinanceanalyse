@@ -169,6 +169,20 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
     assert payload["result"]["detail_row_count"] == 2
+    definitions = {item["key"]: item for item in payload["result"]["metric_definitions"]}
+    assert definitions["asset_total_market_value_amount"] == {
+        "key": "asset_total_market_value_amount",
+        "label": "资产市值合计",
+        "source_field": "market_value_amount",
+        "raw_unit": "yuan",
+        "display_unit": "yi_yuan",
+        "basis": "formal",
+        "source_surface": "formal_balance",
+        "applies_to": ["overview", "summary", "detail"],
+        "description": "正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+    }
+    assert definitions["liability_total_accrued_interest_amount"]["label"] == "负债应计利息合计"
+    assert definitions["liability_total_accrued_interest_amount"]["source_field"] == "accrued_interest_amount"
     assert isinstance(payload["calibration"], dict)
     assert payload["data_source"] == "balance_analysis_facts"
     assert payload["calibration"]["data_basis"] == "formal_facts"

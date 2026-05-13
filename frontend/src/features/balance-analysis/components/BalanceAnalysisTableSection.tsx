@@ -272,6 +272,7 @@ export function BalanceAnalysisTableSection({
             style={{ ...tableShellStyle, height: 240, width: "100%" }}
           >
             <AgGridReact<BalanceAnalysisBasisBreakdownRow>
+              theme="legacy"
               rowData={basisBreakdownQuery.data?.result.rows ?? []}
               columnDefs={balanceBasisBreakdownColDefs}
               defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -355,6 +356,7 @@ export function BalanceAnalysisTableSection({
             style={{ ...tableShellStyle, height: 360, width: "100%", padding: 0 }}
           >
             <AgGridReact<BalanceAnalysisTableRow>
+              theme="legacy"
               rowData={summaryTable?.rows ?? []}
               columnDefs={balanceSummaryColDefs}
               defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -417,6 +419,7 @@ export function BalanceAnalysisTableSection({
                   style={{ ...tableShellStyle, height: 200, width: "100%" }}
                 >
                   <AgGridReact<BalanceAnalysisSummaryRow>
+                    theme="legacy"
                     rowData={detailQuery.data?.result.summary ?? []}
                     columnDefs={balanceDetailSummaryColDefs}
                     defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -457,6 +460,7 @@ export function BalanceAnalysisTableSection({
                 }}
               >
                 <AgGridReact<BalanceAnalysisDetailRow>
+                  theme="legacy"
                   rowData={detailQuery.data?.result.details ?? []}
                   columnDefs={balanceDetailColDefs}
                   defaultColDef={balanceAnalysisGridDefaultColDef}

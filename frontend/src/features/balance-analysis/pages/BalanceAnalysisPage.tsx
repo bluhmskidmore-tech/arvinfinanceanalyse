@@ -13,7 +13,6 @@ import { useApiClient } from "../../../api/client";
 import type {
   BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemStatusRow,
-  BalanceAnalysisDetailRow,
   BalanceAnalysisEventCalendarRow,
   BalanceAnalysisRiskAlertRow,
   BalanceAnalysisSeverity,
@@ -42,11 +41,6 @@ import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import {
-  firstScreenGridStyle,
-  formalHeroStyle,
-  heroMetaRowStyle,
-  heroDetailGridStyle,
-  heroDetailCardStyle,
   stagedScenarioShellStyle,
   controlBarStyle,
   controlStyle,
@@ -64,7 +58,6 @@ import {
   currentUserCardStyle,
   barTrackStyle,
 } from "./BalanceAnalysisPage.styles";
-import { heroMetaChipStyle } from "./BalanceAnalysisPage.helpers";
 import {
   buildBalanceHeadlineCards,
   distributionChartBarWidthPercent,
@@ -85,6 +78,11 @@ import {
   maxFiniteChartScale,
   parseBalanceChartMagnitude,
 } from "./balanceAnalysisPageModel";
+import {
+  buildBalanceDetailGridRows,
+  getBalanceSummaryGridRowId,
+  type BalanceAnalysisDetailGridRow,
+} from "./balanceAnalysisGridRows";
 
 const PAGE_SIZE = 2;
 
@@ -289,7 +287,7 @@ const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
   },
 ];
 
-const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
+const balanceDetailColDefs: ColDef<BalanceAnalysisDetailGridRow>[] = [
   {
     field: "source_family",
     headerName: "来源",
@@ -1448,6 +1446,7 @@ export default function BalanceAnalysisPage() {
     !overviewQuery.isLoading &&
     !workbookQuery.isLoading &&
     !decisionItemsQuery.isLoading;
+  const summaryQueryEnabled = Boolean(selectedReportDate) && overviewQuery.isSuccess;
 
   useEffect(() => {
     if (!selectedReportDate || !firstScreenQueriesSettled) {
@@ -1493,7 +1492,7 @@ export default function BalanceAnalysisPage() {
       currencyBasis,
       summaryOffset,
     ],
-    enabled: deferredAnalysisQueriesEnabled,
+    enabled: summaryQueryEnabled,
     queryFn: () =>
       client.getBalanceAnalysisSummary({
         reportDate: selectedReportDate,
@@ -1573,6 +1572,7 @@ export default function BalanceAnalysisPage() {
   const workbook = workbookQuery.data?.result;
   const summaryTable = summaryQuery.data?.result;
   const detailSummaryGridRows = buildBalanceDetailSummaryGridRows(detailQuery.data?.result.summary ?? []);
+  const detailGridRows = buildBalanceDetailGridRows(detailQuery.data?.result.details ?? []);
   const decisionRows = decisionItems?.rows ?? [];
   const workbookTables = workbook?.tables ?? [];
   const workbookOperationalSections = workbook?.operational_sections ?? [];
@@ -1869,12 +1869,17 @@ export default function BalanceAnalysisPage() {
         title="资产负债分析"
         titleTestId="balance-analysis-page-title"
         questionTestId="balance-analysis-page-subtitle"
-        businessQuestion="以报告日、头寸范围和币种口径为统一页首筛选，先读正式汇总驾驶舱，再进入工作簿主栏与治理右侧栏。保留现有接口合约、结果元信息和正式/分析口径边界，不在前端补算正式指标。"
+        businessQuestion="正式链路下先看规模、质量和治理信号，再进入汇总与工作簿下钻。"
         eyebrow="总览"
         reportDateSlot={
           <span data-testid="balance-analysis-report-date-slot">报告日 {selectedReportDate || "—"}</span>
         }
-        conclusion={<span style={{ fontSize: 13, color: designTokens.color.neutral[700] }}>口径与头寸变更后请先确认汇总驾驶舱，再向下钻取工作簿与治理侧栏。</span>}
+        conclusion={
+          <span style={{ fontSize: 13, color: designTokens.color.neutral[700] }}>
+            头寸范围 {formatBalanceScopeLabel(overview?.position_scope ?? positionScope)} · 币种口径{" "}
+            {formatCurrencyBasisLabel(overview?.currency_basis ?? currencyBasis)}
+          </span>
+        }
         actions={
           <div
             style={{
@@ -1996,159 +2001,6 @@ export default function BalanceAnalysisPage() {
         </div>
       )}
 
-      <PageSectionLead
-        eyebrow="正式口径"
-        title="正式状态摘要"
-        description="首屏只提正式总览、工作簿和受治理决策信号。先确认报告日口径与正式汇总，再决定进入汇总、明细还是右侧治理栏。"
-      />
-      <div style={firstScreenGridStyle}>
-        <section style={formalHeroStyle}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <span
-              style={{
-                color: shellTokens.colorTextMuted,
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              正式快照
-            </span>
-            <div
-              style={{
-                fontSize: "clamp(24px, 3vw, 31px)",
-                lineHeight: 1.18,
-                fontWeight: 700,
-                letterSpacing: 0,
-                color: shellTokens.colorTextPrimary,
-                maxWidth: 720,
-              }}
-            >
-              当前页先回答正式口径下的规模、口径和治理信号，不再把静态演示指标放进首屏结论。
-            </div>
-            <p
-              style={{
-                margin: 0,
-                color: shellTokens.colorTextSecondary,
-                fontSize: 14,
-                lineHeight: 1.8,
-                maxWidth: 760,
-              }}
-            >
-              报告日 {(overview?.report_date ?? selectedReportDate) || "—"}，范围 {formatBalanceScopeLabel(overview?.position_scope ?? positionScope)}，
-              币种口径 {formatCurrencyBasisLabel(overview?.currency_basis ?? currencyBasis)}。如果降级、质量或
-              治理信号异常，优先进入下方正式汇总驾驶舱和右侧治理栏核对，而不是依赖分析口径衍生结论。
-            </p>
-          </div>
-
-          <div style={heroMetaRowStyle}>
-            <span
-              style={{
-                ...heroMetaChipStyle(overviewMeta?.basis === "formal" ? "positive" : "neutral"),
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "7px 11px",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              口径 {overviewMeta?.basis ?? "—"}
-            </span>
-            <span
-              style={{
-                ...heroMetaChipStyle(
-                  overviewMeta?.formal_use_allowed ? "positive" : "warning",
-                ),
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "7px 11px",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              正式可用 {overviewMeta?.formal_use_allowed === undefined ? "—" : overviewMeta.formal_use_allowed ? "是" : "否"}
-            </span>
-            <span
-              style={{
-                ...heroMetaChipStyle(overviewMeta?.quality_flag === "ok" ? "positive" : "warning"),
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "7px 11px",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              质量{" "}
-              {overviewMeta?.quality_flag === "ok"
-                ? "正常"
-                : overviewMeta?.quality_flag === "warning"
-                  ? "预警"
-                  : overviewMeta?.quality_flag === "error"
-                    ? "错误"
-                    : overviewMeta?.quality_flag === "stale"
-                      ? "陈旧"
-                      : "—"}
-            </span>
-            <span
-              style={{
-                ...heroMetaChipStyle(
-                  overviewMeta?.fallback_mode && overviewMeta.fallback_mode !== "none"
-                    ? "warning"
-                    : "accent",
-                ),
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "7px 11px",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              降级{" "}
-              {overviewMeta?.fallback_mode === "none"
-                ? "未降级"
-                : overviewMeta?.fallback_mode === "latest_snapshot"
-                  ? "最新快照降级"
-                  : overviewMeta?.fallback_mode ?? "—"}
-            </span>
-          </div>
-
-          <div style={heroDetailGridStyle}>
-            <div style={heroDetailCardStyle}>
-              <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>正式汇总查询</span>
-              <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 22 }}>
-                {String(overview?.summary_row_count ?? "—")}
-              </strong>
-              <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
-                汇总行，决定首轮汇总阅读范围
-              </span>
-            </div>
-            <div style={heroDetailCardStyle}>
-              <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>正式明细查询</span>
-              <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 22 }}>
-                {String(overview?.detail_row_count ?? "—")}
-              </strong>
-              <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
-                明细行，下钻时再进入明细接口
-              </span>
-            </div>
-            <div style={heroDetailCardStyle}>
-              <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>工作簿摘要卡</span>
-              <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 22 }}>
-                {String(workbook?.cards.length ?? 0)}
-              </strong>
-              <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
-                工作簿摘要，保留业务语义更强的正式摘要
-              </span>
-            </div>
-          </div>
-        </section>
-      </div>
-
       <BalanceAnalysisWorkbenchLayout
         overview={overview}
         summary={summaryTable}
@@ -2191,7 +2043,6 @@ export default function BalanceAnalysisPage() {
           isLoading={
             datesQuery.isLoading ||
             overviewQuery.isLoading ||
-            deferredAnalysisQueriesPending ||
             summaryQuery.isLoading
           }
           isError={
@@ -2216,10 +2067,11 @@ export default function BalanceAnalysisPage() {
             style={{ ...tableShellStyle, height: 360, width: "100%", padding: 0 }}
           >
             <AgGridReact<BalanceAnalysisTableRow>
+              theme="legacy"
               rowData={summaryTable?.rows ?? []}
               columnDefs={balanceSummaryColDefs}
               defaultColDef={balanceAnalysisGridDefaultColDef}
-              getRowId={(p) => String(p.data.row_key)}
+              getRowId={(p) => getBalanceSummaryGridRowId(p.data)}
             />
           </div>
           <div
@@ -2266,6 +2118,7 @@ export default function BalanceAnalysisPage() {
                   style={{ ...tableShellStyle, height: 200, width: "100%" }}
                 >
                   <AgGridReact<BalanceAnalysisSummaryGridRow>
+                    theme="legacy"
                     rowData={detailSummaryGridRows}
                     columnDefs={balanceDetailSummaryColDefs}
                     defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -2295,11 +2148,12 @@ export default function BalanceAnalysisPage() {
                 data-testid="balance-analysis-table"
                 style={{ ...tableShellStyle, height: 320, width: "100%", padding: 0, marginTop: 8 }}
               >
-                <AgGridReact<BalanceAnalysisDetailRow>
-                  rowData={detailQuery.data?.result.details ?? []}
+                <AgGridReact<BalanceAnalysisDetailGridRow>
+                  theme="legacy"
+                  rowData={detailGridRows}
                   columnDefs={balanceDetailColDefs}
                   defaultColDef={balanceAnalysisGridDefaultColDef}
-                  getRowId={(p) => String(p.data.row_key)}
+                  getRowId={(p) => p.data.__gridId}
                 />
               </div>
             )}
@@ -2340,6 +2194,7 @@ export default function BalanceAnalysisPage() {
               style={{ ...tableShellStyle, height: 240, width: "100%" }}
             >
               <AgGridReact<BalanceAnalysisBasisBreakdownRow>
+                theme="legacy"
                 rowData={basisBreakdownQuery.data?.result.rows ?? []}
                 columnDefs={balanceBasisBreakdownColDefs}
                 defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -2752,6 +2607,7 @@ export default function BalanceAnalysisPage() {
                   style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
                 >
                   <AgGridReact
+                    theme="legacy"
                     rowData={table.rows.map((row, index) =>
                       Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
                     )}

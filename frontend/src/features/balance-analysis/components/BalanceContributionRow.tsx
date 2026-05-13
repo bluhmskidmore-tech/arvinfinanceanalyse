@@ -57,6 +57,7 @@ export function BalanceContributionRow({ model }: BalanceContributionRowProps) {
         <div style={{ fontSize: 14, fontWeight: 700, color: "#162033", marginBottom: 10 }}>资产/负债/缺口贡献</div>
         <div className="ag-theme-alpine" style={{ ...tableShellStyle, height: 300, width: "100%" }}>
           <AgGridReact<BalanceStageContributionRow>
+            theme="legacy"
             rowData={model.rows}
             columnDefs={contributionColDefs}
             defaultColDef={{ sortable: false, resizable: true }}

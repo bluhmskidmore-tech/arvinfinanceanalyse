@@ -17,6 +17,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_balance_analysis_materialize_flow import (
     _patch_skip_fx_refresh,
@@ -37,6 +38,7 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
     task_mod = load_module(
@@ -313,6 +315,74 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "liability_total_amortized_cost_amount": "72.00000000",
         "asset_total_accrued_interest_amount": "36.00000000",
         "liability_total_accrued_interest_amount": "14.40000000",
+        "metric_definitions": [
+            {
+                "key": "asset_total_market_value_amount",
+                "label": "资产市值合计",
+                "source_field": "market_value_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "asset_total_amortized_cost_amount",
+                "label": "资产摊余成本合计",
+                "source_field": "amortized_cost_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "asset_total_accrued_interest_amount",
+                "label": "资产应计利息合计",
+                "source_field": "accrued_interest_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_market_value_amount",
+                "label": "负债市值合计",
+                "source_field": "market_value_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸市值金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_amortized_cost_amount",
+                "label": "负债摊余成本合计",
+                "source_field": "amortized_cost_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_accrued_interest_amount",
+                "label": "负债应计利息合计",
+                "source_field": "accrued_interest_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+            },
+        ],
     }
 
     workbook_response = client.get(
