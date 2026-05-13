@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v1"
+FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v2"
 ACTIVE_MARKET_STATES = {"WARM", "HOT", "OVERHEAT"}
 MIN_HISTORY = 120
 EMA_WINDOW = 10
+MAX_RANKED = 6
 
 
 @dataclass(frozen=True)
@@ -71,19 +72,20 @@ def compute_stock_candidates(
         items,
         key=_candidate_sort_key,
     )
+    truncated = ordered[:MAX_RANKED]
     ranked = [
         {
             "rank": index,
             **row,
         }
-        for index, row in enumerate(ordered, start=1)
+        for index, row in enumerate(truncated, start=1)
     ]
     return StockCandidateResult(
         payload=_build_payload(
             as_of_date=as_of_date,
             market_state=market_state,
             input_stock_count=len(snapshots),
-            excluded_stock_count=excluded_stock_count,
+            excluded_stock_count=excluded_stock_count + max(0, len(ordered) - MAX_RANKED),
             insufficient_history_count=insufficient_history_count,
             items=ranked,
         )

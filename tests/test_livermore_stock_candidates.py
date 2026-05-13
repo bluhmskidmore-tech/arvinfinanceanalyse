@@ -178,3 +178,57 @@ def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> No
     )
     assert off_result.payload["candidate_count"] == 0
     assert off_result.payload["items"] == []
+
+
+def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_tail() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    snapshots = [
+        _snapshot(
+            stock_code=f"00000{index}.SZ",
+            stock_name=f"Stock {index}",
+            sector_code="801001",
+            sector_name="AI",
+            sector_rank=1,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=current_turnover),
+            open_value=21.55,
+            high_value=22.0,
+            low_value=21.6,
+        )
+        for index, current_turnover in enumerate([1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0], start=1)
+    ]
+    snapshots.append(
+        _snapshot(
+            stock_code="999999.SZ",
+            stock_name="Excluded",
+            sector_code="801009",
+            sector_name="Other",
+            sector_rank=4,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=1.5),
+            open_value=21.55,
+            high_value=22.0,
+            low_value=21.6,
+        )
+    )
+
+    result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=snapshots,
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    assert payload["candidate_count"] == 6
+    assert payload["excluded_stock_count"] == 3
+
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert [row["stock_code"] for row in items] == [
+        "000008.SZ",
+        "000007.SZ",
+        "000006.SZ",
+        "000005.SZ",
+        "000004.SZ",
+        "000003.SZ",
+    ]
+    assert [row["rank"] for row in items] == [1, 2, 3, 4, 5, 6]
