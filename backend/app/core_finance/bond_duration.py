@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
@@ -86,6 +86,8 @@ def compute_macaulay_duration(
     if coupon_rate <= _ZERO:
         return years_to_maturity
 
+    if frequency <= 0:
+        frequency = 1
     freq_d = Decimal(frequency)
 
     if ytm <= _TINY:
@@ -219,6 +221,8 @@ def modified_duration_from_macaulay(
     if ytm <= Decimal("-0.99"):
         return duration
     if ytm <= 0:
+        return duration
+    if coupon_frequency <= 0:
         return duration
     divisor = Decimal("1") + ytm / Decimal(str(coupon_frequency))
     if divisor <= 0:
