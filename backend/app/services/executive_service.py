@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from threading import RLock
 from typing import Literal
+
+import duckdb
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
@@ -57,6 +62,7 @@ _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
 _CACHE_VERSION = "cv_exec_dashboard_v1"
+_logger = logging.getLogger(__name__)
 
 # Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
 _YUAN_PER_YI: float = 1e8
@@ -639,6 +645,22 @@ def _build_contribution_from_repo(
     )
 
 
+def _history_date_slice(
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int,
+) -> list[str] | None:
+    if not report_dates:
+        return None
+    if current_report_date is None:
+        return report_dates[:n]
+    try:
+        idx = report_dates.index(current_report_date)
+    except ValueError:
+        return None
+    return report_dates[idx : idx + n]
+
+
 def _fetch_aum_history(
     balance_repo: FormalZqtzBalanceMetricsRepository,
     *,
@@ -649,16 +671,28 @@ def _fetch_aum_history(
     """逐日取 _fetch_executive_aum_row(...)['total_market_value_amount']，按时间正序返回最近 n 个。
     单日异常跳过；整体异常返回 None。"""
     try:
-        if not report_dates:
+        slice_dates = _history_date_slice(report_dates, current_report_date, n)
+        if not slice_dates:
             return None
-        if current_report_date is None:
-            slice_dates = report_dates[:n]
-        else:
+        fetch_history = getattr(balance_repo, "fetch_formal_overview_history", None)
+        if callable(fetch_history):
             try:
-                idx = report_dates.index(current_report_date)
-            except ValueError:
-                return None
-            slice_dates = report_dates[idx : idx + n]
+                rows_by_date = fetch_history(
+                    report_dates=slice_dates,
+                    position_scope="asset",
+                    currency_basis="CNY",
+                )
+                values = [
+                    float(row["total_market_value_amount"])
+                    for d in slice_dates
+                    if (row := rows_by_date.get(d)) is not None
+                    and row.get("total_market_value_amount") is not None
+                ]
+                if values:
+                    values.reverse()
+                    return values
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                pass
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -682,6 +716,66 @@ def _fetch_aum_history(
         return None
 
 
+def _fetch_aum_context(
+    balance_repo: FormalZqtzBalanceMetricsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> tuple[dict[str, dict[str, object]], list[float] | None]:
+    slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
+    fetch_dates = list(slice_dates)
+    previous_report_date = _previous_report_date(report_dates, current_report_date)
+    for d in (current_report_date, previous_report_date):
+        if d is not None and d not in fetch_dates:
+            fetch_dates.append(d)
+    if not fetch_dates:
+        return {}, None
+
+    fetch_history = getattr(balance_repo, "fetch_formal_overview_history", None)
+    if callable(fetch_history):
+        try:
+            rows_by_date = fetch_history(
+                report_dates=fetch_dates,
+                position_scope="asset",
+                currency_basis="CNY",
+            )
+            if rows_by_date:
+                values = [
+                    float(row["total_market_value_amount"])
+                    for d in slice_dates
+                    if (row := rows_by_date.get(d)) is not None
+                    and row.get("total_market_value_amount") is not None
+                ]
+                if values:
+                    values.reverse()
+                return rows_by_date, values or None
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+
+    rows_by_date: dict[str, dict[str, object]] = {}
+    for d in fetch_dates:
+        try:
+            row = _fetch_executive_aum_row(
+                balance_repo,
+                report_date=d,
+                currency_basis="CNY",
+            )
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            row = None
+        if row is not None:
+            rows_by_date[d] = row
+    values = [
+        float(row["total_market_value_amount"])
+        for d in slice_dates
+        if (row := rows_by_date.get(d)) is not None
+        and row.get("total_market_value_amount") is not None
+    ]
+    if values:
+        values.reverse()
+    return rows_by_date, values or None
+
+
 def _fetch_ytd_history(
     pnl_repo: PnlRepository,
     *,
@@ -691,16 +785,31 @@ def _fetch_ytd_history(
 ) -> list[float] | None:
     """逐日取 FI + nonstd bridge 年度累计损益。"""
     try:
-        if not report_dates:
+        slice_dates = _history_date_slice(report_dates, current_report_date, n)
+        if not slice_dates:
             return None
-        if current_report_date is None:
-            slice_dates = report_dates[:n]
-        else:
+        sum_formal_history = getattr(pnl_repo, "sum_formal_total_pnl_through_report_dates", None)
+        if callable(sum_formal_history):
             try:
-                idx = report_dates.index(current_report_date)
-            except ValueError:
-                return None
-            slice_dates = report_dates[idx : idx + n]
+                formal_by_date = sum_formal_history(slice_dates)
+                sum_nonstd_history = getattr(
+                    pnl_repo,
+                    "sum_nonstd_bridge_total_pnl_through_report_dates",
+                    None,
+                )
+                nonstd_by_date = (
+                    sum_nonstd_history(slice_dates) if callable(sum_nonstd_history) else {}
+                )
+                values = [
+                    float(formal_by_date[d] + nonstd_by_date.get(d, 0))
+                    for d in slice_dates
+                    if d in formal_by_date
+                ]
+                if values:
+                    values.reverse()
+                    return values
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                pass
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -725,6 +834,58 @@ def _sum_business_ytd_pnl(pnl_repo: PnlRepository, report_date: str):
     return formal + nonstd_sum(report_date)
 
 
+def _fetch_ytd_context(
+    pnl_repo: PnlRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> tuple[dict[str, object], list[float] | None]:
+    slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
+    fetch_dates = list(slice_dates)
+    previous_report_date = _previous_report_date(report_dates, current_report_date)
+    for d in (current_report_date, previous_report_date):
+        if d is not None and d not in fetch_dates:
+            fetch_dates.append(d)
+    if not fetch_dates:
+        return {}, None
+
+    sum_formal_history = getattr(pnl_repo, "sum_formal_total_pnl_through_report_dates", None)
+    if callable(sum_formal_history):
+        try:
+            formal_by_date = sum_formal_history(fetch_dates)
+            sum_nonstd_history = getattr(
+                pnl_repo,
+                "sum_nonstd_bridge_total_pnl_through_report_dates",
+                None,
+            )
+            nonstd_by_date = (
+                sum_nonstd_history(fetch_dates) if callable(sum_nonstd_history) else {}
+            )
+            values_by_date = {
+                d: formal_by_date[d] + nonstd_by_date.get(d, 0)
+                for d in fetch_dates
+                if d in formal_by_date
+            }
+            values = [float(values_by_date[d]) for d in slice_dates if d in values_by_date]
+            if values:
+                values.reverse()
+            return values_by_date, values or None
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+
+    values_by_date: dict[str, object] = {}
+    for d in fetch_dates:
+        try:
+            values_by_date[d] = _sum_business_ytd_pnl(pnl_repo, d)
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            continue
+    values = [float(values_by_date[d]) for d in slice_dates if d in values_by_date]
+    if values:
+        values.reverse()
+    return values_by_date, values or None
+
+
 def _fetch_nim_history(
     liability_repo: LiabilityAnalyticsRepository,
     *,
@@ -734,16 +895,31 @@ def _fetch_nim_history(
 ) -> list[float] | None:
     """逐日 fetch_zqtz_rows + fetch_tyw_rows → compute_liability_yield_metrics → kpi.nim。"""
     try:
-        if not report_dates:
+        slice_dates = _history_date_slice(report_dates, current_report_date, n)
+        if not slice_dates:
             return None
-        if current_report_date is None:
-            slice_dates = report_dates[:n]
-        else:
+        fetch_zqtz_history = getattr(liability_repo, "fetch_zqtz_rows_for_dates", None)
+        fetch_tyw_history = getattr(liability_repo, "fetch_tyw_rows_for_dates", None)
+        if callable(fetch_zqtz_history) and callable(fetch_tyw_history):
             try:
-                idx = report_dates.index(current_report_date)
-            except ValueError:
-                return None
-            slice_dates = report_dates[idx : idx + n]
+                zqtz_rows_by_date = fetch_zqtz_history(slice_dates)
+                tyw_rows_by_date = fetch_tyw_history(slice_dates)
+                values: list[float] = []
+                for d in slice_dates:
+                    payload = compute_liability_yield_metrics(
+                        d,
+                        zqtz_rows_by_date.get(d, []),
+                        tyw_rows_by_date.get(d, []),
+                    )
+                    kpi = payload.get("kpi") if isinstance(payload, dict) else None
+                    v = kpi.get("nim") if isinstance(kpi, dict) else None
+                    if v is not None:
+                        values.append(float(v))
+                if values:
+                    values.reverse()
+                    return values
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                pass
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -764,6 +940,107 @@ def _fetch_nim_history(
         return None
 
 
+def _fetch_liability_rows_by_dates(
+    liability_repo: LiabilityAnalyticsRepository,
+    *,
+    report_dates: list[str],
+    batch_method_name: str,
+    single_method_name: str,
+) -> dict[str, list[dict[str, object]]]:
+    if not report_dates:
+        return {}
+    fetch_many = getattr(liability_repo, batch_method_name, None)
+    if callable(fetch_many):
+        try:
+            rows_by_date = fetch_many(report_dates)
+            return {
+                d: list(rows_by_date.get(d, []))
+                for d in report_dates
+                if isinstance(rows_by_date, dict)
+            }
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+
+    fetch_one = getattr(liability_repo, single_method_name)
+    rows_by_date: dict[str, list[dict[str, object]]] = {}
+    for d in report_dates:
+        try:
+            rows_by_date[d] = list(fetch_one(d))
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            rows_by_date[d] = []
+    return rows_by_date
+
+
+def _fetch_nim_context(
+    liability_repo: LiabilityAnalyticsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> tuple[
+    dict[str, dict[str, object]],
+    dict[str, list[dict[str, object]]],
+    dict[str, list[dict[str, object]]],
+    list[float] | None,
+]:
+    slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
+    fetch_dates = list(slice_dates)
+    if current_report_date is not None and current_report_date not in fetch_dates:
+        fetch_dates.insert(0, current_report_date)
+    previous_report_date = _previous_report_date(report_dates, current_report_date)
+    if previous_report_date is not None and previous_report_date not in fetch_dates:
+        fetch_dates.append(previous_report_date)
+    if not fetch_dates:
+        return {}, {}, {}, None
+
+    fetch_yield_rows = getattr(liability_repo, "fetch_yield_rows_for_dates", None)
+    if callable(fetch_yield_rows):
+        try:
+            zqtz_rows_by_date, tyw_rows_by_date = fetch_yield_rows(fetch_dates)
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            zqtz_rows_by_date, tyw_rows_by_date = {}, {}
+    else:
+        zqtz_rows_by_date, tyw_rows_by_date = {}, {}
+
+    if not zqtz_rows_by_date and not tyw_rows_by_date:
+        zqtz_rows_by_date = _fetch_liability_rows_by_dates(
+            liability_repo,
+            report_dates=fetch_dates,
+            batch_method_name="fetch_zqtz_yield_rows_for_dates",
+            single_method_name="fetch_zqtz_rows",
+        )
+        tyw_rows_by_date = _fetch_liability_rows_by_dates(
+            liability_repo,
+            report_dates=fetch_dates,
+            batch_method_name="fetch_tyw_yield_rows_for_dates",
+            single_method_name="fetch_tyw_rows",
+        )
+
+    payloads_by_date: dict[str, dict[str, object]] = {}
+    for d in fetch_dates:
+        try:
+            payloads_by_date[d] = compute_liability_yield_metrics(
+                d,
+                zqtz_rows_by_date.get(d, []),
+                tyw_rows_by_date.get(d, []),
+            )
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            continue
+
+    history_values: list[float] = []
+    for d in slice_dates:
+        payload = payloads_by_date.get(d)
+        kpi = payload.get("kpi") if isinstance(payload, dict) else None
+        v = kpi.get("nim") if isinstance(kpi, dict) else None
+        if v is not None:
+            history_values.append(float(v))
+    history = history_values if history_values else None
+    if history is not None:
+        history.reverse()
+
+    return payloads_by_date, zqtz_rows_by_date, tyw_rows_by_date, history
+
+
 def _fetch_dv01_history(
     bond_repo: BondAnalyticsRepository,
     *,
@@ -773,16 +1050,24 @@ def _fetch_dv01_history(
 ) -> list[float] | None:
     """逐日 fetch_risk_overview_snapshot(date)['portfolio_dv01']。"""
     try:
-        if not report_dates:
+        slice_dates = _history_date_slice(report_dates, current_report_date, n)
+        if not slice_dates:
             return None
-        if current_report_date is None:
-            slice_dates = report_dates[:n]
-        else:
+        fetch_snapshots = getattr(bond_repo, "fetch_risk_overview_snapshots", None)
+        if callable(fetch_snapshots):
             try:
-                idx = report_dates.index(current_report_date)
-            except ValueError:
-                return None
-            slice_dates = report_dates[idx : idx + n]
+                snapshots_by_date = fetch_snapshots(report_dates=slice_dates)
+                values = [
+                    float(snapshot["portfolio_dv01"])
+                    for d in slice_dates
+                    if (snapshot := snapshots_by_date.get(d)) is not None
+                    and snapshot.get("portfolio_dv01") is not None
+                ]
+                if values:
+                    values.reverse()
+                    return values
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                pass
         values: list[float] = []
         for d in slice_dates:
             try:
@@ -802,7 +1087,63 @@ def _fetch_dv01_history(
         return None
 
 
-def executive_overview(report_date: str | None = None) -> dict[str, object]:
+def _fetch_dv01_context(
+    bond_repo: BondAnalyticsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> tuple[dict[str, dict[str, object]], list[float] | None]:
+    slice_dates = _history_date_slice(report_dates, current_report_date, n) or []
+    fetch_dates = list(slice_dates)
+    previous_report_date = _previous_report_date(report_dates, current_report_date)
+    for d in (current_report_date, previous_report_date):
+        if d is not None and d not in fetch_dates:
+            fetch_dates.append(d)
+    if not fetch_dates:
+        return {}, None
+
+    fetch_snapshots = getattr(bond_repo, "fetch_risk_overview_snapshots", None)
+    if callable(fetch_snapshots):
+        try:
+            snapshots_by_date = fetch_snapshots(report_dates=fetch_dates)
+            if snapshots_by_date:
+                values = [
+                    float(snapshot["portfolio_dv01"])
+                    for d in slice_dates
+                    if (snapshot := snapshots_by_date.get(d)) is not None
+                    and snapshot.get("portfolio_dv01") is not None
+                ]
+                if values:
+                    values.reverse()
+                return snapshots_by_date, values or None
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+
+    snapshots_by_date: dict[str, dict[str, object]] = {}
+    for d in fetch_dates:
+        try:
+            snapshot = bond_repo.fetch_risk_overview_snapshot(report_date=d)
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            snapshot = None
+        if snapshot is not None:
+            snapshots_by_date[d] = snapshot
+    values = [
+        float(snapshot["portfolio_dv01"])
+        for d in slice_dates
+        if (snapshot := snapshots_by_date.get(d)) is not None
+        and snapshot.get("portfolio_dv01") is not None
+    ]
+    if values:
+        values.reverse()
+    return snapshots_by_date, values or None
+
+
+def executive_overview(
+    report_date: str | None = None,
+    *,
+    date_context: dict[str, list[str]] | None = None,
+) -> dict[str, object]:
     settings = get_settings()
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     normalized_report_date = _normalize_report_date(report_date)
@@ -824,199 +1165,316 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     ytd_history: list[float] | None = None
     nim_history: list[float] | None = None
     dv01_history: list[float] | None = None
+    row: dict[str, object] | None = None
 
-    try:
-        balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
-        balance_report_dates = _list_executive_aum_report_dates(
-            balance_repo,
-            currency_basis="CNY",
-        )
-        current_balance_report_date = normalized_report_date or (balance_report_dates[0] if balance_report_dates else None)
-        row = (
-            _fetch_executive_aum_row(
-                balance_repo,
-                report_date=current_balance_report_date,
-                currency_basis="CNY",
+    def load_aum_state() -> dict[str, object]:
+        state: dict[str, object] = {
+            "current_report_date": None,
+            "raw": None,
+            "delta": Numeric(raw=None, unit="pct", display="N/A", precision=2, sign_aware=True),
+            "history": None,
+            "row": None,
+            "source_versions": [],
+            "rule_versions": [],
+        }
+        try:
+            balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
+            balance_report_dates = (
+                _list_executive_aum_report_dates(balance_repo, currency_basis="CNY")
+                if date_context is None
+                else list(date_context.get("balance", []))
             )
-            if current_balance_report_date is not None
-            else None
-        )
-        if row is not None:
-            aum_raw = float(row["total_market_value_amount"])
-            overview_source_versions.append(row.get("source_version"))
-            overview_rule_versions.append(row.get("rule_version"))
-            previous_balance_report_date = _previous_report_date(
-                balance_report_dates,
-                current_balance_report_date,
+            current_report_date = normalized_report_date or (
+                balance_report_dates[0] if balance_report_dates else None
             )
-            if previous_balance_report_date is not None:
-                previous_row = _fetch_executive_aum_row(
-                    balance_repo,
-                    report_date=previous_balance_report_date,
-                    currency_basis="CNY",
-                )
-                if previous_row is not None:
-                    overview_source_versions.append(previous_row.get("source_version"))
-                    overview_rule_versions.append(previous_row.get("rule_version"))
-                    aum_delta = _format_percent_change(
-                        aum_raw,
-                        float(previous_row["total_market_value_amount"]),
-                    )
-        if aum_raw is not None:
-            aum_history = _fetch_aum_history(
+            state["current_report_date"] = current_report_date
+            aum_rows_by_date, history = _fetch_aum_context(
                 balance_repo,
                 report_dates=balance_report_dates,
-                current_report_date=current_balance_report_date,
+                current_report_date=current_report_date,
             )
-    except (RuntimeError, OSError, TypeError, ValueError):
-        aum_raw = None
+            state["history"] = history
+            current_row = aum_rows_by_date.get(current_report_date) if current_report_date else None
+            state["row"] = current_row
+            if current_row is not None:
+                raw = float(current_row["total_market_value_amount"])
+                state["raw"] = raw
+                state["source_versions"] = [current_row.get("source_version")]
+                state["rule_versions"] = [current_row.get("rule_version")]
+                previous_report_date = _previous_report_date(
+                    balance_report_dates,
+                    current_report_date,
+                )
+                if previous_report_date is not None:
+                    previous_row = aum_rows_by_date.get(previous_report_date)
+                    if previous_row is not None:
+                        state["source_versions"] = [
+                            *list(state["source_versions"]),
+                            previous_row.get("source_version"),
+                        ]
+                        state["rule_versions"] = [
+                            *list(state["rule_versions"]),
+                            previous_row.get("rule_version"),
+                        ]
+                        state["delta"] = _format_percent_change(
+                            raw,
+                            float(previous_row["total_market_value_amount"]),
+                        )
+        except (RuntimeError, OSError, TypeError, ValueError):
+            state["raw"] = None
+        return state
 
-    try:
-        pnl_repo = PnlRepository(str(settings.duckdb_path))
-        pnl_report_dates = list(
-            getattr(
-                pnl_repo,
-                "list_formal_fi_report_dates",
-                getattr(pnl_repo, "list_union_report_dates", lambda: []),
-            )()
-        )
-        current_pnl_report_date = normalized_report_date or (pnl_report_dates[0] if pnl_report_dates else None)
-        if current_pnl_report_date is not None:
-            ytd_raw = float(_sum_business_ytd_pnl(pnl_repo, current_pnl_report_date))
-            if governance_dir:
-                current_pnl_lineage = resolve_completed_formal_build_lineage(
-                    governance_dir=governance_dir,
-                    cache_key=PNL_CACHE_KEY,
-                    job_name=PNL_JOB_NAME,
-                    report_date=current_pnl_report_date,
+    def load_ytd_state() -> dict[str, object]:
+        state: dict[str, object] = {
+            "current_report_date": None,
+            "raw": None,
+            "delta": Numeric(raw=None, unit="pct", display="N/A", precision=2, sign_aware=True),
+            "history": None,
+            "source_versions": [],
+            "rule_versions": [],
+        }
+        try:
+            pnl_repo = PnlRepository(str(settings.duckdb_path))
+            pnl_report_dates = (
+                list(
+                    getattr(
+                        pnl_repo,
+                        "list_formal_fi_report_dates",
+                        getattr(pnl_repo, "list_union_report_dates", lambda: []),
+                    )()
                 )
-                if current_pnl_lineage is not None:
-                    overview_source_versions.append(current_pnl_lineage.get("source_version"))
-                    overview_rule_versions.append(current_pnl_lineage.get("rule_version"))
-        previous_pnl_report_date = _previous_report_date(
-            pnl_report_dates,
-            current_pnl_report_date,
-        )
-        if previous_pnl_report_date is not None:
-            if governance_dir:
-                previous_pnl_lineage = resolve_completed_formal_build_lineage(
-                    governance_dir=governance_dir,
-                    cache_key=PNL_CACHE_KEY,
-                    job_name=PNL_JOB_NAME,
-                    report_date=previous_pnl_report_date,
-                )
-                if previous_pnl_lineage is not None:
-                    overview_source_versions.append(previous_pnl_lineage.get("source_version"))
-                    overview_rule_versions.append(previous_pnl_lineage.get("rule_version"))
-            ytd_delta = _format_percent_change(
-                ytd_raw,
-                float(_sum_business_ytd_pnl(pnl_repo, previous_pnl_report_date)),
+                if date_context is None
+                else list(date_context.get("pnl", []))
             )
-        if ytd_raw is not None:
-            ytd_history = _fetch_ytd_history(
+            current_report_date = normalized_report_date or (
+                pnl_report_dates[0] if pnl_report_dates else None
+            )
+            state["current_report_date"] = current_report_date
+            ytd_values_by_date, history = _fetch_ytd_context(
                 pnl_repo,
                 report_dates=pnl_report_dates,
-                current_report_date=current_pnl_report_date,
+                current_report_date=current_report_date,
             )
-    except (RuntimeError, OSError, TypeError, ValueError):
-        ytd_raw = None
-
-    try:
-        liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
-        liability_report_date = normalized_report_date or liability_repo.resolve_latest_report_date()
-        liability_report_dates = list(getattr(liability_repo, "list_report_dates", lambda: [])())
-        if liability_report_date:
-            zqtz_rows = liability_repo.fetch_zqtz_rows(liability_report_date)
-            tyw_rows = liability_repo.fetch_tyw_rows(liability_report_date)
-            overview_source_versions.extend(_lineage_tokens_from_rows(zqtz_rows, "source_version"))
-            overview_source_versions.extend(_lineage_tokens_from_rows(tyw_rows, "source_version"))
-            overview_rule_versions.extend(_lineage_tokens_from_rows(zqtz_rows, "rule_version"))
-            overview_rule_versions.extend(_lineage_tokens_from_rows(tyw_rows, "rule_version"))
-            payload = compute_liability_yield_metrics(
-                liability_report_date,
-                zqtz_rows,
-                tyw_rows,
-            )
-            nim_value = payload.get("kpi", {}).get("nim")
-            if nim_value is not None:
-                nim_raw = float(nim_value)
-                previous_liability_report_date = _previous_report_date(
-                    liability_report_dates,
-                    liability_report_date,
-                )
-                if previous_liability_report_date is not None:
-                    previous_zqtz_rows = liability_repo.fetch_zqtz_rows(previous_liability_report_date)
-                    previous_tyw_rows = liability_repo.fetch_tyw_rows(previous_liability_report_date)
-                    overview_source_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "source_version"))
-                    overview_source_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "source_version"))
-                    overview_rule_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "rule_version"))
-                    overview_rule_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "rule_version"))
-                    previous_payload = compute_liability_yield_metrics(
-                        previous_liability_report_date,
-                        previous_zqtz_rows,
-                        previous_tyw_rows,
+            state["history"] = history
+            source_versions: list[object] = []
+            rule_versions: list[object] = []
+            raw: float | None = None
+            if current_report_date is not None:
+                if current_report_date in ytd_values_by_date:
+                    raw = float(ytd_values_by_date[current_report_date])
+                    state["raw"] = raw
+                if governance_dir:
+                    current_lineage = resolve_completed_formal_build_lineage(
+                        governance_dir=governance_dir,
+                        cache_key=PNL_CACHE_KEY,
+                        job_name=PNL_JOB_NAME,
+                        report_date=current_report_date,
                     )
-                    nim_delta = _format_ratio_point_change(
-                        nim_raw,
-                        previous_payload.get("kpi", {}).get("nim"),
+                    if current_lineage is not None:
+                        source_versions.append(current_lineage.get("source_version"))
+                        rule_versions.append(current_lineage.get("rule_version"))
+            previous_report_date = _previous_report_date(
+                pnl_report_dates,
+                current_report_date,
+            )
+            if previous_report_date is not None:
+                if governance_dir:
+                    previous_lineage = resolve_completed_formal_build_lineage(
+                        governance_dir=governance_dir,
+                        cache_key=PNL_CACHE_KEY,
+                        job_name=PNL_JOB_NAME,
+                        report_date=previous_report_date,
                     )
-        if nim_raw is not None:
-            nim_history = _fetch_nim_history(
-                liability_repo,
-                report_dates=liability_report_dates,
-                current_report_date=liability_report_date,
-            )
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-        nim_raw = None
+                    if previous_lineage is not None:
+                        source_versions.append(previous_lineage.get("source_version"))
+                        rule_versions.append(previous_lineage.get("rule_version"))
+                if previous_report_date in ytd_values_by_date:
+                    state["delta"] = _format_percent_change(
+                        raw,
+                        float(ytd_values_by_date[previous_report_date]),
+                    )
+            state["source_versions"] = source_versions
+            state["rule_versions"] = rule_versions
+        except (RuntimeError, OSError, TypeError, ValueError):
+            state["raw"] = None
+        return state
 
-    try:
-        bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
-        bond_report_dates = list(getattr(bond_repo, "list_report_dates", lambda: [])())
-        current_bond_report_date = normalized_report_date or (bond_report_dates[0] if bond_report_dates else None)
-        snapshot = (
-            bond_repo.fetch_risk_overview_snapshot(report_date=current_bond_report_date)
-            if current_bond_report_date is not None
-            else None
-        )
-        if snapshot is not None and snapshot.get("portfolio_dv01") is not None:
-            dv01_raw = float(snapshot["portfolio_dv01"])
-            if governance_dir:
-                current_bond_lineage = load_latest_bond_analytics_lineage(
-                    governance_dir=governance_dir,
-                    report_date=current_bond_report_date,
-                )
-                if current_bond_lineage is not None:
-                    overview_source_versions.append(current_bond_lineage.get("source_version"))
-                    overview_rule_versions.append(current_bond_lineage.get("rule_version"))
-            previous_bond_report_date = _previous_report_date(
-                bond_report_dates,
-                current_bond_report_date,
+    def load_nim_state() -> dict[str, object]:
+        state: dict[str, object] = {
+            "current_report_date": None,
+            "raw": None,
+            "delta": Numeric(raw=None, unit="bp", display="N/A", precision=2, sign_aware=True),
+            "history": None,
+            "source_versions": [],
+            "rule_versions": [],
+        }
+        try:
+            liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
+            liability_report_dates = (
+                list(getattr(liability_repo, "list_report_dates", lambda: [])())
+                if date_context is None
+                else list(date_context.get("liability", []))
             )
-            if previous_bond_report_date is not None:
-                previous_snapshot = bond_repo.fetch_risk_overview_snapshot(
-                    report_date=previous_bond_report_date,
+            current_report_date = normalized_report_date or (
+                liability_report_dates[0]
+                if liability_report_dates
+                else liability_repo.resolve_latest_report_date()
+            )
+            state["current_report_date"] = current_report_date
+            if current_report_date:
+                nim_payloads_by_date, zqtz_rows_by_date, tyw_rows_by_date, history = _fetch_nim_context(
+                    liability_repo,
+                    report_dates=liability_report_dates,
+                    current_report_date=current_report_date,
                 )
-                if previous_snapshot is not None and previous_snapshot.get("portfolio_dv01") is not None:
-                    if governance_dir:
-                        previous_bond_lineage = load_latest_bond_analytics_lineage(
-                            governance_dir=governance_dir,
-                            report_date=previous_bond_report_date,
+                state["history"] = history
+                zqtz_rows = zqtz_rows_by_date.get(current_report_date, [])
+                tyw_rows = tyw_rows_by_date.get(current_report_date, [])
+                source_versions: list[object] = [
+                    *_lineage_tokens_from_rows(zqtz_rows, "source_version"),
+                    *_lineage_tokens_from_rows(tyw_rows, "source_version"),
+                ]
+                rule_versions: list[object] = [
+                    *_lineage_tokens_from_rows(zqtz_rows, "rule_version"),
+                    *_lineage_tokens_from_rows(tyw_rows, "rule_version"),
+                ]
+                payload = nim_payloads_by_date.get(current_report_date, {})
+                nim_value = payload.get("kpi", {}).get("nim")
+                if nim_value is not None:
+                    raw = float(nim_value)
+                    state["raw"] = raw
+                    previous_report_date = _previous_report_date(
+                        liability_report_dates,
+                        current_report_date,
+                    )
+                    if previous_report_date is not None:
+                        previous_zqtz_rows = zqtz_rows_by_date.get(previous_report_date, [])
+                        previous_tyw_rows = tyw_rows_by_date.get(previous_report_date, [])
+                        source_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "source_version"))
+                        source_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "source_version"))
+                        rule_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "rule_version"))
+                        rule_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "rule_version"))
+                        previous_payload = nim_payloads_by_date.get(previous_report_date, {})
+                        state["delta"] = _format_ratio_point_change(
+                            raw,
+                            previous_payload.get("kpi", {}).get("nim"),
                         )
-                        if previous_bond_lineage is not None:
-                            overview_source_versions.append(previous_bond_lineage.get("source_version"))
-                            overview_rule_versions.append(previous_bond_lineage.get("rule_version"))
-                    dv01_delta = _format_percent_change(
-                        dv01_raw,
-                        float(previous_snapshot["portfolio_dv01"]),
-                    )
-        if dv01_raw is not None:
-            dv01_history = _fetch_dv01_history(
+                state["source_versions"] = source_versions
+                state["rule_versions"] = rule_versions
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            state["raw"] = None
+        return state
+
+    def load_dv01_state() -> dict[str, object]:
+        state: dict[str, object] = {
+            "current_report_date": None,
+            "raw": None,
+            "delta": Numeric(raw=None, unit="pct", display="N/A", precision=2, sign_aware=True),
+            "history": None,
+            "source_versions": [],
+            "rule_versions": [],
+        }
+        try:
+            bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
+            bond_report_dates = (
+                list(getattr(bond_repo, "list_report_dates", lambda: [])())
+                if date_context is None
+                else list(date_context.get("bond", []))
+            )
+            current_report_date = normalized_report_date or (
+                bond_report_dates[0] if bond_report_dates else None
+            )
+            state["current_report_date"] = current_report_date
+            snapshots_by_date, history = _fetch_dv01_context(
                 bond_repo,
                 report_dates=bond_report_dates,
-                current_report_date=current_bond_report_date,
+                current_report_date=current_report_date,
             )
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
-        dv01_raw = None
+            state["history"] = history
+            snapshot = snapshots_by_date.get(current_report_date) if current_report_date else None
+            source_versions: list[object] = []
+            rule_versions: list[object] = []
+            if snapshot is not None and snapshot.get("portfolio_dv01") is not None:
+                raw = float(snapshot["portfolio_dv01"])
+                state["raw"] = raw
+                if governance_dir:
+                    current_lineage = load_latest_bond_analytics_lineage(
+                        governance_dir=governance_dir,
+                        report_date=current_report_date,
+                    )
+                    if current_lineage is not None:
+                        source_versions.append(current_lineage.get("source_version"))
+                        rule_versions.append(current_lineage.get("rule_version"))
+                previous_report_date = _previous_report_date(
+                    bond_report_dates,
+                    current_report_date,
+                )
+                if previous_report_date is not None:
+                    previous_snapshot = snapshots_by_date.get(previous_report_date)
+                    if previous_snapshot is not None and previous_snapshot.get("portfolio_dv01") is not None:
+                        if governance_dir:
+                            previous_lineage = load_latest_bond_analytics_lineage(
+                                governance_dir=governance_dir,
+                                report_date=previous_report_date,
+                            )
+                            if previous_lineage is not None:
+                                source_versions.append(previous_lineage.get("source_version"))
+                                rule_versions.append(previous_lineage.get("rule_version"))
+                        state["delta"] = _format_percent_change(
+                            raw,
+                            float(previous_snapshot["portfolio_dv01"]),
+                        )
+            state["source_versions"] = source_versions
+            state["rule_versions"] = rule_versions
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            state["raw"] = None
+        return state
+
+    domain_loaders = {
+        "aum": load_aum_state,
+        "ytd": load_ytd_state,
+        "nim": load_nim_state,
+        "dv01": load_dv01_state,
+    }
+    if date_context is None:
+        domain_states = {name: loader() for name, loader in domain_loaders.items()}
+    else:
+        with ThreadPoolExecutor(max_workers=len(domain_loaders)) as executor:
+            futures = {name: executor.submit(loader) for name, loader in domain_loaders.items()}
+            domain_states = {name: future.result() for name, future in futures.items()}
+
+    aum_state = domain_states["aum"]
+    current_balance_report_date = aum_state.get("current_report_date")  # type: ignore[assignment]
+    aum_raw = aum_state.get("raw")  # type: ignore[assignment]
+    aum_delta = aum_state.get("delta")  # type: ignore[assignment]
+    aum_history = aum_state.get("history")  # type: ignore[assignment]
+    row = aum_state.get("row") if isinstance(aum_state.get("row"), dict) else None
+    overview_source_versions.extend(list(aum_state.get("source_versions", [])))  # type: ignore[arg-type]
+    overview_rule_versions.extend(list(aum_state.get("rule_versions", [])))  # type: ignore[arg-type]
+
+    ytd_state = domain_states["ytd"]
+    current_pnl_report_date = ytd_state.get("current_report_date")  # type: ignore[assignment]
+    ytd_raw = ytd_state.get("raw")  # type: ignore[assignment]
+    ytd_delta = ytd_state.get("delta")  # type: ignore[assignment]
+    ytd_history = ytd_state.get("history")  # type: ignore[assignment]
+    overview_source_versions.extend(list(ytd_state.get("source_versions", [])))  # type: ignore[arg-type]
+    overview_rule_versions.extend(list(ytd_state.get("rule_versions", [])))  # type: ignore[arg-type]
+
+    nim_state = domain_states["nim"]
+    liability_report_date = nim_state.get("current_report_date")  # type: ignore[assignment]
+    nim_raw = nim_state.get("raw")  # type: ignore[assignment]
+    nim_delta = nim_state.get("delta")  # type: ignore[assignment]
+    nim_history = nim_state.get("history")  # type: ignore[assignment]
+    overview_source_versions.extend(list(nim_state.get("source_versions", [])))  # type: ignore[arg-type]
+    overview_rule_versions.extend(list(nim_state.get("rule_versions", [])))  # type: ignore[arg-type]
+
+    dv01_state = domain_states["dv01"]
+    current_bond_report_date = dv01_state.get("current_report_date")  # type: ignore[assignment]
+    dv01_raw = dv01_state.get("raw")  # type: ignore[assignment]
+    dv01_delta = dv01_state.get("delta")  # type: ignore[assignment]
+    dv01_history = dv01_state.get("history")  # type: ignore[assignment]
+    overview_source_versions.extend(list(dv01_state.get("source_versions", [])))  # type: ignore[arg-type]
+    overview_rule_versions.extend(list(dv01_state.get("rule_versions", [])))  # type: ignore[arg-type]
 
     metrics: list[ExecutiveMetric] = []
     if aum_raw is not None:
@@ -1498,6 +1956,118 @@ def _list_domain_dates() -> dict[str, set[str]]:
     }
 
 
+def _list_domain_date_context() -> dict[str, list[str]]:
+    settings = get_settings()
+    empty_context: dict[str, list[str]] = {
+        "balance": [],
+        "pnl": [],
+        "liability": [],
+        "bond": [],
+    }
+    try:
+        conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
+    except (RuntimeError, OSError, TypeError, ValueError, duckdb.Error):
+        return empty_context
+    try:
+        def table_exists(table_name: str) -> bool:
+            row = conn.execute(
+                """
+                select 1
+                from information_schema.tables
+                where table_name = ?
+                limit 1
+                """,
+                [table_name],
+            ).fetchone()
+            return row is not None
+
+        context = {key: list(value) for key, value in empty_context.items()}
+        if table_exists("fact_formal_zqtz_balance_daily"):
+            balance_parts = [
+                """
+                select distinct cast(report_date as varchar) as d
+                from fact_formal_zqtz_balance_daily
+                where position_scope = 'asset'
+                  and currency_basis = 'CNY'
+                """
+            ]
+            if table_exists("fact_formal_tyw_balance_daily"):
+                balance_parts.append(
+                    """
+                    select distinct cast(report_date as varchar) as d
+                    from fact_formal_tyw_balance_daily
+                    where position_scope = 'asset'
+                      and currency_basis = 'CNY'
+                    """
+                )
+            rows = conn.execute(
+                f"""
+                select distinct d
+                from ({" union ".join(balance_parts)}) t
+                order by d desc
+                """
+            ).fetchall()
+            context["balance"] = [str(row[0]) for row in rows if row[0] is not None]
+
+        if table_exists("fact_formal_pnl_fi"):
+            rows = conn.execute(
+                """
+                select distinct cast(report_date as varchar) as d
+                from fact_formal_pnl_fi
+                order by d desc
+                """
+            ).fetchall()
+            context["pnl"] = [str(row[0]) for row in rows if row[0] is not None]
+
+        liability_parts: list[str] = []
+        if table_exists("zqtz_bond_daily_snapshot"):
+            liability_parts.append(
+                "select distinct cast(report_date as varchar) as d from zqtz_bond_daily_snapshot"
+            )
+        if table_exists("tyw_interbank_daily_snapshot"):
+            liability_parts.append(
+                "select distinct cast(report_date as varchar) as d from tyw_interbank_daily_snapshot"
+            )
+        if liability_parts:
+            rows = conn.execute(
+                f"""
+                select distinct d
+                from ({" union ".join(liability_parts)}) t
+                order by d desc
+                """
+            ).fetchall()
+            context["liability"] = [str(row[0]) for row in rows if row[0] is not None]
+
+        if table_exists("fact_formal_bond_analytics_daily"):
+            rows = conn.execute(
+                """
+                select distinct cast(report_date as varchar) as d
+                from fact_formal_bond_analytics_daily
+                order by d desc
+                """
+            ).fetchall()
+            context["bond"] = [str(row[0]) for row in rows if row[0] is not None]
+        return context
+    except (RuntimeError, OSError, TypeError, ValueError, duckdb.Error):
+        return empty_context
+    finally:
+        conn.close()
+
+
+def _domain_dates_from_context(context: dict[str, list[str]]) -> dict[str, set[str]]:
+    balance_dates = set(context.get("balance", []))
+    liability_dates = set(context.get("liability", []))
+    bond_dates = set(context.get("bond", []))
+    bs_components = [balance_dates, liability_dates, bond_dates]
+    balance_sheet_dates = (
+        set.intersection(*bs_components) if all(bs_components) else set()
+    )
+    return {
+        "balance_sheet": balance_sheet_dates,
+        "pnl": set(context.get("pnl", [])),
+    }
+
+
 def _compute_unified_report_date(
     *,
     requested: str | None,
@@ -1796,6 +2366,30 @@ def home_snapshot_envelope(
     return envelope
 
 
+def warm_home_snapshot_cache_if_configured(settings: object) -> bool:
+    if not bool(getattr(settings, "home_snapshot_prewarm_enabled", False)):
+        return False
+    thread = threading.Thread(
+        target=_warm_home_snapshot_cache_quietly,
+        kwargs={"report_date": None, "allow_partial": False},
+        daemon=True,
+        name="moss-home-snapshot-warmup",
+    )
+    thread.start()
+    return True
+
+
+def _warm_home_snapshot_cache_quietly(
+    *,
+    report_date: str | None,
+    allow_partial: bool,
+) -> None:
+    try:
+        home_snapshot_envelope(report_date=report_date, allow_partial=allow_partial)
+    except Exception:
+        _logger.exception("home_snapshot_prewarm_failed")
+
+
 def _compute_home_snapshot_envelope(
     *,
     report_date: str | None = None,
@@ -1806,7 +2400,8 @@ def _compute_home_snapshot_envelope(
     See ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md`` § 4.
     """
     normalized = _normalize_report_date(report_date)
-    domain_dates = _list_domain_dates()
+    date_context = _list_domain_date_context()
+    domain_dates = _domain_dates_from_context(date_context)
 
     target_date, domains_missing, effective = _compute_unified_report_date(
         requested=normalized,
@@ -1829,7 +2424,7 @@ def _compute_home_snapshot_envelope(
             },
         )
 
-    overview_env = executive_overview(report_date=target_date)
+    overview_env = executive_overview(report_date=target_date, date_context=date_context)
     attribution_env = executive_pnl_attribution(report_date=target_date)
     overview_result = OverviewPayload.model_validate(overview_env["result"])
     attribution_result = PnlAttributionPayload.model_validate(attribution_env["result"])

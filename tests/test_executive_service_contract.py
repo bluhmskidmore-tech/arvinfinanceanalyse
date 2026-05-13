@@ -9,6 +9,7 @@ import platform as _platform
 _platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
 
 import datetime as dt
+import threading
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -462,20 +463,19 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
 
     out = exec_mod.executive_overview(report_date="2025-11-20")
 
-    # Each (repo, report_date) is hit twice: main row + prior (where applicable) + one walk in
-    # _fetch_*_history for the two-date window starting at the requested date (duplicates are expected).
-    assert calls.count(("aum", "2025-11-20")) == 2
-    assert calls.count(("aum", "2025-10-31")) == 2
-    assert calls.count(("pnl", "2025-11-20")) == 2
-    assert calls.count(("pnl", "2025-10-31")) == 2
-    assert calls.count(("nonstd-pnl", "2025-11-20")) == 2
-    assert calls.count(("nonstd-pnl", "2025-10-31")) == 2
-    assert calls.count(("liab-z", "2025-11-20")) == 2
-    assert calls.count(("liab-t", "2025-11-20")) == 2
-    assert calls.count(("liab-z", "2025-10-31")) == 2
-    assert calls.count(("liab-t", "2025-10-31")) == 2
-    assert calls.count(("risk", "2025-11-20")) == 2
-    assert calls.count(("risk", "2025-10-31")) == 2
+    # Current, prior, and history share one per-date value path in the single-date fallback.
+    assert calls.count(("aum", "2025-11-20")) == 1
+    assert calls.count(("aum", "2025-10-31")) == 1
+    assert calls.count(("pnl", "2025-11-20")) == 1
+    assert calls.count(("pnl", "2025-10-31")) == 1
+    assert calls.count(("nonstd-pnl", "2025-11-20")) == 1
+    assert calls.count(("nonstd-pnl", "2025-10-31")) == 1
+    assert calls.count(("liab-z", "2025-11-20")) == 1
+    assert calls.count(("liab-t", "2025-11-20")) == 1
+    assert calls.count(("liab-z", "2025-10-31")) == 1
+    assert calls.count(("liab-t", "2025-10-31")) == 1
+    assert calls.count(("risk", "2025-11-20")) == 1
+    assert calls.count(("risk", "2025-10-31")) == 1
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert metrics["aum"]["label"] == "债券资产规模（zqtz）"
     assert "2025-11-20" in metrics["aum"]["detail"]
@@ -599,9 +599,8 @@ def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_
     _assert_numeric_json_shape(metrics["yield"]["value"])
     assert metrics["yield"]["value"]["display"] == "+6.50 亿"
     assert "2025-12-31" in metrics["yield"]["detail"]
-    # PnL YTD: current + prior delta + _fetch_ytd_history re-walks the same two dates (expected duplicate calls).
-    assert calls.count(("pnl", "2025-12-31")) == 2
-    assert calls.count(("pnl", "2025-11-30")) == 2
+    assert calls.count(("pnl", "2025-12-31")) == 1
+    assert calls.count(("pnl", "2025-11-30")) == 1
 
 
 def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(monkeypatch, exec_mod):
@@ -681,8 +680,247 @@ def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(
     assert metrics["yield"]["value"]["display"] == "+6.50 亿"
     assert "2025-12-31" in metrics["yield"]["detail"]
     assert "2026-01-31" not in metrics["yield"]["detail"]
-    assert calls.count(("pnl", "2025-12-31")) == 2
-    assert calls.count(("pnl", "2025-11-30")) == 2  # current + prior + ytd history slice (two passes each)
+    assert calls.count(("pnl", "2025-12-31")) == 1
+    assert calls.count(("pnl", "2025-11-30")) == 1
+
+
+def test_executive_overview_reuses_batch_liability_rows_for_current_prior_history(monkeypatch, exec_mod):
+    calls: list[tuple[str, object]] = []
+    dates = ["2025-12-31", "2025-11-30", "2025-10-31"]
+
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self, currency_basis: str = "CNY"):
+            return ["2025-12-31"]
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            return {"report_date": report_date, "total_market_value_amount": 321.0e8}
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_formal_fi_report_dates(self):
+            return ["2025-12-31"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            return 6.5e8
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return dates
+
+        def resolve_latest_report_date(self):
+            return "2025-12-31"
+
+        def fetch_zqtz_rows_for_dates(self, requested_dates):
+            calls.append(("z-batch", tuple(requested_dates)))
+            return {
+                d: [{"side": "z", "date": d, "source_version": f"sv-z-{d}", "rule_version": "rv-z"}]
+                for d in requested_dates
+            }
+
+        def fetch_zqtz_yield_rows_for_dates(self, requested_dates):
+            calls.append(("z-yield-batch", tuple(requested_dates)))
+            return {
+                d: [{"side": "z", "date": d, "source_version": f"sv-z-{d}", "rule_version": "rv-z"}]
+                for d in requested_dates
+            }
+
+        def fetch_yield_rows_for_dates(self, requested_dates):
+            calls.append(("yield-batch", tuple(requested_dates)))
+            return (
+                {
+                    d: [{"side": "z", "date": d, "source_version": f"sv-z-{d}", "rule_version": "rv-z"}]
+                    for d in requested_dates
+                },
+                {
+                    d: [{"side": "t", "date": d, "source_version": f"sv-t-{d}", "rule_version": "rv-t"}]
+                    for d in requested_dates
+                },
+            )
+
+        def fetch_tyw_rows_for_dates(self, requested_dates):
+            calls.append(("t-batch", tuple(requested_dates)))
+            return {
+                d: [{"side": "t", "date": d, "source_version": f"sv-t-{d}", "rule_version": "rv-t"}]
+                for d in requested_dates
+            }
+
+        def fetch_tyw_yield_rows_for_dates(self, requested_dates):
+            calls.append(("t-yield-batch", tuple(requested_dates)))
+            return {
+                d: [{"side": "t", "date": d, "source_version": f"sv-t-{d}", "rule_version": "rv-t"}]
+                for d in requested_dates
+            }
+
+        def fetch_zqtz_rows(self, report_date: str):
+            calls.append(("z-single", report_date))
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            calls.append(("t-single", report_date))
+            return []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-12-31"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return {"report_date": report_date, "portfolio_dv01": 456789.0}
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {
+                "nim": {
+                    "2025-12-31": 0.0025,
+                    "2025-11-30": 0.0020,
+                    "2025-10-31": 0.0015,
+                }[report_date],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {"status": "blocked", "reason": "test", "owner_count": 0, "year": 2025},
+    )
+
+    out = exec_mod.executive_overview()
+
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert metrics["nim"]["history"] == [0.0015, 0.002, 0.0025]
+    assert metrics["nim"]["delta"]["display"] == "+0.05pp"
+    assert ("yield-batch", tuple(dates)) in calls
+    assert ("z-yield-batch", tuple(dates)) not in calls
+    assert ("t-yield-batch", tuple(dates)) not in calls
+    assert ("z-batch", tuple(dates)) not in calls
+    assert ("t-batch", tuple(dates)) not in calls
+    assert [call for call in calls if str(call[0]).endswith("single")] == []
+
+
+def test_executive_overview_uses_parallel_domain_contexts_when_dates_are_prelisted(monkeypatch, exec_mod):
+    entered: set[str] = set()
+    lock = threading.Lock()
+    all_entered = threading.Event()
+    dates = ["2026-04-30", "2026-04-29"]
+
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    def mark_entered(name: str) -> None:
+        with lock:
+            entered.add(name)
+            if len(entered) == 4:
+                all_entered.set()
+        if not all_entered.wait(timeout=1.0):
+            raise AssertionError(f"domain context loaders did not overlap: {sorted(entered)}")
+
+    def fake_aum_context(_repo, *, report_dates, current_report_date, n=20):
+        del n
+        mark_entered("aum")
+        assert report_dates == dates
+        assert current_report_date == "2026-04-30"
+        return (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "total_market_value_amount": 100.0},
+                "2026-04-29": {"report_date": "2026-04-29", "total_market_value_amount": 90.0},
+            },
+            [90.0, 100.0],
+        )
+
+    def fake_ytd_context(_repo, *, report_dates, current_report_date, n=20):
+        del n
+        mark_entered("pnl")
+        assert report_dates == dates
+        assert current_report_date == "2026-04-30"
+        return ({"2026-04-30": 20.0, "2026-04-29": 19.0}, [19.0, 20.0])
+
+    def fake_nim_context(_repo, *, report_dates, current_report_date, n=20):
+        del n
+        mark_entered("nim")
+        assert report_dates == dates
+        assert current_report_date == "2026-04-30"
+        return (
+            {
+                "2026-04-30": {"kpi": {"nim": 0.0020}},
+                "2026-04-29": {"kpi": {"nim": 0.0015}},
+            },
+            {"2026-04-30": [{"source_version": "sv-z", "rule_version": "rv-z"}], "2026-04-29": []},
+            {"2026-04-30": [{"source_version": "sv-t", "rule_version": "rv-t"}], "2026-04-29": []},
+            [0.0015, 0.0020],
+        )
+
+    def fake_dv01_context(_repo, *, report_dates, current_report_date, n=20):
+        del n
+        mark_entered("dv01")
+        assert report_dates == dates
+        assert current_report_date == "2026-04-30"
+        return (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 300.0},
+                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 200.0},
+            },
+            [200.0, 300.0],
+        )
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(exec_mod, "_fetch_aum_context", fake_aum_context)
+    monkeypatch.setattr(exec_mod, "_fetch_ytd_context", fake_ytd_context)
+    monkeypatch.setattr(exec_mod, "_fetch_nim_context", fake_nim_context)
+    monkeypatch.setattr(exec_mod, "_fetch_dv01_context", fake_dv01_context)
+    monkeypatch.setattr(exec_mod, "resolve_completed_formal_build_lineage", lambda **_k: None)
+    monkeypatch.setattr(exec_mod, "load_latest_bond_analytics_lineage", lambda **_k: None)
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {"status": "blocked", "reason": "test", "owner_count": 0, "year": 2026},
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01"}
+    assert entered == {"aum", "pnl", "nim", "dv01"}
 
 
 def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):

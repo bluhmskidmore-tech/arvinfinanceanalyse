@@ -48,6 +48,39 @@ def test_fetch_aum_history_happy_path_ordered(es):
     assert all(type(x) is float for x in out)
 
 
+def test_fetch_aum_history_prefers_batch_path_and_keeps_oldest_first(es):
+    dates = ["2024-03-10", "2024-03-09", "2024-03-08"]
+
+    class _Repo:
+        def __init__(self):
+            self.batch_calls = []
+            self.single_calls = []
+
+        def fetch_formal_overview_history(self, **kwargs):
+            self.batch_calls.append(kwargs)
+            return {
+                "2024-03-10": {"total_market_value_amount": 10},
+                "2024-03-09": {"total_market_value_amount": 9},
+                "2024-03-08": {"total_market_value_amount": 8},
+            }
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            self.single_calls.append((report_date, currency_basis))
+            return {"total_market_value_amount": 0}
+
+    repo = _Repo()
+    out = es._fetch_aum_history(repo, report_dates=dates, current_report_date="2024-03-10", n=20)
+    assert out == [8.0, 9.0, 10.0]
+    assert repo.batch_calls == [
+        {
+            "report_dates": dates,
+            "position_scope": "asset",
+            "currency_basis": "CNY",
+        }
+    ]
+    assert repo.single_calls == []
+
+
 def test_fetch_aum_history_skips_single_day_failure(es):
     dates = ["2024-03-10", "2024-03-09", "2024-03-08", "2024-03-07", "2024-03-06"]
     amounts = {
@@ -101,6 +134,39 @@ def test_fetch_ytd_history_cumulative_sequence(es):
     assert all(isinstance(x, float) for x in out)
 
 
+def test_fetch_ytd_history_prefers_batch_path_and_adds_nonstd(es):
+    dates = ["2024-06-30", "2024-05-31", "2024-04-30"]
+
+    class _Pnl:
+        def __init__(self):
+            self.single_calls = []
+
+        def sum_formal_total_pnl_through_report_dates(self, requested_dates):
+            assert requested_dates == dates
+            return {
+                "2024-06-30": 300,
+                "2024-05-31": 200,
+                "2024-04-30": 100,
+            }
+
+        def sum_nonstd_bridge_total_pnl_through_report_dates(self, requested_dates):
+            assert requested_dates == dates
+            return {
+                "2024-06-30": 30,
+                "2024-05-31": 20,
+                "2024-04-30": 10,
+            }
+
+        def sum_formal_total_pnl_through_report_date(self, d: str):
+            self.single_calls.append(d)
+            return 0
+
+    repo = _Pnl()
+    out = es._fetch_ytd_history(repo, report_dates=dates, current_report_date="2024-06-30", n=20)
+    assert out == [110.0, 220.0, 330.0]
+    assert repo.single_calls == []
+
+
 def test_fetch_ytd_history_all_fail_returns_none(es):
     class _Pnl:
         def sum_formal_total_pnl_through_report_date(self, _d: str):
@@ -119,6 +185,31 @@ def test_fetch_dv01_history_from_snapshots(es):
 
     out = es._fetch_dv01_history(_Bond(), report_dates=dates, current_report_date="2024-02-02", n=20)
     assert out == [2.5, 1.5]
+
+
+def test_fetch_dv01_history_prefers_batch_path_and_keeps_oldest_first(es):
+    dates = ["2024-02-03", "2024-02-02", "2024-02-01"]
+
+    class _Bond:
+        def __init__(self):
+            self.single_calls = []
+
+        def fetch_risk_overview_snapshots(self, *, report_dates):
+            assert report_dates == dates
+            return {
+                "2024-02-03": {"portfolio_dv01": 3},
+                "2024-02-02": {"portfolio_dv01": 2},
+                "2024-02-01": {"portfolio_dv01": 1},
+            }
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            self.single_calls.append(report_date)
+            return {"portfolio_dv01": 0}
+
+    repo = _Bond()
+    out = es._fetch_dv01_history(repo, report_dates=dates, current_report_date="2024-02-03", n=20)
+    assert out == [1.0, 2.0, 3.0]
+    assert repo.single_calls == []
 
 
 def test_fetch_dv01_history_skips_none_snapshot(es):
@@ -150,6 +241,49 @@ def test_fetch_nim_history_uses_compute_kpi(es, monkeypatch):
     monkeypatch.setattr(es, "compute_liability_yield_metrics", fake_compute)
     out = es._fetch_nim_history(_Liab(), report_dates=dates, current_report_date="2024-03-03", n=20)
     assert out == [0.001, 0.002, 0.003]
+
+
+def test_fetch_nim_history_prefers_batch_path_and_keeps_oldest_first(es, monkeypatch):
+    dates = ["2024-03-03", "2024-03-02", "2024-03-01"]
+
+    class _Liab:
+        def __init__(self):
+            self.single_calls = []
+
+        def fetch_zqtz_rows_for_dates(self, requested_dates):
+            assert requested_dates == dates
+            return {
+                "2024-03-03": [{"side": "z3"}],
+                "2024-03-02": [{"side": "z2"}],
+                "2024-03-01": [{"side": "z1"}],
+            }
+
+        def fetch_tyw_rows_for_dates(self, requested_dates):
+            assert requested_dates == dates
+            return {
+                "2024-03-03": [{"side": "t3"}],
+                "2024-03-02": [{"side": "t2"}],
+                "2024-03-01": [{"side": "t1"}],
+            }
+
+        def fetch_zqtz_rows(self, d: str):
+            self.single_calls.append(("z", d))
+            return []
+
+        def fetch_tyw_rows(self, d: str):
+            self.single_calls.append(("t", d))
+            return []
+
+    def fake_compute(report_date: str, zqtz, tyw):
+        assert zqtz == [{"side": "z" + report_date[-1]}]
+        assert tyw == [{"side": "t" + report_date[-1]}]
+        return {"kpi": {"nim": {"2024-03-03": 0.003, "2024-03-02": 0.002, "2024-03-01": 0.001}[report_date]}}
+
+    repo = _Liab()
+    monkeypatch.setattr(es, "compute_liability_yield_metrics", fake_compute)
+    out = es._fetch_nim_history(repo, report_dates=dates, current_report_date="2024-03-03", n=20)
+    assert out == [0.001, 0.002, 0.003]
+    assert repo.single_calls == []
 
 
 def test_fetch_nim_history_day_exception_skipped(es, monkeypatch):

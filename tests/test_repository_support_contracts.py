@@ -444,6 +444,171 @@ def test_liability_analytics_repository_lists_union_report_dates(tmp_path):
     assert repo.list_report_dates() == ["2025-12-31", "2025-11-30", "2025-10-31"]
 
 
+def test_liability_analytics_batch_rows_match_single_date_rows(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.liability_analytics_repo_batch_contract",
+        "backend/app/repositories/liability_analytics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table zqtz_bond_daily_snapshot (
+              report_date date,
+              instrument_code varchar,
+              instrument_name varchar,
+              asset_class varchar,
+              bond_type varchar,
+              is_issuance_like boolean,
+              face_value_native decimal(24, 8),
+              market_value_native decimal(24, 8),
+              amortized_cost_native decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table tyw_interbank_daily_snapshot (
+              report_date date,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              core_customer_type varchar,
+              principal_native decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+            ('2025-12-31', 'Z1', 'bond 1', 'rate', 'gov', true, 100, 101, 99, 0.025, 0.026, '2030-01-01', 'sv_z_1', 'rv_z_1'),
+            ('2025-11-30', 'Z2', 'bond 2', 'credit', 'corp', false, 200, 202, 198, 0.030, 0.031, '2031-01-01', 'sv_z_2', 'rv_z_2')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+            ('2025-12-31', 'T1', 'repo', 'asset side', 'cp a', 'core', 300, 0.020, '2026-01-01', 'sv_t_1', 'rv_t_1'),
+            ('2025-11-30', 'T2', 'repo', 'liability side', 'cp b', 'non-core', 400, 0.022, '2026-02-01', 'sv_t_2', 'rv_t_2')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
+    dates = ["2025-12-31", "2025-11-30"]
+    zqtz_batch = repo.fetch_zqtz_rows_for_dates(dates)
+    tyw_batch = repo.fetch_tyw_rows_for_dates(dates)
+
+    assert zqtz_batch == {d: repo.fetch_zqtz_rows(d) for d in dates}
+    assert tyw_batch == {d: repo.fetch_tyw_rows(d) for d in dates}
+    assert tyw_batch["2025-12-31"][0]["is_asset_side"] is True
+    assert tyw_batch["2025-11-30"][0]["is_asset_side"] is False
+
+
+def test_liability_analytics_yield_batch_rows_preserve_nim_calculation(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.liability_analytics_repo_yield_batch_contract",
+        "backend/app/repositories/liability_analytics_repo.py",
+    )
+    compute_module = load_module(
+        "backend.app.core_finance.liability_analytics_compat_yield_batch_contract",
+        "backend/app/core_finance/liability_analytics_compat.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table zqtz_bond_daily_snapshot (
+              report_date date,
+              instrument_code varchar,
+              instrument_name varchar,
+              asset_class varchar,
+              bond_type varchar,
+              is_issuance_like boolean,
+              face_value_native decimal(24, 8),
+              market_value_native decimal(24, 8),
+              amortized_cost_native decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table tyw_interbank_daily_snapshot (
+              report_date date,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              core_customer_type varchar,
+              principal_native decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+            ('2025-12-31', 'Z1', 'bond 1', '搴旀敹鎶曡祫', 'gov', false, 100, 101, 99, 0.025, 0.026, '2030-01-01', 'sv_z_1', 'rv_z_1'),
+            ('2025-12-31', 'Z2', 'cd 1', 'rate', '鍚屼笟瀛樺崟', true, 200, 202, 198, 0.030, 0.031, '2031-01-01', 'sv_z_2', 'rv_z_2')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+            ('2025-12-31', 'T1', 'repo', 'asset side', 'cp a', 'core', 300, 0.020, '2026-01-01', 'sv_t_1', 'rv_t_1'),
+            ('2025-12-31', 'T2', 'repo', 'liability side', 'cp b', 'non-core', 400, 0.022, '2026-02-01', 'sv_t_2', 'rv_t_2')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
+    full_payload = compute_module.compute_liability_yield_metrics(
+        "2025-12-31",
+        repo.fetch_zqtz_rows("2025-12-31"),
+        repo.fetch_tyw_rows("2025-12-31"),
+    )
+    yield_payload = compute_module.compute_liability_yield_metrics(
+        "2025-12-31",
+        repo.fetch_zqtz_yield_rows_for_dates(["2025-12-31"])["2025-12-31"],
+        repo.fetch_tyw_yield_rows_for_dates(["2025-12-31"])["2025-12-31"],
+    )
+    zqtz_combined, tyw_combined = repo.fetch_yield_rows_for_dates(["2025-12-31"])
+    combined_payload = compute_module.compute_liability_yield_metrics(
+        "2025-12-31",
+        zqtz_combined["2025-12-31"],
+        tyw_combined["2025-12-31"],
+    )
+
+    assert yield_payload["kpi"] == full_payload["kpi"]
+    assert combined_payload["kpi"] == full_payload["kpi"]
+
+
 def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_path):
     repo_module = load_module(
         "backend.app.repositories.formal_zqtz_balance_metrics_repo_combined_contract",
@@ -535,3 +700,311 @@ def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_p
         "source_version": "sv_t_1__sv_z_1",
         "rule_version": "rv_t_1__rv_z_1",
     }
+
+
+def test_formal_zqtz_balance_metrics_batch_history_matches_single_values(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.formal_zqtz_balance_metrics_repo_history_contract",
+        "backend/app/repositories/formal_zqtz_balance_metrics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_id varchar,
+              product_type varchar,
+              counterparty_name varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              principal_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2025-12-31', 'Z1', 'p', 'c', 'inv', 'acct', 'asset', 'CNY', 100, 100, 0, 'sv_z_1', 'rv_z_1'),
+            ('2025-11-30', 'Z2', 'p', 'c', 'inv', 'acct', 'asset', 'CNY', 90, 90, 0, 'sv_z_2', 'rv_z_2')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily values
+            ('2025-12-31', 'T1', 'prod', 'cp', 'inv', 'acct', 'asset', 'CNY', 30, 0, 'sv_t_1', 'rv_t_1'),
+            ('2025-11-30', 'T2', 'prod', 'cp', 'inv', 'acct', 'asset', 'CNY', 20, 0, 'sv_t_2', 'rv_t_2')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.FormalZqtzBalanceMetricsRepository(str(db_path))
+    dates = ["2025-12-31", "2025-11-30"]
+    history = repo.fetch_formal_overview_history(
+        report_dates=dates,
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+
+    assert {d: history[d]["total_market_value_amount"] for d in dates} == {
+        d: repo.fetch_formal_overview(
+            report_date=d,
+            position_scope="asset",
+            currency_basis="CNY",
+        )["total_market_value_amount"]
+        for d in dates
+    }
+
+
+def test_pnl_repository_batch_ytd_sums_match_single_date_sums(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.pnl_repo_batch_contract",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+              report_date varchar,
+              total_pnl decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_nonstd_pnl_bridge (
+              report_date varchar,
+              total_pnl decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values
+            ('2025-01-31', 10),
+            ('2025-02-28', 20),
+            ('2025-03-31', 30),
+            ('2024-12-31', 999)
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_nonstd_pnl_bridge values
+            ('2025-02-28', 2),
+            ('2025-03-31', 3)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.PnlRepository(str(db_path))
+    dates = ["2025-03-31", "2025-02-28", "2025-01-31"]
+    assert repo.sum_formal_total_pnl_through_report_dates(dates) == {
+        d: repo.sum_formal_total_pnl_through_report_date(d) for d in dates
+    }
+    assert repo.sum_nonstd_bridge_total_pnl_through_report_dates(dates) == {
+        d: repo.sum_nonstd_bridge_total_pnl_through_report_date(d) for d in dates
+    }
+
+
+def test_bond_analytics_batch_risk_snapshots_match_single_date_snapshots(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.bond_analytics_repo_batch_contract",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              modified_duration decimal(18, 8),
+              market_value decimal(24, 8),
+              dv01 decimal(24, 8),
+              is_credit boolean,
+              years_to_maturity decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+            ('2025-12-31', 2, 100, 1, false, 3),
+            ('2025-12-31', 4, 300, 3, true, 5),
+            ('2025-11-30', 1, 200, 2, false, 2)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.BondAnalyticsRepository(str(db_path))
+    dates = ["2025-12-31", "2025-11-30"]
+    snapshots = repo.fetch_risk_overview_snapshots(report_dates=dates)
+
+    assert snapshots == {d: repo.fetch_risk_overview_snapshot(report_date=d) for d in dates}
+
+
+def test_dashboard_repository_batch_core_metrics_match_single_date_metrics(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.dashboard_repo_batch_contract",
+        "backend/app/repositories/dashboard_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              bond_type varchar,
+              market_value decimal(24, 8),
+              ytm decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_id varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              currency_basis varchar,
+              principal_amount decimal(24, 8),
+              funding_cost_rate decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+            ('2026-04-30', 'gov', 100, 0.03),
+            ('2026-04-30', 'corp', 200, 0.04),
+            ('2026-04-29', 'gov', 90, 0.02)
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily values
+            ('2026-04-30', 'A1', 'asset side', 'CPA', 'CNY', 300, 2.5),
+            ('2026-04-30', 'L1', 'liability side', 'CPL', 'CNY', 400, 3.0),
+            ('2026-04-29', 'A2', 'asset side', 'CPA', 'CNY', 250, 2.0),
+            ('2026-04-29', 'L2', 'liability side', 'CPL', 'CNY', 350, 2.8)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.DashboardRepository(str(db_path))
+    dates = ["2026-04-30", "2026-04-29"]
+
+    assert repo.fetch_bond_core_metrics_for_dates(dates) == {
+        d: repo.fetch_bond_core_metrics(d) for d in dates
+    }
+    assert repo.fetch_tyw_core_metrics_for_dates(dates, asset_side=True) == {
+        d: repo.fetch_tyw_core_metrics(d, asset_side=True) for d in dates
+    }
+    assert repo.fetch_tyw_core_metrics_for_dates(dates, asset_side=False) == {
+        d: repo.fetch_tyw_core_metrics(d, asset_side=False) for d in dates
+    }
+
+
+def test_dashboard_repository_batch_bond_metrics_falls_back_per_missing_zqtz_date(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.dashboard_repo_batch_fallback_contract",
+        "backend/app/repositories/dashboard_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              bond_type varchar,
+              market_value decimal(24, 8),
+              ytm decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              bond_type varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              ytm_value decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+            ('2026-04-30', 'analytics-gov', 100, 0.03),
+            ('2026-04-30', 'analytics-corp', 300, 4.0)
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-29', 'formal-gov', 'asset', 'CNY', 200, 3.0)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.DashboardRepository(str(db_path))
+    results = repo.fetch_bond_core_metrics_for_dates(["2026-04-30", "2026-04-29"])
+
+    current_total, current_yield, current_top, current_has_rows = results["2026-04-30"]
+    assert current_has_rows is True
+    assert current_total == Decimal("400.00000000")
+    assert current_yield == Decimal("0.037500000000")
+    assert current_top[0][0] == "analytics-corp"
+
+    previous_total, previous_yield, previous_top, previous_has_rows = results["2026-04-29"]
+    assert previous_has_rows is True
+    assert previous_total == Decimal("200.00000000")
+    assert previous_yield == Decimal("0.030000000000")
+    assert previous_top[0][0] == "formal-gov"

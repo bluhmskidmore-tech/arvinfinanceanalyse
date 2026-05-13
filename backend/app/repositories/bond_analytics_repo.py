@@ -369,6 +369,43 @@ class BondAnalyticsRepository:
         finally:
             conn.close()
 
+    def fetch_risk_overview_snapshots(
+        self,
+        *,
+        report_dates: list[str],
+    ) -> dict[str, dict[str, object]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return {}
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return {}
+            placeholders = ", ".join(["?"] * len(dates))
+            rows = conn.execute(
+                f"""
+                select
+                  cast(report_date as varchar) as report_date,
+                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
+                  sum(dv01) as portfolio_dv01,
+                  sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
+                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
+                from {FACT_TABLE}
+                where cast(report_date as varchar) in ({placeholders})
+                group by report_date
+                """,
+                dates,
+            ).fetchall()
+            return {
+                str(row[0]): dict(zip(_RISK_OVERVIEW_COLUMNS, row, strict=True))
+                for row in rows
+                if row and row[0] is not None
+            }
+        finally:
+            conn.close()
+
     def fetch_latest_risk_overview_snapshot(self) -> dict[str, object] | None:
         report_dates = self.list_report_dates()
         if not report_dates:

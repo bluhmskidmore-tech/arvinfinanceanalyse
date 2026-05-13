@@ -3,10 +3,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.app.api import router as api_router
 from backend.app.governance.settings import get_settings
 from backend.app.observability import setup_opentelemetry
+from backend.app.services.executive_service import warm_home_snapshot_cache_if_configured
 from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured
 from backend.app.storage_bootstrap import run_startup_storage_migrations
 
@@ -16,7 +18,9 @@ async def lifespan(_app: FastAPI):
     # Blocking Postgres/DuckDB bootstrap off the event loop (Windows uvicorn + sync
     # drivers can otherwise stall startup indefinitely).
     await asyncio.to_thread(run_startup_storage_migrations)
-    warm_hermes_bridge_if_configured(get_settings())
+    settings = get_settings()
+    warm_hermes_bridge_if_configured(settings)
+    warm_home_snapshot_cache_if_configured(settings)
     yield
 
 
@@ -27,6 +31,10 @@ app = FastAPI(
 )
 setup_opentelemetry(app)
 _settings = get_settings()
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1024,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],

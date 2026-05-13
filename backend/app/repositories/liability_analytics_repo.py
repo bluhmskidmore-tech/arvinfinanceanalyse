@@ -34,6 +34,13 @@ class LiabilityAnalyticsRepository:
         return row is not None
 
     @staticmethod
+    def _group_rows_by_report_date(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["report_date"]), []).append(row)
+        return grouped
+
+    @staticmethod
     def _fetch_dict_rows(
         conn: duckdb.DuckDBPyConnection,
         query: str,
@@ -122,6 +129,60 @@ class LiabilityAnalyticsRepository:
         finally:
             conn.close()
 
+    def fetch_zqtz_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        conn = self._connect()
+        if conn is None:
+            return {}
+        try:
+            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                return {}
+            placeholders = ", ".join(["?::date"] * len(dates))
+            rows = self._fetch_dict_rows(
+                conn,
+                f"""
+                select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
+                       face_value_native, market_value_native, amortized_cost_native,
+                       coupon_rate, ytm_value, maturity_date, source_version, rule_version
+                from zqtz_bond_daily_snapshot
+                where report_date in ({placeholders})
+                order by report_date desc, instrument_code
+                """,
+                dates,
+            )
+        finally:
+            conn.close()
+        return self._group_rows_by_report_date(rows)
+
+    def fetch_zqtz_yield_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        conn = self._connect()
+        if conn is None:
+            return {}
+        try:
+            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                return {}
+            placeholders = ", ".join(["?::date"] * len(dates))
+            rows = self._fetch_dict_rows(
+                conn,
+                f"""
+                select report_date, instrument_name, asset_class, bond_type, is_issuance_like,
+                       face_value_native, market_value_native, amortized_cost_native,
+                       coupon_rate, ytm_value, source_version, rule_version
+                from zqtz_bond_daily_snapshot
+                where report_date in ({placeholders})
+                order by report_date desc
+                """,
+                dates,
+            )
+        finally:
+            conn.close()
+        return self._group_rows_by_report_date(rows)
+
     def fetch_tyw_rows(self, report_date: str) -> list[dict[str, Any]]:
         conn = self._connect()
         if conn is None:
@@ -141,6 +202,103 @@ class LiabilityAnalyticsRepository:
                 """,
                 [report_date],
             )
+        finally:
+            conn.close()
+
+    def fetch_tyw_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        conn = self._connect()
+        if conn is None:
+            return {}
+        try:
+            if not self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                return {}
+            placeholders = ", ".join(["?::date"] * len(dates))
+            rows = self._fetch_dict_rows(
+                conn,
+                f"""
+                select report_date, position_id, product_type, position_side, counterparty_name,
+                       core_customer_type, principal_native, funding_cost_rate, maturity_date,
+                       source_version, rule_version,
+                       case when {IB_ASSET_PREDICATE} then true else false end as is_asset_side
+                from tyw_interbank_daily_snapshot
+                where report_date in ({placeholders})
+                order by report_date desc, position_id
+                """,
+                dates,
+            )
+        finally:
+            conn.close()
+        return self._group_rows_by_report_date(rows)
+
+    def fetch_tyw_yield_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        conn = self._connect()
+        if conn is None:
+            return {}
+        try:
+            if not self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                return {}
+            placeholders = ", ".join(["?::date"] * len(dates))
+            rows = self._fetch_dict_rows(
+                conn,
+                f"""
+                select report_date, principal_native, funding_cost_rate, source_version, rule_version,
+                       case when {IB_ASSET_PREDICATE} then true else false end as is_asset_side
+                from tyw_interbank_daily_snapshot
+                where report_date in ({placeholders})
+                order by report_date desc
+                """,
+                dates,
+            )
+        finally:
+            conn.close()
+        return self._group_rows_by_report_date(rows)
+
+    def fetch_yield_rows_for_dates(
+        self,
+        report_dates: list[str],
+    ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}, {}
+        conn = self._connect()
+        if conn is None:
+            return {}, {}
+        try:
+            placeholders = ", ".join(["?::date"] * len(dates))
+            zqtz_rows: list[dict[str, Any]] = []
+            tyw_rows: list[dict[str, Any]] = []
+            if self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                zqtz_rows = self._fetch_dict_rows(
+                    conn,
+                    f"""
+                    select report_date, instrument_name, asset_class, bond_type, is_issuance_like,
+                           face_value_native, market_value_native, amortized_cost_native,
+                           coupon_rate, ytm_value, source_version, rule_version
+                    from zqtz_bond_daily_snapshot
+                    where report_date in ({placeholders})
+                    order by report_date desc
+                    """,
+                    dates,
+                )
+            if self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                tyw_rows = self._fetch_dict_rows(
+                    conn,
+                    f"""
+                    select report_date, principal_native, funding_cost_rate, source_version, rule_version,
+                           case when {IB_ASSET_PREDICATE} then true else false end as is_asset_side
+                    from tyw_interbank_daily_snapshot
+                    where report_date in ({placeholders})
+                    order by report_date desc
+                    """,
+                    dates,
+                )
+            return self._group_rows_by_report_date(zqtz_rows), self._group_rows_by_report_date(tyw_rows)
         finally:
             conn.close()
 

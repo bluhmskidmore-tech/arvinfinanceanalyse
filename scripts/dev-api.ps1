@@ -3,9 +3,6 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 . "$root\scripts\dev-env.ps1"
-Assert-DevBootstrapStorageReady -ProbeLabel "dev-api"
-. "$root\scripts\dev-python.ps1"
-$python = Resolve-DevPython
 
 function Get-DevListeningPortOwner {
   param(
@@ -42,9 +39,21 @@ if ($listener) {
   )
 }
 
+& "$root\scripts\dev-postgres-up.ps1"
+if ($LASTEXITCODE -ne 0) {
+  throw "dev-postgres-up.ps1 failed; aborting dev-api startup."
+}
+Assert-DevBootstrapStorageReady -ProbeLabel "dev-api"
+. "$root\scripts\dev-python.ps1"
+$python = Resolve-DevPython
+
 $args = @("--host", "127.0.0.1", "--port", "$port")
 if ($env:MOSS_DEV_RELOAD -eq "1") {
   $args += "--reload"
+}
+
+if ([string]::IsNullOrWhiteSpace($env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED)) {
+  $env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "1"
 }
 
 & $python -m uvicorn backend.app.main:app @args

@@ -548,6 +548,63 @@ class PnlRepository:
             return Decimal("0")
         return Decimal(str(row[0]))
 
+    def _sum_total_pnl_through_report_dates(
+        self,
+        *,
+        table_name: str,
+        report_dates: list[str],
+    ) -> dict[str, Decimal]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        values_sql = ", ".join(["(?)"] * len(dates))
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            if not self._table_exists(conn, table_name):
+                return {}
+            rows = conn.execute(
+                f"""
+                with requested(report_date) as (
+                  values {values_sql}
+                )
+                select
+                  requested.report_date,
+                  coalesce(sum(p.total_pnl), 0) as total_pnl
+                from requested
+                left join {table_name} p
+                  on substr(cast(p.report_date as varchar), 1, 4) = substr(requested.report_date, 1, 4)
+                 and cast(p.report_date as varchar) <= requested.report_date
+                group by requested.report_date
+                """,
+                dates,
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return {}
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return {str(report_date): Decimal(str(total_pnl or 0)) for report_date, total_pnl in rows}
+
+    def sum_formal_total_pnl_through_report_dates(
+        self,
+        report_dates: list[str],
+    ) -> dict[str, Decimal]:
+        return self._sum_total_pnl_through_report_dates(
+            table_name="fact_formal_pnl_fi",
+            report_dates=report_dates,
+        )
+
+    def sum_nonstd_bridge_total_pnl_through_report_dates(
+        self,
+        report_dates: list[str],
+    ) -> dict[str, Decimal]:
+        return self._sum_total_pnl_through_report_dates(
+            table_name="fact_nonstd_pnl_bridge",
+            report_dates=report_dates,
+        )
+
     def formal_pnl_ytd_has_rows(self, *, year: int, as_of_date: str) -> bool:
         """当年 ``as_of_date``（含）以前是否存在 formal FI 或 nonstd 桥接行。"""
         y = str(year)

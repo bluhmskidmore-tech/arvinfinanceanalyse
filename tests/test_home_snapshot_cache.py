@@ -115,3 +115,37 @@ def test_within_ttl_window_keeps_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
         assert mock_compute.call_count == 1
         assert env1 is env2
+
+
+def test_home_snapshot_prewarm_can_be_disabled() -> None:
+    class Settings:
+        home_snapshot_prewarm_enabled = False
+
+    with patch.object(es, "home_snapshot_envelope") as mock_home:
+        assert es.warm_home_snapshot_cache_if_configured(Settings()) is False
+
+    mock_home.assert_not_called()
+
+
+def test_home_snapshot_prewarm_starts_background_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    started: list[tuple[object, dict[str, object]]] = []
+
+    class Settings:
+        home_snapshot_prewarm_enabled = True
+
+    class FakeThread:
+        def __init__(self, *, target, kwargs=None, daemon=False, name=""):
+            started.append((target, {"kwargs": kwargs or {}, "daemon": daemon, "name": name}))
+
+        def start(self):
+            started.append(("start", {}))
+
+    monkeypatch.setattr(es.threading, "Thread", FakeThread)
+
+    assert es.warm_home_snapshot_cache_if_configured(Settings()) is True
+    assert started[0][1] == {
+        "kwargs": {"report_date": None, "allow_partial": False},
+        "daemon": True,
+        "name": "moss-home-snapshot-warmup",
+    }
+    assert started[1] == ("start", {})

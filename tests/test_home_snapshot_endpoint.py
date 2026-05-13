@@ -117,10 +117,12 @@ class TestHomeSnapshotEnvelope:
 
     def test_strict_empty_returns_explicit_miss_envelope(self) -> None:
         es = _executive_service()
-        with patch.object(es, "_list_domain_dates") as mock_dates:
+        with patch.object(es, "_list_domain_date_context") as mock_dates:
             mock_dates.return_value = {
-                "balance_sheet": set(),
-                "pnl": set(),
+                "balance": [],
+                "pnl": [],
+                "liability": [],
+                "bond": [],
             }
             env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
             assert env["result_meta"]["quality_flag"] == "error"
@@ -130,10 +132,12 @@ class TestHomeSnapshotEnvelope:
 
     def test_strict_intersection_returns_unified_date(self) -> None:
         es = _executive_service()
-        with patch.object(es, "_list_domain_dates") as mock_dates:
+        with patch.object(es, "_list_domain_date_context") as mock_dates:
             mock_dates.return_value = {
-                "balance_sheet": {"2026-04-08"},
-                "pnl": {"2026-04-08"},
+                "balance": ["2026-04-08"],
+                "pnl": ["2026-04-08"],
+                "liability": ["2026-04-08"],
+                "bond": ["2026-04-08"],
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
@@ -160,10 +164,12 @@ class TestHomeSnapshotEnvelope:
 
     def test_partial_mode_labels_missing(self) -> None:
         es = _executive_service()
-        with patch.object(es, "_list_domain_dates") as mock_dates:
+        with patch.object(es, "_list_domain_date_context") as mock_dates:
             mock_dates.return_value = {
-                "balance_sheet": {"2026-04-08"},
-                "pnl": set(),  # missing entirely
+                "balance": ["2026-04-08"],
+                "pnl": [],  # missing entirely
+                "liability": ["2026-04-08"],
+                "bond": ["2026-04-08"],
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
@@ -186,6 +192,92 @@ class TestHomeSnapshotEnvelope:
             assert env["result"]["mode"] == "partial"
             assert "pnl" in env["result"]["domains_missing"]
             assert env["result_meta"]["quality_flag"] == "warning"
+
+    def test_snapshot_reuses_domain_date_lists_for_overview(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        es = _executive_service()
+        calls: list[tuple[str, str | None]] = []
+        dates = ["2026-04-30", "2026-04-29"]
+
+        class BalanceRepo:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def list_report_dates(self, currency_basis: str = "CNY"):
+                raise AssertionError("snapshot should reuse precomputed balance dates")
+
+            def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+                return {"report_date": report_date, "total_market_value_amount": 100.0}
+
+        class PnlRepo:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def list_formal_fi_report_dates(self):
+                raise AssertionError("snapshot should reuse precomputed pnl dates")
+
+            def sum_formal_total_pnl_through_report_date(self, report_date: str):
+                return {"2026-04-30": 10.0, "2026-04-29": 9.0}[report_date]
+
+        class LiabilityRepo:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def list_report_dates(self):
+                raise AssertionError("snapshot should reuse precomputed liability dates")
+
+            def fetch_zqtz_rows(self, report_date: str):
+                return [{"source_version": "sv-z", "rule_version": "rv-z"}]
+
+            def fetch_tyw_rows(self, report_date: str):
+                return [{"source_version": "sv-t", "rule_version": "rv-t"}]
+
+        class BondRepo:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def list_report_dates(self):
+                raise AssertionError("snapshot should reuse precomputed bond dates")
+
+            def fetch_risk_overview_snapshot(self, *, report_date: str):
+                return {"report_date": report_date, "portfolio_dv01": 10.0}
+
+        monkeypatch.setattr(es, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+        monkeypatch.setattr(es, "PnlRepository", PnlRepo)
+        monkeypatch.setattr(es, "LiabilityAnalyticsRepository", LiabilityRepo)
+        monkeypatch.setattr(es, "BondAnalyticsRepository", BondRepo)
+        monkeypatch.setattr(
+            es,
+            "compute_liability_yield_metrics",
+            lambda report_date, _z, _t: {"report_date": report_date, "kpi": {"nim": 0.001}},
+        )
+        monkeypatch.setattr(es, "resolve_kpi_authority_gate", lambda **_k: {"status": "blocked"})
+        monkeypatch.setattr(es, "resolve_completed_formal_build_lineage", lambda **_k: None)
+        monkeypatch.setattr(es, "load_latest_bond_analytics_lineage", lambda **_k: None)
+        monkeypatch.setattr(
+            es,
+            "executive_pnl_attribution",
+            lambda report_date=None: {
+                "result_meta": {},
+                "result": es._pnl_attribution_unavailable_payload().model_dump(mode="json"),
+            },
+        )
+        monkeypatch.setattr(es, "_build_product_category_ytd_headline", lambda _rd: None)
+        monkeypatch.setattr(es, "_build_product_category_monthly_headline", lambda _rd: None)
+        monkeypatch.setattr(
+            es,
+            "_list_domain_date_context",
+            lambda: {
+                "balance": dates,
+                "pnl": dates,
+                "liability": dates,
+                "bond": dates,
+            },
+        )
+
+        env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+        assert env["result"]["report_date"] == "2026-04-30"
+        assert calls == []
 
     def test_build_product_category_ytd_headline_matches_envelope_grand_total(
         self, monkeypatch: pytest.MonkeyPatch
@@ -326,10 +418,12 @@ class TestHomeSnapshotEnvelope:
         monkeypatch.setattr(es, "resolve_product_category_ytd_payload_for_home_snapshot", fake_resolve)
         monkeypatch.setattr(es, "_build_product_category_monthly_headline", lambda _rd: None)
 
-        with patch.object(es, "_list_domain_dates") as mock_dates:
+        with patch.object(es, "_list_domain_date_context") as mock_dates:
             mock_dates.return_value = {
-                "balance_sheet": {"2026-04-08"},
-                "pnl": {"2026-04-08"},
+                "balance": ["2026-04-08"],
+                "pnl": ["2026-04-08"],
+                "liability": ["2026-04-08"],
+                "bond": ["2026-04-08"],
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:

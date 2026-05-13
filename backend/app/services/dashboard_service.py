@@ -128,15 +128,27 @@ def _prior_for_period(canonical_desc: list[str], anchor: str, kind: _PeriodLiter
 def _build_one_core_card(
     cur_tot: Decimal,
     cur_wr: Decimal | None,
-    prev_tot: Decimal,
     top: list[tuple[str, Decimal, Decimal | None]],
+    *,
+    cur_has_rows: bool,
+    prev_tot: Decimal,
+    prev_has_rows: bool,
 ) -> CoreMetricsCardData:
-    chg_amt = cur_tot - prev_tot
+    can_compute_change = cur_has_rows and prev_has_rows
+    chg_amt = cur_tot - prev_tot if can_compute_change else None
     return CoreMetricsCardData(
         total_amount=_yuan_numeric(cur_tot, sign_aware=False),
         weighted_avg_rate=_pct_numeric_from_fraction(cur_wr),
-        change_amount=_yuan_numeric(chg_amt, sign_aware=True),
-        change_pct=_pct_change_numeric(chg_amt, prev_tot),
+        change_amount=(
+            _yuan_numeric(chg_amt, sign_aware=True)
+            if chg_amt is not None
+            else null_numeric(unit="yuan", precision=2, sign_aware=True)
+        ),
+        change_pct=(
+            _pct_change_numeric(chg_amt, prev_tot)
+            if chg_amt is not None
+            else null_numeric(unit="pct", precision=2, sign_aware=True)
+        ),
         top_3_details=_top_3_detail_rows(top),
     )
 
@@ -148,6 +160,61 @@ def _dashboard_anchor(report_date: str | None, canonical_desc: list[str]) -> str
     if canonical_desc:
         return canonical_desc[0]
     return None
+
+
+_CoreMetricResult = tuple[Decimal, Decimal | None, list[tuple[str, Decimal, Decimal | None]], bool]
+
+
+def _empty_metric_result() -> _CoreMetricResult:
+    return Decimal("0"), None, [], False
+
+
+def _ordered_unique_dates(report_dates: list[str | None]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in report_dates:
+        d = str(raw or "").strip()
+        if not d or d in seen:
+            continue
+        seen.add(d)
+        out.append(d)
+    return out
+
+
+def _fetch_bond_metrics_for_dates(
+    repo: DashboardRepository,
+    report_dates: list[str],
+) -> dict[str, _CoreMetricResult]:
+    out = {d: _empty_metric_result() for d in report_dates}
+    fetch_many = getattr(repo, "fetch_bond_core_metrics_for_dates", None)
+    if callable(fetch_many):
+        try:
+            out.update(fetch_many(report_dates))
+            return out
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+    for d in report_dates:
+        out[d] = repo.fetch_bond_core_metrics(d)
+    return out
+
+
+def _fetch_tyw_metrics_for_dates(
+    repo: DashboardRepository,
+    report_dates: list[str],
+    *,
+    asset_side: bool,
+) -> dict[str, _CoreMetricResult]:
+    out = {d: _empty_metric_result() for d in report_dates}
+    fetch_many = getattr(repo, "fetch_tyw_core_metrics_for_dates", None)
+    if callable(fetch_many):
+        try:
+            out.update(fetch_many(report_dates, asset_side=asset_side))
+            return out
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+    for d in report_dates:
+        out[d] = repo.fetch_tyw_core_metrics(d, asset_side=asset_side)
+    return out
 
 
 def _zeroed_metrics_card() -> CoreMetricsCardData:
@@ -193,27 +260,50 @@ def get_core_metrics(report_date: str | None = None) -> dict[str, object]:
         _prior_for_period(canonical_desc, anchor, "day") if anchor in canonical_desc else None
     )
 
-    if prev_day is None:
-        b_prev = Decimal("0")
-        a_prev = Decimal("0")
-        l_prev = Decimal("0")
-    else:
-        b_prev_t, _, _ = repo.fetch_bond_core_metrics(prev_day)
-        a_prev_t, _, _ = repo.fetch_tyw_core_metrics(prev_day, asset_side=True)
-        l_prev_t, _, _ = repo.fetch_tyw_core_metrics(prev_day, asset_side=False)
-        b_prev, a_prev, l_prev = b_prev_t, a_prev_t, l_prev_t
+    metric_dates = _ordered_unique_dates([anchor, prev_day])
+    bond_by_date = _fetch_bond_metrics_for_dates(repo, metric_dates)
+    asset_by_date = _fetch_tyw_metrics_for_dates(repo, metric_dates, asset_side=True)
+    liability_by_date = _fetch_tyw_metrics_for_dates(repo, metric_dates, asset_side=False)
 
-    b_cur, b_wy, b_top = repo.fetch_bond_core_metrics(anchor)
-
-    a_cur, a_wy, a_top = repo.fetch_tyw_core_metrics(anchor, asset_side=True)
-
-    l_cur, l_wy, l_top = repo.fetch_tyw_core_metrics(anchor, asset_side=False)
+    b_prev, _, _, b_prev_has_rows = (
+        bond_by_date.get(prev_day, _empty_metric_result()) if prev_day else _empty_metric_result()
+    )
+    a_prev, _, _, a_prev_has_rows = (
+        asset_by_date.get(prev_day, _empty_metric_result()) if prev_day else _empty_metric_result()
+    )
+    l_prev, _, _, l_prev_has_rows = (
+        liability_by_date.get(prev_day, _empty_metric_result()) if prev_day else _empty_metric_result()
+    )
+    b_cur, b_wy, b_top, b_cur_has_rows = bond_by_date.get(anchor, _empty_metric_result())
+    a_cur, a_wy, a_top, a_cur_has_rows = asset_by_date.get(anchor, _empty_metric_result())
+    l_cur, l_wy, l_top, l_cur_has_rows = liability_by_date.get(anchor, _empty_metric_result())
 
     body = CoreMetricsPayload(
         report_date=anchor,
-        bond_investments=_build_one_core_card(b_cur, b_wy, b_prev, b_top),
-        interbank_assets=_build_one_core_card(a_cur, a_wy, a_prev, a_top),
-        interbank_liabilities=_build_one_core_card(l_cur, l_wy, l_prev, l_top),
+        bond_investments=_build_one_core_card(
+            b_cur,
+            b_wy,
+            b_top,
+            cur_has_rows=b_cur_has_rows,
+            prev_tot=b_prev,
+            prev_has_rows=b_prev_has_rows,
+        ),
+        interbank_assets=_build_one_core_card(
+            a_cur,
+            a_wy,
+            a_top,
+            cur_has_rows=a_cur_has_rows,
+            prev_tot=a_prev,
+            prev_has_rows=a_prev_has_rows,
+        ),
+        interbank_liabilities=_build_one_core_card(
+            l_cur,
+            l_wy,
+            l_top,
+            cur_has_rows=l_cur_has_rows,
+            prev_tot=l_prev,
+            prev_has_rows=l_prev_has_rows,
+        ),
     )
 
     return build_result_envelope(
@@ -228,17 +318,6 @@ def get_core_metrics(report_date: str | None = None) -> dict[str, object]:
         tables_used=[FACT_TABLE, TYW_FACT],
         evidence_rows=len(b_top) + len(a_top) + len(l_top),
     )
-
-
-def _triple_balances(
-    repo: DashboardRepository, rd: str | None
-) -> tuple[Decimal, Decimal, Decimal] | None:
-    if rd is None:
-        return None
-    bt, _, _ = repo.fetch_bond_core_metrics(rd)
-    at, _, _ = repo.fetch_tyw_core_metrics(rd, asset_side=True)
-    lt, _, _ = repo.fetch_tyw_core_metrics(rd, asset_side=False)
-    return bt, at, lt
 
 
 def _null_yuan_changes() -> tuple[Numeric, Numeric, Numeric, Numeric]:
@@ -269,15 +348,40 @@ def get_daily_changes(report_date: str | None = None) -> dict[str, object]:
         )
 
     zs_b, zs_a, zs_l, zs_n = _null_yuan_changes()
-    periods_out: list[DailyChangePeriod] = []
-    for label in ("day", "week", "month"):
-        base_rd = (
+    base_by_period = {
+        label: (
             _prior_for_period(canonical_desc, anchor, label)
             if anchor in canonical_desc
             else None
         )
-        cur_triple = _triple_balances(repo, anchor)
-        base_triple = _triple_balances(repo, base_rd) if base_rd else None
+        for label in ("day", "week", "month")
+    }
+    metric_dates = _ordered_unique_dates([anchor, *base_by_period.values()])
+    bond_by_date = _fetch_bond_metrics_for_dates(repo, metric_dates)
+    asset_by_date = _fetch_tyw_metrics_for_dates(repo, metric_dates, asset_side=True)
+    liability_by_date = _fetch_tyw_metrics_for_dates(repo, metric_dates, asset_side=False)
+    periods_out: list[DailyChangePeriod] = []
+    for label in ("day", "week", "month"):
+        base_rd = base_by_period[label]
+        cur_triple = (
+            (bond_by_date.get(anchor, _empty_metric_result())[0], bond_by_date.get(anchor, _empty_metric_result())[3]),
+            (asset_by_date.get(anchor, _empty_metric_result())[0], asset_by_date.get(anchor, _empty_metric_result())[3]),
+            (liability_by_date.get(anchor, _empty_metric_result())[0], liability_by_date.get(anchor, _empty_metric_result())[3]),
+        )
+        base_triple = (
+            (
+                bond_by_date.get(base_rd, _empty_metric_result())[0],
+                bond_by_date.get(base_rd, _empty_metric_result())[3],
+            ),
+            (
+                asset_by_date.get(base_rd, _empty_metric_result())[0],
+                asset_by_date.get(base_rd, _empty_metric_result())[3],
+            ),
+            (
+                liability_by_date.get(base_rd, _empty_metric_result())[0],
+                liability_by_date.get(base_rd, _empty_metric_result())[3],
+            ),
+        ) if base_rd else None
 
         if cur_triple is None or base_triple is None or base_rd is None:
             periods_out.append(
@@ -291,19 +395,19 @@ def get_daily_changes(report_date: str | None = None) -> dict[str, object]:
             )
             continue
 
-        bn, an, ln = cur_triple
-        bp, ap, lp = base_triple
-        bd = bn - bp
-        ad = an - ap
-        ld = ln - lp
-        net_d = bd + ad + ld
+        (bn, b_cur_has_rows), (an, a_cur_has_rows), (ln, l_cur_has_rows) = cur_triple
+        (bp, b_base_has_rows), (ap, a_base_has_rows), (lp, l_base_has_rows) = base_triple
+        bd = bn - bp if b_cur_has_rows and b_base_has_rows else None
+        ad = an - ap if a_cur_has_rows and a_base_has_rows else None
+        ld = ln - lp if l_cur_has_rows and l_base_has_rows else None
+        net_d = bd + ad + ld if bd is not None and ad is not None and ld is not None else None
         periods_out.append(
             DailyChangePeriod(
                 period=label,
-                bond_investments_change=_yuan_numeric(bd, sign_aware=True),
-                interbank_assets_change=_yuan_numeric(ad, sign_aware=True),
-                interbank_liabilities_change=_yuan_numeric(ld, sign_aware=True),
-                net_change=_yuan_numeric(net_d, sign_aware=True),
+                bond_investments_change=_yuan_numeric(bd, sign_aware=True) if bd is not None else zs_b,
+                interbank_assets_change=_yuan_numeric(ad, sign_aware=True) if ad is not None else zs_a,
+                interbank_liabilities_change=_yuan_numeric(ld, sign_aware=True) if ld is not None else zs_l,
+                net_change=_yuan_numeric(net_d, sign_aware=True) if net_d is not None else zs_n,
             )
         )
 
