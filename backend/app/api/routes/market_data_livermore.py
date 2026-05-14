@@ -17,7 +17,10 @@ from backend.app.services.livermore_signal_confluence_service import (
     build_livermore_signal_confluence,
 )
 from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
-from backend.app.services.livermore_candidate_history_service import livermore_candidate_history_envelope
+from backend.app.services.livermore_candidate_history_service import (
+    livermore_candidate_history_envelope,
+    livermore_candidate_history_strategy_score_envelope,
+)
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.market_data_livermore_service import (
@@ -532,6 +535,45 @@ def livermore_candidate_history(
             snapshot_from=snapshot_from,
             snapshot_to=snapshot_to,
             limit=limit,
+        ),
+    )
+
+
+@router.get("/livermore/strategy-score")
+def livermore_strategy_score(
+    snapshot_from: str | None = Query(default=None),
+    snapshot_to: str | None = Query(default=None),
+    current_market_state: str | None = Query(default=None, max_length=32),
+    min_sample: int = Query(default=20, ge=1, le=10000),
+    primary_horizon: str = Query(default="return_5d"),
+) -> dict[str, object]:
+    for label, value in (("snapshot_from", snapshot_from), ("snapshot_to", snapshot_to)):
+        if value is None or not str(value).strip():
+            continue
+        text = str(value).strip()
+        try:
+            date.fromisoformat(text[:10])
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {label}. Expected YYYY-MM-DD.",
+            ) from exc
+    if primary_horizon not in {"return_1d", "return_5d", "return_20d"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid primary_horizon. Expected return_1d, return_5d, or return_20d.",
+        )
+
+    settings = get_settings()
+    return timed_api_call(
+        "/ui/market-data/livermore/strategy-score",
+        lambda: livermore_candidate_history_strategy_score_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            current_market_state=current_market_state,
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
         ),
     )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,9 +21,23 @@ EMPTY_VENDOR_VERSION = "vv_none"
 RESULT_KIND = "market_data.livermore.candidate_history"
 RULE_VERSION = "rv_livermore_candidate_history_v1"
 CACHE_VERSION = "cv_livermore_candidate_history_v1"
+STRATEGY_SCORE_RESULT_KIND = "market_data.livermore.strategy_score"
+STRATEGY_SCORE_RULE_VERSION = "rv_livermore_strategy_score_v1"
+STRATEGY_SCORE_CACHE_VERSION = "cv_livermore_strategy_score_v1"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
 _DEFAULT_SIGNAL_KINDS = ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
+_STRATEGY_LABELS = {
+    "stock_candidate": "趋势突破",
+    "factor_screen": "多因子",
+    "theme_breakout": "题材突变",
+    "mean_reversion": "超跌反弹",
+}
+_HORIZON_LABELS = {
+    "return_1d": "T+1",
+    "return_5d": "T+5",
+    "return_20d": "T+20",
+}
 
 _SELECT_COLUMNS = (
     "snapshot_as_of_date",
@@ -166,6 +181,106 @@ def livermore_candidate_history_envelope(
         tables_used=[TABLE_HIST],
         evidence_rows=len(items),
         result_payload=result_payload,
+    )
+
+
+def livermore_candidate_history_strategy_score_envelope(
+    *,
+    duckdb_path: str,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    current_market_state: str | None,
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, object]:
+    """Read persisted candidate history and score strategies by market state; DuckDB SELECT only."""
+    normalized_horizon = primary_horizon if primary_horizon in _HORIZON_LABELS else "return_5d"
+    path = Path(duckdb_path)
+    if not path.is_file():
+        resolved_to = _normalize_date_text(snapshot_to) or date.today().isoformat()
+        resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
+        payload = _build_strategy_score_payload(
+            items=[],
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+            current_market_state=current_market_state,
+            min_sample=min_sample,
+            primary_horizon=normalized_horizon,
+            backtest_window_summary=_empty_backtest_window_summary(
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+            ),
+        )
+        return _wrap_strategy_score_envelope(
+            payload=payload,
+            source_version=EMPTY_SOURCE_VERSION,
+            vendor_version=EMPTY_VENDOR_VERSION,
+            evidence_rows=0,
+            quality_flag="warning",
+        )
+
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        if TABLE_HIST not in tables:
+            resolved_to = _normalize_date_text(snapshot_to) or date.today().isoformat()
+            resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
+            payload = _build_strategy_score_payload(
+                items=[],
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+                current_market_state=current_market_state,
+                min_sample=min_sample,
+                primary_horizon=normalized_horizon,
+                backtest_window_summary=_empty_backtest_window_summary(
+                    snapshot_from=resolved_from,
+                    snapshot_to=resolved_to,
+                ),
+            )
+            return _wrap_strategy_score_envelope(
+                payload=payload,
+                source_version=EMPTY_SOURCE_VERSION,
+                vendor_version=EMPTY_VENDOR_VERSION,
+                evidence_rows=0,
+                quality_flag="warning",
+            )
+
+        resolved_to = _normalize_date_text(snapshot_to) or _latest_history_snapshot_date(conn) or date.today().isoformat()
+        resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
+        items = _load_backtest_window_rows(
+            conn,
+            stock_code=None,
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+        )
+    finally:
+        conn.close()
+
+    backtest_window_summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=duckdb_path,
+        stock_code=None,
+        snapshot_from=resolved_from,
+        snapshot_to=resolved_to,
+    )
+    if backtest_window_summary.get("status") in {"valid", "partial"}:
+        scoring_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
+    else:
+        scoring_items = items
+    payload = _build_strategy_score_payload(
+        items=scoring_items,
+        snapshot_from=resolved_from,
+        snapshot_to=resolved_to,
+        current_market_state=current_market_state,
+        min_sample=min_sample,
+        primary_horizon=normalized_horizon,
+        backtest_window_summary=backtest_window_summary,
+    )
+    return _wrap_strategy_score_envelope(
+        payload=payload,
+        source_version=_first_nonempty_source_version(scoring_items or items),
+        vendor_version=_first_nonempty_vendor_version(scoring_items or items) or EMPTY_VENDOR_VERSION,
+        evidence_rows=len(scoring_items),
+        quality_flag="ok" if scoring_items else "warning",
     )
 
 
@@ -649,6 +764,409 @@ def _build_market_state_signal_kind_horizon_stats(
     }
 
 
+def _build_strategy_score_payload(
+    *,
+    items: list[dict[str, Any]],
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    current_market_state: str | None,
+    min_sample: int,
+    primary_horizon: str,
+    backtest_window_summary: dict[str, Any],
+) -> dict[str, Any]:
+    effective_min_sample = max(1, int(min_sample))
+    grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for item in items:
+        market_state = _market_state_from_signal_evidence(item)
+        signal_kind = _normalized_signal_kind(item)
+        grouped.setdefault(market_state, {}).setdefault(signal_kind, []).append(item)
+
+    rows: list[dict[str, Any]] = []
+    for market_state, signal_groups in sorted(grouped.items()):
+        for signal_kind, signal_items in sorted(signal_groups.items()):
+            rows.append(
+                _strategy_score_row(
+                    market_state=market_state,
+                    signal_kind=signal_kind,
+                    items=signal_items,
+                    min_sample=effective_min_sample,
+                    primary_horizon=primary_horizon,
+                )
+            )
+
+    rows = _rank_strategy_score_rows(rows)
+    normalized_current_state = _normalized_text(current_market_state) or None
+    current_rows = _sort_strategy_score_rows(
+        [row for row in rows if normalized_current_state and row["market_state"] == normalized_current_state]
+    )
+    if normalized_current_state and not current_rows:
+        current_rows = [
+            _empty_strategy_score_row(
+                market_state=normalized_current_state,
+                signal_kind=signal_kind,
+                min_sample=effective_min_sample,
+                primary_horizon=primary_horizon,
+            )
+            for signal_kind in _DEFAULT_SIGNAL_KINDS
+        ]
+    if normalized_current_state and not any(row["sample_status"] == "sufficient" for row in current_rows):
+        current_rows = [
+            {
+                **row,
+                "reason": _current_state_insufficient_reason(
+                    row["stats"][primary_horizon]["available_count"],
+                    min_sample=effective_min_sample,
+                    primary_horizon=primary_horizon,
+                ),
+            }
+            for row in current_rows
+        ]
+
+    return {
+        "as_of_date": snapshot_to,
+        "snapshot_from": snapshot_from,
+        "snapshot_to": snapshot_to,
+        "primary_horizon": primary_horizon,
+        "min_sample": effective_min_sample,
+        "current_market_state": normalized_current_state,
+        "backtest_window_summary": backtest_window_summary,
+        "rows": _sort_strategy_score_rows(rows),
+        "current_market_state_rows": current_rows,
+    }
+
+
+def _strategy_score_row(
+    *,
+    market_state: str,
+    signal_kind: str,
+    items: list[dict[str, Any]],
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    stats = _build_horizon_stats(items)
+    diagnostics = _strategy_score_diagnostics(
+        market_state=market_state,
+        signal_kind=signal_kind,
+        items=items,
+        stats=stats,
+        min_sample=min_sample,
+        primary_horizon=primary_horizon,
+    )
+    primary_stats = stats[primary_horizon]
+    available_count = int(primary_stats["available_count"])
+    if available_count < min_sample:
+        return {
+            "market_state": market_state,
+            "signal_kind": signal_kind,
+            "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+            "sample_status": "insufficient",
+            "priority_score": None,
+            "priority_rank": None,
+            "priority_label": "样本不足",
+            "reason": _sample_insufficient_reason(
+                available_count,
+                min_sample=min_sample,
+                primary_horizon=primary_horizon,
+            ),
+            "stats": stats,
+            "diagnostics": diagnostics,
+        }
+
+    win_rate = float(primary_stats["win_rate"])
+    avg_return = float(primary_stats["avg_return"])
+    priority_score = round(win_rate * 100 + avg_return * 100, 2)
+    priority_label = "降权观察" if win_rate < 0.5 or avg_return <= 0 else "优先复核"
+    return {
+        "market_state": market_state,
+        "signal_kind": signal_kind,
+        "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        "sample_status": "sufficient",
+        "priority_score": priority_score,
+        "priority_rank": None,
+        "priority_label": priority_label,
+        "reason": _score_reason(
+            available_count=available_count,
+            win_rate=win_rate,
+            avg_return=avg_return,
+            priority_score=priority_score,
+            priority_label=priority_label,
+            primary_horizon=primary_horizon,
+        ),
+        "stats": stats,
+        "diagnostics": diagnostics,
+    }
+
+
+def _empty_strategy_score_row(
+    *,
+    market_state: str,
+    signal_kind: str,
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    stats = _empty_horizon_stats_by_key()
+    return {
+        "market_state": market_state,
+        "signal_kind": signal_kind,
+        "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        "sample_status": "insufficient",
+        "priority_score": None,
+        "priority_rank": None,
+        "priority_label": "样本不足",
+        "reason": _sample_insufficient_reason(0, min_sample=min_sample, primary_horizon=primary_horizon),
+        "stats": stats,
+        "diagnostics": _empty_strategy_score_diagnostics(),
+    }
+
+
+def _rank_strategy_score_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows_by_state: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        rows_by_state.setdefault(str(row["market_state"]), []).append(row)
+    ranked_rows: list[dict[str, Any]] = []
+    for state_rows in rows_by_state.values():
+        rank = 1
+        for row in _sort_strategy_score_rows(state_rows):
+            if row["sample_status"] == "sufficient":
+                row = {**row, "priority_rank": rank}
+                rank += 1
+            ranked_rows.append(row)
+    return ranked_rows
+
+
+def _sort_strategy_score_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def sort_key(row: dict[str, Any]) -> tuple[str, int, float, int, str]:
+        score = row.get("priority_score")
+        signal_kind = str(row.get("signal_kind") or "")
+        strategy_order = _DEFAULT_SIGNAL_KINDS.index(signal_kind) if signal_kind in _DEFAULT_SIGNAL_KINDS else 999
+        return (
+            str(row.get("market_state") or ""),
+            0 if score is not None else 1,
+            -(float(score) if score is not None else -1.0),
+            strategy_order,
+            signal_kind,
+        )
+
+    return sorted(rows, key=sort_key)
+
+
+def _empty_strategy_score_diagnostics() -> dict[str, Any]:
+    return {
+        "priority_scope": None,
+        "priority_scope_label": None,
+        "priority_scope_stats": None,
+        "rank_buckets": [],
+        "risk_flags": [],
+    }
+
+
+def _strategy_score_diagnostics(
+    *,
+    market_state: str,
+    signal_kind: str,
+    items: list[dict[str, Any]],
+    stats: dict[str, dict[str, Any]],
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    diagnostics = _empty_strategy_score_diagnostics()
+    rank_buckets = _rank_bucket_diagnostics(
+        market_state=market_state,
+        signal_kind=signal_kind,
+        items=items,
+        min_sample=min_sample,
+        primary_horizon=primary_horizon,
+    )
+    diagnostics["rank_buckets"] = rank_buckets
+    if market_state == "OVERHEAT" and signal_kind == "factor_screen" and any(
+        int(bucket["rank_from"]) > 10 for bucket in rank_buckets
+    ):
+        diagnostics["priority_scope"] = "rank<=10"
+        diagnostics["priority_scope_label"] = "前10名优先复核"
+        diagnostics["priority_scope_stats"] = _build_horizon_stats(
+            [item for item in items if (rank := _candidate_rank(item)) is not None and rank <= 10]
+        )
+    diagnostics["risk_flags"] = _strategy_score_risk_flags(
+        market_state=market_state,
+        signal_kind=signal_kind,
+        stats=stats,
+        min_sample=min_sample,
+    )
+    return diagnostics
+
+
+def _rank_bucket_diagnostics(
+    *,
+    market_state: str,
+    signal_kind: str,
+    items: list[dict[str, Any]],
+    min_sample: int,
+    primary_horizon: str,
+) -> list[dict[str, Any]]:
+    buckets: list[dict[str, Any]] = []
+    for rank_from, rank_to, label in _rank_bucket_ranges(signal_kind):
+        bucket_items = [
+            item
+            for item in items
+            if (rank := _candidate_rank(item)) is not None and rank >= rank_from and (rank_to is None or rank <= rank_to)
+        ]
+        if not bucket_items:
+            continue
+        bucket_stats = _build_horizon_stats(bucket_items)
+        primary_stats = bucket_stats[primary_horizon]
+        available_count = int(primary_stats["available_count"])
+        priority_label, included_in_priority, reason = _rank_bucket_priority(
+            market_state=market_state,
+            signal_kind=signal_kind,
+            rank_from=rank_from,
+            available_count=available_count,
+            primary_stats=primary_stats,
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+        buckets.append(
+            {
+                "label": label,
+                "rank_from": rank_from,
+                "rank_to": rank_to,
+                "sample_status": "sufficient" if available_count >= min_sample else "insufficient",
+                "priority_label": priority_label,
+                "included_in_priority": included_in_priority,
+                "reason": reason,
+                "stats": bucket_stats,
+            }
+        )
+    return buckets
+
+
+def _rank_bucket_ranges(signal_kind: str) -> list[tuple[int, int | None, str]]:
+    if signal_kind == "factor_screen":
+        return [(1, 5, "1-5"), (6, 10, "6-10"), (11, 20, "11-20"), (21, None, "21+")]
+    if signal_kind == "stock_candidate":
+        return [(1, 3, "1-3"), (4, 6, "4-6"), (7, 10, "7-10"), (11, None, "11+")]
+    return []
+
+
+def _rank_bucket_priority(
+    *,
+    market_state: str,
+    signal_kind: str,
+    rank_from: int,
+    available_count: int,
+    primary_stats: dict[str, Any],
+    min_sample: int,
+    primary_horizon: str,
+) -> tuple[str, bool, str]:
+    if available_count < min_sample:
+        return (
+            "样本不足",
+            False,
+            _sample_insufficient_reason(
+                available_count,
+                min_sample=min_sample,
+                primary_horizon=primary_horizon,
+            ),
+        )
+    if market_state == "OVERHEAT" and signal_kind == "factor_screen" and rank_from > 10:
+        return (
+            "降权观察",
+            False,
+            "OVERHEAT 状态下 rank > 10 的多因子候选降权观察；优先复核仅覆盖前10名。",
+        )
+    win_rate = float(primary_stats["win_rate"])
+    avg_return = float(primary_stats["avg_return"])
+    if win_rate < 0.5 or avg_return <= 0:
+        return (
+            "降权观察",
+            False,
+            f"{_HORIZON_LABELS[primary_horizon]} 胜率低于 50% 或均值不为正，降权观察。",
+        )
+    return (
+        "优先复核",
+        True,
+        f"{_HORIZON_LABELS[primary_horizon]} 样本满足阈值且均值为正，仅用于优先复核排序。",
+    )
+
+
+def _strategy_score_risk_flags(
+    *,
+    market_state: str,
+    signal_kind: str,
+    stats: dict[str, dict[str, Any]],
+    min_sample: int,
+) -> list[dict[str, Any]]:
+    if market_state != "OVERHEAT" or signal_kind != "stock_candidate":
+        return []
+    t20_stats = stats["return_20d"]
+    available_count = int(t20_stats["available_count"])
+    if available_count < min_sample:
+        return []
+    win_rate = t20_stats["win_rate"]
+    avg_return = t20_stats["avg_return"]
+    if win_rate is None or avg_return is None or (float(win_rate) >= 0.5 and float(avg_return) > 0):
+        return []
+    return [
+        {
+            "kind": "long_window_risk",
+            "label": "长窗口风险",
+            "horizon": "return_20d",
+            "reason": (
+                f"T+20 样本 {available_count}，胜率 {float(win_rate) * 100:.1f}%，"
+                f"均值 {float(avg_return) * 100:+.2f}%，仅按短窗口复核。"
+            ),
+            "stats": t20_stats,
+        }
+    ]
+
+
+def _candidate_rank(item: dict[str, Any]) -> int | None:
+    try:
+        return int(item.get("candidate_rank"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _empty_horizon_stats_by_key() -> dict[str, dict[str, Any]]:
+    return {
+        key: {
+            "available_count": 0,
+            "missing_count": 0,
+            "positive_count": 0,
+            "non_positive_count": 0,
+            "avg_return": None,
+            "win_rate": None,
+        }
+        for key in _HORIZON_LABELS
+    }
+
+
+def _sample_insufficient_reason(available_count: int, *, min_sample: int, primary_horizon: str) -> str:
+    return f"{_HORIZON_LABELS[primary_horizon]} 可用样本 {available_count}/{min_sample}，样本不足，仅作观察。"
+
+
+def _current_state_insufficient_reason(available_count: int, *, min_sample: int, primary_horizon: str) -> str:
+    return f"当前状态样本不足：{_HORIZON_LABELS[primary_horizon]} 可用样本 {available_count}/{min_sample}，仅作观察。"
+
+
+def _score_reason(
+    *,
+    available_count: int,
+    win_rate: float,
+    avg_return: float,
+    priority_score: float,
+    priority_label: str,
+    primary_horizon: str,
+) -> str:
+    horizon_label = _HORIZON_LABELS[primary_horizon]
+    base = (
+        f"{horizon_label} 样本 {available_count}，胜率 {win_rate * 100:.1f}%，"
+        f"均值 {avg_return * 100:+.2f}%，评分 {priority_score:.2f}。"
+    )
+    if priority_label == "降权观察":
+        return base + "胜率低于 50% 或均值不为正，降权观察。"
+    return base + "仅用于优先复核排序。"
+
+
 def _horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
     values = _present_float_values(items, key)
     positive_count = sum(1 for value in values if value > 0)
@@ -778,6 +1296,21 @@ def _normalize_date_text(value: str | None) -> str | None:
     return text[:10]
 
 
+def _default_snapshot_from(snapshot_to: str) -> str:
+    try:
+        parsed = date.fromisoformat(snapshot_to[:10])
+    except ValueError:
+        parsed = date.today()
+    return (parsed - timedelta(days=180)).isoformat()
+
+
+def _latest_history_snapshot_date(conn: duckdb.DuckDBPyConnection) -> str | None:
+    row = conn.execute(f"select max(snapshot_as_of_date) from {TABLE_HIST}").fetchone()
+    if not row:
+        return None
+    return _normalize_date_text(row[0])
+
+
 def _first_nonempty_vendor_version(items: list[dict[str, Any]]) -> str | None:
     for row in items:
         text = str(row.get("vendor_version") or "").strip()
@@ -806,5 +1339,37 @@ def _wrap_empty_envelope(*, payload: dict[str, object]) -> dict[str, object]:
         },
         tables_used=[TABLE_HIST],
         evidence_rows=0,
+        result_payload=payload,
+    )
+
+
+def _wrap_strategy_score_envelope(
+    *,
+    payload: dict[str, object],
+    source_version: str,
+    vendor_version: str,
+    evidence_rows: int,
+    quality_flag: str,
+) -> dict[str, object]:
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_strategy_score_{uuid.uuid4().hex[:12]}",
+        result_kind=STRATEGY_SCORE_RESULT_KIND,
+        cache_version=STRATEGY_SCORE_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=STRATEGY_SCORE_RULE_VERSION,
+        quality_flag=cast(QualityFlag, quality_flag),
+        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
+        vendor_status=cast(VendorStatus, "ok"),
+        fallback_mode=cast(FallbackMode, "none"),
+        filters_applied={
+            "snapshot_from": payload.get("snapshot_from"),
+            "snapshot_to": payload.get("snapshot_to"),
+            "current_market_state": payload.get("current_market_state"),
+            "min_sample": payload.get("min_sample"),
+            "primary_horizon": payload.get("primary_horizon"),
+        },
+        tables_used=[TABLE_HIST],
+        evidence_rows=evidence_rows,
         result_payload=payload,
     )

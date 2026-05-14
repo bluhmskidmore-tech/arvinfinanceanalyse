@@ -10,6 +10,7 @@ import type {
   LivermoreCandidateHistoryPayload,
   LivermoreSectorRankSeriesPoint,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyScorePayload,
 } from "../../../api/contracts";
 import {
   AnalysisGrid,
@@ -239,6 +240,56 @@ function buildStrategyBacktestMarketStateRows(payload: LivermoreCandidateHistory
         };
       });
   });
+}
+
+type StrategyPriorityRow = LivermoreStrategyScorePayload["rows"][number];
+
+function formatPriorityScore(value: number | null | undefined): string {
+  return value == null || Number.isNaN(value) ? "-" : value.toFixed(1);
+}
+
+function buildStrategyPriorityHeadline(rows: StrategyPriorityRow[]): string {
+  const sufficientRows = rows.filter((row) => row.sample_status === "sufficient");
+  if (rows.length === 0 || sufficientRows.length === 0) {
+    return "当前状态样本不足";
+  }
+  const priorityRows = sufficientRows.filter(
+    (row) => row.priority_label === "优先复核" && (row.diagnostics?.risk_flags ?? []).length === 0,
+  );
+  if (priorityRows.length > 0) {
+    return `优先复核：${priorityRows.map((row) => row.strategy_label).join("、")}`;
+  }
+  return "当前状态降权观察";
+}
+
+function strategyPrioritySummaryReason(rows: StrategyPriorityRow[]): string {
+  const firstPriority = rows.find((row) => row.priority_label === "优先复核");
+  if (firstPriority) return firstPriority.reason;
+  const firstInsufficient = rows.find((row) => row.sample_status === "insufficient");
+  if (firstInsufficient) return firstInsufficient.reason;
+  return rows[0]?.reason ?? "暂无当前状态策略评分。";
+}
+
+function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
+  const diagnostics = row.diagnostics;
+  if (!diagnostics) return [];
+  const labels: string[] = [];
+  if (diagnostics.priority_scope_label) {
+    const scopeStats = diagnostics.priority_scope_stats?.return_5d;
+    const scopeStatsText = scopeStats ? backtestStatsText(scopeStats) : null;
+    labels.push(scopeStatsText ? `${diagnostics.priority_scope_label} ${scopeStatsText}` : diagnostics.priority_scope_label);
+  }
+  for (const bucket of diagnostics.rank_buckets ?? []) {
+    if (!bucket.included_in_priority && bucket.priority_label === "降权观察") {
+      labels.push(`${bucket.label} ${bucket.priority_label}`);
+    }
+  }
+  for (const flag of diagnostics.risk_flags ?? []) {
+    if (flag.label) {
+      labels.push(flag.label);
+    }
+  }
+  return Array.from(new Set(labels)).slice(0, 4);
 }
 
 export default function StockAnalysisPage() {
@@ -548,6 +599,27 @@ export default function StockAnalysisPage() {
   const stockDetailAsOfDate = asOfOverride ?? strategyPayload?.as_of_date ?? undefined;
 
   const effectiveAsOf = asOfOverride ?? strategyPayload?.as_of_date ?? null;
+  const currentMarketState = strategyPayload?.market_gate.state ?? null;
+  const strategyScoreQuery = useQuery({
+    queryKey: [
+      "stock-analysis",
+      "livermore-strategy-score",
+      effectiveAsOf ?? "__none",
+      currentMarketState ?? "__none",
+    ] as const,
+    queryFn: () =>
+      client.getLivermoreStrategyScore({
+        snapshotTo: effectiveAsOf ?? undefined,
+        currentMarketState: currentMarketState ?? undefined,
+        minSample: 20,
+        primaryHorizon: "return_5d",
+      }),
+    enabled: Boolean(effectiveAsOf),
+  });
+  const strategyScorePayload = strategyScoreQuery.data?.result ?? null;
+  const strategyPriorityRows = strategyScorePayload?.current_market_state_rows ?? [];
+  const strategyPriorityHeadline = buildStrategyPriorityHeadline(strategyPriorityRows);
+  const strategyPriorityReason = strategyPrioritySummaryReason(strategyPriorityRows);
   const strategyBacktestSnapshotFrom = effectiveAsOf ? dayjs(effectiveAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
 
   const strategyBacktestQuery = useQuery({
@@ -1427,6 +1499,103 @@ export default function StockAnalysisPage() {
                     },
                   ]}
                 />
+              </section>
+
+              <section
+                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                data-testid="stock-analysis-market-priority-summary"
+              >
+                <div className="stock-analysis-page__section-head">
+                  <div>
+                    <h2>当前市场策略优先级</h2>
+                    <p>按近 180 天候选快照拆分市场状态，以 T+5 为主排序；只读评分，仅用于复核先后。</p>
+                  </div>
+                  <span className="stock-analysis-page__pill">
+                    {(strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补")} /{" "}
+                    {strategyScorePayload?.primary_horizon === "return_1d"
+                      ? "T+1"
+                      : strategyScorePayload?.primary_horizon === "return_20d"
+                        ? "T+20"
+                        : "T+5"}
+                  </span>
+                </div>
+                {strategyScoreQuery.isLoading ? (
+                  <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
+                ) : null}
+                {strategyScoreQuery.isError ? (
+                  <p className="stock-analysis-page__notice">
+                    当前市场策略优先级暂不可用：{errorMessage(strategyScoreQuery.error)}
+                  </p>
+                ) : null}
+                {!strategyScoreQuery.isLoading && !strategyScoreQuery.isError ? (
+                  <>
+                    <div
+                      className="stock-analysis-page__filter-status"
+                      data-testid="stock-analysis-market-priority-current"
+                    >
+                      <span>{strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补"}</span>
+                      <strong>{strategyPriorityHeadline}</strong>
+                      <small>
+                        {strategyPriorityReason} 样本阈值 {strategyScorePayload?.min_sample ?? 20}，不输出交易动作。
+                      </small>
+                    </div>
+                    {strategyPriorityRows.length > 0 ? (
+                      <div className="stock-analysis-page__table-wrap">
+                        <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                          <thead>
+                            <tr>
+                              <th scope="col">策略</th>
+                              <th scope="col">状态</th>
+                              <th className="stock-analysis-page__table-number" scope="col">
+                                评分
+                              </th>
+                              {strategyBacktestHorizons.map((horizon) => (
+                                <th scope="col" key={horizon}>
+                                  {strategyBacktestHorizonLabels[horizon]}
+                                </th>
+                              ))}
+                              <th scope="col">原因</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {strategyPriorityRows.map((row) => {
+                              const diagnosticLabels = strategyPriorityDiagnosticLabels(row);
+                              return (
+                                <tr
+                                  key={`${row.market_state}:${row.signal_kind}`}
+                                  data-testid={`stock-analysis-market-priority-row-${row.market_state}-${row.signal_kind}`}
+                                >
+                                  <td>{row.strategy_label}</td>
+                                  <td>{row.priority_label}</td>
+                                  <td className="stock-analysis-page__table-number" data-testid="stock-analysis-market-priority-score">
+                                    {formatPriorityScore(row.priority_score)}
+                                  </td>
+                                  {strategyBacktestHorizons.map((horizon) => (
+                                    <td className="stock-analysis-page__table-number" key={horizon}>
+                                      {backtestStatsText(row.stats[horizon])}
+                                    </td>
+                                  ))}
+                                  <td>
+                                    <span>{row.reason}</span>
+                                    {diagnosticLabels.length > 0 ? (
+                                      <div className="stock-analysis-page__strategy-diagnostic-tags">
+                                        {diagnosticLabels.map((label) => (
+                                          <span key={label}>{label}</span>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="stock-analysis-page__empty">当前状态样本不足。</p>
+                    )}
+                  </>
+                ) : null}
               </section>
 
               <section

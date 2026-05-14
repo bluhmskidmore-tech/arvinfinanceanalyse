@@ -8,6 +8,7 @@ import type {
   ConfluenceReplayStatus,
   LivermoreCandidateHistoryPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyScorePayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
@@ -400,12 +401,225 @@ function buildCandidateHistoryPayload(): LivermoreCandidateHistoryPayload {
   };
 }
 
+function buildStrategyScorePayload(
+  overrides: Partial<LivermoreStrategyScorePayload> = {},
+): LivermoreStrategyScorePayload {
+  const factorRow: LivermoreStrategyScorePayload["rows"][number] = {
+    market_state: "OVERHEAT",
+    signal_kind: "factor_screen",
+    strategy_label: "多因子",
+    sample_status: "sufficient",
+    priority_score: 62.4,
+    priority_rank: 1,
+    priority_label: "优先复核",
+    reason: "T+5 样本 24，胜率 60.0%，均值 +2.40%，评分 62.40。仅用于优先复核排序。",
+    stats: {
+      return_1d: {
+        available_count: 24,
+        missing_count: 0,
+        positive_count: 13,
+        non_positive_count: 11,
+        avg_return: 0.008,
+        win_rate: 0.541667,
+      },
+      return_5d: {
+        available_count: 24,
+        missing_count: 0,
+        positive_count: 14,
+        non_positive_count: 10,
+        avg_return: 0.024,
+        win_rate: 0.6,
+      },
+      return_20d: {
+        available_count: 20,
+        missing_count: 4,
+        positive_count: 12,
+        non_positive_count: 8,
+        avg_return: 0.031,
+        win_rate: 0.6,
+      },
+    },
+    diagnostics: {
+      priority_scope: "rank<=10",
+      priority_scope_label: "前10名优先复核",
+      priority_scope_stats: {
+        return_1d: {
+          available_count: 20,
+          missing_count: 0,
+          positive_count: 11,
+          non_positive_count: 9,
+          avg_return: 0.0048,
+          win_rate: 0.55,
+        },
+        return_5d: {
+          available_count: 20,
+          missing_count: 0,
+          positive_count: 15,
+          non_positive_count: 5,
+          avg_return: 0.0421,
+          win_rate: 0.75,
+        },
+        return_20d: {
+          available_count: 0,
+          missing_count: 20,
+          positive_count: 0,
+          non_positive_count: 0,
+          avg_return: null,
+          win_rate: null,
+        },
+      },
+      rank_buckets: [
+        {
+          label: "1-5",
+          rank_from: 1,
+          rank_to: 5,
+          sample_status: "sufficient",
+          priority_label: "优先复核",
+          included_in_priority: true,
+          reason: "T+5 样本满足阈值且均值为正，仅用于优先复核排序。",
+          stats: {
+            return_1d: {
+              available_count: 5,
+              missing_count: 0,
+              positive_count: 3,
+              non_positive_count: 2,
+              avg_return: 0.006,
+              win_rate: 0.6,
+            },
+            return_5d: {
+              available_count: 5,
+              missing_count: 0,
+              positive_count: 4,
+              non_positive_count: 1,
+              avg_return: 0.02,
+              win_rate: 0.8,
+            },
+            return_20d: {
+              available_count: 5,
+              missing_count: 0,
+              positive_count: 3,
+              non_positive_count: 2,
+              avg_return: 0.01,
+              win_rate: 0.6,
+            },
+          },
+        },
+        {
+          label: "11-20",
+          rank_from: 11,
+          rank_to: 20,
+          sample_status: "sufficient",
+          priority_label: "降权观察",
+          included_in_priority: false,
+          reason: "OVERHEAT 状态下 rank > 10 的多因子候选降权观察；优先复核仅覆盖前10名。",
+          stats: {
+            return_1d: {
+              available_count: 4,
+              missing_count: 0,
+              positive_count: 1,
+              non_positive_count: 3,
+              avg_return: -0.002,
+              win_rate: 0.25,
+            },
+            return_5d: {
+              available_count: 4,
+              missing_count: 0,
+              positive_count: 1,
+              non_positive_count: 3,
+              avg_return: -0.01,
+              win_rate: 0.25,
+            },
+            return_20d: {
+              available_count: 0,
+              missing_count: 4,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+          },
+        },
+      ],
+      risk_flags: [],
+    },
+  };
+  const trendRow: LivermoreStrategyScorePayload["rows"][number] = {
+    market_state: "OVERHEAT",
+    signal_kind: "stock_candidate",
+    strategy_label: "趋势突破",
+    sample_status: "sufficient",
+    priority_score: 43.5,
+    priority_rank: 2,
+    priority_label: "降权观察",
+    reason: "T+5 样本 22，胜率 45.5%，均值 -2.00%，评分 43.50。胜率低于 50% 或均值不为正，降权观察。",
+    stats: {
+      return_1d: {
+        available_count: 22,
+        missing_count: 0,
+        positive_count: 10,
+        non_positive_count: 12,
+        avg_return: -0.004,
+        win_rate: 0.454545,
+      },
+      return_5d: {
+        available_count: 22,
+        missing_count: 0,
+        positive_count: 10,
+        non_positive_count: 12,
+        avg_return: -0.02,
+        win_rate: 0.455,
+      },
+      return_20d: {
+        available_count: 12,
+        missing_count: 10,
+        positive_count: 4,
+        non_positive_count: 8,
+        avg_return: -0.01,
+        win_rate: 0.333333,
+      },
+    },
+    diagnostics: {
+      priority_scope: null,
+      priority_scope_label: null,
+      rank_buckets: [],
+      risk_flags: [
+        {
+          kind: "long_window_risk",
+          label: "长窗口风险",
+          horizon: "return_20d",
+          reason: "T+20 样本 12，胜率 33.3%，均值 -1.00%，仅按短窗口复核。",
+          stats: {
+            available_count: 12,
+            missing_count: 10,
+            positive_count: 4,
+            non_positive_count: 8,
+            avg_return: -0.01,
+            win_rate: 0.333333,
+          },
+        },
+      ],
+    },
+  };
+  return {
+    as_of_date: "2026-04-29",
+    snapshot_from: "2025-10-31",
+    snapshot_to: "2026-04-29",
+    primary_horizon: "return_5d",
+    min_sample: 20,
+    current_market_state: "OVERHEAT",
+    rows: [factorRow, trendRow],
+    current_market_state_rows: [factorRow, trendRow],
+    ...overrides,
+  };
+}
+
 function stockClient(options?: {
   strategy?: LivermoreStrategyPayload;
   strategyError?: Error;
   confluence?: LivermoreSignalConfluencePayload;
   confluenceError?: Error;
   candidateHistory?: LivermoreCandidateHistoryPayload;
+  strategyScore?: LivermoreStrategyScorePayload;
   metaOverrides?: Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
 }): ApiClient {
   return {
@@ -442,6 +656,11 @@ function stockClient(options?: {
       buildMockApiEnvelope(
         "market_data.livermore.candidate_history",
         options?.candidateHistory ?? buildCandidateHistoryPayload(),
+      ),
+    getLivermoreStrategyScore: async (): Promise<ApiEnvelope<LivermoreStrategyScorePayload>> =>
+      buildMockApiEnvelope(
+        "market_data.livermore.strategy_score",
+        options?.strategyScore ?? buildStrategyScorePayload(),
       ),
   };
 }
@@ -1213,6 +1432,115 @@ describe("StockAnalysisPage", () => {
     expect(factor.getByText("多因子")).toBeInTheDocument();
     expect(factor.getByText("37.3% / -0.04% / 150条")).toBeInTheDocument();
     expect(factor.getByText("56.7% / +2.93% / 30条")).toBeInTheDocument();
+  });
+
+  it("renders current market strategy priority from the score API without trading action copy", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          market_gate: {
+            ...buildStrategyPayload().market_gate,
+            state: "OVERHEAT",
+          },
+        }),
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
+    await waitFor(() => expect(summary).toHaveTextContent("优先复核"));
+    await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
+    expect(summary).toHaveTextContent("当前市场策略优先级");
+    expect(summary).toHaveTextContent("OVERHEAT");
+    expect(summary).toHaveTextContent("T+5");
+    expect(summary).toHaveTextContent("优先复核");
+    expect(summary).toHaveTextContent("多因子");
+    expect(summary).toHaveTextContent("62.4");
+
+    const factorRowElement = screen.getByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
+    const factorRow = within(factorRowElement);
+    expect(factorRow.getByText("多因子")).toBeInTheDocument();
+    expect(factorRow.getByText("优先复核")).toBeInTheDocument();
+    expect(factorRow.getByText("54.2% / +0.80% / 24条")).toBeInTheDocument();
+    expect(factorRow.getByText("60.0% / +2.40% / 24条")).toBeInTheDocument();
+    expect(factorRow.getByText("60.0% / +3.10% / 20条")).toBeInTheDocument();
+    expect(factorRowElement).toHaveTextContent("前10名优先复核");
+    expect(factorRowElement).toHaveTextContent("75.0% / +4.21% / 20条");
+    expect(factorRow.getByText("11-20 降权观察")).toBeInTheDocument();
+
+    const trendRow = within(screen.getByTestId("stock-analysis-market-priority-row-OVERHEAT-stock_candidate"));
+    expect(trendRow.getByText("长窗口风险")).toBeInTheDocument();
+    expect(summary).toHaveTextContent("优先复核：多因子");
+    expect(summary).not.toHaveTextContent("优先复核：多因子、趋势突破");
+
+    const page = screen.getByTestId("stock-analysis-page");
+    expect(page).not.toHaveTextContent("买入");
+    expect(page).not.toHaveTextContent("卖出");
+    expect(page).not.toHaveTextContent("下单");
+    expect(page).not.toHaveTextContent("调仓");
+  });
+
+  it("shows current market sample insufficiency instead of a strategy recommendation", async () => {
+    const insufficientRows: LivermoreStrategyScorePayload["rows"] = [
+      {
+        market_state: "OVERHEAT",
+        signal_kind: "stock_candidate",
+        strategy_label: "趋势突破",
+        sample_status: "insufficient",
+        priority_score: null,
+        priority_rank: null,
+        priority_label: "样本不足",
+        reason: "当前状态样本不足：T+5 可用样本 6/20，仅作观察。",
+        stats: {
+          return_1d: {
+            available_count: 8,
+            missing_count: 0,
+            positive_count: 4,
+            non_positive_count: 4,
+            avg_return: 0.001,
+            win_rate: 0.5,
+          },
+          return_5d: {
+            available_count: 6,
+            missing_count: 2,
+            positive_count: 3,
+            non_positive_count: 3,
+            avg_return: 0.002,
+            win_rate: 0.5,
+          },
+          return_20d: {
+            available_count: 0,
+            missing_count: 8,
+            positive_count: 0,
+            non_positive_count: 0,
+            avg_return: null,
+            win_rate: null,
+          },
+        },
+      },
+    ];
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          market_gate: {
+            ...buildStrategyPayload().market_gate,
+            state: "OVERHEAT",
+          },
+        }),
+        strategyScore: buildStrategyScorePayload({
+          rows: insufficientRows,
+          current_market_state_rows: insufficientRows,
+        }),
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
+    await waitFor(() => expect(summary).toHaveTextContent("当前状态样本不足"));
+    expect(summary).toHaveTextContent("当前状态样本不足");
+    expect(summary).toHaveTextContent("样本不足");
+    expect(summary).not.toHaveTextContent("优先复核");
+    expect(summary).toHaveTextContent("T+1");
+    expect(summary).toHaveTextContent("T+5");
+    expect(summary).toHaveTextContent("T+20");
   });
 
   it("prefers horizon-usable stats and renders market-state replay rows", async () => {

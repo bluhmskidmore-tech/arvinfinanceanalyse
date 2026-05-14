@@ -12,6 +12,7 @@ import type {
   LivermorePositionSnapshotPayload,
   LivermoreSectorRankSeriesPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyScorePayload,
   LivermoreStockDetailPayload,
   LivermoreStrategyPayload,
   MacroBondLinkagePayload,
@@ -86,6 +87,13 @@ export type MarketDataClientMethods = {
     snapshotTo?: string;
     limit?: number;
   }) => Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>>;
+  getLivermoreStrategyScore: (options?: {
+    snapshotFrom?: string;
+    snapshotTo?: string;
+    currentMarketState?: string;
+    minSample?: number;
+    primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+  }) => Promise<ApiEnvelope<LivermoreStrategyScorePayload>>;
   getLivermoreSectorRankSeries: (options?: {
     asOfDate?: string;
     windowDays?: number;
@@ -1204,6 +1212,36 @@ function buildCandidateHistoryQuery(options?: {
   return q ? `?${q}` : "";
 }
 
+function buildStrategyScoreQuery(options?: {
+  snapshotFrom?: string;
+  snapshotTo?: string;
+  currentMarketState?: string;
+  minSample?: number;
+  primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+}) {
+  const params = new URLSearchParams();
+  const sf = options?.snapshotFrom?.trim();
+  if (sf) {
+    params.set("snapshot_from", sf);
+  }
+  const st = options?.snapshotTo?.trim();
+  if (st) {
+    params.set("snapshot_to", st);
+  }
+  const state = options?.currentMarketState?.trim();
+  if (state) {
+    params.set("current_market_state", state);
+  }
+  if (options?.minSample != null) {
+    params.set("min_sample", String(options.minSample));
+  }
+  if (options?.primaryHorizon) {
+    params.set("primary_horizon", options.primaryHorizon);
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
 class ActionRequestError extends Error {
   readonly status: number;
   readonly runId?: string;
@@ -1664,6 +1702,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
               snapshot_as_of_date: "2026-04-10",
               stock_code: code || "000001.SZ",
               stock_name: "MockHist",
+              signal_kind: "stock_candidate",
               candidate_rank: 1,
               sector_code: "MOCK",
               sector_name: "样例板块",
@@ -1685,6 +1724,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
               snapshot_as_of_date: "2026-04-03",
               stock_code: code || "000001.SZ",
               stock_name: "MockHist",
+              signal_kind: "factor_screen",
               candidate_rank: 2,
               sector_code: null,
               sector_name: null,
@@ -1711,6 +1751,86 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           vendor_version: "vv_candidate_history_mock",
           rule_version: "rv_livermore_candidate_history_v1",
           cache_version: "cv_livermore_candidate_history_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
+    async getLivermoreStrategyScore(options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+      currentMarketState?: string;
+      minSample?: number;
+      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    }) {
+      await delay();
+      const state = options?.currentMarketState?.trim() || "WARM";
+      const primaryHorizon = options?.primaryHorizon ?? "return_5d";
+      const minSample = options?.minSample ?? 20;
+      const stats = {
+        return_1d: {
+          available_count: 24,
+          missing_count: 0,
+          positive_count: 13,
+          non_positive_count: 11,
+          avg_return: 0.008,
+          win_rate: 0.541667,
+        },
+        return_5d: {
+          available_count: 24,
+          missing_count: 0,
+          positive_count: 14,
+          non_positive_count: 10,
+          avg_return: 0.024,
+          win_rate: 0.6,
+        },
+        return_20d: {
+          available_count: 20,
+          missing_count: 4,
+          positive_count: 12,
+          non_positive_count: 8,
+          avg_return: 0.031,
+          win_rate: 0.6,
+        },
+      };
+      const row: LivermoreStrategyScorePayload["rows"][number] = {
+        market_state: state,
+        signal_kind: "factor_screen",
+        strategy_label: "多因子",
+        sample_status: "sufficient",
+        priority_score: 62.4,
+        priority_rank: 1,
+        priority_label: "优先复核",
+        reason: "T+5 样本 24，胜率 60.0%，均值 +2.40%，评分 62.40。仅用于优先复核排序。",
+        stats,
+        diagnostics: {
+          priority_scope: null,
+          priority_scope_label: null,
+          priority_scope_stats: null,
+          rank_buckets: [],
+          risk_flags: [],
+        },
+      };
+      return buildMockApiEnvelope(
+        "market_data.livermore.strategy_score",
+        {
+          as_of_date: options?.snapshotTo?.trim() ?? "2026-04-29",
+          snapshot_from: options?.snapshotFrom?.trim() ?? null,
+          snapshot_to: options?.snapshotTo?.trim() ?? "2026-04-29",
+          primary_horizon: primaryHorizon,
+          min_sample: minSample,
+          current_market_state: state,
+          rows: [row],
+          current_market_state_rows: [row],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_strategy_score_mock",
+          vendor_version: "vv_livermore_strategy_score_mock",
+          rule_version: "rv_livermore_strategy_score_v1",
+          cache_version: "cv_livermore_strategy_score_v1",
           quality_flag: "ok",
           vendor_status: "ok",
           fallback_mode: "none",
@@ -1947,6 +2067,18 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore/candidate-history${buildCandidateHistoryQuery(options)}`,
+      ),
+    getLivermoreStrategyScore: (options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+      currentMarketState?: string;
+      minSample?: number;
+      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    }) =>
+      requestJson<LivermoreStrategyScorePayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/strategy-score${buildStrategyScoreQuery(options)}`,
       ),
     getLivermoreSectorRankSeries: (options?: {
       asOfDate?: string;

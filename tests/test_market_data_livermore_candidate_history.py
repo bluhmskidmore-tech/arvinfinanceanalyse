@@ -199,6 +199,65 @@ def _build_client(tmp_path, monkeypatch) -> TestClient:
     return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
 
+def _insert_strategy_score_rows(
+    conn: duckdb.DuckDBPyConnection,
+    rows: list[tuple[str, str, str, str, float | None, float | None, float | None, str]],
+) -> None:
+    ensure_livermore_candidate_history_schema(conn)
+    conn.executemany(
+        """
+        insert into livermore_candidate_history (
+          snapshot_as_of_date,
+          stock_code,
+          stock_name,
+          candidate_rank,
+          selection_close,
+          forward_trade_date_1d,
+          forward_trade_date_5d,
+          forward_trade_date_20d,
+          return_1d,
+          return_5d,
+          return_20d,
+          data_status,
+          formula_version,
+          source_version,
+          vendor_version,
+          rule_version,
+          run_id,
+          signal_kind,
+          signal_evidence_json
+        ) values (?, ?, ?, ?, 10.0, ?, ?, ?, ?, ?, ?, 'complete', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, ?, ?)
+        """,
+        [
+            (
+                snapshot_date,
+                stock_code,
+                stock_name,
+                index,
+                snapshot_date,
+                snapshot_date,
+                snapshot_date,
+                return_1d,
+                return_5d,
+                return_20d,
+                f"run-{index}",
+                signal_kind,
+                signal_evidence_json,
+            )
+            for index, (
+                snapshot_date,
+                stock_code,
+                stock_name,
+                signal_kind,
+                return_1d,
+                return_5d,
+                return_20d,
+                signal_evidence_json,
+            ) in enumerate(rows, start=1)
+        ],
+    )
+
+
 def test_task_happy_path_forward_returns(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "hist.duckdb"
     snap = date(2026, 1, 6)
@@ -2256,4 +2315,228 @@ def test_api_limit_validation(monkeypatch, tmp_path) -> None:
     client = _build_client(tmp_path, monkeypatch)
     assert client.get("/ui/market-data/livermore/candidate-history", params={"limit": 0}).status_code == 422
     assert client.get("/ui/market-data/livermore/candidate-history", params={"limit": 501}).status_code == 422
+    get_settings.cache_clear()
+
+
+def test_strategy_score_service_ranks_current_market_state_by_t5_score(tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_strategy_score_envelope,
+    )
+
+    db_path = tmp_path / "strategy-score.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Factor A", "factor_screen", 0.01, 0.02, 0.03, '{"market_state":"HOT"}'),
+                ("2026-05-02", "000002.SZ", "Factor B", "factor_screen", 0.00, 0.01, 0.02, '{"market_state":"HOT"}'),
+                ("2026-05-01", "000003.SZ", "Trend A", "stock_candidate", 0.01, 0.10, 0.01, '{"market_state":"HOT"}'),
+                ("2026-05-02", "000004.SZ", "Trend B", "stock_candidate", 0.01, -0.02, 0.01, '{"market_state":"HOT"}'),
+                ("2026-05-01", "000005.SZ", "Theme A", "theme_breakout", 0.01, 0.20, 0.01, '{"market_state":"HOT"}'),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-02")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_strategy_score_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
+        current_market_state="HOT",
+        min_sample=2,
+        primary_horizon="return_5d",
+    )
+
+    body = envelope["result"]
+    assert isinstance(body, dict)
+    assert body["primary_horizon"] == "return_5d"
+    assert body["min_sample"] == 2
+    assert body["current_market_state"] == "HOT"
+    current_rows = body["current_market_state_rows"]
+    assert [row["signal_kind"] for row in current_rows] == ["factor_screen", "stock_candidate", "theme_breakout"]
+    assert current_rows[0]["strategy_label"] == "多因子"
+    assert current_rows[0]["sample_status"] == "sufficient"
+    assert current_rows[0]["priority_rank"] == 1
+    assert current_rows[0]["priority_score"] == 101.5
+    assert current_rows[0]["priority_label"] == "优先复核"
+    assert current_rows[0]["stats"]["return_5d"] == {
+        "available_count": 2,
+        "missing_count": 0,
+        "positive_count": 2,
+        "non_positive_count": 0,
+        "avg_return": 0.015,
+        "win_rate": 1.0,
+    }
+    assert current_rows[1]["priority_score"] == 54.0
+    assert current_rows[2]["sample_status"] == "insufficient"
+    assert current_rows[2]["priority_score"] is None
+    assert "样本不足" in current_rows[2]["reason"]
+    assert envelope["result_meta"]["result_kind"] == "market_data.livermore.strategy_score"
+    assert "livermore_candidate_history" in envelope["result_meta"]["tables_used"]
+
+
+def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk(tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_strategy_score_envelope,
+    )
+
+    db_path = tmp_path / "strategy-score-diagnostics.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        factor_rows = [
+            (
+                "2026-05-01",
+                f"{index:06d}.SZ",
+                f"Factor {index}",
+                "factor_screen",
+                0.01,
+                -0.02 if index > 10 else 0.03,
+                None,
+                '{"market_state":"OVERHEAT"}',
+            )
+            for index in range(1, 26)
+        ]
+        trend_rows = [
+            (
+                "2026-05-01",
+                f"30000{index}.SZ",
+                f"Trend {index}",
+                "stock_candidate",
+                0.01,
+                0.04,
+                -0.03,
+                '{"market_state":"OVERHEAT"}',
+            )
+            for index in range(1, 3)
+        ]
+        _insert_strategy_score_rows(conn, factor_rows + trend_rows)
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_strategy_score_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="OVERHEAT",
+        min_sample=2,
+        primary_horizon="return_5d",
+    )
+
+    rows = envelope["result"]["current_market_state_rows"]
+    factor = next(row for row in rows if row["signal_kind"] == "factor_screen")
+    factor_diagnostics = factor["diagnostics"]
+    assert factor_diagnostics["priority_scope"] == "rank<=10"
+    assert factor_diagnostics["priority_scope_label"] == "前10名优先复核"
+    assert factor_diagnostics["priority_scope_stats"]["return_5d"]["available_count"] == 10
+    assert factor_diagnostics["priority_scope_stats"]["return_5d"]["avg_return"] == 0.03
+    tail_bucket = next(bucket for bucket in factor_diagnostics["rank_buckets"] if bucket["label"] == "11-20")
+    assert tail_bucket["included_in_priority"] is False
+    assert tail_bucket["priority_label"] == "降权观察"
+    assert tail_bucket["stats"]["return_5d"]["available_count"] == 10
+    assert tail_bucket["stats"]["return_5d"]["avg_return"] == -0.02
+    assert "rank > 10" in tail_bucket["reason"]
+
+    trend = next(row for row in rows if row["signal_kind"] == "stock_candidate")
+    risk_flags = trend["diagnostics"]["risk_flags"]
+    assert risk_flags[0]["kind"] == "long_window_risk"
+    assert risk_flags[0]["horizon"] == "return_20d"
+    assert "T+20" in risk_flags[0]["reason"]
+    assert risk_flags[0]["stats"]["avg_return"] == -0.03
+
+
+def test_strategy_score_service_keeps_old_rows_as_unknown_and_reports_current_state_insufficient(tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_strategy_score_envelope,
+    )
+
+    db_path = tmp_path / "strategy-score-unknown.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Old A", "stock_candidate", 0.01, 0.03, None, "{}"),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_strategy_score_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="OVERHEAT",
+        min_sample=2,
+        primary_horizon="return_5d",
+    )
+
+    body = envelope["result"]
+    assert isinstance(body, dict)
+    assert [row["market_state"] for row in body["rows"]] == ["unknown"]
+    assert body["rows"][0]["sample_status"] == "insufficient"
+    current_rows = body["current_market_state_rows"]
+    assert len(current_rows) == 4
+    assert {row["signal_kind"] for row in current_rows} == {
+        "stock_candidate",
+        "factor_screen",
+        "theme_breakout",
+        "mean_reversion",
+    }
+    assert all(row["sample_status"] == "insufficient" for row in current_rows)
+    assert all(row["priority_score"] is None for row in current_rows)
+    assert all("当前状态样本不足" in row["reason"] for row in current_rows)
+
+
+def test_strategy_score_api_happy_path_and_query_validation(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Factor A", "factor_screen", 0.01, 0.02, 0.03, '{"market_state":"HOT"}'),
+                ("2026-05-02", "000002.SZ", "Factor B", "factor_screen", 0.00, 0.01, 0.02, '{"market_state":"HOT"}'),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-02")
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/strategy-score",
+        params={
+            "snapshot_from": "2026-05-01",
+            "snapshot_to": "2026-05-02",
+            "current_market_state": "HOT",
+            "min_sample": 2,
+            "primary_horizon": "return_5d",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["basis"] == "analytical"
+    assert body["result_meta"]["rule_version"] == "rv_livermore_strategy_score_v1"
+    assert "livermore_candidate_history" in body["result_meta"]["tables_used"]
+    assert body["result"]["current_market_state_rows"][0]["signal_kind"] == "factor_screen"
+
+    assert (
+        client.get("/ui/market-data/livermore/strategy-score", params={"snapshot_from": "not-a-date"}).status_code
+        == 422
+    )
+    assert client.get("/ui/market-data/livermore/strategy-score", params={"min_sample": 0}).status_code == 422
+    assert (
+        client.get(
+            "/ui/market-data/livermore/strategy-score",
+            params={"primary_horizon": "return_10d"},
+        ).status_code
+        == 422
+    )
     get_settings.cache_clear()

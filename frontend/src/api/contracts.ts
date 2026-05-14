@@ -1492,6 +1492,62 @@ export type LivermoreCandidateHistoryPayload = {
   items: LivermoreCandidateHistoryRow[];
 };
 
+export type LivermoreStrategyScoreSampleStatus = "sufficient" | "insufficient" | string;
+
+export type LivermoreStrategyScorePriorityLabel = "优先复核" | "降权观察" | "样本不足" | string;
+
+export type LivermoreStrategyScoreRankBucket = {
+  label: string;
+  rank_from: number;
+  rank_to: number | null;
+  sample_status: LivermoreStrategyScoreSampleStatus;
+  priority_label: LivermoreStrategyScorePriorityLabel;
+  included_in_priority: boolean;
+  reason: string;
+  stats: LivermoreCandidateHistoryHorizonStatsByKey;
+};
+
+export type LivermoreStrategyScoreRiskFlag = {
+  kind: string;
+  label: string;
+  horizon?: LivermoreCandidateHistoryHorizonKey | string;
+  reason: string;
+  stats?: LivermoreCandidateHistoryHorizonStats;
+};
+
+export type LivermoreStrategyScoreDiagnostics = {
+  priority_scope: string | null;
+  priority_scope_label: string | null;
+  priority_scope_stats?: LivermoreCandidateHistoryHorizonStatsByKey | null;
+  rank_buckets: LivermoreStrategyScoreRankBucket[];
+  risk_flags: LivermoreStrategyScoreRiskFlag[];
+};
+
+export type LivermoreStrategyScoreRow = {
+  market_state: string;
+  signal_kind: string;
+  strategy_label: string;
+  sample_status: LivermoreStrategyScoreSampleStatus;
+  priority_score: number | null;
+  priority_rank: number | null;
+  priority_label: LivermoreStrategyScorePriorityLabel;
+  reason: string;
+  stats: LivermoreCandidateHistoryHorizonStatsByKey;
+  diagnostics?: LivermoreStrategyScoreDiagnostics;
+};
+
+export type LivermoreStrategyScorePayload = {
+  as_of_date: string | null;
+  snapshot_from: string | null;
+  snapshot_to: string | null;
+  primary_horizon: LivermoreCandidateHistoryHorizonKey;
+  min_sample: number;
+  current_market_state: string | null;
+  backtest_window_summary?: BacktestWindowSummary | null;
+  rows: LivermoreStrategyScoreRow[];
+  current_market_state_rows: LivermoreStrategyScoreRow[];
+};
+
 export type ConfluenceReplayBlockedDate = {
   trade_date: string;
   status: "pending" | "unsupported" | "proxy_only";

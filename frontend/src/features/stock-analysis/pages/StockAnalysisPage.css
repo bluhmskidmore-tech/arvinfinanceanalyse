@@ -593,6 +593,24 @@
   color: var(--sa-color-muted);
 }
 
+.stock-analysis-page__strategy-diagnostic-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.stock-analysis-page__strategy-diagnostic-tags span {
+  border: 1px solid var(--sa-warning-border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--sa-warning-bg-soft);
+  color: var(--sa-warning-text);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .stock-analysis-page__sector-tabs .ant-tabs-nav {
   margin-bottom: 10px;
 }
