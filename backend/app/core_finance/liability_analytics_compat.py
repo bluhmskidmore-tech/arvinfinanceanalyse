@@ -194,6 +194,10 @@ def weighted_rate(pairs: list[tuple[Decimal, Decimal | None]]) -> Decimal | None
     return numerator / denominator
 
 
+def is_asset_without_maturity(row: dict[str, Any]) -> bool:
+    return coerce_date(row.get("maturity_date")) is None
+
+
 def maturity_bucket(report_date: date, maturity_value: object) -> str:
     maturity_date = coerce_date(maturity_value)
     if maturity_date is None:
@@ -516,6 +520,8 @@ def compute_liability_yield_metrics(
                 market_liability_pairs.append((zqtz_ncd_weight(row), rate))
             continue
         if not is_interest_bearing_bond_asset(row):
+            continue
+        if is_asset_without_maturity(row):
             continue
         amount = zqtz_asset_yield_weight(row)
         ytm = normalize_bond_rate_decimal(row.get("ytm_value"))

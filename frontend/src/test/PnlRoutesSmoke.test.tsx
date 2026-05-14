@@ -547,10 +547,14 @@ function buildPnlClient(): ApiClient {
 
 describe("pnl routed pages smoke", () => {
   it("renders the real /pnl route surface through workbench routes", async () => {
+    const user = userEvent.setup();
+
     renderWorkbenchApp(["/pnl"], { client: buildPnlClient() });
 
     expect(await screen.findByTestId("yield-analysis-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("yield-analysis-pnl-toolbar")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "收益分析", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByText("Performance")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText("选择报表月份")).toHaveValue("2025-12-31");
     });
@@ -560,6 +564,14 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByText("240001.IB")).toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole("tab", { name: "收益总览" }));
+
+    expect(await screen.findByText("静态资产收益率")).toBeInTheDocument();
+    expect(screen.getByText("市场负债成本（NIM 分母）")).toBeInTheDocument();
+    expect(screen.getByText("静态 NIM")).toBeInTheDocument();
+    expect(screen.getAllByText(/剔除无到期日投资/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/日均分析页使用区间日均分母/)).toBeInTheDocument();
   });
 
   it("renders the real /pnl-bridge route surface through workbench routes", async () => {
