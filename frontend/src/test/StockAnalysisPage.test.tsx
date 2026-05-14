@@ -492,6 +492,74 @@ function buildStrategyScorePayload(
             win_rate: 0.6,
           },
         ],
+        tracked_snapshots: [
+          {
+            snapshot_as_of_date: "2026-04-30",
+            candidate_count: 10,
+            horizons: {
+              return_1d: {
+                status: "complete",
+                available_count: 10,
+                missing_count: 0,
+                positive_count: 7,
+                non_positive_count: 3,
+                avg_return: 0.0112,
+                win_rate: 0.7,
+              },
+              return_5d: {
+                status: "complete",
+                available_count: 10,
+                missing_count: 0,
+                positive_count: 9,
+                non_positive_count: 1,
+                avg_return: 0.045477,
+                win_rate: 0.9,
+              },
+              return_20d: {
+                status: "pending",
+                available_count: 0,
+                missing_count: 10,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
+            },
+          },
+          {
+            snapshot_as_of_date: "2026-05-07",
+            candidate_count: 10,
+            horizons: {
+              return_1d: {
+                status: "complete",
+                available_count: 10,
+                missing_count: 0,
+                positive_count: 6,
+                non_positive_count: 4,
+                avg_return: 0.007,
+                win_rate: 0.6,
+              },
+              return_5d: {
+                status: "pending",
+                available_count: 0,
+                missing_count: 10,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
+              return_20d: {
+                status: "pending",
+                available_count: 0,
+                missing_count: 10,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
+            },
+          },
+        ],
         worst_snapshot: {
           snapshot_as_of_date: "2026-05-06",
           available_count: 10,
@@ -1506,6 +1574,10 @@ describe("StockAnalysisPage", () => {
     expect(summary).not.toHaveTextContent("优先复核：多因子、趋势突破");
     expect(summary).toHaveTextContent("样本偏窄");
     expect(summary).toHaveTextContent("T+5 已成熟快照 2/4");
+    expect(summary).toHaveTextContent("当前候选成熟进度");
+    expect(summary).toHaveTextContent("还差 2 个成熟快照");
+    expect(summary).toHaveTextContent("2026-05-07");
+    expect(summary).toHaveTextContent("T+5 待成熟");
 
     const page = screen.getByTestId("stock-analysis-page");
     expect(page).not.toHaveTextContent("买入");

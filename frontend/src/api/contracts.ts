@@ -1524,6 +1524,16 @@ export type LivermoreStrategyScoreSnapshotStat = {
   win_rate: number | null;
 };
 
+export type LivermoreStrategyScoreHorizonMaturity = LivermoreCandidateHistoryHorizonStats & {
+  status: "complete" | "partial" | "pending" | string;
+};
+
+export type LivermoreStrategyScoreTrackedSnapshot = {
+  snapshot_as_of_date: string;
+  candidate_count: number;
+  horizons: Record<LivermoreCandidateHistoryHorizonKey, LivermoreStrategyScoreHorizonMaturity>;
+};
+
 export type LivermoreStrategyScoreMaturity = {
   status: "sufficient" | "narrow" | string;
   label: string;
@@ -1531,6 +1541,7 @@ export type LivermoreStrategyScoreMaturity = {
   min_mature_snapshot_count: number;
   mature_snapshot_count: number;
   snapshot_stats: LivermoreStrategyScoreSnapshotStat[];
+  tracked_snapshots: LivermoreStrategyScoreTrackedSnapshot[];
   worst_snapshot: LivermoreStrategyScoreSnapshotStat | null;
 };
 

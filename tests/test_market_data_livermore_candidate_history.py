@@ -2413,14 +2413,52 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
             for index in range(1, 3)
         ]
         _insert_strategy_score_rows(conn, factor_rows + trend_rows)
+        conn.executemany(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date,
+              stock_code,
+              stock_name,
+              candidate_rank,
+              selection_close,
+              forward_trade_date_1d,
+              forward_trade_date_5d,
+              forward_trade_date_20d,
+              return_1d,
+              return_5d,
+              return_20d,
+              data_status,
+              formula_version,
+              source_version,
+              vendor_version,
+              rule_version,
+              run_id,
+              signal_kind,
+              signal_evidence_json
+            ) values (?, ?, ?, ?, 10.0, ?, null, null, ?, null, null, 'pending', 'fv1', 'sv_score', 'vv_score', 'rv_score', ?, 'factor_screen', '{"market_state":"OVERHEAT"}')
+            """,
+            [
+                (
+                    "2026-05-02",
+                    f"10000{index}.SZ",
+                    f"Pending Factor {index}",
+                    index,
+                    "2026-05-02",
+                    0.01,
+                    f"pending-run-{index}",
+                )
+                for index in range(1, 11)
+            ],
+        )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-02")
     finally:
         conn.close()
 
     envelope = livermore_candidate_history_strategy_score_envelope(
         duckdb_path=str(db_path),
         snapshot_from="2026-05-01",
-        snapshot_to="2026-05-01",
+        snapshot_to="2026-05-02",
         current_market_state="OVERHEAT",
         min_sample=2,
         primary_horizon="return_5d",
@@ -2440,6 +2478,17 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
     assert maturity["min_mature_snapshot_count"] == 4
     assert maturity["snapshot_stats"][0]["snapshot_as_of_date"] == "2026-05-01"
     assert maturity["snapshot_stats"][0]["available_count"] == 10
+    assert [row["snapshot_as_of_date"] for row in maturity["tracked_snapshots"]] == [
+        "2026-05-01",
+        "2026-05-02",
+    ]
+    assert maturity["tracked_snapshots"][0]["candidate_count"] == 10
+    assert maturity["tracked_snapshots"][0]["horizons"]["return_1d"]["status"] == "complete"
+    assert maturity["tracked_snapshots"][0]["horizons"]["return_5d"]["status"] == "complete"
+    assert maturity["tracked_snapshots"][1]["candidate_count"] == 10
+    assert maturity["tracked_snapshots"][1]["horizons"]["return_1d"]["status"] == "complete"
+    assert maturity["tracked_snapshots"][1]["horizons"]["return_5d"]["status"] == "pending"
+    assert maturity["tracked_snapshots"][1]["horizons"]["return_5d"]["available_count"] == 0
     assert maturity["worst_snapshot"]["win_rate"] == 1.0
     tail_bucket = next(bucket for bucket in factor_diagnostics["rank_buckets"] if bucket["label"] == "11-20")
     assert tail_bucket["included_in_priority"] is False

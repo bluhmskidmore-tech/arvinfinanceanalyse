@@ -1132,6 +1132,7 @@ def _empty_maturity_diagnostics() -> dict[str, Any]:
         "min_mature_snapshot_count": 4,
         "mature_snapshot_count": 0,
         "snapshot_stats": [],
+        "tracked_snapshots": [],
         "worst_snapshot": None,
     }
 
@@ -1168,7 +1169,41 @@ def _maturity_diagnostics(
         "min_mature_snapshot_count": min_mature_snapshot_count,
         "mature_snapshot_count": mature_count,
         "snapshot_stats": snapshot_stats,
+        "tracked_snapshots": _tracked_snapshot_stats(items),
         "worst_snapshot": _worst_snapshot_stat(snapshot_stats),
+    }
+
+
+def _tracked_snapshot_stats(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    snapshot_groups: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
+        if not snapshot_date:
+            continue
+        snapshot_groups.setdefault(snapshot_date, []).append(item)
+    return [
+        _tracked_snapshot_stat(snapshot_date, snapshot_items)
+        for snapshot_date, snapshot_items in sorted(snapshot_groups.items())
+    ]
+
+
+def _tracked_snapshot_stat(snapshot_date: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    candidate_count = len(items)
+    horizons: dict[str, dict[str, Any]] = {}
+    for horizon in _HORIZON_LABELS:
+        stat = _horizon_stat(items, horizon)
+        available_count = int(stat["available_count"])
+        if available_count >= candidate_count and candidate_count > 0:
+            status = "complete"
+        elif available_count > 0:
+            status = "partial"
+        else:
+            status = "pending"
+        horizons[horizon] = {**stat, "status": status}
+    return {
+        "snapshot_as_of_date": snapshot_date,
+        "candidate_count": candidate_count,
+        "horizons": horizons,
     }
 
 

@@ -128,6 +128,11 @@ const strategyBacktestHorizonLabels: Record<LivermoreCandidateHistoryHorizonKey,
   return_5d: "T+5 胜率 / 均值 / 样本",
   return_20d: "T+20 胜率 / 均值 / 样本",
 };
+const strategyBacktestHorizonShortLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = {
+  return_1d: "T+1",
+  return_5d: "T+5",
+  return_20d: "T+20",
+};
 const strategyBacktestMarketStateOrder = ["OFF", "WARM", "HOT", "OVERHEAT", "PENDING_DATA", "NO_DATA", "STALE"] as const;
 
 function formatBacktestPercent(value: number | null | undefined, digits = 1): string {
@@ -243,6 +248,8 @@ function buildStrategyBacktestMarketStateRows(payload: LivermoreCandidateHistory
 }
 
 type StrategyPriorityRow = LivermoreStrategyScorePayload["rows"][number];
+type StrategyMaturity = NonNullable<NonNullable<StrategyPriorityRow["diagnostics"]>["maturity"]>;
+type StrategyTrackedSnapshot = StrategyMaturity["tracked_snapshots"][number];
 
 function formatPriorityScore(value: number | null | undefined): string {
   return value == null || Number.isNaN(value) ? "-" : value.toFixed(1);
@@ -297,6 +304,36 @@ function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
     }
   }
   return Array.from(new Set(labels)).slice(0, 4);
+}
+
+function resolveStrategyMaturityRow(rows: StrategyPriorityRow[]): StrategyPriorityRow | null {
+  return (
+    rows.find(
+      (row) =>
+        row.diagnostics?.priority_scope === "rank<=10" &&
+        (row.diagnostics?.maturity?.tracked_snapshots ?? []).length > 0,
+    ) ??
+    rows.find((row) => (row.diagnostics?.maturity?.tracked_snapshots ?? []).length > 0) ??
+    null
+  );
+}
+
+function strategyMaturityRemainingText(maturity: StrategyMaturity): string {
+  const remaining = Math.max(maturity.min_mature_snapshot_count - maturity.mature_snapshot_count, 0);
+  return remaining > 0 ? `还差 ${remaining} 个成熟快照` : "成熟快照已达标";
+}
+
+function strategyMaturityHorizonText(
+  snapshot: StrategyTrackedSnapshot,
+  horizon: LivermoreCandidateHistoryHorizonKey,
+): string {
+  const stats = snapshot.horizons[horizon];
+  const label = strategyBacktestHorizonShortLabels[horizon];
+  if (!stats || stats.status === "pending" || stats.available_count <= 0) {
+    return `${label} 待成熟`;
+  }
+  const statusText = stats.status === "partial" ? "部分成熟" : "已成熟";
+  return `${label} ${statusText} ${backtestStatsText(stats)}`;
 }
 
 export default function StockAnalysisPage() {
@@ -627,6 +664,9 @@ export default function StockAnalysisPage() {
   const strategyPriorityRows = strategyScorePayload?.current_market_state_rows ?? [];
   const strategyPriorityHeadline = buildStrategyPriorityHeadline(strategyPriorityRows);
   const strategyPriorityReason = strategyPrioritySummaryReason(strategyPriorityRows);
+  const strategyMaturityRow = resolveStrategyMaturityRow(strategyPriorityRows);
+  const strategyMaturity = strategyMaturityRow?.diagnostics?.maturity ?? null;
+  const strategyMaturitySnapshots = [...(strategyMaturity?.tracked_snapshots ?? [])].slice(-6).reverse();
   const strategyBacktestSnapshotFrom = effectiveAsOf ? dayjs(effectiveAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
 
   const strategyBacktestQuery = useQuery({
@@ -1601,6 +1641,50 @@ export default function StockAnalysisPage() {
                     ) : (
                       <p className="stock-analysis-page__empty">当前状态样本不足。</p>
                     )}
+                    {strategyMaturityRow && strategyMaturity && strategyMaturitySnapshots.length > 0 ? (
+                      <div data-testid="stock-analysis-candidate-maturity">
+                        <div className="stock-analysis-page__filter-status">
+                          <span>当前候选成熟进度</span>
+                          <strong>
+                            {strategyMaturityRow.strategy_label}
+                            {strategyMaturityRow.diagnostics?.priority_scope_label
+                              ? ` / ${strategyMaturityRow.diagnostics.priority_scope_label}`
+                              : ""}
+                          </strong>
+                          <small>
+                            {strategyMaturityRemainingText(strategyMaturity)}，{strategyMaturity.reason}
+                          </small>
+                        </div>
+                        <div className="stock-analysis-page__table-wrap">
+                          <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                            <thead>
+                              <tr>
+                                <th scope="col">快照</th>
+                                <th className="stock-analysis-page__table-number" scope="col">
+                                  候选
+                                </th>
+                                {strategyBacktestHorizons.map((horizon) => (
+                                  <th scope="col" key={horizon}>
+                                    {strategyBacktestHorizonShortLabels[horizon]}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {strategyMaturitySnapshots.map((snapshot) => (
+                                <tr key={snapshot.snapshot_as_of_date}>
+                                  <td>{snapshot.snapshot_as_of_date}</td>
+                                  <td className="stock-analysis-page__table-number">{snapshot.candidate_count}</td>
+                                  {strategyBacktestHorizons.map((horizon) => (
+                                    <td key={horizon}>{strategyMaturityHorizonText(snapshot, horizon)}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
               </section>
