@@ -1808,6 +1808,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           priority_scope: null,
           priority_scope_label: null,
           priority_scope_stats: null,
+          maturity: null,
           rank_buckets: [],
           risk_flags: [],
         },

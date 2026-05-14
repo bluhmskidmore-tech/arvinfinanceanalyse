@@ -253,11 +253,15 @@ function buildStrategyPriorityHeadline(rows: StrategyPriorityRow[]): string {
   if (rows.length === 0 || sufficientRows.length === 0) {
     return "当前状态样本不足";
   }
-  const priorityRows = sufficientRows.filter(
+  const priorityCandidates = sufficientRows.filter(
     (row) => row.priority_label === "优先复核" && (row.diagnostics?.risk_flags ?? []).length === 0,
   );
+  const priorityRows = priorityCandidates.filter((row) => row.diagnostics?.maturity?.status !== "narrow");
   if (priorityRows.length > 0) {
     return `优先复核：${priorityRows.map((row) => row.strategy_label).join("、")}`;
+  }
+  if (priorityCandidates.length > 0) {
+    return `优先观察：${priorityCandidates.map((row) => row.strategy_label).join("、")}`;
   }
   return "当前状态降权观察";
 }
@@ -278,6 +282,9 @@ function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
     const scopeStats = diagnostics.priority_scope_stats?.return_5d;
     const scopeStatsText = scopeStats ? backtestStatsText(scopeStats) : null;
     labels.push(scopeStatsText ? `${diagnostics.priority_scope_label} ${scopeStatsText}` : diagnostics.priority_scope_label);
+  }
+  if (diagnostics.maturity?.status === "narrow") {
+    labels.push(`${diagnostics.maturity.label} ${diagnostics.maturity.reason}`);
   }
   for (const bucket of diagnostics.rank_buckets ?? []) {
     if (!bucket.included_in_priority && bucket.priority_label === "降权观察") {

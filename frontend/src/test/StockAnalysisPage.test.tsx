@@ -468,6 +468,39 @@ function buildStrategyScorePayload(
           win_rate: null,
         },
       },
+      maturity: {
+        status: "narrow",
+        label: "样本偏窄",
+        reason: "T+5 已成熟快照 2/4，等待更多成熟日。",
+        min_mature_snapshot_count: 4,
+        mature_snapshot_count: 2,
+        snapshot_stats: [
+          {
+            snapshot_as_of_date: "2026-04-30",
+            available_count: 10,
+            positive_count: 9,
+            non_positive_count: 1,
+            avg_return: 0.045477,
+            win_rate: 0.9,
+          },
+          {
+            snapshot_as_of_date: "2026-05-06",
+            available_count: 10,
+            positive_count: 6,
+            non_positive_count: 4,
+            avg_return: 0.038797,
+            win_rate: 0.6,
+          },
+        ],
+        worst_snapshot: {
+          snapshot_as_of_date: "2026-05-06",
+          available_count: 10,
+          positive_count: 6,
+          non_positive_count: 4,
+          avg_return: 0.038797,
+          win_rate: 0.6,
+        },
+      },
       rank_buckets: [
         {
           label: "1-5",
@@ -1469,8 +1502,10 @@ describe("StockAnalysisPage", () => {
 
     const trendRow = within(screen.getByTestId("stock-analysis-market-priority-row-OVERHEAT-stock_candidate"));
     expect(trendRow.getByText("长窗口风险")).toBeInTheDocument();
-    expect(summary).toHaveTextContent("优先复核：多因子");
+    expect(summary).toHaveTextContent("优先观察：多因子");
     expect(summary).not.toHaveTextContent("优先复核：多因子、趋势突破");
+    expect(summary).toHaveTextContent("样本偏窄");
+    expect(summary).toHaveTextContent("T+5 已成熟快照 2/4");
 
     const page = screen.getByTestId("stock-analysis-page");
     expect(page).not.toHaveTextContent("买入");

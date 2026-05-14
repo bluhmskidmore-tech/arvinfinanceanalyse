@@ -2433,6 +2433,14 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
     assert factor_diagnostics["priority_scope_label"] == "前10名优先复核"
     assert factor_diagnostics["priority_scope_stats"]["return_5d"]["available_count"] == 10
     assert factor_diagnostics["priority_scope_stats"]["return_5d"]["avg_return"] == 0.03
+    maturity = factor_diagnostics["maturity"]
+    assert maturity["status"] == "narrow"
+    assert maturity["label"] == "样本偏窄"
+    assert maturity["mature_snapshot_count"] == 1
+    assert maturity["min_mature_snapshot_count"] == 4
+    assert maturity["snapshot_stats"][0]["snapshot_as_of_date"] == "2026-05-01"
+    assert maturity["snapshot_stats"][0]["available_count"] == 10
+    assert maturity["worst_snapshot"]["win_rate"] == 1.0
     tail_bucket = next(bucket for bucket in factor_diagnostics["rank_buckets"] if bucket["label"] == "11-20")
     assert tail_bucket["included_in_priority"] is False
     assert tail_bucket["priority_label"] == "降权观察"

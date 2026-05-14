@@ -1515,10 +1515,30 @@ export type LivermoreStrategyScoreRiskFlag = {
   stats?: LivermoreCandidateHistoryHorizonStats;
 };
 
+export type LivermoreStrategyScoreSnapshotStat = {
+  snapshot_as_of_date: string;
+  available_count: number;
+  positive_count: number;
+  non_positive_count: number;
+  avg_return: number | null;
+  win_rate: number | null;
+};
+
+export type LivermoreStrategyScoreMaturity = {
+  status: "sufficient" | "narrow" | string;
+  label: string;
+  reason: string;
+  min_mature_snapshot_count: number;
+  mature_snapshot_count: number;
+  snapshot_stats: LivermoreStrategyScoreSnapshotStat[];
+  worst_snapshot: LivermoreStrategyScoreSnapshotStat | null;
+};
+
 export type LivermoreStrategyScoreDiagnostics = {
   priority_scope: string | null;
   priority_scope_label: string | null;
   priority_scope_stats?: LivermoreCandidateHistoryHorizonStatsByKey | null;
+  maturity?: LivermoreStrategyScoreMaturity | null;
   rank_buckets: LivermoreStrategyScoreRankBucket[];
   risk_flags: LivermoreStrategyScoreRiskFlag[];
 };

@@ -955,6 +955,7 @@ def _empty_strategy_score_diagnostics() -> dict[str, Any]:
         "priority_scope": None,
         "priority_scope_label": None,
         "priority_scope_stats": None,
+        "maturity": _empty_maturity_diagnostics(),
         "rank_buckets": [],
         "risk_flags": [],
     }
@@ -981,11 +982,15 @@ def _strategy_score_diagnostics(
     if market_state == "OVERHEAT" and signal_kind == "factor_screen" and any(
         int(bucket["rank_from"]) > 10 for bucket in rank_buckets
     ):
+        priority_scope_items = [
+            item for item in items if (rank := _candidate_rank(item)) is not None and rank <= 10
+        ]
         diagnostics["priority_scope"] = "rank<=10"
         diagnostics["priority_scope_label"] = "前10名优先复核"
-        diagnostics["priority_scope_stats"] = _build_horizon_stats(
-            [item for item in items if (rank := _candidate_rank(item)) is not None and rank <= 10]
-        )
+        diagnostics["priority_scope_stats"] = _build_horizon_stats(priority_scope_items)
+        diagnostics["maturity"] = _maturity_diagnostics(priority_scope_items, primary_horizon=primary_horizon)
+    else:
+        diagnostics["maturity"] = _maturity_diagnostics(items, primary_horizon=primary_horizon)
     diagnostics["risk_flags"] = _strategy_score_risk_flags(
         market_state=market_state,
         signal_kind=signal_kind,
@@ -1117,6 +1122,84 @@ def _strategy_score_risk_flags(
             "stats": t20_stats,
         }
     ]
+
+
+def _empty_maturity_diagnostics() -> dict[str, Any]:
+    return {
+        "status": "narrow",
+        "label": "样本偏窄",
+        "reason": "T+5 已成熟快照 0/4，等待更多成熟日。",
+        "min_mature_snapshot_count": 4,
+        "mature_snapshot_count": 0,
+        "snapshot_stats": [],
+        "worst_snapshot": None,
+    }
+
+
+def _maturity_diagnostics(
+    items: list[dict[str, Any]],
+    *,
+    primary_horizon: str,
+    min_mature_snapshot_count: int = 4,
+) -> dict[str, Any]:
+    snapshot_groups: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
+        if not snapshot_date or item.get(primary_horizon) is None:
+            continue
+        snapshot_groups.setdefault(snapshot_date, []).append(item)
+
+    snapshot_stats = [
+        _snapshot_maturity_stat(snapshot_date, snapshot_items, primary_horizon=primary_horizon)
+        for snapshot_date, snapshot_items in sorted(snapshot_groups.items())
+    ]
+    mature_count = len(snapshot_stats)
+    status = "sufficient" if mature_count >= min_mature_snapshot_count else "narrow"
+    label = "成熟快照充足" if status == "sufficient" else "样本偏窄"
+    horizon_label = _HORIZON_LABELS[primary_horizon]
+    reason = (
+        f"{horizon_label} 已成熟快照 {mature_count}/{min_mature_snapshot_count}，"
+        + ("可作为强优先复核。" if status == "sufficient" else "等待更多成熟日。")
+    )
+    return {
+        "status": status,
+        "label": label,
+        "reason": reason,
+        "min_mature_snapshot_count": min_mature_snapshot_count,
+        "mature_snapshot_count": mature_count,
+        "snapshot_stats": snapshot_stats,
+        "worst_snapshot": _worst_snapshot_stat(snapshot_stats),
+    }
+
+
+def _snapshot_maturity_stat(
+    snapshot_date: str,
+    items: list[dict[str, Any]],
+    *,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    stat = _horizon_stat(items, primary_horizon)
+    return {
+        "snapshot_as_of_date": snapshot_date,
+        "available_count": stat["available_count"],
+        "positive_count": stat["positive_count"],
+        "non_positive_count": stat["non_positive_count"],
+        "avg_return": stat["avg_return"],
+        "win_rate": stat["win_rate"],
+    }
+
+
+def _worst_snapshot_stat(snapshot_stats: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not snapshot_stats:
+        return None
+    return min(
+        snapshot_stats,
+        key=lambda stat: (
+            float(stat["win_rate"]) if stat.get("win_rate") is not None else -1.0,
+            float(stat["avg_return"]) if stat.get("avg_return") is not None else -1.0,
+            str(stat.get("snapshot_as_of_date") or ""),
+        ),
+    )
 
 
 def _candidate_rank(item: dict[str, Any]) -> int | None:
