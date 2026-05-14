@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -79,9 +79,14 @@ describe("BondDashboardPage", () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByRole("combobox", { name: "bond-dashboard-report-date" });
+    const reportDateInput = await screen.findByRole("combobox", { name: "bond-dashboard-report-date" });
+    await waitFor(() => {
+      expect(reportDateInput).not.toBeDisabled();
+    });
     const initial = spy.mock.calls.length;
-    await user.click(screen.getByRole("combobox", { name: "bond-dashboard-report-date" }));
+    const reportDateSelect = reportDateInput.closest(".ant-select");
+    expect(reportDateSelect).not.toBeNull();
+    fireEvent.mouseDown(reportDateSelect!.querySelector(".ant-select-selector")!);
     const listbox = await screen.findByRole("listbox");
     await user.click(within(listbox).getByText("2026-02-28"));
 
@@ -192,6 +197,80 @@ describe("BondDashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-duration")).toHaveTextContent("4.14");
+    });
+  });
+
+  it("renders non-zero dashboard values from Numeric API payloads", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis"),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(343_822_795_478.69),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.02565621),
+          weighted_duration: ratio(4.13678311),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(106_155_944.31),
+          bond_count: 251,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardRiskIndicators = async () => ({
+      result_meta: resultMeta("bond_dashboard.risk_indicators"),
+      result: {
+        report_date: "2026-04-30",
+        total_market_value: yuan(343_822_795_478.69),
+        total_dv01: dv01(106_155_944.31),
+        weighted_duration: ratio(4.13678311),
+        credit_ratio: ratio(0.29250449),
+        weighted_convexity: ratio(0.03),
+        total_spread_dv01: dv01(31_000_000),
+        reinvestment_ratio_1y: ratio(0.12),
+      },
+    });
+    client.getBondDashboardPortfolioComparison = async () => ({
+      result_meta: resultMeta("bond_dashboard.portfolio_comparison"),
+      result: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            portfolio_name: "Core book",
+            total_market_value: yuan(343_822_795_478.69),
+            weighted_ytm: pct(0.02565621),
+            weighted_duration: ratio(4.13678311),
+            total_dv01: dv01(106_155_944.31),
+            bond_count: 251,
+          },
+        ],
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const scaleCard = await screen.findByTestId("bond-dashboard-kpi-total_market_value");
+    expect(scaleCard.textContent?.replace(/,/g, "")).toContain("3438.23");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-risk-row-credit_ratio")).toHaveTextContent("29.25%");
+      expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
     });
   });
 

@@ -29,41 +29,41 @@
 - `result.prev_report_date == "2026-03-30"`.
 - `result.kpis` and `result.prev_kpis` both exist and expose the same headline key set.
 
-## Headline KPI precision and units
+## Headline KPI Precision And Units
 
-- `total_market_value` is an 8-decimal amount string and the page renders it in `亿`.
-- `unrealized_pnl` is an 8-decimal amount string and the page renders it in `亿`.
-- `weighted_ytm` is an 8-decimal ratio string and the page renders it in `%`.
-- `weighted_duration` is an 8-decimal duration string and the page renders it in `年`.
-- `weighted_coupon` is an 8-decimal ratio string and the page renders it in `%`.
-- `credit_spread_median` is an 8-decimal ratio string and the page renders it in `%`.
-- `total_dv01` is an 8-decimal amount string and the page renders it in `万元`.
+- `total_market_value` is a `Numeric` object with `raw` in `yuan`; the page renders it in yi yuan.
+- `unrealized_pnl` is a `Numeric` object with `raw` in `yuan`; the page renders it in yi yuan.
+- `weighted_ytm` is a `Numeric` object with `raw` in ratio form and `unit == "pct"`; the page renders it in `%`.
+- `weighted_duration` is a `Numeric` object with `unit == "ratio"`; the page renders it in years.
+- `weighted_coupon` is a `Numeric` object with `raw` in ratio form and `unit == "pct"`; the page renders it in `%`.
+- `credit_spread_median` is a `Numeric` object with `raw` in ratio form and `unit == "pct"`; the page renders it in `%`.
+- `total_dv01` is a `Numeric` object with `unit == "dv01"`; the page renders it in ten-thousand yuan.
 - `bond_count` is an integer.
 
-## Frozen values
+## Frozen Values
 
-- `result.kpis.total_market_value == "1000.00000000"`.
-- `result.kpis.unrealized_pnl == "0.00000000"`.
-- `result.kpis.weighted_ytm == "0.03500000"`.
-- `result.kpis.weighted_duration == "5.00000000"`.
-- `result.kpis.weighted_coupon == "0.02500000"`.
-- `result.kpis.credit_spread_median == "0.04000000"`.
-- `result.kpis.total_dv01 == "0.20000000"`.
+- `result.kpis.total_market_value.raw == 1000.0` and `unit == "yuan"`.
+- `result.kpis.unrealized_pnl.raw == 0.0` and `unit == "yuan"`.
+- `result.kpis.weighted_ytm.raw == 0.035` and `unit == "pct"`.
+- `result.kpis.weighted_duration.raw == 5.0` and `unit == "ratio"`.
+- `result.kpis.weighted_coupon.raw == 0.025` and `unit == "pct"`.
+- `result.kpis.credit_spread_median.raw == 0.04` and `unit == "pct"`.
+- `result.kpis.total_dv01.raw == 0.2` and `unit == "dv01"`.
 - `result.kpis.bond_count == 3`.
-- `result.prev_kpis.total_market_value == "300.00000000"`.
-- `result.prev_kpis.unrealized_pnl == "0.00000000"`.
-- `result.prev_kpis.weighted_ytm == "0.03100000"`.
-- `result.prev_kpis.weighted_duration == "4.20000000"`.
-- `result.prev_kpis.weighted_coupon == "0.02500000"`.
-- `result.prev_kpis.credit_spread_median == "0.03500000"`.
-- `result.prev_kpis.total_dv01 == "0.12600000"`.
+- `result.prev_kpis.total_market_value.raw == 300.0` and `unit == "yuan"`.
+- `result.prev_kpis.unrealized_pnl.raw == 0.0` and `unit == "yuan"`.
+- `result.prev_kpis.weighted_ytm.raw == 0.031` and `unit == "pct"`.
+- `result.prev_kpis.weighted_duration.raw == 4.2` and `unit == "ratio"`.
+- `result.prev_kpis.weighted_coupon.raw == 0.025` and `unit == "pct"`.
+- `result.prev_kpis.credit_spread_median.raw == 0.035` and `unit == "pct"`.
+- `result.prev_kpis.total_dv01.raw == 0.126` and `unit == "dv01"`.
 - `result.prev_kpis.bond_count == 2`.
 
-## Null and empty behavior
+## Null And Empty Behavior
 
 - On an empty DuckDB, the route still returns HTTP `200` with a formal envelope.
 - Empty-state `result.report_date` echoes the requested report date.
-- Empty-state `result.kpis` remains present, with zero-valued decimal strings and `bond_count == 0`.
+- Empty-state `result.kpis` remains present, with zero-valued `Numeric.raw` fields and `bond_count == 0`.
 - Empty-state `result.prev_report_date == null`.
 - Empty-state `result.prev_kpis == null`.
 
