@@ -848,6 +848,8 @@ function buildBalanceMovementCsv(options: {
   unsupportedComponents: BalanceDifferenceAttributionWaterfall["components"];
   maturityStructure: BalanceZqtzMaturityStructure | null;
   concentrationAnalysis: BalanceZqtzConcentrationAnalysis | null;
+  explanationClosure: BalanceExplanationClosure | null;
+  dimensionCards: AnalysisDimensionCard[];
 }) {
   const {
     result,
@@ -858,7 +860,14 @@ function buildBalanceMovementCsv(options: {
     unsupportedComponents,
     maturityStructure,
     concentrationAnalysis,
+    explanationClosure,
+    dimensionCards,
   } = options;
+  const residualRatioText =
+    explanationClosure?.residualRatioPct === null ||
+    explanationClosure?.residualRatioPct === undefined
+      ? ""
+      : formatPct(explanationClosure.residualRatioPct);
   const csvRows: Array<Array<string | number | boolean | null | undefined>> = [
     ["section", "field", "value", "note"],
     ["meta", "report_date", result.report_date, ""],
@@ -909,6 +918,21 @@ function buildBalanceMovementCsv(options: {
       concentrationAnalysis ? formatPct(concentrationAnalysis.meta.coverage_pct) : "",
       concentrationAnalysis?.meta.status ?? "",
     ],
+    [
+      "diagnostic",
+      "explanation_closure",
+      explanationClosure?.headline,
+      explanationClosure?.note,
+    ],
+    [
+      "diagnostic",
+      "residual_ratio",
+      residualRatioText,
+      "页面诊断阈值，不是正式指标",
+    ],
+    ...dimensionCards.flatMap((card) =>
+      card.tags.map((tag) => ["diagnostic", `${card.key}_tag`, tag.label, tag.tone]),
+    ),
     [],
     [
       "basis_bucket",
@@ -1001,13 +1025,112 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
   };
 }
 
+type BalanceDiagnosticTone = "ok" | "info" | "warn" | "critical" | "unknown";
+
+type BalanceDiagnosticTag = {
+  label: string;
+  tone: BalanceDiagnosticTone;
+};
+
+type BalanceEvidenceItem = {
+  label: string;
+  value: string;
+  note?: string;
+};
+
+type BalanceExplanationClosure = {
+  tone: BalanceDiagnosticTone;
+  headline: string;
+  supportedComponents: BalanceDifferenceAttributionWaterfall["components"];
+  unsupportedComponents: BalanceDifferenceAttributionWaterfall["components"];
+  residualComponent?: BalanceDifferenceAttributionWaterfall["components"][number];
+  residualRatioPct: number | null;
+  note: string;
+};
+
 type AnalysisDimensionCard = {
   key: string;
   title: string;
   metric: string;
   detail: string;
   href: string;
+  tags: BalanceDiagnosticTag[];
+  evidence: BalanceEvidenceItem[];
 };
+
+function amountToNumber(value: string | number | null | undefined) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function buildExplanationClosure(options: {
+  waterfall: BalanceDifferenceAttributionWaterfall | null;
+  summary: BalanceMovementPayload["summary"] | null;
+}): BalanceExplanationClosure | null {
+  const { waterfall, summary } = options;
+  if (!waterfall) {
+    return null;
+  }
+  const supportedComponents = waterfall.components.filter(
+    (component) => component.is_supported !== false && !component.is_residual,
+  );
+  const unsupportedComponents = waterfall.components.filter(
+    (component) => component.is_supported === false,
+  );
+  const residualComponent = waterfall.components.find((component) => component.is_residual);
+  const residualAmount = amountToNumber(residualComponent?.amount);
+  const totalChange = amountToNumber(summary?.balance_change_total);
+  const residualRatioPct =
+    residualAmount !== null && totalChange !== null && Math.abs(totalChange) > 0
+      ? (Math.abs(residualAmount) / Math.abs(totalChange)) * 100
+      : null;
+
+  if (unsupportedComponents.length > 0) {
+    return {
+      tone: residualRatioPct !== null && residualRatioPct > 2 ? "critical" : "warn",
+      headline: "存在待补口径，不能反推为已解释",
+      supportedComponents,
+      unsupportedComponents,
+      residualComponent,
+      residualRatioPct,
+      note: "估值差和外币折算差缺少可闭合字段；页面只展示后端已返回的证据项。",
+    };
+  }
+
+  return {
+    tone: residualRatioPct !== null && residualRatioPct > 2 ? "warn" : "ok",
+    headline: "现有瀑布项可用于本页解释闭合",
+    supportedComponents,
+    unsupportedComponents,
+    residualComponent,
+    residualRatioPct,
+    note: "该判断是页面诊断提示，不替代正式审计归因。",
+  };
+}
+
+function coverageTone(value: string | number | null | undefined): BalanceDiagnosticTone {
+  const coverage = amountToNumber(value);
+  if (coverage === null) {
+    return "unknown";
+  }
+  if (coverage < 80) {
+    return "critical";
+  }
+  if (coverage < 95) {
+    return "warn";
+  }
+  return "ok";
+}
+
+function residualTone(ratioPct: number | null, unsupportedCount: number): BalanceDiagnosticTone {
+  if (unsupportedCount > 0) {
+    return "warn";
+  }
+  if (ratioPct !== null && ratioPct > 2) {
+    return "warn";
+  }
+  return "ok";
+}
 
 function EvidenceStrip({ meta }: { meta: ResultMeta }) {
   return (
@@ -1044,7 +1167,13 @@ function EvidenceStrip({ meta }: { meta: ResultMeta }) {
   );
 }
 
-function AnalysisDimensionOverview({ cards }: { cards: AnalysisDimensionCard[] }) {
+function AnalysisDimensionOverview({
+  cards,
+  onEvidence,
+}: {
+  cards: AnalysisDimensionCard[];
+  onEvidence: (key: string) => void;
+}) {
   return (
     <section
       className="balance-movement-dimension-overview"
@@ -1056,19 +1185,77 @@ function AnalysisDimensionOverview({ cards }: { cards: AnalysisDimensionCard[] }
       </div>
       <div className="balance-movement-dimension-grid">
         {cards.map((card) => (
-          <a
+          <article
             key={card.key}
-            href={card.href}
             className="balance-movement-dimension-card"
             data-testid={`balance-movement-analysis-dimension-card-${card.key}`}
           >
-            <span>{card.title}</span>
-            <strong>{card.metric}</strong>
-            <p>{card.detail}</p>
-          </a>
+            <a href={card.href} className="balance-movement-dimension-card__jump">
+              <span>{card.title}</span>
+              <strong>{card.metric}</strong>
+              <p>{card.detail}</p>
+            </a>
+            <div className="balance-movement-dimension-tags">
+              {card.tags.map((tag) => (
+                <span
+                  key={`${card.key}-${tag.label}`}
+                  className={`balance-movement-dimension-tag balance-movement-dimension-tag--${tag.tone}`}
+                >
+                  {tag.label}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="balance-movement-dimension-card__evidence"
+              data-testid={`balance-movement-analysis-dimension-evidence-${card.key}`}
+              onClick={() => onEvidence(card.key)}
+            >
+              证据
+            </button>
+          </article>
         ))}
       </div>
     </section>
+  );
+}
+
+function AnalysisEvidenceDrawer({
+  card,
+  onClose,
+}: {
+  card: AnalysisDimensionCard;
+  onClose: () => void;
+}) {
+  return (
+    <aside
+      aria-label="分析维度证据"
+      className="balance-movement-evidence-drawer"
+      data-testid="balance-movement-analysis-evidence-drawer"
+    >
+      <div className="balance-movement-evidence-drawer__header">
+        <div>
+          <span>分析维度证据</span>
+          <h2>{card.title}</h2>
+        </div>
+        <button type="button" onClick={onClose} aria-label="关闭证据">
+          关闭
+        </button>
+      </div>
+      <strong>{card.metric}</strong>
+      <p>{card.detail}</p>
+      <dl className="balance-movement-evidence-drawer__list">
+        {card.evidence.map((item) => (
+          <div key={`${card.key}-${item.label}`}>
+            <dt>{item.label}</dt>
+            <dd>
+              {item.value}
+              {item.note ? <span>{item.note}</span> : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
   );
 }
 
@@ -1172,6 +1359,60 @@ function DifferenceAttributionWaterfallPanel({
       <p className="balance-movement-derived-panel__caveat">
         闭合校验：{formatSignedYiCell(waterfall.closing_check)} 亿
       </p>
+    </section>
+  );
+}
+
+function ExplanationClosurePanel({ closure }: { closure: BalanceExplanationClosure }) {
+  return (
+    <section
+      className={`balance-movement-closure balance-movement-closure--${closure.tone}`}
+      data-testid="balance-movement-analysis-explanation-closure"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>解释闭合度</span>
+          <h2>{closure.headline}</h2>
+        </div>
+        <strong>{closure.unsupportedComponents.length > 0 ? "口径待补" : "可解释"}</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">{closure.note}</p>
+      <div className="balance-movement-closure-grid">
+        <div>
+          <span>已支持解释项</span>
+          <strong>{closure.supportedComponents.length} 项</strong>
+        </div>
+        <div>
+          <span>未支持项</span>
+          <strong>
+            {closure.unsupportedComponents.map((component) => component.component_label).join("、") || "无"}
+          </strong>
+        </div>
+        <div>
+          <span>未分类 / 残差</span>
+          <strong>
+            {closure.residualComponent
+              ? `${formatSignedYiCell(closure.residualComponent.amount)} 亿`
+              : "—"}
+          </strong>
+        </div>
+        <div>
+          <span>残差占本期变动</span>
+          <strong>
+            {closure.residualRatioPct === null ? "—" : formatPct(closure.residualRatioPct)}
+          </strong>
+        </div>
+      </div>
+      {closure.unsupportedComponents.length > 0 ? (
+        <ul className="balance-movement-closure-list">
+          {closure.unsupportedComponents.map((component) => (
+            <li key={component.component_key}>
+              <strong>{component.component_label}</strong>
+              <span>未支持，不反推。{component.evidence_note}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }
@@ -1442,6 +1683,7 @@ export default function BalanceMovementAnalysisPage() {
   const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [selectedEvidenceKey, setSelectedEvidenceKey] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["balance-movement-analysis", "dates", client.mode, currencyBasis],
@@ -1760,6 +2002,14 @@ export default function BalanceMovementAnalysisPage() {
     () => differenceAttributionWaterfall?.components.find((component) => component.is_residual),
     [differenceAttributionWaterfall],
   );
+  const explanationClosure = useMemo(
+    () =>
+      buildExplanationClosure({
+        waterfall: differenceAttributionWaterfall,
+        summary: detailQuery.data?.result.summary ?? null,
+      }),
+    [differenceAttributionWaterfall, detailQuery.data?.result.summary],
+  );
   const analysisDimensionCards = useMemo<AnalysisDimensionCard[]>(() => {
     const businessTopMove = businessTopMomMoves[0];
     const unsupportedLabels = unsupportedWaterfallComponents.map((component) => component.component_label);
@@ -1780,6 +2030,23 @@ export default function BalanceMovementAnalysisPage() {
           ? `${sourceKindLabel(businessTopMove.sourceKind)} · ${sourceNotePreview(businessTopMove.sourceNote)}`
           : "需要至少两个连续报告月。",
         href: "#balance-movement-analysis-business-summary-anchor",
+        tags: businessTopMove
+          ? [{ label: "主导变动", tone: "info" }]
+          : [{ label: "样本不足", tone: "unknown" }],
+        evidence: [
+          { label: "维度字段", value: "business_trend_months / product category derived rows" },
+          {
+            label: "Top 变动",
+            value: businessTopMove
+              ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
+              : "—",
+          },
+          {
+            label: "来源说明",
+            value: businessTopMove ? sourceNotePreview(businessTopMove.sourceNote) : "样本不足",
+          },
+          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+        ],
       },
       {
         key: "basis",
@@ -1791,6 +2058,18 @@ export default function BalanceMovementAnalysisPage() {
           ? `贡献 ${formatPct(topMovementDriver.contributionPct)} · 期末占比 ${formatPct(topMovementDriver.currentBalancePct)}`
           : "等待 AC/OCI/TPL 读模型返回。",
         href: "#balance-movement-analysis-basis-anchor",
+        tags: [
+          { label: "主导分桶", tone: "info" },
+          ...(trendMoMDriverBucket && structureShareDriverBucket && trendMoMDriverBucket !== structureShareDriverBucket
+            ? [{ label: "结构迁移", tone: "warn" as const }]
+            : []),
+        ],
+        evidence: [
+          { label: "维度字段", value: "rows[].basis_bucket / balance_change / contribution_pct" },
+          { label: "主导分桶", value: topMovementDriver?.bucket ?? "—" },
+          { label: "rule_version", value: resultMeta?.rule_version ?? "—" },
+          { label: "source_version", value: resultMeta?.source_version ?? "—" },
+        ],
       },
       {
         key: "residual",
@@ -1803,6 +2082,38 @@ export default function BalanceMovementAnalysisPage() {
             ? `${unsupportedLabels.join("、")} 未支持，不反推`
             : "当前瀑布未返回待补口径。",
         href: "#balance-movement-analysis-residual-anchor",
+        tags: [
+          {
+            label: unsupportedLabels.length > 0 ? "口径待补" : "残差闭合",
+            tone: residualTone(explanationClosure?.residualRatioPct ?? null, unsupportedLabels.length),
+          },
+        ],
+        evidence: [
+          { label: "维度字段", value: "difference_attribution_waterfall.components" },
+          {
+            label: "残差",
+            value: residualWaterfallComponent
+              ? `${formatSignedYiCell(residualWaterfallComponent.amount)} 亿`
+              : "—",
+          },
+          {
+            label: "未支持项",
+            value: unsupportedLabels.join("、") || "无",
+            note: "未支持，不反推",
+          },
+          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+          { label: "rule_version", value: resultMeta?.rule_version ?? "—" },
+          { label: "source_version", value: resultMeta?.source_version ?? "—" },
+          { label: "tables_used", value: formatMetaList(resultMeta?.tables_used) },
+          {
+            label: "evidence_rows",
+            value:
+              resultMeta?.evidence_rows === null || resultMeta?.evidence_rows === undefined
+                ? "—"
+                : String(resultMeta.evidence_rows),
+          },
+          { label: "限制", value: "估值差和外币折算差没有可闭合字段，不在前端反算。" },
+        ],
       },
       {
         key: "coverage",
@@ -1810,16 +2121,45 @@ export default function BalanceMovementAnalysisPage() {
         metric: `期限 ${maturityCoverage} / 集中度 ${concentrationCoverage}`,
         detail: `期限 ${drilldownStatusLabel(zqtzMaturityStructure?.meta.status)} · 集中度 ${drilldownStatusLabel(zqtzConcentrationAnalysis?.meta.status)}`,
         href: "#balance-movement-analysis-coverage-anchor",
+        tags: [
+          {
+            label: `期限覆盖`,
+            tone: coverageTone(zqtzMaturityStructure?.meta.coverage_pct),
+          },
+          {
+            label: `集中度覆盖`,
+            tone: coverageTone(zqtzConcentrationAnalysis?.meta.coverage_pct),
+          },
+        ],
+        evidence: [
+          { label: "期限覆盖", value: maturityCoverage },
+          { label: "集中度覆盖", value: concentrationCoverage },
+          {
+            label: "期限状态",
+            value: drilldownStatusLabel(zqtzMaturityStructure?.meta.status),
+          },
+          {
+            label: "集中度状态",
+            value: drilldownStatusLabel(zqtzConcentrationAnalysis?.meta.status),
+          },
+          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+        ],
       },
     ];
   }, [
     businessTopMomMoves,
+    explanationClosure,
+    resultMeta,
     residualWaterfallComponent,
+    structureShareDriverBucket,
     topMovementDriver,
+    trendMoMDriverBucket,
     unsupportedWaterfallComponents,
     zqtzConcentrationAnalysis,
     zqtzMaturityStructure,
   ]);
+  const selectedEvidenceCard =
+    analysisDimensionCards.find((card) => card.key === selectedEvidenceKey) ?? null;
 
   const seriesContextSegments = useMemo(() => {
     const segments: string[] = [];
@@ -1887,6 +2227,8 @@ export default function BalanceMovementAnalysisPage() {
       unsupportedComponents: unsupportedWaterfallComponents,
       maturityStructure: zqtzMaturityStructure,
       concentrationAnalysis: zqtzConcentrationAnalysis,
+      explanationClosure,
+      dimensionCards: analysisDimensionCards,
     });
     downloadCsv(
       `balance-movement-analysis-${detailQuery.data.result.report_date}-${detailQuery.data.result.currency_basis}.csv`,
@@ -2093,7 +2435,18 @@ export default function BalanceMovementAnalysisPage() {
         </section>
       ) : null}
 
-      {detailQuery.data ? <AnalysisDimensionOverview cards={analysisDimensionCards} /> : null}
+      {detailQuery.data ? (
+        <AnalysisDimensionOverview
+          cards={analysisDimensionCards}
+          onEvidence={setSelectedEvidenceKey}
+        />
+      ) : null}
+      {selectedEvidenceCard ? (
+        <AnalysisEvidenceDrawer
+          card={selectedEvidenceCard}
+          onClose={() => setSelectedEvidenceKey(null)}
+        />
+      ) : null}
 
       {summary ? (
         <div data-testid="balance-movement-analysis-summary" style={cardGridStyle}>
@@ -2123,6 +2476,8 @@ export default function BalanceMovementAnalysisPage() {
       {differenceAttributionWaterfall ? (
         <DifferenceAttributionWaterfallPanel waterfall={differenceAttributionWaterfall} />
       ) : null}
+
+      {explanationClosure ? <ExplanationClosurePanel closure={explanationClosure} /> : null}
 
       {differenceAttributionWaterfall ? (
         <ResidualUnsupportedPanel waterfall={differenceAttributionWaterfall} />

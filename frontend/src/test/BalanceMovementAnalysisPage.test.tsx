@@ -418,6 +418,12 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(csv).toContain("currency_basis");
       expect(csv).toContain("rule_version");
       expect(csv).toContain("source_version");
+      expect(csv).toContain("diagnostic");
+      expect(csv).toContain("explanation_closure");
+      expect(csv).toContain("unsupported_components");
+      expect(csv).toContain("口径待补");
+      expect(csv).toContain("residual_ratio");
+      expect(csv).toContain("diagnostic,residual_ratio,1.95%");
       expect(csv).toContain("basis_bucket");
       expect(csv).toContain("AC");
       expect(csv).toContain("OCI");
@@ -429,6 +435,119 @@ describe("BalanceMovementAnalysisPage", () => {
       globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
       vi.restoreAllMocks();
     }
+  });
+
+  it("renders explanation closure diagnostics without treating unsupported valuation or fx gaps as explained zeroes", async () => {
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    const explanationClosure = await screen.findByTestId(
+      "balance-movement-analysis-explanation-closure",
+    );
+    expect(explanationClosure).toHaveTextContent("解释闭合度");
+    expect(explanationClosure).toHaveTextContent("已支持解释项");
+    expect(explanationClosure).toHaveTextContent("未支持项");
+    expect(explanationClosure).toHaveTextContent("未分类 / 残差");
+    expect(explanationClosure).toHaveTextContent("估值差");
+    expect(explanationClosure).toHaveTextContent("外币折算差");
+    expect(explanationClosure).toHaveTextContent("未支持，不反推");
+    expect(explanationClosure).toHaveTextContent("1.95%");
+    expect(explanationClosure).not.toHaveTextContent("估值差+0.00 亿");
+    expect(explanationClosure).not.toHaveTextContent("外币折算差+0.00 亿");
+  });
+
+  it("renders diagnostic tags on the analysis dimension cards", async () => {
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("balance-movement-analysis-dimension-card-business")).toHaveTextContent(
+      "主导变动",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-basis")).toHaveTextContent(
+      "主导分桶",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-residual")).toHaveTextContent(
+      "口径待补",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
+      "覆盖",
+    );
+  });
+
+  it("marks low coverage diagnostics with warning and critical tones", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const lowCoverageClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            zqtz_maturity_structure: envelope.result.zqtz_maturity_structure
+              ? {
+                  ...envelope.result.zqtz_maturity_structure,
+                  meta: {
+                    ...envelope.result.zqtz_maturity_structure.meta,
+                    coverage_pct: "79.00",
+                  },
+                }
+              : envelope.result.zqtz_maturity_structure,
+            zqtz_concentration_analysis: envelope.result.zqtz_concentration_analysis
+              ? {
+                  ...envelope.result.zqtz_concentration_analysis,
+                  meta: {
+                    ...envelope.result.zqtz_concentration_analysis.meta,
+                    coverage_pct: "94.00",
+                  },
+                }
+              : envelope.result.zqtz_concentration_analysis,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: lowCoverageClient,
+    });
+
+    const coverageCard = await screen.findByTestId(
+      "balance-movement-analysis-dimension-card-coverage",
+    );
+    expect(within(coverageCard).getByText("期限覆盖")).toHaveClass(
+      "balance-movement-dimension-tag--critical",
+    );
+    expect(within(coverageCard).getByText("集中度覆盖")).toHaveClass(
+      "balance-movement-dimension-tag--warn",
+    );
+  });
+
+  it("opens and closes the residual evidence drawer with diagnostics evidence", async () => {
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    await screen.findByTestId("balance-movement-analysis-dimension-card-residual");
+    await user.click(screen.getByTestId("balance-movement-analysis-dimension-evidence-residual"));
+
+    const evidenceDialog = await screen.findByRole("complementary", { name: "分析维度证据" });
+    expect(evidenceDialog).toHaveTextContent("对账残差");
+    expect(evidenceDialog).toHaveTextContent("估值差");
+    expect(evidenceDialog).toHaveTextContent("外币折算差");
+    expect(evidenceDialog).toHaveTextContent("未支持，不反推");
+    expect(evidenceDialog).toHaveTextContent("trace_id");
+    expect(evidenceDialog).toHaveTextContent("rule_version");
+    expect(evidenceDialog).toHaveTextContent("source_version");
+
+    await user.click(within(evidenceDialog).getByRole("button", { name: "关闭证据" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("complementary", { name: "分析维度证据" })).not.toBeInTheDocument();
+    });
   });
 
   it("suppresses the month-over-month conclusion when available snapshots are not adjacent", async () => {
