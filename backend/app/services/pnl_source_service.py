@@ -390,45 +390,84 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
 
 def _parse_nonstd_rows(snapshot: PnlSourceSnapshot, *, bucket: str) -> list[dict[str, object]]:
     workbook = load_workbook(snapshot.path, read_only=True, data_only=True)
-    worksheet = workbook.worksheets[0]
-    headers = [
-        "" if value is None else str(value).strip()
-        for value in next(worksheet.iter_rows(min_row=2, max_row=2, values_only=True))
-    ]
     rows: list[dict[str, object]] = []
 
     try:
-        for values in worksheet.iter_rows(min_row=3, values_only=True):
-            raw_row = {
-                headers[index]: values[index]
-                for index in range(min(len(headers), len(values)))
-                if headers[index]
-            }
-            account_code = _cell_text(raw_row.get("科目号") or raw_row.get("科目代码") or raw_row.get("会计科目"))
-            asset_code = _cell_text(raw_row.get("资产代码"))
-            if not account_code and not asset_code:
+        for worksheet in workbook.worksheets:
+            header_row, headers = _find_nonstd_header_row(worksheet)
+            if header_row is None:
                 continue
-
-            rows.append(
-                {
-                    "voucher_date": _cell_text(raw_row.get("账务日期")),
-                    "account_code": account_code,
-                    "asset_code": asset_code,
-                    "portfolio_name": _cell_text(raw_row.get("投资组合")),
-                    "cost_center": _cell_text(raw_row.get("成本中心")),
-                    "dc_flag": _cell_text(raw_row.get("借贷标识") or raw_row.get("方向")),
-                    "event_type": _cell_text(raw_row.get("会计事件")),
-                    "raw_amount": _to_decimal(raw_row.get("金额") if raw_row.get("金额") not in (None, "") else raw_row.get("AMOUNT")),
-                    "source_file": snapshot.path.name,
-                    "source_version": snapshot.source_version,
-                    "rule_version": PNL_SOURCE_RULE_VERSION,
-                    "ingest_batch_id": snapshot.ingest_batch_id,
-                    "trace_id": f"{snapshot.path.name}:{bucket}:{len(rows) + 1}",
-                }
+            worksheet_rows = _parse_nonstd_worksheet_rows(
+                worksheet=worksheet,
+                headers=headers,
+                first_data_row=header_row + 1,
+                snapshot=snapshot,
+                bucket=bucket,
             )
+            if worksheet_rows:
+                rows = worksheet_rows
+                break
     finally:
         workbook.close()
 
+    return rows
+
+
+def _find_nonstd_header_row(worksheet: object) -> tuple[int | None, list[str]]:
+    max_scan_row = min(int(getattr(worksheet, "max_row", 0) or 0), 20)
+    if max_scan_row <= 0:
+        return None, []
+    for row_number, values in enumerate(
+        worksheet.iter_rows(min_row=1, max_row=max_scan_row, values_only=True),
+        start=1,
+    ):
+        headers = ["" if value is None else str(value).strip() for value in values]
+        header_set = set(headers)
+        has_amount = "金额" in header_set or "AMOUNT" in header_set
+        has_account = bool({"科目号", "科目代码", "会计科目"} & header_set)
+        has_direction = "借贷标识" in header_set or "方向" in header_set
+        if "账务日期" in header_set and "资产代码" in header_set and has_account and has_amount and has_direction:
+            return row_number, headers
+    return None, []
+
+
+def _parse_nonstd_worksheet_rows(
+    *,
+    worksheet: object,
+    headers: list[str],
+    first_data_row: int,
+    snapshot: PnlSourceSnapshot,
+    bucket: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for values in worksheet.iter_rows(min_row=first_data_row, values_only=True):
+        raw_row = {
+            headers[index]: values[index]
+            for index in range(min(len(headers), len(values)))
+            if headers[index]
+        }
+        account_code = _cell_text(raw_row.get("科目号") or raw_row.get("科目代码") or raw_row.get("会计科目"))
+        asset_code = _cell_text(raw_row.get("资产代码"))
+        if not account_code and not asset_code:
+            continue
+
+        rows.append(
+            {
+                "voucher_date": _cell_text(raw_row.get("账务日期")),
+                "account_code": account_code,
+                "asset_code": asset_code,
+                "portfolio_name": _cell_text(raw_row.get("投资组合")),
+                "cost_center": _cell_text(raw_row.get("成本中心")),
+                "dc_flag": _cell_text(raw_row.get("借贷标识") or raw_row.get("方向")),
+                "event_type": _cell_text(raw_row.get("会计事件")),
+                "raw_amount": _to_decimal(raw_row.get("金额") if raw_row.get("金额") not in (None, "") else raw_row.get("AMOUNT")),
+                "source_file": snapshot.path.name,
+                "source_version": snapshot.source_version,
+                "rule_version": PNL_SOURCE_RULE_VERSION,
+                "ingest_batch_id": snapshot.ingest_batch_id,
+                "trace_id": f"{snapshot.path.name}:{bucket}:{len(rows) + 1}",
+            }
+        )
     return rows
 
 

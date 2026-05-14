@@ -710,7 +710,7 @@ def _pnl_by_business_ytd_from_formal_facts(
     year: int,
     as_of_date: str,
 ) -> dict[str, object]:
-    """年度累计：按 fact_formal_pnl_fi + fact_nonstd_pnl_bridge 汇总至 ``as_of_date``，再按 ZQTZ 桶拆分（与物化正式口径一致）。"""
+    """年度累计：逐报表月按当月 ZQTZ 口径分类后累计，避免用期末分类重写历史月份。"""
     if not as_of_date.startswith(f"{year:04d}-"):
         raise ValueError(f"as_of_date={as_of_date} is outside requested year={year}.")
     repo = PnlRepository(duckdb_path)
@@ -722,84 +722,41 @@ def _pnl_by_business_ytd_from_formal_facts(
     if not loaded_dates:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_of_date}.")
 
-    merged: dict[tuple[str, str, str, str, str], dict[str, object]] = {}
+    period_start = f"{min(loaded_dates)[:7]}-01"
+    pnl_rows = repo.fetch_by_business_analysis_pnl_rows(year=year, as_of_date=as_of_date)
+    balance_rows = repo.fetch_by_business_analysis_balance_rows(
+        start_date=period_start,
+        end_date=as_of_date,
+    )
 
-    def _norm(value: object) -> str:
-        return str(value or "").strip()
-
-    def _accumulate(row: dict[str, object], *, source_kind: str) -> None:
-        key = (
-            source_kind,
-            _norm(row.get("instrument_code")),
-            _norm(row.get("portfolio_name")),
-            _norm(row.get("cost_center")),
-            _norm(row.get("currency_basis")) or "CNY",
-        )
-        bucket = merged.setdefault(
-            key,
-            {
-                "interest_income_514": Decimal("0"),
-                "fair_value_change_516": Decimal("0"),
-                "capital_gain_517": Decimal("0"),
-                "manual_adjustment": Decimal("0"),
-                "total_pnl": Decimal("0"),
-                "invest_type_std": "",
-                "source_kind": source_kind,
-            },
-        )
-        for col in ("interest_income_514", "fair_value_change_516", "capital_gain_517", "manual_adjustment", "total_pnl"):
-            bucket[col] = Decimal(str(bucket[col])) + Decimal(str(row.get(col) or "0"))
-        inv = _norm(row.get("invest_type_std"))
-        if inv:
-            bucket["invest_type_std"] = inv
-
-    for row in repo.fetch_formal_fi_ytd_by_position(year=year, as_of_date=as_of_date):
-        _accumulate(row, source_kind="formal_fi")
-    for row in repo.fetch_nonstd_bridge_ytd_by_position(year=year, as_of_date=as_of_date):
-        _accumulate(row, source_kind="nonstd_bridge")
-
-    if not merged:
+    if not pnl_rows:
         raise ValueError(f"No aggregated pnl positions for year={year} through as_of_date={as_of_date}.")
 
-    sub_type_map = repo.fetch_zqtz_sub_type_map(sorted({as_of_date, *loaded_dates}))
+    balance_lookup = _analysis_balance_lookup(balance_rows)
+    historical_balance_lookup = _analysis_historical_balance_lookup(balance_rows)
+    sub_type_by_date_code = _analysis_sub_type_by_date_code(balance_rows)
 
     groups: dict[str, dict[str, object]] = {
         str(row_def["row_key"]): _new_balance_movement_pnl_group(row_def) for row_def in ZQTZ_ASSET_BOND_ROWS
     }
     total_pnl = Decimal("0")
 
-    for key in sorted(merged.keys()):
-        source_kind, inst, portfolio_name, cost_center, curr = key
-        row = merged[key]
-        interest = Decimal(str(row["interest_income_514"]))
-        fair = Decimal(str(row["fair_value_change_516"]))
-        capital = Decimal(str(row["capital_gain_517"]))
-        manual_adjustment = Decimal(str(row["manual_adjustment"]))
-        total = Decimal(str(row["total_pnl"]))
-        invest = str(row.get("invest_type_std") or "").strip()
-        sub_type = sub_type_map.get((as_of_date, inst), "") or sub_type_map.get((loaded_dates[-1], inst), "")
-        if source_kind == "nonstd_bridge":
-            classification = _v1_nonstd_classification_row(
-                report_date=as_of_date,
-                code=inst,
-                sub_type=sub_type,
-            )
-        else:
-            classification = _v1_fi_classification_row(
-                report_date=as_of_date,
-                row={
-                    "instrument_code": inst,
-                    "fx_base_currency": curr,
-                    "currency_basis": curr,
-                    "instrument_name": inst,
-                },
-                code=inst,
-                asset_class=invest or "未分类",
-                sub_type=sub_type or invest or "未分类",
-            )
+    for row in pnl_rows:
+        classification = _analysis_classification_for_pnl_row(
+            pnl_row=row,
+            balance_lookup=balance_lookup,
+            historical_balance_lookup=historical_balance_lookup,
+            sub_type_by_date_code=sub_type_by_date_code,
+            fallback_date=as_of_date,
+        )
+        interest = _decimal_value(row.get("interest_income_514"))
+        fair = _decimal_value(row.get("fair_value_change_516"))
+        capital = _decimal_value(row.get("capital_gain_517"))
+        manual_adjustment = _decimal_value(row.get("manual_adjustment"))
+        total = _decimal_value(row.get("total_pnl"))
         record = {
-            "report_date": as_of_date,
-            "bond_code": inst,
+            "report_date": _norm_text(row.get("report_date")) or as_of_date,
+            "bond_code": _norm_text(row.get("instrument_code")),
             "interest_income": interest,
             "fair_value_change": fair,
             "capital_gain": capital,
@@ -1548,6 +1505,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
     loaded_dates: list[str],
 ) -> list[PnlByBusinessAnalysisPayload]:
     balance_lookup = _analysis_balance_lookup(balance_rows)
+    historical_balance_lookup = _analysis_historical_balance_lookup(balance_rows)
     sub_type_by_date_code = _analysis_sub_type_by_date_code(balance_rows)
     month_end_by_month: dict[str, str] = {}
     for report_date in sorted(loaded_dates):
@@ -1640,6 +1598,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
             else _analysis_classification_for_pnl_row(
                 pnl_row=pnl_row,
                 balance_lookup=balance_lookup,
+                historical_balance_lookup=historical_balance_lookup,
                 sub_type_by_date_code=sub_type_by_date_code,
                 fallback_date=period_end,
             )
@@ -1868,6 +1827,7 @@ def _build_pnl_by_business_analysis_rows(
     dimension: PnlByBusinessAnalysisDimension,
 ) -> list[PnlByBusinessAnalysisRow]:
     balance_lookup = _analysis_balance_lookup(balance_rows)
+    historical_balance_lookup = _analysis_historical_balance_lookup(balance_rows)
     sub_type_by_date_code = _analysis_sub_type_by_date_code(balance_rows)
     month_end_by_month: dict[str, str] = {}
     for report_date in sorted(loaded_dates):
@@ -1889,6 +1849,7 @@ def _build_pnl_by_business_analysis_rows(
             else _analysis_classification_for_pnl_row(
                 pnl_row=pnl_row,
                 balance_lookup=balance_lookup,
+                historical_balance_lookup=historical_balance_lookup,
                 sub_type_by_date_code=sub_type_by_date_code,
                 fallback_date=period_end,
             )
@@ -1996,8 +1957,10 @@ def _build_pnl_by_business_monthly_buckets(
     balance_rows: tuple[dict[str, object], ...],
     loaded_dates: list[str],
 ) -> list[PnlByBusinessMonthlyBucket]:
-    balance_lookup = _analysis_balance_lookup(list(balance_rows))
-    sub_type_by_date_code = _analysis_sub_type_by_date_code(list(balance_rows))
+    balance_rows_list = list(balance_rows)
+    balance_lookup = _analysis_balance_lookup(balance_rows_list)
+    historical_balance_lookup = _analysis_historical_balance_lookup(balance_rows_list)
+    sub_type_by_date_code = _analysis_sub_type_by_date_code(balance_rows_list)
     month_end_by_month: dict[str, str] = {}
     for report_date in sorted(loaded_dates):
         month_end_by_month[str(report_date)[:7]] = str(report_date)
@@ -2019,6 +1982,7 @@ def _build_pnl_by_business_monthly_buckets(
                 else _analysis_classification_for_pnl_row(
                     pnl_row=pnl_row,
                     balance_lookup=balance_lookup,
+                    historical_balance_lookup=historical_balance_lookup,
                     sub_type_by_date_code=sub_type_by_date_code,
                     fallback_date=month_end,
                 )
@@ -2236,6 +2200,41 @@ def _analysis_balance_lookup(balance_rows: list[dict[str, object]]) -> dict[tupl
     return lookup
 
 
+def _analysis_historical_balance_lookup(
+    balance_rows: list[dict[str, object]],
+) -> dict[tuple[str, str, str, str], list[dict[str, object]]]:
+    lookup: dict[tuple[str, str, str, str], list[dict[str, object]]] = {}
+    for row in balance_rows:
+        report_date = _norm_text(row.get("report_date"))
+        portfolio_name = _norm_text(row.get("portfolio_name"))
+        cost_center = _norm_text(row.get("cost_center"))
+        currency_basis = _norm_text(row.get("currency_basis")) or "CNY"
+        if not report_date:
+            continue
+        for code in _instrument_code_variants(row.get("instrument_code")):
+            lookup.setdefault((code, portfolio_name, cost_center, currency_basis), []).append(row)
+    for rows in lookup.values():
+        rows.sort(key=lambda item: _norm_text(item.get("report_date")))
+    return lookup
+
+
+def _analysis_latest_balance_before_or_on(
+    lookup: dict[tuple[str, str, str, str], list[dict[str, object]]],
+    key: tuple[str, str, str, str],
+    report_date: str,
+) -> dict[str, object] | None:
+    rows = lookup.get(key)
+    if not rows or not report_date:
+        return None
+    latest: dict[str, object] | None = None
+    for row in rows:
+        row_date = _norm_text(row.get("report_date"))
+        if row_date > report_date:
+            break
+        latest = row
+    return latest
+
+
 def _analysis_sub_type_by_date_code(balance_rows: list[dict[str, object]]) -> dict[tuple[str, str], str]:
     out: dict[tuple[str, str], str] = {}
     for row in balance_rows:
@@ -2254,6 +2253,7 @@ def _analysis_classification_for_pnl_row(
     balance_lookup: dict[tuple[str, str, str, str, str], dict[str, object]],
     sub_type_by_date_code: dict[tuple[str, str], str],
     fallback_date: str,
+    historical_balance_lookup: dict[tuple[str, str, str, str], list[dict[str, object]]] | None = None,
 ) -> dict[str, object]:
     report_date = _norm_text(pnl_row.get("report_date"))
     portfolio_name = _norm_text(pnl_row.get("portfolio_name"))
@@ -2263,6 +2263,17 @@ def _analysis_classification_for_pnl_row(
         balance_row = balance_lookup.get((report_date, code, portfolio_name, cost_center, currency_basis))
         if balance_row is not None:
             return _analysis_classification_from_balance_row(balance_row)
+
+    if historical_balance_lookup is not None:
+        classification_date = report_date or fallback_date
+        for code in _instrument_code_variants(pnl_row.get("instrument_code")):
+            balance_row = _analysis_latest_balance_before_or_on(
+                historical_balance_lookup,
+                (code, portfolio_name, cost_center, currency_basis),
+                classification_date,
+            )
+            if balance_row is not None:
+                return _analysis_classification_from_balance_row(balance_row)
 
     code = _norm_text(pnl_row.get("instrument_code"))
     sub_type = sub_type_by_date_code.get((report_date, code), "") or sub_type_by_date_code.get((fallback_date, code), "")

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from openpyxl import Workbook
+
 from tests.helpers import load_module
 
 
@@ -167,3 +169,115 @@ def test_load_latest_pnl_refresh_input_marks_usd_rows_for_fx_conversion(tmp_path
     usd_rows = [row for row in refresh.fi_rows if row.get("fx_base_currency") == "USD"]
     assert usd_rows
     assert all(row["currency_basis"] == "CNY" for row in usd_rows)
+
+
+def test_nonstd_pnl_parser_skips_blank_pivot_sheet_before_detail_rows(tmp_path) -> None:
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    workbook = Workbook()
+    blank_sheet = workbook.active
+    blank_sheet.title = "Sheet5"
+    detail_sheet = workbook.create_sheet("Sheet1")
+    detail_sheet.append(["会计分录详情表"])
+    detail_sheet.append(
+        [
+            "账务流水号",
+            "账务日期",
+            "会计事件",
+            "成本中心",
+            "投资组合",
+            "资产代码",
+            "借贷标识",
+            "科目号",
+            "金额",
+        ]
+    )
+    detail_sheet.append(
+        [
+            "1",
+            "2026-04-30",
+            "公允价值变动",
+            "5010",
+            "FIOA",
+            "BOND-516",
+            "贷",
+            "51601010005",
+            "123.45",
+        ]
+    )
+    path = tmp_path / "非标516-20260101-0430.xlsx"
+    workbook.save(path)
+
+    snapshot = source_module.PnlSourceSnapshot(
+        source_family="pnl_516",
+        report_date="2026-04-30",
+        path=path,
+        source_version="sv-test-516",
+        ingest_batch_id="ib-test-516",
+        created_at="2026-05-14T00:00:00+00:00",
+    )
+
+    rows = source_module._parse_nonstd_rows(snapshot, bucket="516")
+
+    assert len(rows) == 1
+    assert rows[0]["voucher_date"] == "2026-04-30"
+    assert rows[0]["asset_code"] == "BOND-516"
+    assert rows[0]["account_code"] == "51601010005"
+    assert rows[0]["raw_amount"] == source_module.Decimal("123.45")
+
+
+def test_nonstd_pnl_parser_prefers_signed_amount_column_when_abs_amount_exists(tmp_path) -> None:
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    workbook = Workbook()
+    detail_sheet = workbook.active
+    detail_sheet.title = "Sheet1"
+    detail_sheet.append(["会计分录详情表"])
+    detail_sheet.append(
+        [
+            "账务日期",
+            "会计事件",
+            "成本中心",
+            "投资组合",
+            "资产代码",
+            "借贷标识",
+            "科目号",
+            "金额",
+            "amount",
+        ]
+    )
+    detail_sheet.append(
+        [
+            "2026-04-30",
+            "冲销前一日估值",
+            "5010",
+            "FIOA",
+            "BOND-516",
+            "贷",
+            "51601010004",
+            "-287599.70",
+            "287599.70",
+        ]
+    )
+    path = tmp_path / "非标516-20260101-0430.xlsx"
+    workbook.save(path)
+
+    snapshot = source_module.PnlSourceSnapshot(
+        source_family="pnl_516",
+        report_date="2026-04-30",
+        path=path,
+        source_version="sv-test-516-signed",
+        ingest_batch_id="ib-test-516-signed",
+        created_at="2026-05-14T00:00:00+00:00",
+    )
+
+    rows = source_module._parse_nonstd_rows(snapshot, bucket="516")
+
+    assert len(rows) == 1
+    assert rows[0]["raw_amount"] == source_module.Decimal("-287599.70")
