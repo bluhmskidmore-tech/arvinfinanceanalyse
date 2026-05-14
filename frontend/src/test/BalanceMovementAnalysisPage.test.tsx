@@ -49,6 +49,40 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
       "TPL +51.63 亿、OCI +44.87 亿、AC +33.29 亿",
     );
+    const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
+    expect(evidenceStrip).toHaveTextContent("quality_flag");
+    expect(evidenceStrip).toHaveTextContent("ok");
+    expect(evidenceStrip).toHaveTextContent("trace_id");
+    expect(evidenceStrip).toHaveTextContent("mock_balance-analysis.movement.detail");
+    const dimensionOverview = await screen.findByTestId(
+      "balance-movement-analysis-dimension-overview",
+    );
+    expect(dimensionOverview).toHaveTextContent("分析维度总览");
+    expect(dimensionOverview.querySelectorAll(".balance-movement-dimension-card")).toHaveLength(4);
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-business")).toHaveTextContent(
+      "业务品类 Top 变动",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-business")).toHaveTextContent(
+      "资产端-拆放同业 +30.00 亿",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-basis")).toHaveTextContent(
+      "AC / OCI / FVTPL",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-basis")).toHaveTextContent(
+      "TPL +51.63 亿",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-residual")).toHaveTextContent(
+      "对账残差",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-residual")).toHaveTextContent(
+      "估值差、外币折算差 未支持，不反推",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
+      "期限 / 集中度覆盖",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
+      "期限 99.15% / 集中度 97.68%",
+    );
     const businessSummary = await screen.findByTestId(
       "balance-movement-analysis-business-summary",
     );
@@ -163,6 +197,13 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(gap).toHaveTextContent("待拆分");
       expect(gap).not.toHaveTextContent("+0.00 亿");
     }
+    const residualClosure = screen.getByTestId("balance-movement-analysis-residual-closure");
+    expect(residualClosure).toHaveTextContent("哪些差异还不能解释");
+    expect(residualClosure).toHaveTextContent("未分类 / 残差");
+    expect(residualClosure).toHaveTextContent("估值差");
+    expect(residualClosure).toHaveTextContent("外币折算差");
+    expect(residualClosure).toHaveTextContent("未支持，不反推");
+    expect(residualClosure).not.toHaveTextContent("+0.00 亿");
 
     const basisDecomposition = screen.getByTestId("balance-movement-analysis-basis-decomposition");
     expect(basisDecomposition).toHaveTextContent("AC / OCI / TPL 驱动拆解");
@@ -293,6 +334,101 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(await screen.findByTestId("balance-movement-analysis-refresh-message")).toHaveTextContent(
       "completed: 3 行",
     );
+  });
+
+  it("surfaces governed result_meta in the first-screen evidence strip", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const evidenceClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result_meta: {
+            ...envelope.result_meta,
+            trace_id: "tr_balance_movement_evidence_test",
+            source_version: "sv_balance_movement_evidence_test",
+            rule_version: "rv_balance_movement_evidence_test",
+            tables_used: [
+              "fact_accounting_asset_movement_monthly",
+              "product_category_pnl_canonical_fact",
+            ],
+            evidence_rows: 192,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: evidenceClient,
+    });
+
+    const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
+    expect(evidenceStrip).toHaveTextContent("quality_flag");
+    expect(evidenceStrip).toHaveTextContent("ok");
+    expect(evidenceStrip).toHaveTextContent("tr_balance_movement_evidence_test");
+    expect(evidenceStrip).toHaveTextContent("fact_accounting_asset_movement_monthly");
+    expect(evidenceStrip).toHaveTextContent("product_category_pnl_canonical_fact");
+    expect(evidenceStrip).toHaveTextContent("192");
+    expect(evidenceStrip).toHaveTextContent("rv_balance_movement_evidence_test");
+    expect(evidenceStrip).toHaveTextContent("sv_balance_movement_evidence_test");
+  });
+
+  it("exports the current evidence view as a local csv without adding an API call", async () => {
+    const user = userEvent.setup();
+    const createObjectUrl = vi.fn(() => "blob:balance-movement-analysis");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    const originalCreateElement = document.createElement.bind(document);
+
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          configurable: true,
+          value: clickSpy,
+        });
+      }
+      return element;
+    }) as typeof document.createElement);
+
+    try {
+      renderWorkbenchApp(["/balance-movement-analysis"], {
+        client: createApiClient({ mode: "mock" }),
+      });
+
+      await screen.findByTestId("balance-movement-analysis-table");
+      await user.click(screen.getByTestId("balance-movement-analysis-export-csv"));
+
+      expect(createObjectUrl).toHaveBeenCalledTimes(1);
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:balance-movement-analysis");
+      const blob = createObjectUrl.mock.calls[0]?.[0] as Blob;
+      const csv = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(blob);
+      });
+      expect(csv).toContain("report_date");
+      expect(csv).toContain("currency_basis");
+      expect(csv).toContain("rule_version");
+      expect(csv).toContain("source_version");
+      expect(csv).toContain("basis_bucket");
+      expect(csv).toContain("AC");
+      expect(csv).toContain("OCI");
+      expect(csv).toContain("TPL");
+      expect(csv).toContain("估值差");
+      expect(csv).toContain("待拆分");
+    } finally {
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      vi.restoreAllMocks();
+    }
   });
 
   it("suppresses the month-over-month conclusion when available snapshots are not adjacent", async () => {

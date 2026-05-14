@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BalanceMovementPayload,
   BalanceBasisMovementDecomposition,
   BalanceDifferenceAttributionWaterfall,
   BalanceBusinessMovementTrendMonth,
@@ -14,6 +15,7 @@ import type {
   BalanceZqtzConcentrationAnalysis,
   BalanceZqtzConcentrationDimensionKey,
   BalanceZqtzMaturityStructure,
+  ResultMeta,
 } from "../../../api/contracts";
 import AccountingBasisStackedShareChart, {
   type AccountingBasisStackedSharePoint,
@@ -806,6 +808,136 @@ function movementDirection(value: string | number | null | undefined) {
   return "持平";
 }
 
+function formatMetaList(values: string[] | undefined) {
+  return values && values.length > 0 ? values.join("、") : "—";
+}
+
+function csvCell(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const text = String(value);
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildCsv(rows: Array<Array<string | number | boolean | null | undefined>>) {
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildBalanceMovementCsv(options: {
+  result: BalanceMovementPayload;
+  resultMeta: ResultMeta | null;
+  businessTopMove: BusinessMomMove | undefined;
+  accountingTopDriver: BalanceMovementDriver | undefined;
+  residualComponent: BalanceDifferenceAttributionWaterfall["components"][number] | undefined;
+  unsupportedComponents: BalanceDifferenceAttributionWaterfall["components"];
+  maturityStructure: BalanceZqtzMaturityStructure | null;
+  concentrationAnalysis: BalanceZqtzConcentrationAnalysis | null;
+}) {
+  const {
+    result,
+    resultMeta,
+    businessTopMove,
+    accountingTopDriver,
+    residualComponent,
+    unsupportedComponents,
+    maturityStructure,
+    concentrationAnalysis,
+  } = options;
+  const csvRows: Array<Array<string | number | boolean | null | undefined>> = [
+    ["section", "field", "value", "note"],
+    ["meta", "report_date", result.report_date, ""],
+    ["meta", "currency_basis", result.currency_basis, ""],
+    ["meta", "quality_flag", resultMeta?.quality_flag, ""],
+    ["meta", "trace_id", resultMeta?.trace_id, ""],
+    ["meta", "rule_version", resultMeta?.rule_version, ""],
+    ["meta", "source_version", resultMeta?.source_version, ""],
+    ["meta", "tables_used", resultMeta?.tables_used?.join(";"), ""],
+    ["meta", "evidence_rows", resultMeta?.evidence_rows, ""],
+    [
+      "dimension",
+      "business_top_move",
+      businessTopMove
+        ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
+        : "",
+      businessTopMove ? sourceNotePreview(businessTopMove.sourceNote) : "",
+    ],
+    [
+      "dimension",
+      "accounting_basis_top_move",
+      accountingTopDriver
+        ? `${accountingTopDriver.bucket} ${formatSignedYiNumber(accountingTopDriver.balanceChangeYi)} 亿`
+        : "",
+      accountingTopDriver ? `contribution_pct=${formatPct(accountingTopDriver.contributionPct)}` : "",
+    ],
+    [
+      "dimension",
+      "residual_unclassified",
+      residualComponent ? `${formatSignedYiCell(residualComponent.amount)} 亿` : "",
+      "未分类残差只用于闭合，不反推估值差或外币折算差。",
+    ],
+    [
+      "dimension",
+      "unsupported_components",
+      unsupportedComponents.map((component) => component.component_label).join(";"),
+      "未支持，不反推。",
+    ],
+    [
+      "dimension",
+      "maturity_coverage",
+      maturityStructure ? formatPct(maturityStructure.meta.coverage_pct) : "",
+      maturityStructure?.meta.status ?? "",
+    ],
+    [
+      "dimension",
+      "concentration_coverage",
+      concentrationAnalysis ? formatPct(concentrationAnalysis.meta.coverage_pct) : "",
+      concentrationAnalysis?.meta.status ?? "",
+    ],
+    [],
+    [
+      "basis_bucket",
+      "previous_balance_yi",
+      "current_balance_yi",
+      "balance_change_yi",
+      "contribution_pct",
+      "reconciliation_status",
+    ],
+    ...result.rows.map((row) => [
+      row.basis_bucket,
+      formatYiCell(row.previous_balance),
+      formatYiCell(row.current_balance),
+      formatSignedYiCell(row.balance_change),
+      formatPct(row.contribution_pct),
+      row.reconciliation_status,
+    ]),
+    [],
+    ["waterfall_component", "label", "value", "note"],
+    ...(result.difference_attribution_waterfall?.components ?? []).map((component) => [
+      component.component_key,
+      component.component_label,
+      component.is_supported === false ? "待拆分" : `${formatSignedYiCell(component.amount)} 亿`,
+      component.evidence_note,
+    ]),
+  ];
+  return `${buildCsv(csvRows)}\r\n`;
+}
+
 function dataIndexFromTooltip(params: unknown) {
   const first = Array.isArray(params) ? params[0] : params;
   if (!first || typeof first !== "object" || !("dataIndex" in first)) {
@@ -867,6 +999,77 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
       },
     ],
   };
+}
+
+type AnalysisDimensionCard = {
+  key: string;
+  title: string;
+  metric: string;
+  detail: string;
+  href: string;
+};
+
+function EvidenceStrip({ meta }: { meta: ResultMeta }) {
+  return (
+    <section
+      className="balance-movement-evidence-strip"
+      data-testid="balance-movement-analysis-evidence-strip"
+      aria-label="余额变动分析证据条"
+    >
+      <div>
+        <span>quality_flag</span>
+        <strong>{meta.quality_flag}</strong>
+      </div>
+      <div>
+        <span>trace_id</span>
+        <strong>{meta.trace_id}</strong>
+      </div>
+      <div>
+        <span>tables_used</span>
+        <strong>{formatMetaList(meta.tables_used)}</strong>
+      </div>
+      <div>
+        <span>evidence_rows</span>
+        <strong>{meta.evidence_rows ?? "—"}</strong>
+      </div>
+      <div>
+        <span>rule_version</span>
+        <strong>{meta.rule_version || "—"}</strong>
+      </div>
+      <div>
+        <span>source_version</span>
+        <strong>{meta.source_version || "—"}</strong>
+      </div>
+    </section>
+  );
+}
+
+function AnalysisDimensionOverview({ cards }: { cards: AnalysisDimensionCard[] }) {
+  return (
+    <section
+      className="balance-movement-dimension-overview"
+      data-testid="balance-movement-analysis-dimension-overview"
+    >
+      <div className="balance-movement-dimension-overview__header">
+        <span>分析维度总览</span>
+        <strong>先看变化、可信度、未解释项</strong>
+      </div>
+      <div className="balance-movement-dimension-grid">
+        {cards.map((card) => (
+          <a
+            key={card.key}
+            href={card.href}
+            className="balance-movement-dimension-card"
+            data-testid={`balance-movement-analysis-dimension-card-${card.key}`}
+          >
+            <span>{card.title}</span>
+            <strong>{card.metric}</strong>
+            <p>{card.detail}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function StructureMigrationPanel({
@@ -973,6 +1176,55 @@ function DifferenceAttributionWaterfallPanel({
   );
 }
 
+function ResidualUnsupportedPanel({
+  waterfall,
+}: {
+  waterfall: BalanceDifferenceAttributionWaterfall;
+}) {
+  const unsupportedComponents = waterfall.components.filter((component) => component.is_supported === false);
+  const residualComponent = waterfall.components.find((component) => component.is_residual);
+  return (
+    <section
+      id="balance-movement-analysis-residual-anchor"
+      className="balance-movement-derived-panel balance-movement-residual-panel"
+      data-testid="balance-movement-analysis-residual-closure"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>残差与待补口径</span>
+          <h2>哪些差异还不能解释</h2>
+        </div>
+        <strong>{unsupportedComponents.length} 项待补</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">
+        估值差和外币折算差当前没有可独立闭合字段；页面只展示后端已确认项和未分类残差，不在浏览器端反推正式口径。
+      </p>
+      <div className="balance-movement-residual-grid">
+        <div className="balance-movement-residual-card">
+          <span>未分类 / 残差</span>
+          <strong>{residualComponent ? `${formatSignedYiCell(residualComponent.amount)} 亿` : "—"}</strong>
+          <p>{residualComponent?.evidence_note ?? "当前瀑布未返回残差项。"}</p>
+        </div>
+        <div className="balance-movement-residual-card">
+          <span>待补口径</span>
+          <strong>{unsupportedComponents.map((component) => component.component_label).join("、") || "—"}</strong>
+          <p>未支持，不反推；待后端提供可闭合证据后再升级为正式拆分。</p>
+        </div>
+      </div>
+      {unsupportedComponents.length > 0 ? (
+        <ul className="balance-movement-residual-list">
+          {unsupportedComponents.map((component) => (
+            <li key={component.component_key}>
+              <strong>{component.component_label}</strong>
+              <span>{component.evidence_note}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function BasisMovementDecompositionPanel({
   decomposition,
 }: {
@@ -980,6 +1232,7 @@ function BasisMovementDecompositionPanel({
 }) {
   return (
     <section
+      id="balance-movement-analysis-basis-anchor"
       className="balance-movement-derived-panel"
       data-testid="balance-movement-analysis-basis-decomposition"
     >
@@ -1061,6 +1314,7 @@ function ZqtzMaturityStructurePanel({
 }) {
   return (
     <section
+      id="balance-movement-analysis-coverage-anchor"
       className="balance-movement-derived-panel"
       data-testid="balance-movement-analysis-zqtz-maturity"
     >
@@ -1278,6 +1532,7 @@ export default function BalanceMovementAnalysisPage() {
     detailQuery.data?.result.zqtz_maturity_structure ?? null;
   const zqtzConcentrationAnalysis =
     detailQuery.data?.result.zqtz_concentration_analysis ?? null;
+  const resultMeta = detailQuery.data?.result_meta ?? null;
   const accountingByReportDate = useMemo(() => {
     const map = new Map<string, BalanceMovementTrendMonth>();
     for (const month of accountingMatrixMonths) {
@@ -1494,6 +1749,78 @@ export default function BalanceMovementAnalysisPage() {
     return `「变动额」环比主导为 ${trendMoMDriverBucket}，「占比变化（pp）」主导为 ${structureShareDriverBucket}；二者可同时成立。`;
   }, [trendMoMDriverBucket, structureShareDriverBucket]);
 
+  const unsupportedWaterfallComponents = useMemo(
+    () =>
+      differenceAttributionWaterfall?.components.filter(
+        (component) => component.is_supported === false,
+      ) ?? [],
+    [differenceAttributionWaterfall],
+  );
+  const residualWaterfallComponent = useMemo(
+    () => differenceAttributionWaterfall?.components.find((component) => component.is_residual),
+    [differenceAttributionWaterfall],
+  );
+  const analysisDimensionCards = useMemo<AnalysisDimensionCard[]>(() => {
+    const businessTopMove = businessTopMomMoves[0];
+    const unsupportedLabels = unsupportedWaterfallComponents.map((component) => component.component_label);
+    const maturityCoverage = zqtzMaturityStructure
+      ? formatPct(zqtzMaturityStructure.meta.coverage_pct)
+      : "—";
+    const concentrationCoverage = zqtzConcentrationAnalysis
+      ? formatPct(zqtzConcentrationAnalysis.meta.coverage_pct)
+      : "—";
+    return [
+      {
+        key: "business",
+        title: "业务品类 Top 变动",
+        metric: businessTopMove
+          ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
+          : "暂无连续业务行",
+        detail: businessTopMove
+          ? `${sourceKindLabel(businessTopMove.sourceKind)} · ${sourceNotePreview(businessTopMove.sourceNote)}`
+          : "需要至少两个连续报告月。",
+        href: "#balance-movement-analysis-business-summary-anchor",
+      },
+      {
+        key: "basis",
+        title: "AC / OCI / FVTPL",
+        metric: topMovementDriver
+          ? `${topMovementDriver.bucket} ${formatSignedYiNumber(topMovementDriver.balanceChangeYi)} 亿`
+          : "暂无分桶变动",
+        detail: topMovementDriver
+          ? `贡献 ${formatPct(topMovementDriver.contributionPct)} · 期末占比 ${formatPct(topMovementDriver.currentBalancePct)}`
+          : "等待 AC/OCI/TPL 读模型返回。",
+        href: "#balance-movement-analysis-basis-anchor",
+      },
+      {
+        key: "residual",
+        title: "对账残差",
+        metric: residualWaterfallComponent
+          ? `${formatSignedYiCell(residualWaterfallComponent.amount)} 亿`
+          : "暂无残差项",
+        detail:
+          unsupportedLabels.length > 0
+            ? `${unsupportedLabels.join("、")} 未支持，不反推`
+            : "当前瀑布未返回待补口径。",
+        href: "#balance-movement-analysis-residual-anchor",
+      },
+      {
+        key: "coverage",
+        title: "期限 / 集中度覆盖",
+        metric: `期限 ${maturityCoverage} / 集中度 ${concentrationCoverage}`,
+        detail: `期限 ${drilldownStatusLabel(zqtzMaturityStructure?.meta.status)} · 集中度 ${drilldownStatusLabel(zqtzConcentrationAnalysis?.meta.status)}`,
+        href: "#balance-movement-analysis-coverage-anchor",
+      },
+    ];
+  }, [
+    businessTopMomMoves,
+    residualWaterfallComponent,
+    topMovementDriver,
+    unsupportedWaterfallComponents,
+    zqtzConcentrationAnalysis,
+    zqtzMaturityStructure,
+  ]);
+
   const seriesContextSegments = useMemo(() => {
     const segments: string[] = [];
     if (businessMatrixMonths.length === 2) {
@@ -1545,6 +1872,26 @@ export default function BalanceMovementAnalysisPage() {
     } finally {
       setIsRefreshing(false);
     }
+  }
+
+  function handleExportCsv() {
+    if (!detailQuery.data) {
+      return;
+    }
+    const csv = buildBalanceMovementCsv({
+      result: detailQuery.data.result,
+      resultMeta,
+      businessTopMove: businessTopMomMoves[0],
+      accountingTopDriver: topMovementDriver,
+      residualComponent: residualWaterfallComponent,
+      unsupportedComponents: unsupportedWaterfallComponents,
+      maturityStructure: zqtzMaturityStructure,
+      concentrationAnalysis: zqtzConcentrationAnalysis,
+    });
+    downloadCsv(
+      `balance-movement-analysis-${detailQuery.data.result.report_date}-${detailQuery.data.result.currency_basis}.csv`,
+      csv,
+    );
   }
 
   return (
@@ -1633,6 +1980,14 @@ export default function BalanceMovementAnalysisPage() {
         {refreshMessage ? (
           <span data-testid="balance-movement-analysis-refresh-message">{refreshMessage}</span>
         ) : null}
+        <button
+          type="button"
+          data-testid="balance-movement-analysis-export-csv"
+          onClick={handleExportCsv}
+          disabled={!detailQuery.data}
+        >
+          导出当前视图 CSV
+        </button>
       </FilterBar>
       {dateStatus ? (
         <div
@@ -1644,6 +1999,7 @@ export default function BalanceMovementAnalysisPage() {
           <span>{dateStatus.detail}</span>
         </div>
       ) : null}
+      {resultMeta ? <EvidenceStrip meta={resultMeta} /> : null}
 
       {summary ? (
         <section
@@ -1737,6 +2093,8 @@ export default function BalanceMovementAnalysisPage() {
         </section>
       ) : null}
 
+      {detailQuery.data ? <AnalysisDimensionOverview cards={analysisDimensionCards} /> : null}
+
       {summary ? (
         <div data-testid="balance-movement-analysis-summary" style={cardGridStyle}>
           <div style={cardStyle}>
@@ -1764,6 +2122,10 @@ export default function BalanceMovementAnalysisPage() {
 
       {differenceAttributionWaterfall ? (
         <DifferenceAttributionWaterfallPanel waterfall={differenceAttributionWaterfall} />
+      ) : null}
+
+      {differenceAttributionWaterfall ? (
+        <ResidualUnsupportedPanel waterfall={differenceAttributionWaterfall} />
       ) : null}
 
       {basisMovementDecomposition ? (
@@ -1864,6 +2226,7 @@ export default function BalanceMovementAnalysisPage() {
 
       {summary && topMovementDriver && maxShareShiftDriver ? (
         <section
+          id="balance-movement-analysis-business-summary-anchor"
           data-testid="balance-movement-analysis-business-summary"
           className="balance-movement-business-summary"
         >
