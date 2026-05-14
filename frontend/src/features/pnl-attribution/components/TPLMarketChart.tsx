@@ -1,15 +1,19 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import type { Numeric, TPLMarketCorrelationPayload } from "../../../api/contracts";
+import type {
+  Numeric,
+  TPLMarketCorrelationPayload,
+} from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: designTokens.space[6],
-  borderRadius: designTokens.radius.lg,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.primary[50],
+  padding: designTokens.space[5],
+  borderRadius: designTokens.radius.sm,
+  border: "1px solid #ded6ca",
+  background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -20,7 +24,11 @@ function formatYi(value: number | null | undefined): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
-function correlationLabel(corr: number | null): { level: string; color: string; bg: string } {
+function correlationLabel(corr: number | null): {
+  level: string;
+  color: string;
+  bg: string;
+} {
   if (corr === null) {
     return {
       level: "无数据",
@@ -80,13 +88,18 @@ function numericRaw(value: Numeric | number | null | undefined): number | null {
 }
 
 /** Legacy payloads may expose BP total under `treasury_10y_total_change`. */
-function treasuryTotalChangeBp(data: TPLMarketCorrelationPayload): number | null {
+function treasuryTotalChangeBp(
+  data: TPLMarketCorrelationPayload,
+): number | null {
   const current = numericRaw(data.treasury_10y_total_change_bp);
   if (current !== null) {
     return current;
   }
-  const legacy = (data as TPLMarketCorrelationPayload & { treasury_10y_total_change?: Numeric | number | null })
-    .treasury_10y_total_change;
+  const legacy = (
+    data as TPLMarketCorrelationPayload & {
+      treasury_10y_total_change?: Numeric | number | null;
+    }
+  ).treasury_10y_total_change;
   return numericRaw(legacy);
 }
 
@@ -99,7 +112,9 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
     const periods = data.data_points.map((p) =>
       p.period_label.replace("年", "-").replace("月", ""),
     );
-    const tpl = data.data_points.map((p) => (p.tpl_fair_value_change.raw ?? 0) / 100_000_000);
+    const tpl = data.data_points.map(
+      (p) => (p.tpl_fair_value_change.raw ?? 0) / 100_000_000,
+    );
     const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? 0);
     return {
       tooltip: { trigger: "axis" },
@@ -108,7 +123,10 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
       xAxis: {
         type: "category",
         data: periods,
-        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
+        axisLabel: {
+          fontSize: designTokens.fontSize[11],
+          color: designTokens.color.neutral[700],
+        },
       },
       yAxis: [
         {
@@ -118,12 +136,20 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
             formatter: (v: number) => `${v.toFixed(1)}`,
             color: designTokens.color.neutral[700],
           },
-          splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
+          splitLine: {
+            lineStyle: {
+              type: "dashed",
+              color: designTokens.color.neutral[100],
+            },
+          },
         },
         {
           type: "value",
           name: "BP",
-          axisLabel: { formatter: (v: number) => `${v}`, color: designTokens.color.neutral[700] },
+          axisLabel: {
+            formatter: (v: number) => `${v}`,
+            color: designTokens.color.neutral[700],
+          },
           splitLine: { show: false },
         },
       ],
@@ -135,7 +161,12 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
           data: tpl,
           itemStyle: {
             color: designTokens.color.info[500],
-            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            borderRadius: [
+              designTokens.radius.sm,
+              designTokens.radius.sm,
+              0,
+              0,
+            ],
           },
         },
         {
@@ -157,7 +188,13 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
   return (
     <DataSection title="TPL 市场相关性" state={state} onRetry={onRetry}>
       {data ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[5] }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: designTokens.space[5],
+          }}
+        >
           <div
             style={{
               display: "grid",
@@ -165,7 +202,13 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
               gap: designTokens.space[4],
             }}
           >
-            <div style={{ ...cardStyle, padding: designTokens.space[4], background: corr.bg }}>
+            <div
+              style={{
+                ...cardStyle,
+                padding: designTokens.space[4],
+                background: corr.bg,
+              }}
+            >
               <div
                 style={{
                   fontSize: designTokens.fontSize[12],
@@ -187,7 +230,14 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   ? (data.correlation_coefficient.raw ?? 0).toFixed(3)
                   : "—"}
               </div>
-              <div style={{ fontSize: designTokens.fontSize[12], color: corr.color }}>{corr.level}</div>
+              <div
+                style={{
+                  fontSize: designTokens.fontSize[12],
+                  color: corr.color,
+                }}
+              >
+                {corr.level}
+              </div>
             </div>
             <div style={{ ...cardStyle, padding: designTokens.space[4] }}>
               <div
@@ -259,7 +309,12 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
               >
                 {data.num_periods} 个月
               </div>
-              <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[500] }}>
+              <div
+                style={{
+                  fontSize: designTokens.fontSize[12],
+                  color: designTokens.color.neutral[500],
+                }}
+              >
                 {data.start_period} ~ {data.end_period}
               </div>
             </div>
@@ -311,7 +366,12 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
               >
                 TPL 公允价值变动 vs 国债收益率变动
               </h3>
-              <ReactECharts option={chartOption} style={{ height: 360 }} notMerge lazyUpdate />
+              <ReactECharts
+                option={chartOption}
+                style={{ height: 360 }}
+                notMerge
+                lazyUpdate
+              />
               <p
                 style={{
                   margin: `${designTokens.space[3]}px 0 0`,
@@ -320,7 +380,8 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   textAlign: "center",
                 }}
               >
-                利率下行（折线下降）时，债券估值通常上行，TPL 变动多为正（蓝柱向上）。
+                利率下行（折线下降）时，债券估值通常上行，TPL
+                变动多为正（蓝柱向上）。
               </p>
             </div>
           )}
@@ -417,9 +478,13 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   {data.data_points.map((point, idx) => (
                     <tr
                       key={idx}
-                      style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                      style={{
+                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                      }}
                     >
-                      <td style={{ padding: designTokens.space[3] }}>{point.period_label}</td>
+                      <td style={{ padding: designTokens.space[3] }}>
+                        {point.period_label}
+                      </td>
                       <td
                         style={{
                           textAlign: "right",
@@ -440,7 +505,9 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                           ...tabularNumsStyle,
                         }}
                       >
-                        {((point.tpl_fair_value_change.raw ?? 0) / 100_000_000).toFixed(2)}
+                        {(
+                          (point.tpl_fair_value_change.raw ?? 0) / 100_000_000
+                        ).toFixed(2)}
                       </td>
                       <td
                         style={{
@@ -449,7 +516,9 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                           ...tabularNumsStyle,
                         }}
                       >
-                        {point.treasury_10y !== null ? point.treasury_10y.display : "—"}
+                        {point.treasury_10y !== null
+                          ? point.treasury_10y.display
+                          : "—"}
                       </td>
                       <td
                         style={{

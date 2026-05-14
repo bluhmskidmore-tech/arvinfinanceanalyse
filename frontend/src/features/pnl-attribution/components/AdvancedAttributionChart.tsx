@@ -11,10 +11,11 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: designTokens.space[6],
-  borderRadius: designTokens.radius.lg,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.primary[50],
+  padding: designTokens.space[5],
+  borderRadius: designTokens.radius.sm,
+  border: "1px solid #ded6ca",
+  background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -51,10 +52,17 @@ export function AdvancedAttributionChart({
     return {
       tooltip: { trigger: "axis" },
       legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
-      grid: { left: 48, right: designTokens.space[6], top: designTokens.space[6], bottom: 48 },
+      grid: {
+        left: 48,
+        right: designTokens.space[6],
+        top: designTokens.space[6],
+        bottom: 48,
+      },
       xAxis: {
         type: "category",
-        data: rows.map((r) => (r.category.length > 8 ? `${r.category.slice(0, 8)}…` : r.category)),
+        data: rows.map((r) =>
+          r.category.length > 8 ? `${r.category.slice(0, 8)}…` : r.category,
+        ),
         axisLabel: {
           fontSize: designTokens.fontSize[11],
           rotate: 20,
@@ -67,7 +75,9 @@ export function AdvancedAttributionChart({
           formatter: (v: number) => `${v.toFixed(1)}%`,
           color: designTokens.color.neutral[700],
         },
-        splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
+        splitLine: {
+          lineStyle: { type: "dashed", color: designTokens.color.neutral[100] },
+        },
       },
       series: [
         {
@@ -76,7 +86,12 @@ export function AdvancedAttributionChart({
           data: rows.map((r) => r.carry.raw ?? 0),
           itemStyle: {
             color: designTokens.color.success[500],
-            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            borderRadius: [
+              designTokens.radius.sm,
+              designTokens.radius.sm,
+              0,
+              0,
+            ],
           },
         },
         {
@@ -85,7 +100,12 @@ export function AdvancedAttributionChart({
           data: rows.map((r) => r.rolldown.raw ?? 0),
           itemStyle: {
             color: designTokens.color.info[500],
-            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            borderRadius: [
+              designTokens.radius.sm,
+              designTokens.radius.sm,
+              0,
+              0,
+            ],
           },
         },
       ],
@@ -97,7 +117,9 @@ export function AdvancedAttributionChart({
       return null;
     }
     const tenors = krdData.buckets.map((b) => b.tenor);
-    const contrib = krdData.buckets.map((b) => (b.duration_contribution.raw ?? 0) / 100_000_000);
+    const contrib = krdData.buckets.map(
+      (b) => (b.duration_contribution.raw ?? 0) / 100_000_000,
+    );
     const ychg = krdData.buckets.map((b) => b.yield_change?.raw ?? 0);
     return {
       tooltip: { trigger: "axis" },
@@ -106,14 +128,22 @@ export function AdvancedAttributionChart({
       xAxis: {
         type: "category",
         data: tenors,
-        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
+        axisLabel: {
+          fontSize: designTokens.fontSize[11],
+          color: designTokens.color.neutral[700],
+        },
       },
       yAxis: [
         {
           type: "value",
           name: "久期贡献(亿)",
           axisLabel: { color: designTokens.color.neutral[700] },
-          splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
+          splitLine: {
+            lineStyle: {
+              type: "dashed",
+              color: designTokens.color.neutral[100],
+            },
+          },
         },
         {
           type: "value",
@@ -130,8 +160,16 @@ export function AdvancedAttributionChart({
           data: contrib.map((v) => ({
             value: v,
             itemStyle: {
-              color: v >= 0 ? designTokens.color.semantic.profit : designTokens.color.semantic.loss,
-              borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+              color:
+                v >= 0
+                  ? designTokens.color.semantic.profit
+                  : designTokens.color.semantic.loss,
+              borderRadius: [
+                designTokens.radius.sm,
+                designTokens.radius.sm,
+                0,
+                0,
+              ],
             },
           })),
         },
@@ -155,11 +193,19 @@ export function AdvancedAttributionChart({
     return {
       tooltip: { trigger: "axis" },
       legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
-      grid: { left: 48, right: designTokens.space[6], top: designTokens.space[6], bottom: 48 },
+      grid: {
+        left: 48,
+        right: designTokens.space[6],
+        top: designTokens.space[6],
+        bottom: 48,
+      },
       xAxis: {
         type: "category",
         data: krdData.buckets.map((b) => b.tenor),
-        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
+        axisLabel: {
+          fontSize: designTokens.fontSize[11],
+          color: designTokens.color.neutral[700],
+        },
       },
       yAxis: {
         type: "value",
@@ -175,7 +221,12 @@ export function AdvancedAttributionChart({
           data: krdData.buckets.map((b) => b.contribution_pct.raw ?? 0),
           itemStyle: {
             color: designTokens.color.info[500],
-            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            borderRadius: [
+              designTokens.radius.sm,
+              designTokens.radius.sm,
+              0,
+              0,
+            ],
           },
         },
         {
@@ -184,7 +235,12 @@ export function AdvancedAttributionChart({
           data: krdData.buckets.map((b) => b.weight.raw ?? 0),
           itemStyle: {
             color: designTokens.color.success[500],
-            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            borderRadius: [
+              designTokens.radius.sm,
+              designTokens.radius.sm,
+              0,
+              0,
+            ],
           },
         },
       ],
@@ -192,8 +248,18 @@ export function AdvancedAttributionChart({
   }, [krdData]);
 
   return (
-    <DataSection title="Carry / 利差 / KRD 高级归因" state={state} onRetry={onRetry}>
-      <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[5] }}>
+    <DataSection
+      title="Carry / 利差 / KRD 高级归因"
+      state={state}
+      onRetry={onRetry}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: designTokens.space[5],
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -211,7 +277,12 @@ export function AdvancedAttributionChart({
                   borderColor: designTokens.color.success[200],
                 }}
               >
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.semantic.profit }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.semantic.profit,
+                  }}
+                >
                   组合 Carry
                 </div>
                 <div
@@ -227,7 +298,12 @@ export function AdvancedAttributionChart({
                 >
                   {(carryData.portfolio_carry.raw ?? 0).toFixed(2)}%
                 </div>
-                <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.success[600] }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[11],
+                    color: designTokens.color.success[600],
+                  }}
+                >
                   票息 − FTP
                 </div>
               </div>
@@ -239,7 +315,12 @@ export function AdvancedAttributionChart({
                   borderColor: designTokens.color.info[200],
                 }}
               >
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.info[600] }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.info[600],
+                  }}
+                >
                   组合 Roll-down
                 </div>
                 <div
@@ -255,7 +336,12 @@ export function AdvancedAttributionChart({
                 >
                   {(carryData.portfolio_rolldown.raw ?? 0).toFixed(2)}%
                 </div>
-                <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[11],
+                    color: designTokens.color.neutral[700],
+                  }}
+                >
                   骑乘
                 </div>
               </div>
@@ -263,18 +349,23 @@ export function AdvancedAttributionChart({
                 style={{
                   ...cardStyle,
                   padding: designTokens.space[4],
-                  background: designTokens.color.primary[100],
-                  borderColor: designTokens.color.primary[200],
+                  background: "#fafafa",
+                  borderColor: "#ded6ca",
                 }}
               >
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.primary[700] }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.warm.ink,
+                  }}
+                >
                   静态收益（年化近似）
                 </div>
                 <div
                   style={{
                     fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: designTokens.color.primary[700],
+                    color: designTokens.color.warm.ink,
                     ...tabularNumsStyle,
                   }}
                 >
@@ -285,7 +376,12 @@ export function AdvancedAttributionChart({
                   ).toFixed(2)}
                   %
                 </div>
-                <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[11],
+                    color: designTokens.color.neutral[700],
+                  }}
+                >
                   Carry + Roll-down
                 </div>
               </div>
@@ -301,7 +397,12 @@ export function AdvancedAttributionChart({
                   borderColor: designTokens.color.warning[200],
                 }}
               >
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.warning[600] }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.warning[600],
+                  }}
+                >
                   国债曲线效应
                 </div>
                 <div
@@ -326,7 +427,12 @@ export function AdvancedAttributionChart({
                   borderColor: designTokens.color.danger[200],
                 }}
               >
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.semantic.loss }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.semantic.loss,
+                  }}
+                >
                   10Y 变动
                 </div>
                 <div
@@ -356,7 +462,14 @@ export function AdvancedAttributionChart({
                 borderColor: designTokens.color.info[200],
               }}
             >
-              <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.info[700] }}>组合 DV01</div>
+              <div
+                style={{
+                  fontSize: designTokens.fontSize[12],
+                  color: designTokens.color.info[700],
+                }}
+              >
+                组合 DV01
+              </div>
               <div
                 style={{
                   fontSize: designTokens.fontSize[20],
@@ -367,7 +480,12 @@ export function AdvancedAttributionChart({
               >
                 {((krdData.portfolio_dv01.raw ?? 0) / 10_000).toFixed(0)} 万
               </div>
-              <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] }}>
+              <div
+                style={{
+                  fontSize: designTokens.fontSize[11],
+                  color: designTokens.color.neutral[700],
+                }}
+              >
                 每 BP 价值变动
               </div>
             </div>
@@ -386,8 +504,19 @@ export function AdvancedAttributionChart({
             >
               {"Carry & Roll-down"} 分解
             </h3>
-            <ReactECharts option={carryOption} style={{ height: 300 }} notMerge lazyUpdate />
-            <div style={{ marginTop: designTokens.space[3], overflow: "auto", maxHeight: 220 }}>
+            <ReactECharts
+              option={carryOption}
+              style={{ height: 300 }}
+              notMerge
+              lazyUpdate
+            />
+            <div
+              style={{
+                marginTop: designTokens.space[3],
+                overflow: "auto",
+                maxHeight: 220,
+              }}
+            >
               <table
                 style={{
                   width: "100%",
@@ -403,23 +532,66 @@ export function AdvancedAttributionChart({
                   }}
                 >
                   <tr>
-                    <th style={{ textAlign: "left", padding: designTokens.space[2] }}>类别</th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: designTokens.space[2],
+                      }}
+                    >
+                      类别
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       市值(亿)
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       票息%
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       FTP%
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       Carry%
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       久期
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       Roll%
                     </th>
                   </tr>
@@ -428,16 +600,38 @@ export function AdvancedAttributionChart({
                   {carryData.items.slice(0, 8).map((item, idx) => (
                     <tr
                       key={idx}
-                      style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                      style={{
+                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                      }}
                     >
-                      <td style={{ padding: designTokens.space[2] }}>{item.category}</td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td style={{ padding: designTokens.space[2] }}>
+                        {item.category}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {((item.market_value.raw ?? 0) / 1e8).toFixed(1)}
                       </td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(item.coupon_rate.raw ?? 0).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(item.funding_cost.raw ?? 0).toFixed(2)}
                       </td>
                       <td
@@ -453,7 +647,13 @@ export function AdvancedAttributionChart({
                       >
                         {(item.carry.raw ?? 0).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(item.duration.raw ?? 0).toFixed(2)}
                       </td>
                       <td
@@ -529,15 +729,23 @@ export function AdvancedAttributionChart({
                   margin: `0 0 ${designTokens.space[3]}px`,
                   fontSize: designTokens.fontSize[13],
                   color: designTokens.color.neutral[700],
-                  background: designTokens.color.primary[50],
+                  background: "#fafafa",
                   padding: designTokens.space[3],
-                  borderRadius: designTokens.radius.md,
+                  borderRadius: designTokens.radius.sm,
+                  border: "1px solid #ece6dd",
                 }}
               >
                 曲线形态：{krdData.curve_interpretation}
                 {krdData.max_contribution_tenor ? (
-                  <span style={{ marginLeft: designTokens.space[3], color: designTokens.color.info[600] }}>
-                    最大贡献期限 {krdData.max_contribution_tenor}（{formatYi(krdData.max_contribution_value.raw ?? undefined)}）
+                  <span
+                    style={{
+                      marginLeft: designTokens.space[3],
+                      color: designTokens.color.info[600],
+                    }}
+                  >
+                    最大贡献期限 {krdData.max_contribution_tenor}（
+                    {formatYi(krdData.max_contribution_value.raw ?? undefined)}
+                    ）
                   </span>
                 ) : null}
               </p>
@@ -549,9 +757,19 @@ export function AdvancedAttributionChart({
                 gap: designTokens.space[4],
               }}
             >
-              <ReactECharts option={krdOption} style={{ height: 280 }} notMerge lazyUpdate />
+              <ReactECharts
+                option={krdOption}
+                style={{ height: 280 }}
+                notMerge
+                lazyUpdate
+              />
               {krdCompareOption && (
-                <ReactECharts option={krdCompareOption} style={{ height: 280 }} notMerge lazyUpdate />
+                <ReactECharts
+                  option={krdCompareOption}
+                  style={{ height: 280 }}
+                  notMerge
+                  lazyUpdate
+                />
               )}
             </div>
             <div style={{ marginTop: designTokens.space[3], overflow: "auto" }}>
@@ -564,26 +782,75 @@ export function AdvancedAttributionChart({
               >
                 <thead style={{ background: designTokens.color.neutral[100] }}>
                   <tr>
-                    <th style={{ textAlign: "left", padding: designTokens.space[2] }}>期限</th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "left",
+                        padding: designTokens.space[2],
+                      }}
+                    >
+                      期限
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       债券数
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       市值(亿)
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       占比%
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       久期
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       Δyield
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       贡献(亿)
                     </th>
-                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[2],
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       贡献占比%
                     </th>
                   </tr>
@@ -592,19 +859,52 @@ export function AdvancedAttributionChart({
                   {krdData.buckets.map((b, idx) => (
                     <tr
                       key={idx}
-                      style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                      style={{
+                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                      }}
                     >
-                      <td style={{ padding: designTokens.space[2], fontWeight: 500 }}>{b.tenor}</td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          padding: designTokens.space[2],
+                          fontWeight: 500,
+                        }}
+                      >
+                        {b.tenor}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {b.bond_count}
                       </td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {((b.market_value.raw ?? 0) / 1e8).toFixed(1)}
                       </td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(b.weight.raw ?? 0).toFixed(1)}
                       </td>
-                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(b.bucket_duration.raw ?? 0).toFixed(2)}
                       </td>
                       <td
@@ -618,7 +918,9 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {b.yield_change !== null ? (b.yield_change.raw ?? 0).toFixed(1) : "—"}
+                        {b.yield_change !== null
+                          ? (b.yield_change.raw ?? 0).toFixed(1)
+                          : "—"}
                       </td>
                       <td
                         style={{

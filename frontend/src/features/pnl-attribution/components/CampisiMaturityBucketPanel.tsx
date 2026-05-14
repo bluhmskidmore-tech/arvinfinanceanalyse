@@ -4,10 +4,11 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: designTokens.space[6],
-  borderRadius: designTokens.radius.lg,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.primary[50],
+  padding: designTokens.space[5],
+  borderRadius: designTokens.radius.sm,
+  border: "1px solid #ded6ca",
+  background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
 
 function toYi(value: number) {
@@ -45,31 +46,108 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
         >
           <thead>
             <tr style={{ background: designTokens.color.neutral[100] }}>
-              <th style={{ textAlign: "left", padding: designTokens.space[2] }}>到期桶</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>票息(亿)</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>国债(亿)</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>利差(亿)</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>选券(亿)</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>总收益(亿)</th>
+              <th style={{ textAlign: "left", padding: designTokens.space[2] }}>
+                到期桶
+              </th>
+              <th
+                style={{
+                  textAlign: "right",
+                  padding: designTokens.space[2],
+                  ...tabularNumsStyle,
+                }}
+              >
+                票息(亿)
+              </th>
+              <th
+                style={{
+                  textAlign: "right",
+                  padding: designTokens.space[2],
+                  ...tabularNumsStyle,
+                }}
+              >
+                国债(亿)
+              </th>
+              <th
+                style={{
+                  textAlign: "right",
+                  padding: designTokens.space[2],
+                  ...tabularNumsStyle,
+                }}
+              >
+                利差(亿)
+              </th>
+              <th
+                style={{
+                  textAlign: "right",
+                  padding: designTokens.space[2],
+                  ...tabularNumsStyle,
+                }}
+              >
+                选券(亿)
+              </th>
+              <th
+                style={{
+                  textAlign: "right",
+                  padding: designTokens.space[2],
+                  ...tabularNumsStyle,
+                }}
+              >
+                总收益(亿)
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map(([bucket, metrics]) => (
-              <tr key={bucket} style={{ borderTop: `1px solid ${designTokens.color.neutral[200]}` }}>
+              <tr
+                key={bucket}
+                style={{
+                  borderTop: `1px solid ${designTokens.color.neutral[200]}`,
+                }}
+              >
                 <td style={{ padding: designTokens.space[2] }}>{bucket}</td>
-                <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: designTokens.space[2],
+                    ...tabularNumsStyle,
+                  }}
+                >
                   {toYi(metrics.income_return)}
                 </td>
-                <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: designTokens.space[2],
+                    ...tabularNumsStyle,
+                  }}
+                >
                   {toYi(metrics.treasury_effect)}
                 </td>
-                <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: designTokens.space[2],
+                    ...tabularNumsStyle,
+                  }}
+                >
                   {toYi(metrics.spread_effect)}
                 </td>
-                <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: designTokens.space[2],
+                    ...tabularNumsStyle,
+                  }}
+                >
                   {toYi(metrics.selection_effect)}
                 </td>
-                <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: designTokens.space[2],
+                    ...tabularNumsStyle,
+                  }}
+                >
                   {toYi(metrics.total_return)}
                 </td>
               </tr>

@@ -4,10 +4,11 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: designTokens.space[6],
-  borderRadius: designTokens.radius.lg,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.primary[50],
+  padding: designTokens.space[5],
+  borderRadius: designTokens.radius.sm,
+  border: "1px solid #ded6ca",
+  background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
 
 function toYi(value: number) {
@@ -24,7 +25,11 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
   const totals = data?.totals;
 
   return (
-    <DataSection title="Campisi 六效应归因（扩展）" state={state} onRetry={onRetry}>
+    <DataSection
+      title="Campisi 六效应归因（扩展）"
+      state={state}
+      onRetry={onRetry}
+    >
       <div style={cardStyle}>
         <p
           style={{
@@ -61,7 +66,14 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
                 background: designTokens.color.neutral[50],
               }}
             >
-              <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>{label}</div>
+              <div
+                style={{
+                  fontSize: designTokens.fontSize[12],
+                  color: designTokens.color.neutral[700],
+                }}
+              >
+                {label}
+              </div>
               <div
                 style={{
                   marginTop: designTokens.space[2],
