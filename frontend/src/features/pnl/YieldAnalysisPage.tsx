@@ -9,7 +9,6 @@ import type { LiabilityYieldHistoryPoint, Numeric, PnlV1DetailRow } from "../../
 import { fmtPct, formatNumeric, formatPercent } from "../../utils/format";
 import { BaseChart } from "../../components/charts/BaseChart";
 import { designTokens } from "../../theme/designSystem";
-import { shellTokens } from "../../theme/tokens";
 import { runPollingTask } from "../../app/jobs/polling";
 import { PnlFilterBar } from "./yieldAnalysis/PnlFilterBar";
 import { RankingBarsCard } from "./yieldAnalysis/RankingBarsCard";
@@ -18,6 +17,26 @@ import { buildYieldAnalysisAggregates } from "./yieldAnalysis/yieldAnalysisAggre
 import "./yieldAnalysis/yieldAnalysis.css";
 
 type MainTab = "yield" | "pnl" | "period";
+
+const STANDARD_PNL_DETAIL_HEADERS = [
+  { label: "资产代码", align: "left" },
+  { label: "债券名称", align: "left" },
+  { label: "投资组合", align: "left" },
+  { label: "资产类型", align: "left" },
+  { label: "利息收入", align: "right" },
+  { label: "公允价值变动", align: "right" },
+  { label: "投资收益", align: "right" },
+  { label: "总损益", align: "right" },
+] as const;
+
+const NONSTD_PNL_DETAIL_HEADERS = [
+  { label: "资产代码", align: "left" },
+  { label: "资产类型（映射）", align: "left" },
+  { label: "利息收入514", align: "right" },
+  { label: "公允价值变动516", align: "right" },
+  { label: "资本利得517", align: "right" },
+  { label: "总损益", align: "right" },
+] as const;
 
 function numericRaw(value: Numeric | null | undefined): number | null | undefined {
   if (value === null || value === undefined) {
@@ -46,6 +65,24 @@ function fmtWanYuan(value: number) {
   return `${(value / 10_000).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function fmtSignedWanYuan(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${fmtWanYuan(value)} 万`;
+}
+
+function pnlTone(value: number) {
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+  return "neutral";
+}
+
+const chartAxisMuted = designTokens.color.warm.taupe;
+const chartMarketCost = designTokens.color.warm.slateBlue;
+const chartSpread = designTokens.color.warm.sage;
+const chartAssetYield = designTokens.color.warm.charcoal;
+const chartLiabilityDash = designTokens.color.warm.taupe;
+const chartScatter = designTokens.color.warm.terracotta;
+
 function historyChartOption(history: LiabilityYieldHistoryPoint[]): EChartsOption {
   const dates = history.map((h) => h.date);
   const asset = history.map((h) => (h.asset_yield != null ? h.asset_yield * 100 : null));
@@ -59,13 +96,13 @@ function historyChartOption(history: LiabilityYieldHistoryPoint[]): EChartsOptio
     tooltip: { trigger: "axis" },
     legend: { data: ["市场负债成本(%)", "息差(%)", "资产收益(%)", "综合负债成本(%)"], top: 0 },
     grid: { left: 48, right: 24, top: 40, bottom: 32 },
-    xAxis: { type: "category", data: dates, axisLabel: { color: "#64748b" } },
-    yAxis: { type: "value", axisLabel: { formatter: (v: number) => `${v.toFixed(1)}%`, color: "#64748b" } },
+    xAxis: { type: "category", data: dates, axisLabel: { color: chartAxisMuted } },
+    yAxis: { type: "value", axisLabel: { formatter: (v: number) => `${v.toFixed(1)}%`, color: chartAxisMuted } },
     series: [
-      { name: "市场负债成本(%)", type: "line", data: mkt, smooth: true, areaStyle: { opacity: 0.12 }, lineStyle: { color: "#6366f1" } },
-      { name: "息差(%)", type: "line", data: spread, smooth: true, areaStyle: { color: "rgba(34,197,94,0.15)" }, lineStyle: { color: "#22c55e" } },
-      { name: "资产收益(%)", type: "line", data: asset, smooth: true, lineStyle: { width: 2, color: "#1d4ed8" } },
-      { name: "综合负债成本(%)", type: "line", data: liab, smooth: true, lineStyle: { type: "dashed", color: "#94a3b8" } },
+      { name: "市场负债成本(%)", type: "line", data: mkt, smooth: true, areaStyle: { opacity: 0.12 }, lineStyle: { color: chartMarketCost } },
+      { name: "息差(%)", type: "line", data: spread, smooth: true, areaStyle: { color: `${chartSpread}26` }, lineStyle: { color: chartSpread } },
+      { name: "资产收益(%)", type: "line", data: asset, smooth: true, lineStyle: { width: 2, color: chartAssetYield } },
+      { name: "综合负债成本(%)", type: "line", data: liab, smooth: true, lineStyle: { type: "dashed", color: chartLiabilityDash } },
     ],
   };
 }
@@ -85,14 +122,14 @@ function scatterChartOption(
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 32 },
-    xAxis: { type: "value", name: "久期(y)", nameLocation: "middle", nameGap: 28, axisLabel: { color: "#64748b" } },
-    yAxis: { type: "value", name: "收益率(%)", axisLabel: { color: "#64748b" } },
+    xAxis: { type: "value", name: "久期(y)", nameLocation: "middle", nameGap: 28, axisLabel: { color: chartAxisMuted } },
+    yAxis: { type: "value", name: "收益率(%)", axisLabel: { color: chartAxisMuted } },
     series: [
       {
         type: "scatter",
         symbolSize: 12,
         data,
-        itemStyle: { color: "#3b82f6", opacity: 0.75 },
+        itemStyle: { color: chartScatter, opacity: 0.75 },
       },
     ],
   };
@@ -255,6 +292,14 @@ export default function YieldAnalysisPage() {
 
   const aggregatePnL = useMemo(() => buildYieldAnalysisAggregates(pnlFilteredRows), [pnlFilteredRows]);
   const nonstdClassTopRows = useMemo(() => aggregatePnL.by_asset_class_nonstd.slice(0, 12), [aggregatePnL]);
+  const largestDriver = useMemo(() => {
+    const [first] = aggregatePnL.by_portfolio;
+    return first;
+  }, [aggregatePnL.by_portfolio]);
+  const sourceMixText = useMemo(() => {
+    if (pnlFilteredRows.length === 0) return "暂无明细";
+    return `${standardDetailRows.length} 标准 / ${nonstdDetailRows.length} 非标`;
+  }, [nonstdDetailRows.length, pnlFilteredRows.length, standardDetailRows.length]);
 
   const yieldData = yieldQuery.data;
   const history = useMemo(() => yieldData?.history ?? [], [yieldData?.history]);
@@ -274,10 +319,25 @@ export default function YieldAnalysisPage() {
     return last - prev;
   }, [history]);
 
-  const displayReportDate =
-    reportDateParam || yieldData?.report_date || selectedPnlDate || "—";
+  const yieldReportDate = reportDateParam || yieldData?.report_date || "—";
+  const pnlReportDate = selectedPnlDate || "—";
+
+  const pageDescription =
+    activeTab === "pnl"
+      ? "月度损益聚合（不重算口径）；先看合计与 514/516/517 拆解，再下钻排行与明细。"
+      : activeTab === "period"
+        ? "按期间查看收益序列与汇总。"
+        : "先看静态收益与 NIM，再下钻到损益归因和期间收益。";
+
+  const pageMetaLine =
+    activeTab === "pnl"
+      ? `报表月份：${pnlReportDate}`
+      : activeTab === "yield"
+        ? `报告日：${yieldReportDate}`
+        : null;
 
   const yieldLoading = yieldQuery.isLoading;
+  const totalPnlTone = pnlTone(pnlDetailTotals.total);
 
   async function handleRefreshPnL() {
     setRefreshingPnL(true);
@@ -324,13 +384,15 @@ export default function YieldAnalysisPage() {
       <div className="yield-analysis-page-header">
         <div className="yield-analysis-page-copy">
           <h1 className="yield-analysis-page-title">收益分析</h1>
-          <p className="yield-analysis-page-description">先看总览，再下钻到损益归因和期间收益。</p>
-          <p className="yield-analysis-page-meta">报告日：{displayReportDate}</p>
+          <p className="yield-analysis-page-description">{pageDescription}</p>
+          {pageMetaLine ? <p className="yield-analysis-page-meta">{pageMetaLine}</p> : null}
         </div>
         <div className="yield-analysis-page-actions">
-          <Link to="/pnl-formal-v1" className="yield-analysis-page-link">
-            正式明细（表格）
-          </Link>
+          {activeTab !== "pnl" ? (
+            <Link to="/pnl-formal-v1" className="yield-analysis-page-link">
+              正式明细（表格）
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -360,15 +422,10 @@ export default function YieldAnalysisPage() {
         yieldLoading ? (
           <div className="yield-analysis-loading">
             <Spin />
-            <p style={{ marginTop: 12, color: designTokens.color.neutral[600] }}>正在加载收益分析...</p>
+            <p className="yield-analysis-loading-caption">正在加载收益分析...</p>
           </div>
         ) : yieldErrorMessage ? (
-          <div
-            className="yield-analysis-note"
-            style={{ borderColor: designTokens.color.danger[200], background: designTokens.color.danger[50], color: designTokens.color.danger[800] }}
-          >
-            {yieldErrorMessage}
-          </div>
+          <div className="yield-analysis-note yield-analysis-note--error">{yieldErrorMessage}</div>
         ) : yieldData ? (
           <div className="yield-analysis-section">
             <div className="yield-analysis-kpi-grid">
@@ -395,19 +452,16 @@ export default function YieldAnalysisPage() {
               </div>
               <div className="yield-analysis-metric-card">
                 <div className="yield-analysis-metric-label">静态 NIM</div>
-                <div style={{ marginTop: 8, display: "flex", alignItems: "flex-end", gap: 12 }}>
+                <div className="yield-analysis-metric-nim-row">
                   <div
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 700,
-                      fontVariantNumeric: "tabular-nums",
-                      color: nimNeg ? designTokens.color.danger[700] : designTokens.color.neutral[900],
-                    }}
+                    className={`yield-analysis-metric-nim-value ${nimNeg ? "yield-analysis-metric-nim-value--negative" : ""}`}
                   >
                     {kpi?.nim != null ? formatNumeric(kpi.nim) : "—"}
                   </div>
                   {nimDelta != null ? (
-                    <div style={{ fontSize: 14, fontWeight: 600, color: nimUp ? designTokens.color.success[700] : designTokens.color.danger[700] }}>
+                    <div
+                      className={`yield-analysis-metric-nim-delta ${nimUp ? "yield-analysis-metric-nim-delta--up" : "yield-analysis-metric-nim-delta--down"}`}
+                    >
                       {fmtPct(nimDelta * 100)} 日变动
                     </div>
                   ) : null}
@@ -417,31 +471,47 @@ export default function YieldAnalysisPage() {
             </div>
 
             <div className="yield-analysis-note yield-analysis-note--warning">
-              <strong style={{ color: designTokens.color.neutral[900] }}>口径提示：</strong>
+              <strong className="yield-analysis-note-strong">口径提示：</strong>
               本页是收益管理兼容的静态收益/NIM 读面，资产收益率剔除无到期日投资；日均分析页使用区间日均分母。两页可以看方向，不应直接做数值对账。
             </div>
 
             <div className="yield-analysis-note yield-analysis-note--plain">
-              <span style={{ marginRight: 12 }}>报告日：{yieldData.report_date || "—"}</span>
-              <span style={{ color: nimDelta == null ? designTokens.color.neutral[500] : nimUp ? designTokens.color.success[700] : designTokens.color.danger[700] }}>
-                NIM 日变动：{nimDelta == null ? "—" : formatPercent(nimDelta, false)}
-              </span>
+              <div className="yield-analysis-plain-meta">
+                <span>报告日：{yieldData.report_date || "—"}</span>
+                <span
+                  className={
+                    nimDelta == null
+                      ? "yield-analysis-plain-meta__delta--neutral"
+                      : nimUp
+                        ? "yield-analysis-plain-meta__delta--up"
+                        : "yield-analysis-plain-meta__delta--down"
+                  }
+                >
+                  NIM 日变动：{nimDelta == null ? "—" : formatPercent(nimDelta, false)}
+                </span>
+              </div>
             </div>
 
             <div className="yield-analysis-chart-grid">
               <div className="yield-analysis-surface yield-analysis-surface--padded">
-                <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700 }}>息差趋势</h3>
-                <p style={{ margin: "0 0 12px", fontSize: 12, color: designTokens.color.neutral[600] }}>
+                <h3 className="yield-analysis-chart-title">息差趋势</h3>
+                <p className="yield-analysis-chart-caption">
                   展示资产收益、市场负债成本与综合负债成本的相对关系。
                 </p>
-                {trendOption ? <BaseChart option={trendOption} height={360} /> : <div style={{ color: designTokens.color.neutral[500], padding: 24 }}>暂无历史序列</div>}
+                {trendOption ? (
+                  <BaseChart option={trendOption} height={360} />
+                ) : (
+                  <div className="yield-analysis-chart-empty">暂无历史序列</div>
+                )}
               </div>
               <div className="yield-analysis-surface yield-analysis-surface--padded">
-                <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700 }}>收益-久期散点</h3>
-                <p style={{ margin: "0 0 12px", fontSize: 12, color: designTokens.color.neutral[600] }}>
-                  以剩余期限（年）近似久期，单券收益率为 YTM。
-                </p>
-                {scatterOption ? <BaseChart option={scatterOption} height={380} /> : <div style={{ color: designTokens.color.neutral[500], padding: 24 }}>暂无散点数据</div>}
+                <h3 className="yield-analysis-chart-title">收益-久期散点</h3>
+                <p className="yield-analysis-chart-caption">以剩余期限（年）近似久期，单券收益率为 YTM。</p>
+                {scatterOption ? (
+                  <BaseChart option={scatterOption} height={380} />
+                ) : (
+                  <div className="yield-analysis-chart-empty">暂无散点数据</div>
+                )}
               </div>
             </div>
           </div>
@@ -452,24 +522,7 @@ export default function YieldAnalysisPage() {
 
       {activeTab === "pnl" ? (
         <div className="yield-analysis-section">
-          <div
-            className="yield-analysis-surface yield-analysis-surface--padded yield-pnl-toolbar"
-            data-testid="yield-analysis-pnl-toolbar"
-          >
-            <div className="yield-pnl-toolbar__intro">
-              <div className="yield-pnl-toolbar__title-row">
-                <h2 className="yield-pnl-toolbar__title">损益表归因分析</h2>
-                <span className="yield-pnl-toolbar__badge">默认视图</span>
-              </div>
-              <p className="yield-pnl-toolbar__description">
-                基于明细数据自动聚合，支持按投资组合、投资类型、数据来源、债券名称等多维度分析（可筛选）。
-              </p>
-              <div className="yield-pnl-toolbar__meta">
-                <span className="yield-pnl-toolbar__meta-item">数据来源：P&L Records</span>
-                <span className="yield-pnl-toolbar__meta-item">当前月份：{selectedPnlDate || "—"}</span>
-              </div>
-            </div>
-
+          <div className="yield-pnl-command-bar" data-testid="yield-analysis-pnl-toolbar">
             <div className="yield-pnl-toolbar__controls">
               <label className="yield-analysis-field yield-pnl-toolbar__field" htmlFor="pnl-yield-month-select">
                 <span className="yield-analysis-label">选择报表月份</span>
@@ -518,9 +571,49 @@ export default function YieldAnalysisPage() {
                 >
                   {pnlLoading ? "查询中…" : "查询汇总数据"}
                 </button>
+                <Link to="/pnl-formal-v1" className="yield-analysis-page-link yield-pnl-command-bar__link">
+                  正式明细（表格）
+                </Link>
               </div>
             </div>
           </div>
+
+          <div className="yield-pnl-conclusion" data-testid="yield-analysis-pnl-readout">
+            <div className="yield-pnl-conclusion__primary">
+              <div className="yield-pnl-hero__total">
+                <span className="yield-pnl-hero__label">筛选后合计损益</span>
+                <strong className={`yield-pnl-hero__value yield-pnl-hero__value--${totalPnlTone}`}>
+                  {fmtSignedWanYuan(pnlDetailTotals.total)}
+                </strong>
+                <span className="yield-pnl-hero__caption">
+                  单位：万元 · 明细 {pnlFilteredRows.length} / {pnlDetailData.length} 条
+                </span>
+              </div>
+              <div className="yield-pnl-breakdown" role="list">
+                {(
+                  [
+                    ["514 利息收入", pnlDetailTotals.interest],
+                    ["516 公允价值变动", pnlDetailTotals.fairValue],
+                    ["517 投资收益", pnlDetailTotals.capitalGain],
+                  ] as const
+                ).map(([label, val]) => (
+                  <div key={label} className="yield-pnl-breakdown__item" data-tone={pnlTone(val)}>
+                    <span className="yield-pnl-breakdown__label">{label}</span>
+                    <span className="yield-pnl-breakdown__value">{fmtSignedWanYuan(val)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="yield-pnl-conclusion__secondary">
+              <span className="yield-pnl-toolbar__meta-item">数据来源：P&L Records</span>
+              <span className="yield-pnl-toolbar__meta-item">
+                主要贡献组合：{largestDriver ? largestDriver.key : "—"}
+              </span>
+              <span className="yield-pnl-toolbar__meta-item">来源结构：{sourceMixText}</span>
+            </div>
+          </div>
+
+
 
           <PnlFilterBar
             filterSource={pnlFilterSource}
@@ -528,8 +621,6 @@ export default function YieldAnalysisPage() {
             filterPortfolio={pnlFilterPortfolio}
             searchText={pnlSearch}
             filterOptions={pnlFilterOptions}
-            filteredCount={pnlFilteredRows.length}
-            totalCount={pnlDetailData.length}
             onSourceChange={setPnlFilterSource}
             onInvestTypeChange={setPnlFilterInvestType}
             onPortfolioChange={setPnlFilterPortfolio}
@@ -543,12 +634,7 @@ export default function YieldAnalysisPage() {
           />
 
           {pnlError ? (
-            <div
-              className="yield-analysis-note"
-              style={{ borderColor: designTokens.color.danger[200], background: designTokens.color.danger[50], color: designTokens.color.danger[800] }}
-            >
-              {pnlError}
-            </div>
+            <div className="yield-analysis-note yield-analysis-note--error">{pnlError}</div>
           ) : null}
 
           {!pnlDetailLoading && pnlDetailData.length > 0 ? (
@@ -557,25 +643,10 @@ export default function YieldAnalysisPage() {
                 筛选条件下无明细结果
               </div>
             ) : (
-              <>
-                <div className="yield-pnl-kpi-grid">
-                  {(
-                    [
-                      ["514利息收入", pnlDetailTotals.interest, designTokens.color.success[700]],
-                      ["516公允价值变动损益", pnlDetailTotals.fairValue, designTokens.color.primary[600]],
-                      ["517投资收益", pnlDetailTotals.capitalGain, designTokens.color.primary[700]],
-                      ["合计损益", pnlDetailTotals.total, designTokens.color.neutral[900]],
-                    ] as const
-                  ).map(([title, val, color]) => (
-                    <div key={title} className="yield-analysis-surface yield-analysis-surface--padded">
-                      <div style={{ fontSize: 10, fontWeight: 800, color: designTokens.color.neutral[600] }}>{title}</div>
-                      <div style={{ marginTop: 8, fontSize: 22, fontWeight: 800, fontVariantNumeric: "tabular-nums", color }}>
-                        {fmtWanYuan(val)} 万
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
+              <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-ranking-heading">
+                <h2 id="yield-pnl-ranking-heading" className="yield-pnl-section-heading">
+                  按维度排行（点击可筛选）
+                </h2>
                 <div className="yield-pnl-ranking-grid">
                   <RankingBarsCard title="按投资组合" rows={aggregatePnL.by_portfolio} onPick={(k) => setPnlFilterPortfolio(k)} />
                   <RankingBarsCard title="按数据来源" rows={aggregatePnL.by_source} onPick={(k) => setPnlFilterSource(k)} />
@@ -592,7 +663,7 @@ export default function YieldAnalysisPage() {
                   ) : null}
                   <RankingBarsCard title="按币种（投资类型）" rows={aggregatePnL.by_asset_type} onPick={(k) => setPnlFilterInvestType(k)} />
                 </div>
-              </>
+              </section>
             )
           ) : null}
 
@@ -601,104 +672,128 @@ export default function YieldAnalysisPage() {
               <Spin />
             </div>
           ) : standardDetailRows.length > 0 ? (
-            <div style={{ borderRadius: 16, border: `1px solid ${shellTokens.colorBorderSoft}`, background: "#fff", overflow: "hidden" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${shellTokens.colorBorderSoft}` }}>
-                <strong>标准债券损益明细</strong>
-                <button type="button" onClick={() => setStandardDetailsExpanded((v) => !v)} style={{ fontSize: 12 }}>
+            <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-standard-detail-heading">
+              <h2 id="yield-pnl-standard-detail-heading" className="yield-pnl-section-heading">
+                标准债券明细
+              </h2>
+              <div className="yield-pnl-detail-card" data-testid="yield-analysis-standard-detail">
+              <div className="yield-pnl-detail-card__header">
+                <div>
+                  <strong>标准债券损益明细</strong>
+                  <span>共 {standardDetailRows.length} 条 · 单位：万元</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStandardDetailsExpanded((v) => !v)}
+                  className="yield-pnl-detail-card__toggle"
+                >
                   {standardDetailsExpanded ? "收起明细" : "展开明细"}
                 </button>
               </div>
               {standardDetailsExpanded ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ minWidth: 900, width: "100%", borderCollapse: "collapse" }}>
-                    <thead style={{ background: designTokens.color.neutral[50] }}>
+                <div className="yield-pnl-detail-table-wrap">
+                  <table className="yield-pnl-detail-table yield-pnl-detail-table--wide">
+                    <thead>
                       <tr>
-                        {["资产代码", "债券名称", "投资组合", "资产类型", "利息收入", "公允价值变动", "投资收益", "总损益"].map((h) => (
-                          <th key={h} style={{ padding: "8px 10px", textAlign: h.includes("收入") || h.includes("变动") || h.includes("收益") || h.includes("损益") ? "right" : "left", fontSize: 11, color: designTokens.color.neutral[500] }}>
-                            {h}
+                        {STANDARD_PNL_DETAIL_HEADERS.map((header) => (
+                          <th key={header.label} data-align={header.align}>
+                            {header.label}
                           </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {standardDetailRows.map((row, idx) => (
-                        <tr key={`${row.trace_id}-${row.asset_code}-${idx}`} style={{ borderTop: `1px solid ${shellTokens.colorBorderSoft}` }}>
-                          <td style={{ padding: "8px 10px", fontSize: 12 }}>{row.asset_code || "—"}</td>
-                          <td style={{ padding: "8px 10px", fontSize: 12, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.bond_name}>
+                        <tr key={`${row.trace_id}-${row.asset_code}-${idx}`}>
+                          <td>{row.asset_code || "—"}</td>
+                          <td className="yield-pnl-detail-table__name" title={row.bond_name}>
                             {row.bond_name || "—"}
                           </td>
-                          <td style={{ padding: "8px 10px", fontSize: 12 }}>{row.portfolio || "—"}</td>
-                          <td style={{ padding: "8px 10px", fontSize: 12 }}>{row.asset_type || "—"}</td>
-                          <td style={{ padding: "8px 10px", fontSize: 12, textAlign: "right" }}>{fmtWanYuan(parseMoney(row.interest_income))}</td>
-                          <td style={{ padding: "8px 10px", fontSize: 12, textAlign: "right" }}>{fmtWanYuan(parseMoney(row.fair_value_change))}</td>
-                          <td style={{ padding: "8px 10px", fontSize: 12, textAlign: "right" }}>{fmtWanYuan(parseMoney(row.capital_gain))}</td>
-                          <td style={{ padding: "8px 10px", fontSize: 12, textAlign: "right", fontWeight: 700 }}>{fmtWanYuan(parseMoney(row.total_pnl))}</td>
+                          <td>{row.portfolio || "—"}</td>
+                          <td>{row.asset_type || "—"}</td>
+                          <td data-align="right">{fmtWanYuan(parseMoney(row.interest_income))}</td>
+                          <td data-align="right">{fmtWanYuan(parseMoney(row.fair_value_change))}</td>
+                          <td data-align="right">{fmtWanYuan(parseMoney(row.capital_gain))}</td>
+                          <td data-align="right" className="yield-pnl-detail-table__total">
+                            {fmtWanYuan(parseMoney(row.total_pnl))}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot style={{ background: designTokens.color.neutral[50] }}>
+                    <tfoot>
                       <tr>
-                        <td colSpan={4} style={{ padding: "8px 10px", fontWeight: 700 }}>
+                        <td colSpan={4}>
                           合计
                         </td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmtWanYuan(standardDetailTotals.interest)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmtWanYuan(standardDetailTotals.fairValue)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmtWanYuan(standardDetailTotals.capitalGain)}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>{fmtWanYuan(standardDetailTotals.total)}</td>
+                        <td data-align="right">{fmtWanYuan(standardDetailTotals.interest)}</td>
+                        <td data-align="right">{fmtWanYuan(standardDetailTotals.fairValue)}</td>
+                        <td data-align="right">{fmtWanYuan(standardDetailTotals.capitalGain)}</td>
+                        <td data-align="right">{fmtWanYuan(standardDetailTotals.total)}</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
               ) : (
-                <div style={{ padding: 16, fontSize: 13, color: designTokens.color.neutral[500] }}>已收起标准债券明细。</div>
+                <div className="yield-pnl-detail-card__collapsed">已收起标准债券明细。</div>
               )}
-            </div>
+              </div>
+            </section>
           ) : selectedPnlDate && !pnlDetailLoading ? (
             <div className="yield-analysis-empty">暂无明细数据</div>
           ) : null}
 
           {!pnlDetailLoading && nonstdDetailRows.length > 0 ? (
-            <div style={{ borderRadius: 16, border: `2px solid ${designTokens.color.neutral[900]}`, overflow: "hidden", background: "#fff" }}>
-              <div style={{ padding: "12px 16px", background: designTokens.color.neutral[50], borderBottom: `2px solid ${designTokens.color.neutral[900]}` }}>
-                <strong>非标损益明细（单位：万）</strong> · 共 {nonstdDetailRows.length} 条
+            <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-nonstd-detail-heading">
+              <h2 id="yield-pnl-nonstd-detail-heading" className="yield-pnl-section-heading">
+                非标明细
+              </h2>
+              <div className="yield-pnl-detail-card yield-pnl-detail-card--accent" data-testid="yield-analysis-nonstd-detail">
+              <div className="yield-pnl-detail-card__header">
+                <div>
+                  <strong>非标损益明细</strong>
+                  <span>共 {nonstdDetailRows.length} 条 · 单位：万元</span>
+                </div>
               </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div className="yield-pnl-detail-table-wrap">
+                <table className="yield-pnl-detail-table">
                   <thead>
-                    <tr style={{ background: designTokens.color.neutral[100] }}>
-                      {["资产代码", "资产类型（映射）", "利息收入514", "公允价值变动516", "资本利得517", "总损益"].map((h) => (
-                        <th key={h} style={{ padding: "8px 10px", textAlign: h === "资产代码" || h.startsWith("资产") ? "left" : "right", fontSize: 10, fontWeight: 800 }}>
-                          {h}
+                    <tr>
+                      {NONSTD_PNL_DETAIL_HEADERS.map((header) => (
+                        <th key={header.label} data-align={header.align}>
+                          {header.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {nonstdDetailRows.map((row, idx) => (
-                      <tr key={`ns-${row.trace_id}-${idx}`} style={{ borderTop: `1px solid ${shellTokens.colorBorderSoft}` }}>
-                        <td style={{ padding: "8px 10px", fontSize: 12 }}>{row.asset_code || "—"}</td>
-                        <td style={{ padding: "8px 10px", fontSize: 12 }}>{row.asset_class || row.bond_name || "—"}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontSize: 12 }}>{fmtWanYuan(parseMoney(row.interest_income))}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontSize: 12 }}>{fmtWanYuan(parseMoney(row.fair_value_change))}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontSize: 12 }}>{fmtWanYuan(parseMoney(row.capital_gain))}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontSize: 12, fontWeight: 800 }}>{fmtWanYuan(parseMoney(row.total_pnl))}</td>
+                      <tr key={`ns-${row.trace_id}-${idx}`}>
+                        <td>{row.asset_code || "—"}</td>
+                        <td>{row.asset_class || row.bond_name || "—"}</td>
+                        <td data-align="right">{fmtWanYuan(parseMoney(row.interest_income))}</td>
+                        <td data-align="right">{fmtWanYuan(parseMoney(row.fair_value_change))}</td>
+                        <td data-align="right">{fmtWanYuan(parseMoney(row.capital_gain))}</td>
+                        <td data-align="right" className="yield-pnl-detail-table__total">
+                          {fmtWanYuan(parseMoney(row.total_pnl))}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr style={{ borderTop: `2px solid ${designTokens.color.neutral[900]}` }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 800 }}>
+                    <tr>
+                      <td colSpan={2}>
                         合计
                       </td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800 }}>{fmtWanYuan(nonstdDetailTotals.interest)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800 }}>{fmtWanYuan(nonstdDetailTotals.fairValue)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800 }}>{fmtWanYuan(nonstdDetailTotals.capitalGain)}</td>
-                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800 }}>{fmtWanYuan(nonstdDetailTotals.total)}</td>
+                      <td data-align="right">{fmtWanYuan(nonstdDetailTotals.interest)}</td>
+                      <td data-align="right">{fmtWanYuan(nonstdDetailTotals.fairValue)}</td>
+                      <td data-align="right">{fmtWanYuan(nonstdDetailTotals.capitalGain)}</td>
+                      <td data-align="right">{fmtWanYuan(nonstdDetailTotals.total)}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             </div>
+            </section>
           ) : null}
         </div>
       ) : null}

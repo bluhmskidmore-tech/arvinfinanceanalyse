@@ -11,8 +11,6 @@ type Props = {
     invests: string[];
     portfolios: string[];
   };
-  filteredCount: number;
-  totalCount: number;
   onSourceChange: (value: string) => void;
   onInvestTypeChange: (value: string) => void;
   onPortfolioChange: (value: string) => void;
@@ -26,8 +24,6 @@ export function PnlFilterBar({
   filterPortfolio,
   searchText,
   filterOptions,
-  filteredCount,
-  totalCount,
   onSourceChange,
   onInvestTypeChange,
   onPortfolioChange,
@@ -55,23 +51,11 @@ export function PnlFilterBar({
         <div className="pnl-filter-copy">
           <div className="pnl-filter-title">筛选条件</div>
           <div className="pnl-filter-description">用于收窄当前损益分析范围</div>
-          <div className="pnl-filter-summary">
-            <div className="pnl-filter-summary-row">
-              <span
-                className="pnl-filter-count"
-              >
-                已筛选 {filteredCount} / {totalCount}
-              </span>
-              <span
-                className={`pnl-filter-summary-text ${
-                  summaryExpanded ? "pnl-filter-summary-text--expanded" : ""
-                }`}
-                title={summaryText}
-              >
-                {summaryText}
-              </span>
-            </div>
-          </div>
+          {hasAnyFilter ? (
+            <p className={`pnl-filter-active-summary ${summaryExpanded ? "pnl-filter-active-summary--expanded" : ""}`} title={summaryText}>
+              {summaryText}
+            </p>
+          ) : null}
         </div>
         <div className="pnl-filter-actions">
           {hasAnyFilter ? (
@@ -83,11 +67,7 @@ export function PnlFilterBar({
               {summaryExpanded ? "收起摘要" : "展开摘要"}
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={onClearAll}
-            className="pnl-filter-button"
-          >
+          <button type="button" onClick={onClearAll} className="pnl-filter-button">
             清空
           </button>
         </div>
@@ -138,10 +118,7 @@ export function PnlFilterBar({
       {hasAnyFilter ? (
         <div className="pnl-filter-chips">
           {activeFilters.map((item) => (
-            <span
-              key={item}
-              className="pnl-filter-chip"
-            >
+            <span key={item} className="pnl-filter-chip">
               {item}
             </span>
           ))}

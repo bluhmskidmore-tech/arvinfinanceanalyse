@@ -24,6 +24,14 @@ function fmtWan(value: number | null | undefined) {
   return `${(value / 10_000).toFixed(2)} 万`;
 }
 
+function buildBreakdownParts(row: RankingBarRow) {
+  return [
+    { key: "interest", label: "514 利息", value: fmtWan(row.interest_income) },
+    { key: "fair-value", label: "516 公允", value: fmtWan(row.fair_value_change) },
+    { key: "capital-gain", label: "517 投资收益", value: fmtWan(row.capital_gain) },
+  ];
+}
+
 export function RankingBarsCard({
   title,
   rows,
@@ -75,10 +83,9 @@ export function RankingBarsCard({
             const positive = value >= 0;
             const proportion =
               row?.proportion === null || row?.proportion === undefined ? null : Number(row.proportion) * 100;
-            const breakdown = `利息 ${fmtWan(row?.interest_income)} · 公允 ${fmtWan(row?.fair_value_change)} · 投资收益 ${fmtWan(
-              row?.capital_gain,
-            )}`;
-            const rowClassName = `yield-ranking-row ${isClickable ? "yield-ranking-row--clickable" : ""}`;
+            const breakdownParts = buildBreakdownParts(row);
+            const breakdown = breakdownParts.map((part) => `${part.label} ${part.value}`).join(" · ");
+            const rowClassName = `yield-ranking-row ${isClickable ? "yield-ranking-row--clickable" : ""}`.trim();
             const inner = (
               <div className="yield-ranking-row-inner">
                 <div className="yield-ranking-index">
@@ -93,12 +100,6 @@ export function RankingBarsCard({
                       >
                         {displayLabel}
                       </div>
-                      <div
-                        className="yield-ranking-breakdown"
-                        title={breakdown}
-                      >
-                        {breakdown}
-                      </div>
                     </div>
                     <div className="yield-ranking-value-block">
                       <div
@@ -112,6 +113,17 @@ export function RankingBarsCard({
                         {proportion === null ? "-" : `${proportion.toFixed(1)}%`}
                       </div>
                     </div>
+                  </div>
+                  <div
+                    className="yield-ranking-breakdown"
+                    title={breakdown}
+                  >
+                    {breakdownParts.map((part) => (
+                      <span key={part.key} className="yield-ranking-breakdown-part">
+                        <span className="yield-ranking-breakdown-label">{part.label}</span>
+                        <span className="yield-ranking-breakdown-value">{part.value}</span>
+                      </span>
+                    ))}
                   </div>
                   <div className="yield-ranking-bar">
                     <div
@@ -130,6 +142,7 @@ export function RankingBarsCard({
                   key={`${title}:${key}`}
                   type="button"
                   className={rowClassName}
+                  data-testid={`yield-ranking-row-${index}`}
                   onClick={() => onPick?.(key)}
                 >
                   {inner}
@@ -137,7 +150,7 @@ export function RankingBarsCard({
               );
             }
             return (
-              <div key={`${title}:${key}`} className={rowClassName}>
+              <div key={`${title}:${key}`} className={rowClassName} data-testid={`yield-ranking-row-${index}`}>
                 {inner}
               </div>
             );

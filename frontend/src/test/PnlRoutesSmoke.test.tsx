@@ -559,8 +559,14 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByLabelText("选择报表月份")).toHaveValue("2025-12-31");
     });
     await waitFor(() => {
-      expect(screen.getByText("损益表归因分析")).toBeInTheDocument();
+      expect(screen.getByText("按维度排行（点击可筛选）")).toBeInTheDocument();
     });
+    const pnlReadout = await screen.findByTestId("yield-analysis-pnl-readout");
+    expect(pnlReadout).toHaveTextContent("筛选后合计损益");
+    expect(pnlReadout).toHaveTextContent("+13.00 万");
+    expect(pnlReadout).toHaveTextContent("主要贡献组合：Route FI");
+    expect(pnlReadout).toHaveTextContent("来源结构");
+    expect(pnlReadout).toHaveTextContent("1 标准 / 0 非标");
     await waitFor(() => {
       expect(screen.getByText("240001.IB")).toBeInTheDocument();
     });
