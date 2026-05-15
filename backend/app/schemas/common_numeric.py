@@ -103,7 +103,7 @@ def numeric_from_raw(
 
 
 def _normalize_numeric_raw(raw: float, unit: NumericUnit) -> float:
-    if unit == "pct" and abs(raw) >= 1.0:
+    if unit == "pct" and abs(raw) > 1.0:
         return raw / 100.0
     return raw
 

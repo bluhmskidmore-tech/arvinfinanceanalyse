@@ -5,11 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
+import { CreditRatingBlocks } from "../features/bond-dashboard/components/CreditRatingBlocks";
+import { IndustryTable } from "../features/bond-dashboard/components/IndustryTable";
+import { MaturityStructureChart } from "../features/bond-dashboard/components/MaturityStructureChart";
 import BondDashboardPage from "../features/bond-dashboard/pages/BondDashboardPage";
 import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="bond-dashboard-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => (
+    <div data-testid="bond-dashboard-echarts-stub" data-option={JSON.stringify(option)} />
+  ),
 }));
 
 function resultMeta(resultKind: string): ResultMeta {
@@ -272,6 +277,65 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-risk-row-credit_ratio")).toHaveTextContent("29.25%");
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
     });
+  });
+
+  it("renders credit-rating percentages from ratio Numeric values", () => {
+    render(
+      <CreditRatingBlocks
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          group_by: "rating",
+          total_market_value: yuan(200),
+          items: [
+            { category: "AAA", total_market_value: yuan(199), bond_count: 1, percentage: pct(0.995) },
+            { category: "AA", total_market_value: yuan(1), bond_count: 1, percentage: pct(0.005) },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("99.50%")).toBeInTheDocument();
+    expect(screen.getByText("0.50%")).toBeInTheDocument();
+  });
+
+  it("renders industry percentages from ratio Numeric values", () => {
+    render(
+      <IndustryTable
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          items: [
+            {
+              industry_name: "金融业",
+              total_market_value: yuan(1),
+              bond_count: 1,
+              percentage: pct(0.005),
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("0.50")).toBeInTheDocument();
+  });
+
+  it("passes percent-point data to the maturity structure line chart", () => {
+    render(
+      <MaturityStructureChart
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          total_market_value: yuan(200),
+          items: [
+            { maturity_bucket: "7天内", total_market_value: yuan(1), bond_count: 1, percentage: pct(0.005) },
+          ],
+        }}
+      />,
+    );
+
+    const option = JSON.parse(screen.getByTestId("bond-dashboard-echarts-stub").dataset.option ?? "{}");
+    expect(option.series[1].data).toEqual([0.5]);
   });
 
   it("loads the first-screen decision data before lower dashboard panels", async () => {

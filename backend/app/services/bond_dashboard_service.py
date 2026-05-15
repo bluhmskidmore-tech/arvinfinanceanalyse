@@ -125,7 +125,7 @@ def _to_dec(value: object) -> Decimal:
 def _pct_str(part: Decimal, whole: Decimal) -> str:
     if whole <= 0:
         return format(Decimal("0").quantize(Q8, rounding=ROUND_HALF_UP), "f")
-    return format((part / whole * Decimal("100")).quantize(Q8, rounding=ROUND_HALF_UP), "f")
+    return format((part / whole).quantize(Q8, rounding=ROUND_HALF_UP), "f")
 
 
 def _kpi_block_from_row(row: dict[str, Any]) -> dict[str, object]:

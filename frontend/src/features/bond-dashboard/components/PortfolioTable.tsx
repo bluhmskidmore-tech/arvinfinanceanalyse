@@ -65,6 +65,7 @@ export function PortfolioTable({
         rowKey={(r) => r.portfolio_name}
         columns={columns}
         dataSource={rows}
+        scroll={{ x: "max-content" }}
         summary={() => (
           <Table.Summary fixed>
             <Table.Summary.Row>

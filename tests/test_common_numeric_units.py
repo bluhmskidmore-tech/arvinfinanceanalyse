@@ -17,6 +17,12 @@ def test_numeric_from_raw_pct_percent_scale_normalizes_raw() -> None:
     assert numeric.display == "30.00%"
 
 
+def test_numeric_from_raw_pct_full_ratio_stays_full_percent() -> None:
+    numeric = numeric_from_raw(raw=1.0, unit="pct", sign_aware=False)
+    assert numeric.raw == pytest.approx(1.0)
+    assert numeric.display == "100.00%"
+
+
 def test_numeric_from_raw_bp_appends_suffix() -> None:
     numeric = numeric_from_raw(raw=-12.5, unit="bp", precision=1)
     assert numeric.raw == pytest.approx(-12.5)

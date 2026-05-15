@@ -555,6 +555,53 @@ def test_bond_dashboard_weighted_yield_and_duration_exclude_other_asset_class(tm
     get_settings.cache_clear()
 
 
+def test_bond_dashboard_distribution_percentage_keeps_sub_one_percent_ratio(tmp_path, monkeypatch) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    duckdb_path = tmp_path / "dash-small-percentage.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    rows = [
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="LARGE",
+            portfolio_name="P1",
+            asset_class_std="rate",
+            market_value=Decimal("199"),
+            ytm=Decimal("0.02"),
+            modified_duration=Decimal("2"),
+            bond_type_label="Large",
+        ),
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="SMALL",
+            portfolio_name="P1",
+            asset_class_std="rate",
+            market_value=Decimal("1"),
+            ytm=Decimal("0.02"),
+            modified_duration=Decimal("2"),
+            bond_type_label="Small",
+        ),
+    ]
+    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/api/bond-dashboard/asset-structure",
+        params={"report_date": REPORT_DATE, "group_by": "bond_type"},
+    )
+    assert response.status_code == 200, response.text
+
+    by_category = {item["category"]: item for item in response.json()["result"]["items"]}
+    _assert_numeric(by_category["Large"]["percentage"], unit="pct", raw=Decimal("0.995"))
+    _assert_numeric(by_category["Small"]["percentage"], unit="pct", raw=Decimal("0.005"))
+    assert by_category["Small"]["percentage"]["display"] == "0.50%"
+    get_settings.cache_clear()
+
+
 def test_business_type_metrics_returns_envelope(tmp_path, monkeypatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 
