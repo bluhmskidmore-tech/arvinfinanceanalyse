@@ -128,7 +128,7 @@ RATE_INDICATORS = {
 LIQUIDITY_INDICATORS = {
     "EMM00166252": ("SHIBOR:隔夜", 1.0),
     "EMM00166253": ("SHIBOR:1周", 0.8),
-    "EMM00166216": ("银行间质押式回购加权利率", 0.9),
+    "CA.DR007": ("存款类机构质押式回购加权利率:DR007", 0.9),
 }
 GROWTH_INDICATORS = {
     "EMM00008445": ("工业增加值:当月同比", 1.0),

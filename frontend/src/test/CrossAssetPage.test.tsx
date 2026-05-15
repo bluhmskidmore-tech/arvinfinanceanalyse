@@ -60,6 +60,33 @@ describe("CrossAssetPage", () => {
     expect(broadIndex).toHaveTextContent("Tushare");
   });
 
+  it("renders the compact decision cockpit before the deep evidence stack", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    const hero = await screen.findByTestId("cross-asset-decision-hero");
+    const statusStrip = await screen.findByTestId("cross-asset-data-status-strip");
+    const firstScreenGrid = await screen.findByTestId("cross-asset-first-screen-grid");
+    const researchViews = await screen.findByTestId("cross-asset-research-views");
+    const headlineKpis = await screen.findByTestId("cross-asset-headline-kpis");
+    const fullKpiBand = await screen.findByTestId("cross-asset-kpi-band");
+    const livermoreStatus = await screen.findByTestId("cross-asset-livermore-status");
+    const observationSupport = await screen.findByTestId("cross-asset-observation-support-grid");
+    const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
+
+    expect(hero).toHaveTextContent("外部变量怎样传导到债券");
+    expect(statusStrip).toHaveTextContent("宏观最新质量");
+    expect(firstScreenGrid).toContainElement(researchViews);
+    expect(firstScreenGrid).toContainElement(headlineKpis);
+    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-momentum-scoreboard"));
+    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-correlation-heatmap"));
+    expect(screen.getByTestId("cross-asset-momentum-table-wrap")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-correlation-matrix-wrap")).toBeInTheDocument();
+    expect(waterfallEvidence).toHaveTextContent("综合");
+    expect(headlineKpis.querySelectorAll(".cross-asset-drivers-page__mini-kpi")).toHaveLength(4);
+    expect(Boolean(researchViews.compareDocumentPosition(fullKpiBand) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(fullKpiBand.compareDocumentPosition(livermoreStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
   it("renders first-screen investment research judgments from backend additive fields", async () => {
     const client = createApiClient({ mode: "mock" });
     const latestPayload = await client.getChoiceMacroLatest();
@@ -222,6 +249,7 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("\u5f85\u63a5\u5165");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("\u8de8\u8d44\u4ea7\u7ed3\u8bba");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("\u5f85\u63a5\u5165\u6e05\u5355");
+    expect(screen.getByTestId("cross-asset-asset-class-judgment")).toHaveTextContent("\u503a\u5238\u4f20\u5bfc\u5224\u65ad");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("Choice");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("Tushare");
     expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("来源受限");
