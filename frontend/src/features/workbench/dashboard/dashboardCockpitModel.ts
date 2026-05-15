@@ -291,8 +291,46 @@ function dv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
   return raw == null ? fallback : `${formatWithCommas(raw / 10_000, 2)} 万`;
 }
 
+function previewDv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const raw = numericRaw(value);
+  if (raw != null) {
+    return `${formatWithCommas(raw / 10_000, 2)} \u4e07`;
+  }
+  return dv01Display(value, fallback);
+}
+
 function hasNumericValue(value: NumericLike): boolean {
   return numericRaw(value) !== null || formattedDisplay(value) !== null;
+}
+
+function buildRiskFocusReasonParts(input: {
+  issuerTop5Weight: NumericLike;
+  creditWeight: NumericLike;
+  totalDv01: NumericLike;
+}) {
+  const previewParts: string[] = [];
+  const sourceParts: string[] = [];
+
+  if (hasNumericValue(input.issuerTop5Weight)) {
+    const top5 = percentDisplay(input.issuerTop5Weight);
+    previewParts.push(`Top5 ${top5}`);
+    sourceParts.push(`Top5集中度 ${top5}`);
+  }
+
+  if (hasNumericValue(input.creditWeight)) {
+    const credit = percentDisplay(input.creditWeight);
+    previewParts.push(`信用 ${credit}`);
+    sourceParts.push(`信用占比 ${credit}`);
+  }
+
+  if (hasNumericValue(input.totalDv01)) {
+    sourceParts.push(`DV01 ${previewDv01Display(input.totalDv01)}`);
+  }
+
+  return {
+    preview: previewParts.length > 0 ? `因 ${previewParts.join(" / ")}` : null,
+    source: sourceParts.length > 0 ? `因 ${sourceParts.join("、")}，进入联合复核。` : null,
+  };
 }
 
 function numericTone(value: NumericLike): DashboardCockpitTone {
@@ -598,12 +636,18 @@ function buildPreviewSignals(
         .sort((left, right) => right.raw - left.raw)
     : [];
   const topDayDriver = dayDrivers[0] ?? null;
+  const secondaryDayDriver = dayDrivers[1] ?? null;
 
   const concentrationValue = portfolioAllowed
     ? percentDisplay(input.portfolio?.issuer_top5_weight)
     : EMPTY_DISPLAY;
+  const riskFocusReasons = buildRiskFocusReasonParts({
+    issuerTop5Weight: input.portfolio?.issuer_top5_weight,
+    creditWeight: input.portfolio?.credit_weight,
+    totalDv01: input.bondHeadline?.kpis.total_dv01 ?? input.portfolio?.total_dv01,
+  });
   const concentrationDetail = portfolioAllowed
-    ? `\u4fe1\u7528\u5360\u6bd4 ${percentDisplay(input.portfolio?.credit_weight)}`
+    ? riskFocusReasons.preview ?? `\u4fe1\u7528\u5360\u6bd4 ${percentDisplay(input.portfolio?.credit_weight)}`
     : "\u7b49\u5f85\u540c\u65e5\u62a5\u544a\u65e5\u7ec4\u5408\u7ed3\u6784";
 
   const durationRiskValue =
@@ -617,7 +661,7 @@ function buildPreviewSignals(
   return [
     {
       id: "coverage",
-      label: "\u540c\u65e5\u8986\u76d6",
+      label: "\u8865\u5145\u8986\u76d6",
       value: `${sameDayCount}/4`,
       detail: `\u8865\u5145\u8bfb\u9762 / \u5e02\u573a ${marketLabel} / \u5feb\u7167 ${input.snapshotMode ?? "\u5f85\u5b9a"}`,
       status: coverageStatus,
@@ -628,7 +672,9 @@ function buildPreviewSignals(
       label: "\u65e5\u51c0\u53d8\u52a8",
       value: dayChange ? numericDisplay(dayChange.net_change) : EMPTY_DISPLAY,
       detail: topDayDriver
-        ? `\u4e3b\u62d6\u52a8 ${topDayDriver.label} ${topDayDriver.display}`
+        ? secondaryDayDriver
+          ? `\u4e3b ${topDayDriver.label} ${topDayDriver.display} / \u6b21 ${secondaryDayDriver.label} ${secondaryDayDriver.display}`
+          : `\u4e3b ${topDayDriver.label} ${topDayDriver.display}`
         : "\u7b49\u5f85\u540c\u65e5\u62a5\u544a\u65e5\u53d8\u52a8\u8bfb\u9762",
       status: dayChange ? "supplemental" : "blocked",
       tone: dayChange ? numericTone(dayChange.net_change) : "warning",
@@ -644,7 +690,7 @@ function buildPreviewSignals(
     {
       id: "duration-dv01",
       label: "\u5229\u7387\u98ce\u9669",
-      value: durationRiskAllowed ? dv01Display(durationRiskValue) : EMPTY_DISPLAY,
+      value: durationRiskAllowed ? previewDv01Display(durationRiskValue) : EMPTY_DISPLAY,
       detail: durationRiskAllowed
         ? `\u4e45\u671f ${durationDisplay(durationRiskDuration)}`
         : "\u7b49\u5f85\u540c\u65e5\u62a5\u544a\u65e5\u98ce\u9669\u8bfb\u9762",
@@ -1021,6 +1067,11 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
   const totalMarketValue = portfolio.total_market_value ?? headline?.kpis.total_market_value;
   const totalDv01 = headline?.kpis.total_dv01 ?? portfolio.total_dv01;
   const totalChange = dayChange?.net_change ?? dayChange?.bond_investments_change;
+  const riskFocusReasons = buildRiskFocusReasonParts({
+    issuerTop5Weight: portfolio.issuer_top5_weight,
+    creditWeight: portfolio.credit_weight,
+    totalDv01,
+  });
 
   const rows: DashboardCockpitAccountRow[] = [
     {
@@ -1080,10 +1131,10 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
       exposure: yuanYiDisplay(totalMarketValue),
       weight: percentDisplay(portfolio.issuer_top5_weight),
       duration: durationDisplay(portfolio.weighted_duration),
-      ytm: percentDisplay(portfolio.credit_weight),
+      ytm: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio.weighted_ytm),
       dailyChange: numericDisplay(dayChange?.net_change),
       risk: dv01Display(portfolio.total_dv01),
-      source: "DV01 / \u4e45\u671f / \u96c6\u4e2d\u5ea6\u8054\u5408\u590d\u6838\u3002",
+      source: riskFocusReasons.source ?? "DV01 / \u4e45\u671f / \u96c6\u4e2d\u5ea6\u8054\u5408\u590d\u6838\u3002",
       route: "/risk-tensor",
       actionLabel: "\u770b\u98ce\u9669",
       status: "supplemental",

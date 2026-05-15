@@ -58,6 +58,65 @@ function numericWithRawYuanDisplay(raw: number) {
   };
 }
 
+function createSameDayCockpitClient(): ApiClient {
+  const base = createApiClient({ mode: "mock" });
+  return {
+    ...base,
+    getResearchCalendarEvents: vi.fn(async () => []),
+    getBondDashboardHeadlineKpis: vi.fn(async (reportDate) => {
+      const envelope = await base.getBondDashboardHeadlineKpis(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          report_date: reportDate,
+        },
+      };
+    }),
+    getBondAnalyticsPortfolioHeadlines: vi.fn(async (reportDate) => {
+      const envelope = await base.getBondAnalyticsPortfolioHeadlines(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          report_date: reportDate,
+          total_market_value: numericWithRawYuanDisplay(235_000_000_000),
+          weighted_ytm: formatRawAsNumeric({ raw: 0.026, unit: "pct", sign_aware: false }),
+          weighted_duration: formatRawAsNumeric({ raw: 4.1, unit: "ratio", sign_aware: false }),
+          weighted_coupon: formatRawAsNumeric({ raw: 0.021, unit: "pct", sign_aware: false }),
+          total_dv01: formatRawAsNumeric({ raw: 88_000_000, unit: "dv01", sign_aware: false }),
+          credit_weight: formatRawAsNumeric({ raw: 0.31, unit: "pct", sign_aware: false }),
+          issuer_hhi: formatRawAsNumeric({ raw: 0.06, unit: "pct", sign_aware: false }),
+          issuer_top5_weight: formatRawAsNumeric({ raw: 0.42, unit: "pct", sign_aware: false }),
+          by_asset_class: [
+            {
+              asset_class: "rate",
+              market_value: numericWithRawYuanDisplay(120_000_000_000),
+              duration: formatRawAsNumeric({ raw: 5.2, unit: "ratio", sign_aware: false }),
+              dv01: formatRawAsNumeric({ raw: 54_000_000, unit: "dv01", sign_aware: false }),
+              weight: formatRawAsNumeric({ raw: 0.51, unit: "pct", sign_aware: false }),
+            },
+            {
+              asset_class: "credit",
+              market_value: numericWithRawYuanDisplay(73_000_000_000),
+              duration: formatRawAsNumeric({ raw: 2.8, unit: "ratio", sign_aware: false }),
+              dv01: formatRawAsNumeric({ raw: 21_000_000, unit: "dv01", sign_aware: false }),
+              weight: formatRawAsNumeric({ raw: 0.31, unit: "pct", sign_aware: false }),
+            },
+            {
+              asset_class: "other",
+              market_value: numericWithRawYuanDisplay(42_000_000_000),
+              duration: formatRawAsNumeric({ raw: 0.9, unit: "ratio", sign_aware: false }),
+              dv01: formatRawAsNumeric({ raw: 13_000_000, unit: "dv01", sign_aware: false }),
+              weight: formatRawAsNumeric({ raw: 0.18, unit: "pct", sign_aware: false }),
+            },
+          ],
+        },
+      };
+    }),
+  };
+}
+
 function coreMetricCard(totalAmount: number, rate: number, changeAmount: number, changePct: number) {
   return {
     total_amount: formatRawAsNumeric({ raw: totalAmount, unit: "yuan", sign_aware: false }),
@@ -277,6 +336,7 @@ describe("DashboardPage", () => {
       "dashboard-action-queue",
       "dashboard-business-detail-strip",
       "dashboard-cockpit-lower-grid",
+      "dashboard-cockpit-account-table",
       "dashboard-business-balance-summary",
       "dashboard-detail-drilldown",
     ]);
@@ -426,62 +486,7 @@ describe("DashboardPage", () => {
   });
 
   it("keeps an empty cockpit calendar explicit while linking to observation rows", async () => {
-    const base = createApiClient({ mode: "mock" });
-    const client: ApiClient = {
-      ...base,
-      getResearchCalendarEvents: vi.fn(async () => []),
-      getBondDashboardHeadlineKpis: vi.fn(async (reportDate) => {
-        const envelope = await base.getBondDashboardHeadlineKpis(reportDate);
-        return {
-          ...envelope,
-          result: {
-            ...envelope.result,
-            report_date: reportDate,
-          },
-        };
-      }),
-      getBondAnalyticsPortfolioHeadlines: vi.fn(async (reportDate) => {
-        const envelope = await base.getBondAnalyticsPortfolioHeadlines(reportDate);
-        return {
-          ...envelope,
-          result: {
-            ...envelope.result,
-            report_date: reportDate,
-            total_market_value: numericWithRawYuanDisplay(235_000_000_000),
-            weighted_ytm: formatRawAsNumeric({ raw: 0.026, unit: "pct", sign_aware: false }),
-            weighted_duration: formatRawAsNumeric({ raw: 4.1, unit: "ratio", sign_aware: false }),
-            weighted_coupon: formatRawAsNumeric({ raw: 0.021, unit: "pct", sign_aware: false }),
-            total_dv01: formatRawAsNumeric({ raw: 88_000_000, unit: "dv01", sign_aware: false }),
-            credit_weight: formatRawAsNumeric({ raw: 0.31, unit: "pct", sign_aware: false }),
-            issuer_hhi: formatRawAsNumeric({ raw: 0.06, unit: "pct", sign_aware: false }),
-            issuer_top5_weight: formatRawAsNumeric({ raw: 0.42, unit: "pct", sign_aware: false }),
-            by_asset_class: [
-              {
-                asset_class: "rate",
-                market_value: numericWithRawYuanDisplay(120_000_000_000),
-                duration: formatRawAsNumeric({ raw: 5.2, unit: "ratio", sign_aware: false }),
-                dv01: formatRawAsNumeric({ raw: 54_000_000, unit: "dv01", sign_aware: false }),
-                weight: formatRawAsNumeric({ raw: 0.51, unit: "pct", sign_aware: false }),
-              },
-              {
-                asset_class: "credit",
-                market_value: numericWithRawYuanDisplay(73_000_000_000),
-                duration: formatRawAsNumeric({ raw: 2.8, unit: "ratio", sign_aware: false }),
-                dv01: formatRawAsNumeric({ raw: 21_000_000, unit: "dv01", sign_aware: false }),
-                weight: formatRawAsNumeric({ raw: 0.31, unit: "pct", sign_aware: false }),
-              },
-              {
-                asset_class: "other",
-                market_value: numericWithRawYuanDisplay(42_000_000_000),
-                duration: formatRawAsNumeric({ raw: 0.9, unit: "ratio", sign_aware: false }),
-                dv01: formatRawAsNumeric({ raw: 13_000_000, unit: "dv01", sign_aware: false }),
-                weight: formatRawAsNumeric({ raw: 0.18, unit: "pct", sign_aware: false }),
-              },
-            ],
-          },
-        };
-      }),
-    };
+    const client = createSameDayCockpitClient();
 
     renderDashboard(client);
 
@@ -544,6 +549,7 @@ describe("DashboardPage", () => {
       "dashboard-cockpit-main-grid",
       "dashboard-action-queue",
       "dashboard-cockpit-lower-grid",
+      "dashboard-cockpit-account-table",
       "dashboard-business-balance-summary",
       "dashboard-detail-drilldown",
     ]);
@@ -569,6 +575,7 @@ describe("DashboardPage", () => {
     expectTestIdsInOrder(page, [
       "dashboard-action-queue",
       "dashboard-cockpit-lower-grid",
+      "dashboard-cockpit-account-table",
       "dashboard-business-balance-summary",
       "dashboard-detail-drilldown",
     ]);
@@ -595,7 +602,11 @@ describe("DashboardPage", () => {
     expect(detail).toHaveTextContent("解释首屏结论");
     expect(detail).toHaveTextContent("定位数据证据");
     expect(detail).toHaveTextContent("进入专题页复核");
-    expectTestIdsInOrder(page, ["dashboard-cockpit-lower-grid", "dashboard-detail-drilldown"]);
+    expectTestIdsInOrder(page, [
+      "dashboard-cockpit-lower-grid",
+      "dashboard-cockpit-account-table",
+      "dashboard-detail-drilldown",
+    ]);
 
     fireEvent.click(within(detail).getByText("下钻复核区"));
 
@@ -1438,15 +1449,71 @@ describe("DashboardPage", () => {
     );
   });
 
-  it("shows compact decision signals inside the collapsed supplement preview", async () => {
-    renderDashboard();
+  it("shows clearer supplement preview cards with drilldown targets", async () => {
+    renderDashboard(createSameDayCockpitClient());
 
     const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
     const preview = within(supplement).getByTestId("dashboard-cockpit-supplement-preview");
+    const coverage = within(preview).getByTestId("dashboard-cockpit-preview-coverage");
+    const netChange = within(preview).getByTestId("dashboard-cockpit-preview-net-change");
+    const concentration = within(preview).getByTestId("dashboard-cockpit-preview-concentration");
+    const durationRisk = within(preview).getByTestId("dashboard-cockpit-preview-duration-dv01");
 
-    expect(within(preview).getByTestId("dashboard-cockpit-preview-coverage")).toBeInTheDocument();
-    expect(within(preview).getByTestId("dashboard-cockpit-preview-net-change")).toBeInTheDocument();
-    expect(within(preview).getByTestId("dashboard-cockpit-preview-concentration")).toBeInTheDocument();
-    expect(within(preview).getByTestId("dashboard-cockpit-preview-duration-dv01")).toBeInTheDocument();
+    expect(coverage).toHaveTextContent("补充覆盖");
+    expect(within(coverage).getByRole("link")).toHaveAttribute("href", "/platform-config");
+    expect(netChange).toHaveTextContent("日净变动");
+    expect(within(netChange).getByRole("button")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(concentration).toHaveTextContent("Top5");
+    });
+    expect(within(concentration).getByRole("button")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-cockpit-account-table")).toBeInTheDocument();
+    expect(durationRisk).toHaveTextContent("利率风险");
+    expect(within(durationRisk).getByRole("link")).toHaveAttribute("href", "/risk-tensor");
+  });
+
+  it("scrolls to local drilldown sections from supplement preview buttons without forcing the supplement open", async () => {
+    renderDashboard(createSameDayCockpitClient());
+
+    const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
+    const businessDetail = await screen.findByTestId("dashboard-business-detail-strip");
+    const riskReviewRow = await screen.findByTestId(
+      "dashboard-cockpit-account-row-account-risk-review",
+    );
+    const businessDetailScroll = vi.fn();
+    const riskReviewScroll = vi.fn();
+
+    businessDetail.scrollIntoView = businessDetailScroll;
+    riskReviewRow.scrollIntoView = riskReviewScroll;
+    await waitFor(() => {
+      expect(riskReviewRow).toHaveTextContent("Top5");
+    });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(
+        within(screen.getByTestId("dashboard-cockpit-preview-net-change")).getByRole("button"),
+      );
+      expect(businessDetailScroll).toHaveBeenCalled();
+      expect(businessDetail).toHaveAttribute("data-drilldown-active", "true");
+      expect(supplement).not.toHaveAttribute("open");
+
+      vi.advanceTimersByTime(1600);
+      expect(businessDetail).not.toHaveAttribute("data-drilldown-active");
+
+      fireEvent.click(
+        within(screen.getByTestId("dashboard-cockpit-preview-concentration")).getByRole("button"),
+      );
+      expect(riskReviewScroll).toHaveBeenCalled();
+      expect(riskReviewRow).toHaveAttribute("data-drilldown-active", "true");
+      expect(riskReviewRow).toHaveTextContent("Top5");
+      expect(supplement).not.toHaveAttribute("open");
+
+      vi.advanceTimersByTime(1600);
+      expect(riskReviewRow).not.toHaveAttribute("data-drilldown-active");
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
   });
 });

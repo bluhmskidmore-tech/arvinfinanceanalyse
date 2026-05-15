@@ -81,7 +81,7 @@ function bondHeadline(reportDate = "2026-04-30"): BondDashboardHeadlinePayload {
       weighted_duration: numeric("4.14"),
       weighted_coupon: numeric("2.04%"),
       credit_spread_median: numeric("239bp"),
-      total_dv01: numeric("106,155,944"),
+      total_dv01: numeric("106,155,944", 106_155_944.31),
       bond_count: 1740,
     },
     prev_kpis: null,
@@ -95,7 +95,7 @@ function portfolio(reportDate = "2026-04-30"): BondPortfolioHeadlinesPayload {
     weighted_ytm: numeric("2.57%"),
     weighted_duration: numeric("4.14"),
     weighted_coupon: numeric("2.07%"),
-    total_dv01: numeric("106,155,944"),
+    total_dv01: numeric("106,155,944", 106_155_944.31),
     bond_count: 1740,
     credit_weight: numeric("29.25%"),
     issuer_hhi: numeric("5.09%"),
@@ -105,14 +105,14 @@ function portfolio(reportDate = "2026-04-30"): BondPortfolioHeadlinesPayload {
         asset_class: "rate",
         market_value: numeric("1,344.90 亿"),
         duration: numeric("5.63"),
-        dv01: numeric("73,667,216"),
+        dv01: numeric("73,667,216", 73_667_216.08),
         weight: numeric("39.12%"),
       },
       {
         asset_class: "credit",
         market_value: numeric("1,005.70 亿"),
         duration: numeric("2.40"),
-        dv01: numeric("23,572,093"),
+        dv01: numeric("23,572,093", 23_572_092.66),
         weight: numeric("29.25%"),
       },
     ],
@@ -388,6 +388,13 @@ describe("buildDashboardCockpitModel", () => {
       route: "/bond-analysis",
     });
 
+    expect(model.accountRows.find((row) => row.id === "account-risk-review")).toMatchObject({
+      weight: "41.35%",
+      ytm: "2.57%",
+      source: expect.stringMatching(/Top5.*41\.35%.*29\.25%.*DV01/),
+      route: "/risk-tensor",
+    });
+
     const cockpitCopy = [
       ...model.metricRail.map((item) => item.hint),
       ...model.portfolioMix.map((item) => item.detail),
@@ -452,24 +459,25 @@ describe("buildDashboardCockpitModel", () => {
     expect(model.previewSignals).toEqual([
       expect.objectContaining({
         id: "coverage",
+        label: "补充覆盖",
         value: "4/4",
         status: "supplemental",
       }),
       expect.objectContaining({
         id: "net-change",
         value: expect.stringContaining("2.95"),
-        detail: expect.stringContaining("3.21"),
+        detail: expect.stringMatching(/3\.21.*1\.08|1\.08.*3\.21/),
         status: "supplemental",
       }),
       expect.objectContaining({
         id: "concentration",
         value: "41.35%",
-        detail: expect.stringContaining("29.25%"),
+        detail: expect.stringMatching(/Top5 41\.35%.*29\.25%/),
         status: "supplemental",
       }),
       expect.objectContaining({
         id: "duration-dv01",
-        value: expect.stringContaining("106,155,944"),
+        value: expect.stringContaining("10,615.59"),
         detail: expect.stringContaining("4.14"),
         status: "supplemental",
       }),
