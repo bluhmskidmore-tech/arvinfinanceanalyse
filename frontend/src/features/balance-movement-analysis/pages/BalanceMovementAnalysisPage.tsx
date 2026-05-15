@@ -850,6 +850,7 @@ function buildBalanceMovementCsv(options: {
   concentrationAnalysis: BalanceZqtzConcentrationAnalysis | null;
   explanationClosure: BalanceExplanationClosure | null;
   dimensionCards: AnalysisDimensionCard[];
+  historicalAnomalyDiagnostics: HistoricalAnomalyDiagnostics;
 }) {
   const {
     result,
@@ -862,6 +863,7 @@ function buildBalanceMovementCsv(options: {
     concentrationAnalysis,
     explanationClosure,
     dimensionCards,
+    historicalAnomalyDiagnostics,
   } = options;
   const residualRatioText =
     explanationClosure?.residualRatioPct === null ||
@@ -933,6 +935,32 @@ function buildBalanceMovementCsv(options: {
     ...dimensionCards.flatMap((card) =>
       card.tags.map((tag) => ["diagnostic", `${card.key}_tag`, tag.label, tag.tone]),
     ),
+    [
+      "historical_anomaly",
+      "headline",
+      historicalAnomalyDiagnostics.headline,
+      "页面诊断提示，不是正式风险指标",
+    ],
+    [
+      "historical_anomaly",
+      "sample_count",
+      historicalAnomalyDiagnostics.sampleCount,
+      historicalAnomalyDiagnostics.baselinePairCount > 0
+        ? `baseline_pairs=${historicalAnomalyDiagnostics.baselinePairCount}`
+        : "历史样本不足",
+    ],
+    ...historicalAnomalyDiagnostics.accountingSignals.map((signal) => [
+      "historical_anomaly",
+      `accounting_${signal.bucket}`,
+      `${formatSignedYiCell(signal.currentDelta)} 亿`,
+      `${signal.headline}${signal.directionReversal ? "；方向反转" : ""}`,
+    ]),
+    ...historicalAnomalyDiagnostics.businessSignals.map((signal) => [
+      "historical_anomaly",
+      "business_move",
+      `${signal.label} ${formatSignedYiCell(signal.currentDelta)} 亿`,
+      `高于近 ${signal.baselineCount} 期常态`,
+    ]),
     [],
     [
       "basis_bucket",
@@ -1130,6 +1158,155 @@ function residualTone(ratioPct: number | null, unsupportedCount: number): Balanc
     return "warn";
   }
   return "ok";
+}
+
+type HistoricalAccountingSignal = {
+  bucket: BalanceMovementRow["basis_bucket"];
+  headline: string;
+  currentDelta: number;
+  baselineAverageAbs: number | null;
+  baselineCount: number;
+  directionReversal: boolean;
+};
+
+type HistoricalBusinessSignal = {
+  label: string;
+  currentDelta: number;
+  baselineAverageAbs: number | null;
+  baselineCount: number;
+};
+
+type HistoricalAnomalyDiagnostics = {
+  sampleCount: number;
+  baselinePairCount: number;
+  headline: string;
+  accountingSignals: HistoricalAccountingSignal[];
+  businessSignals: HistoricalBusinessSignal[];
+};
+
+function averageAbs(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((total, value) => total + Math.abs(value), 0) / values.length;
+}
+
+function directionOf(value: number) {
+  if (value > 0) return 1;
+  if (value < 0) return -1;
+  return 0;
+}
+
+function buildDeltaSeries<T>(
+  months: T[],
+  getReportDate: (month: T) => string,
+  getValue: (month: T) => string | number | null | undefined,
+) {
+  const deltas: number[] = [];
+  for (let index = 0; index < months.length - 1; index += 1) {
+    const current = months[index];
+    const previous = months[index + 1];
+    if (!current || !previous || !isPreviousCalendarMonth(getReportDate(current), getReportDate(previous))) {
+      continue;
+    }
+    const delta = trendDelta(getValue(current), getValue(previous));
+    if (delta !== null) {
+      deltas.push(delta);
+    }
+  }
+  return deltas;
+}
+
+function anomalyHeadline(label: string, currentDelta: number, baselineAverageAbs: number | null, baselineCount: number) {
+  if (baselineAverageAbs === null || baselineAverageAbs === 0) {
+    return Math.abs(currentDelta) > 0 ? `${label} 新增跳变` : `${label} 未见异常`;
+  }
+  return Math.abs(currentDelta) >= baselineAverageAbs * 3
+    ? `${label} 高于近 ${baselineCount} 期常态`
+    : `${label} 接近近 ${baselineCount} 期常态`;
+}
+
+function buildHistoricalAnomalyDiagnostics(options: {
+  trendMonths: BalanceMovementTrendMonth[];
+  businessTrendMonths: BalanceBusinessMovementTrendMonth[];
+  businessRows: BusinessMovementMatrixRow[];
+}): HistoricalAnomalyDiagnostics {
+  const { trendMonths, businessTrendMonths, businessRows } = options;
+  const sampleCount = Math.max(trendMonths.length, businessTrendMonths.length);
+  const baselinePairCount = Math.max(0, sampleCount - 2);
+  const accountingSignals =
+    baselinePairCount > 0
+      ? balanceMovementBuckets
+          .map((bucket): HistoricalAccountingSignal | null => {
+            const deltas = buildDeltaSeries(
+              trendMonths,
+              (month) => month.report_date,
+              (month) => trendBucket(month, bucket)?.current_balance,
+            );
+            const [currentDelta, ...historyDeltas] = deltas;
+            if (currentDelta === undefined || historyDeltas.length === 0) {
+              return null;
+            }
+            const baselineAverageAbs = averageAbs(historyDeltas);
+            const directionReversal =
+              directionOf(currentDelta) !== 0 &&
+              directionOf(historyDeltas[0]) !== 0 &&
+              directionOf(currentDelta) !== directionOf(historyDeltas[0]);
+            const headline = anomalyHeadline(bucket, currentDelta, baselineAverageAbs, historyDeltas.length);
+            if (!directionReversal && !headline.includes("高于")) {
+              return null;
+            }
+            return {
+              bucket,
+              headline,
+              currentDelta,
+              baselineAverageAbs,
+              baselineCount: historyDeltas.length,
+              directionReversal,
+            };
+          })
+          .filter((signal): signal is HistoricalAccountingSignal => signal !== null)
+          .sort((left, right) => Math.abs(right.currentDelta) - Math.abs(left.currentDelta))
+      : [];
+
+  const businessSignals =
+    baselinePairCount > 0
+      ? businessRows
+          .filter((row) => row.side === "asset" || row.side === "liability")
+          .map((row): HistoricalBusinessSignal | null => {
+            const deltas = buildDeltaSeries(
+              businessTrendMonths,
+              (month) => month.report_date,
+              (month) => row.getValue(month),
+            );
+            const [currentDelta, ...historyDeltas] = deltas;
+            if (currentDelta === undefined || historyDeltas.length === 0) {
+              return null;
+            }
+            const baselineAverageAbs = averageAbs(historyDeltas);
+            const headline = anomalyHeadline(row.label, currentDelta, baselineAverageAbs, historyDeltas.length);
+            if (!headline.includes("高于") && !headline.includes("新增")) {
+              return null;
+            }
+            return {
+              label: row.label,
+              currentDelta,
+              baselineAverageAbs,
+              baselineCount: historyDeltas.length,
+            };
+          })
+          .filter((signal): signal is HistoricalBusinessSignal => signal !== null)
+          .sort((left, right) => Math.abs(right.currentDelta) - Math.abs(left.currentDelta))
+          .slice(0, 5)
+      : [];
+
+  return {
+    sampleCount,
+    baselinePairCount,
+    headline: baselinePairCount > 0 ? "本期相对历史常态的偏离" : "历史样本不足",
+    accountingSignals,
+    businessSignals,
+  };
 }
 
 function EvidenceStrip({ meta }: { meta: ResultMeta }) {
@@ -1413,6 +1590,82 @@ function ExplanationClosurePanel({ closure }: { closure: BalanceExplanationClosu
           ))}
         </ul>
       ) : null}
+    </section>
+  );
+}
+
+function HistoricalAnomalyPanel({
+  diagnostics,
+}: {
+  diagnostics: HistoricalAnomalyDiagnostics;
+}) {
+  const sampleLabel =
+    diagnostics.sampleCount > 0 ? `仅 ${diagnostics.sampleCount} 期样本` : "暂无历史样本";
+  const hasBaseline = diagnostics.baselinePairCount > 0;
+  return (
+    <section
+      className="balance-movement-anomaly-panel"
+      data-testid="balance-movement-analysis-anomaly-diagnostics"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>历史异常定位</span>
+          <h2>{diagnostics.headline}</h2>
+        </div>
+        <strong>{hasBaseline ? `近 ${diagnostics.baselinePairCount} 期常态` : sampleLabel}</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">
+        页面诊断提示，不是正式风险指标；只用现有趋势 payload 比较本期变动与最近历史变动，不反推交易动作。
+      </p>
+      <div className="balance-movement-anomaly-grid">
+        <div className="balance-movement-anomaly-card">
+          <span>AC / OCI / TPL 异常判断</span>
+          {hasBaseline ? (
+            diagnostics.accountingSignals.length > 0 ? (
+              <ul className="balance-movement-anomaly-list">
+                {diagnostics.accountingSignals.map((signal) => (
+                  <li key={signal.bucket}>
+                    <strong>{signal.bucket}</strong>
+                    <span>{signal.headline}</span>
+                    <p>
+                      本期 {formatSignedYiCell(signal.currentDelta)} 亿；近 {signal.baselineCount} 期平均{" "}
+                      {signal.baselineAverageAbs === null ? "—" : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
+                      {signal.directionReversal ? "；方向反转" : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>未发现高于历史常态的 AC / OCI / TPL 单桶变动。</p>
+            )
+          ) : (
+            <p>历史样本不足，{sampleLabel}，暂不判断异常。</p>
+          )}
+        </div>
+        <div className="balance-movement-anomaly-card">
+          <span>业务品类异常榜</span>
+          {hasBaseline ? (
+            diagnostics.businessSignals.length > 0 ? (
+              <ul className="balance-movement-anomaly-list">
+                {diagnostics.businessSignals.map((signal) => (
+                  <li key={signal.label}>
+                    <strong>{signal.label}</strong>
+                    <span>{formatSignedYiCell(signal.currentDelta)} 亿</span>
+                    <p>
+                      高于近 {signal.baselineCount} 期常态；历史平均{" "}
+                      {signal.baselineAverageAbs === null ? "—" : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>未发现高于历史常态的业务品类变动。</p>
+            )
+          ) : (
+            <p>历史样本不足，{sampleLabel}，先看本期 Top 变动。</p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -1962,6 +2215,15 @@ export default function BalanceMovementAnalysisPage() {
       ),
     [businessMatrixMonths, businessMatrixRows],
   );
+  const historicalAnomalyDiagnostics = useMemo(
+    () =>
+      buildHistoricalAnomalyDiagnostics({
+        trendMonths,
+        businessTrendMonths,
+        businessRows: businessMatrixRows,
+      }),
+    [businessMatrixRows, businessTrendMonths, trendMonths],
+  );
   const zqtzAssetDetailRows = useMemo(
     () => buildZqtzAssetDetailRows(businessMatrixMonths),
     [businessMatrixMonths],
@@ -2229,6 +2491,7 @@ export default function BalanceMovementAnalysisPage() {
       concentrationAnalysis: zqtzConcentrationAnalysis,
       explanationClosure,
       dimensionCards: analysisDimensionCards,
+      historicalAnomalyDiagnostics,
     });
     downloadCsv(
       `balance-movement-analysis-${detailQuery.data.result.report_date}-${detailQuery.data.result.currency_basis}.csv`,
@@ -2446,6 +2709,10 @@ export default function BalanceMovementAnalysisPage() {
           card={selectedEvidenceCard}
           onClose={() => setSelectedEvidenceKey(null)}
         />
+      ) : null}
+
+      {detailQuery.data ? (
+        <HistoricalAnomalyPanel diagnostics={historicalAnomalyDiagnostics} />
       ) : null}
 
       {summary ? (

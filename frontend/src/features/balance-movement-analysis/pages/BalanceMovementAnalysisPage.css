@@ -190,6 +190,76 @@
   -webkit-line-clamp: 2;
 }
 
+.balance-movement-anomaly-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid #d7dfea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.balance-movement-anomaly-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.balance-movement-anomaly-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.balance-movement-anomaly-card > span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.balance-movement-anomaly-card > p {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.balance-movement-anomaly-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.balance-movement-anomaly-list li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.balance-movement-anomaly-list strong {
+  color: #10284a;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.balance-movement-anomaly-list span {
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.balance-movement-anomaly-list p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .balance-movement-closure {
   display: grid;
   gap: 12px;
@@ -1769,6 +1839,7 @@
   }
 
   .balance-movement-evidence-strip,
+  .balance-movement-anomaly-grid,
   .balance-movement-closure-grid,
   .balance-movement-dimension-grid,
   .balance-movement-residual-grid,

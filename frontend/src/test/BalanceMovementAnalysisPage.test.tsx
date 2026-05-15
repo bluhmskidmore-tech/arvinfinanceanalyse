@@ -83,6 +83,12 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
       "期限 99.15% / 集中度 97.68%",
     );
+    const anomalyDiagnostics = await screen.findByTestId(
+      "balance-movement-analysis-anomaly-diagnostics",
+    );
+    expect(anomalyDiagnostics).toHaveTextContent("历史异常定位");
+    expect(anomalyDiagnostics).toHaveTextContent("历史样本不足");
+    expect(anomalyDiagnostics).toHaveTextContent("仅 2 期样本");
     const businessSummary = await screen.findByTestId(
       "balance-movement-analysis-business-summary",
     );
@@ -424,6 +430,9 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(csv).toContain("口径待补");
       expect(csv).toContain("residual_ratio");
       expect(csv).toContain("diagnostic,residual_ratio,1.95%");
+      expect(csv).toContain("historical_anomaly");
+      expect(csv).toContain("sample_count");
+      expect(csv).toContain("历史样本不足");
       expect(csv).toContain("basis_bucket");
       expect(csv).toContain("AC");
       expect(csv).toContain("OCI");
@@ -548,6 +557,104 @@ describe("BalanceMovementAnalysisPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("complementary", { name: "分析维度证据" })).not.toBeInTheDocument();
     });
+  });
+
+  it("flags accounting and business moves that exceed recent historical baseline", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const anomalyClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        const currentRows = envelope.result.rows;
+        const currentBusinessRows = envelope.result.business_trend_months[0].rows;
+        const trendMonth = (
+          reportDate: string,
+          reportMonth: string,
+          balances: Record<"AC" | "OCI" | "TPL", number>,
+        ) => ({
+          report_date: reportDate,
+          report_month: reportMonth,
+          current_balance_total: String(balances.AC + balances.OCI + balances.TPL),
+          balance_change_total: "0",
+          rows: currentRows.map((row) => ({
+            ...row,
+            report_date: reportDate,
+            report_month: reportMonth,
+            current_balance: String(balances[row.basis_bucket]),
+          })),
+        });
+        const businessMonth = (
+          reportDate: string,
+          reportMonth: string,
+          interbankLending: number,
+        ) => ({
+          report_date: reportDate,
+          report_month: reportMonth,
+          asset_balance_total: String(interbankLending),
+          liability_balance_total: "0",
+          net_balance_total: String(interbankLending),
+          rows: currentBusinessRows.map((row) => ({
+            ...row,
+            report_date: reportDate,
+            report_month: reportMonth,
+            current_balance:
+              row.row_key === "asset_interbank_lending"
+                ? String(interbankLending)
+                : row.current_balance,
+          })),
+        });
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            trend_months: [
+              trendMonth("2026-04-30", "2026-04", {
+                AC: 100000000000,
+                OCI: 50000000000,
+                TPL: 80000000000,
+              }),
+              trendMonth("2026-03-31", "2026-03", {
+                AC: 90000000000,
+                OCI: 50000000000,
+                TPL: 50000000000,
+              }),
+              trendMonth("2026-02-28", "2026-02", {
+                AC: 92000000000,
+                OCI: 49000000000,
+                TPL: 48000000000,
+              }),
+              trendMonth("2026-01-31", "2026-01", {
+                AC: 91000000000,
+                OCI: 50000000000,
+                TPL: 47000000000,
+              }),
+            ],
+            business_trend_months: [
+              businessMonth("2026-04-30", "2026-04", 15000000000),
+              businessMonth("2026-03-31", "2026-03", 5000000000),
+              businessMonth("2026-02-28", "2026-02", 4000000000),
+              businessMonth("2026-01-31", "2026-01", 3500000000),
+            ],
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: anomalyClient,
+    });
+
+    const anomalyDiagnostics = await screen.findByTestId(
+      "balance-movement-analysis-anomaly-diagnostics",
+    );
+    expect(anomalyDiagnostics).toHaveTextContent("历史异常定位");
+    expect(anomalyDiagnostics).toHaveTextContent("TPL");
+    expect(anomalyDiagnostics).toHaveTextContent("高于近 2 期常态");
+    expect(anomalyDiagnostics).toHaveTextContent("方向反转");
+    expect(anomalyDiagnostics).toHaveTextContent("业务品类异常榜");
+    expect(anomalyDiagnostics).toHaveTextContent("资产端-拆放同业");
+    expect(anomalyDiagnostics).toHaveTextContent("+100.00 亿");
+    expect(anomalyDiagnostics).toHaveTextContent("页面诊断提示，不是正式风险指标");
   });
 
   it("suppresses the month-over-month conclusion when available snapshots are not adjacent", async () => {
