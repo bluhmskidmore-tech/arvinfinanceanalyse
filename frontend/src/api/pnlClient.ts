@@ -8,6 +8,7 @@ import type {
   ApiEnvelope,
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
+  CampisiDecisionGradePayload,
   CampisiEnhancedPayload,
   CampisiFourEffectsPayload,
   CampisiMaturityBucketsPayload,
@@ -117,6 +118,7 @@ export type PnlClientMethods = {
   }) => Promise<ApiEnvelope<VolumeRateAttributionPayload>>;
   getTplMarketCorrelation: (options?: {
     months?: number;
+    reportDate?: string;
   }) => Promise<ApiEnvelope<TPLMarketCorrelationPayload>>;
   getPnlCompositionBreakdown: (options?: {
     reportDate?: string;
@@ -158,6 +160,11 @@ export type PnlClientMethods = {
     endDate?: string;
     lookbackDays?: number;
   }) => Promise<ApiEnvelope<CampisiMaturityBucketsPayload>>;
+  getPnlCampisiDecisionGrade: (options?: {
+    startDate?: string;
+    endDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<CampisiDecisionGradePayload>>;
   getProductCategoryDates: () => Promise<ApiEnvelope<ProductCategoryDatesPayload>>;
   refreshProductCategoryPnl: () => Promise<ProductCategoryRefreshPayload>;
   getProductCategoryRefreshStatus: (runId: string) => Promise<ProductCategoryRefreshPayload>;

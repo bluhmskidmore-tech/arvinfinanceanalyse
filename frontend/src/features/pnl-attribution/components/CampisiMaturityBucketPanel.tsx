@@ -83,7 +83,7 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
                   ...tabularNumsStyle,
                 }}
               >
-                选券(亿)
+                剩余/选券(亿)
               </th>
               <th
                 style={{

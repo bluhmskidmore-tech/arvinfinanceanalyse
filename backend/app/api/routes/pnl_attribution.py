@@ -31,8 +31,9 @@ def volume_rate(
 @router.get("/tpl-market")
 def tpl_market(
     months: int = Query(12, ge=1, le=120),
+    report_date: str | None = Query(None, description="YYYY-MM-DD; defaults to latest formal PnL date"),
 ) -> dict[str, object]:
-    return tpl_market_correlation_envelope(months=months)
+    return tpl_market_correlation_envelope(months=months, report_date=report_date)
 
 
 @router.get("/composition")

@@ -190,6 +190,22 @@ function buildPnlClient(): ApiClient {
         proportion: "1.000000",
         assets_count: 1,
       },
+      {
+        row_key: "asset_zqtz_detail_local_currency_special_account_cost",
+        sort_order: 88,
+        business_type: "其中：本币专户（成本法）",
+        interest_income: "50000.00",
+        fair_value_change: "0.00",
+        capital_gain: "0.00",
+        manual_adjustment: "0.00",
+        total_pnl: "50000.00",
+        current_balance: "50000000.00",
+        balance_yield_pct: "0.001",
+        source_kind: "zqtz",
+        source_note: "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
+        proportion: "0.384615",
+        assets_count: 7,
+      },
     ],
   };
   const byBusinessMonthly: PnlByBusinessMonthlyPayload = {
@@ -197,6 +213,49 @@ function buildPnlClient(): ApiClient {
     as_of_date: "2025-12-31",
     source_tables: ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
     months: [
+      {
+        month_key: "2025-11",
+        period_start_date: "2025-11-01",
+        period_end_date: "2025-11-30",
+        calendar_days: 30,
+        summary: {
+          interest_income: "80000.00",
+          fair_value_change: "5000.00",
+          capital_gain: "10000.00",
+          manual_adjustment: "0.00",
+          total_pnl: "95000.00",
+          avg_balance: "90000000.00",
+          current_balance: "92000000.00",
+          annualized_yield_pct: "1.284259",
+          ftp_rate_pct: "1.600000",
+          ftp_cost: "118356.16",
+          ftp_net_pnl: "-23356.16",
+          ftp_net_annualized_yield_pct: "-0.315741",
+          asset_count: 1,
+        },
+        items: [
+          {
+            row_key: "asset_zqtz_policy_financial_bond",
+            sort_order: 66,
+            business_type: "政策性金融债",
+            interest_income: "80000.00",
+            fair_value_change: "5000.00",
+            capital_gain: "10000.00",
+            manual_adjustment: "0.00",
+            total_pnl: "95000.00",
+            avg_balance: "90000000.00",
+            current_balance: "92000000.00",
+            annualized_yield_pct: "1.284259",
+            ftp_rate_pct: "1.600000",
+            ftp_cost: "118356.16",
+            ftp_net_pnl: "-23356.16",
+            ftp_net_annualized_yield_pct: "-0.315741",
+            proportion: "1.000000",
+            asset_count: 1,
+            source_note: "ZQTZ_ASSET_BOND_ROWS",
+          },
+        ],
+      },
       {
         month_key: "2025-12",
         period_start_date: "2025-12-01",
@@ -237,6 +296,26 @@ function buildPnlClient(): ApiClient {
             proportion: "1.000000",
             asset_count: 1,
             source_note: "ZQTZ_ASSET_BOND_ROWS",
+          },
+          {
+            row_key: "asset_zqtz_detail_local_currency_special_account_cost",
+            sort_order: 88,
+            business_type: "其中：本币专户（成本法）",
+            interest_income: "50000.00",
+            fair_value_change: "0.00",
+            capital_gain: "0.00",
+            manual_adjustment: "0.00",
+            total_pnl: "50000.00",
+            avg_balance: "50000000.00",
+            current_balance: "50000000.00",
+            annualized_yield_pct: "1.177419",
+            ftp_rate_pct: "1.600000",
+            ftp_cost: "67945.21",
+            ftp_net_pnl: "-17945.21",
+            ftp_net_annualized_yield_pct: "-0.422581",
+            proportion: "0.384615",
+            asset_count: 7,
+            source_note: "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
           },
         ],
       },
@@ -388,12 +467,13 @@ function buildPnlClient(): ApiClient {
         ...byBusinessMonthly,
         year,
         as_of_date: asOfDate ?? "2025-12-31",
-        months: byBusinessMonthly.months.map((month) => ({
-          ...month,
-          month_key: `${year}-${(asOfDate ?? "2025-12-31").slice(5, 7)}`,
-          period_start_date: `${year}-${(asOfDate ?? "2025-12-31").slice(5, 7)}-01`,
-          period_end_date: asOfDate ?? month.period_end_date,
-        })),
+        months: byBusinessMonthly.months
+          .filter((month) => month.period_end_date <= (asOfDate ?? "2025-12-31"))
+          .map((month) => ({
+            ...month,
+            month_key: `${year}-${month.month_key.slice(5, 7)}`,
+            period_start_date: `${year}-${month.month_key.slice(5, 7)}-01`,
+          })),
       },
     })),
     getPnlByBusinessAnalysis: vi.fn(
@@ -604,10 +684,43 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("pnl-by-business-report-date")).toHaveValue("2025-12-31");
     });
+    expect(screen.getByLabelText("pnl-by-business-view-mode")).toHaveValue("monthly");
+    await waitFor(() => {
+      expect(client.getPnlByBusinessMonthly).toHaveBeenCalledWith(2025, "2025-12-31");
+    });
+    expect(client.getPnlByBusinessYtd).not.toHaveBeenCalled();
+    expect(client.getPnlByBusiness).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent(
+      "tr_route_business_monthly",
+    );
+    await waitFor(() => {
+      expect(screen.getByText("报表月份")).toBeInTheDocument();
+      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("月报合计损益");
+      expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2 个月");
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-11");
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（万元）");
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).not.toHaveTextContent(
+        "其中：本币专户（成本法）",
+      );
+      expect(screen.getByTestId("pnl-by-business-monthly-detail-table-2025-12")).toHaveTextContent(
+        "其中：本币专户（成本法）",
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: /2025-11/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-11")).toHaveTextContent("政策性金融债");
+    });
+
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
     await waitFor(() => {
       expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-12-31");
     });
-    expect(client.getPnlByBusiness).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(client.getAdbComparison).toHaveBeenCalledWith(
         "2025-12-01",
@@ -652,6 +765,7 @@ describe("pnl routed pages smoke", () => {
 
     await waitFor(() => {
       expect(screen.getByText("分析截止日")).toBeInTheDocument();
+      expect(screen.getAllByText("结果元信息 / 证据").length).toBeGreaterThan(0);
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
@@ -662,6 +776,8 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("年化收益率");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("1.53%");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("100.00%");
+      expect(screen.getByTestId("pnl-by-business-table")).not.toHaveTextContent("其中：本币专户（成本法）");
+      expect(screen.getByTestId("pnl-by-business-detail-table")).toHaveTextContent("其中：本币专户（成本法）");
       expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("父级汇总");
       expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("13");
       expect(screen.getByTestId("pnl-by-business-bond-bucket-analysis")).toHaveTextContent("债券四类统计");
@@ -674,7 +790,7 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-driver-overview")).toHaveTextContent("1.53%");
       expect(screen.getByTestId("pnl-by-business-analysis-panel")).toHaveTextContent("2025-12-31");
       expect(screen.getByTestId("pnl-by-business-analysis-table")).toHaveTextContent("1.00");
-      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月度业务种类拆解");
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
     });
     fireEvent.click(screen.getByRole("button", { name: /2025-12/ }));
@@ -686,6 +802,9 @@ describe("pnl routed pages smoke", () => {
     });
 
     fireEvent.change(screen.getByLabelText("pnl-by-business-report-date"), { target: { value: "2025-11-30" } });
+    await waitFor(() => {
+      expect(client.getPnlByBusinessMonthly).toHaveBeenCalledWith(2025, "2025-11-30");
+    });
     await waitFor(() => {
       expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-11-30");
     });
@@ -731,6 +850,39 @@ describe("pnl routed pages smoke", () => {
 
     expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
     await waitFor(() => {
+      expect(client.getPnlByBusinessMonthly).toHaveBeenCalledWith(2025, "2025-12-31");
+    });
+
+    await user.click(screen.getByLabelText("pnl-by-business-export-excel"));
+
+    await waitFor(() => {
+      expect(downloadPnlByBusinessExcelMock).toHaveBeenCalledTimes(1);
+    });
+    expect(downloadPnlByBusinessExcelMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewMode: "monthly",
+        reportDate: "2025-12-31",
+        year: 2025,
+        months: expect.arrayContaining([
+          expect.objectContaining({ month_key: "2025-11" }),
+          expect.objectContaining({ month_key: "2025-12" }),
+        ]),
+        ytdRows: [],
+        formalRows: [],
+        adjustments: [],
+      }),
+    );
+  });
+
+  it("passes loaded YTD /pnl-by-business analysis data to the Excel export helper", async () => {
+    downloadPnlByBusinessExcelMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const client = buildPnlClient();
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
+    await waitFor(() => {
       expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
         year: 2025,
         asOfDate: "2025-12-31",
@@ -739,6 +891,7 @@ describe("pnl routed pages smoke", () => {
       });
     });
 
+    downloadPnlByBusinessExcelMock.mockClear();
     await user.click(screen.getByLabelText("pnl-by-business-export-excel"));
 
     await waitFor(() => {
@@ -772,7 +925,7 @@ describe("pnl routed pages smoke", () => {
 
     expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
     await waitFor(() => {
-      expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-12-31");
+      expect(client.getPnlByBusinessMonthly).toHaveBeenCalledWith(2025, "2025-12-31");
     });
 
     await user.click(screen.getByLabelText("pnl-by-business-export-excel"));
@@ -786,6 +939,7 @@ describe("pnl routed pages smoke", () => {
     renderWorkbenchApp(["/pnl-by-business"], { client });
 
     expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
     await waitFor(() => {
       expect(client.getPnlByBusinessManualAdjustments).toHaveBeenCalledWith("2025-12-31");
     });
@@ -841,6 +995,7 @@ describe("pnl routed pages smoke", () => {
     renderWorkbenchApp(["/pnl-by-business"], { client });
 
     expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
     await waitFor(() => {
       expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-12-31");
     });

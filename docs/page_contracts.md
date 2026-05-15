@@ -1214,7 +1214,7 @@
 - 页面 ID：`PAGE-MKT-001`
 - 页面名称：`市场数据`
 - 路由：前端 `/market-data`；别名重定向见 `frontend/src/router/routes.tsx`（`/market`→`/market-data` 等，见 `RouteRegistry.test.tsx`）
-- 页面状态：`mixed-source`（**formal 片段**：`GET /ui/market-data/rates`（`getMarketDataRates` / 前端 `formalRatesQuery`）在接线一致时可为 **formal basis** 的利率主表片段；**preview/analytical**：Choice 宏观目录/最新点、vendor、外汇分析 `getFxAnalytical`、结构化代理 `ncd-funding-proxy`、`api/macro-bond-linkage`、**Livermore**（`/ui/market-data/livermore/*`，门控/板块/候选/风险退出等，均为 analytical）。与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
+- 页面状态：`mixed-source`（**formal 片段**：`GET /ui/market-data/rates`（`getMarketDataRates` / 前端 `formalRatesQuery`）驱动利率主表的 formal basis 片段；`RateQuoteTable` / `MoneyMarketTable` 在序列缺失时仅展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable` / `BondTradeDetail` / `CreditBondTradesTable` 目前为故意保留的 `source-pending` 终端面板。**preview/analytical**：Choice 宏观目录/最新点、vendor、外汇分析 `getFxAnalytical`、结构化代理 `ncd-funding-proxy`、`api/macro-bond-linkage`、**Livermore**（`/ui/market-data/livermore/*`，门控/板块/候选/风险退出等，均为 analytical）。与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
 
 ### B. 业务问题与不回答
 
@@ -1269,8 +1269,8 @@
 
 ### J. 实施边界与已知 GAP（文档事实，非业务指标定义）
 
-- **`GAP-MKT-DATA`**（与 `docs/metric_dictionary.md` §12.5、`docs/golden_sample_catalog.md` §5.2 一致）：市场页**尚无**本字典可冻结的 `MTR-*` 行与 capture-ready **golden sample**；页面契约不替代指标字典主表。
-- **硬编码行情/成交示意**：`RateQuoteTable`、`MoneyMarketTable`、`BondFuturesTable`、`BondTradeDetail`、`CreditBondTradesTable` 等组件内仍为**前端常量表**（占位式 UI），**非**后端逐笔真行情；实施边界为：应改为真实读面，或在无来源时整表 **no-data / source-pending**，不得呈现易被误读为已接线的真实市场数字（见 `docs/plans/market-workbench-cursor-prompts.md` Cursor 分工说明）。
+- **`GAP-MKT-DATA`**（与 `docs/metric_dictionary.md` §12.5、`docs/golden_sample_catalog.md` §5.2 一致）：市场页**尚无**本字典可冻结的**全页** formal metric dictionary / capture-ready **golden sample**；当前仅能对 `GET /ui/market-data/rates` 对应的 formal rates 片段做测试与 lineage 核对，页面契约不替代指标字典主表。
+- **显示边界**：`RateQuoteTable`、`MoneyMarketTable` 在序列缺失时展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable`、`BondTradeDetail`、`CreditBondTradesTable` 为故意保留的 `source-pending` 面板，不渲染示例合约或成交流水（见 `docs/plans/market-workbench-cursor-prompts.md` Cursor 分工说明）。
 - **NCD 读面**：`ncd-funding-proxy` 为 **Shibor/资金利率类 proxy**（默认文案与 `payload.proxy_label` 对齐，如 Tushare Shibor funding proxy），**不是**「实际同业存单期限 × 评级」全矩阵真值；页内 `NcdMatrix` 已声明 proxy 语义。
 - **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。
 - **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。

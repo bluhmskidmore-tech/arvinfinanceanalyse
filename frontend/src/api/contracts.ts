@@ -1094,6 +1094,7 @@ export type LivermoreStockCandidateItem = {
   ma120: number;
   close_strength: number;
   gap_norm: number;
+  breakout_extension_norm?: number | null;
   abnormal_turnover: number;
 };
 
@@ -3083,6 +3084,14 @@ export type CounterpartyStatItem = {
   transaction_count: number;
 };
 
+export type RateCoverage = {
+  policy: string;
+  covered_amount: string;
+  missing_amount: string;
+  missing_count: number;
+  coverage_ratio: string;
+};
+
 export type CounterpartyStatsResponse = {
   start_date: string;
   end_date: string;
@@ -3093,6 +3102,8 @@ export type CounterpartyStatsResponse = {
   total_weighted_rate: string | null;
   total_weighted_coupon_rate?: string | null;
   total_customers: number;
+  ytm_rate_coverage?: RateCoverage | null;
+  coupon_rate_coverage?: RateCoverage | null;
   /** CR10 集中度等指标；后端可按日返回 */
   cr10_ratio?: string | null;
 };
@@ -3116,6 +3127,7 @@ export type RatingStatsResponse = {
   items: RatingStatItem[];
   total_amount: string;
   total_avg_daily: string;
+  ytm_rate_coverage?: RateCoverage | null;
 };
 
 export type IndustryStatItem = {
@@ -3134,6 +3146,7 @@ export type IndustryStatsResponse = {
   items: IndustryStatItem[];
   total_amount: string;
   total_avg_daily: string;
+  ytm_rate_coverage?: RateCoverage | null;
 };
 
 export type CustomerBondDetailItem = {
@@ -3786,6 +3799,106 @@ export type CampisiFormalClosure = {
   bridge_vendor_status?: string | null;
   bridge_fallback_mode?: string | null;
   message: string;
+};
+
+export type CampisiDecisionEffectKey =
+  | "carry"
+  | "rate_level_effect"
+  | "curve_shape_effect"
+  | "credit_spread_effect"
+  | "convexity_effect"
+  | "realized_trading"
+  | "manual_adjustment"
+  | "selection_proxy"
+  | "residual_noise";
+
+export type CampisiDecisionComponents = Record<CampisiDecisionEffectKey, number>;
+
+export type CampisiDecisionGradeSummary = {
+  formal_actual_pnl: number;
+  explained_pnl: number;
+  residual_noise: number;
+  residual_ratio: number;
+  valuation_change_516: number;
+  fvoci_valuation_change_516: number;
+  fvtpl_valuation_change_516: number;
+  main_driver: string;
+  quality_flag: string;
+  bond_scope_row_count: number;
+  out_of_scope_pnl_row_count: number;
+};
+
+export type CampisiDecisionEffect = {
+  key: CampisiDecisionEffectKey;
+  label: string;
+  amount: number;
+  ability_treatment: string;
+};
+
+export type CampisiDecisionAccountingRow = {
+  accounting_basis: string;
+  formal_pnl: number;
+  valuation_or_oci_516: number;
+  interpretation: string;
+};
+
+export type CampisiDecisionAbilityRow = {
+  portfolio_name: string;
+  cost_center: string;
+  carry: number;
+  market_beta: number;
+  strategy_proxy: number;
+  credit_proxy: number;
+  selection_proxy: number;
+  residual_noise: number;
+  total_actual_pnl: number;
+  confidence: "low" | "medium" | "high" | string;
+  notes: string;
+};
+
+export type CampisiDecisionGradePayload = {
+  basis: "campisi_decision_grade_v1";
+  report_date: string;
+  period_start: string;
+  period_end: string;
+  num_days: number;
+  summary: CampisiDecisionGradeSummary;
+  formal_pnl_view: {
+    total_actual_pnl: number;
+    explained_pnl: number;
+    residual_noise: number;
+    components: CampisiDecisionComponents;
+    closure: {
+      status: "closed" | "warning";
+      difference: number;
+      basis: string;
+    };
+  };
+  valuation_oci_view: {
+    total_valuation_change_516: number;
+    fvoci_valuation_change_516: number;
+    fvtpl_valuation_change_516: number;
+    rows_by_accounting_basis: CampisiDecisionAccountingRow[];
+    reinvestment: {
+      implemented: boolean;
+      message: string;
+    };
+  };
+  effects: CampisiDecisionEffect[];
+  accounting_matrix: Record<string, CampisiDecisionAccountingRow>;
+  ability_matrix: CampisiDecisionAbilityRow[];
+  risk_tensor_check: Record<string, unknown>;
+  residual_diagnostics: {
+    missing_curve_count: number;
+    missing_spread_count: number;
+    duplicate_position_keys: number;
+    aggregated_position_groups?: number;
+    unmatched_pnl_rows: number;
+    stale_curve_fallback_count: number;
+    warnings: string[];
+  };
+  warnings: string[];
+  method_notes: string[];
 };
 
 export type CampisiFourEffectsRow = {

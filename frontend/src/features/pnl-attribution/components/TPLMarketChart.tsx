@@ -1,12 +1,15 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type {
+  DecimalLike,
   Numeric,
+  ProductCategoryPnlRow,
   TPLMarketCorrelationPayload,
 } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { formatProductCategoryRowDisplayValue } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 
 const cardStyle = {
   padding: designTokens.space[5],
@@ -75,6 +78,13 @@ type Props = {
   data: TPLMarketCorrelationPayload | null;
   state: DataSectionState;
   onRetry: () => void;
+  productCategoryTplMonthlyPoints?: ProductCategoryTplMonthlyPoint[];
+};
+
+export type ProductCategoryTplMonthlyPoint = {
+  period: string;
+  reportDate: string | null;
+  row: ProductCategoryPnlRow | null;
 };
 
 function numericRaw(value: Numeric | number | null | undefined): number | null {
@@ -85,6 +95,35 @@ function numericRaw(value: Numeric | number | null | undefined): number | null {
     return value.raw;
   }
   return null;
+}
+
+function decimalLikeRaw(value: DecimalLike | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function productCategoryYi(
+  row: Pick<ProductCategoryPnlRow, "side"> | null,
+  value: DecimalLike | null | undefined,
+): string {
+  if (!row) {
+    return "—";
+  }
+  const display = formatProductCategoryRowDisplayValue(row, value);
+  return display === "-" ? "—" : display;
+}
+
+function valueTone(value: DecimalLike | null | undefined): string {
+  const raw = decimalLikeRaw(value);
+  if (raw === null) {
+    return designTokens.color.neutral[700];
+  }
+  return raw >= 0
+    ? designTokens.color.semantic.profit
+    : designTokens.color.semantic.loss;
 }
 
 /** Legacy payloads may expose BP total under `treasury_10y_total_change`. */
@@ -104,7 +143,12 @@ function treasuryTotalChangeBp(
 }
 
 /** TPL 公允价值变动与国债收益率走势的双轴对比。 */
-export function TPLMarketChart({ data, state, onRetry }: Props) {
+export function TPLMarketChart({
+  data,
+  state,
+  onRetry,
+  productCategoryTplMonthlyPoints = [],
+}: Props) {
   const chartOption = useMemo<EChartsOption | null>(() => {
     if (!data?.data_points?.length) {
       return null;
@@ -115,7 +159,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
     const tpl = data.data_points.map(
       (p) => (p.tpl_fair_value_change.raw ?? 0) / 100_000_000,
     );
-    const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? 0);
+    const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? null);
     return {
       tooltip: { trigger: "axis" },
       legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
@@ -131,7 +175,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
       yAxis: [
         {
           type: "value",
-          name: "TPL(亿)",
+          name: "FVTPL(亿)",
           axisLabel: {
             formatter: (v: number) => `${v.toFixed(1)}`,
             color: designTokens.color.neutral[700],
@@ -155,7 +199,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
       ],
       series: [
         {
-          name: "TPL公允价值变动",
+          name: "FVTPL公允价值变动",
           type: "bar",
           yAxisIndex: 0,
           data: tpl,
@@ -174,7 +218,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
           type: "line",
           yAxisIndex: 1,
           data: bp,
-          smooth: true,
+          smooth: false,
           symbolSize: 8,
           lineStyle: { color: designTokens.color.danger[400], width: 2 },
         },
@@ -184,9 +228,27 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
 
   const corr = correlationLabel(data?.correlation_coefficient?.raw ?? null);
   const treasuryBpTotal = data ? treasuryTotalChangeBp(data) : null;
+  const productCategoryTplByPeriod = useMemo(() => {
+    const byPeriod = new Map<string, ProductCategoryTplMonthlyPoint>();
+    productCategoryTplMonthlyPoints.forEach((point) => {
+      byPeriod.set(point.period, point);
+    });
+    return byPeriod;
+  }, [productCategoryTplMonthlyPoints]);
+  const hasMissingProductCategoryTpl =
+    data?.data_points?.some(
+      (point) => !productCategoryTplByPeriod.get(point.period)?.row,
+    ) ?? false;
+  const hasMissingMarketData =
+    data?.data_points?.some(
+      (point) =>
+        point.treasury_10y === null ||
+        point.treasury_10y_change === null ||
+        point.dr007 === null,
+    ) ?? false;
 
   return (
-    <DataSection title="TPL 市场相关性" state={state} onRetry={onRetry}>
+    <DataSection title="FVTPL 公允价值变动 vs 10Y" state={state} onRetry={onRetry}>
       {data ? (
         <div
           style={{
@@ -247,7 +309,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   marginBottom: designTokens.space[1],
                 }}
               >
-                累计 TPL 公允价值变动
+                累计 FVTPL 公允价值变动
               </div>
               <div
                 style={{
@@ -364,7 +426,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   color: designTokens.color.neutral[900],
                 }}
               >
-                TPL 公允价值变动 vs 国债收益率变动
+                FVTPL 公允价值变动 vs 国债收益率变动
               </h3>
               <ReactECharts
                 option={chartOption}
@@ -380,8 +442,7 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   textAlign: "center",
                 }}
               >
-                利率下行（折线下降）时，债券估值通常上行，TPL
-                变动多为正（蓝柱向上）。
+                蓝柱仅解释 FVTPL 公允价值变动；下方 TPL 规模 / 损益来自产品分类正式读模型。
               </p>
             </div>
           )}
@@ -397,8 +458,50 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
             >
               月度明细
             </h3>
+            <p
+              style={{
+                margin: `0 0 ${designTokens.space[3]}px`,
+                fontSize: designTokens.fontSize[12],
+                color: designTokens.color.neutral[600],
+              }}
+            >
+              TPL 规模、TPL 损益、营业净收入取自 /ui/pnl/product-category 的 bond_tpl
+              行；10Y、利率变动、DR007 取自 /api/pnl-attribution/tpl-market。
+            </p>
+            {hasMissingProductCategoryTpl ? (
+              <div
+                data-testid="tpl-market-product-category-missing"
+                style={{
+                  marginBottom: designTokens.space[3],
+                  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
+                  borderRadius: designTokens.radius.sm,
+                  background: designTokens.color.warning[50],
+                  color: designTokens.color.warning[700],
+                  fontSize: designTokens.fontSize[12],
+                }}
+              >
+                部分月份缺少产品分类 bond_tpl 行，TPL 规模 / 损益 / 营业净收入显示为
+                —，未回退到 FVTPL 市场值。
+              </div>
+            ) : null}
+            {hasMissingMarketData ? (
+              <div
+                data-testid="tpl-market-data-missing"
+                style={{
+                  marginBottom: designTokens.space[3],
+                  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
+                  borderRadius: designTokens.radius.sm,
+                  background: designTokens.color.warning[50],
+                  color: designTokens.color.warning[700],
+                  fontSize: designTokens.fontSize[12],
+                }}
+              >
+                部分月份缺少 10Y / 利率变动 / DR007，表格显示为 —，图表断点显示且不补 0。
+              </div>
+            ) : null}
             <div style={{ overflow: "auto", maxHeight: 320 }}>
               <table
+                data-testid="tpl-market-monthly-detail"
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",
@@ -450,6 +553,16 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                         ...tabularNumsStyle,
                       }}
                     >
+                      营业净收入(亿)
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        padding: designTokens.space[3],
+                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                        ...tabularNumsStyle,
+                      }}
+                    >
                       10Y(%)
                     </th>
                     <th
@@ -475,77 +588,90 @@ export function TPLMarketChart({ data, state, onRetry }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.data_points.map((point, idx) => (
-                    <tr
-                      key={idx}
-                      style={{
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                      }}
-                    >
-                      <td style={{ padding: designTokens.space[3] }}>
-                        {point.period_label}
-                      </td>
-                      <td
+                  {data.data_points.map((point, idx) => {
+                    const productCategoryTpl =
+                      productCategoryTplByPeriod.get(point.period)?.row ?? null;
+                    return (
+                      <tr
+                        key={point.period || idx}
+                        data-testid={`tpl-market-monthly-row-${point.period}`}
                         style={{
-                          textAlign: "right",
-                          padding: designTokens.space[3],
-                          ...tabularNumsStyle,
+                          borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
                         }}
                       >
-                        {((point.tpl_scale.raw ?? 0) / 100_000_000).toFixed(2)}
-                      </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[3],
-                          color:
-                            (point.tpl_fair_value_change.raw ?? 0) >= 0
-                              ? designTokens.color.semantic.profit
-                              : designTokens.color.semantic.loss,
-                          ...tabularNumsStyle,
-                        }}
-                      >
-                        {(
-                          (point.tpl_fair_value_change.raw ?? 0) / 100_000_000
-                        ).toFixed(2)}
-                      </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[3],
-                          ...tabularNumsStyle,
-                        }}
-                      >
-                        {point.treasury_10y !== null
-                          ? point.treasury_10y.display
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[3],
-                          color:
-                            (point.treasury_10y_change?.raw ?? 0) <= 0
-                              ? designTokens.color.semantic.profit
-                              : designTokens.color.semantic.loss,
-                          ...tabularNumsStyle,
-                        }}
-                      >
-                        {point.treasury_10y_change !== null
-                          ? `${(point.treasury_10y_change.raw ?? 0) >= 0 ? "+" : ""}${(point.treasury_10y_change.raw ?? 0).toFixed(1)}`
-                          : "—"}
-                      </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[3],
-                          ...tabularNumsStyle,
-                        }}
-                      >
-                        {point.dr007 !== null ? point.dr007.display : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                        <td style={{ padding: designTokens.space[3] }}>
+                          {point.period_label}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: designTokens.space[3],
+                            ...tabularNumsStyle,
+                          }}
+                        >
+                          {productCategoryYi(productCategoryTpl, productCategoryTpl?.cnx_scale)}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: designTokens.space[3],
+                            color: valueTone(productCategoryTpl?.cnx_cash),
+                            ...tabularNumsStyle,
+                          }}
+                        >
+                          {productCategoryYi(productCategoryTpl, productCategoryTpl?.cnx_cash)}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: designTokens.space[3],
+                            color: valueTone(productCategoryTpl?.business_net_income),
+                            ...tabularNumsStyle,
+                          }}
+                        >
+                          {productCategoryYi(
+                            productCategoryTpl,
+                            productCategoryTpl?.business_net_income,
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: designTokens.space[3],
+                            ...tabularNumsStyle,
+                          }}
+                        >
+                          {point.treasury_10y !== null
+                            ? point.treasury_10y.display
+                            : "—"}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: designTokens.space[3],
+                            color:
+                              (point.treasury_10y_change?.raw ?? 0) <= 0
+                                ? designTokens.color.semantic.profit
+                                : designTokens.color.semantic.loss,
+                            ...tabularNumsStyle,
+                          }}
+                        >
+                          {point.treasury_10y_change !== null
+                            ? `${(point.treasury_10y_change.raw ?? 0) >= 0 ? "+" : ""}${(point.treasury_10y_change.raw ?? 0).toFixed(1)}`
+                            : "—"}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: designTokens.space[3],
+                            ...tabularNumsStyle,
+                          }}
+                        >
+                          {point.dr007 !== null ? point.dr007.display : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

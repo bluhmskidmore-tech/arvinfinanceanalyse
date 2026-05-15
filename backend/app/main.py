@@ -1,9 +1,6 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.app.api import router as api_router
 from backend.app.governance.settings import get_settings
@@ -11,6 +8,16 @@ from backend.app.observability import setup_opentelemetry
 from backend.app.services.executive_service import warm_home_snapshot_cache_if_configured
 from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured
 from backend.app.storage_bootstrap import run_startup_storage_migrations
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+logging.getLogger("backend.app.services.executive_service").setLevel(logging.INFO)
 
 
 @asynccontextmanager

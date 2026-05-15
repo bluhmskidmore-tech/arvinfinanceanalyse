@@ -220,6 +220,12 @@ class TestSpread:
         )
         assert isinstance(item.treasury_effect, Numeric)
         assert item.treasury_effect.sign_aware is True
+        assert item.yield_change is not None
+        assert item.yield_change.unit == "bp"
+        assert item.treasury_change is not None
+        assert item.treasury_change.unit == "bp"
+        assert item.spread_change is not None
+        assert item.spread_change.unit == "bp"
 
 
 class TestKRD:

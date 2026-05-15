@@ -15,7 +15,7 @@ import {
   formatYi,
   formatYiNumeric,
   numericRaw,
-  resolveCommonReportDate,
+  resolveDualReportDates,
 } from "./pnlAttributionViewModel";
 
 function numeric(overrides: Partial<Numeric>): Numeric {
@@ -186,7 +186,7 @@ describe("PnlAttributionView helpers", () => {
     });
   });
 
-  it("labels product category attribution by the shared selected report date", () => {
+  it("labels product category attribution by its own selected report date", () => {
     expect(
       formatMetaDateLabel("product-category", {
         volumeRateData: null,
@@ -204,61 +204,75 @@ describe("PnlAttributionView helpers", () => {
     });
   });
 
-  it("defaults to the latest report date common to business and product category data", () => {
+  it("defaults each lens to its own latest report date", () => {
     expect(
-      resolveCommonReportDate({
+      resolveDualReportDates({
         businessDates: ["2026-04-30", "2026-03-31", "2026-02-28"],
         productCategoryDates: ["2026-03-31", "2026-02-28"],
       }),
     ).toMatchObject({
-      reportDate: "2026-03-31",
-      hasCommonDate: true,
+      formalReportDate: "2026-04-30",
+      productCategoryReportDate: "2026-03-31",
+      hasFormalDate: true,
+      hasProductCategoryDate: true,
+      datesAligned: false,
       missingSource: "none",
     });
   });
 
-  it("keeps an explicitly selected report date only when both sources have it", () => {
+  it("keeps an explicitly selected report date per source independently", () => {
     expect(
-      resolveCommonReportDate({
+      resolveDualReportDates({
         businessDates: ["2026-04-30", "2026-03-31", "2026-02-28"],
         productCategoryDates: ["2026-03-31", "2026-02-28"],
         preferredReportDate: "2026-02-28",
-      }).reportDate,
-    ).toBe("2026-02-28");
+      }),
+    ).toMatchObject({
+      formalReportDate: "2026-02-28",
+      productCategoryReportDate: "2026-02-28",
+      datesAligned: true,
+    });
 
     expect(
-      resolveCommonReportDate({
+      resolveDualReportDates({
         businessDates: ["2026-04-30", "2026-03-31"],
         productCategoryDates: ["2026-02-28"],
         preferredReportDate: "2026-04-30",
       }),
     ).toMatchObject({
-      reportDate: null,
-      hasCommonDate: false,
+      formalReportDate: "2026-04-30",
+      productCategoryReportDate: "2026-02-28",
+      hasFormalDate: true,
+      hasProductCategoryDate: true,
+      datesAligned: false,
       missingSource: "none",
     });
   });
 
   it("reports missing source sides instead of fabricating a date", () => {
     expect(
-      resolveCommonReportDate({
+      resolveDualReportDates({
         businessDates: [],
         productCategoryDates: ["2026-03-31"],
       }),
     ).toMatchObject({
-      reportDate: null,
-      hasCommonDate: false,
-      missingSource: "business",
+      formalReportDate: null,
+      productCategoryReportDate: "2026-03-31",
+      hasFormalDate: false,
+      hasProductCategoryDate: true,
+      missingSource: "formal-attribution",
     });
 
     expect(
-      resolveCommonReportDate({
+      resolveDualReportDates({
         businessDates: [],
         productCategoryDates: [],
       }),
     ).toMatchObject({
-      reportDate: null,
-      hasCommonDate: false,
+      formalReportDate: null,
+      productCategoryReportDate: null,
+      hasFormalDate: false,
+      hasProductCategoryDate: false,
       missingSource: "both",
     });
   });

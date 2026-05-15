@@ -32,6 +32,21 @@ function rawOr(
   return n.raw ?? fallback;
 }
 
+function pctPoints(
+  n: { raw: number | null; unit?: string } | null | undefined,
+): number {
+  const raw = rawOr(n);
+  return n?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
+}
+
+function pctDisplay(
+  n: { raw: number | null; unit?: string; display?: string } | null | undefined,
+): string {
+  const display = n?.display?.trim();
+  if (display) return display;
+  return `${pctPoints(n).toFixed(1)}%`;
+}
+
 function toneColor(raw: number): string {
   if (raw > 0) return COLORS.positive;
   if (raw < 0) return COLORS.negative;
@@ -52,22 +67,22 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
       {
         label: "利息收入",
         rawYuan: rawOr(data.total_interest_income),
-        pct: rawOr(data.interest_pct),
+        pct: pctPoints(data.interest_pct),
       },
       {
         label: "公允价值变动",
         rawYuan: rawOr(data.total_fair_value_change),
-        pct: rawOr(data.fair_value_pct),
+        pct: pctPoints(data.fair_value_pct),
       },
       {
         label: "投资收益",
         rawYuan: rawOr(data.total_capital_gain),
-        pct: rawOr(data.capital_gain_pct),
+        pct: pctPoints(data.capital_gain_pct),
       },
       {
         label: "其他收入",
         rawYuan: rawOr(data.total_other_income),
-        pct: rawOr(data.other_pct),
+        pct: pctPoints(data.other_pct),
       },
     ];
 
@@ -317,7 +332,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                     color: designTokens.color.success[600],
                   }}
                 >
-                  占比 {rawOr(data.interest_pct).toFixed(1)}%
+                  占比 {pctDisplay(data.interest_pct)}
                 </div>
               </div>
               <div
@@ -351,7 +366,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                     color: designTokens.color.neutral[700],
                   }}
                 >
-                  占比 {rawOr(data.fair_value_pct).toFixed(1)}%
+                  占比 {pctDisplay(data.fair_value_pct)}
                 </div>
               </div>
               <div
@@ -385,7 +400,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                     color: designTokens.color.neutral[700],
                   }}
                 >
-                  占比 {rawOr(data.capital_gain_pct).toFixed(1)}%
+                  占比 {pctDisplay(data.capital_gain_pct)}
                 </div>
               </div>
               <div
@@ -419,7 +434,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                     color: designTokens.color.neutral[700],
                   }}
                 >
-                  占比 {rawOr(data.other_pct).toFixed(1)}%
+                  占比 {pctDisplay(data.other_pct)}
                 </div>
               </div>
             </div>
@@ -630,7 +645,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                                 ...tabularNumsStyle,
                               }}
                             >
-                              {rawOr(item.interest_pct).toFixed(1)}%
+                              {pctDisplay(item.interest_pct)}
                             </td>
                           </tr>
                         );

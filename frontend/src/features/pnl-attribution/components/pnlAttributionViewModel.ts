@@ -8,16 +8,18 @@ import type {
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
 
-export type PnlAttributionTab = "volume-rate" | "tpl-market" | "composition" | "product-category" | "advanced";
-export type MissingCommonDateSource = "none" | "business" | "product-category" | "both";
+export type PnlAttributionTab = "product-category" | "volume-rate" | "tpl-market" | "composition" | "advanced";
+export type MissingReportDateSource = "none" | "formal-attribution" | "product-category" | "both";
 export type VolumeRateBridgeStatus = "closed" | "residual" | "missing" | "no-prior";
 
-export type CommonReportDateResolution = {
-  reportDate: string | null;
-  hasCommonDate: boolean;
-  missingSource: MissingCommonDateSource;
-  commonDates: string[];
-  businessDates: string[];
+export type DualReportDateResolution = {
+  formalReportDate: string | null;
+  productCategoryReportDate: string | null;
+  hasFormalDate: boolean;
+  hasProductCategoryDate: boolean;
+  datesAligned: boolean;
+  missingSource: MissingReportDateSource;
+  formalDates: string[];
   productCategoryDates: string[];
 };
 
@@ -176,33 +178,41 @@ function normalizeReportDates(dates: readonly string[] | null | undefined): stri
   );
 }
 
-export function resolveCommonReportDate(options: {
+export function resolveDualReportDates(options: {
   businessDates: readonly string[] | null | undefined;
   productCategoryDates: readonly string[] | null | undefined;
   preferredReportDate?: string | null;
-}): CommonReportDateResolution {
-  const businessDates = normalizeReportDates(options.businessDates);
+}): DualReportDateResolution {
+  const formalDates = normalizeReportDates(options.businessDates);
   const productCategoryDates = normalizeReportDates(options.productCategoryDates);
-  const businessSet = new Set(businessDates);
+  const formalSet = new Set(formalDates);
   const productCategorySet = new Set(productCategoryDates);
-  const commonDates = businessDates.filter((date) => productCategorySet.has(date));
   const preferred = options.preferredReportDate?.trim();
-  const reportDate =
-    preferred && businessSet.has(preferred) && productCategorySet.has(preferred) ? preferred : commonDates[0] ?? null;
-  const missingSource: MissingCommonDateSource =
-    businessDates.length === 0 && productCategoryDates.length === 0
+  const formalReportDate =
+    preferred && formalSet.has(preferred) ? preferred : formalDates[0] ?? null;
+  const productCategoryReportDate =
+    preferred && productCategorySet.has(preferred)
+      ? preferred
+      : productCategoryDates[0] ?? null;
+  const missingSource: MissingReportDateSource =
+    formalDates.length === 0 && productCategoryDates.length === 0
       ? "both"
-      : businessDates.length === 0
-        ? "business"
+      : formalDates.length === 0
+        ? "formal-attribution"
         : productCategoryDates.length === 0
           ? "product-category"
           : "none";
   return {
-    reportDate,
-    hasCommonDate: reportDate !== null,
+    formalReportDate,
+    productCategoryReportDate,
+    hasFormalDate: formalReportDate !== null,
+    hasProductCategoryDate: productCategoryReportDate !== null,
+    datesAligned:
+      formalReportDate !== null &&
+      productCategoryReportDate !== null &&
+      formalReportDate === productCategoryReportDate,
     missingSource,
-    commonDates,
-    businessDates,
+    formalDates,
     productCategoryDates,
   };
 }

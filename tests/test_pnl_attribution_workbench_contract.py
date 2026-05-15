@@ -6,6 +6,7 @@ from backend.app.core_finance.pnl_attribution.workbench import (
     build_advanced_attribution_summary,
     build_tpl_market_correlation,
     build_volume_rate_attribution,
+    build_volume_rate_attribution_from_grouped_rows,
 )
 
 
@@ -125,6 +126,37 @@ def test_build_volume_rate_attribution_matches_scale_by_cost_center() -> None:
     assert row["previous_scale"] == pytest.approx(320.0)
     assert row["current_yield_pct"] == pytest.approx(10.0)
     assert row["previous_yield_pct"] == pytest.approx(10.0)
+
+
+def test_build_volume_rate_attribution_from_grouped_rows_uses_aligned_business_scale() -> None:
+    payload = build_volume_rate_attribution_from_grouped_rows(
+        current_rows=[
+            {
+                "business_type_primary": "interbank_cd",
+                "total_pnl": 120.0,
+                "scale_amount": 1_000.0,
+            }
+        ],
+        prior_rows=[
+            {
+                "business_type_primary": "interbank_cd",
+                "total_pnl": 80.0,
+                "scale_amount": 800.0,
+            }
+        ],
+        current_period="2026-04",
+        previous_period="2026-03",
+        compare_type="mom",
+    )
+
+    row = payload["items"][0]
+    assert row["category"] == "interbank_cd"
+    assert row["current_yield_pct"] == pytest.approx(12.0)
+    assert row["previous_yield_pct"] == pytest.approx(10.0)
+    assert row["volume_effect"] == pytest.approx(20.0)
+    assert row["rate_effect"] == pytest.approx(16.0)
+    assert row["interaction_effect"] == pytest.approx(4.0)
+    assert row["recon_error"] == pytest.approx(0.0)
 
 
 def test_build_tpl_market_correlation_exposes_total_change_in_bp() -> None:

@@ -402,7 +402,7 @@ Guardrails:
 - 绑定只使用本文件 **已定义** 且语义可追溯的 `metric_id`。
 - `BondDashboardPage.tsx` 的 Headline / `RiskIndicatorsPanel` 所用 DTO 字段名可能与 balance / risk tensor **字面相似**。`docs/page_contracts.md` 已有 **`PAGE-BOND-001`**（§13.6），即使 `GS-BOND-HEADLINE-A` 已冻结为 capture-ready 页面样本，**仍不得**将债券驾驶舱展示字段直接 **升格**为新 `MTR-*` 行，也不得宣称与 `GS-RISK-A` / `GS-BOND-HEADLINE-A` 自动等价；字典级同源仍需单独审计。
 - `GS-BOND-HEADLINE-A` 现已存在 `tests/golden_samples/GS-BOND-HEADLINE-A/` 且已纳入 capture-ready gate；本表将其视为 **page/sample truth** 已冻结，但**不**据此批准 bond headline/risk 字段的字典级 `metric_id` 绑定。
-- **`PAGE-MKT-001` / `GAP-MKT-DATA` 补充（文档事实）**：`/market-data` 除 `getMarketDataRates` 等接线片段外，仍存在**硬编码**利率/资金/期货/成交表示意表（见 `docs/page_contracts.md` §13.8.J）；`ncd-funding-proxy` 为 **Shibor funding proxy** 而非全量 NCD 矩阵；Livermore `risk_exit` 以前端展示的后端 `unsupported_outputs` / 缺口为准；**不**在本文件新增未审批的 `MTR-*`、数值或 golden 断言。
+- **`PAGE-MKT-001` / `GAP-MKT-DATA` 补充（文档事实）**：`/market-data` 仍是 mixed-source；`getMarketDataRates` 驱动 formal rates 片段，`RateQuoteTable` / `MoneyMarketTable` 缺序列时只展示 `emptyReason`，不补静态 demo 行情；`BondFutures` / `BondTradeDetail` / `CreditBondTradesTable` 维持 `source-pending`；`ncd-funding-proxy` 为 **Shibor funding proxy** 而非全量 NCD 矩阵；Livermore `risk_exit` 以前端展示的后端 `unsupported_outputs` / 缺口为准；**不**在本文件新增未审批的 `MTR-*`、数值或 golden 断言。
 
 | 前端路由 | page_id | 页面 / API 证据 | 可绑定 `metric_id` | `sample_id` | 测试文件（golden gate 含 `tests/test_golden_samples_capture_ready.py` 时单列） |
 | --- | --- | --- | --- | --- | --- |
@@ -413,7 +413,7 @@ Guardrails:
 | `/bond-dashboard` | `PAGE-BOND-001` | 同页 → `getBondDashboardRiskIndicators`；`RiskIndicatorsPanel.tsx`（`total_market_value`, `total_dv01`, `credit_ratio`, …） | **GAP-BOND-DASH-RISK**：**页面契约已有**；与 `MTR-RSK-*`（`GS-RISK-A` / risk tensor）是否同源 **未冻结** | —（不自动继承 `GS-RISK-A`） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
-| `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；市场数据域未建本字典 `MTR-*` | — | `frontend/src/test/MarketDataPage.test.tsx` |
+| `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；当前仅 formal rates 片段可单独核对，尚无 full-page formal metric dictionary / capture-ready golden sample | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
 ## 13. 建议下一步
 
@@ -448,7 +448,7 @@ Guardrails:
 | `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `none` | 首屏当前是筛选上下文；本次只登记两个列表总数指标 |
 | `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `none` | 页面文案已明确为分析口径子视图，不提升为正式口径 |
 | `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-CONTRACT-PENDING:/ledger-pnl` | `none` | live 只读链路已接通，但缺独立 `PAGE-*` 合同 |
-| `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数；其余卡片仍受 `GAP-MKT-DATA` 约束 |
+| `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
 | `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | 当前首屏实现已改为产品分类正式 PnL，和 `PAGE-OPS-001` 旧文字不一致 |
 | `cashflow-projection` | 新增 4 条 `candidate`：`MTR-CFP-001`~`MTR-CFP-004` | `PAGE-CONTRACT-PENDING:/cashflow-projection` | `none` | live 只读链路已接通，字段与 schema 可追溯 |
 | `concentration-monitor` | 新增 4 条 `candidate`：`MTR-CON-001`~`MTR-CON-004` | `PAGE-CONTRACT-PENDING:/concentration-monitor` | `none` | 首屏 4 张卡片均来自 `credit-spread-migration` 结果 |
@@ -485,7 +485,7 @@ Guardrails:
 
 #### 15.2.5 `market-data`
 
-- `MTR-MKT-001` 宏观序列目录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/macro-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-MKT-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-MKT-001` 宏观序列目录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/macro-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-MKT-001`; `bound_sample_id=none`; `pending_confirmation=true`; 仍为 candidate，未升格为 formal MTR。
 
 #### 15.2.6 `cashflow-projection`
 
@@ -521,7 +521,7 @@ Guardrails:
 - `product-category-pnl`: 继续只复用当前 active 的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 只有在 decision 3C field matrix / numbering / tests 落地后才可升格为更多 `MTR-*`。
 - `positions`: `区间起`、`区间止`、`业务种类`、`产品类型`、`客户搜索`、`方向/对手方` 属过滤上下文，`status=excluded`，不写入 `MTR-*`。
 - `average-balance`: 页面文案明确为“分析口径子视图，不提升为正式口径”；因此本节新增条目全部只登记为 `candidate`。
-- `market-data`: `稳定回收`、`降级可用`、`稳定最新日`、`稳定缺口`、`外汇观察分组`、`外汇观察序列`、`联动报告日` 仍是 mixed-source / analytical-only / hard-coded display surface，`status=excluded`；`PAGE-MKT-001` 仍保留 `GAP-MKT-DATA`。
+- `market-data`: `稳定回收`、`降级可用`、`稳定最新日`、`稳定缺口`、`外汇观察分组`、`外汇观察序列`、`联动报告日` 仍是 mixed-source / analytical-only / source-pending display surface，`status=excluded`；`PAGE-MKT-001` 仍保留 `GAP-MKT-DATA`，且本字典当前只保留 `MTR-MKT-001` 为 candidate，不新增 formal rates `MTR-*`。
 - `bond-dashboard`: 本节只补 `HeadlineKpis.tsx` 首屏 strip；`RiskIndicatorsPanel` 与资产结构等副面板仍保持页面 truth / sample truth，不在本轮升格。
 - `cashflow-projection`: `权益久期` 与 `再投资风险（12M）` 同样是 live 首屏卡片，但本轮只先登记四个更稳定的 headline KPI；其余两项可在补 page contract 时再补。
 - `team-performance`: `工作簿总得分`、`部室数量`、`证据状态` 依赖 workbook-local 指标、映射种子或文本状态，`status=excluded`；本轮只登记“已映射部室”这一条 mixed-source candidate。

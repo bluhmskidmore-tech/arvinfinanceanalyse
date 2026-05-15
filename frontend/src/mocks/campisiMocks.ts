@@ -3,6 +3,7 @@
  * Extracted from client.ts to reduce monolith size.
  */
 import type {
+  CampisiDecisionGradePayload,
   CampisiFourEffectsPayload,
   CampisiEnhancedPayload,
   CampisiMaturityBucketsPayload,
@@ -133,4 +134,130 @@ export const mockCampisiMaturityBuckets: CampisiMaturityBucketsPayload = {
       total_return: 335000,
     },
   },
+};
+
+export const mockCampisiDecisionGrade: CampisiDecisionGradePayload = {
+  basis: "campisi_decision_grade_v1",
+  report_date: "2026-03-31",
+  period_start: "2026-03-01",
+  period_end: "2026-03-31",
+  num_days: 30,
+  summary: {
+    formal_actual_pnl: 865000,
+    explained_pnl: 865000,
+    residual_noise: 0,
+    residual_ratio: 0,
+    valuation_change_516: -230000,
+    fvoci_valuation_change_516: -180000,
+    fvtpl_valuation_change_516: -50000,
+    main_driver: "carry",
+    quality_flag: "ok",
+    bond_scope_row_count: 2,
+    out_of_scope_pnl_row_count: 0,
+  },
+  formal_pnl_view: {
+    total_actual_pnl: 865000,
+    explained_pnl: 865000,
+    residual_noise: 0,
+    components: {
+      carry: 820000,
+      rate_level_effect: -210000,
+      curve_shape_effect: 30000,
+      credit_spread_effect: 160000,
+      convexity_effect: 18000,
+      realized_trading: 42000,
+      manual_adjustment: 0,
+      selection_proxy: 5000,
+      residual_noise: 0,
+    },
+    closure: {
+      status: "closed",
+      difference: 0,
+      basis: "fact_formal_pnl_fi.total_pnl",
+    },
+  },
+  valuation_oci_view: {
+    total_valuation_change_516: -230000,
+    fvoci_valuation_change_516: -180000,
+    fvtpl_valuation_change_516: -50000,
+    rows_by_accounting_basis: [
+      {
+        accounting_basis: "FVOCI",
+        formal_pnl: 520000,
+        valuation_or_oci_516: -180000,
+        interpretation: "516 不进入正式 PnL，但进入估值/OCI 解释视图。",
+      },
+      {
+        accounting_basis: "FVTPL",
+        formal_pnl: 345000,
+        valuation_or_oci_516: -50000,
+        interpretation: "516 进入正式 PnL，也进入估值解释视图。",
+      },
+    ],
+    reinvestment: {
+      implemented: false,
+      message: "数据源不足：缺少稳定短端再投资数据，v1 不伪造为 0 贡献。",
+    },
+  },
+  effects: [
+    {
+      key: "carry",
+      label: "票息/Carry",
+      amount: 820000,
+      ability_treatment: "自然持有收益，不直接算主动能力",
+    },
+    {
+      key: "selection_proxy",
+      label: "剩余/选券代理",
+      amount: 5000,
+      ability_treatment: "组合/成本中心主动管理代理，不是实名评价",
+    },
+    {
+      key: "residual_noise",
+      label: "残差/噪音",
+      amount: 0,
+      ability_treatment: "缺曲线、估值噪音或数据质量问题，不算能力",
+    },
+  ],
+  accounting_matrix: {},
+  ability_matrix: [
+    {
+      portfolio_name: "FIOA",
+      cost_center: "5010",
+      carry: 820000,
+      market_beta: -32000,
+      strategy_proxy: 30000,
+      credit_proxy: 160000,
+      selection_proxy: 5000,
+      residual_noise: 0,
+      total_actual_pnl: 865000,
+      confidence: "medium",
+      notes: "组合/成本中心代理，不是实名个人评价；票息和残差不算主动能力。",
+    },
+  ],
+  risk_tensor_check: {
+    available: true,
+    portfolio_dv01: 210000,
+    component_dv01: 210000,
+    dv01_difference: 0,
+    portfolio_cs01: 32000,
+    component_cs01: 32000,
+    cs01_difference: 0,
+    quality_flag: "ok",
+  },
+  residual_diagnostics: {
+    missing_curve_count: 0,
+    missing_spread_count: 0,
+    duplicate_position_keys: 0,
+    aggregated_position_groups: 2,
+    unmatched_pnl_rows: 0,
+    stale_curve_fallback_count: 0,
+    warnings: [],
+  },
+  warnings: [],
+  method_notes: [
+    "carry = interest_income_514。",
+    "selection_proxy 是组合/成本中心代理指标，不是实名个人评价。",
+    "residual_noise 专门承接缺曲线、重复 key、估值噪音和数据质量问题。",
+  ],
 };

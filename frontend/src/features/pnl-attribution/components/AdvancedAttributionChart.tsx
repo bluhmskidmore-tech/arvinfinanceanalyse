@@ -26,6 +26,34 @@ function formatYi(value: number | null | undefined): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
+function numericRaw(value: { raw: number | null } | null | undefined): number {
+  return value?.raw ?? 0;
+}
+
+function pctPoints(
+  value: { raw: number | null; unit?: string } | null | undefined,
+): number {
+  const raw = numericRaw(value);
+  return value?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
+}
+
+function numericDisplay(
+  value: { raw: number | null; display?: string } | null | undefined,
+  fallback = "—",
+): string {
+  const display = value?.display?.trim();
+  if (display) return display;
+  return value?.raw == null ? fallback : value.raw.toFixed(2);
+}
+
+function pctDisplay(
+  value: { raw: number | null; unit?: string; display?: string } | null | undefined,
+): string {
+  const display = value?.display?.trim();
+  if (display) return display;
+  return `${pctPoints(value).toFixed(2)}%`;
+}
+
 type Props = {
   carryData: CarryRollDownPayload | null;
   spreadData: SpreadAttributionPayload | null;
@@ -83,7 +111,7 @@ export function AdvancedAttributionChart({
         {
           name: "Carry",
           type: "bar",
-          data: rows.map((r) => r.carry.raw ?? 0),
+          data: rows.map((r) => pctPoints(r.carry)),
           itemStyle: {
             color: designTokens.color.success[500],
             borderRadius: [
@@ -97,7 +125,7 @@ export function AdvancedAttributionChart({
         {
           name: "Roll-down",
           type: "bar",
-          data: rows.map((r) => r.rolldown.raw ?? 0),
+          data: rows.map((r) => pctPoints(r.rolldown)),
           itemStyle: {
             color: designTokens.color.info[500],
             borderRadius: [
@@ -120,7 +148,7 @@ export function AdvancedAttributionChart({
     const contrib = krdData.buckets.map(
       (b) => (b.duration_contribution.raw ?? 0) / 100_000_000,
     );
-    const ychg = krdData.buckets.map((b) => b.yield_change?.raw ?? 0);
+    const ychg = krdData.buckets.map((b) => pctPoints(b.yield_change));
     return {
       tooltip: { trigger: "axis" },
       legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
@@ -218,7 +246,7 @@ export function AdvancedAttributionChart({
         {
           name: "贡献占比",
           type: "bar",
-          data: krdData.buckets.map((b) => b.contribution_pct.raw ?? 0),
+          data: krdData.buckets.map((b) => pctPoints(b.contribution_pct)),
           itemStyle: {
             color: designTokens.color.info[500],
             borderRadius: [
@@ -296,7 +324,7 @@ export function AdvancedAttributionChart({
                     ...tabularNumsStyle,
                   }}
                 >
-                  {(carryData.portfolio_carry.raw ?? 0).toFixed(2)}%
+                  {pctDisplay(carryData.portfolio_carry)}
                 </div>
                 <div
                   style={{
@@ -334,7 +362,7 @@ export function AdvancedAttributionChart({
                     ...tabularNumsStyle,
                   }}
                 >
-                  {(carryData.portfolio_rolldown.raw ?? 0).toFixed(2)}%
+                  {pctDisplay(carryData.portfolio_rolldown)}
                 </div>
                 <div
                   style={{
@@ -369,12 +397,9 @@ export function AdvancedAttributionChart({
                     ...tabularNumsStyle,
                   }}
                 >
-                  {(
-                    summaryData?.static_return_annualized?.raw ??
-                    carryData.portfolio_static_return.raw ??
-                    0
-                  ).toFixed(2)}
-                  %
+                  {summaryData?.static_return_annualized
+                    ? pctDisplay(summaryData.static_return_annualized)
+                    : pctDisplay(carryData.portfolio_static_return)}
                 </div>
                 <div
                   style={{
@@ -623,7 +648,7 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {(item.coupon_rate.raw ?? 0).toFixed(2)}
+                        {pctDisplay(item.coupon_rate)}
                       </td>
                       <td
                         style={{
@@ -632,7 +657,7 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {(item.funding_cost.raw ?? 0).toFixed(2)}
+                        {pctDisplay(item.funding_cost)}
                       </td>
                       <td
                         style={{
@@ -645,7 +670,7 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {(item.carry.raw ?? 0).toFixed(2)}
+                        {pctDisplay(item.carry)}
                       </td>
                       <td
                         style={{
@@ -667,7 +692,7 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {(item.rolldown.raw ?? 0).toFixed(2)}
+                        {pctDisplay(item.rolldown)}
                       </td>
                     </tr>
                   ))}
@@ -905,7 +930,7 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {(b.bucket_duration.raw ?? 0).toFixed(2)}
+                        {numericDisplay(b.bucket_duration)}
                       </td>
                       <td
                         style={{
@@ -919,7 +944,7 @@ export function AdvancedAttributionChart({
                         }}
                       >
                         {b.yield_change !== null
-                          ? (b.yield_change.raw ?? 0).toFixed(1)
+                          ? pctPoints(b.yield_change).toFixed(1)
                           : "—"}
                       </td>
                       <td
@@ -943,7 +968,7 @@ export function AdvancedAttributionChart({
                           ...tabularNumsStyle,
                         }}
                       >
-                        {(b.contribution_pct.raw ?? 0).toFixed(1)}
+                        {pctDisplay(b.contribution_pct)}
                       </td>
                     </tr>
                   ))}

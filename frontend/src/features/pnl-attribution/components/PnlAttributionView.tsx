@@ -7,12 +7,12 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import type {
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
+  CampisiDecisionGradePayload,
   CampisiEnhancedPayload,
   CampisiFourEffectsPayload,
   CampisiMaturityBucketsPayload,
   CarryRollDownPayload,
   KRDAttributionPayload,
-  PnlAttributionAnalysisSummary,
   PnlCompositionPayload,
   ProductCategoryAttributionEffects,
   ProductCategoryAttributionPayload,
@@ -29,17 +29,18 @@ import { derivePnlDataSectionState } from "../adapters/pnlAttributionAdapter";
 import { AdvancedAttributionChart } from "./AdvancedAttributionChart";
 import { AttributionWaterfallChart } from "./AttributionWaterfallChart";
 import { CampisiAttributionPanel } from "./CampisiAttributionPanel";
+import { CampisiDecisionGradePanel } from "./CampisiDecisionGradePanel";
 import { CampisiEnhancedPanel } from "./CampisiEnhancedPanel";
 import { CampisiMaturityBucketPanel } from "./CampisiMaturityBucketPanel";
 import { PnLCompositionChart } from "./PnLCompositionChart";
-import { TPLMarketChart } from "./TPLMarketChart";
+import { TPLMarketChart, type ProductCategoryTplMonthlyPoint } from "./TPLMarketChart";
 import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
 import {
   buildVolumeRateBridgeSummary,
-  type CommonReportDateResolution,
+  type DualReportDateResolution,
   formatYi,
   formatMetaDateLabel,
-  resolveCommonReportDate,
+  resolveDualReportDates,
   type VolumeRateBridgeSummary,
   type PnlAttributionTab,
 } from "./pnlAttributionViewModel";
@@ -146,6 +147,25 @@ function tabStyle(
   };
 }
 
+const PRODUCT_CATEGORY_TPL_ROW_ID = "bond_tpl";
+
+function findProductCategoryReportDateForPeriod(
+  reportDates: readonly string[],
+  period: string,
+): string | null {
+  const periodPrefix = `${period}-`;
+  return reportDates.find((date) => date.startsWith(periodPrefix)) ?? null;
+}
+
+function selectProductCategoryTplRow(
+  payload: ProductCategoryPnlPayload,
+): ProductCategoryPnlRow | null {
+  return (
+    payload.rows.find((row) => row.category_id === PRODUCT_CATEGORY_TPL_ROW_ID) ??
+    null
+  );
+}
+
 function SectionLead(props: {
   eyebrow: string;
   title: string;
@@ -157,6 +177,54 @@ function SectionLead(props: {
       <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
       <h2 style={sectionTitleStyle}>{props.title}</h2>
       <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
+}
+
+function LensBoundaryPanel() {
+  const lensCardStyle = {
+    ...headerCardStyle,
+    padding: designTokens.space[4],
+    display: "grid",
+    gap: designTokens.space[2],
+  } as const;
+  const lensSourceStyle = {
+    fontSize: designTokens.fontSize[12],
+    color: pageMutedTextColor,
+    ...tabularNumsStyle,
+  } as const;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        gap: designTokens.space[4],
+      }}
+    >
+      <section
+        data-testid="pnl-attribution-product-category-lens-card"
+        style={lensCardStyle}
+      >
+        <SectionLead
+          eyebrow="产品分类经营口径"
+          title="经营净收入归因"
+          description="经营净收入、FTP 后；来源为产品分类正式读模型，只消费产品分类 monthly / YTD / attribution 接口。"
+        />
+        <div style={lensSourceStyle}>
+          Source: /ui/pnl/product-category, /ui/pnl/product-category/attribution
+        </div>
+      </section>
+      <section
+        data-testid="pnl-attribution-formal-lens-card"
+        style={lensCardStyle}
+      >
+        <SectionLead
+          eyebrow="正式 FI / 债券分析口径"
+          title="会计损益与债券市场归因"
+          description="含非标桥接、未扣 FTP、非产品分类经营净收入；仅用于正式 FI、TPL 市场和债券分析归因。"
+        />
+        <div style={lensSourceStyle}>Source: /api/pnl-attribution/*</div>
+      </section>
     </div>
   );
 }
@@ -534,8 +602,8 @@ const compactCellStyle = {
   verticalAlign: "middle" as const,
 };
 
-function ProductCategorySourceMessage(props: {
-  resolution: CommonReportDateResolution | null;
+function PnlAttributionSourceDateMessage(props: {
+  resolution: DualReportDateResolution | null;
   dateError: string | null;
   isLoading: boolean;
 }) {
@@ -545,7 +613,7 @@ function ProductCategorySourceMessage(props: {
         data-testid="pnl-attribution-date-loading"
         style={{ ...headerCardStyle, padding: designTokens.space[4] }}
       >
-        正在校验业务种类和产品分类共同报告日...
+        正在加载产品分类与正式 FI 报告日...
       </div>
     );
   }
@@ -559,21 +627,34 @@ function ProductCategorySourceMessage(props: {
       </div>
     );
   }
-  if (props.resolution && !props.resolution.hasCommonDate) {
+  if (!props.resolution) {
+    return null;
+  }
+  if (!props.resolution.hasFormalDate || !props.resolution.hasProductCategoryDate) {
     const source =
-      props.resolution.missingSource === "business"
-        ? "业务种类数据"
+      props.resolution.missingSource === "formal-attribution"
+        ? "正式 FI / 债券分析"
         : props.resolution.missingSource === "product-category"
-          ? "产品分类数据"
-          : props.resolution.missingSource === "both"
-            ? "业务种类数据和产品分类数据"
-            : "业务种类数据和产品分类数据";
+          ? "产品分类"
+          : "产品分类和正式 FI / 债券分析";
     return (
       <div
-        data-testid="pnl-attribution-common-date-missing"
+        data-testid="pnl-attribution-source-date-warning"
         style={{ ...headerCardStyle, padding: designTokens.space[4] }}
       >
-        该来源无共同报告日数据：{source}当前无法与另一来源对齐。
+        {source}来源当前无可用报告日；另一套口径仍可独立查看，不再强制共同日期。
+      </div>
+    );
+  }
+  if (!props.resolution.datesAligned) {
+    return (
+      <div
+        data-testid="pnl-attribution-date-mismatch"
+        style={{ ...headerCardStyle, padding: designTokens.space[4] }}
+      >
+        两套口径报告日不一致：正式 FI / 债券分析{" "}
+        {props.resolution.formalReportDate}；产品分类{" "}
+        {props.resolution.productCategoryReportDate}。页面将分开取数，不做跨口径闭合。
       </div>
     );
   }
@@ -801,7 +882,7 @@ function ProductCategoryAttributionWorkbench(props: {
         data-testid="pnl-attribution-product-category-tab"
         style={{ ...headerCardStyle, padding: designTokens.space[4] }}
       >
-        该来源无共同报告日数据。
+        产品分类来源暂无可用报告日数据。
       </div>
     );
   }
@@ -1062,22 +1143,27 @@ type Props = {
 
 export function PnlAttributionView({ reportDate }: Props) {
   const client = useApiClient();
-  const [activeTab, setActiveTab] = useState<PnlAttributionTab>("volume-rate");
+  const [activeTab, setActiveTab] = useState<PnlAttributionTab>("product-category");
   const [compareType, setCompareType] = useState<"mom" | "yoy">("mom");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateLoading, setDateLoading] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   const [dateResolution, setDateResolution] =
-    useState<CommonReportDateResolution | null>(null);
-  const [selectedReportDate, setSelectedReportDate] = useState<string | null>(
-    reportDate ?? null,
-  );
+    useState<DualReportDateResolution | null>(null);
+  const [selectedFormalReportDate, setSelectedFormalReportDate] =
+    useState<string | null>(reportDate ?? null);
+  const [
+    selectedProductCategoryReportDate,
+    setSelectedProductCategoryReportDate,
+  ] = useState<string | null>(reportDate ?? null);
 
   const [volumeRateData, setVolumeRateData] =
     useState<VolumeRateAttributionPayload | null>(null);
   const [tplMarketData, setTplMarketData] =
     useState<TPLMarketCorrelationPayload | null>(null);
+  const [tplProductCategoryMonthlyPoints, setTplProductCategoryMonthlyPoints] =
+    useState<ProductCategoryTplMonthlyPoint[]>([]);
   const [compositionData, setCompositionData] =
     useState<PnlCompositionPayload | null>(null);
   const [productCategoryMonthlyData, setProductCategoryMonthlyData] =
@@ -1086,8 +1172,6 @@ export function PnlAttributionView({ reportDate }: Props) {
     useState<ProductCategoryPnlPayload | null>(null);
   const [productCategoryAttributionData, setProductCategoryAttributionData] =
     useState<ProductCategoryAttributionPayload | null>(null);
-  const [summaryData, setSummaryData] =
-    useState<PnlAttributionAnalysisSummary | null>(null);
   const [volumeRateMeta, setVolumeRateMeta] = useState<ResultMeta | null>(null);
   const [tplMarketMeta, setTplMarketMeta] = useState<ResultMeta | null>(null);
   const [compositionMeta, setCompositionMeta] = useState<ResultMeta | null>(
@@ -1118,6 +1202,10 @@ export function PnlAttributionView({ reportDate }: Props) {
     useState<CampisiEnhancedPayload | null>(null);
   const [campisiMaturityBuckets, setCampisiMaturityBuckets] =
     useState<CampisiMaturityBucketsPayload | null>(null);
+  const [campisiDecisionGrade, setCampisiDecisionGrade] =
+    useState<CampisiDecisionGradePayload | null>(null);
+  const [campisiDecisionGradeError, setCampisiDecisionGradeError] =
+    useState<string | null>(null);
   const [carryMeta, setCarryMeta] = useState<ResultMeta | null>(null);
   const [spreadMeta, setSpreadMeta] = useState<ResultMeta | null>(null);
   const [krdMeta, setKrdMeta] = useState<ResultMeta | null>(null);
@@ -1128,8 +1216,13 @@ export function PnlAttributionView({ reportDate }: Props) {
     useState<ResultMeta | null>(null);
   const [campisiMaturityMeta, setCampisiMaturityMeta] =
     useState<ResultMeta | null>(null);
+  const [campisiDecisionGradeMeta, setCampisiDecisionGradeMeta] =
+    useState<ResultMeta | null>(null);
 
-  const effectiveReportDate = reportDate ?? selectedReportDate ?? undefined;
+  const isProductCategoryTab = activeTab === "product-category";
+  const effectiveReportDate = isProductCategoryTab
+    ? (reportDate ?? selectedProductCategoryReportDate ?? undefined)
+    : (reportDate ?? selectedFormalReportDate ?? undefined);
 
   const loadDateOptions = useCallback(async () => {
     setDateLoading(true);
@@ -1144,17 +1237,19 @@ export function PnlAttributionView({ reportDate }: Props) {
         ?.length
         ? businessDatesEnvelope.result.formal_fi_report_dates
         : businessDatesEnvelope.result.report_dates;
-      const resolution = resolveCommonReportDate({
+      const resolution = resolveDualReportDates({
         businessDates,
         productCategoryDates: productCategoryDatesEnvelope.result.report_dates,
         preferredReportDate: reportDate,
       });
       setDateResolution(resolution);
-      setSelectedReportDate(reportDate ?? resolution.reportDate);
+      setSelectedFormalReportDate(reportDate ?? resolution.formalReportDate);
+      setSelectedProductCategoryReportDate(reportDate ?? resolution.productCategoryReportDate);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "报告日来源加载失败";
       setDateError(msg);
-      setSelectedReportDate(reportDate ?? null);
+      setSelectedFormalReportDate(reportDate ?? null);
+      setSelectedProductCategoryReportDate(reportDate ?? null);
     } finally {
       setDateLoading(false);
     }
@@ -1166,18 +1261,15 @@ export function PnlAttributionView({ reportDate }: Props) {
     }
     setLoading(true);
     setError(null);
+    setCampisiDecisionGradeError(null);
     try {
       if (activeTab === "volume-rate") {
-        const [data, summary] = await Promise.all([
-          client.getVolumeRateAttribution({
-            reportDate: effectiveReportDate,
-            compareType,
-          }),
-          client.getPnlAttributionAnalysisSummary(effectiveReportDate),
-        ]);
+        const data = await client.getVolumeRateAttribution({
+          reportDate: effectiveReportDate,
+          compareType,
+        });
         setVolumeRateData(data.result);
         setVolumeRateMeta(data.result_meta);
-        setSummaryData(summary.result);
       } else if (activeTab === "tpl-market") {
         const data = await client.getTplMarketCorrelation({
           months: 12,
@@ -1185,6 +1277,36 @@ export function PnlAttributionView({ reportDate }: Props) {
         });
         setTplMarketData(data.result);
         setTplMarketMeta(data.result_meta);
+        const productCategoryDates = dateResolution?.productCategoryDates.length
+          ? dateResolution.productCategoryDates
+          : selectedProductCategoryReportDate
+            ? [selectedProductCategoryReportDate]
+            : [];
+        const productCategoryTplPoints = await Promise.all(
+          data.result.data_points.map(async (point): Promise<ProductCategoryTplMonthlyPoint> => {
+            const productCategoryReportDate = findProductCategoryReportDateForPeriod(
+              productCategoryDates,
+              point.period,
+            );
+            if (!productCategoryReportDate) {
+              return {
+                period: point.period,
+                reportDate: null,
+                row: null,
+              };
+            }
+            const monthly = await client.getProductCategoryPnl({
+              reportDate: productCategoryReportDate,
+              view: "monthly",
+            });
+            return {
+              period: point.period,
+              reportDate: monthly.result.report_date ?? productCategoryReportDate,
+              row: selectProductCategoryTplRow(monthly.result),
+            };
+          }),
+        );
+        setTplProductCategoryMonthlyPoints(productCategoryTplPoints);
       } else if (activeTab === "composition") {
         const data = await client.getPnlCompositionBreakdown({
           reportDate: effectiveReportDate,
@@ -1267,6 +1389,24 @@ export function PnlAttributionView({ reportDate }: Props) {
         setCampisiEnhancedMeta(campisiEnhancedData.result_meta);
         setCampisiMaturityBuckets(campisiBuckets.result);
         setCampisiMaturityMeta(campisiBuckets.result_meta);
+        setCampisiDecisionGrade(null);
+        setCampisiDecisionGradeMeta(null);
+        try {
+          const campisiDecision = await client.getPnlCampisiDecisionGrade({
+            endDate: effectiveReportDate,
+            lookbackDays: 30,
+          });
+          setCampisiDecisionGrade(campisiDecision.result);
+          setCampisiDecisionGradeMeta(campisiDecision.result_meta);
+        } catch (decisionError: unknown) {
+          setCampisiDecisionGrade(null);
+          setCampisiDecisionGradeMeta(null);
+          setCampisiDecisionGradeError(
+            decisionError instanceof Error
+              ? decisionError.message
+              : "Campisi 决策级解释加载失败",
+          );
+        }
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "加载失败";
@@ -1274,7 +1414,14 @@ export function PnlAttributionView({ reportDate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, client, compareType, effectiveReportDate]);
+  }, [
+    activeTab,
+    client,
+    compareType,
+    dateResolution,
+    effectiveReportDate,
+    selectedProductCategoryReportDate,
+  ]);
 
   useEffect(() => {
     void loadDateOptions();
@@ -1287,9 +1434,7 @@ export function PnlAttributionView({ reportDate }: Props) {
   const keyFindings =
     activeTab === "advanced"
       ? (advancedSummary?.key_insights ?? [])
-      : activeTab === "volume-rate"
-        ? (summaryData?.key_findings ?? [])
-        : [];
+      : [];
   const volumeRateBridgeSummary = buildVolumeRateBridgeSummary(volumeRateData);
   const currentViewMeta =
     activeTab === "volume-rate"
@@ -1323,6 +1468,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           ["Campisi 四效应", campisiFourMeta],
           ["Campisi 六效应", campisiEnhancedMeta],
           ["Campisi 到期桶", campisiMaturityMeta],
+          ["Campisi 决策级", campisiDecisionGradeMeta],
         ]
       : [];
   const advancedMetaSections = advancedMetaRows.map(([title, meta], index) => ({
@@ -1429,6 +1575,16 @@ export function PnlAttributionView({ reportDate }: Props) {
     isEmpty: !campisiMaturityBuckets,
   });
 
+  const campisiDecisionGradeState: DataSectionState = derivePnlDataSectionState({
+    meta: campisiDecisionGradeMeta,
+    isLoading: loading && activeTab === "advanced",
+    isError:
+      (error !== null || campisiDecisionGradeError !== null) &&
+      activeTab === "advanced",
+    errorMessage: campisiDecisionGradeError ?? error,
+    isEmpty: !campisiDecisionGrade,
+  });
+
   return (
     <div style={shellStyle}>
       <div style={headerCardStyle}>
@@ -1461,9 +1617,8 @@ export function PnlAttributionView({ reportDate }: Props) {
                 lineHeight: designTokens.lineHeight.normal,
               }}
             >
-              规模/利率一阶与交叉效应、TPL 与市场、损益构成，以及
-              Carry–Roll、利差、KRD 与 Campisi
-              四效应（收入、国债、利差、选择）对照阅读。
+              本页保留产品分类经营口径与正式 FI / 债券分析口径；两套数据分开取数、
+              分开元信息，不再跨口径汇总或闭合。
             </p>
           </div>
           <div
@@ -1549,7 +1704,9 @@ export function PnlAttributionView({ reportDate }: Props) {
         )}
       </div>
 
-      <ProductCategorySourceMessage
+      <LensBoundaryPanel />
+
+      <PnlAttributionSourceDateMessage
         resolution={dateResolution}
         dateError={dateError}
         isLoading={dateLoading}
@@ -1558,8 +1715,8 @@ export function PnlAttributionView({ reportDate }: Props) {
       <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
         <SectionLead
           eyebrow="工作台"
-          title="归因分析工作台"
-          description="先选择归因视图，再阅读对应图表和关键发现；本页消费后端归因读模型，不在前端补算正式损益。"
+          title="双口径归因工作台"
+          description="产品分类经营归因只读取产品分类接口；正式 FI / 债券分析页签只读取 /api/pnl-attribution/*，不互相解释。"
           testId="pnl-attribution-workbench-lead"
         />
         <FilterBar style={{ ...tabBarStyle, marginTop: designTokens.space[4] }}>
@@ -1630,7 +1787,7 @@ export function PnlAttributionView({ reportDate }: Props) {
       <SectionLead
         eyebrow="分析"
         title="当前归因视图"
-        description="下方内容随页签切换，保留现有规模利率、TPL 市场、构成、高级归因与 Campisi 数据边界。"
+        description="下方内容随页签切换；请按当前口径阅读来源、单位、报告日和质量提示。"
         testId="pnl-attribution-current-view-lead"
       />
 
@@ -1693,6 +1850,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           data={tplMarketData}
           state={tplMarketState}
           onRetry={() => void loadData()}
+          productCategoryTplMonthlyPoints={tplProductCategoryMonthlyPoints}
         />
       ) : null}
 
@@ -1721,6 +1879,11 @@ export function PnlAttributionView({ reportDate }: Props) {
 
       {activeTab === "advanced" ? (
         <>
+          <CampisiDecisionGradePanel
+            data={campisiDecisionGrade}
+            state={campisiDecisionGradeState}
+            onRetry={() => void loadData()}
+          />
           <CampisiAttributionPanel
             data={campisiFourEffects ?? campisiData}
             state={campisiFourState}

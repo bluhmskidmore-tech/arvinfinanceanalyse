@@ -55,7 +55,7 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
             ["凸性", totals?.convexity_effect],
             ["交叉项", totals?.cross_effect],
             ["再投资", totals?.reinvestment_effect],
-            ["选券", totals?.selection_effect],
+            ["剩余/选券", totals?.selection_effect],
             ["总收益", totals?.total_return],
           ].map(([label, value]) => (
             <div

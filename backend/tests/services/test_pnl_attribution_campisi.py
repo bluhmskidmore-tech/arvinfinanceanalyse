@@ -302,3 +302,59 @@ def test_diagnostics_propagate_to_warnings(monkeypatch: pytest.MonkeyPatch) -> N
     warnings = result.get("warnings") or []
     assert any("accrued_interest_missing" in warning for warning in warnings)
     assert any("MISSING_AI" in warning for warning in warnings)
+
+
+def test_legacy_campisi_envelope_uses_formal_bridge_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start, end = _bond_rows(
+        code="BOND_FORMAL",
+        market_value_start=1_000.0,
+        market_value_end=1_100.0,
+        accrued_interest_start=0.0,
+        accrued_interest_end=0.0,
+        coupon_rate=0.0,
+    )
+    _install_repos(monkeypatch, rows_start=[start], rows_end=[end])
+
+    bridge = {
+        "result": {
+            "summary": {
+                "total_actual_pnl": {"raw": 35.0},
+            },
+            "rows": [
+                {
+                    "instrument_code": "BOND_FORMAL",
+                    "portfolio_name": "Portfolio",
+                    "cost_center": "CostCenter",
+                    "accounting_basis": "FVTPL",
+                    "beginning_dirty_mv": {"raw": 1_000.0},
+                    "carry": {"raw": 5.0},
+                    "roll_down": {"raw": 1.0},
+                    "treasury_curve": {"raw": 2.0},
+                    "credit_spread": {"raw": 3.0},
+                    "actual_pnl": {"raw": 35.0},
+                }
+            ],
+        },
+    }
+    monkeypatch.setattr(
+        svc,
+        "_try_fetch_formal_bridge",
+        lambda **_kwargs: bridge,
+        raising=False,
+    )
+
+    envelope = svc.campisi_attribution_envelope(
+        start_date=START_DATE,
+        end_date=END_DATE,
+    )
+    result = envelope["result"]
+
+    assert _raw(result, "total_return") == pytest.approx(35.0)
+    assert _raw(result, "total_income") == pytest.approx(5.0)
+    assert _raw(result, "total_treasury_effect") == pytest.approx(3.0)
+    assert _raw(result, "total_spread_effect") == pytest.approx(3.0)
+    assert _raw(result, "total_selection_effect") == pytest.approx(24.0)
+    assert envelope["result_meta"]["as_of_date"] == END_DATE
+    assert "fact_formal_pnl_fi" in envelope["result_meta"]["tables_used"]

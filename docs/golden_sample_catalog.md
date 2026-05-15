@@ -122,7 +122,7 @@ tests/golden_samples/
 
 ## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
 
-与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。`/market-data` 的 **GAP-MKT-DATA**、NCD proxy、Livermore blocked、宏观联动警示等文档化边界见 `docs/page_contracts.md` §13.8.J 与 `docs/plans/market-workbench-cursor-prompts.md`（执行拆分，非权威定义）。
+与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。`/market-data` 保持 mixed-source；当前没有 full-page capture-ready golden sample，但 `GET /ui/market-data/rates` 对应的 formal rates 片段可以单独测试与 lineage 核对。`/market-data` 的 **GAP-MKT-DATA**、NCD proxy、Livermore blocked、宏观联动警示等文档化边界见 `docs/page_contracts.md` §13.8.J 与 `docs/plans/market-workbench-cursor-prompts.md`（执行拆分，非权威定义）。
 
 | 前端路由 | `page_id` | 可钉 `metric_id`（字典已批） | `sample_id` | 测试锚点 |
 | --- | --- | --- | --- | --- |
@@ -131,7 +131,7 @@ tests/golden_samples/
 | `/operations-analysis` | `PAGE-OPS-001` | —（macro / FX / news / 运营条） | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
 | `/bond-dashboard` | `PAGE-BOND-001`（见 `page_contracts` §13.6） | —（Headline / 风险卡见字典 **GAP-BOND-DASH-***；字典级 metric 同源仍待单独批准） | `GS-BOND-HEADLINE-A` **capture-ready**（冻结 `GET /api/bond-dashboard/headline-kpis`；非 `MTR-*` 批准） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/positions` | `PAGE-POS-001`（见 §13.7） | —（**GAP-POS-LIST**：`MTR-*` / 样本仍未钉死） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
-| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
+| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（mixed-source；无 full-page capture-ready 黄金样本） | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
 ## 6. 样本定义
 

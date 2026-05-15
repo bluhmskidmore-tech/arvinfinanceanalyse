@@ -9,10 +9,12 @@ from backend.app.core_finance.pnl_attribution.workbench import (
     build_spread_attribution,
     build_tpl_market_correlation,
     build_volume_rate_attribution,
+    build_volume_rate_attribution_from_grouped_rows,
 )
 
 __all__ = [
     "build_volume_rate_attribution",
+    "build_volume_rate_attribution_from_grouped_rows",
     "build_tpl_market_correlation",
     "build_pnl_composition",
     "build_pnl_attribution_analysis_summary",

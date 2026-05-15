@@ -603,6 +603,89 @@ describe("createApiClient", () => {
             },
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_campisi_decision",
+            basis: "formal",
+            result_kind: "campisi.decision_grade",
+            formal_use_allowed: true,
+            source_version: "sv_campisi",
+            vendor_version: "vv_none",
+            rule_version: "rv_campisi",
+            cache_version: "cv_campisi",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            basis: "campisi_decision_grade_v1",
+            report_date: "2026-03-31",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            num_days: 30,
+            summary: {
+              formal_actual_pnl: 10,
+              explained_pnl: 10,
+              residual_noise: 0,
+              residual_ratio: 0,
+              valuation_change_516: 1,
+              fvoci_valuation_change_516: 0,
+              fvtpl_valuation_change_516: 1,
+              main_driver: "carry",
+              quality_flag: "ok",
+              bond_scope_row_count: 1,
+              out_of_scope_pnl_row_count: 0,
+            },
+            formal_pnl_view: {
+              total_actual_pnl: 10,
+              explained_pnl: 10,
+              residual_noise: 0,
+              components: {
+                carry: 10,
+                rate_level_effect: 0,
+                curve_shape_effect: 0,
+                credit_spread_effect: 0,
+                convexity_effect: 0,
+                realized_trading: 0,
+                manual_adjustment: 0,
+                selection_proxy: 0,
+                residual_noise: 0,
+              },
+              closure: {
+                status: "closed",
+                difference: 0,
+                basis: "fact_formal_pnl_fi.total_pnl",
+              },
+            },
+            valuation_oci_view: {
+              total_valuation_change_516: 1,
+              fvoci_valuation_change_516: 0,
+              fvtpl_valuation_change_516: 1,
+              rows_by_accounting_basis: [],
+              reinvestment: { implemented: false, message: "数据源不足" },
+            },
+            effects: [],
+            accounting_matrix: {},
+            ability_matrix: [],
+            risk_tensor_check: {},
+            residual_diagnostics: {
+              missing_curve_count: 0,
+              missing_spread_count: 0,
+              duplicate_position_keys: 0,
+              aggregated_position_groups: 1,
+              unmatched_pnl_rows: 0,
+              stale_curve_fallback_count: 0,
+              warnings: [],
+            },
+            warnings: [],
+            method_notes: [],
+          },
+        }),
       });
 
     const client = createApiClient({
@@ -614,6 +697,7 @@ describe("createApiClient", () => {
     await client.getPnlCampisiFourEffects({ endDate: "2026-03-31", lookbackDays: 30 });
     await client.getPnlCampisiEnhanced({ endDate: "2026-03-31", lookbackDays: 30 });
     await client.getPnlCampisiMaturityBuckets({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiDecisionGrade({ endDate: "2026-03-31", lookbackDays: 30 });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -632,6 +716,13 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://localhost:8000/api/pnl-attribution/campisi/maturity-buckets?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/pnl-attribution/campisi/decision-grade?end_date=2026-03-31&lookback_days=30",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
