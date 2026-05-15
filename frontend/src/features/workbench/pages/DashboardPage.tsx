@@ -1,9 +1,9 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
-import { useApiClient } from "../../../api/client";
+import { createApiClient, useApiClient } from "../../../api/client";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { tabularNumsStyle } from "../../../theme/designSystem";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
@@ -41,7 +41,10 @@ import {
 import { DashboardCoreMetricsSection } from "../dashboard/DashboardCoreMetricsSection";
 import { DashboardDailyChangesSection } from "../dashboard/DashboardDailyChangesSection";
 import { GovernancePills } from "../dashboard/GovernancePills";
-import { buildDashboardCockpitModel } from "../dashboard/dashboardCockpitModel";
+import {
+  buildDashboardCockpitModel,
+  type DashboardCockpitPreviewSignal,
+} from "../dashboard/dashboardCockpitModel";
 import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
 import { workbenchNavigation } from "../../../mocks/navigation";
 import { AgentPanel } from "../../agent/AgentPanel";
@@ -165,6 +168,204 @@ function buildReviewAlerts(alerts: DashboardAlert[]): DashboardReviewAlert[] {
   }));
 }
 
+function actionQueueTypeLabel(alert: DashboardReviewAlert): string {
+  if (alert.id === "mock-mode" || alert.id.startsWith("attention-")) {
+    return "治理管理";
+  }
+  if (alert.id === "partial-note") {
+    return "数据完整性";
+  }
+  if (alert.id.startsWith("metric-")) {
+    return "经营监控";
+  }
+  return "风险预警";
+}
+
+function actionQueuePriorityLabel(severity: DashboardReviewAlert["severity"]): string {
+  if (severity === "high") {
+    return "高";
+  }
+  if (severity === "medium") {
+    return "中";
+  }
+  return "低";
+}
+
+function actionQueueOwnerLabel(alert: DashboardReviewAlert): string {
+  if (alert.id === "mock-mode" || alert.id.startsWith("attention-")) {
+    return "治理负责人";
+  }
+  if (alert.id.startsWith("metric-")) {
+    return "经营分析";
+  }
+  return "值班复核";
+}
+
+function actionQueueStatus(alert: DashboardReviewAlert): {
+  label: string;
+  status: "blocked" | "pending" | "ready";
+} {
+  if (alert.severity === "high") {
+    return { label: "需处理", status: "blocked" };
+  }
+  if (alert.severity === "medium") {
+    return { label: "待复核", status: "pending" };
+  }
+  return { label: "观察中", status: "ready" };
+}
+
+function DashboardActionQueue({
+  alerts,
+  effectiveReportDate,
+}: {
+  alerts: readonly DashboardReviewAlert[];
+  effectiveReportDate: string;
+}) {
+  const queueRows = alerts.slice(0, 5);
+  const highCount = alerts.filter((alert) => alert.severity === "high").length;
+  const mediumCount = alerts.filter((alert) => alert.severity === "medium").length;
+  const lowCount = alerts.filter((alert) => alert.severity === "low").length;
+  const dueLabel = effectiveReportDate || "最新报告日";
+
+  return (
+    <section
+      data-testid="dashboard-action-queue"
+      className="dashboard-action-queue dashboard-home-panel"
+      aria-label="待处理事项"
+    >
+      <header className="dashboard-action-queue__toolbar">
+        <div className="dashboard-home-section-heading">
+          <span className="dashboard-home-section-eyebrow">复核队列</span>
+          <h2 className="dashboard-home-section-title">待处理事项</h2>
+        </div>
+        <div className="dashboard-action-queue__filters" role="list" aria-label="事项优先级">
+          <span className="dashboard-action-queue__filter" role="listitem" data-active="true">
+            全部 {alerts.length}
+          </span>
+          <span className="dashboard-action-queue__filter" role="listitem">
+            高优先级 {highCount}
+          </span>
+          <span className="dashboard-action-queue__filter" role="listitem">
+            中优先级 {mediumCount}
+          </span>
+          <span className="dashboard-action-queue__filter" role="listitem">
+            观察 {lowCount}
+          </span>
+        </div>
+      </header>
+      <div
+        className="dashboard-action-queue__table"
+        data-testid="dashboard-action-queue-table"
+        role="table"
+        aria-label="待处理事项列表"
+      >
+        <div className="dashboard-action-queue__row" role="row">
+          <span role="columnheader">#</span>
+          <span role="columnheader">事项标题</span>
+          <span role="columnheader">类型</span>
+          <span role="columnheader">优先级</span>
+          <span role="columnheader">来源</span>
+          <span role="columnheader">责任人</span>
+          <span role="columnheader">截至日期</span>
+          <span role="columnheader">状态</span>
+          <span role="columnheader">操作</span>
+        </div>
+        {queueRows.length > 0 ? (
+          queueRows.map((alert, index) => {
+            const status = actionQueueStatus(alert);
+            return (
+              <div key={alert.id} className="dashboard-action-queue__row" role="row">
+                <span role="cell" style={tabularNumsStyle}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <strong role="cell" title={alert.title}>
+                  {alert.title}
+                </strong>
+                <span role="cell">{actionQueueTypeLabel(alert)}</span>
+                <span
+                  className="dashboard-action-queue__priority"
+                  data-priority={alert.severity}
+                  role="cell"
+                >
+                  {actionQueuePriorityLabel(alert.severity)}
+                </span>
+                <span role="cell">{alert.sourceLabel}</span>
+                <span role="cell">{actionQueueOwnerLabel(alert)}</span>
+                <span role="cell" style={tabularNumsStyle}>
+                  {alert.severity === "high" ? "今日" : dueLabel}
+                </span>
+                <span
+                  className="dashboard-action-queue__status"
+                  data-status={status.status}
+                  role="cell"
+                >
+                  {status.label}
+                </span>
+                <span role="cell">
+                  <Link className="dashboard-action-queue__action" to={alert.actionTo}>
+                    {alert.actionLabel}
+                  </Link>
+                </span>
+              </div>
+            );
+          })
+        ) : (
+          <div className="dashboard-action-queue__row" role="row">
+            <span role="cell" style={tabularNumsStyle}>
+              00
+            </span>
+            <strong role="cell">暂无待处理事项</strong>
+            <span role="cell">经营监控</span>
+            <span className="dashboard-action-queue__priority" data-priority="low" role="cell">
+              低
+            </span>
+            <span role="cell">首页快照</span>
+            <span role="cell">值班复核</span>
+            <span role="cell" style={tabularNumsStyle}>
+              {dueLabel}
+            </span>
+            <span className="dashboard-action-queue__status" data-status="ready" role="cell">
+              已清空
+            </span>
+            <span role="cell">
+              <Link className="dashboard-action-queue__action" to="/decision-items">
+                查看
+              </Link>
+            </span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardCockpitSupplementPreview({
+  signals,
+}: {
+  signals: readonly DashboardCockpitPreviewSignal[];
+}) {
+  return (
+    <div
+      data-testid="dashboard-cockpit-supplement-preview"
+      className="dashboard-cockpit-supplement-preview"
+    >
+      {signals.map((signal) => (
+        <article
+          key={signal.id}
+          data-testid={`dashboard-cockpit-preview-${signal.id}`}
+          className="dashboard-cockpit-supplement-preview__item"
+          data-status={signal.status}
+          data-tone={signal.tone}
+        >
+          <span className="dashboard-cockpit-supplement-preview__label">{signal.label}</span>
+          <strong className="dashboard-cockpit-supplement-preview__value">{signal.value}</strong>
+          <span className="dashboard-cockpit-supplement-preview__detail">{signal.detail}</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function buildReviewEvidenceLabel(input: {
   domainsEffectiveDate: Record<string, string>;
   overviewMeta: ResultMeta | null;
@@ -212,6 +413,30 @@ function reportDateMismatch(expected: string, actual: string | undefined): boole
   return expectedTrimmed.length > 0 && actualTrimmed.length > 0 && expectedTrimmed !== actualTrimmed;
 }
 
+function readErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "unknown error";
+}
+
+function isNetworkUnavailableError(error: unknown): boolean {
+  const message = readErrorMessage(error).toLowerCase();
+  return [
+    "failed to fetch",
+    "fetch failed",
+    "networkerror",
+    "network request failed",
+    "err_connection_refused",
+    "connection refused",
+    "network unavailable",
+    "load failed",
+  ].some((part) => message.includes(part));
+}
+
 function DashboardSupplementalBlockedSection({
   testId,
   title,
@@ -247,22 +472,46 @@ function DashboardSupplementalBlockedSection({
 }
 
 export default function DashboardPage() {
-  const client = useApiClient();
+  const sourceClient = useApiClient();
+  const fallbackClient = useMemo(() => createApiClient({ mode: "mock" }), []);
   const [reportDate, setReportDate] = useState("");
   const [toolbarSearch, setToolbarSearch] = useState("");
   const [allowPartial, setAllowPartial] = useState(false);
   const [isDetailDrilldownOpen, setIsDetailDrilldownOpen] = useState(false);
+  const [isCockpitSupplementOpen, setIsCockpitSupplementOpen] = useState(false);
+  const [forceMockFallback, setForceMockFallback] = useState(false);
+  const [liveFallbackReason, setLiveFallbackReason] = useState<string | null>(null);
+  const dataClient = forceMockFallback ? fallbackClient : sourceClient;
+  const displayMode = sourceClient.mode;
+  const isLiveDataFallback = sourceClient.mode === "real" && forceMockFallback;
   const requestedDateLabel = reportDate || "latest";
 
   const snapshotQuery = useQuery({
-    queryKey: ["home-snapshot", client.mode, requestedDateLabel, allowPartial],
+    queryKey: ["home-snapshot", dataClient.mode, requestedDateLabel, allowPartial],
     queryFn: () =>
-      client.getHomeSnapshot({
+      dataClient.getHomeSnapshot({
         reportDate: reportDate || undefined,
         allowPartial,
       }),
     retry: false,
   });
+
+  useEffect(() => {
+    if (
+      sourceClient.mode === "real" &&
+      !forceMockFallback &&
+      snapshotQuery.isError &&
+      isNetworkUnavailableError(snapshotQuery.error)
+    ) {
+      setLiveFallbackReason(readErrorMessage(snapshotQuery.error));
+      setForceMockFallback(true);
+    }
+  }, [
+    forceMockFallback,
+    snapshotQuery.error,
+    snapshotQuery.isError,
+    sourceClient.mode,
+  ]);
 
   const { overviewEnv, attributionEnv } = useMemo(() => {
     const env = snapshotQuery.data;
@@ -317,34 +566,34 @@ export default function DashboardPage() {
   const supplementalReportDate = initialEffectiveReportDate || undefined;
 
   const coreMetricsQuery = useQuery({
-    queryKey: ["dashboard", "core-metrics", client.mode, supplementalReportDate ?? "pending-snapshot"],
-    queryFn: () => client.getCoreMetrics({ reportDate: supplementalReportDate }),
+    queryKey: ["dashboard", "core-metrics", dataClient.mode, supplementalReportDate ?? "pending-snapshot"],
+    queryFn: () => dataClient.getCoreMetrics({ reportDate: supplementalReportDate }),
     retry: false,
     staleTime: 60_000,
     enabled: Boolean(supplementalReportDate),
   });
 
   const dailyChangesQuery = useQuery({
-    queryKey: ["dashboard", "daily-changes", client.mode, supplementalReportDate ?? "pending-snapshot"],
-    queryFn: () => client.getDailyChanges({ reportDate: supplementalReportDate }),
+    queryKey: ["dashboard", "daily-changes", dataClient.mode, supplementalReportDate ?? "pending-snapshot"],
+    queryFn: () => dataClient.getDailyChanges({ reportDate: supplementalReportDate }),
     retry: false,
     staleTime: 60_000,
     enabled: Boolean(supplementalReportDate),
   });
 
   const marketRatesQuery = useQuery({
-    queryKey: ["dashboard", "cockpit-market-rates", client.mode],
-    queryFn: () => client.getMarketDataRates(),
+    queryKey: ["dashboard", "cockpit-market-rates", dataClient.mode],
+    queryFn: () => dataClient.getMarketDataRates(),
     retry: false,
     staleTime: 60_000,
   });
 
   const bondHeadlineQuery = useQuery({
     queryKey: dashboardBondHeadlineQueryKey(
-      client.mode,
+      dataClient.mode,
       supplementalReportDate ?? "pending-snapshot",
     ),
-    queryFn: () => client.getBondDashboardHeadlineKpis(supplementalReportDate ?? ""),
+    queryFn: () => dataClient.getBondDashboardHeadlineKpis(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
     enabled: Boolean(supplementalReportDate),
@@ -354,10 +603,10 @@ export default function DashboardPage() {
     queryKey: [
       "dashboard",
       "cockpit-portfolio-headlines",
-      client.mode,
+      dataClient.mode,
       supplementalReportDate ?? "pending-snapshot",
     ],
-    queryFn: () => client.getBondAnalyticsPortfolioHeadlines(supplementalReportDate ?? ""),
+    queryFn: () => dataClient.getBondAnalyticsPortfolioHeadlines(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
     enabled: Boolean(supplementalReportDate),
@@ -383,10 +632,10 @@ export default function DashboardPage() {
   );
 
   const researchCalendarQuery = useQuery({
-    queryKey: ["research-calendar", client.mode, calendarStartDate, calendarEndDate],
+    queryKey: ["research-calendar", dataClient.mode, calendarStartDate, calendarEndDate],
     queryFn: () =>
-      client.getResearchCalendarEvents(
-        client.mode === "real"
+      dataClient.getResearchCalendarEvents(
+        dataClient.mode === "real"
           ? {
               startDate: calendarStartDate,
               endDate: calendarEndDate,
@@ -423,13 +672,13 @@ export default function DashboardPage() {
           !initialEffectiveReportDate ||
           (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
         calendarIsError: researchCalendarQuery.isError,
-        isMockMode: client.mode !== "real",
+        isMockMode: dataClient.mode !== "real",
         heroMetricFallbackDelta: "读链路",
       }),
     [
       adapterOutput.verdict,
       attributionMeta,
-      client.mode,
+      dataClient.mode,
       coreMetricsQuery.data?.result.report_date,
       dailyChangesQuery.data?.result.report_date,
       initialEffectiveReportDate,
@@ -455,7 +704,7 @@ export default function DashboardPage() {
       buildDashboardCockpitModel({
         reportDate: effectiveReportDate,
         snapshotMode: snapshotResult?.mode,
-        isMockMode: client.mode !== "real",
+        isMockMode: dataClient.mode !== "real",
         coreMetrics: coreMetricsQuery.data?.result ?? null,
         dailyChanges: dailyChangesQuery.data?.result ?? null,
         bondHeadline: bondHeadlineQuery.data?.result ?? null,
@@ -465,7 +714,7 @@ export default function DashboardPage() {
       }),
     [
       bondHeadlineQuery.data?.result,
-      client.mode,
+      dataClient.mode,
       coreMetricsQuery.data?.result,
       dailyChangesQuery.data?.result,
       effectiveReportDate,
@@ -479,15 +728,15 @@ export default function DashboardPage() {
   const fallbackVerdict = useMemo<VerdictPayload>(
     () => ({
       conclusion:
-        client.mode !== "real" || snapshotPartialNote || attentionItems.length > 0
+        dataClient.mode !== "real" || snapshotPartialNote || attentionItems.length > 0
           ? "数据状态需先复核，再做方向性判断"
           : "当前指标平稳，等待下一组观测",
       tone:
-        client.mode !== "real" || snapshotPartialNote || attentionItems.length > 0
+        dataClient.mode !== "real" || snapshotPartialNote || attentionItems.length > 0
           ? "warning"
           : "neutral",
       reasons:
-        client.mode !== "real"
+        dataClient.mode !== "real"
           ? [
               {
                 label: "演示模式",
@@ -504,7 +753,7 @@ export default function DashboardPage() {
         },
       ],
     }),
-    [client.mode, snapshotPartialNote, attentionItems.length],
+    [dataClient.mode, snapshotPartialNote, attentionItems.length],
   );
 
   const reviewVerdict = useMemo(
@@ -633,8 +882,20 @@ export default function DashboardPage() {
     [allowPartial, reportDate],
   );
 
-  const toolbarModeLabel = client.mode === "real" ? "管理视角" : "演示视角";
-  const shouldRenderDetailDrilldown = client.mode !== "real" || isDetailDrilldownOpen;
+  const toolbarModeLabel = isLiveDataFallback
+    ? "演示回落"
+    : displayMode === "real"
+      ? "管理视角"
+      : "演示视角";
+  const shouldRenderDetailDrilldown = displayMode !== "real" || isDetailDrilldownOpen;
+  const handleRefresh = () => {
+    if (isLiveDataFallback) {
+      setLiveFallbackReason(null);
+      setForceMockFallback(false);
+      return;
+    }
+    void snapshotQuery.refetch();
+  };
 
   return (
     <section data-testid="fixed-income-dashboard-page" className="dashboard-home-shell">
@@ -652,6 +913,73 @@ export default function DashboardPage() {
           <span className="dashboard-home-toolbar__eyebrow">
             报告日 {effectiveReportDate || "最新可用"}
           </span>
+        </div>
+        <label className="dashboard-home-search dashboard-home-toolbar__search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            aria-label="搜索债券、指标、报告"
+            placeholder="搜索债券 / 指标 / 报告"
+            value={toolbarSearch}
+            onChange={(event) => setToolbarSearch(event.target.value)}
+          />
+        </label>
+        <div className="dashboard-home-actions dashboard-home-toolbar__actions">
+          <span
+            className={
+              displayMode === "real"
+                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
+                : "dashboard-home-view-pill dashboard-governance-tone-warning"
+            }
+          >
+            {toolbarModeLabel}
+          </span>
+          <label className="dashboard-home-control">
+            <span>报告日</span>
+            <input
+              aria-label="报告日"
+              type="date"
+              value={reportDate || effectiveReportDate || ""}
+              onChange={(event) => setReportDate(event.target.value)}
+              className="dashboard-home-date-input"
+              style={tabularNumsStyle}
+            />
+          </label>
+          <label className="dashboard-home-check">
+            <input
+              aria-label="允许历史日（含缺域）"
+              type="checkbox"
+              checked={allowPartial}
+              onChange={(event) => setAllowPartial(event.target.checked)}
+            />
+            含缺域
+          </label>
+          <span aria-hidden="true" className="dashboard-home-actions__divider" />
+          <Link
+            data-testid="dashboard-bank-ledger-header-link"
+            to="/bank-ledger-dashboard"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            银行台账
+          </Link>
+          <Link
+            to="/source-preview"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            报表中心
+          </Link>
+          <Link
+            to="/platform-config"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            中台配置
+          </Link>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="dashboard-home-action-button dashboard-home-action-button--primary"
+          >
+            {isLiveDataFallback ? "重试实时数据" : "刷新"}
+          </button>
         </div>
       </header>
 
@@ -697,7 +1025,7 @@ export default function DashboardPage() {
         </aside>
       </section>
 
-      {(client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote) && (
+      {(dataClient.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote) && (
         <section
           data-testid="dashboard-data-warning"
           className="dashboard-home-warning"
@@ -705,7 +1033,13 @@ export default function DashboardPage() {
           <div className="dashboard-home-warning__title">
             数据状态 · 需人工复核
           </div>
-          {client.mode !== "real" ? (
+          {isLiveDataFallback ? (
+            <div className="dashboard-home-warning__body">
+              实时数据源当前不可用，页面已自动回落到演示数据，避免首页整屏失效。当前错误：
+              {liveFallbackReason ?? "Failed to fetch"}
+            </div>
+          ) : null}
+          {!isLiveDataFallback && dataClient.mode !== "real" ? (
             <div className="dashboard-home-warning__body">
               当前页面正在使用模拟数据源，首页数字仅用于界面演示，不应直接作为业务判断依据。
             </div>
@@ -731,23 +1065,36 @@ export default function DashboardPage() {
         onRetry={() => void marketRatesQuery.refetch()}
       />
 
-      <DashboardCockpitMetricRail
-        className="dashboard-warm-kpi-ledger"
-        items={dashboardCockpit.metricRail}
-      />
-      <DashboardCockpitMainGrid
-        className="dashboard-warm-cockpit-main"
-        ticker={dashboardCockpit.marketTicker}
-        cards={dashboardCockpit.analysisCards}
-        waterfall={dashboardCockpit.waterfall}
-      />
-      <DashboardCockpitLowerGrid
-        className="dashboard-warm-cockpit-assist"
-        portfolioMix={dashboardCockpit.portfolioMix}
-        riskItems={dashboardCockpit.riskItems}
-        calendarItems={dashboardCockpit.calendarItems}
-        watchRows={dashboardCockpit.watchRows}
-      />
+      <details
+        data-testid="dashboard-cockpit-supplement"
+        className="dashboard-cockpit-supplement dashboard-progressive-disclosure"
+        open={isCockpitSupplementOpen}
+        onToggle={(event) => setIsCockpitSupplementOpen(event.currentTarget.open)}
+      >
+        <summary className="dashboard-progressive-disclosure__summary dashboard-cockpit-supplement__summary">
+          <div className="dashboard-home-section-heading">
+            <span className="dashboard-home-section-eyebrow">同报告日补充</span>
+            <h2 className="dashboard-progressive-disclosure__title">债券与组合读面及市场拆解</h2>
+          </div>
+          <span className="dashboard-progressive-disclosure__description">
+            展开查看 KPI 读面带与利率 / 持仓体感；不替代首页快照 KPI。
+          </span>
+          <span className="dashboard-progressive-disclosure__cue">展开</span>
+          <DashboardCockpitSupplementPreview signals={dashboardCockpit.previewSignals} />
+        </summary>
+        <DashboardCockpitMetricRail
+          className="dashboard-warm-kpi-ledger"
+          items={dashboardCockpit.metricRail}
+          omitHeader
+        />
+        <DashboardCockpitMainGrid
+          className="dashboard-warm-cockpit-main"
+          ticker={dashboardCockpit.marketTicker}
+          cards={dashboardCockpit.analysisCards}
+          waterfall={dashboardCockpit.waterfall}
+        />
+      </details>
+      <DashboardActionQueue alerts={reviewAlerts} effectiveReportDate={effectiveReportDate} />
       <section
         data-testid="dashboard-business-detail-strip"
         className="dashboard-business-detail-strip dashboard-cockpit-business-strip"
@@ -776,6 +1123,13 @@ export default function DashboardPage() {
           <DashboardDailyChangesSection query={dailyChangesQuery} />
         )}
       </section>
+      <DashboardCockpitLowerGrid
+        className="dashboard-warm-cockpit-assist"
+        portfolioMix={dashboardCockpit.portfolioMix}
+        riskItems={dashboardCockpit.riskItems}
+        calendarItems={dashboardCockpit.calendarItems}
+        watchRows={dashboardCockpit.watchRows}
+      />
       <section
         data-testid="dashboard-business-balance-summary"
         className="dashboard-business-balance-summary dashboard-business-balance-summary--terminal dashboard-home-panel"
@@ -880,87 +1234,6 @@ export default function DashboardPage() {
           </>
         ) : null}
       </details>
-
-      <section
-        data-testid="dashboard-action-ledger"
-        className="dashboard-action-ledger dashboard-warm-action-ledger dashboard-warm-download-ledger"
-        aria-label="dashboard-action-ledger"
-      >
-        <label className="dashboard-home-search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="搜索债券、指标、报告"
-            placeholder="搜索债券 / 指标 / 报告"
-            value={toolbarSearch}
-            onChange={(event) => setToolbarSearch(event.target.value)}
-          />
-        </label>
-        <div className="dashboard-home-actions">
-          <span
-            className={
-              client.mode === "real"
-                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
-                : "dashboard-home-view-pill dashboard-governance-tone-warning"
-            }
-          >
-            {toolbarModeLabel}
-          </span>
-          <label className="dashboard-home-control">
-            <span>报告日</span>
-            <input
-              aria-label="报告日"
-              type="date"
-              value={reportDate || effectiveReportDate || ""}
-              onChange={(event) => setReportDate(event.target.value)}
-              className="dashboard-home-date-input"
-              style={tabularNumsStyle}
-            />
-          </label>
-          <label className="dashboard-home-check">
-            <input
-              aria-label="允许历史日（含缺域）"
-              type="checkbox"
-              checked={allowPartial}
-              onChange={(event) => setAllowPartial(event.target.checked)}
-            />
-            含缺域
-          </label>
-          <span aria-hidden="true" className="dashboard-home-actions__divider" />
-          <Link
-            data-testid="dashboard-bank-ledger-header-link"
-            to="/bank-ledger-dashboard"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            银行台账
-          </Link>
-          <Link
-            to="/source-preview"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            报表中心
-          </Link>
-          <Link
-            to="/platform-config"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            中台配置
-          </Link>
-          <button
-            type="button"
-            onClick={() => void snapshotQuery.refetch()}
-            className="dashboard-home-action-button dashboard-home-action-button--primary"
-          >
-            刷新
-          </button>
-          <button
-            type="button"
-            disabled
-            className="dashboard-home-action-button dashboard-home-action-button--disabled"
-          >
-            导出
-          </button>
-        </div>
-      </section>
 
     </section>
   );

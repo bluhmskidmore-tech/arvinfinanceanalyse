@@ -48,6 +48,15 @@ export type DashboardCockpitMetricItem = {
   tone: DashboardCockpitTone;
 };
 
+export type DashboardCockpitPreviewSignal = {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+  status: DashboardCockpitSectionStatus;
+  tone: DashboardCockpitTone;
+};
+
 export type DashboardCockpitAnalysisCard = {
   id: string;
   title: string;
@@ -109,11 +118,29 @@ export type DashboardCockpitWatchRow = {
   status: DashboardCockpitSectionStatus;
 };
 
+export type DashboardCockpitAccountRow = {
+  id: string;
+  accountName: string;
+  segment: string;
+  exposure: string;
+  weight: string;
+  duration: string;
+  ytm: string;
+  dailyChange: string;
+  risk: string;
+  source: string;
+  route: string;
+  actionLabel: string;
+  status: DashboardCockpitSectionStatus;
+  tone: DashboardCockpitTone;
+};
+
 export type DashboardCockpitModel = {
   reportDate: string;
   sections: DashboardCockpitSection[];
   firstScreenSections: DashboardCockpitSection[];
   marketTicker: DashboardCockpitTickerItem[];
+  previewSignals: DashboardCockpitPreviewSignal[];
   metricRail: DashboardCockpitMetricItem[];
   analysisCards: DashboardCockpitAnalysisCard[];
   waterfall: DashboardCockpitWaterfallItem[];
@@ -121,6 +148,7 @@ export type DashboardCockpitModel = {
   riskItems: DashboardCockpitRiskItem[];
   calendarItems: DashboardCockpitCalendarItem[];
   watchRows: DashboardCockpitWatchRow[];
+  accountRows: DashboardCockpitAccountRow[];
 };
 
 export type DashboardCockpitModelInput = {
@@ -156,6 +184,12 @@ const ASSET_CLASS_LABELS: Record<string, string> = {
   credit: "信用债",
   rate: "利率债",
   other: "其他",
+};
+
+const ASSET_CLASS_ACCOUNT_ORDER: Record<string, number> = {
+  credit: 1,
+  rate: 2,
+  other: 3,
 };
 
 function cleanDate(value: string | null | undefined): string {
@@ -355,6 +389,16 @@ function labelForMarketPoint(point: ChoiceMacroLatestPoint): string {
   return configured?.label ?? point.series_name ?? point.series_id;
 }
 
+function findDayChange(
+  dailyChanges: DailyChangesResult | null | undefined,
+  reportDate: string,
+) {
+  if (!isSameReportDate(reportDate, dailyChanges?.report_date)) {
+    return null;
+  }
+  return dailyChanges?.periods.find((period) => period.period === "day") ?? null;
+}
+
 function cleanMarketUnit(unit: string | null | undefined): string {
   const cleanUnit = unit?.trim() ?? "";
   return cleanUnit && cleanUnit.toLowerCase() !== "unknown" ? cleanUnit : "";
@@ -514,6 +558,98 @@ function buildMetricRail(input: DashboardCockpitModelInput): DashboardCockpitMet
       hint: "规模口径",
       status: headlineAllowed || portfolioAllowed || coreAllowed ? "supplemental" : "blocked",
       tone: "neutral",
+    },
+  ];
+}
+
+function buildPreviewSignals(
+  input: DashboardCockpitModelInput,
+  marketTicker: readonly DashboardCockpitTickerItem[],
+): DashboardCockpitPreviewSignal[] {
+  const reportDate = input.reportDate;
+  const coreAllowed = isSameReportDate(reportDate, input.coreMetrics?.report_date);
+  const changesAllowed = isSameReportDate(reportDate, input.dailyChanges?.report_date);
+  const headlineAllowed = isSameReportDate(reportDate, input.bondHeadline?.report_date);
+  const portfolioAllowed = isSameReportDate(reportDate, input.portfolio?.report_date);
+  const sameDayCount = [coreAllowed, changesAllowed, headlineAllowed, portfolioAllowed].filter(Boolean).length;
+  const marketLabel =
+    marketTicker.length === 0
+      ? "\u5f85\u63a5\u5165"
+      : marketTicker.every((item) => item.status === "landed")
+        ? "\u540c\u65e5"
+        : "\u6700\u8fd1\u4ea4\u6613\u65e5";
+  const coverageStatus: DashboardCockpitSectionStatus =
+    sameDayCount === 4 ? "supplemental" : sameDayCount === 0 ? "blocked" : "stale";
+  const coverageTone: DashboardCockpitTone = sameDayCount === 4 ? "positive" : "warning";
+
+  const dayChange = findDayChange(input.dailyChanges, reportDate);
+  const dayDrivers = dayChange
+    ? [
+        { label: "\u503a\u5238\u6295\u8d44", value: dayChange.bond_investments_change },
+        { label: "\u540c\u4e1a\u8d44\u4ea7", value: dayChange.interbank_assets_change },
+        { label: "\u540c\u4e1a\u8d1f\u503a", value: dayChange.interbank_liabilities_change },
+      ]
+        .map((driver) => ({
+          ...driver,
+          raw: Math.abs(numericRaw(driver.value) ?? -1),
+          display: numericDisplay(driver.value),
+        }))
+        .filter((driver) => driver.raw >= 0)
+        .sort((left, right) => right.raw - left.raw)
+    : [];
+  const topDayDriver = dayDrivers[0] ?? null;
+
+  const concentrationValue = portfolioAllowed
+    ? percentDisplay(input.portfolio?.issuer_top5_weight)
+    : EMPTY_DISPLAY;
+  const concentrationDetail = portfolioAllowed
+    ? `\u4fe1\u7528\u5360\u6bd4 ${percentDisplay(input.portfolio?.credit_weight)}`
+    : "\u7b49\u5f85\u540c\u65e5\u62a5\u544a\u65e5\u7ec4\u5408\u7ed3\u6784";
+
+  const durationRiskValue =
+    input.bondHeadline?.kpis.total_dv01 ?? input.portfolio?.total_dv01;
+  const durationRiskDuration =
+    input.bondHeadline?.kpis.weighted_duration ?? input.portfolio?.weighted_duration;
+  const durationRiskAllowed =
+    (headlineAllowed || portfolioAllowed) &&
+    (hasNumericValue(durationRiskValue) || hasNumericValue(durationRiskDuration));
+
+  return [
+    {
+      id: "coverage",
+      label: "\u540c\u65e5\u8986\u76d6",
+      value: `${sameDayCount}/4`,
+      detail: `\u8865\u5145\u8bfb\u9762 / \u5e02\u573a ${marketLabel} / \u5feb\u7167 ${input.snapshotMode ?? "\u5f85\u5b9a"}`,
+      status: coverageStatus,
+      tone: coverageTone,
+    },
+    {
+      id: "net-change",
+      label: "\u65e5\u51c0\u53d8\u52a8",
+      value: dayChange ? numericDisplay(dayChange.net_change) : EMPTY_DISPLAY,
+      detail: topDayDriver
+        ? `\u4e3b\u62d6\u52a8 ${topDayDriver.label} ${topDayDriver.display}`
+        : "\u7b49\u5f85\u540c\u65e5\u62a5\u544a\u65e5\u53d8\u52a8\u8bfb\u9762",
+      status: dayChange ? "supplemental" : "blocked",
+      tone: dayChange ? numericTone(dayChange.net_change) : "warning",
+    },
+    {
+      id: "concentration",
+      label: "\u98ce\u9669\u96c6\u4e2d",
+      value: concentrationValue,
+      detail: concentrationDetail,
+      status: portfolioAllowed ? "supplemental" : "blocked",
+      tone: "warning",
+    },
+    {
+      id: "duration-dv01",
+      label: "\u5229\u7387\u98ce\u9669",
+      value: durationRiskAllowed ? dv01Display(durationRiskValue) : EMPTY_DISPLAY,
+      detail: durationRiskAllowed
+        ? `\u4e45\u671f ${durationDisplay(durationRiskDuration)}`
+        : "\u7b49\u5f85\u540c\u65e5\u62a5\u544a\u65e5\u98ce\u9669\u8bfb\u9762",
+      status: durationRiskAllowed ? "supplemental" : "blocked",
+      tone: durationRiskAllowed ? "neutral" : "warning",
     },
   ];
 }
@@ -854,9 +990,114 @@ function buildWatchRows(input: DashboardCockpitModelInput): DashboardCockpitWatc
   ];
 }
 
+function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAccountRow[] {
+  const headlineAllowed = isSameReportDate(input.reportDate, input.bondHeadline?.report_date);
+  const portfolioAllowed = isSameReportDate(input.reportDate, input.portfolio?.report_date);
+  const headline = headlineAllowed ? input.bondHeadline : null;
+  const portfolio = portfolioAllowed ? input.portfolio : null;
+  const dayChange = findDayChange(input.dailyChanges, input.reportDate);
+
+  if (!portfolio) {
+    return [
+      {
+        id: "account-blocked",
+        accountName: "\u7ec4\u5408\u8bfb\u9762\u672a\u540c\u65e5",
+        segment: "\u6cbb\u7406",
+        exposure: EMPTY_DISPLAY,
+        weight: EMPTY_DISPLAY,
+        duration: EMPTY_DISPLAY,
+        ytm: EMPTY_DISPLAY,
+        dailyChange: EMPTY_DISPLAY,
+        risk: EMPTY_DISPLAY,
+        source: "\u7ec4\u5408\u7ed3\u6784\u8bfb\u9762\u672a\u8fd4\u56de\u540c\u65e5\u62a5\u544a\u65e5\u3002",
+        route: "/platform-config",
+        actionLabel: "\u6cbb\u7406\u5b57\u6bb5",
+        status: "blocked",
+        tone: "warning",
+      },
+    ];
+  }
+
+  const totalMarketValue = portfolio.total_market_value ?? headline?.kpis.total_market_value;
+  const totalDv01 = headline?.kpis.total_dv01 ?? portfolio.total_dv01;
+  const totalChange = dayChange?.net_change ?? dayChange?.bond_investments_change;
+
+  const rows: DashboardCockpitAccountRow[] = [
+    {
+      id: "account-bond-portfolio",
+      accountName: "\u503a\u5238\u7ec4\u5408",
+      segment: "\u7ec4\u5408",
+      exposure: yuanYiDisplay(totalMarketValue),
+      weight: hasNumericValue(totalMarketValue) ? "100.00%" : EMPTY_DISPLAY,
+      duration: durationDisplay(headline?.kpis.weighted_duration ?? portfolio.weighted_duration),
+      ytm: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio.weighted_ytm),
+      dailyChange: numericDisplay(totalChange),
+      risk: dv01Display(totalDv01),
+      source: "\u7ec4\u5408\u89c4\u6a21\u3001\u6536\u76ca\u7387\u3001\u4e45\u671f\u4e0e DV01 \u540c\u6b65\u590d\u6838\u3002",
+      route: "/bond-analysis",
+      actionLabel: "\u770b\u7ec4\u5408",
+      status: "supplemental",
+      tone: numericTone(totalChange),
+    },
+  ];
+
+  const assetRows = portfolio.by_asset_class
+    .filter((item) => hasNumericValue(item.weight) || hasNumericValue(item.market_value))
+    .slice()
+    .sort((left, right) => {
+      const leftOrder = ASSET_CLASS_ACCOUNT_ORDER[left.asset_class] ?? 99;
+      const rightOrder = ASSET_CLASS_ACCOUNT_ORDER[right.asset_class] ?? 99;
+      return leftOrder - rightOrder || left.asset_class.localeCompare(right.asset_class);
+    })
+    .slice(0, 3)
+    .map((item): DashboardCockpitAccountRow => {
+      const label = ASSET_CLASS_LABELS[item.asset_class] ?? item.asset_class;
+      return {
+        id: `account-${item.asset_class}`,
+        accountName: label,
+        segment: "\u8d44\u4ea7\u7c7b",
+        exposure: yuanYiDisplay(item.market_value),
+        weight: percentDisplay(item.weight),
+        duration: durationDisplay(item.duration),
+        ytm: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio.weighted_ytm),
+        dailyChange: numericDisplay(dayChange?.bond_investments_change),
+        risk: `DV01 ${dv01Display(item.dv01)}`,
+        source: `${label}\u8d44\u4ea7\u66b4\u9732\u4e0e\u4e45\u671f\u7ed3\u6784\u3002`,
+        route: "/bond-analysis",
+        actionLabel: "\u770b\u8d44\u4ea7",
+        status: "supplemental",
+        tone: numericTone(dayChange?.bond_investments_change),
+      };
+    });
+
+  rows.push(...assetRows);
+
+  if (hasNumericValue(portfolio.total_dv01) || hasNumericValue(portfolio.weighted_duration)) {
+    rows.push({
+      id: "account-risk-review",
+      accountName: "\u98ce\u9669\u590d\u6838",
+      segment: "\u98ce\u9669",
+      exposure: yuanYiDisplay(totalMarketValue),
+      weight: percentDisplay(portfolio.issuer_top5_weight),
+      duration: durationDisplay(portfolio.weighted_duration),
+      ytm: percentDisplay(portfolio.credit_weight),
+      dailyChange: numericDisplay(dayChange?.net_change),
+      risk: dv01Display(portfolio.total_dv01),
+      source: "DV01 / \u4e45\u671f / \u96c6\u4e2d\u5ea6\u8054\u5408\u590d\u6838\u3002",
+      route: "/risk-tensor",
+      actionLabel: "\u770b\u98ce\u9669",
+      status: "supplemental",
+      tone: "warning",
+    });
+  }
+
+  return rows;
+}
+
 export function buildDashboardCockpitModel(input: DashboardCockpitModelInput): DashboardCockpitModel {
   const reportDate = cleanDate(input.reportDate);
   const marketTicker = buildMarketTicker(input.marketPoints, reportDate);
+  const previewSignals = buildPreviewSignals(input, marketTicker);
   const hasMarket = marketTicker.length > 0;
   const hasStaleMarket = marketTicker.some((item) => item.status === "stale");
 
@@ -932,6 +1173,7 @@ export function buildDashboardCockpitModel(input: DashboardCockpitModelInput): D
     sections,
     firstScreenSections,
     marketTicker,
+    previewSignals,
     metricRail: buildMetricRail(input),
     analysisCards: buildAnalysisCards({
       ticker: marketTicker,
@@ -948,6 +1190,7 @@ export function buildDashboardCockpitModel(input: DashboardCockpitModelInput): D
     riskItems: buildRiskItems(input.portfolio, reportDate),
     calendarItems: buildCalendarItems(input.calendarItems),
     watchRows: buildWatchRows(input),
+    accountRows: buildAccountRows(input),
   };
 }
 

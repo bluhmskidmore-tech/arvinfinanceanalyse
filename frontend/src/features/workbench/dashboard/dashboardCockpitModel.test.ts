@@ -203,6 +203,18 @@ describe("buildDashboardCockpitModel", () => {
     expect(model.watchRows.map((row) => row.code)).toEqual(["久期", "信用", "DV01"]);
     expect(model.watchRows.map((row) => row.actionLabel)).toEqual(["看久期", "看信用", "看风险"]);
     expect(model.watchRows.map((row) => row.route)).toEqual(["/bond-analysis", "/bond-analysis", "/risk-tensor"]);
+    expect(model.accountRows.map((row) => row.accountName)).toEqual([
+      "债券组合",
+      "信用债",
+      "利率债",
+      "风险复核",
+    ]);
+    expect(model.accountRows.map((row) => row.route)).toEqual([
+      "/bond-analysis",
+      "/bond-analysis",
+      "/bond-analysis",
+      "/risk-tensor",
+    ]);
     expect(model.watchRows.map((row) => row.code).join(" ")).not.toMatch(/PORT-/i);
   });
 
@@ -272,6 +284,14 @@ describe("buildDashboardCockpitModel", () => {
         status: "blocked",
         route: "/platform-config",
         actionLabel: "治理字段",
+      }),
+    ]);
+    expect(model.accountRows).toEqual([
+      expect.objectContaining({
+        id: "account-blocked",
+        status: "blocked",
+        route: "/platform-config",
+        source: "组合结构读面未返回同日报告日。",
       }),
     ]);
   });
@@ -348,12 +368,32 @@ describe("buildDashboardCockpitModel", () => {
       route: "/bond-analysis",
       actionLabel: "看信用",
     });
+    expect(model.accountRows[0]).toMatchObject({
+      accountName: "债券组合",
+      exposure: "3,438.23 亿",
+      weight: "100.00%",
+      duration: "4.14",
+      ytm: "2.57%",
+      risk: "10,615.59 万",
+      route: "/bond-analysis",
+      status: "supplemental",
+    });
+    expect(model.accountRows[1]).toMatchObject({
+      accountName: "信用债",
+      exposure: "1,005.70 亿",
+      weight: "29.25%",
+      duration: "2.40",
+      ytm: "2.57%",
+      risk: "DV01 2,357.21 万",
+      route: "/bond-analysis",
+    });
 
     const cockpitCopy = [
       ...model.metricRail.map((item) => item.hint),
       ...model.portfolioMix.map((item) => item.detail),
       ...model.riskItems.map((item) => item.hint),
       ...model.watchRows.map((row) => row.reason),
+      ...model.accountRows.map((row) => row.source),
     ].join(" ");
     expect(cockpitCopy).not.toMatch(/headline|portfolio headlines|daily changes|adapter|mock/i);
   });
@@ -392,6 +432,92 @@ describe("buildDashboardCockpitModel", () => {
         id: "portfolio-risk-empty",
         status: "blocked",
         value: "--",
+      }),
+    ]);
+  });
+
+  it("builds compact supplement preview signals from same-day coverage, daily move, and risk reads", () => {
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: coreMetrics(),
+      dailyChanges: dailyChanges(),
+      bondHeadline: bondHeadline(),
+      portfolio: portfolio(),
+      marketPoints: [macroPoint({ series_id: "CA.DR007", series_name: "DR007" })],
+      calendarItems: [],
+    });
+
+    expect(model.previewSignals).toEqual([
+      expect.objectContaining({
+        id: "coverage",
+        value: "4/4",
+        status: "supplemental",
+      }),
+      expect.objectContaining({
+        id: "net-change",
+        value: expect.stringContaining("2.95"),
+        detail: expect.stringContaining("3.21"),
+        status: "supplemental",
+      }),
+      expect.objectContaining({
+        id: "concentration",
+        value: "41.35%",
+        detail: expect.stringContaining("29.25%"),
+        status: "supplemental",
+      }),
+      expect.objectContaining({
+        id: "duration-dv01",
+        value: expect.stringContaining("106,155,944"),
+        detail: expect.stringContaining("4.14"),
+        status: "supplemental",
+      }),
+    ]);
+  });
+
+  it("keeps supplement preview signals explicit when same-day supplement reads are blocked", () => {
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: coreMetrics("2026-03-31"),
+      dailyChanges: dailyChanges("2026-03-31"),
+      bondHeadline: bondHeadline("2026-03-31"),
+      portfolio: portfolio("2026-03-31"),
+      marketPoints: [
+        macroPoint({
+          series_id: "CA.BRENT",
+          series_name: "Brent",
+          trade_date: "2026-04-27",
+          value_numeric: 113.89,
+          unit: "USD/bbl",
+        }),
+      ],
+      calendarItems: [],
+    });
+
+    expect(model.previewSignals).toEqual([
+      expect.objectContaining({
+        id: "coverage",
+        value: "0/4",
+        detail: expect.stringContaining("strict"),
+        status: "blocked",
+      }),
+      expect.objectContaining({
+        id: "net-change",
+        value: "--",
+        status: "blocked",
+      }),
+      expect.objectContaining({
+        id: "concentration",
+        value: "--",
+        status: "blocked",
+      }),
+      expect.objectContaining({
+        id: "duration-dv01",
+        value: "--",
+        status: "blocked",
       }),
     ]);
   });
