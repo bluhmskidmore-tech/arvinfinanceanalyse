@@ -1489,7 +1489,7 @@ def _load_risk_exit_snapshots(
         placeholders = ",".join("?" for _ in stock_codes)
         history_rows = conn.execute(
             f"""
-            select stock_code, close_value, source_version, vendor_version
+            select stock_code, close_value, volume, source_version, vendor_version
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
@@ -1503,18 +1503,21 @@ def _load_risk_exit_snapshots(
         conn.close()
 
     close_history_by_code: dict[str, list[float]] = {}
+    volume_history_by_code: dict[str, list[float]] = {}
     history_sources: list[str] = []
     history_vendors: list[str] = []
     for row in history_rows:
         stock_code = str(row[0] or "")
         close_value = _safe_float(row[1])
-        if not stock_code or close_value is None:
+        volume_value = _safe_float(row[2])
+        if not stock_code or close_value is None or volume_value is None:
             continue
         close_history_by_code.setdefault(stock_code, []).append(close_value)
-        if row[2]:
-            history_sources.append(str(row[2]))
+        volume_history_by_code.setdefault(stock_code, []).append(volume_value)
         if row[3]:
-            history_vendors.append(str(row[3]))
+            history_sources.append(str(row[3]))
+        if row[4]:
+            history_vendors.append(str(row[4]))
 
     snapshots = [
         RiskExitSnapshot(
@@ -1523,6 +1526,7 @@ def _load_risk_exit_snapshots(
             entry_cost=row[2],
             bars_since_entry=row[3],
             close_history=close_history_by_code.get(str(row[0] or ""), []),
+            volume_history=volume_history_by_code.get(str(row[0] or ""), []),
         )
         for row in position_rows
         if row[0]
