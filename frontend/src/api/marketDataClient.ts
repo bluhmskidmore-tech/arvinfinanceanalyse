@@ -640,7 +640,7 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
     },
     stock_candidates: {
       as_of_date: resolvedDate,
-      formula_version: "rv_livermore_stock_candidates_bundle_v1",
+      formula_version: "rv_livermore_stock_candidates_bundle_v6",
       market_state: "WARM",
       input_stock_count: 4,
       candidate_count: 2,

@@ -60,7 +60,7 @@ def _base_valid_snapshot(market_hot: bool = False) -> MeanReversionSnapshot:
 def test_valid_candidate_is_included() -> None:
     result = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=[_base_valid_snapshot()],
     )
     payload = cast(dict[str, Any], result.payload)
@@ -88,7 +88,7 @@ def test_insufficient_history_excluded() -> None:
     )
     result = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=[snap],
     )
     payload = cast(dict[str, Any], result.payload)
@@ -117,7 +117,7 @@ def test_no_drawdown_excluded() -> None:
     )
     payload = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=[bad],
     ).payload
     assert cast(dict[str, Any], payload)["candidate_count"] == 0
@@ -142,7 +142,7 @@ def test_no_stabilization_excluded() -> None:
     )
     payload = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=[bad],
     ).payload
     assert cast(dict[str, Any], payload)["candidate_count"] == 0
@@ -168,7 +168,7 @@ def test_low_volume_excluded() -> None:
     )
     payload = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=[bad],
     ).payload
     assert cast(dict[str, Any], payload)["candidate_count"] == 0
@@ -186,14 +186,17 @@ def test_hot_market_returns_empty() -> None:
     assert payload["excluded_stock_count"] >= 1
 
 
-def test_off_market_runs() -> None:
+def test_off_market_returns_empty() -> None:
+    """OFF 状态下样本胜率 36% / -1.16%，不再放行。"""
     result = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
         market_state="OFF",
         snapshots=[_base_valid_snapshot()],
     )
     payload = cast(dict[str, Any], result.payload)
-    assert payload["candidate_count"] >= 1
+    assert payload["items"] == []
+    assert payload["candidate_count"] == 0
+    assert payload["excluded_stock_count"] >= 1
 
 
 
@@ -230,7 +233,7 @@ def test_sorted_by_score_descending() -> None:
 
     result = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=[quiet, loud],
     )
     items = cast(list[dict[str, Any]], cast(dict[str, Any], result.payload)["items"])
@@ -258,7 +261,7 @@ def test_max_20_candidates() -> None:
         snaps[index] = patched
     payload = compute_mean_reversion_candidates(
         as_of_date="2026-05-09",
-        market_state="OFF",
+        market_state="WARM",
         snapshots=snaps,
     ).payload
     p = cast(dict[str, Any], payload)

@@ -4,7 +4,7 @@ import math
 from collections.abc import Mapping
 
 DISCLAIMER = "Observation-only output. This service does not generate trading instructions."
-ENTRY_OBSERVATION_STATES = {"WARM", "HOT", "OVERHEAT"}
+ENTRY_OBSERVATION_STATES = {"WARM", "HOT"}
 MACRO_MULTIPLIERS = {
     "supportive": 1.0,
     "neutral": 0.5,

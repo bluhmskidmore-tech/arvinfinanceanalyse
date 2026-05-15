@@ -174,6 +174,45 @@ def test_build_livermore_signal_confluence_keeps_candidate_price_facts_visible_b
     assert "Stock 000002.SZ is missing EMA10; invalidation reference price is unavailable." in diagnostics
 
 
+def test_build_livermore_signal_confluence_overheat_stays_observe_only_even_when_macro_is_supportive() -> None:
+    """OVERHEAT 历史回测 win_5d=41.1% / avg=-0.09%，任何 macro 下都不放行新观察入场。"""
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "OVERHEAT",
+                "exposure": 1.0,
+            },
+            "stock_candidates": {
+                "items": [
+                    {
+                        "stock_code": "000003.SZ",
+                        "stock_name": "Gamma",
+                        "breakout_level": 33.0,
+                        "close": 33.4,
+                        "ema10": 31.2,
+                    }
+                ]
+            },
+        },
+        macro_payload={
+            "macro_environment": {
+                "composite_score": -0.5,
+            }
+        },
+    )
+
+    macro_context = cast(dict[str, Any], result["macro_context"])
+    assert macro_context["status"] == "supportive"
+
+    strategy_context = cast(dict[str, Any], result["strategy_context"])
+    assert strategy_context["market_gate_state"] == "OVERHEAT"
+    assert strategy_context["allows_new_entry_observations"] is False
+
+    entry_observations = cast(list[dict[str, Any]], result["entry_observations"])
+    assert entry_observations[0]["action"] == "observe_only"
+
+
 def test_build_livermore_signal_confluence_uses_observe_only_when_adversarial_gate_blocks() -> None:
     result = _build_livermore_signal_confluence(
         as_of_date="2026-05-02",
@@ -492,17 +531,17 @@ def test_build_livermore_signal_confluence_projects_backtest_window_summary_into
                     "trade_date": "2026-04-30",
                     "status": "unsupported",
                     "reason_code": "missing_daily_limit_flags",
-                    "message": "daily_limit_flags absent; stock_candidate and theme_breakout replay unsupported for 2026-04-30.",
+                    "message": "daily_limit_flags absent; Livermore strategy replay unsupported for 2026-04-30.",
                     "affects_completed_stats": False,
-                    "signal_kinds": ["stock_candidate", "theme_breakout"],
+                    "signal_kinds": ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
                 },
                 {
                     "trade_date": "2026-05-06",
                     "status": "completed",
                     "reason_code": "no_strategy_signals",
-                    "message": "Full replay coverage produced no Livermore stock_candidate or theme_breakout rows for 2026-05-06.",
+                    "message": "Full replay coverage produced no Livermore strategy signal rows for 2026-05-06.",
                     "affects_completed_stats": True,
-                    "signal_kinds": ["stock_candidate", "theme_breakout"],
+                    "signal_kinds": ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
                 },
                 {
                     "trade_date": "2026-05-07",
@@ -538,12 +577,12 @@ def test_build_livermore_signal_confluence_projects_backtest_window_summary_into
         "proxy_only_candidate_rows": 1,
         "included_completed_stats_dates": ["2026-05-06"],
         "blocked_dates": [
-            {
-                "trade_date": "2026-04-30",
-                "status": "unsupported",
-                "reason_code": "missing_daily_limit_flags",
-                "signal_kinds": ["stock_candidate", "theme_breakout"],
-            },
+                {
+                    "trade_date": "2026-04-30",
+                    "status": "unsupported",
+                    "reason_code": "missing_daily_limit_flags",
+                    "signal_kinds": ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"],
+                },
             {
                 "trade_date": "2026-05-07",
                 "status": "proxy_only",

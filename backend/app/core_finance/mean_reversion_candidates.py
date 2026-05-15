@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_mean_reversion_candidates_v1"
-ACTIVE_MARKET_STATES = frozenset({"OFF", "WARM"})
+FORMULA_VERSION = "rv_mean_reversion_candidates_v2"
+ACTIVE_MARKET_STATES = frozenset({"WARM"})
 # 60 个交易日高点窗口需要「今日收盘价之前」一共 60 根；加上今日至少共 61 根。
 MIN_HISTORY_BARS = 61
 MAX_RANKED = 20

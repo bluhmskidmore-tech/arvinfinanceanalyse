@@ -406,9 +406,19 @@ describe("MarketDataPage", () => {
     });
 
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+    expect(screen.getByTestId("market-data-page")).toHaveAttribute("data-layout-rev", "2026-05-15d");
+    expect(screen.getByTestId("market-data-readiness-verdict")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-overview-readiness-label")).toHaveTextContent("读面就绪");
+    expect(screen.getByTestId("market-data-overview-secondary-label")).toHaveTextContent("辅助观察");
     expect(screen.getByText(/观察日期/)).toBeInTheDocument();
     expect(screen.getByText("市场概览")).toBeInTheDocument();
     expect(screen.getByText("利率、资金、宏观深度与成交观察")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-macro-workbench")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("证据与口径（只读）");
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent(
+      "formal_use_allowed",
+    );
+    expect(screen.getByTestId("market-data-source-pending-deck")).toBeInTheDocument();
     expect(screen.getByText("Livermore 趋势门控")).toBeInTheDocument();
     expect(screen.queryByText("宏观序列与分析观察")).not.toBeInTheDocument();
     expect(screen.queryByText("目录与结果元数据")).not.toBeInTheDocument();
@@ -530,8 +540,23 @@ describe("MarketDataPage", () => {
     expect(rateTable).toHaveTextContent("1.94%");
     expect(rateTable).toHaveTextContent("-1bp");
     expect(rateTable).toHaveTextContent("2026-04-30");
-    expect(rateTable).toHaveTextContent("sv_formal_rates_terminal_test");
     expect(rateTable).not.toHaveTextContent("4,856");
+    const sharedMeta = screen.getByTestId("market-data-workbench-shared-meta");
+    expect(sharedMeta).toHaveTextContent("口径 formal");
+    expect(sharedMeta).toHaveTextContent("正式可用 是");
+    expect(sharedMeta).toHaveTextContent("供应商 ok");
+    expect(sharedMeta).toHaveTextContent("降级 none");
+    expect(sharedMeta).toHaveTextContent("sv_formal_rates_terminal_test");
+
+    const evidenceRail = screen.getByTestId("market-data-macro-evidence-rail");
+    expect(evidenceRail).toHaveTextContent("formal rates");
+    expect(evidenceRail).toHaveTextContent("formal_use_allowed=true");
+    expect(evidenceRail).toHaveTextContent("fallback=none");
+    expect(evidenceRail).toHaveTextContent("vendor_status=ok");
+    expect(evidenceRail).toHaveTextContent("sv_formal_rates_terminal_test");
+    expect(screen.getByTestId("market-data-source-pending-summary")).toHaveTextContent(
+      "source-pending",
+    );
 
     const moneyTable = screen.getByTestId("market-data-money-market-table");
     expect(moneyTable).toHaveTextContent("公开市场7天逆回购利率");
@@ -542,6 +567,51 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-bond-futures-source-pending")).toHaveTextContent("source-pending");
     expect(screen.getByTestId("market-data-bond-trades-source-pending")).toHaveTextContent("source-pending");
     expect(screen.getByTestId("market-data-credit-trades-source-pending")).toHaveTextContent("source-pending");
+
+    await waitFor(() => {
+      expect(getMarketDataRates).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("renders explicit empty states for missing rate and money sources instead of demo rows", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        trace_id: "tr_empty_terminal_test",
+        source_version: "sv_empty_terminal_test",
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: [],
+      },
+    }));
+    const getChoiceMacroLatest = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical" as const,
+        result_kind: "macro.choice.latest",
+        formal_use_allowed: false,
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: [],
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getMarketDataRates,
+      getChoiceMacroLatest,
+    });
+
+    expect(await screen.findByTestId("market-data-rate-quotes-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-rate-quotes-empty")).toHaveTextContent(/\S/);
+    expect(screen.getByTestId("market-data-money-market-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-money-market-empty")).toHaveTextContent(/\S/);
+    expect(screen.queryByText("EMM00166466")).not.toBeInTheDocument();
+    expect(screen.queryByText("公开市场7天逆回购利率")).not.toBeInTheDocument();
+    expect(screen.queryByText("4,856")).not.toBeInTheDocument();
+    expect(screen.queryByText("24,331")).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(getMarketDataRates).toHaveBeenCalledTimes(1);
@@ -652,7 +722,15 @@ describe("MarketDataPage", () => {
             evidence: "Choice limit-up quality catalog is confirmed, but landed inputs are unavailable; the market gate is capped at the trend-only slice.",
           },
         ],
-        supported_outputs: ["market_gate" as const, "sector_rank" as const, "stock_candidates" as const, "risk_exit" as const],
+        supported_outputs: [
+          "market_gate" as const,
+          "sector_rank" as const,
+          "stock_candidates" as const,
+          "mean_reversion_candidates" as const,
+          "factor_screen_candidates" as const,
+          "theme_breakout" as const,
+          "risk_exit" as const,
+        ],
         unsupported_outputs: [],
         sector_rank: {
           as_of_date: "2026-04-29",
@@ -701,6 +779,86 @@ describe("MarketDataPage", () => {
             },
           ],
         },
+        mean_reversion_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_mean_reversion_candidates_v2",
+          market_state: "WARM" as const,
+          input_stock_count: 4,
+          candidate_count: 1,
+          excluded_stock_count: 3,
+          insufficient_history_count: 0,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000003.SZ",
+              stock_name: "Gamma",
+              sector_code: "801003",
+              sector_name: "医药",
+              close: 8.2,
+              drawdown_20d: -0.18,
+              drawdown_60d: -0.28,
+              ma5: 8,
+              ma10: 8.1,
+              close_strength: 0.62,
+              vol_ratio: 1.8,
+              score: 0.74,
+            },
+          ],
+        },
+        factor_screen_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_factor_screen_candidates_v1",
+          market_state: "WARM" as const,
+          input_stock_count: 4,
+          candidate_count: 1,
+          coverage_note: "因子数据覆盖 4/4 只",
+          items: [
+            {
+              rank: 1,
+              stock_code: "000004.SZ",
+              stock_name: "Factor Delta",
+              sector_code: "801004",
+              sector_name: "电子",
+              industry: "电子",
+              score: 0.8123,
+              pe: 12.4,
+              pb: 1.6,
+              roe: 0.143,
+              gross_margin: 0.32,
+              three_month_return: 0.056,
+              twelve_month_return: 0.184,
+              dividend_yield: 0.021,
+            },
+          ],
+        },
+        theme_breakout: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_livermore_theme_breakout_proxy_v1",
+          is_proxy: true,
+          theme_count: 1,
+          items: [
+            {
+              rank: 1,
+              as_of_date: "2026-04-29",
+              theme_key: "ai_proxy",
+              theme_name: "AI proxy",
+              parent_sector_code: "801001",
+              parent_sector_name: "AI",
+              parent_sector_rank: 1,
+              member_count: 3,
+              advance_count: 3,
+              advance_ratio: 1,
+              strong_stock_count: 3,
+              limit_stock_count: 1,
+              avg_pctchange: 8.35,
+              avg_turn: 4.2,
+              avg_amplitude: 6.1,
+              observation_only: true,
+              reason: "Observation-only proxy cluster.",
+              items: [],
+            },
+          ],
+        },
         risk_exit: {
           as_of_date: "2026-04-29",
           formula_version: "rv_livermore_risk_exit_ema10_mvp_v1",
@@ -741,6 +899,9 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
       "rv_livermore_risk_exit_ema10_mvp_v1",
     );
+    expect(screen.getByTestId("livermore-mean-reversion-candidates")).toHaveTextContent("Gamma");
+    expect(screen.getByTestId("livermore-factor-screen-candidates")).toHaveTextContent("Factor Delta");
+    expect(screen.getByTestId("livermore-theme-breakout")).toHaveTextContent("AI proxy");
     expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("个股候选");
     expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("风险退出");
   });
@@ -995,7 +1156,7 @@ describe("MarketDataPage", () => {
 
     renderPage(client);
 
-    fireEvent.click(await screen.findByRole("tab", { name: "信用利差" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "信用利差", hidden: true }));
     expect(await screen.findByTestId("market-data-spreads-live-meta")).toHaveTextContent("联动读面");
 
     fireEvent.click(screen.getByText("宏观-债市联动（分析口径，点击展开）"));
@@ -1257,7 +1418,7 @@ describe("MarketDataPage", () => {
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
     expect(screen.getByText("利率行情")).toBeInTheDocument();
     expect(screen.getByText("收益率曲线")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "信用利差" }));
+    fireEvent.click(screen.getByRole("tab", { name: "信用利差", hidden: true }));
     expect(
       within(await screen.findByTestId("market-data-linkage-spread-table")).getByText("信用利差"),
     ).toBeInTheDocument();
@@ -1279,7 +1440,7 @@ describe("MarketDataPage", () => {
     });
 
     expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "事件日历" }));
+    fireEvent.click(screen.getByRole("tab", { name: "事件日历", hidden: true }));
     expect(await screen.findByTestId("market-data-calendar-list")).toBeInTheDocument();
     expect(screen.getByText("国债净融资节奏")).toBeInTheDocument();
     expect(screen.getByText("政策性金融债招标")).toBeInTheDocument();
@@ -1342,7 +1503,9 @@ describe("MarketDataPage", () => {
       await screen.findByText(/quote medians unavailable|not actual NCD issuance matrix/i),
     ).toBeInTheDocument();
     expect(await screen.findByText("1.405")).toBeInTheDocument();
-    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("tr_ncd_proxy_test");
-    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("供应商状态=正常");
+    const evidenceRail = screen.getByTestId("market-data-macro-evidence-rail");
+    expect(evidenceRail).toHaveTextContent("NCD proxy");
+    expect(evidenceRail).toHaveTextContent("sv_ncd_proxy_test");
+    expect(screen.queryByTestId("market-data-ncd-live-meta")).not.toBeInTheDocument();
   });
 });

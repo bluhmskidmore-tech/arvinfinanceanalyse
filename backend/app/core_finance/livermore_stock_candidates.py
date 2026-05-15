@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v2"
+FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v6"
 ACTIVE_MARKET_STATES = {"WARM", "HOT", "OVERHEAT"}
 MIN_HISTORY = 120
 EMA_WINDOW = 10
 MAX_RANKED = 6
+MAX_BREAKOUT_EXTENSION_NORM = 0.35
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ def compute_stock_candidates(
     excluded_stock_count = 0
     insufficient_history_count = 0
     for snapshot in snapshots:
-        candidate = _candidate_row(snapshot)
+        candidate = _candidate_row(snapshot, market_state=market_state)
         if candidate is None:
             excluded_stock_count += 1
             if _is_insufficient_history(snapshot):
@@ -92,7 +93,7 @@ def compute_stock_candidates(
     )
 
 
-def _candidate_row(snapshot: StockCandidateSnapshot) -> dict[str, object] | None:
+def _candidate_row(snapshot: StockCandidateSnapshot, *, market_state: str) -> dict[str, object] | None:
     closes = _float_series(snapshot.close_history)
     turns = _float_series(snapshot.turnover_history)
     if closes is None or turns is None or len(closes) < MIN_HISTORY or len(turns) < MIN_HISTORY:
@@ -129,13 +130,22 @@ def _candidate_row(snapshot: StockCandidateSnapshot) -> dict[str, object] | None
     ma120 = _moving_average(closes, 120)
     close_strength = _close_strength(close=close_value, low=low_value, high=high_value)
     gap_norm = _gap_norm(open_value=open_value, prior_close=closes[-2], limit_ratio=limit_ratio)
+    breakout_extension_norm = _breakout_extension_norm(
+        close_value=close_value,
+        breakout_level=breakout_level,
+        limit_ratio=limit_ratio,
+    )
     abnormal_turnover = _abnormal_turnover(turnover_free=turnover_free, turns=turns)
 
     signal = (
         close_value > breakout_level
         and ma20 > ma60 > ma120
-        and close_strength >= 0.70
+        and close_strength >= 0.95
         and gap_norm <= 0.45
+        and _breakout_extension_allowed(
+            market_state=market_state,
+            breakout_extension_norm=breakout_extension_norm,
+        )
         and 1.0 <= abnormal_turnover <= 3.5
     )
     if not signal:
@@ -155,6 +165,7 @@ def _candidate_row(snapshot: StockCandidateSnapshot) -> dict[str, object] | None
         "ma120": round(ma120, 6),
         "close_strength": round(close_strength, 6),
         "gap_norm": round(gap_norm, 6),
+        "breakout_extension_norm": round(breakout_extension_norm, 6),
         "abnormal_turnover": round(abnormal_turnover, 6),
     }
 
@@ -209,16 +220,26 @@ def _gap_norm(*, open_value: float, prior_close: float, limit_ratio: float) -> f
     return ((open_value - prior_close) / prior_close) / limit_ratio
 
 
+def _breakout_extension_norm(*, close_value: float, breakout_level: float, limit_ratio: float) -> float:
+    return ((close_value - breakout_level) / (breakout_level + EPS)) / limit_ratio
+
+
+def _breakout_extension_allowed(*, market_state: str, breakout_extension_norm: float) -> bool:
+    if market_state != "OVERHEAT":
+        return True
+    return breakout_extension_norm <= MAX_BREAKOUT_EXTENSION_NORM
+
+
 def _abnormal_turnover(*, turnover_free: float, turns: list[float]) -> float:
     median20 = statistics.median(turns[-21:-1])
     return math.log1p(turnover_free / (median20 + EPS))
 
 
-def _candidate_sort_key(row: dict[str, object]) -> tuple[int, float, float, str]:
+def _candidate_sort_key(row: dict[str, object]) -> tuple[float, float, int, str]:
     return (
-        cast(int, row["sector_rank"]),
         -cast(float, row["abnormal_turnover"]),
         -cast(float, row["close_strength"]),
+        cast(int, row["sector_rank"]),
         str(row["stock_code"]),
     )
 

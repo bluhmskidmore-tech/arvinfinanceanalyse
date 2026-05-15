@@ -84,7 +84,7 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
                 close_history=alpha_closes,
                 turnover_history=_turnover_history(baseline=0.5, current=1.5),
                 open_value=21.55,
-                high_value=22.0,
+                high_value=21.92,
                 low_value=21.4,
             ),
             _snapshot(
@@ -96,7 +96,7 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
                 close_history=beta_closes,
                 turnover_history=_turnover_history(baseline=0.4, current=1.25),
                 open_value=29.38,
-                high_value=29.62,
+                high_value=29.53,
                 low_value=29.2,
             ),
             _snapshot(
@@ -123,14 +123,15 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
     assert payload["insufficient_history_count"] == 0
 
     items = cast(list[dict[str, Any]], payload["items"])
-    assert [row["stock_code"] for row in items] == ["000001.SZ", "000002.SZ"]
+    assert [row["stock_code"] for row in items] == ["000002.SZ", "000001.SZ"]
     assert [row["rank"] for row in items] == [1, 2]
 
-    alpha = items[0]
+    alpha = next(row for row in items if row["stock_code"] == "000001.SZ")
     assert alpha["sector_rank"] == 1
     assert alpha["breakout_level"] == pytest.approx(max(alpha_closes[-56:-1]))
-    assert alpha["close_strength"] == pytest.approx((21.9 - 21.4) / (22.0 - 21.4))
+    assert alpha["close_strength"] == pytest.approx((21.9 - 21.4) / (21.92 - 21.4))
     assert alpha["gap_norm"] == pytest.approx(((21.55 - 21.8) / 21.8) / 0.1)
+    assert alpha["breakout_extension_norm"] == pytest.approx(((21.9 - 21.8) / 21.8) / 0.1, abs=1e-6)
     assert alpha["abnormal_turnover"] == pytest.approx(math.log1p(1.5 / 0.5))
     assert alpha["ema10"] == pytest.approx(_ema(alpha_closes, 10)[-1])
     assert alpha["ma20"] > alpha["ma60"] > alpha["ma120"]
@@ -146,7 +147,7 @@ def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> No
         close_history=_close_history(start=10.0, step=0.1),
         turnover_history=_turnover_history(baseline=0.5, current=1.5),
         open_value=21.55,
-        high_value=22.0,
+        high_value=21.92,
         low_value=21.4,
     )
     short_history_snapshot = _snapshot(
@@ -158,7 +159,7 @@ def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> No
         close_history=_close_history(start=10.0, step=0.1, count=60),
         turnover_history=_turnover_history(baseline=0.5, current=1.5, count=60),
         open_value=15.75,
-        high_value=16.0,
+        high_value=15.97,
         low_value=15.5,
     )
 
@@ -192,7 +193,7 @@ def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_t
             close_history=closes,
             turnover_history=_turnover_history(baseline=0.5, current=current_turnover),
             open_value=21.55,
-            high_value=22.0,
+            high_value=21.91,
             low_value=21.6,
         )
         for index, current_turnover in enumerate([1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0], start=1)
@@ -207,7 +208,7 @@ def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_t
             close_history=closes,
             turnover_history=_turnover_history(baseline=0.5, current=1.5),
             open_value=21.55,
-            high_value=22.0,
+            high_value=21.91,
             low_value=21.6,
         )
     )
@@ -232,3 +233,56 @@ def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_t
         "000003.SZ",
     ]
     assert [row["rank"] for row in items] == [1, 2, 3, 4, 5, 6]
+
+
+def test_stock_candidates_exclude_overextended_breakouts_after_pivot_only_when_market_overheats() -> None:
+    controlled_closes = _close_history(start=10.0, step=0.1)
+    overextended_closes = [*controlled_closes[:-1], 22.7]
+    controlled_snapshot = _snapshot(
+        stock_code="000001.SZ",
+        stock_name="Controlled",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=controlled_closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.5),
+        open_value=21.55,
+        high_value=21.92,
+        low_value=21.4,
+    )
+    overextended_snapshot = _snapshot(
+        stock_code="000002.SZ",
+        stock_name="Extended",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=overextended_closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.5),
+        open_value=21.9,
+        high_value=22.72,
+        low_value=22.1,
+    )
+
+    warm_result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=[controlled_snapshot, overextended_snapshot],
+    )
+
+    warm_payload = cast(dict[str, Any], warm_result.payload)
+    assert warm_payload["candidate_count"] == 2
+    warm_items = cast(list[dict[str, Any]], warm_payload["items"])
+    assert {row["stock_code"] for row in warm_items} == {"000001.SZ", "000002.SZ"}
+
+    overheat_result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="OVERHEAT",
+        snapshots=[controlled_snapshot, overextended_snapshot],
+    )
+
+    overheat_payload = cast(dict[str, Any], overheat_result.payload)
+    assert overheat_payload["candidate_count"] == 1
+    assert overheat_payload["excluded_stock_count"] == 1
+    overheat_items = cast(list[dict[str, Any]], overheat_payload["items"])
+    assert overheat_items[0]["stock_code"] == "000001.SZ"
+    assert overheat_items[0]["breakout_extension_norm"] <= 0.35
