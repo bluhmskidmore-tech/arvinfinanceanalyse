@@ -211,9 +211,9 @@ function qualityLabel(value: PnlBridgeQuality | null | undefined) {
 function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
   if (!summary) {
     return {
-      title: "当前结论",
-      body: "正式桥接结果待载入，先确认报告日与上游物化状态。",
-      detail: "读模型返回后再判断解释损益与实际损益的贴合程度。",
+      title: "闭合校验结果",
+      body: "等待正式桥接结果，先确认报告日与上游物化状态。",
+      detail: "读模型返回后会校验解释损益、实际损益和残差是否闭合。",
     };
   }
 
@@ -225,24 +225,24 @@ function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
 
   if (summary.quality_flag === "error" || residualRatio > 0.1) {
     return {
-      title: "当前结论",
-      body: "解释损益与实际损益存在明显偏离，需要优先检查残差来源。",
+      title: "闭合校验结果",
+      body: "校验未通过：解释损益与实际损益存在明显偏离。",
       detail: `当前残差 ${summary.total_residual.display}，已高于首屏可接受阈值。`,
     };
   }
 
   if (summary.quality_flag === "warning" || residualRatio > 0.02) {
     return {
-      title: "当前结论",
-      body: "解释损益基本贴近实际损益，但仍有残差需要跟踪。",
+      title: "闭合校验结果",
+      body: "校验预警：解释损益基本贴近实际损益，但仍有残差需要跟踪。",
       detail: `当前残差 ${summary.total_residual.display}，建议结合预警与明细表继续核对。`,
     };
   }
 
   return {
-    title: "当前结论",
-    body: "解释损益与实际损益基本一致，残差可控。",
-    detail: `当前残差 ${summary.total_residual.display}，正式桥接可作为首屏结论阅读。`,
+    title: "闭合校验结果",
+    body: "校验通过：解释损益与实际损益基本一致，残差可控。",
+    detail: `当前残差 ${summary.total_residual.display}，正式桥接结果可以作为首屏结论阅读。`,
   };
 }
 
@@ -446,13 +446,13 @@ export default function PnlBridgePage() {
               letterSpacing: "-0.03em",
             }}
           >
-            正式损益解释
+            正式损益闭合校验
           </h1>
           <p
             data-testid="pnl-bridge-page-subtitle"
             style={pageSubtitleStyle}
           >
-            查看实际损益与解释损益的差异，以及持有收益、骑乘、利率、利差等桥接效应。
+            校验实际损益是否能被票息、骑乘、曲线、利差、汇兑和公允价值变动解释清楚，重点看残差、质量和数据状态。
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -465,7 +465,7 @@ export default function PnlBridgePage() {
               border: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
-            正式解释
+            闭合校验
           </span>
           <span
             style={{
@@ -518,14 +518,14 @@ export default function PnlBridgePage() {
       <PnlRefreshStatus testId="pnl-bridge-refresh-status" status={refreshStatus} error={refreshError} />
 
       <div data-testid="pnl-bridge-formal-only-note" style={formalOnlyNoteStyle}>
-        本页当前只提供正式口径的桥接读模型；分析口径不在此页展开。
+        本页当前只校验正式口径的损益桥接闭合；分析口径不在此页展开。
       </div>
 
       <div data-testid="pnl-bridge-summary-section" data-state={summaryState.kind} style={{ marginBottom: 24 }}>
         <SectionLead
           eyebrow="总览"
-          title="正式桥接汇总"
-          description="先确认报告日与刷新状态，再阅读解释损益、实际损益、残差和质量标识；所有数值均来自后端桥接读模型。"
+          title="损益闭合校验汇总"
+          description="先看校验是否通过，再核对解释损益、实际损益、残差和质量标识；所有数值均来自后端正式桥接读模型。"
         />
         <DataSection
           title="汇总"
@@ -606,13 +606,13 @@ export default function PnlBridgePage() {
                 <KpiCard
                   title="合计残差"
                   value={summary.total_residual.display}
-                  detail="汇总总残差"
+                  detail="实际损益 - 可解释损益"
                   tone={kpiToneFromNumeric(summary.total_residual)}
                 />
                 <KpiCard
-                  title="整体质量"
+                  title="校验状态"
                   value={qualityLabel(summary.quality_flag)}
-                  detail="取各行最差等级。"
+                  detail="按残差质量取各行最差等级。"
                   tone={pnlSurfaceQualityToTone(summary.quality_flag)}
                 />
               </div>
@@ -620,7 +620,7 @@ export default function PnlBridgePage() {
               {chartOption ? (
                 <Card
                   data-testid="pnl-bridge-waterfall-card"
-                  title="损益桥接效应拆解"
+                  title="解释因子拆解（用于校验闭合）"
                   size="small"
                   style={{
                     marginTop: 24,
@@ -668,8 +668,8 @@ export default function PnlBridgePage() {
       <div data-testid="pnl-bridge-detail-section" data-state={detailState.kind}>
         <SectionLead
           eyebrow="明细"
-          title="桥接明细与归因瀑布"
-          description="瀑布图和明细表共用当前报告日，保留原有图表、明细表、分页和结果元数据调试链路，不改变正式桥接契约。"
+          title="闭合明细与归因瀑布"
+          description="逐行查看债券、组合、会计分类的可解释损益、实际损益和残差，用来定位没有闭合的来源。"
         />
         <DataSection
           title="桥接明细"
