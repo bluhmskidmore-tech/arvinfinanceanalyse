@@ -7,6 +7,7 @@ import type {
   CoreMetricsResult,
   DailyChangesResult,
   Numeric,
+  PnlByBusinessAnalysisRow,
 } from "../../../api/contracts";
 import {
   buildDashboardCockpitModel,
@@ -170,6 +171,79 @@ function backendScalarHeadline(reportDate = "2026-04-30"): BondDashboardHeadline
     },
     prev_kpis: null,
   } as unknown as BondDashboardHeadlinePayload;
+}
+
+function bondBucketRows(): PnlByBusinessAnalysisRow[] {
+  return [
+    {
+      dimension_key: "rate_bond",
+      dimension_label: "利率债",
+      interest_income: "0",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "100.00",
+      avg_balance: "1000.00",
+      current_balance: "1000.00",
+      annualized_yield_pct: "117.741935",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "1.36",
+      ftp_net_pnl: "98.64",
+      ftp_net_annualized_yield_pct: "116.141935",
+      asset_count: 3,
+    },
+    {
+      dimension_key: "credit_bond",
+      dimension_label: "信用债",
+      interest_income: "0",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "80.00",
+      avg_balance: "800.00",
+      current_balance: "800.00",
+      annualized_yield_pct: "98.500000",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "1.02",
+      ftp_net_pnl: "78.98",
+      ftp_net_annualized_yield_pct: "96.900000",
+      asset_count: 4,
+    },
+    {
+      dimension_key: "financial_bond",
+      dimension_label: "金融债",
+      interest_income: "0",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "60.00",
+      avg_balance: "600.00",
+      current_balance: "600.00",
+      annualized_yield_pct: "73.000000",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "0.82",
+      ftp_net_pnl: "59.18",
+      ftp_net_annualized_yield_pct: "71.400000",
+      asset_count: 2,
+    },
+    {
+      dimension_key: "other_bond",
+      dimension_label: "其它债券",
+      interest_income: "0",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "40.00",
+      avg_balance: "400.00",
+      current_balance: "400.00",
+      annualized_yield_pct: "36.500000",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "0.55",
+      ftp_net_pnl: "39.45",
+      ftp_net_annualized_yield_pct: "34.900000",
+      asset_count: 1,
+    },
+  ];
 }
 
 function statusById(
@@ -369,28 +443,28 @@ describe("buildDashboardCockpitModel", () => {
       actionLabel: "看信用",
     });
     expect(model.accountRows[0]).toMatchObject({
-      accountName: "债券组合",
-      exposure: "3,438.23 亿",
       weight: "100.00%",
       duration: "4.14",
       ytm: "2.57%",
-      risk: "10,615.59 万",
+      dailyChange: expect.stringContaining("3.21"),
+      risk: expect.stringContaining("10,615.59"),
       route: "/bond-analysis",
       status: "supplemental",
     });
     expect(model.accountRows[1]).toMatchObject({
-      accountName: "信用债",
-      exposure: "1,005.70 亿",
       weight: "29.25%",
       duration: "2.40",
-      ytm: "2.57%",
-      risk: "DV01 2,357.21 万",
+      ytm: "--",
+      dailyChange: "--",
+      risk: expect.stringContaining("2,357.21"),
       route: "/bond-analysis",
     });
 
     expect(model.accountRows.find((row) => row.id === "account-risk-review")).toMatchObject({
       weight: "41.35%",
-      ytm: "2.57%",
+      ytm: "--",
+      dailyChange: "--",
+      risk: expect.stringContaining("10,615.59"),
       source: expect.stringMatching(/Top5.*41\.35%.*29\.25%.*DV01/),
       route: "/risk-tensor",
     });
@@ -482,6 +556,31 @@ describe("buildDashboardCockpitModel", () => {
         status: "supplemental",
       }),
     ]);
+  });
+
+  it("maps bond-bucket analysis yields onto asset-class account rows", () => {
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: coreMetrics(),
+      dailyChanges: dailyChanges(),
+      bondHeadline: bondHeadline(),
+      portfolio: portfolio(),
+      bondBucketRows: bondBucketRows(),
+      marketPoints: [],
+      calendarItems: [],
+    });
+
+    expect(model.accountRows.find((row) => row.id === "account-credit")).toMatchObject({
+      ytm: "98.50%",
+      dailyChange: "--",
+    });
+    expect(model.accountRows.find((row) => row.id === "account-rate")).toMatchObject({
+      ytm: "117.74%",
+      dailyChange: "--",
+    });
+    expect(model.accountRows.find((row) => row.id === "account-other")).toBeUndefined();
   });
 
   it("keeps supplement preview signals explicit when same-day supplement reads are blocked", () => {

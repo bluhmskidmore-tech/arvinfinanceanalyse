@@ -5,6 +5,7 @@ import type {
   CoreMetricsResult,
   DailyChangesResult,
   Numeric,
+  PnlByBusinessAnalysisRow,
   ResearchCalendarEvent,
 } from "../../../api/contracts";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
@@ -159,6 +160,7 @@ export type DashboardCockpitModelInput = {
   dailyChanges?: DailyChangesResult | null;
   bondHeadline?: BondDashboardHeadlinePayload | null;
   portfolio?: BondPortfolioHeadlinesPayload | null;
+  bondBucketRows?: readonly PnlByBusinessAnalysisRow[] | null;
   marketPoints?: readonly ChoiceMacroLatestPoint[] | null;
   calendarItems?: readonly ResearchCalendarEvent[] | null;
 };
@@ -190,6 +192,12 @@ const ASSET_CLASS_ACCOUNT_ORDER: Record<string, number> = {
   credit: 1,
   rate: 2,
   other: 3,
+};
+
+const BOND_BUCKET_LABELS: Record<string, readonly string[]> = {
+  credit: ["信用债"],
+  rate: ["利率债"],
+  other: ["金融债", "其它债券", "其他债券"],
 };
 
 function cleanDate(value: string | null | undefined): string {
@@ -284,11 +292,18 @@ function durationDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
   return raw == null ? fallback : formatWithCommas(raw, 2);
 }
 
-function dv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
-  const display = formattedDisplay(value);
-  if (display) return display;
+function percentPointDisplay(value: string | number | null | undefined, fallback = EMPTY_DISPLAY): string {
   const raw = numericRaw(value);
-  return raw == null ? fallback : `${formatWithCommas(raw / 10_000, 2)} 万`;
+  return raw == null ? fallback : `${formatWithCommas(raw, 2)}%`;
+}
+
+function dv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+  const raw = numericRaw(value);
+  if (raw != null) {
+    return `${formatWithCommas(raw / 10_000, 2)} 万`;
+  }
+  const display = formattedDisplay(value);
+  return display ?? fallback;
 }
 
 function previewDv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
@@ -331,6 +346,47 @@ function buildRiskFocusReasonParts(input: {
     preview: previewParts.length > 0 ? `因 ${previewParts.join(" / ")}` : null,
     source: sourceParts.length > 0 ? `因 ${sourceParts.join("、")}，进入联合复核。` : null,
   };
+}
+
+function buildBondBucketYieldDisplayMap(rows: readonly PnlByBusinessAnalysisRow[] | null | undefined) {
+  const normalizedRows = rows ?? [];
+  const result: Partial<Record<string, string>> = {};
+
+  const rowByLabel = new Map(normalizedRows.map((row) => [row.dimension_label.trim(), row]));
+
+  for (const assetClass of ["credit", "rate"] as const) {
+    const labels = BOND_BUCKET_LABELS[assetClass];
+    const match = labels
+      .map((label) => rowByLabel.get(label))
+      .find((row): row is PnlByBusinessAnalysisRow => Boolean(row));
+    if (match) {
+      result[assetClass] = percentPointDisplay(match.annualized_yield_pct);
+    }
+  }
+
+  const otherRows = BOND_BUCKET_LABELS.other
+    .map((label) => rowByLabel.get(label))
+    .filter((row): row is PnlByBusinessAnalysisRow => Boolean(row));
+  if (otherRows.length > 0) {
+    let weightedYield = 0;
+    let totalAvgBalance = 0;
+    for (const row of otherRows) {
+      const yieldPct = numericRaw(row.annualized_yield_pct);
+      const avgBalance = numericRaw(row.avg_balance);
+      if (yieldPct == null || avgBalance == null || avgBalance <= 0) {
+        continue;
+      }
+      weightedYield += yieldPct * avgBalance;
+      totalAvgBalance += avgBalance;
+    }
+    if (totalAvgBalance > 0) {
+      result.other = `${formatWithCommas(weightedYield / totalAvgBalance, 2)}%`;
+    } else {
+      result.other = percentPointDisplay(otherRows[0]?.annualized_yield_pct);
+    }
+  }
+
+  return result;
 }
 
 function numericTone(value: NumericLike): DashboardCockpitTone {
@@ -644,7 +700,7 @@ function buildPreviewSignals(
   const riskFocusReasons = buildRiskFocusReasonParts({
     issuerTop5Weight: input.portfolio?.issuer_top5_weight,
     creditWeight: input.portfolio?.credit_weight,
-    totalDv01: input.bondHeadline?.kpis.total_dv01 ?? input.portfolio?.total_dv01,
+    totalDv01: input.portfolio?.total_dv01,
   });
   const concentrationDetail = portfolioAllowed
     ? riskFocusReasons.preview ?? `\u4fe1\u7528\u5360\u6bd4 ${percentDisplay(input.portfolio?.credit_weight)}`
@@ -1066,11 +1122,12 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
 
   const totalMarketValue = portfolio.total_market_value ?? headline?.kpis.total_market_value;
   const totalDv01 = headline?.kpis.total_dv01 ?? portfolio.total_dv01;
-  const totalChange = dayChange?.net_change ?? dayChange?.bond_investments_change;
+  const bondPortfolioChange = dayChange?.bond_investments_change ?? dayChange?.net_change;
+  const bondBucketYieldDisplay = buildBondBucketYieldDisplayMap(input.bondBucketRows);
   const riskFocusReasons = buildRiskFocusReasonParts({
     issuerTop5Weight: portfolio.issuer_top5_weight,
     creditWeight: portfolio.credit_weight,
-    totalDv01,
+    totalDv01: portfolio.total_dv01,
   });
 
   const rows: DashboardCockpitAccountRow[] = [
@@ -1082,13 +1139,13 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
       weight: hasNumericValue(totalMarketValue) ? "100.00%" : EMPTY_DISPLAY,
       duration: durationDisplay(headline?.kpis.weighted_duration ?? portfolio.weighted_duration),
       ytm: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio.weighted_ytm),
-      dailyChange: numericDisplay(totalChange),
-      risk: dv01Display(totalDv01),
+      dailyChange: numericDisplay(bondPortfolioChange),
+      risk: `DV01 ${dv01Display(totalDv01)}`,
       source: "\u7ec4\u5408\u89c4\u6a21\u3001\u6536\u76ca\u7387\u3001\u4e45\u671f\u4e0e DV01 \u540c\u6b65\u590d\u6838\u3002",
       route: "/bond-analysis",
       actionLabel: "\u770b\u7ec4\u5408",
       status: "supplemental",
-      tone: numericTone(totalChange),
+      tone: numericTone(bondPortfolioChange),
     },
   ];
 
@@ -1110,14 +1167,14 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
         exposure: yuanYiDisplay(item.market_value),
         weight: percentDisplay(item.weight),
         duration: durationDisplay(item.duration),
-        ytm: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio.weighted_ytm),
-        dailyChange: numericDisplay(dayChange?.bond_investments_change),
+        ytm: bondBucketYieldDisplay[item.asset_class] ?? EMPTY_DISPLAY,
+        dailyChange: EMPTY_DISPLAY,
         risk: `DV01 ${dv01Display(item.dv01)}`,
         source: `${label}\u8d44\u4ea7\u66b4\u9732\u4e0e\u4e45\u671f\u7ed3\u6784\u3002`,
         route: "/bond-analysis",
         actionLabel: "\u770b\u8d44\u4ea7",
         status: "supplemental",
-        tone: numericTone(dayChange?.bond_investments_change),
+        tone: "neutral",
       };
     });
 
@@ -1131,9 +1188,9 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
       exposure: yuanYiDisplay(totalMarketValue),
       weight: percentDisplay(portfolio.issuer_top5_weight),
       duration: durationDisplay(portfolio.weighted_duration),
-      ytm: percentDisplay(headline?.kpis.weighted_ytm ?? portfolio.weighted_ytm),
-      dailyChange: numericDisplay(dayChange?.net_change),
-      risk: dv01Display(portfolio.total_dv01),
+      ytm: EMPTY_DISPLAY,
+      dailyChange: EMPTY_DISPLAY,
+      risk: `DV01 ${dv01Display(portfolio.total_dv01)}`,
       source: riskFocusReasons.source ?? "DV01 / \u4e45\u671f / \u96c6\u4e2d\u5ea6\u8054\u5408\u590d\u6838\u3002",
       route: "/risk-tensor",
       actionLabel: "\u770b\u98ce\u9669",

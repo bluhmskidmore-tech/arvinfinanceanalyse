@@ -63,6 +63,88 @@ function createSameDayCockpitClient(): ApiClient {
   return {
     ...base,
     getResearchCalendarEvents: vi.fn(async () => []),
+    getPnlByBusinessAnalysis: vi.fn(async (options) => {
+      const envelope = await base.getPnlByBusinessAnalysis(options);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          rows:
+            options.dimension === "bond_bucket"
+              ? [
+                  {
+                    dimension_key: "rate_bond",
+                    dimension_label: "利率债",
+                    interest_income: "0",
+                    fair_value_change: "0",
+                    capital_gain: "0",
+                    manual_adjustment: "0",
+                    total_pnl: "100.00",
+                    avg_balance: "1000.00",
+                    current_balance: "1000.00",
+                    annualized_yield_pct: "117.741935",
+                    ftp_rate_pct: "1.600000",
+                    ftp_cost: "1.36",
+                    ftp_net_pnl: "98.64",
+                    ftp_net_annualized_yield_pct: "116.141935",
+                    asset_count: 3,
+                  },
+                  {
+                    dimension_key: "credit_bond",
+                    dimension_label: "信用债",
+                    interest_income: "0",
+                    fair_value_change: "0",
+                    capital_gain: "0",
+                    manual_adjustment: "0",
+                    total_pnl: "80.00",
+                    avg_balance: "800.00",
+                    current_balance: "800.00",
+                    annualized_yield_pct: "98.500000",
+                    ftp_rate_pct: "1.600000",
+                    ftp_cost: "1.02",
+                    ftp_net_pnl: "78.98",
+                    ftp_net_annualized_yield_pct: "96.900000",
+                    asset_count: 4,
+                  },
+                  {
+                    dimension_key: "financial_bond",
+                    dimension_label: "金融债",
+                    interest_income: "0",
+                    fair_value_change: "0",
+                    capital_gain: "0",
+                    manual_adjustment: "0",
+                    total_pnl: "60.00",
+                    avg_balance: "600.00",
+                    current_balance: "600.00",
+                    annualized_yield_pct: "73.000000",
+                    ftp_rate_pct: "1.600000",
+                    ftp_cost: "0.82",
+                    ftp_net_pnl: "59.18",
+                    ftp_net_annualized_yield_pct: "71.400000",
+                    asset_count: 2,
+                  },
+                  {
+                    dimension_key: "other_bond",
+                    dimension_label: "其它债券",
+                    interest_income: "0",
+                    fair_value_change: "0",
+                    capital_gain: "0",
+                    manual_adjustment: "0",
+                    total_pnl: "40.00",
+                    avg_balance: "400.00",
+                    current_balance: "400.00",
+                    annualized_yield_pct: "36.500000",
+                    ftp_rate_pct: "1.600000",
+                    ftp_cost: "0.55",
+                    ftp_net_pnl: "39.45",
+                    ftp_net_annualized_yield_pct: "34.900000",
+                    asset_count: 1,
+                  },
+                ]
+              : [],
+        },
+      };
+    }),
     getBondDashboardHeadlineKpis: vi.fn(async (reportDate) => {
       const envelope = await base.getBondDashboardHeadlineKpis(reportDate);
       return {
@@ -1472,6 +1554,22 @@ describe("DashboardPage", () => {
     expect(within(durationRisk).getByRole("link")).toHaveAttribute("href", "/risk-tensor");
   });
 
+  it("uses bond-bucket yield facts for asset-class account rows when available", async () => {
+    renderDashboard(createSameDayCockpitClient());
+
+    const creditRow = await screen.findByTestId("dashboard-cockpit-account-row-account-credit");
+    const rateRow = await screen.findByTestId("dashboard-cockpit-account-row-account-rate");
+    const otherRow = await screen.findByTestId("dashboard-cockpit-account-row-account-other");
+
+    await waitFor(() => {
+      expect(creditRow).not.toHaveTextContent("-- --");
+    });
+
+    expect(creditRow).toHaveTextContent("98.50%");
+    expect(rateRow).toHaveTextContent("117.74%");
+    expect(otherRow).toHaveTextContent("58.40%");
+  });
+
   it("scrolls to local drilldown sections from supplement preview buttons without forcing the supplement open", async () => {
     renderDashboard(createSameDayCockpitClient());
 
@@ -1488,6 +1586,7 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(riskReviewRow).toHaveTextContent("Top5");
     });
+    expect(riskReviewRow).toHaveTextContent("DV01 8,800.00");
 
     vi.useFakeTimers();
     try {
@@ -1507,6 +1606,7 @@ describe("DashboardPage", () => {
       expect(riskReviewScroll).toHaveBeenCalled();
       expect(riskReviewRow).toHaveAttribute("data-drilldown-active", "true");
       expect(riskReviewRow).toHaveTextContent("Top5");
+      expect(riskReviewRow).toHaveTextContent("DV01 8,800.00");
       expect(supplement).not.toHaveAttribute("open");
 
       vi.advanceTimersByTime(1600);
