@@ -235,6 +235,49 @@ def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_t
     assert [row["rank"] for row in items] == [1, 2, 3, 4, 5, 6]
 
 
+def test_stock_candidates_can_emit_pre_truncation_universe_for_research() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    snapshots = [
+        _snapshot(
+            stock_code=f"00000{index}.SZ",
+            stock_name=f"Stock {index}",
+            sector_code="801001",
+            sector_name="AI",
+            sector_rank=1,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=current_turnover),
+            open_value=21.55,
+            high_value=21.91,
+            low_value=21.6,
+        )
+        for index, current_turnover in enumerate([1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0], start=1)
+    ]
+
+    default_result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=snapshots,
+    )
+    assert "universe_items" not in default_result.payload
+
+    research_result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=snapshots,
+        include_universe=True,
+    )
+
+    payload = cast(dict[str, Any], research_result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+    universe = cast(list[dict[str, Any]], payload["universe_items"])
+    assert len(items) == 6
+    assert len(universe) == 8
+    assert [row["new_rank"] for row in universe] == list(range(1, 9))
+    assert [row["eligible_before_truncation"] for row in universe] == [True] * 8
+    assert [row["selected_new_top6"] for row in universe] == [True] * 6 + [False, False]
+    assert [row["stock_code"] for row in universe[:6]] == [row["stock_code"] for row in items]
+
+
 def test_stock_candidates_exclude_overextended_breakouts_after_pivot_only_when_market_overheats() -> None:
     controlled_closes = _close_history(start=10.0, step=0.1)
     overextended_closes = [*controlled_closes[:-1], 22.7]
@@ -286,3 +329,106 @@ def test_stock_candidates_exclude_overextended_breakouts_after_pivot_only_when_m
     overheat_items = cast(list[dict[str, Any]], overheat_payload["items"])
     assert overheat_items[0]["stock_code"] == "000001.SZ"
     assert overheat_items[0]["breakout_extension_norm"] <= 0.35
+
+
+def test_stock_candidates_exp3b_policy_keeps_entry_only_stricter_gate_and_sorts_by_close_strength_first() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    higher_turn_lower_close_strength = _snapshot(
+        stock_code="000001.SZ",
+        stock_name="Turnover First",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=4.5),
+        open_value=22.05,
+        high_value=21.91,
+        low_value=20.65,
+    )
+    higher_close_strength_lower_turn = _snapshot(
+        stock_code="000002.SZ",
+        stock_name="Close Strength First",
+        sector_code="801002",
+        sector_name="Bank",
+        sector_rank=2,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=2.5),
+        open_value=22.0,
+        high_value=21.905,
+        low_value=20.65,
+    )
+    weak_close_strength = _snapshot(
+        stock_code="000003.SZ",
+        stock_name="Weak Close",
+        sector_code="801003",
+        sector_name="Power",
+        sector_rank=3,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=2.5),
+        open_value=22.0,
+        high_value=22.05,
+        low_value=21.0,
+    )
+    too_wide_gap = _snapshot(
+        stock_code="000004.SZ",
+        stock_name="Wide Gap",
+        sector_code="801004",
+        sector_name="Retail",
+        sector_rank=2,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=2.5),
+        open_value=22.7,
+        high_value=21.905,
+        low_value=20.65,
+    )
+    too_hot_turnover = _snapshot(
+        stock_code="000005.SZ",
+        stock_name="Hot Turnover",
+        sector_code="801005",
+        sector_name="Auto",
+        sector_rank=2,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=5.5),
+        open_value=22.0,
+        high_value=21.905,
+        low_value=20.65,
+    )
+
+    default_result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=[higher_turn_lower_close_strength, higher_close_strength_lower_turn],
+    )
+    default_items = cast(list[dict[str, Any]], cast(dict[str, Any], default_result.payload)["items"])
+    assert [row["stock_code"] for row in default_items] == ["000001.SZ", "000002.SZ"]
+
+    exp3b_result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=[
+            higher_turn_lower_close_strength,
+            higher_close_strength_lower_turn,
+            weak_close_strength,
+            too_wide_gap,
+            too_hot_turnover,
+        ],
+        policy_name="exp3b",
+    )
+    exp3b_payload = cast(dict[str, Any], exp3b_result.payload)
+    exp3b_items = cast(list[dict[str, Any]], exp3b_payload["items"])
+    assert exp3b_payload["selection_policy"] == "exp3b"
+    assert [row["stock_code"] for row in exp3b_items] == ["000002.SZ", "000001.SZ"]
+    assert [row["rank"] for row in exp3b_items] == [1, 2]
+    assert all(float(row["close_strength"]) >= 0.99 for row in exp3b_items)
+    assert all(float(row["gap_norm"]) <= 0.35 for row in exp3b_items)
+    assert all(1.2 <= float(row["abnormal_turnover"]) <= 2.4 for row in exp3b_items)
+
+    exp3b_overheat = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="OVERHEAT",
+        snapshots=[higher_turn_lower_close_strength, higher_close_strength_lower_turn],
+        policy_name="exp3b",
+    )
+    assert exp3b_overheat.payload["selection_policy"] == "exp3b"
+    assert exp3b_overheat.payload["candidate_count"] == 0
+    assert exp3b_overheat.payload["items"] == []

@@ -79,16 +79,19 @@ def livermore_strategy_envelope(
     duckdb_path: str,
     as_of_date: str | None = None,
     stock_readiness: ChoiceStockReadiness | None = None,
+    stock_candidate_policy: str | None = None,
 ) -> dict[str, object]:
     requested_date = _parse_optional_date(as_of_date)
     payload, meta = load_livermore_strategy_payload(
         duckdb_path=duckdb_path,
         as_of_date=requested_date,
         stock_readiness=stock_readiness,
+        stock_candidate_policy=stock_candidate_policy,
     )
     filters_applied = {
         "requested_as_of_date": None if requested_date is None else requested_date.isoformat(),
         "as_of_date": payload["as_of_date"],
+        "stock_candidate_policy": stock_candidate_policy or "default",
     }
     return build_result_envelope(
         basis="analytical",
@@ -114,6 +117,7 @@ def load_livermore_strategy_payload(
     as_of_date: date | None,
     stock_readiness: ChoiceStockReadiness | None = None,
     backfill_mode: bool = False,
+    stock_candidate_policy: str | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness or choice_stock_readiness_missing("")
     history_rows, broad_index_tables = _load_broad_index_history(
@@ -135,6 +139,7 @@ def load_livermore_strategy_payload(
         market_state=str(market_gate["state"]),
         stock_readiness=resolved_stock_readiness,
         backfill_mode=backfill_mode,
+        stock_candidate_policy=stock_candidate_policy,
     )
     diagnostics = _build_diagnostics(
         requested_as_of_date=requested_text,
@@ -396,6 +401,7 @@ def _load_choice_stock_outputs(
     market_state: str,
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool = False,
+    stock_candidate_policy: str | None = None,
 ) -> _ChoiceStockOutputs:
     if not stock_readiness.ready or as_of_date is None:
         return _ChoiceStockOutputs(
@@ -478,6 +484,8 @@ def _load_choice_stock_outputs(
                 as_of_date=as_of_date,
                 market_state=market_state,
                 snapshots=snapshots,
+                include_universe=backfill_mode,
+                policy_name=stock_candidate_policy or "default",
             ).payload
 
     mean_reversion_payload: dict[str, object] | None = None
@@ -2432,7 +2440,7 @@ def _safe_int(value: object) -> int | None:
 
 
 def _truthy(value: object) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y"}
+    return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y", "是"}
 
 
 def _unique_preserving_order(values: list[str]) -> list[str]:

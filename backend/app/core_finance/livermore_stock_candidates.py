@@ -8,7 +8,8 @@ from typing import cast
 
 EPS = 1e-12
 FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v6"
-ACTIVE_MARKET_STATES = {"WARM", "HOT", "OVERHEAT"}
+DEFAULT_STOCK_CANDIDATE_POLICY = "default"
+EXP3B_STOCK_CANDIDATE_POLICY = "exp3b"
 MIN_HISTORY = 120
 EMA_WINDOW = 10
 MAX_RANKED = 6
@@ -39,21 +40,59 @@ class StockCandidateResult:
     payload: dict[str, object]
 
 
+@dataclass(frozen=True)
+class _StockCandidatePolicy:
+    name: str
+    active_market_states: frozenset[str]
+    close_strength_min: float
+    gap_norm_max: float
+    abnormal_turnover_min: float
+    abnormal_turnover_max: float
+    close_strength_first: bool = False
+
+
+_POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
+    DEFAULT_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
+        name=DEFAULT_STOCK_CANDIDATE_POLICY,
+        active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
+        close_strength_min=0.95,
+        gap_norm_max=0.45,
+        abnormal_turnover_min=1.0,
+        abnormal_turnover_max=3.5,
+    ),
+    EXP3B_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
+        name=EXP3B_STOCK_CANDIDATE_POLICY,
+        active_market_states=frozenset({"WARM", "HOT"}),
+        close_strength_min=0.99,
+        gap_norm_max=0.35,
+        abnormal_turnover_min=1.2,
+        abnormal_turnover_max=2.4,
+        close_strength_first=True,
+    ),
+}
+ACTIVE_MARKET_STATES = set(_POLICY_BY_NAME[DEFAULT_STOCK_CANDIDATE_POLICY].active_market_states)
+
+
 def compute_stock_candidates(
     *,
     as_of_date: str,
     market_state: str,
     snapshots: list[StockCandidateSnapshot],
+    include_universe: bool = False,
+    policy_name: str = DEFAULT_STOCK_CANDIDATE_POLICY,
 ) -> StockCandidateResult:
-    if market_state not in ACTIVE_MARKET_STATES:
+    policy = _resolve_policy(policy_name)
+    if market_state not in policy.active_market_states:
         return StockCandidateResult(
             payload=_build_payload(
                 as_of_date=as_of_date,
                 market_state=market_state,
+                selection_policy=policy.name,
                 input_stock_count=len(snapshots),
                 excluded_stock_count=len(snapshots),
                 insufficient_history_count=0,
                 items=[],
+                universe_items=[] if include_universe else None,
             )
         )
 
@@ -61,7 +100,7 @@ def compute_stock_candidates(
     excluded_stock_count = 0
     insufficient_history_count = 0
     for snapshot in snapshots:
-        candidate = _candidate_row(snapshot, market_state=market_state)
+        candidate = _candidate_row(snapshot, market_state=market_state, policy=policy)
         if candidate is None:
             excluded_stock_count += 1
             if _is_insufficient_history(snapshot):
@@ -71,8 +110,9 @@ def compute_stock_candidates(
 
     ordered = sorted(
         items,
-        key=_candidate_sort_key,
+        key=_candidate_close_strength_first_sort_key if policy.close_strength_first else _candidate_sort_key,
     )
+    universe_items = _universe_items(ordered) if include_universe else None
     truncated = ordered[:MAX_RANKED]
     ranked = [
         {
@@ -82,18 +122,25 @@ def compute_stock_candidates(
         for index, row in enumerate(truncated, start=1)
     ]
     return StockCandidateResult(
-        payload=_build_payload(
-            as_of_date=as_of_date,
-            market_state=market_state,
-            input_stock_count=len(snapshots),
-            excluded_stock_count=excluded_stock_count + max(0, len(ordered) - MAX_RANKED),
-            insufficient_history_count=insufficient_history_count,
-            items=ranked,
+            payload=_build_payload(
+                as_of_date=as_of_date,
+                market_state=market_state,
+                selection_policy=policy.name,
+                input_stock_count=len(snapshots),
+                excluded_stock_count=excluded_stock_count + max(0, len(ordered) - MAX_RANKED),
+                insufficient_history_count=insufficient_history_count,
+                items=ranked,
+                universe_items=universe_items,
         )
     )
 
 
-def _candidate_row(snapshot: StockCandidateSnapshot, *, market_state: str) -> dict[str, object] | None:
+def _candidate_row(
+    snapshot: StockCandidateSnapshot,
+    *,
+    market_state: str,
+    policy: _StockCandidatePolicy,
+) -> dict[str, object] | None:
     closes = _float_series(snapshot.close_history)
     turns = _float_series(snapshot.turnover_history)
     if closes is None or turns is None or len(closes) < MIN_HISTORY or len(turns) < MIN_HISTORY:
@@ -140,13 +187,13 @@ def _candidate_row(snapshot: StockCandidateSnapshot, *, market_state: str) -> di
     signal = (
         close_value > breakout_level
         and ma20 > ma60 > ma120
-        and close_strength >= 0.95
-        and gap_norm <= 0.45
+        and close_strength >= policy.close_strength_min
+        and gap_norm <= policy.gap_norm_max
         and _breakout_extension_allowed(
             market_state=market_state,
             breakout_extension_norm=breakout_extension_norm,
         )
-        and 1.0 <= abnormal_turnover <= 3.5
+        and policy.abnormal_turnover_min <= abnormal_turnover <= policy.abnormal_turnover_max
     )
     if not signal:
         return None
@@ -167,6 +214,7 @@ def _candidate_row(snapshot: StockCandidateSnapshot, *, market_state: str) -> di
         "gap_norm": round(gap_norm, 6),
         "breakout_extension_norm": round(breakout_extension_norm, 6),
         "abnormal_turnover": round(abnormal_turnover, 6),
+        "selection_policy": policy.name,
     }
 
 
@@ -174,21 +222,45 @@ def _build_payload(
     *,
     as_of_date: str,
     market_state: str,
+    selection_policy: str,
     input_stock_count: int,
     excluded_stock_count: int,
     insufficient_history_count: int,
     items: list[dict[str, object]],
+    universe_items: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "as_of_date": as_of_date,
         "formula_version": FORMULA_VERSION,
         "market_state": market_state,
+        "selection_policy": selection_policy,
         "input_stock_count": input_stock_count,
         "candidate_count": len(items),
         "excluded_stock_count": excluded_stock_count,
         "insufficient_history_count": insufficient_history_count,
         "items": items,
     }
+    if universe_items is not None:
+        payload["universe_items"] = universe_items
+    return payload
+
+
+def _universe_items(ordered: list[dict[str, object]]) -> list[dict[str, object]]:
+    old_rank_by_code = {
+        str(row["stock_code"]): index
+        for index, row in enumerate(sorted(ordered, key=_candidate_old_sort_key), start=1)
+    }
+    return [
+        {
+            "new_rank": index,
+            "old_rank": old_rank_by_code.get(str(row["stock_code"])),
+            "eligible_before_truncation": True,
+            "selected_new_top6": index <= MAX_RANKED,
+            "selected_old_top6": (old_rank_by_code.get(str(row["stock_code"])) or 9999) <= MAX_RANKED,
+            **row,
+        }
+        for index, row in enumerate(ordered, start=1)
+    ]
 
 
 def _is_insufficient_history(snapshot: StockCandidateSnapshot) -> bool:
@@ -242,6 +314,32 @@ def _candidate_sort_key(row: dict[str, object]) -> tuple[float, float, int, str]
         cast(int, row["sector_rank"]),
         str(row["stock_code"]),
     )
+
+
+def _candidate_close_strength_first_sort_key(row: dict[str, object]) -> tuple[float, float, int, str]:
+    return (
+        -cast(float, row["close_strength"]),
+        -cast(float, row["abnormal_turnover"]),
+        cast(int, row["sector_rank"]),
+        str(row["stock_code"]),
+    )
+
+
+def _candidate_old_sort_key(row: dict[str, object]) -> tuple[int, float, float, str]:
+    return (
+        cast(int, row["sector_rank"]),
+        -cast(float, row["abnormal_turnover"]),
+        -cast(float, row["close_strength"]),
+        str(row["stock_code"]),
+    )
+
+
+def _resolve_policy(policy_name: str) -> _StockCandidatePolicy:
+    policy = _POLICY_BY_NAME.get(policy_name)
+    if policy is None:
+        supported = ", ".join(sorted(_POLICY_BY_NAME))
+        raise ValueError(f"Unsupported stock candidate policy '{policy_name}'. Supported policies: {supported}.")
+    return policy
 
 
 def _float_series(values: Sequence[object]) -> list[float] | None:

@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--as-of-date")
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument("--stock-candidate-policy")
     args = parser.parse_args()
 
     has_single_date = bool(args.as_of_date)
@@ -39,12 +40,14 @@ def main() -> None:
         payload = materialize_livermore_candidate_history(
             duckdb_path,
             as_of_date=args.as_of_date,
+            stock_candidate_policy=args.stock_candidate_policy,
         )
     else:
         payload = backfill_livermore_candidate_history(
             duckdb_path,
             start_date=args.start_date,
             end_date=args.end_date,
+            stock_candidate_policy=args.stock_candidate_policy,
         )
     _emit_json_payload(payload)
 

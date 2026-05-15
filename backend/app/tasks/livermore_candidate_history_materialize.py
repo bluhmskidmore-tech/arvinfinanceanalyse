@@ -17,6 +17,7 @@ from backend.app.services.market_data_livermore_service import load_livermore_st
 RULE_VERSION = "rv_livermore_candidate_history_v1"
 FORMULA_VERSION = "fv_livermore_candidate_forward_close_unadjusted_v1"
 TABLE_HIST = "livermore_candidate_history"
+TABLE_STOCK_UNIVERSE = "livermore_stock_candidate_universe_history"
 TABLE_OBS = "choice_stock_daily_observation"
 _MAX_CALENDAR_GAP_DAYS_NORMAL = 5
 _MIN_FORWARD_BARS_FOR_HALT_FALLBACK = 5
@@ -30,9 +31,11 @@ _INSERT_COLUMNS = (
     "selection_close",
     "forward_trade_date_1d",
     "forward_trade_date_5d",
+    "forward_trade_date_10d",
     "forward_trade_date_20d",
     "return_1d",
     "return_5d",
+    "return_10d",
     "return_20d",
     "data_status",
     "formula_version",
@@ -47,6 +50,15 @@ _INSERT_COLUMNS = (
     "theme_rank",
     "stock_rank_in_theme",
     "sector_rank",
+    "market_state",
+    "abnormal_turnover",
+    "gap_norm",
+    "breakout_extension_norm",
+    "breakout_level",
+    "ema10",
+    "ma20",
+    "ma60",
+    "ma120",
     "strength_pctchange",
     "strength_turn",
     "strength_amplitude",
@@ -54,7 +66,48 @@ _INSERT_COLUMNS = (
     "closed_up_limit",
     "signal_evidence_json",
 )
+_UNIVERSE_INSERT_COLUMNS = (
+    "snapshot_as_of_date",
+    "stock_code",
+    "stock_name",
+    "sector_code",
+    "sector_name",
+    "sector_rank",
+    "selection_close",
+    "close_strength",
+    "gap_norm",
+    "breakout_extension_norm",
+    "abnormal_turnover",
+    "breakout_level",
+    "ema10",
+    "ma20",
+    "ma60",
+    "ma120",
+    "old_rank",
+    "new_rank",
+    "eligible_before_truncation",
+    "selected_old_top6",
+    "selected_new_top6",
+    "forward_trade_date_1d",
+    "forward_trade_date_5d",
+    "forward_trade_date_10d",
+    "forward_trade_date_20d",
+    "return_1d",
+    "return_5d",
+    "return_10d",
+    "return_20d",
+    "market_state",
+    "data_status",
+    "formula_version",
+    "source_version",
+    "vendor_version",
+    "rule_version",
+    "run_id",
+    "evidence_json",
+)
 _ADDED_COLUMN_SQL = (
+    ("forward_trade_date_10d", "varchar"),
+    ("return_10d", "double"),
     ("signal_kind", "varchar"),
     ("theme_key", "varchar"),
     ("theme_name", "varchar"),
@@ -62,12 +115,31 @@ _ADDED_COLUMN_SQL = (
     ("theme_rank", "integer"),
     ("stock_rank_in_theme", "integer"),
     ("sector_rank", "integer"),
+    ("market_state", "varchar"),
+    ("abnormal_turnover", "double"),
+    ("gap_norm", "double"),
+    ("breakout_extension_norm", "double"),
+    ("breakout_level", "double"),
+    ("ema10", "double"),
+    ("ma20", "double"),
+    ("ma60", "double"),
+    ("ma120", "double"),
     ("strength_pctchange", "double"),
     ("strength_turn", "double"),
     ("strength_amplitude", "double"),
     ("close_strength", "double"),
     ("closed_up_limit", "boolean"),
     ("signal_evidence_json", "varchar"),
+)
+_UNIVERSE_ADDED_COLUMN_SQL = (
+    ("forward_trade_date_10d", "varchar"),
+    ("return_10d", "double"),
+    ("old_rank", "integer"),
+    ("new_rank", "integer"),
+    ("eligible_before_truncation", "boolean"),
+    ("selected_old_top6", "boolean"),
+    ("selected_new_top6", "boolean"),
+    ("evidence_json", "varchar"),
 )
 
 
@@ -79,9 +151,20 @@ def ensure_livermore_candidate_history_schema(conn: duckdb.DuckDBPyConnection) -
     for column, definition in _ADDED_COLUMN_SQL:
         if column not in existing:
             conn.execute(f"alter table {TABLE_HIST} add column {column} {definition}")
+    universe_existing = {
+        str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_STOCK_UNIVERSE}')").fetchall()
+    }
+    for column, definition in _UNIVERSE_ADDED_COLUMN_SQL:
+        if column not in universe_existing:
+            conn.execute(f"alter table {TABLE_STOCK_UNIVERSE} add column {column} {definition}")
 
 
-def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str | None = None) -> dict[str, object]:
+def materialize_livermore_candidate_history(
+    duckdb_path: str,
+    *,
+    as_of_date: str | None = None,
+    stock_candidate_policy: str | None = None,
+) -> dict[str, object]:
     """Persist Livermore candidate rows with forward closes from choice_stock_daily_observation (task write path)."""
     parsed_as_of: date | None = None
     if as_of_date is not None:
@@ -99,6 +182,7 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
         as_of_date=parsed_as_of,
         stock_readiness=_load_configured_stock_readiness(),
         backfill_mode=True,
+        stock_candidate_policy=stock_candidate_policy,
     )
     snapshot_as_of = cast(str | None, payload.get("as_of_date"))
     if not snapshot_as_of:
@@ -111,10 +195,12 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
             "rule_version": RULE_VERSION,
             "formula_version": FORMULA_VERSION,
             "skipped": ["missing_resolved_as_of_date"],
+            "stock_candidate_policy": stock_candidate_policy or "default",
             "message": "Strategy payload has no resolved as_of_date; nothing written.",
         }
 
     items_sorted = _build_signal_rows(payload)
+    universe_items = _build_stock_candidate_universe_rows(payload)
 
     source_version_meta = cast(str, meta.get("source_version"))
     lineage_payload = _build_vendor_payload(payload=payload, items=items_sorted, snapshot_as_of=snapshot_as_of)
@@ -131,6 +217,7 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
         observation_table_ok = TABLE_OBS in {r[0] for r in conn.execute("show tables").fetchall()}
 
         computed_rows: list[dict[str, object]] = []
+        computed_universe_rows: list[dict[str, object]] = []
         if not items_sorted:
             skipped.append("no_strategy_signals")
         for item in items_sorted:
@@ -176,6 +263,15 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
                     "theme_rank": _safe_int_or_none(item.get("theme_rank")),
                     "stock_rank_in_theme": _safe_int_or_none(item.get("stock_rank_in_theme")),
                     "sector_rank": _safe_int_or_none(item.get("sector_rank")),
+                    "market_state": _row_market_state(item),
+                    "abnormal_turnover": _safe_float_or_none(item.get("abnormal_turnover")),
+                    "gap_norm": _safe_float_or_none(item.get("gap_norm")),
+                    "breakout_extension_norm": _safe_float_or_none(item.get("breakout_extension_norm")),
+                    "breakout_level": _safe_float_or_none(item.get("breakout_level")),
+                    "ema10": _safe_float_or_none(item.get("ema10")),
+                    "ma20": _safe_float_or_none(item.get("ma20")),
+                    "ma60": _safe_float_or_none(item.get("ma60")),
+                    "ma120": _safe_float_or_none(item.get("ma120")),
                     "strength_pctchange": _safe_float_or_none(item.get("strength_pctchange")),
                     "strength_turn": _safe_float_or_none(item.get("strength_turn")),
                     "strength_amplitude": _safe_float_or_none(item.get("strength_amplitude")),
@@ -185,11 +281,61 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
                 }
             )
 
+        if universe_items and observation_table_ok:
+            for item in universe_items:
+                code = _text(item.get("stock_code")).upper()
+                if not code:
+                    skipped.append("universe:blank_stock_code")
+                    continue
+                computed = _forward_returns_for_candidate(
+                    conn,
+                    stock_code=code,
+                    snapshot_as_of_date=snapshot_as_of,
+                )
+                if computed is None:
+                    skipped.append(f"{code}:universe_missing_selection_bar")
+                    continue
+                computed_universe_rows.append(
+                    {
+                        "snapshot_as_of_date": snapshot_as_of,
+                        "stock_code": code,
+                        "stock_name": _optional_text(item.get("stock_name")),
+                        "sector_code": _optional_text(item.get("sector_code")),
+                        "sector_name": _optional_text(item.get("sector_name")),
+                        "sector_rank": _safe_int_or_none(item.get("sector_rank")),
+                        **computed,
+                        "close_strength": _safe_float_or_none(item.get("close_strength")),
+                        "gap_norm": _safe_float_or_none(item.get("gap_norm")),
+                        "breakout_extension_norm": _safe_float_or_none(item.get("breakout_extension_norm")),
+                        "abnormal_turnover": _safe_float_or_none(item.get("abnormal_turnover")),
+                        "breakout_level": _safe_float_or_none(item.get("breakout_level")),
+                        "ema10": _safe_float_or_none(item.get("ema10")),
+                        "ma20": _safe_float_or_none(item.get("ma20")),
+                        "ma60": _safe_float_or_none(item.get("ma60")),
+                        "ma120": _safe_float_or_none(item.get("ma120")),
+                        "old_rank": _safe_int_or_none(item.get("old_rank")),
+                        "new_rank": _safe_int_or_none(item.get("new_rank")),
+                        "eligible_before_truncation": _safe_bool(item.get("eligible_before_truncation"), default=True),
+                        "selected_old_top6": _safe_bool(item.get("selected_old_top6"), default=False),
+                        "selected_new_top6": _safe_bool(item.get("selected_new_top6"), default=False),
+                        "market_state": _optional_text(item.get("market_state")) or _payload_market_state(payload),
+                        "formula_version": FORMULA_VERSION,
+                        "source_version": row_source_version,
+                        "vendor_version": vendor_version,
+                        "rule_version": RULE_VERSION,
+                        "run_id": run_id,
+                        "evidence_json": _json_dump(_stock_candidate_universe_evidence(item, payload=payload)),
+                    }
+                )
+        elif universe_items:
+            skipped.append("universe:missing_observation_table")
+
         transaction_started = False
         try:
             conn.execute("begin transaction")
             transaction_started = True
             conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
+            conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
             if computed_rows:
                 placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
                 conn.executemany(
@@ -198,6 +344,18 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
                     values ({placeholders})
                     """,
                     [tuple(cast(Any, row[col]) for col in _INSERT_COLUMNS) for row in computed_rows],
+                )
+            if computed_universe_rows:
+                placeholders = ", ".join("?" for _ in _UNIVERSE_INSERT_COLUMNS)
+                conn.executemany(
+                    f"""
+                    insert into {TABLE_STOCK_UNIVERSE} ({", ".join(_UNIVERSE_INSERT_COLUMNS)})
+                    values ({placeholders})
+                    """,
+                    [
+                        tuple(cast(Any, row[col]) for col in _UNIVERSE_INSERT_COLUMNS)
+                        for row in computed_universe_rows
+                    ],
                 )
             conn.execute("commit")
             transaction_started = False
@@ -224,6 +382,8 @@ def materialize_livermore_candidate_history(duckdb_path: str, *, as_of_date: str
             "formula_version": FORMULA_VERSION,
             "skipped": skipped,
             "skipped_count": len(skipped),
+            "universe_row_count": len(computed_universe_rows),
+            "stock_candidate_policy": stock_candidate_policy or "default",
         }
     finally:
         conn.close()
@@ -234,6 +394,7 @@ def backfill_livermore_candidate_history(
     *,
     start_date: str,
     end_date: str,
+    stock_candidate_policy: str | None = None,
 ) -> dict[str, object]:
     """Materialize candidate history for every observed trade date in a bounded date range."""
     parsed_start = date.fromisoformat(start_date.strip()[:10])
@@ -259,6 +420,7 @@ def backfill_livermore_candidate_history(
             "skipped": ["missing_observation_trade_dates"],
             "rule_version": RULE_VERSION,
             "formula_version": FORMULA_VERSION,
+            "stock_candidate_policy": stock_candidate_policy or "default",
         }
 
     date_results: list[dict[str, object]] = []
@@ -266,7 +428,11 @@ def backfill_livermore_candidate_history(
     total_skipped = 0
     partial_dates = 0
     for trade_date in trade_dates:
-        result = materialize_livermore_candidate_history(str(duckdb_file), as_of_date=trade_date)
+        result = materialize_livermore_candidate_history(
+            str(duckdb_file),
+            as_of_date=trade_date,
+            stock_candidate_policy=stock_candidate_policy,
+        )
         row_count = _safe_int(result.get("row_count"), default=0)
         skipped_count = _safe_int(result.get("skipped_count"), default=0)
         status = _text(result.get("status")) or "partial"
@@ -295,6 +461,7 @@ def backfill_livermore_candidate_history(
         "dates": date_results,
         "rule_version": RULE_VERSION,
         "formula_version": FORMULA_VERSION,
+        "stock_candidate_policy": stock_candidate_policy or "default",
     }
 
 
@@ -310,6 +477,7 @@ def _build_vendor_payload(
         "candidate_stock_codes": [_text(i.get("stock_code")).upper() for i in items if _text(i.get("stock_code"))],
         "signal_kinds": sorted({_text(i.get("signal_kind")) or "stock_candidate" for i in items}),
         "market_gate_state": (_mapping(payload.get("market_gate")).get("state")),
+        "stock_candidate_policy": _mapping(payload.get("stock_candidates")).get("selection_policy"),
     }
 
 
@@ -348,7 +516,7 @@ def _load_configured_stock_readiness() -> ChoiceStockReadiness:
 
 def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    market_state = _optional_text(_mapping(payload.get("market_gate")).get("state"))
+    market_state = _payload_market_state(payload)
     stock_candidates_raw = payload.get("stock_candidates")
     if isinstance(stock_candidates_raw, dict):
         raw_items = stock_candidates_raw.get("items")
@@ -368,17 +536,25 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                         "sector_name": item.get("sector_name"),
                         "sector_rank": item.get("sector_rank"),
                         "strength_pctchange": item.get("pctchange"),
-                        "strength_turn": item.get("turn"),
+                        "strength_turn": item.get("abnormal_turnover", item.get("turn")),
                         "strength_amplitude": item.get("amplitude"),
                         "close_strength": item.get("close_strength"),
                         "closed_up_limit": item.get("closed_up_limit"),
-                        "signal_evidence": {
-                            "signal_kind": "stock_candidate",
-                            "market_state": market_state,
-                            "rank": rank,
-                            "stock_code": item.get("stock_code"),
-                            "sector_code": item.get("sector_code"),
-                        },
+                        "market_state": market_state,
+                        "abnormal_turnover": item.get("abnormal_turnover"),
+                        "gap_norm": item.get("gap_norm"),
+                        "breakout_extension_norm": item.get("breakout_extension_norm"),
+                        "breakout_level": item.get("breakout_level"),
+                        "ema10": item.get("ema10"),
+                        "ma20": item.get("ma20"),
+                        "ma60": item.get("ma60"),
+                        "ma120": item.get("ma120"),
+                        "selection_policy": item.get("selection_policy"),
+                        "signal_evidence": _stock_candidate_signal_evidence(
+                            item,
+                            market_state=market_state,
+                            rank=rank,
+                        ),
                     }
                 )
 
@@ -525,6 +701,84 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
     )
 
 
+def _build_stock_candidate_universe_rows(payload: dict[str, object]) -> list[dict[str, object]]:
+    stock_candidates_raw = payload.get("stock_candidates")
+    if not isinstance(stock_candidates_raw, dict):
+        return []
+    raw_items = stock_candidates_raw.get("universe_items")
+    if not isinstance(raw_items, list):
+        return []
+    market_state = _payload_market_state(payload)
+    rows: list[dict[str, object]] = []
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        item = dict(cast(dict[str, object], raw))
+        item["market_state"] = _optional_text(item.get("market_state")) or market_state
+        rows.append(item)
+    return rows
+
+
+def _payload_market_state(payload: dict[str, object]) -> str | None:
+    return _optional_text(_mapping(payload.get("market_gate")).get("state"))
+
+
+def _row_market_state(item: dict[str, object]) -> str | None:
+    direct = _optional_text(item.get("market_state"))
+    if direct:
+        return direct
+    evidence = _mapping(item.get("signal_evidence"))
+    return _optional_text(evidence.get("market_state"))
+
+
+def _stock_candidate_signal_evidence(
+    item: dict[str, object],
+    *,
+    market_state: str | None,
+    rank: int,
+) -> dict[str, object]:
+    evidence = {
+        "signal_kind": "stock_candidate",
+        "market_state": market_state,
+        "rank": rank,
+        "stock_code": item.get("stock_code"),
+        "sector_code": item.get("sector_code"),
+        "sector_rank": item.get("sector_rank"),
+        "close_strength": item.get("close_strength"),
+        "abnormal_turnover": item.get("abnormal_turnover"),
+        "gap_norm": item.get("gap_norm"),
+        "breakout_extension_norm": item.get("breakout_extension_norm"),
+        "breakout_level": item.get("breakout_level"),
+        "ema10": item.get("ema10"),
+        "ma20": item.get("ma20"),
+        "ma60": item.get("ma60"),
+        "ma120": item.get("ma120"),
+    }
+    selection_policy = _optional_text(item.get("selection_policy"))
+    if selection_policy:
+        evidence["selection_policy"] = selection_policy
+    return evidence
+
+
+def _stock_candidate_universe_evidence(
+    item: dict[str, object],
+    *,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    return {
+        **_stock_candidate_signal_evidence(
+            item,
+            market_state=_optional_text(item.get("market_state")) or _payload_market_state(payload),
+            rank=_safe_int(item.get("new_rank"), default=1),
+        ),
+        "old_rank": item.get("old_rank"),
+        "new_rank": item.get("new_rank"),
+        "eligible_before_truncation": item.get("eligible_before_truncation"),
+        "selected_old_top6": item.get("selected_old_top6"),
+        "selected_new_top6": item.get("selected_new_top6"),
+    }
+
+
 def _build_vendor_version(lineage_payload: dict[str, object]) -> str:
     digest = hashlib.sha256(
         json.dumps(lineage_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
@@ -591,13 +845,15 @@ def _forward_returns_for_candidate(
 
     d1 = series[0] if len(series) >= 1 else None
     d5 = series[4] if len(series) >= 5 else None
+    d10 = series[9] if len(series) >= 10 else None
     d20 = series[19] if len(series) >= 20 else None
 
     r1 = (d1[1] - selection_close) / selection_close if d1 else None
     r5 = (d5[1] - selection_close) / selection_close if d5 else None
+    r10 = (d10[1] - selection_close) / selection_close if d10 else None
     r20 = (d20[1] - selection_close) / selection_close if d20 else None
 
-    has_all = r1 is not None and r5 is not None and r20 is not None
+    has_all = r1 is not None and r5 is not None and r10 is not None and r20 is not None
     if has_stock_gap:
         data_status = "partial_halt"
     elif has_all:
@@ -611,9 +867,11 @@ def _forward_returns_for_candidate(
         "selection_close": selection_close,
         "forward_trade_date_1d": d1[0] if d1 else None,
         "forward_trade_date_5d": d5[0] if d5 else None,
+        "forward_trade_date_10d": d10[0] if d10 else None,
         "forward_trade_date_20d": d20[0] if d20 else None,
         "return_1d": r1,
         "return_5d": r5,
+        "return_10d": r10,
         "return_20d": r20,
         "data_status": data_status,
     }
@@ -715,6 +973,11 @@ def _safe_bool_or_none(value: object) -> bool | None:
     if text in {"0", "false", "no", "n"}:
         return False
     return None
+
+
+def _safe_bool(value: object, *, default: bool) -> bool:
+    parsed = _safe_bool_or_none(value)
+    return default if parsed is None else parsed
 
 
 def _json_dump(value: object) -> str:
