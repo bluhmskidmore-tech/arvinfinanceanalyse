@@ -10,6 +10,12 @@ describe("MacroToolkitPage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "宏观分析结果" }),
     ).toBeInTheDocument();
+    expect(await screen.findByText("投研观点")).toBeInTheDocument();
+    expect(await screen.findByText("证据覆盖")).toBeInTheDocument();
+    expect(await screen.findByText("87.5%")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("宏观工具投研总览"),
+    ).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { level: 2, name: "核心信号" }),
     ).toBeInTheDocument();

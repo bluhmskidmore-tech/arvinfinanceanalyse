@@ -9,6 +9,8 @@ type MacroToolkitClientFactoryOptions = {
   baseUrl: string;
 };
 
+const MACRO_TOOLKIT_READ_TIMEOUT_MS = 15_000;
+
 export type MacroToolkitScriptRecord = {
   name: string;
   filename: string;
@@ -991,9 +993,28 @@ async function requestJson<TData>(
   baseUrl: string,
   path: string,
 ): Promise<ApiEnvelope<TData>> {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: { Accept: "application/json" },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MACRO_TOOLKIT_READ_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetchImpl(`${baseUrl}${path}`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const errorName =
+      typeof error === "object" && error !== null && "name" in error
+        ? (error as { name?: unknown }).name
+        : undefined;
+    if (errorName === "AbortError") {
+      throw new Error(`Macro toolkit request timed out: ${path}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
   if (!response.ok) {
     const detail = await readHttpJsonDetail(response);
     throw new Error(detail ?? `Request failed: ${path} (${response.status})`);

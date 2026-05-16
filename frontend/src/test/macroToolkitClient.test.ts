@@ -3,6 +3,32 @@ import { describe, expect, it, vi } from "vitest";
 import { createRealMacroToolkitClient } from "../api/macroToolkitClient";
 
 describe("macroToolkitClient", () => {
+  it("surfaces a timeout when toolkit read endpoints do not answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn(
+        (_url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          }),
+      ) as unknown as typeof fetch;
+      const client = createRealMacroToolkitClient({
+        fetchImpl,
+        baseUrl: "http://localhost:8000",
+      });
+
+      const pending = expect(client.getMacroToolkitAnalysis()).rejects.toThrow(
+        "Macro toolkit request timed out: /ui/macro/toolkit/analysis",
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("posts CFFEX member-rank refresh requests to the backend route", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(
