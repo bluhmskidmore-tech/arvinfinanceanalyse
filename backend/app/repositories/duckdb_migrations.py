@@ -68,6 +68,22 @@ def ensure_balance_zqtz_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(statement)
 
 
+def ensure_risk_tensor_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
+    """Align risk tensor tables whose v4 migration was recorded before later additive columns."""
+    if not _main_table_exists(conn, "fact_formal_risk_tensor_daily"):
+        return
+    for statement in (
+        "alter table fact_formal_risk_tensor_daily add column if not exists asset_cashflow_30d decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists asset_cashflow_90d decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists liability_cashflow_30d decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists liability_cashflow_90d decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists liability_source_version varchar",
+        "alter table fact_formal_risk_tensor_daily add column if not exists liability_rule_version varchar",
+        "alter table fact_formal_risk_tensor_daily add column if not exists regulatory_dv01 decimal(24, 8)",
+    ):
+        conn.execute(statement)
+
+
 def _v18_zqtz_business_type_primary(conn: duckdb.DuckDBPyConnection) -> None:
     _ensure_zqtz_patch_target_tables(conn)
     for table_name in (

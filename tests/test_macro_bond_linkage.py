@@ -766,6 +766,44 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_api_uses_latest_prior_risk_tensor_when_target_date_is_missing(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-linkage-prior-risk.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    prior_date = REPORT_DATE - timedelta(days=1)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_risk_tensor_daily
+            set report_date = ?,
+                portfolio_dv01 = 15.25,
+                cs01 = 6.50,
+                total_market_value = 2000.00,
+                source_version = 'sv_prior_risk_tensor',
+                rule_version = 'rv_prior_risk_tensor'
+            where report_date = ?
+            """,
+            [prior_date.isoformat(), REPORT_DATE.isoformat()],
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _route_client().get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+    ).json()
+
+    result = payload["result"]
+    assert Decimal(result["portfolio_impact"]["estimated_rate_pnl_impact"]) != Decimal("0")
+    assert Decimal(result["portfolio_impact"]["total_estimated_impact"]) != Decimal("0")
+    assert any(prior_date.isoformat() in warning for warning in result["warnings"])
+    assert "sv_prior_risk_tensor" in payload["result_meta"]["source_version"]
+
+    get_settings.cache_clear()
+
+
 def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monkeypatch):
     """Schema → service → HTTP：相关性元数据字段在 API JSON 中可见。"""
     duckdb_path = tmp_path / "macro-bond-cross-layer.duckdb"

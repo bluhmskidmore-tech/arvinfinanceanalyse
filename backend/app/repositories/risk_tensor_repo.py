@@ -5,7 +5,10 @@ from dataclasses import dataclass
 
 import duckdb
 
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_risk_tensor_legacy_columns,
+)
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
@@ -317,6 +320,7 @@ class RiskTensorRepository:
 def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
+    ensure_risk_tensor_legacy_columns(conn)
 
 
 def load_latest_bond_analytics_lineage(

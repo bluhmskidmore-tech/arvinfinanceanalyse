@@ -246,6 +246,96 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
     assert "liability_source_version" not in columns
 
 
+def test_risk_tensor_write_path_aligns_legacy_applied_v4_schema(tmp_path):
+    core_mod = load_module(
+        "backend.app.core_finance.risk_tensor",
+        "backend/app/core_finance/risk_tensor.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "legacy-applied.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table _schema_migrations (
+                version integer primary key,
+                description text not null,
+                applied_at timestamp default current_timestamp
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into _schema_migrations (version, description)
+            values (4, 'baseline risk tensor')
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+                report_date varchar,
+                portfolio_dv01 decimal(24, 8),
+                krd_1y decimal(24, 8),
+                krd_3y decimal(24, 8),
+                krd_5y decimal(24, 8),
+                krd_7y decimal(24, 8),
+                krd_10y decimal(24, 8),
+                krd_30y decimal(24, 8),
+                cs01 decimal(24, 8),
+                portfolio_convexity decimal(24, 8),
+                portfolio_modified_duration decimal(24, 8),
+                issuer_concentration_hhi decimal(24, 8),
+                issuer_top5_weight decimal(24, 8),
+                liquidity_gap_30d decimal(24, 8),
+                liquidity_gap_90d decimal(24, 8),
+                liquidity_gap_30d_ratio decimal(24, 8),
+                total_market_value decimal(24, 8),
+                bond_count integer,
+                quality_flag varchar,
+                warnings_json varchar,
+                source_version varchar,
+                upstream_source_version varchar,
+                rule_version varchar,
+                cache_version varchar,
+                trace_id varchar
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_mod.RiskTensorRepository(str(duckdb_path))
+    repo.replace_risk_tensor_row(
+        report_date="2026-03-31",
+        tensor=_sample_tensor(core_mod),
+        source_version="sv_risk_tensor__sv_bond_snap_1",
+        upstream_source_version="sv_bond_snap_1",
+        liability_source_version="sv_tyw_liability_synthetic",
+        liability_rule_version="rv_tyw_formal_synthetic",
+        rule_version="rv_risk_tensor_formal_materialize_v1",
+        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+        trace_id="trace_risk_tensor_20260331",
+    )
+
+    row = repo.fetch_risk_tensor_row("2026-03-31")
+    assert row is not None
+    assert row["regulatory_dv01"] == Decimal("1.25000000")
+    assert row["asset_cashflow_30d"] == Decimal("12.00000000")
+    assert row["liability_source_version"] == "sv_tyw_liability_synthetic"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        columns = {str(row[1]) for row in conn.execute("pragma table_info('fact_formal_risk_tensor_daily')").fetchall()}
+    finally:
+        conn.close()
+    assert "asset_cashflow_30d" in columns
+    assert "regulatory_dv01" in columns
+    assert "liability_source_version" in columns
+
+
 def test_load_current_tyw_liability_lineage_by_report_date_deduplicates_and_sorts(tmp_path):
     repo_mod = load_module(
         "backend.app.repositories.risk_tensor_repo",

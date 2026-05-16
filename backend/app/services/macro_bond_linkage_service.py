@@ -441,50 +441,73 @@ def _load_portfolio_metrics(
         row = conn.execute(
             """
             select
+              cast(report_date as date) as resolved_report_date,
               cast(portfolio_dv01 as decimal(24, 8)) as portfolio_dv01,
               cast(cs01 as decimal(24, 8)) as cs01,
               cast(total_market_value as decimal(24, 8)) as total_market_value,
               coalesce(source_version, '') as source_version,
               coalesce(rule_version, '') as rule_version
             from fact_formal_risk_tensor_daily
-            where report_date = ?
+            where try_cast(report_date as date) <= ?
+            order by try_cast(report_date as date) desc
             limit 1
             """,
             [report_date.isoformat()],
         ).fetchone()
         if row is not None:
+            resolved_report_date = _coerce_date(row[0])
+            if resolved_report_date is not None and resolved_report_date != report_date:
+                warnings.append(
+                    f"风险张量使用最近日期 {resolved_report_date.isoformat()}，目标日期为 {report_date.isoformat()}。"
+                )
             return {
-                "portfolio_dv01": _coerce_decimal(row[0]),
-                "portfolio_cs01": _coerce_decimal(row[1]),
-                "portfolio_market_value": _coerce_decimal(row[2]),
-                "source_version": str(row[3] or EMPTY_SOURCE_VERSION),
-                "rule_version": str(row[4] or ""),
+                "portfolio_dv01": _coerce_decimal(row[1]),
+                "portfolio_cs01": _coerce_decimal(row[2]),
+                "portfolio_market_value": _coerce_decimal(row[3]),
+                "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
+                "rule_version": str(row[5] or ""),
                 "warnings": warnings,
             }
 
     if _relation_exists(conn, "fact_formal_bond_analytics_daily"):
         row = conn.execute(
             """
+            with latest as (
+              select max(try_cast(report_date as date)) as resolved_report_date
+              from fact_formal_bond_analytics_daily
+              where try_cast(report_date as date) <= ?
+            )
             select
+              latest.resolved_report_date,
               cast(coalesce(sum(dv01), 0) as decimal(24, 8)) as portfolio_dv01,
               cast(coalesce(sum(case when is_credit then spread_dv01 else 0 end), 0) as decimal(24, 8)) as portfolio_cs01,
               cast(coalesce(sum(market_value), 0) as decimal(24, 8)) as portfolio_market_value,
               coalesce(string_agg(distinct source_version, '__'), '') as source_version,
               coalesce(string_agg(distinct rule_version, '__'), '') as rule_version
-            from fact_formal_bond_analytics_daily
-            where report_date = ?
+            from fact_formal_bond_analytics_daily, latest
+            where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.resolved_report_date
+            group by latest.resolved_report_date
             """,
             [report_date.isoformat()],
         ).fetchone()
         if row is None:
-            row = (Decimal("0"), Decimal("0"), Decimal("0"), EMPTY_SOURCE_VERSION, "")
-        warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
+            row = (None, Decimal("0"), Decimal("0"), Decimal("0"), EMPTY_SOURCE_VERSION, "")
+        resolved_report_date = _coerce_date(row[0])
+        if resolved_report_date is None:
+            warnings.append("风险张量缺失，且 bond analytics 未提供可用组合 DV01/CS01。")
+        elif resolved_report_date == report_date:
+            warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
+        else:
+            warnings.append(
+                "风险张量缺失，组合 DV01/CS01 已回退到 "
+                f"{resolved_report_date.isoformat()} bond analytics 聚合结果。"
+            )
         return {
-            "portfolio_dv01": _coerce_decimal(row[0]),
-            "portfolio_cs01": _coerce_decimal(row[1]),
-            "portfolio_market_value": _coerce_decimal(row[2]),
-            "source_version": str(row[3] or EMPTY_SOURCE_VERSION),
-            "rule_version": str(row[4] or ""),
+            "portfolio_dv01": _coerce_decimal(row[1]),
+            "portfolio_cs01": _coerce_decimal(row[2]),
+            "portfolio_market_value": _coerce_decimal(row[3]),
+            "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
+            "rule_version": str(row[5] or ""),
             "warnings": warnings,
         }
 
