@@ -93,6 +93,22 @@ const minimalMonthlyBucket = (): PnlByBusinessMonthlyBucket => ({
       asset_count: 3,
       source_note: "ZQTZ_ASSET_BOND_ROWS",
     },
+    {
+      ...minimalYtdRow({
+        row_key: "asset_zqtz_detail_local_currency_special_account_cost",
+        business_type: "其中：本币专户（成本法）",
+        total_pnl: "50000",
+      }),
+      avg_balance: "500000000",
+      current_balance: "500000000",
+      annualized_yield_pct: "1.1",
+      ftp_rate_pct: "1.6",
+      ftp_cost: "1000",
+      ftp_net_pnl: "49000",
+      ftp_net_annualized_yield_pct: "0.9",
+      asset_count: 1,
+      source_note: "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
+    },
   ],
 });
 
@@ -116,6 +132,31 @@ const minimalAnalysisRow = (patch: Partial<PnlByBusinessAnalysisRow> = {}): PnlB
 });
 
 describe("buildPnlByBusinessSheets", () => {
+  it("builds monthly report sheets without YTD-only analysis tabs", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "monthly",
+      reportDate: "2025-12-31",
+      year: 2025,
+      ytdRows: [minimalYtdRow()],
+      adbAvgByBusinessType: new Map([["政策性金融债", 1_000_000_000]]),
+      formalRows: [minimalFormalRow()],
+      months: [minimalMonthlyBucket()],
+      adjustments: [minimalAdjustment()],
+      adjustmentEvents: [minimalAdjustment({ event_type: "created" })],
+      bondBucketRows: [minimalAnalysisRow()],
+      bondBucketMonthlyRows: [minimalAnalysisRow()],
+      negativeFtpRows: [minimalAnalysisRow({ ftp_net_pnl: "-1000" })],
+      analysisDimension: "monthly",
+      analysisRows: [minimalAnalysisRow()],
+    });
+
+    expect(sheets.map((sheet) => sheet.sheet)).toEqual(["导出说明", "月报业务种类", "月报其中项明细"]);
+    expect(sheets[0]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["月报(ZQTZ)"])]));
+    expect(sheets[1]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["政策性金融债"])]));
+    expect(sheets[1]?.data).not.toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
+    expect(sheets[2]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
+  });
+
   it("builds writer-compatible YTD sheets with stable names and localized values", async () => {
     const sheets = buildPnlByBusinessSheets({
       viewMode: "ytd",
@@ -124,7 +165,14 @@ describe("buildPnlByBusinessSheets", () => {
       periodStart: "2025-01-01",
       periodEnd: "2025-12-31",
       periodLabel: "2025 YTD",
-      ytdRows: [minimalYtdRow()],
+      ytdRows: [
+        minimalYtdRow(),
+        minimalYtdRow({
+          row_key: "asset_zqtz_detail_local_currency_special_account_cost",
+          business_type: "其中：本币专户（成本法）",
+          source_note: "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
+        }),
+      ],
       adbAvgByBusinessType: new Map([["政策性金融债", 1_000_000_000]]),
       formalRows: [],
       months: [minimalMonthlyBucket()],
@@ -141,7 +189,9 @@ describe("buildPnlByBusinessSheets", () => {
     expect(sheets.map((sheet) => sheet.sheet)).toEqual([
       "导出说明",
       "YTD年累计明细",
+      "YTD其中项明细",
       "月度业务种类",
+      "月度其中项明细",
       "手工调整当前",
       "手工调整事件",
       "债券四类",
@@ -156,6 +206,8 @@ describe("buildPnlByBusinessSheets", () => {
       expect.arrayContaining([expect.arrayContaining(["政策性金融债"])]),
     );
     expect(sheets[1]?.data).toEqual(expect.arrayContaining([expect.arrayContaining([10])]));
+    expect(sheets[1]?.data).not.toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
+    expect(sheets[2]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
 
     const blob = await writeExcelFile(sheets).toBlob();
     expect(blob.size).toBeGreaterThan(1000);
@@ -179,7 +231,7 @@ describe("buildPnlByBusinessSheets", () => {
       analysisRows: [],
     });
 
-    expect(sheets.map((sheet) => sheet.sheet)).toEqual(["导出说明", "Formal单日明细"]);
+    expect(sheets.map((sheet) => sheet.sheet)).toEqual(["导出说明", "Primary对账明细"]);
     expect(sheets[1]?.data).toEqual(
       expect.arrayContaining([expect.arrayContaining(["政策性金融债"])]),
     );

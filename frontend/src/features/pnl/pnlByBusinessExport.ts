@@ -3,6 +3,7 @@ import type { Sheet, SheetData } from "write-excel-file/browser";
 
 import type {
   PnlByBusinessMonthlyBucket,
+  PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
   PnlByBusinessManualAdjustmentPayload,
@@ -65,13 +66,26 @@ function ftpNetForYtdRow(
   };
 }
 
+type ZqtzBusinessExportRow = {
+  row_key: string;
+  business_type: string;
+  source_note?: string | null;
+};
+
 /** 排除「其中」细分行，与页面父级汇总一致 */
-function isParentZqtzBusinessRow(row: PnlByBusinessYtdItem): boolean {
+function isParentZqtzBusinessRow(row: ZqtzBusinessExportRow): boolean {
+  if (row.row_key.includes("_detail_")) {
+    return false;
+  }
   if (row.business_type.startsWith("其中：")) {
     return false;
   }
   const note = String(row.source_note ?? "");
   return !note.includes("其中项");
+}
+
+function isDetailZqtzBusinessRow(row: ZqtzBusinessExportRow): boolean {
+  return !isParentZqtzBusinessRow(row);
 }
 
 function wanFromYuan(raw: string | number | null | undefined): number | null {
@@ -101,7 +115,7 @@ const ANALYSIS_DIM_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
 };
 
 export type PnlByBusinessExcelExportArgs = {
-  viewMode: "ytd" | "formal";
+  viewMode: "monthly" | "ytd" | "formal";
   reportDate: string;
   year: number;
   periodStart?: string | null;
@@ -110,7 +124,7 @@ export type PnlByBusinessExcelExportArgs = {
   /** YTD 主表（年累计视图） */
   ytdRows: PnlByBusinessYtdItem[];
   adbAvgByBusinessType: Map<string, number>;
-  /** formal 主表（单日视图） */
+  /** formal 主表（primary 对账视图） */
   formalRows: PnlByBusinessRow[];
   months: PnlByBusinessMonthlyBucket[];
   adjustments: PnlByBusinessManualAdjustmentPayload[];
@@ -150,7 +164,8 @@ function buildYtdMainSheet(
     "资产数",
   ];
   const data: SheetAoA = [header];
-  for (const row of rows) {
+  const parentRows = rows.filter(isParentZqtzBusinessRow);
+  for (const row of parentRows) {
     const adb = resolveAdbAvgYuan(row.business_type, adbMap);
     const ftp = ftpNetForYtdRow(row.total_pnl, adb, ytdCalendarDays);
     data.push([
@@ -168,7 +183,6 @@ function buildYtdMainSheet(
       row.assets_count,
     ]);
   }
-  const parentRows = rows.filter(isParentZqtzBusinessRow);
   if (parentRows.length > 0) {
     let interest = 0;
     let fairValue = 0;
@@ -203,6 +217,49 @@ function buildYtdMainSheet(
       ftp.ftpNetYieldPct,
       null,
       assets,
+    ]);
+  }
+  return data;
+}
+
+function buildYtdDetailSheet(
+  rows: PnlByBusinessYtdItem[],
+  adbMap: Map<string, number>,
+  ytdCalendarDays: number | null,
+): SheetAoA {
+  const header: SheetAoA[0] = [
+    "业务种类",
+    "日均(亿元)",
+    "利息收入(万元)",
+    "公允价值变动(万元)",
+    "资本利得(万元)",
+    "手工调整(万元)",
+    "合计损益(万元)",
+    "年化收益率(%)",
+    "FTP后收益(万元)",
+    "FTP后收益率(%)",
+    "占比(0-1)",
+    "资产数",
+    "说明",
+  ];
+  const data: SheetAoA = [header];
+  for (const row of rows.filter(isDetailZqtzBusinessRow)) {
+    const adb = resolveAdbAvgYuan(row.business_type, adbMap);
+    const ftp = ftpNetForYtdRow(row.total_pnl, adb, ytdCalendarDays);
+    data.push([
+      row.business_type,
+      adb !== undefined && adb > 0 ? adb / YUAN_PER_YI : null,
+      wanFromYuan(row.interest_income),
+      wanFromYuan(row.fair_value_change),
+      wanFromYuan(row.capital_gain),
+      wanFromYuan(row.manual_adjustment),
+      wanFromYuan(row.total_pnl),
+      annualizedYieldPctPoints(row.total_pnl, adb, ytdCalendarDays),
+      wanFromYuan(ftp.ftpNet),
+      ftp.ftpNetYieldPct,
+      num(row.proportion),
+      row.assets_count,
+      "父级拆解项，不参与父级汇总",
     ]);
   }
   return data;
@@ -267,7 +324,10 @@ function buildFormalSheet(rows: PnlByBusinessRow[]): SheetAoA {
   return data;
 }
 
-function buildMonthlyFlatSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
+function buildMonthlyFlatSheet(
+  months: PnlByBusinessMonthlyBucket[],
+  rowFilter: (row: PnlByBusinessMonthlyItem) => boolean = isParentZqtzBusinessRow,
+): SheetAoA {
   const header: SheetAoA[0] = [
     "月份",
     "区间起",
@@ -289,7 +349,7 @@ function buildMonthlyFlatSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
   ];
   const data: SheetAoA = [header];
   for (const m of months) {
-    for (const row of m.items) {
+    for (const row of m.items.filter(rowFilter)) {
       data.push([
         m.month_key,
         m.period_start_date,
@@ -310,26 +370,28 @@ function buildMonthlyFlatSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
         row.asset_count,
       ]);
     }
-    const s = m.summary;
-    data.push([
-      m.month_key,
-      m.period_start_date,
-      m.period_end_date,
-      m.calendar_days,
-      "父级汇总",
-      yiFromYuan(s.avg_balance),
-      yiFromYuan(s.current_balance),
-      wanFromYuan(s.interest_income),
-      wanFromYuan(s.fair_value_change),
-      wanFromYuan(s.capital_gain),
-      wanFromYuan(s.manual_adjustment),
-      wanFromYuan(s.total_pnl),
-      num(s.annualized_yield_pct),
-      wanFromYuan(s.ftp_net_pnl),
-      num(s.ftp_net_annualized_yield_pct),
-      null,
-      s.asset_count,
-    ]);
+    if (rowFilter === isParentZqtzBusinessRow) {
+      const s = m.summary;
+      data.push([
+        m.month_key,
+        m.period_start_date,
+        m.period_end_date,
+        m.calendar_days,
+        "父级汇总",
+        yiFromYuan(s.avg_balance),
+        yiFromYuan(s.current_balance),
+        wanFromYuan(s.interest_income),
+        wanFromYuan(s.fair_value_change),
+        wanFromYuan(s.capital_gain),
+        wanFromYuan(s.manual_adjustment),
+        wanFromYuan(s.total_pnl),
+        num(s.annualized_yield_pct),
+        wanFromYuan(s.ftp_net_pnl),
+        num(s.ftp_net_annualized_yield_pct),
+        null,
+        s.asset_count,
+      ]);
+    }
   }
   return data;
 }
@@ -403,9 +465,19 @@ function buildMetaRows(args: PnlByBusinessExcelExportArgs, ytdCalendarDays: numb
   const lines: SheetAoA = [
     ["业务种类损益 — 导出说明"],
     ["报表截止日", args.reportDate],
-    ["视图", args.viewMode === "ytd" ? "年累计(YTD)" : "报表日 formal"],
+    [
+      "视图",
+      args.viewMode === "monthly"
+        ? "月报(ZQTZ)"
+        : args.viewMode === "ytd"
+          ? "月报累计(YTD)"
+          : "primary 对账",
+    ],
   ];
-  if (args.viewMode === "ytd") {
+  if (args.viewMode === "monthly") {
+    lines.push(["年度", args.year]);
+    lines.push(["说明", "本导出为月报 ZQTZ 管理披露口径；同一月份可与年累计视图按父级行核对。"]);
+  } else if (args.viewMode === "ytd") {
     lines.push(["年度", args.year]);
     if (args.periodLabel) {
       lines.push(["区间标签", args.periodLabel]);
@@ -421,7 +493,7 @@ function buildMetaRows(args: PnlByBusinessExcelExportArgs, ytdCalendarDays: numb
       "数值列与页面一致：金额接口为元，表中为万元；收益率与页面同为百分点。未加载成功的分析区块不会出现在后续工作表。",
     ]);
   } else {
-    lines.push(["说明", "本导出为 formal 单日明细；与 YTD 视图不可混加。"]);
+    lines.push(["说明", "本导出为 primary 对账明细；与月报或 YTD 的 ZQTZ 管理披露分类不可混加。"]);
   }
   lines.push([]);
   return lines;
@@ -435,14 +507,29 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
   const meta = buildMetaRows(args, ytdCalendarDays);
   appendSheet(wb, "导出说明", meta);
 
+  if (args.viewMode === "monthly" && args.months.length > 0) {
+    appendSheet(wb, "月报业务种类", buildMonthlyFlatSheet(args.months));
+    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
+    if (detailSheet.length > 1) {
+      appendSheet(wb, "月报其中项明细", detailSheet);
+    }
+  }
   if (args.viewMode === "ytd" && args.ytdRows.length > 0) {
     appendSheet(wb, "YTD年累计明细", buildYtdMainSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays));
+    const detailSheet = buildYtdDetailSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays);
+    if (detailSheet.length > 1) {
+      appendSheet(wb, "YTD其中项明细", detailSheet);
+    }
   }
   if (args.viewMode === "formal" && args.formalRows.length > 0) {
-    appendSheet(wb, "Formal单日明细", buildFormalSheet(args.formalRows));
+    appendSheet(wb, "Primary对账明细", buildFormalSheet(args.formalRows));
   }
   if (args.viewMode === "ytd" && args.months.length > 0) {
     appendSheet(wb, "月度业务种类", buildMonthlyFlatSheet(args.months));
+    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
+    if (detailSheet.length > 1) {
+      appendSheet(wb, "月度其中项明细", detailSheet);
+    }
   }
   if (args.viewMode === "ytd" && args.adjustments.length > 0) {
     appendSheet(wb, "手工调整当前", buildAdjustmentsSheet(`报表日 ${args.reportDate}`, args.adjustments, "current"));
@@ -492,6 +579,8 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
 
 export async function downloadPnlByBusinessExcel(args: PnlByBusinessExcelExportArgs): Promise<void> {
   const sheets = buildPnlByBusinessSheets(args);
-  const filename = `业务种类损益_${args.reportDate}_${args.viewMode === "ytd" ? "YTD" : "formal"}.xlsx`;
+  const filenameSuffix =
+    args.viewMode === "monthly" ? "monthly" : args.viewMode === "ytd" ? "YTD" : "primary";
+  const filename = `业务种类损益_${args.reportDate}_${filenameSuffix}.xlsx`;
   await writeExcelFile(sheets).toFile(filename);
 }

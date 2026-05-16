@@ -42,7 +42,7 @@
   padding: 10px 12px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: var(--moss-radius-md);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-900);
 }
 
@@ -61,7 +61,7 @@
   overflow-x: auto;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .pnl-by-business-table {
@@ -93,6 +93,50 @@
 
 .pnl-by-business-table th:not(:first-child) {
   text-align: right;
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(10),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(10) {
+  position: sticky;
+  z-index: 3;
+  min-width: 132px;
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(9) {
+  right: 132px;
+  border-left: 1px solid var(--moss-color-neutral-100);
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(10),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(10) {
+  right: 0;
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(10) {
+  z-index: 5;
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(10) {
+  background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tbody tr[role="button"]:hover td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tbody tr[role="button"]:hover td:nth-child(10),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table-row-selected td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table-row-selected td:nth-child(10) {
+  background: var(--moss-color-primary-50);
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tfoot td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tfoot td:nth-child(10) {
+  z-index: 4;
+  background: var(--moss-color-neutral-50);
 }
 
 .pnl-by-business-table th:first-child,
@@ -156,7 +200,7 @@
 .pnl-by-business-mini-table {
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .pnl-by-business-mini-table h3 {
@@ -184,7 +228,7 @@
   padding: 14px 16px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-600);
 }
 
@@ -192,7 +236,7 @@
   flex: 0 0 auto;
   padding: 5px 10px;
   border: 1px solid var(--moss-color-primary-100);
-  border-radius: 999px;
+  border-radius: var(--moss-radius-xl);
   background: var(--moss-color-primary-50);
   color: var(--moss-color-primary-700);
   font-size: 12px;
@@ -211,14 +255,14 @@
 .pnl-by-business-month-row {
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-md);
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background: var(--moss-color-card-bg);
+  box-shadow: var(--moss-shadow-card);
   overflow: hidden;
 }
 
 .pnl-by-business-month-row-open {
   border-color: var(--moss-color-primary-200);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07);
+  box-shadow: var(--moss-shadow-panel);
 }
 
 .pnl-by-business-month-button {
@@ -231,7 +275,7 @@
   padding: 10px 14px 10px 12px;
   border: 0;
   border-left: 3px solid transparent;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-900);
   text-align: left;
   cursor: pointer;
@@ -243,7 +287,7 @@
 
 .pnl-by-business-month-button[aria-expanded="true"] {
   border-left-color: var(--moss-color-primary-600);
-  background: #f8fbff;
+  background: var(--moss-color-info-50);
 }
 
 .pnl-by-business-month-chevron {
@@ -252,7 +296,7 @@
   height: 22px;
   place-items: center;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 999px;
+  border-radius: var(--moss-radius-xl);
   color: var(--moss-color-neutral-500);
   font-size: 17px;
   line-height: 1;
@@ -307,7 +351,7 @@
 .pnl-by-business-month-panel {
   padding: 10px 12px 12px;
   border-top: 1px solid var(--moss-color-neutral-100);
-  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 48px);
+  background: linear-gradient(180deg, var(--moss-color-neutral-50) 0%, var(--moss-color-card-bg) 48px);
 }
 
 .pnl-by-business-month-table-shell {
@@ -336,7 +380,7 @@
   padding: 14px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .pnl-by-business-adjustment-form {
@@ -363,7 +407,7 @@
   padding: 8px 12px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-800);
   font-weight: 700;
   cursor: pointer;
@@ -379,11 +423,11 @@
 .pnl-by-business-action-button-primary {
   border-color: var(--moss-color-primary-600);
   background: var(--moss-color-primary-600);
-  color: #ffffff;
+  color: var(--moss-color-warm-paper);
 }
 
 .pnl-by-business-action-button-primary:hover:not(:disabled) {
-  color: #ffffff;
+  color: var(--moss-color-warm-paper);
 }
 
 .pnl-by-business-action-button:disabled,
@@ -394,16 +438,16 @@
 
 .pnl-by-business-adjustment-error {
   padding: 10px 12px;
-  border: 1px solid #fecaca;
+  border: 1px solid var(--moss-color-danger-200);
   border-radius: var(--moss-radius-sm);
-  background: #fef2f2;
-  color: #991b1b;
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-800);
   font-size: 13px;
 }
 
 .pnl-by-business-export-error {
   margin: 0;
-  color: #991b1b;
+  color: var(--moss-color-danger-800);
   font-size: 12px;
   font-weight: 600;
 }
@@ -478,4 +522,159 @@
   .pnl-by-business-adjustment-actions {
     justify-content: flex-start;
   }
+}
+
+/* Practical homepage-aligned pass: keep the old page structure, improve scan and visibility. */
+[data-testid="pnl-by-business-page"] {
+  --pnl-practical-paper: var(--moss-color-warm-paper);
+  --pnl-practical-bg: rgba(255, 253, 248, 0.72);
+  --pnl-practical-line: rgba(90, 68, 45, 0.16);
+  --pnl-practical-line-strong: rgba(90, 68, 45, 0.24);
+  --pnl-practical-ink: var(--moss-color-warm-ink);
+  --pnl-practical-muted: color-mix(in srgb, var(--moss-color-warm-ink) 62%, var(--moss-color-warm-taupe));
+  --pnl-practical-copper: var(--moss-color-warm-terracotta);
+  --pnl-practical-green: var(--moss-color-success-500);
+  color: var(--pnl-practical-ink);
+}
+
+[data-testid="pnl-by-business-page"] * {
+  letter-spacing: 0 !important;
+}
+
+.pnl-by-business-page-header,
+.pnl-by-business-filter,
+.pnl-by-business-evidence-details,
+.pnl-by-business-table-shell,
+.pnl-by-business-mini-table,
+.pnl-by-business-adjustment-panel,
+.pnl-by-business-analysis-state,
+.pnl-by-business-month-row {
+  border-color: var(--pnl-practical-line);
+  background: var(--pnl-practical-paper);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.pnl-by-business-page-header {
+  padding: 18px 20px;
+  border: 1px solid var(--pnl-practical-line);
+  border-radius: 14px;
+  background: var(--pnl-practical-bg);
+}
+
+.pnl-by-business-title {
+  color: var(--pnl-practical-ink);
+  font-size: 28px;
+  font-weight: 820;
+}
+
+.pnl-by-business-subtitle {
+  color: var(--pnl-practical-muted);
+  font-size: 14px;
+}
+
+.pnl-by-business-filter {
+  padding: 12px 14px;
+  border: 1px solid var(--pnl-practical-line);
+  border-radius: 14px;
+}
+
+.pnl-by-business-filter-label {
+  color: var(--pnl-practical-muted);
+  font-weight: 700;
+}
+
+.pnl-by-business-control {
+  border-color: var(--pnl-practical-line-strong);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.94);
+}
+
+.pnl-by-business-control:focus {
+  border-color: rgba(122, 74, 43, 0.5);
+  outline: 3px solid color-mix(in srgb, var(--moss-color-warm-terracotta) 12%, transparent);
+  outline-offset: 0;
+}
+
+.pnl-by-business-action-button-primary {
+  border-color: rgba(95, 56, 31, 0.32);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--moss-color-warm-terracotta) 70%, var(--moss-color-warm-ink)) 0%,
+    color-mix(in srgb, var(--moss-color-warm-ink) 82%, var(--moss-color-warm-terracotta)) 100%
+  );
+  color: var(--moss-color-warm-paper);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.pnl-by-business-summary-grid > div {
+  border: 1px solid var(--pnl-practical-line) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 253, 248, 0.88) !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+.pnl-by-business-evidence-details {
+  overflow: hidden;
+  border: 1px solid var(--pnl-practical-line);
+  border-radius: 12px;
+}
+
+.pnl-by-business-evidence-details summary {
+  min-height: 42px;
+  padding: 12px 14px;
+  color: var(--pnl-practical-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pnl-by-business-evidence-details summary:hover {
+  color: var(--pnl-practical-copper);
+  background: rgba(122, 74, 43, 0.04);
+}
+
+.pnl-by-business-evidence-details > :not(summary) {
+  margin: 0 12px 12px;
+}
+
+.pnl-by-business-table th {
+  background: color-mix(in srgb, var(--moss-color-warm-paper) 68%, var(--moss-color-warm-stone));
+  color: var(--pnl-practical-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pnl-by-business-table td {
+  border-bottom-color: rgba(90, 68, 45, 0.1);
+  color: var(--pnl-practical-ink);
+}
+
+.pnl-by-business-table tbody tr[role="button"]:hover,
+.pnl-by-business-table-row-selected {
+  background: rgba(23, 138, 97, 0.08);
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(10) {
+  background: color-mix(in srgb, var(--moss-color-warm-paper) 68%, var(--moss-color-warm-stone));
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(10) {
+  background: var(--moss-color-warm-paper);
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table-row-selected td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table-row-selected td:nth-child(10),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tbody tr[role="button"]:hover td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tbody tr[role="button"]:hover td:nth-child(10) {
+  background: var(--moss-color-success-50);
+}
+
+.pnl-by-business-table-footer-cell,
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tfoot td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tfoot td:nth-child(10) {
+  background: color-mix(in srgb, var(--moss-color-warm-paper) 72%, var(--moss-color-warm-stone));
+  color: var(--pnl-practical-ink);
+  font-weight: 800;
 }
