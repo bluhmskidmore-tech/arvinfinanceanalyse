@@ -1,4 +1,4 @@
-import ReactEChartsCore from "echarts-for-react/lib/core";
+import ReactEChartsCoreModule from "echarts-for-react/lib/core";
 import type { EChartsReactProps } from "echarts-for-react/lib/types";
 import * as echarts from "echarts/core";
 import { BarChart, CandlestickChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts/charts";
@@ -31,6 +31,10 @@ echarts.use([
 ]);
 
 export type { EChartsOption } from "echarts";
+
+const ReactEChartsCore = (
+  (ReactEChartsCoreModule as unknown as { default?: typeof ReactEChartsCoreModule }).default ?? ReactEChartsCoreModule
+) as typeof ReactEChartsCoreModule;
 
 export default function ReactECharts(props: EChartsReactProps) {
   return <ReactEChartsCore echarts={echarts} {...props} />;
