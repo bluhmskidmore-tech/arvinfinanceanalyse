@@ -94,6 +94,8 @@ class InMemoryTTLCache(Generic[K, V]):
                 if predicate(key):
                     self._store.pop(key, None)
                     invalidated = True
+            if not invalidated:
+                invalidated = any(predicate(key) for key in self._inflight)
             if invalidated:
                 self._generation += 1
 

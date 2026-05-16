@@ -167,3 +167,25 @@ def test_clear_during_inflight_prevents_stale_writeback() -> None:
 
     assert not thread.is_alive()
     assert cache.get(("k",)) == (False, None)
+
+
+def test_invalidate_matching_during_inflight_prevents_stale_writeback() -> None:
+    cache: InMemoryTTLCache[tuple[str], str] = InMemoryTTLCache(ttl_seconds=30)
+    producer_entered = threading.Event()
+    allow_return = threading.Event()
+
+    def build() -> str:
+        producer_entered.set()
+        allow_return.wait(timeout=1)
+        return "stale"
+
+    thread = threading.Thread(target=lambda: cache.get_or_set(("prefix", "k"), build))
+    thread.start()
+    assert producer_entered.wait(timeout=1)
+
+    cache.invalidate_matching(lambda key: key[0] == "prefix")
+    allow_return.set()
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert cache.get(("prefix", "k")) == (False, None)
