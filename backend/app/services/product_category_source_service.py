@@ -8,18 +8,17 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from openpyxl import load_workbook
-
 from backend.app.core_finance.product_category_pnl import (
-    CanonicalFactRow,
     ZERO,
+    CanonicalFactRow,
     derive_monthly_pnl,
 )
-
+from openpyxl import load_workbook
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
 RULE_VERSION = "rv_product_category_pnl_v1"
+SUPPORTED_CURRENCIES = {"CNX", "CNY"}
 
 
 @dataclass(slots=True)
@@ -136,7 +135,7 @@ def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object
 
 def _looks_like_currency(value: object) -> bool:
     text = str(value or "").strip()
-    return bool(re.fullmatch(r"[A-Z]{3}", text))
+    return bool(re.fullmatch(r"[A-Z]{3}", text)) and text in SUPPORTED_CURRENCIES
 
 
 def _parse_average_workbook(path: Path) -> tuple[dict[tuple[str, str], Decimal], dict[tuple[str, str], Decimal]]:
@@ -157,8 +156,10 @@ def _parse_average_sheet(worksheet) -> dict[tuple[str, str], Decimal]:
     rows: dict[tuple[str, str], Decimal] = {}
     for row in worksheet.iter_rows(min_row=4, values_only=True):
         for index in range(0, len(row), 4):
+            if index + 2 >= len(row):
+                continue
             currency, account_code, balance = row[index:index + 3]
-            if currency is None or account_code is None or balance is None:
+            if not _looks_like_currency(currency) or account_code is None or balance is None:
                 continue
             key = (_coerce_account_code(account_code), str(currency).strip())
             rows[key] = rows.get(key, ZERO) + _to_decimal(balance)

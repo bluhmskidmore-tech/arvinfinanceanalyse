@@ -27,6 +27,38 @@ def test_product_category_average_workbook_with_single_sheet_is_treated_as_parti
     assert monthly_rows == {}
 
 
+def test_product_category_average_workbook_ignores_misaligned_non_currency_blocks(tmp_path: Path):
+    avg_path = tmp_path / "鏃ュ潎202401.xlsx"
+    workbook = Workbook()
+    year_sheet = workbook.active
+    year_sheet.title = "annual"
+    month_sheet = workbook.create_sheet(title="monthly")
+
+    for sheet in (year_sheet, month_sheet):
+        row = [None] * 20
+        row[12] = "CNX"
+        row[13] = "23401000001"
+        row[14] = 100
+        row[16] = "23402000001"
+        row[17] = -20
+        row[18] = 20
+        sheet.append(["header"])
+        sheet.append(["header"])
+        sheet.append(["header"])
+        sheet.append(row)
+
+    workbook.save(avg_path)
+
+    annual_rows, monthly_rows = _parse_average_workbook(avg_path)
+
+    assert annual_rows[("23401000001", "CNX")] == Decimal("100")
+    assert monthly_rows[("23401000001", "CNX")] == Decimal("100")
+    assert all(currency in {"CNX", "CNY"} for _code, currency in annual_rows)
+    assert all(currency in {"CNX", "CNY"} for _code, currency in monthly_rows)
+    assert ("-20", "23402000001") not in annual_rows
+    assert ("-20", "23402000001") not in monthly_rows
+
+
 def test_product_category_ledger_workbook_accepts_optional_leading_prefix_column(tmp_path: Path):
     ledger_path = tmp_path / "总账对账202401.xlsx"
     workbook = Workbook()
