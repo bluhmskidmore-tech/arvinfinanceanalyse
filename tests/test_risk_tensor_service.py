@@ -203,6 +203,16 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert controls["volatility_status"] == "pending_market_volatility"
     assert controls["dominant_krd_bucket"] in {"1Y", "3Y", "5Y", "7Y", "10Y", "30Y"}
     assert controls["dominant_krd"]["unit"] == "ratio"
+    assert controls["operating_judgement"].startswith("当前监管口径 DV01")
+    assert controls["dominant_krd_bucket"] in controls["operating_judgement"]
+    control_actions = controls["control_actions"]
+    assert [action["key"] for action in control_actions] == [
+        "approved_dv01_limit",
+        "rate_volatility_input",
+        "bucket_sub_limits",
+        "stress_escalation",
+    ]
+    assert all(action["status"] == "required" for action in control_actions)
     assert controls["stress_scenarios"][0]["shock_bp"]["raw"] == 10.0
     assert controls["stress_scenarios"][0]["estimated_pnl_impact"]["unit"] == "yuan"
     assert (

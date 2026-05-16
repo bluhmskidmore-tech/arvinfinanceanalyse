@@ -262,6 +262,24 @@ describe("RiskTensorPage", () => {
               },
             },
           ],
+          operating_judgement:
+            "当前监管口径 DV01 120.50；+10bp 平行上行估算影响 -1,205.00；主风险桶 5Y。审批限额与利率波动源未接入前，暂不判定超限。",
+          control_actions: [
+            {
+              key: "approved_dv01_limit",
+              title: "配置审批限额",
+              status: "required",
+              evidence: "审批 DV01 限额未接入。",
+              action: "接入投委会或风控审批后的总 DV01 限额。",
+            },
+            {
+              key: "rate_volatility_input",
+              title: "接入利率波动",
+              status: "required",
+              evidence: "日度利率波动率未接入。",
+              action: "接入曲线波动率后生成波动预警。",
+            },
+          ],
           control_message: "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
           action_hint: "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
         },
@@ -281,6 +299,11 @@ describe("RiskTensorPage", () => {
     expect(controls).toHaveTextContent("+10bp");
     expect(controls).toHaveTextContent("-1,205.00");
     expect(controls).toHaveTextContent("未接入正式限额源");
+    expect(controls).toHaveTextContent("当前监管口径 DV01 120.50");
+    expect(controls).toHaveTextContent("配置审批限额");
+    expect(controls).toHaveTextContent("接入利率波动");
+    expect(controls).toHaveTextContent("必做项");
+    expect(controls).not.toHaveTextContent("required");
     expect(controls).toHaveTextContent("波动源待接入");
     expect(controls).not.toHaveTextContent("pending_configuration");
     expect(controls).not.toHaveTextContent("pending_market_volatility");

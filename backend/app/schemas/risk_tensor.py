@@ -18,6 +18,14 @@ class Dv01StressScenario(BaseModel):
     estimated_pnl_impact: Numeric
 
 
+class Dv01ControlAction(BaseModel):
+    key: str
+    title: str
+    status: str
+    evidence: str
+    action: str
+
+
 class Dv01ControlsPayload(BaseModel):
     basis: str
     limit_status: str
@@ -28,6 +36,8 @@ class Dv01ControlsPayload(BaseModel):
     dominant_krd_bucket: str
     dominant_krd: Numeric
     stress_scenarios: list[Dv01StressScenario] = Field(default_factory=list)
+    operating_judgement: str
+    control_actions: list[Dv01ControlAction] = Field(default_factory=list)
     control_message: str
     action_hint: str
 

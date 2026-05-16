@@ -621,6 +621,14 @@ export type Dv01StressScenario = {
   estimated_pnl_impact: Numeric;
 };
 
+export type Dv01ControlAction = {
+  key: string;
+  title: string;
+  status: string;
+  evidence: string;
+  action: string;
+};
+
 export type Dv01ControlsPayload = {
   basis: string;
   limit_status: string;
@@ -631,6 +639,8 @@ export type Dv01ControlsPayload = {
   dominant_krd_bucket: string;
   dominant_krd: Numeric;
   stress_scenarios: Dv01StressScenario[];
+  operating_judgement: string;
+  control_actions: Dv01ControlAction[];
   control_message: string;
   action_hint: string;
 };
@@ -650,6 +660,10 @@ export type RiskTensorPayload = {
   portfolio_modified_duration: RiskTensorScalar;
   issuer_concentration_hhi: RiskTensorScalar;
   issuer_top5_weight: RiskTensorScalar;
+  asset_cashflow_30d: RiskTensorScalar;
+  asset_cashflow_90d: RiskTensorScalar;
+  liability_cashflow_30d: RiskTensorScalar;
+  liability_cashflow_90d: RiskTensorScalar;
   liquidity_gap_30d: RiskTensorScalar;
   liquidity_gap_90d: RiskTensorScalar;
   liquidity_gap_30d_ratio: RiskTensorScalar;

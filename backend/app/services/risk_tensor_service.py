@@ -180,6 +180,12 @@ def risk_tensor_envelope(
 
 def _build_dv01_controls(row: dict[str, object]) -> dict[str, object]:
     regulatory_dv01 = _float_or_none(row.get("regulatory_dv01"))
+    regulatory_dv01_numeric = numeric_from_raw(
+        raw=regulatory_dv01,
+        unit="dv01",
+        precision=2,
+        sign_aware=False,
+    ).model_dump(mode="json")
     stress_scenarios = [
         _build_dv01_stress_scenario(
             scenario_key="parallel_up_10bp",
@@ -195,6 +201,11 @@ def _build_dv01_controls(row: dict[str, object]) -> dict[str, object]:
         ),
     ]
     dominant_bucket, dominant_krd = _dominant_krd_bucket(row)
+    operating_judgement = _build_dv01_operating_judgement(
+        regulatory_dv01=regulatory_dv01_numeric,
+        dominant_bucket=dominant_bucket,
+        ten_bp_impact=stress_scenarios[0]["estimated_pnl_impact"],
+    )
     return {
         "basis": "regulatory_dv01",
         "limit_status": "pending_configuration",
@@ -205,6 +216,12 @@ def _build_dv01_controls(row: dict[str, object]) -> dict[str, object]:
         "dominant_krd_bucket": dominant_bucket,
         "dominant_krd": dominant_krd,
         "stress_scenarios": stress_scenarios,
+        "operating_judgement": operating_judgement,
+        "control_actions": _build_dv01_control_actions(
+            dominant_bucket=dominant_bucket,
+            ten_bp_impact=stress_scenarios[0]["estimated_pnl_impact"],
+            twenty_five_bp_impact=stress_scenarios[1]["estimated_pnl_impact"],
+        ),
         "control_message": "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
         "action_hint": "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
     }
@@ -229,6 +246,68 @@ def _build_dv01_stress_scenario(
             sign_aware=True,
         ).model_dump(mode="json"),
     }
+
+
+def _build_dv01_operating_judgement(
+    *,
+    regulatory_dv01: dict[str, object],
+    dominant_bucket: str,
+    ten_bp_impact: dict[str, object],
+) -> str:
+    dv01_display = _numeric_display(regulatory_dv01)
+    ten_bp_display = _numeric_display(ten_bp_impact)
+    return (
+        f"当前监管口径 DV01 {dv01_display}；+10bp 平行上行估算影响 {ten_bp_display}；"
+        f"主风险桶 {dominant_bucket}。审批限额与利率波动源未接入前，暂不判定超限。"
+    )
+
+
+def _build_dv01_control_actions(
+    *,
+    dominant_bucket: str,
+    ten_bp_impact: dict[str, object],
+    twenty_five_bp_impact: dict[str, object],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "key": "approved_dv01_limit",
+            "title": "配置审批限额",
+            "status": "required",
+            "evidence": "审批 DV01 限额未接入。",
+            "action": "接入投委会或风控审批后的总 DV01 限额，再计算使用率与预警带。",
+        },
+        {
+            "key": "rate_volatility_input",
+            "title": "接入利率波动",
+            "status": "required",
+            "evidence": "日度利率波动率未接入。",
+            "action": "接入曲线波动率后，把 DV01 敞口转换成日度波动损益观察。",
+        },
+        {
+            "key": "bucket_sub_limits",
+            "title": "拆分期限桶限额",
+            "status": "required",
+            "evidence": f"当前主风险桶为 {dominant_bucket}。",
+            "action": "为 1Y/3Y/5Y/7Y/10Y/30Y 设置桶位限额，避免总 DV01 合规但期限错配。",
+        },
+        {
+            "key": "stress_escalation",
+            "title": "固化冲击升级",
+            "status": "required",
+            "evidence": (
+                f"+10bp 估算影响 {_numeric_display(ten_bp_impact)}；"
+                f"+25bp 估算影响 {_numeric_display(twenty_five_bp_impact)}。"
+            ),
+            "action": "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。",
+        },
+    ]
+
+
+def _numeric_display(value: dict[str, object] | Numeric) -> str:
+    if isinstance(value, Numeric):
+        return value.display
+    display = value.get("display")
+    return str(display) if display not in (None, "") else "—"
 
 
 def _dominant_krd_bucket(row: dict[str, object]) -> tuple[str, Numeric]:

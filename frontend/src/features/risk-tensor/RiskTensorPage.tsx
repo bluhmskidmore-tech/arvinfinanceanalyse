@@ -19,6 +19,7 @@ import {
   bondChartMagnitude,
   bondNumericDisplay,
   bondNumericRaw,
+  bondNumericRawOrNull,
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
 import "./RiskTensorPage.css";
 
@@ -106,6 +107,29 @@ function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
   return bondChartMagnitude(value);
 }
 
+function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) {
+  const display = displayStr(value);
+  if (display.includes("%")) {
+    return display;
+  }
+  const raw = bondNumericRawOrNull(value);
+  if (raw === null) {
+    return display;
+  }
+  const abs = Math.abs(raw);
+  if (abs <= 1) {
+    return `${(raw * 100).toFixed(1)}%`;
+  }
+  if (abs <= 100) {
+    return `${raw.toFixed(1)}%`;
+  }
+  return display;
+}
+
+function ratioTone(value: Parameters<typeof bondNumericRawOrNull>[0]) {
+  return toneFromSignedDisplayString(ratioPercentDisplay(value));
+}
+
 function dynamicAxisMax(raw: number, fallback: number) {
   const base = Math.abs(raw) * 1.5;
   if (!Number.isFinite(base) || base === 0) {
@@ -172,6 +196,19 @@ function dv01VolatilityDescription(status: string) {
     return "未接入利率波动率源，先看标准冲击。";
   }
   return "波动输入已接入。";
+}
+
+function dv01ControlActionStatusLabel(status: string) {
+  if (status === "required") {
+    return "必做项";
+  }
+  if (status === "done") {
+    return "已完成";
+  }
+  if (status === "watch") {
+    return "观察项";
+  }
+  return "待核对";
 }
 
 export default function RiskTensorPage() {
@@ -483,7 +520,7 @@ export default function RiskTensorPage() {
                 title="总市值"
                 value={displayStr(result.total_market_value)}
                 detail="total_market_value。"
-                unit="亿"
+                unit="元"
                 tone={toneFromSignedDisplayString(displayStr(result.total_market_value))}
               />
             </div>
@@ -514,7 +551,7 @@ export default function RiskTensorPage() {
                   </div>
                   <div className="risk-tensor-dv01-controls__cell">
                     <span>限额使用率</span>
-                    <strong>{displayStr(result.dv01_controls.limit_usage_ratio ?? undefined)}</strong>
+                    <strong>{ratioPercentDisplay(result.dv01_controls.limit_usage_ratio)}</strong>
                     <p>等待限额源配置后计算。</p>
                   </div>
                   <div className="risk-tensor-dv01-controls__cell">
@@ -538,6 +575,26 @@ export default function RiskTensorPage() {
                     </div>
                   ))}
                 </div>
+
+                <div className="risk-tensor-dv01-controls__judgement">
+                  <span>经营判断</span>
+                  <p>{result.dv01_controls.operating_judgement}</p>
+                </div>
+
+                {result.dv01_controls.control_actions.length > 0 ? (
+                  <div className="risk-tensor-dv01-controls__actions" aria-label="DV01 control actions">
+                    {result.dv01_controls.control_actions.map((item) => (
+                      <article className="risk-tensor-dv01-controls__action-card" key={item.key}>
+                        <div>
+                          <span>{dv01ControlActionStatusLabel(item.status)}</span>
+                          <strong>{item.title}</strong>
+                        </div>
+                        <p>{item.evidence}</p>
+                        <p>{item.action}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
 
                 <p className="risk-tensor-dv01-controls__action">{result.dv01_controls.action_hint}</p>
               </section>
@@ -634,10 +691,7 @@ export default function RiskTensorPage() {
               />
               <KpiCard
                 title="前五大权重"
-                value={formatRatioAsPercent(
-                  String(bondNumericRaw(result.issuer_top5_weight)),
-                  displayStr(result.issuer_top5_weight),
-                )}
+                value={ratioPercentDisplay(result.issuer_top5_weight)}
                 detail="issuer_top5_weight。"
               />
             </div>
@@ -664,6 +718,49 @@ export default function RiskTensorPage() {
                 value={displayStr(result.liquidity_gap_90d)}
                 detail="liquidity_gap_90d。"
                 tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_90d))}
+              />
+              <KpiCard
+                title="30 日流动性缺口比例"
+                value={ratioPercentDisplay(result.liquidity_gap_30d_ratio)}
+                detail="liquidity_gap_30d_ratio。"
+                tone={ratioTone(result.liquidity_gap_30d_ratio)}
+              />
+            </div>
+
+            <h2
+              style={{
+                margin: "24px 0 12px",
+                fontSize: 16,
+                fontWeight: 600,
+                color: "#162033",
+              }}
+            >
+              现金流构成
+            </h2>
+            <div style={summaryGridStyle}>
+              <KpiCard
+                title="30 日资产现金流"
+                value={displayStr(result.asset_cashflow_30d)}
+                detail="asset_cashflow_30d。"
+                unit="元"
+              />
+              <KpiCard
+                title="30 日负债现金流"
+                value={displayStr(result.liability_cashflow_30d)}
+                detail="liability_cashflow_30d。"
+                unit="元"
+              />
+              <KpiCard
+                title="90 日资产现金流"
+                value={displayStr(result.asset_cashflow_90d)}
+                detail="asset_cashflow_90d。"
+                unit="元"
+              />
+              <KpiCard
+                title="90 日负债现金流"
+                value={displayStr(result.liability_cashflow_90d)}
+                detail="liability_cashflow_90d。"
+                unit="元"
               />
             </div>
 
