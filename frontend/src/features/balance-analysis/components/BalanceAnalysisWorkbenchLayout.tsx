@@ -166,7 +166,7 @@ function buildCards({
   const workbookCards = workbook?.cards ?? [];
   const decisionRows = decisionItems?.rows ?? [];
 
-  return [
+  const orderedCards: BalanceWorkbenchCard[] = [
     {
       key: "structure",
       title: "资产负债结构",
@@ -299,7 +299,7 @@ function buildCards({
     {
       key: "details",
       title: "正式数据明细",
-      span: 12,
+      span: 8,
       body:
         tableRows.length > 0 ? (
           <div className="balance-workbench-card__mini-table">
@@ -326,7 +326,37 @@ function buildCards({
         ),
     },
   ];
+  const conclusionFirstOrder = [
+    "structure",
+    "governance",
+    "risk",
+    "details",
+    "attribution",
+    "basis",
+    "focus",
+  ];
+
+  return conclusionFirstOrder.flatMap((key) => {
+    const card = orderedCards.find((candidate) => candidate.key === key);
+    return card ? [card] : [];
+  });
 }
+
+function getMetricGroup(metric: BalanceWorkbenchMetric): "asset" | "liability" | "evidence" {
+  if (metric.label.startsWith("资产")) {
+    return "asset";
+  }
+  if (metric.label.startsWith("负债")) {
+    return "liability";
+  }
+  return "evidence";
+}
+
+const metricGroupLabels = {
+  asset: "资产端",
+  liability: "负债端",
+  evidence: "证据规模",
+} as const;
 
 export default function BalanceAnalysisWorkbenchLayout({
   overview,
@@ -358,6 +388,12 @@ export default function BalanceAnalysisWorkbenchLayout({
   const topEvent = calendarEvents[0];
   const metricDefinitions = overview?.metric_definitions ?? [];
   const firstMetricDefinition = metricDefinitions[0];
+  const metricGroups = (["asset", "liability", "evidence"] as const)
+    .map((key) => ({
+      key,
+      metrics: metrics.filter((metric) => getMetricGroup(metric) === key),
+    }))
+    .filter((group) => group.metrics.length > 0);
 
   return (
     <div className="balance-workbench" data-testid="balance-workbench">
@@ -449,20 +485,27 @@ export default function BalanceAnalysisWorkbenchLayout({
       </section>
 
       <div data-testid="balance-analysis-overview-cards" className="balance-workbench__metrics">
-        {metrics.map((metric) => (
-          <div
-            key={metric.key}
-            data-testid="balance-analysis-horizontal-metric"
-            className="balance-workbench__metric"
-          >
-            <KpiCard
-              label={metric.label}
-              value={metric.value}
-              unit={metric.unit}
-              detail={metric.detail}
-              valueVariant="text"
-            />
-          </div>
+        {metricGroups.map((group) => (
+          <section key={group.key} className={`balance-workbench__metric-group balance-workbench__metric-group--${group.key}`}>
+            <h2 className="balance-workbench__metric-group-title">{metricGroupLabels[group.key]}</h2>
+            <div className="balance-workbench__metric-group-grid">
+              {group.metrics.map((metric) => (
+                <div
+                  key={metric.key}
+                  data-testid="balance-analysis-horizontal-metric"
+                  className="balance-workbench__metric"
+                >
+                  <KpiCard
+                    label={metric.label}
+                    value={metric.value}
+                    unit={metric.unit}
+                    detail={metric.detail}
+                    valueVariant="text"
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
 

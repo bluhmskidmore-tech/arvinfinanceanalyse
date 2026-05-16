@@ -1263,6 +1263,9 @@ describe("BalanceAnalysisPage", () => {
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-counterparty_types"),
       ).toHaveTextContent("净头寸 3.39 亿元");
+      expect(screen.getByTestId("balance-analysis-workbook-full-details")).not.toHaveAttribute(
+        "open",
+      );
       expect(screen.getByTestId("balance-analysis-workbook-secondary-grid")).toHaveTextContent(
         "计息方式",
       );
@@ -1306,6 +1309,7 @@ describe("BalanceAnalysisPage", () => {
         ),
       ).toBeInTheDocument();
     });
+    expect(screen.getByTestId("balance-analysis-stage-details")).not.toHaveAttribute("open");
     expect(screen.getByText("真实数据场景阅读")).toBeInTheDocument();
     expect(screen.queryByText("情景演示与静态参考")).not.toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-summary-row")).toHaveTextContent(

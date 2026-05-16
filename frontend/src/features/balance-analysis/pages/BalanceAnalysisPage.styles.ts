@@ -86,7 +86,7 @@ export const controlBarStyle = {
   flexWrap: "wrap",
   gap: s[3],
   alignItems: "center",
-  marginBottom: s[5],
+  marginBottom: 0,
 } as const;
 
 export const controlStyle = {

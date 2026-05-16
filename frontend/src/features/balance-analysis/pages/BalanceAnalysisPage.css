@@ -1,3 +1,32 @@
+.balance-analysis-page {
+  display: grid;
+  gap: var(--moss-space-4);
+}
+
+.balance-analysis-hero {
+  margin-bottom: 0;
+  padding: var(--moss-space-3) var(--moss-space-4);
+}
+
+.balance-analysis-hero .moss-page-v2-decision-hero__top {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--moss-space-3);
+}
+
+.balance-analysis-hero .moss-page-v2-decision-hero__question {
+  max-width: 72ch;
+}
+
+.balance-analysis-hero .moss-page-v2-decision-hero__conclusion {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--moss-space-2) var(--moss-space-3);
+}
+
+.balance-analysis-hero .moss-page-v2-decision-hero__actions {
+  align-self: start;
+}
+
 .balance-analysis-supplemental {
   margin-top: var(--moss-space-6);
   border: 1px solid var(--moss-color-neutral-200);
@@ -44,8 +73,8 @@
 
 .balance-analysis-workbook-cockpit {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
-  gap: var(--moss-space-5);
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 320px);
+  gap: var(--moss-space-4);
   align-items: start;
   margin-top: var(--moss-space-5);
 }
@@ -245,27 +274,92 @@
 }
 
 .balance-analysis-right-rail {
+  position: sticky;
+  top: var(--moss-space-5);
   display: grid;
   gap: var(--moss-space-4);
   align-content: start;
   min-width: 0;
+  max-height: calc(100vh - var(--moss-space-10));
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .balance-analysis-right-rail > article {
   min-width: 0;
 }
 
-@media (max-width: 1500px) {
+.balance-analysis-workbook-full-details,
+.balance-analysis-stage-details {
+  margin-top: var(--moss-space-5);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--moss-shadow-card);
+  overflow: hidden;
+}
+
+.balance-analysis-workbook-full-details__summary,
+.balance-analysis-stage-details__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--moss-space-1);
+  padding: var(--moss-space-3) var(--moss-space-4);
+  cursor: pointer;
+  color: var(--moss-color-text-primary);
+}
+
+.balance-analysis-workbook-full-details__summary strong,
+.balance-analysis-stage-details__summary strong {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.balance-analysis-workbook-full-details__summary span:last-child,
+.balance-analysis-stage-details__summary span:last-child {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.balance-analysis-workbook-full-details__eyebrow,
+.balance-analysis-stage-details__eyebrow {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 740;
+  letter-spacing: 0;
+}
+
+.balance-analysis-workbook-full-details[open],
+.balance-analysis-stage-details[open] {
+  background: var(--moss-color-card-bg);
+}
+
+.balance-analysis-workbook-full-details[open] .balance-analysis-workbook-full-details__summary,
+.balance-analysis-stage-details[open] .balance-analysis-stage-details__summary {
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+}
+
+.balance-analysis-workbook-full-details > [data-testid="balance-analysis-workbook-secondary-grid"],
+.balance-analysis-stage-details__content {
+  padding: 0 var(--moss-space-4) var(--moss-space-4);
+}
+
+.balance-analysis-stage-details__content {
+  display: grid;
+  gap: var(--moss-space-4);
+}
+
+@media (max-width: 1100px) {
   .balance-analysis-workbook-cockpit {
     grid-template-columns: 1fr;
   }
 
   .balance-analysis-right-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .balance-analysis-right-rail > [data-testid="balance-analysis-right-rail-panel-decision_items"] {
-    grid-column: 1 / -1;
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 }
 

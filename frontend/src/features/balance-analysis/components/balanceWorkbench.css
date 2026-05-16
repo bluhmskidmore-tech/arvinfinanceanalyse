@@ -1,19 +1,44 @@
 .balance-workbench {
   display: grid;
-  gap: var(--moss-space-3);
+  gap: var(--moss-space-4);
 }
 
 .balance-workbench__command-deck {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.75fr);
   gap: var(--moss-space-3);
-  align-items: stretch;
+  align-items: start;
   min-width: 0;
 }
 
 .balance-workbench__metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+.balance-workbench__metric-group {
+  display: grid;
+  gap: var(--moss-space-2);
+  min-width: 0;
+  padding: var(--moss-space-3);
+  border: 1px solid rgba(115, 132, 153, 0.22);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.balance-workbench__metric-group-title {
+  margin: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.balance-workbench__metric-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--moss-space-2);
   min-width: 0;
 }
@@ -75,7 +100,7 @@
 .balance-workbench__status-rail {
   display: grid;
   align-content: start;
-  gap: var(--moss-space-3);
+  gap: var(--moss-space-2);
   min-width: 0;
   padding: var(--moss-space-4);
   border: 1px solid rgba(15, 23, 42, 0.06);
@@ -131,7 +156,7 @@
 
 .balance-workbench__status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--moss-space-2);
   min-width: 0;
 }
@@ -140,7 +165,7 @@
   display: grid;
   gap: var(--moss-space-1);
   min-width: 0;
-  padding: var(--moss-space-3);
+  padding: var(--moss-space-2);
   border: 1px solid rgba(15, 23, 42, 0.05);
   border-radius: var(--moss-radius-sm);
   background: rgba(255, 255, 255, 0.52);
@@ -350,12 +375,14 @@
 }
 
 .balance-workbench__portfolio-nav {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: var(--moss-space-3);
-  padding: var(--moss-space-3);
+  min-width: 0;
+  padding: var(--moss-space-2) var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-card-bg);
+  background: rgba(255, 255, 255, 0.54);
 }
 
 .balance-workbench__portfolio-nav-title {
@@ -368,6 +395,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--moss-space-2);
+  min-width: 0;
 }
 
 .balance-workbench__portfolio-nav-link {
@@ -396,7 +424,11 @@
   }
 
   .balance-workbench__status-grid {
-    grid-template-columns: repeat(3, minmax(140px, 1fr));
+    grid-template-columns: repeat(4, minmax(140px, 1fr));
+  }
+
+  .balance-workbench__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .balance-workbench-card--span-4,
@@ -419,6 +451,8 @@
   .balance-workbench-card,
   .balance-workbench__portfolio-nav {
     padding: var(--moss-space-3);
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .balance-workbench-card--span-4,

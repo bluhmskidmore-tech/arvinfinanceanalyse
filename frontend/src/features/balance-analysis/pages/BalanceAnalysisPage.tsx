@@ -41,7 +41,6 @@ import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import {
-  stagedScenarioShellStyle,
   controlBarStyle,
   controlStyle,
   actionButtonStyle,
@@ -1863,9 +1862,10 @@ export default function BalanceAnalysisPage() {
   const currentPage = Math.floor(summaryOffset / (summaryTable?.limit ?? PAGE_SIZE)) + 1;
 
   return (
-    <section data-testid="balance-analysis-page">
+    <section data-testid="balance-analysis-page" className="balance-analysis-page">
       <PageDecisionHero
         testId="balance-analysis-contract-hero"
+        className="balance-analysis-hero"
         title="资产负债分析"
         titleTestId="balance-analysis-page-title"
         questionTestId="balance-analysis-page-subtitle"
@@ -2598,56 +2598,69 @@ export default function BalanceAnalysisPage() {
             </aside>
           </div>
 
-          <div data-testid="balance-analysis-workbook-secondary-grid" style={workbookSecondaryGridStyle}>
-            {secondaryWorkbookTables.map((table) => (
-              <div key={table.key} data-testid={`balance-analysis-workbook-table-${table.key}`}>
-                <div style={{ marginBottom: 8, color: designTokens.color.neutral[900], fontWeight: 600 }}>{table.title}</div>
-                <div
-                  className="ag-theme-alpine"
-                  style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
-                >
-                  <AgGridReact
-                    theme="legacy"
-                    rowData={table.rows.map((row, index) =>
-                      Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
-                    )}
-                    columnDefs={buildWorkbookGridColumnDefs(table.columns)}
-                    defaultColDef={balanceAnalysisGridDefaultColDef}
-                    getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
-                  />
+          <details
+            data-testid="balance-analysis-workbook-full-details"
+            className="balance-analysis-workbook-full-details"
+          >
+            <summary className="balance-analysis-workbook-full-details__summary">
+              <span className="balance-analysis-workbook-full-details__eyebrow">完整明细</span>
+              <strong>完整工作簿明细</strong>
+              <span>展开查看工作簿宽表，默认收起以保持结论和治理证据优先。</span>
+            </summary>
+            <div data-testid="balance-analysis-workbook-secondary-grid" style={workbookSecondaryGridStyle}>
+              {secondaryWorkbookTables.map((table) => (
+                <div key={table.key} data-testid={`balance-analysis-workbook-table-${table.key}`}>
+                  <div style={{ marginBottom: 8, color: designTokens.color.neutral[900], fontWeight: 600 }}>{table.title}</div>
+                  <div
+                    className="ag-theme-alpine"
+                    style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
+                  >
+                    <AgGridReact
+                      theme="legacy"
+                      rowData={table.rows.map((row, index) =>
+                        Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
+                      )}
+                      columnDefs={buildWorkbookGridColumnDefs(table.columns)}
+                      defaultColDef={balanceAnalysisGridDefaultColDef}
+                      getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </details>
         </AsyncSection>
       </div>
 
-      <section style={stagedScenarioShellStyle}>
-        <PageSectionLead
-          eyebrow="真实数据"
-          title="真实数据场景阅读"
-          description="以下三组面板保留原有阅读布局，但数据改为来自当前报告日的总览、明细、工作簿、决策事项、风险预警和事件日历；缺失切片只显示空态，不再补静态演示值。"
-          style={{ marginTop: 0 }}
-        />
-        <div
-          style={{
-            padding: "14px 16px",
-            borderRadius: 18,
-            border: `1px solid ${shellTokens.colorBorderWarning}`,
-            background: shellTokens.colorBgWarningSoft,
-            color: shellTokens.colorTextWarning,
-            fontSize: 13,
-            lineHeight: 1.7,
-          }}
-        >
-          当前区块已切换为真实数据派生视图，报告日为 {stageModel.summary.tags[0]?.label ?? "—"}；
-          仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
-          {stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实阶段切片。"}
+      <details data-testid="balance-analysis-stage-details" className="balance-analysis-stage-details">
+        <summary className="balance-analysis-stage-details__summary">
+          <span className="balance-analysis-stage-details__eyebrow">真实数据</span>
+          <strong>真实数据场景阅读</strong>
+          <span>
+            保留当前报告日派生视图，默认收起，正式总览、汇总、明细和治理信号仍是主判断来源。
+          </span>
+        </summary>
+        <div className="balance-analysis-stage-details__content">
+          <div
+            style={{
+              padding: "14px 16px",
+              borderRadius: 18,
+              border: `1px solid ${shellTokens.colorBorderWarning}`,
+              background: shellTokens.colorBgWarningSoft,
+              color: shellTokens.colorTextWarning,
+              fontSize: 13,
+              lineHeight: 1.7,
+            }}
+          >
+            当前区块已切换为真实数据派生视图，报告日为 {stageModel.summary.tags[0]?.label ?? "—"}；
+            仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
+            {stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实阶段切片。"}
+          </div>
+          <BalanceSummaryRow model={stageModel.summary} />
+          <BalanceContributionRow model={stageModel.contribution} />
+          <BalanceBottomRow model={stageModel.bottom} />
         </div>
-        <BalanceSummaryRow model={stageModel.summary} />
-        <BalanceContributionRow model={stageModel.contribution} />
-        <BalanceBottomRow model={stageModel.bottom} />
-      </section>
+      </details>
 
       {resultMetaSections.length > 0 && (
         <Collapse
