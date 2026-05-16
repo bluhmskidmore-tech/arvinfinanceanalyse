@@ -11,6 +11,27 @@ from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 
 
+class Dv01StressScenario(BaseModel):
+    scenario_key: str
+    label: str
+    shock_bp: Numeric
+    estimated_pnl_impact: Numeric
+
+
+class Dv01ControlsPayload(BaseModel):
+    basis: str
+    limit_status: str
+    approved_limit_dv01: Numeric | None = None
+    limit_usage_ratio: Numeric | None = None
+    volatility_status: str
+    daily_rate_volatility_bp: Numeric | None = None
+    dominant_krd_bucket: str
+    dominant_krd: Numeric
+    stress_scenarios: list[Dv01StressScenario] = Field(default_factory=list)
+    control_message: str
+    action_hint: str
+
+
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
     if value is None:
         return None
@@ -73,6 +94,7 @@ class RiskTensorPayload(BaseModel):
     bond_count: int = 0
     quality_flag: str = "ok"
     warnings: list[str] = Field(default_factory=list)
+    dv01_controls: Dv01ControlsPayload | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_dv01": ("dv01", False),

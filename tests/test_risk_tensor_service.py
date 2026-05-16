@@ -195,6 +195,21 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert result["regulatory_dv01"]["unit"] == "dv01"
     assert result["regulatory_dv01"]["raw"] == result["portfolio_dv01"]["raw"]
     assert result["portfolio_convexity"]["unit"] == "ratio"
+    controls = result["dv01_controls"]
+    assert controls["basis"] == "regulatory_dv01"
+    assert controls["limit_status"] == "pending_configuration"
+    assert controls["approved_limit_dv01"] is None
+    assert controls["limit_usage_ratio"] is None
+    assert controls["volatility_status"] == "pending_market_volatility"
+    assert controls["dominant_krd_bucket"] in {"1Y", "3Y", "5Y", "7Y", "10Y", "30Y"}
+    assert controls["dominant_krd"]["unit"] == "ratio"
+    assert controls["stress_scenarios"][0]["shock_bp"]["raw"] == 10.0
+    assert controls["stress_scenarios"][0]["estimated_pnl_impact"]["unit"] == "yuan"
+    assert (
+        Decimal(str(controls["stress_scenarios"][0]["estimated_pnl_impact"]["raw"]))
+        == -Decimal(str(result["regulatory_dv01"]["raw"])) * Decimal("10")
+    )
+    assert "未接入正式限额源" in controls["control_message"]
     assert (
         Decimal(str(result["krd_1y"]["raw"]))
         + Decimal(str(result["krd_3y"]["raw"]))

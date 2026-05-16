@@ -20,6 +20,7 @@ import {
   bondNumericDisplay,
   bondNumericRaw,
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
+import "./RiskTensorPage.css";
 
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
 const RADAR_META = [
@@ -125,6 +126,52 @@ function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
     return "warning";
   }
   return toneFromSignedDisplayString(displayStr(value));
+}
+
+function dv01ControlStatusLabel(status: string) {
+  if (status === "pending_configuration") {
+    return "限额待配置";
+  }
+  if (status === "ok") {
+    return "限额内";
+  }
+  if (status === "near") {
+    return "接近限额";
+  }
+  if (status === "breach") {
+    return "已超限";
+  }
+  return status;
+}
+
+function dv01ControlStatusDescription(status: string) {
+  if (status === "pending_configuration") {
+    return "暂不判定超限";
+  }
+  if (status === "ok") {
+    return "可承受";
+  }
+  if (status === "near") {
+    return "接近预警";
+  }
+  if (status === "breach") {
+    return "需要处置";
+  }
+  return "状态待核对";
+}
+
+function dv01VolatilityLabel(status: string) {
+  if (status === "pending_market_volatility") {
+    return "波动源待接入";
+  }
+  return status;
+}
+
+function dv01VolatilityDescription(status: string) {
+  if (status === "pending_market_volatility") {
+    return "未接入利率波动率源，先看标准冲击。";
+  }
+  return "波动输入已接入。";
 }
 
 export default function RiskTensorPage() {
@@ -440,6 +487,61 @@ export default function RiskTensorPage() {
                 tone={toneFromSignedDisplayString(displayStr(result.total_market_value))}
               />
             </div>
+
+            {result.dv01_controls ? (
+              <section className="risk-tensor-dv01-controls" data-testid="risk-tensor-dv01-controls">
+                <div className="risk-tensor-dv01-controls__header">
+                  <div>
+                    <span className="risk-tensor-dv01-controls__eyebrow">DV01 控制</span>
+                    <h2>DV01 限额与波动</h2>
+                  </div>
+                  <div className="risk-tensor-dv01-controls__status">
+                    <span>{dv01ControlStatusLabel(result.dv01_controls.limit_status)}</span>
+                    <strong>{dv01ControlStatusDescription(result.dv01_controls.limit_status)}</strong>
+                  </div>
+                </div>
+
+                <div className="risk-tensor-dv01-controls__grid">
+                  <div className="risk-tensor-dv01-controls__primary">
+                    <span>监管口径 DV01</span>
+                    <strong>{regulatoryDv01Display(result.regulatory_dv01)}</strong>
+                    <p>{result.dv01_controls.control_message}</p>
+                  </div>
+                  <div className="risk-tensor-dv01-controls__cell">
+                    <span>审批限额</span>
+                    <strong>{displayStr(result.dv01_controls.approved_limit_dv01 ?? undefined)}</strong>
+                    <p>未接入正式限额前，不判定使用率。</p>
+                  </div>
+                  <div className="risk-tensor-dv01-controls__cell">
+                    <span>限额使用率</span>
+                    <strong>{displayStr(result.dv01_controls.limit_usage_ratio ?? undefined)}</strong>
+                    <p>等待限额源配置后计算。</p>
+                  </div>
+                  <div className="risk-tensor-dv01-controls__cell">
+                    <span>主风险桶</span>
+                    <strong>{result.dv01_controls.dominant_krd_bucket}</strong>
+                    <p>KRD {displayStr(result.dv01_controls.dominant_krd)}</p>
+                  </div>
+                  <div className="risk-tensor-dv01-controls__cell">
+                    <span>利率波动</span>
+                    <strong>{dv01VolatilityLabel(result.dv01_controls.volatility_status)}</strong>
+                    <p>{dv01VolatilityDescription(result.dv01_controls.volatility_status)}</p>
+                  </div>
+                </div>
+
+                <div className="risk-tensor-dv01-controls__stress" aria-label="DV01 stress scenarios">
+                  {result.dv01_controls.stress_scenarios.map((scenario) => (
+                    <div className="risk-tensor-dv01-controls__scenario" key={scenario.scenario_key}>
+                      <span>{scenario.label}</span>
+                      <strong>{displayStr(scenario.estimated_pnl_impact)}</strong>
+                      <p>{displayStr(scenario.shock_bp)} 平行冲击</p>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="risk-tensor-dv01-controls__action">{result.dv01_controls.action_hint}</p>
+              </section>
+            ) : null}
 
             <div style={chartRowStyle}>
               <div style={chartColumnStyle}>

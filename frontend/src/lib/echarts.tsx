@@ -1,7 +1,7 @@
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { EChartsReactProps } from "echarts-for-react/lib/types";
 import * as echarts from "echarts/core";
-import { BarChart, CandlestickChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
+import { BarChart, CandlestickChart, LineChart, PieChart, RadarChart, ScatterChart } from "echarts/charts";
 import {
   AxisPointerComponent,
   DataZoomComponent,
@@ -18,6 +18,7 @@ echarts.use([
   CandlestickChart,
   LineChart,
   PieChart,
+  RadarChart,
   ScatterChart,
   AxisPointerComponent,
   DataZoomComponent,

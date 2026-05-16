@@ -192,6 +192,100 @@ describe("RiskTensorPage", () => {
     expect(kpi).not.toHaveTextContent("待接入");
   });
 
+  it("shows the backend DV01 limit and volatility control deck", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_controls_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_controls_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        regulatory_dv01: {
+          raw: 120.5,
+          unit: "dv01" as const,
+          display: "120.50",
+          precision: 2,
+          sign_aware: false,
+        },
+        dv01_controls: {
+          basis: "regulatory_dv01",
+          limit_status: "pending_configuration",
+          approved_limit_dv01: null,
+          limit_usage_ratio: null,
+          volatility_status: "pending_market_volatility",
+          daily_rate_volatility_bp: null,
+          dominant_krd_bucket: "5Y",
+          dominant_krd: {
+            raw: 3,
+            unit: "ratio" as const,
+            display: "+3.00",
+            precision: 2,
+            sign_aware: true,
+          },
+          stress_scenarios: [
+            {
+              scenario_key: "parallel_up_10bp",
+              label: "+10bp",
+              shock_bp: {
+                raw: 10,
+                unit: "bp" as const,
+                display: "+10 bp",
+                precision: 0,
+                sign_aware: true,
+              },
+              estimated_pnl_impact: {
+                raw: -1205,
+                unit: "yuan" as const,
+                display: "-1,205.00",
+                precision: 2,
+                sign_aware: true,
+              },
+            },
+            {
+              scenario_key: "parallel_up_25bp",
+              label: "+25bp",
+              shock_bp: {
+                raw: 25,
+                unit: "bp" as const,
+                display: "+25 bp",
+                precision: 0,
+                sign_aware: true,
+              },
+              estimated_pnl_impact: {
+                raw: -3012.5,
+                unit: "yuan" as const,
+                display: "-3,012.50",
+                precision: 2,
+                sign_aware: true,
+              },
+            },
+          ],
+          control_message: "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
+          action_hint: "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
+        },
+      } as RiskTensorPayload,
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+    expect(controls).toHaveTextContent("DV01");
+    expect(controls).toHaveTextContent("120.50");
+    expect(controls).toHaveTextContent("5Y");
+    expect(controls).toHaveTextContent("+10bp");
+    expect(controls).toHaveTextContent("-1,205.00");
+    expect(controls).toHaveTextContent("未接入正式限额源");
+    expect(controls).toHaveTextContent("波动源待接入");
+    expect(controls).not.toHaveTextContent("pending_configuration");
+    expect(controls).not.toHaveTextContent("pending_market_volatility");
+  });
+
   it("surfaces backend-blocked stale dates without using them as the default", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

@@ -1,0 +1,149 @@
+.risk-tensor-dv01-controls {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(249, 244, 235, 0.86)),
+    var(--moss-color-card-bg);
+  box-shadow: 0 10px 24px rgba(82, 63, 44, 0.06);
+}
+
+.risk-tensor-dv01-controls__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(124, 88, 61, 0.16);
+}
+
+.risk-tensor-dv01-controls__eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--moss-color-warm-taupe);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.risk-tensor-dv01-controls h2 {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.risk-tensor-dv01-controls__status {
+  display: grid;
+  gap: 2px;
+  min-width: 124px;
+  padding: 8px 10px;
+  border: 1px solid rgba(184, 121, 47, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 248, 238, 0.78);
+  color: var(--moss-color-warm-taupe);
+  font-size: 11px;
+}
+
+.risk-tensor-dv01-controls__status strong {
+  color: var(--moss-color-warm-terracotta);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-tensor-dv01-controls__grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.25fr) repeat(4, minmax(136px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.risk-tensor-dv01-controls__primary,
+.risk-tensor-dv01-controls__cell,
+.risk-tensor-dv01-controls__scenario {
+  min-width: 0;
+  border: 1px solid rgba(124, 88, 61, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.74);
+}
+
+.risk-tensor-dv01-controls__primary,
+.risk-tensor-dv01-controls__cell {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 13px;
+}
+
+.risk-tensor-dv01-controls__primary span,
+.risk-tensor-dv01-controls__cell span,
+.risk-tensor-dv01-controls__scenario span {
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-dv01-controls__primary strong,
+.risk-tensor-dv01-controls__cell strong,
+.risk-tensor-dv01-controls__scenario strong {
+  color: var(--moss-color-text-primary);
+  font-size: 19px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-tensor-dv01-controls__primary p,
+.risk-tensor-dv01-controls__cell p,
+.risk-tensor-dv01-controls__scenario p,
+.risk-tensor-dv01-controls__action {
+  margin: 0;
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.risk-tensor-dv01-controls__stress {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.risk-tensor-dv01-controls__scenario {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border-color: rgba(141, 48, 58, 0.18);
+  background: rgba(251, 242, 243, 0.58);
+}
+
+.risk-tensor-dv01-controls__scenario strong {
+  color: var(--moss-color-warm-burgundy);
+}
+
+.risk-tensor-dv01-controls__action {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(124, 88, 61, 0.14);
+}
+
+@media (max-width: 1180px) {
+  .risk-tensor-dv01-controls__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .risk-tensor-dv01-controls {
+    padding: 14px;
+  }
+
+  .risk-tensor-dv01-controls__grid,
+  .risk-tensor-dv01-controls__stress {
+    grid-template-columns: 1fr;
+  }
+}

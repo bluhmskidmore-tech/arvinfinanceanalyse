@@ -614,6 +614,27 @@ export type AlertsPayload = {
  */
 export type RiskTensorScalar = string | Numeric;
 
+export type Dv01StressScenario = {
+  scenario_key: string;
+  label: string;
+  shock_bp: Numeric;
+  estimated_pnl_impact: Numeric;
+};
+
+export type Dv01ControlsPayload = {
+  basis: string;
+  limit_status: string;
+  approved_limit_dv01: Numeric | null;
+  limit_usage_ratio: Numeric | null;
+  volatility_status: string;
+  daily_rate_volatility_bp: Numeric | null;
+  dominant_krd_bucket: string;
+  dominant_krd: Numeric;
+  stress_scenarios: Dv01StressScenario[];
+  control_message: string;
+  action_hint: string;
+};
+
 export type RiskTensorPayload = {
   report_date: string;
   portfolio_dv01: RiskTensorScalar;
@@ -636,6 +657,7 @@ export type RiskTensorPayload = {
   bond_count: number;
   quality_flag: string;
   warnings: string[];
+  dv01_controls?: Dv01ControlsPayload | null;
 };
 
 export type BlockedReportDate = {

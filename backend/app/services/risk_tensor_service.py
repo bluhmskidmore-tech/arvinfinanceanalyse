@@ -13,6 +13,7 @@ from backend.app.repositories.risk_tensor_repo import (
     load_latest_bond_analytics_lineage_by_report_date,
 )
 from backend.app.schemas.risk_tensor import RiskTensorPayload
+from backend.app.schemas.common_numeric import Numeric, null_numeric, numeric_from_raw
 from backend.app.services.explicit_numeric import promote_flat_payload
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
@@ -158,6 +159,7 @@ def risk_tensor_envelope(
                 "bond_count": int(row["bond_count"]),
                 "quality_flag": str(row["quality_flag"]),
                 "warnings": list(row["warnings"]),
+                "dv01_controls": _build_dv01_controls(row),
             },
             RiskTensorPayload,
         )
@@ -174,6 +176,88 @@ def risk_tensor_envelope(
         source_surface="risk_tensor",
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def _build_dv01_controls(row: dict[str, object]) -> dict[str, object]:
+    regulatory_dv01 = _float_or_none(row.get("regulatory_dv01"))
+    stress_scenarios = [
+        _build_dv01_stress_scenario(
+            scenario_key="parallel_up_10bp",
+            label="+10bp",
+            shock_bp=10.0,
+            regulatory_dv01=regulatory_dv01,
+        ),
+        _build_dv01_stress_scenario(
+            scenario_key="parallel_up_25bp",
+            label="+25bp",
+            shock_bp=25.0,
+            regulatory_dv01=regulatory_dv01,
+        ),
+    ]
+    dominant_bucket, dominant_krd = _dominant_krd_bucket(row)
+    return {
+        "basis": "regulatory_dv01",
+        "limit_status": "pending_configuration",
+        "approved_limit_dv01": None,
+        "limit_usage_ratio": None,
+        "volatility_status": "pending_market_volatility",
+        "daily_rate_volatility_bp": None,
+        "dominant_krd_bucket": dominant_bucket,
+        "dominant_krd": dominant_krd,
+        "stress_scenarios": stress_scenarios,
+        "control_message": "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
+        "action_hint": "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
+    }
+
+
+def _build_dv01_stress_scenario(
+    *,
+    scenario_key: str,
+    label: str,
+    shock_bp: float,
+    regulatory_dv01: float | None,
+) -> dict[str, object]:
+    estimated_pnl_impact = None if regulatory_dv01 is None else -regulatory_dv01 * shock_bp
+    return {
+        "scenario_key": scenario_key,
+        "label": label,
+        "shock_bp": numeric_from_raw(raw=shock_bp, unit="bp", precision=0, sign_aware=True).model_dump(mode="json"),
+        "estimated_pnl_impact": numeric_from_raw(
+            raw=estimated_pnl_impact,
+            unit="yuan",
+            precision=2,
+            sign_aware=True,
+        ).model_dump(mode="json"),
+    }
+
+
+def _dominant_krd_bucket(row: dict[str, object]) -> tuple[str, Numeric]:
+    bucket_fields = (
+        ("1Y", "krd_1y"),
+        ("3Y", "krd_3y"),
+        ("5Y", "krd_5y"),
+        ("7Y", "krd_7y"),
+        ("10Y", "krd_10y"),
+        ("30Y", "krd_30y"),
+    )
+    values = [
+        (bucket, _float_or_none(row.get(field)))
+        for bucket, field in bucket_fields
+    ]
+    numeric_values = [(bucket, value) for bucket, value in values if value is not None]
+    if not numeric_values:
+        return "n/a", null_numeric(unit="ratio", sign_aware=True)
+    bucket, value = max(numeric_values, key=lambda item: abs(item[1]))
+    return bucket, numeric_from_raw(raw=value, unit="ratio", precision=2, sign_aware=True)
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
 
 
 def _trace_id() -> str:
