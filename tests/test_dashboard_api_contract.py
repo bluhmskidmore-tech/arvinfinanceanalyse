@@ -51,6 +51,39 @@ def _tyw_ddl() -> str:
     """
 
 
+def _tyw_row(
+    report_date: str,
+    position_id: str,
+    side: str,
+    counterparty_name: str,
+    principal_amount: Decimal,
+    funding_cost_rate: Decimal | None,
+) -> tuple[object, ...]:
+    return (
+        report_date,
+        position_id,
+        "REPO",
+        side,
+        counterparty_name,
+        "",
+        "",
+        "",
+        "",
+        "",
+        side,
+        "CNY",
+        "CNY",
+        principal_amount,
+        Decimal("0"),
+        funding_cost_rate,
+        "2030-01-01",
+        "sv",
+        "rv",
+        "ib",
+        "tr",
+    )
+
+
 def _zqtz_ddl() -> str:
     return """
     create table if not exists fact_formal_zqtz_balance_daily (
@@ -300,6 +333,85 @@ def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> No
     assert periods[0]["bond_investments_change"]["raw"] == pytest.approx(600_000.0)
     assert periods[0]["bond_investments_change"]["precision"] == 2
     assert periods[0]["bond_investments_change"]["display"] == "+0.01 亿"
+
+    get_settings.cache_clear()
+
+
+def test_core_metrics_treats_tyw_funding_cost_rate_as_percent_even_below_one(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "dash-tyw-low-percent-rate.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    report_date = "2026-04-30"
+    con = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        con.execute(_tyw_ddl())
+        insert_sql = "insert into fact_formal_tyw_balance_daily values (" + ",".join(["?"] * 21) + ")"
+        rows = [
+            _tyw_row(report_date, "asset-low-rate", "asset", "CP-A", Decimal("1000000"), Decimal("0.8")),
+            _tyw_row(report_date, "liability-low-rate", "liability", "CP-L", Decimal("2000000"), Decimal("0.72")),
+        ]
+        for row in rows:
+            con.execute(insert_sql, list(row))
+    finally:
+        con.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    rsp = client.get("/api/dashboard/core_metrics")
+    assert rsp.status_code == 200, rsp.text
+    body = rsp.json()["result"]
+
+    asset_rate = body["interbank_assets"]["weighted_avg_rate"]
+    assert asset_rate["raw"] == pytest.approx(0.008)
+    assert asset_rate["display"] == "0.80%"
+    assert body["interbank_assets"]["top_3_details"][0]["rate"] == "0.80%"
+
+    liability_rate = body["interbank_liabilities"]["weighted_avg_rate"]
+    assert liability_rate["raw"] == pytest.approx(0.0072)
+    assert liability_rate["display"] == "0.72%"
+    assert body["interbank_liabilities"]["top_3_details"][0]["rate"] == "0.72%"
+
+    get_settings.cache_clear()
+
+
+def test_core_metrics_weights_tyw_rate_by_principal_and_skips_missing_rates(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "dash-tyw-weighted-rate.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    report_date = "2026-04-30"
+    con = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        con.execute(_tyw_ddl())
+        insert_sql = "insert into fact_formal_tyw_balance_daily values (" + ",".join(["?"] * 21) + ")"
+        rows = [
+            _tyw_row(report_date, "asset-rate-a", "asset", "CP-A", Decimal("100"), Decimal("1.0")),
+            _tyw_row(report_date, "asset-rate-b", "asset", "CP-B", Decimal("300"), Decimal("2.0")),
+            _tyw_row(report_date, "asset-missing-rate", "asset", "CP-MISSING", Decimal("50"), None),
+        ]
+        for row in rows:
+            con.execute(insert_sql, list(row))
+    finally:
+        con.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    rsp = client.get("/api/dashboard/core_metrics")
+    assert rsp.status_code == 200, rsp.text
+    body = rsp.json()["result"]
+
+    asset_rate = body["interbank_assets"]["weighted_avg_rate"]
+    assert asset_rate["raw"] == pytest.approx(0.0175)
+    assert asset_rate["display"] == "1.75%"
+    assert body["interbank_assets"]["top_3_details"][0]["name"] == "CP-B"
+    assert body["interbank_assets"]["top_3_details"][0]["rate"] == "2.00%"
 
     get_settings.cache_clear()
 

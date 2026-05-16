@@ -6,7 +6,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
 from backend.app.repositories.bond_analytics_repo import FACT_TABLE
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
@@ -23,8 +22,12 @@ _ZQTZ_YTM_NORM = (
 )
 _TYW_RATE_NORM = (
     "(case when funding_cost_rate is null then null "
-    "when funding_cost_rate > 1 then funding_cost_rate / 100.0 "
-    "else funding_cost_rate end)"
+    "else funding_cost_rate / 100.0 end)"
+)
+_TYW_RATE_WEIGHT = "(case when funding_cost_rate is null then 0 else coalesce(principal_amount, 0) end)"
+_TYW_WEIGHTED_RATE = (
+    f"sum(({_TYW_RATE_NORM}) * coalesce(principal_amount, 0)) "
+    f"/ nullif(sum({_TYW_RATE_WEIGHT}), 0)"
 )
 _ASSET_PRED = (
     "(instr(lower(coalesce(position_side, '')), 'asset') > 0 "
@@ -393,8 +396,7 @@ class DashboardRepository(DuckDBRepository):
                 select
                   count(*),
                   coalesce(sum(coalesce(principal_amount, 0)), 0),
-                  sum(({_TYW_RATE_NORM}) * coalesce(principal_amount, 0))
-                    / nullif(sum(coalesce(principal_amount, 0)), 0)
+                  {_TYW_WEIGHTED_RATE}
                 from {TYW_FACT}
                 where cast(report_date as varchar) = ?
                   and currency_basis = 'CNY'
@@ -411,8 +413,7 @@ class DashboardRepository(DuckDBRepository):
                 select
                   cast(counterparty_name as varchar) as cp,
                   coalesce(sum(coalesce(principal_amount, 0)), 0) as spr,
-                  sum(({_TYW_RATE_NORM}) * coalesce(principal_amount, 0))
-                    / nullif(sum(coalesce(principal_amount, 0)), 0) as wr
+                  {_TYW_WEIGHTED_RATE} as wr
                 from {TYW_FACT}
                 where cast(report_date as varchar) = ?
                   and currency_basis = 'CNY'
@@ -462,8 +463,7 @@ class DashboardRepository(DuckDBRepository):
                   cast(report_date as varchar) as d,
                   count(*) as row_count,
                   coalesce(sum(coalesce(principal_amount, 0)), 0) as spr,
-                  sum(({_TYW_RATE_NORM}) * coalesce(principal_amount, 0))
-                    / nullif(sum(coalesce(principal_amount, 0)), 0) as wr
+                  {_TYW_WEIGHTED_RATE} as wr
                 from {TYW_FACT}
                 where cast(report_date as varchar) in ({placeholders})
                   and currency_basis = 'CNY'
@@ -489,8 +489,7 @@ class DashboardRepository(DuckDBRepository):
                     cast(report_date as varchar) as d,
                     cast(counterparty_name as varchar) as cp,
                     coalesce(sum(coalesce(principal_amount, 0)), 0) as spr,
-                    sum(({_TYW_RATE_NORM}) * coalesce(principal_amount, 0))
-                      / nullif(sum(coalesce(principal_amount, 0)), 0) as wr
+                    {_TYW_WEIGHTED_RATE} as wr
                   from {TYW_FACT}
                   where cast(report_date as varchar) in ({placeholders})
                     and currency_basis = 'CNY'

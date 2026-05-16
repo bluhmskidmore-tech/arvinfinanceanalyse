@@ -66,13 +66,12 @@ def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
 def _pct_numeric_from_fraction(frac: Decimal | None, *, precision: int = 2) -> Numeric:
     if frac is None:
         return null_numeric(unit="pct", precision=precision, sign_aware=False)
-    pct = frac * Decimal("100")
-    return numeric_from_raw(
-        raw=float(pct),
+    return Numeric(
+        raw=float(frac),
         unit="pct",
+        display=f"{(frac * Decimal('100')):,.{precision}f}%",
         precision=precision,
         sign_aware=False,
-        signed_format=False,
     )
 
 
