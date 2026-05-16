@@ -10,6 +10,7 @@ from backend.app.repositories.duckdb_repo import DuckDBRepository
 
 Q8 = Decimal("0.00000001")
 ONE_HUNDRED = Decimal("100")
+RATE_COVERAGE_POLICY = "exclude_missing_rate_from_denominator"
 RATING_ORDER = {
     "AAA": 1,
     "AA+": 2,
@@ -49,13 +50,31 @@ def _fmt_opt(val: object | None) -> str | None:
     return format(d.quantize(Q8, rounding=ROUND_HALF_UP), "f")
 
 
+def _rate_coverage(
+    covered_amount: object | None,
+    missing_amount: object | None,
+    missing_count: object | None,
+    total_amount: object | None,
+) -> dict[str, object]:
+    covered = Decimal(str(covered_amount or 0))
+    missing = Decimal(str(missing_amount or 0))
+    total = Decimal(str(total_amount or 0))
+    coverage_ratio = (covered / total * ONE_HUNDRED) if total else Decimal(0)
+    return {
+        "policy": RATE_COVERAGE_POLICY,
+        "covered_amount": _fmt_amount(covered),
+        "missing_amount": _fmt_amount(missing),
+        "missing_count": int(missing_count or 0),
+        "coverage_ratio": _fmt_amount(coverage_ratio),
+    }
+
+
 def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decimal | None:
     if val is None:
         return None
     rate = Decimal(str(val))
     if is_interbank:
-        if rate > 1:
-            rate = rate / ONE_HUNDRED
+        rate = rate / ONE_HUNDRED
         return rate.quantize(Q8, rounding=ROUND_HALF_UP)
     if rate > 1 and rate <= ONE_HUNDRED:
         rate = rate / ONE_HUNDRED
@@ -73,8 +92,7 @@ def _normalized_rate_sql(column: str, *, is_interbank: bool) -> str:
     if is_interbank:
         return (
             f"(case when {column} is null then null "
-            f"when {column} > 1 then {column} / 100 "
-            f"else {column} end)"
+            f"else {column} / 100 end)"
         )
     return (
         f"(case when {column} is null then null "
@@ -369,8 +387,10 @@ class PositionsRepository(DuckDBRepository):
             select issuer_name,
               sum(market_value_native) as total_amount,
               count(*) as transaction_count,
-              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_ytm_num,
-              sum(coalesce({_normalized_rate_sql("coupon_rate", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_cpn_num,
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum({_normalized_rate_sql("coupon_rate", is_interbank=False)} * coalesce(market_value_native, 0)) as w_cpn_num,
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den,
+              sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as coupon_rate_den,
               sum(coalesce(market_value_native, 0)) as mv_sum
             from zqtz_bond_daily_snapshot
             where {where_sql}
@@ -384,8 +404,14 @@ class PositionsRepository(DuckDBRepository):
             f"""
             select
               sum(coalesce(market_value_native, 0)),
-              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)),
-              sum(coalesce({_normalized_rate_sql("coupon_rate", is_interbank=False)}, 0) * coalesce(market_value_native, 0))
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)),
+              sum({_normalized_rate_sql("coupon_rate", is_interbank=False)} * coalesce(market_value_native, 0)),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 1 else 0 end),
+              sum(case when {_normalized_rate_sql("coupon_rate", is_interbank=False)} is null then 1 else 0 end)
             from zqtz_bond_daily_snapshot
             where {where_sql}
             """,
@@ -394,11 +420,17 @@ class PositionsRepository(DuckDBRepository):
         g_mv = tot_mv_rows[0][0] if tot_mv_rows else None
         g_wytm = tot_mv_rows[0][1] if tot_mv_rows else None
         g_wcpn = tot_mv_rows[0][2] if tot_mv_rows else None
+        g_ytm_den = tot_mv_rows[0][3] if tot_mv_rows else None
+        g_cpn_den = tot_mv_rows[0][4] if tot_mv_rows else None
+        g_ytm_missing_amount = tot_mv_rows[0][5] if tot_mv_rows else None
+        g_cpn_missing_amount = tot_mv_rows[0][6] if tot_mv_rows else None
+        g_ytm_missing_count = tot_mv_rows[0][7] if tot_mv_rows else None
+        g_cpn_missing_count = tot_mv_rows[0][8] if tot_mv_rows else None
         grand_total = Decimal(str(g_mv or 0))
         total_amount_str = _fmt_amount(grand_total)
         total_avg = _fmt_amount((grand_total / Decimal(num_days)) if num_days else Decimal(0))
-        tw_r = _weighted_rate_str(g_wytm, g_mv)
-        tw_c = _weighted_rate_str(g_wcpn, g_mv)
+        tw_r = _weighted_rate_str(g_wytm, g_ytm_den)
+        tw_c = _weighted_rate_str(g_wcpn, g_cpn_den)
 
         capped = items_all
         if top_n is not None and top_n > 0:
@@ -427,6 +459,12 @@ class PositionsRepository(DuckDBRepository):
             "total_weighted_coupon_rate": tw_c,
             "total_customers": len(items_all),
             "cr10_ratio": cr10_ratio,
+            "ytm_rate_coverage": _rate_coverage(
+                g_ytm_den, g_ytm_missing_amount, g_ytm_missing_count, g_mv
+            ),
+            "coupon_rate_coverage": _rate_coverage(
+                g_cpn_den, g_cpn_missing_amount, g_cpn_missing_count, g_mv
+            ),
         }
 
     def _empty_counterparty_bonds(self, start_date: str, end_date: str) -> dict[str, object]:
@@ -441,6 +479,8 @@ class PositionsRepository(DuckDBRepository):
             "total_weighted_coupon_rate": None,
             "total_customers": 0,
             "cr10_ratio": None,
+            "ytm_rate_coverage": _rate_coverage(0, 0, 0, 0),
+            "coupon_rate_coverage": _rate_coverage(0, 0, 0, 0),
         }
 
     def _rows_to_counterparty_items(
@@ -449,15 +489,15 @@ class PositionsRepository(DuckDBRepository):
         items: list[dict[str, object]] = []
         denom = Decimal(num_days) if num_days else Decimal(0)
         for row in agg_rows:
-            name, total_amt, txn, w_ytm_n, w_cpn_n, mv_sum = row
+            name, total_amt, txn, w_ytm_n, w_cpn_n, ytm_den, cpn_den, _mv_sum = row
             avg_daily = (Decimal(str(total_amt or 0)) / denom) if denom else Decimal(0)
             items.append(
                 {
                     "customer_name": str(name or ""),
                     "total_amount": _fmt_amount(total_amt),
                     "avg_daily_balance": _fmt_amount(avg_daily),
-                    "weighted_rate": _weighted_rate_str(w_ytm_n, mv_sum),
-                    "weighted_coupon_rate": _weighted_rate_str(w_cpn_n, mv_sum),
+                    "weighted_rate": _weighted_rate_str(w_ytm_n, ytm_den),
+                    "weighted_coupon_rate": _weighted_rate_str(w_cpn_n, cpn_den),
                     "transaction_count": int(txn or 0),
                 }
             )
@@ -494,7 +534,7 @@ class PositionsRepository(DuckDBRepository):
                   sum(principal_native) as total_amount,
                   count(*) as transaction_count,
                   sum(coalesce({_normalized_rate_sql("funding_cost_rate", is_interbank=True)}, 0) * coalesce(principal_native, 0)) as w_rate_num,
-                  sum(coalesce(principal_native, 0)) as mv_sum
+                  sum(case when funding_cost_rate is null then 0 else coalesce(principal_native, 0) end) as rate_den
                 from tyw_interbank_daily_snapshot
                 where {where_sql}
                 group by counterparty_name
@@ -505,14 +545,14 @@ class PositionsRepository(DuckDBRepository):
             items_all: list[dict[str, object]] = []
             denom = Decimal(n_days) if n_days else Decimal(0)
             for row in agg_rows:
-                cp, total_amt, txn, w_rn, pr_sum = row
+                cp, total_amt, txn, w_rn, rate_den = row
                 avg_daily = (Decimal(str(total_amt or 0)) / denom) if denom else Decimal(0)
                 items_all.append(
                     {
                         "customer_name": str(cp or ""),
                         "total_amount": _fmt_amount(total_amt),
                         "avg_daily_balance": _fmt_amount(avg_daily),
-                        "weighted_rate": _weighted_rate_str(w_rn, pr_sum),
+                        "weighted_rate": _weighted_rate_str(w_rn, rate_den),
                         "weighted_coupon_rate": None,
                         "transaction_count": int(txn or 0),
                     }
@@ -521,7 +561,8 @@ class PositionsRepository(DuckDBRepository):
                 f"""
                 select
                   sum(coalesce(principal_native, 0)),
-                  sum(coalesce({_normalized_rate_sql("funding_cost_rate", is_interbank=True)}, 0) * coalesce(principal_native, 0))
+                  sum(coalesce({_normalized_rate_sql("funding_cost_rate", is_interbank=True)}, 0) * coalesce(principal_native, 0)),
+                  sum(case when funding_cost_rate is null then 0 else coalesce(principal_native, 0) end)
                 from tyw_interbank_daily_snapshot
                 where {where_sql}
                 """,
@@ -529,13 +570,14 @@ class PositionsRepository(DuckDBRepository):
             )
             g_pr = tot_rows[0][0] if tot_rows else None
             g_wr = tot_rows[0][1] if tot_rows else None
+            g_rate_den = tot_rows[0][2] if tot_rows else None
             grand = Decimal(str(g_pr or 0))
             capped = items_all if top_n is None or top_n <= 0 else items_all[:top_n]
             return {
                 "num_days": n_days,
                 "total_amount": _fmt_amount(grand),
                 "total_avg_daily": _fmt_amount((grand / denom) if denom else Decimal(0)),
-                "total_weighted_rate": _weighted_rate_str(g_wr, g_pr),
+                "total_weighted_rate": _weighted_rate_str(g_wr, g_rate_den),
                 "customer_count": len(items_all),
                 "items": capped,
             }
@@ -595,7 +637,8 @@ class PositionsRepository(DuckDBRepository):
               end as rating_bucket,
               sum(market_value_native) as total_amount,
               count(*) as bond_count,
-              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_ytm_num
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den
             from zqtz_bond_daily_snapshot
             where {where_sql}
             group by rating_bucket
@@ -604,24 +647,34 @@ class PositionsRepository(DuckDBRepository):
             params,
         )
         grand_rows = self._fetch_rows(
-            f"select sum(market_value_native) from zqtz_bond_daily_snapshot where {where_sql}",
+            f"""
+            select
+              sum(coalesce(market_value_native, 0)),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 1 else 0 end)
+            from zqtz_bond_daily_snapshot
+            where {where_sql}
+            """,
             params,
         )
         grand = Decimal(str(grand_rows[0][0] or 0)) if grand_rows else Decimal(0)
+        ytm_den_total = grand_rows[0][1] if grand_rows else None
+        ytm_missing_amount = grand_rows[0][2] if grand_rows else None
+        ytm_missing_count = grand_rows[0][3] if grand_rows else None
         denom_days = Decimal(num_days) if num_days else Decimal(0)
         items: list[dict[str, object]] = []
         for row in rows:
-            label, total_amt, bcount, w_ytm_n = row
+            label, total_amt, bcount, w_ytm_n, ytm_den = row
             amt = Decimal(str(total_amt or 0))
             pct = (amt / grand * Decimal(100)) if grand else Decimal(0)
             avg_daily = (amt / denom_days) if denom_days else Decimal(0)
-            mv = amt
             items.append(
                 {
                     "rating": str(label),
                     "total_amount": _fmt_amount(amt),
                     "avg_daily_balance": _fmt_amount(avg_daily),
-                    "weighted_rate": _weighted_rate_str(w_ytm_n, mv),
+                    "weighted_rate": _weighted_rate_str(w_ytm_n, ytm_den),
                     "bond_count": int(bcount or 0),
                     "percentage": _fmt_amount(pct),
                 }
@@ -634,6 +687,9 @@ class PositionsRepository(DuckDBRepository):
             "items": items,
             "total_amount": _fmt_amount(grand),
             "total_avg_daily": _fmt_amount((grand / denom_days) if denom_days else Decimal(0)),
+            "ytm_rate_coverage": _rate_coverage(
+                ytm_den_total, ytm_missing_amount, ytm_missing_count, grand
+            ),
         }
 
     def aggregate_industry_stats(
@@ -661,7 +717,8 @@ class PositionsRepository(DuckDBRepository):
               end as ind_bucket,
               sum(market_value_native) as total_amount,
               count(*) as bond_count,
-              sum(coalesce({_normalized_rate_sql("ytm_value", is_interbank=False)}, 0) * coalesce(market_value_native, 0)) as w_ytm_num
+              sum({_normalized_rate_sql("ytm_value", is_interbank=False)} * coalesce(market_value_native, 0)) as w_ytm_num,
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end) as ytm_rate_den
             from zqtz_bond_daily_snapshot
             where {where_sql}
             group by ind_bucket
@@ -671,24 +728,34 @@ class PositionsRepository(DuckDBRepository):
             [*params, *lim_params],
         )
         grand_rows = self._fetch_rows(
-            f"select sum(market_value_native) from zqtz_bond_daily_snapshot where {where_sql}",
+            f"""
+            select
+              sum(coalesce(market_value_native, 0)),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 0 else coalesce(market_value_native, 0) end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then coalesce(market_value_native, 0) else 0 end),
+              sum(case when {_normalized_rate_sql("ytm_value", is_interbank=False)} is null then 1 else 0 end)
+            from zqtz_bond_daily_snapshot
+            where {where_sql}
+            """,
             params,
         )
         grand = Decimal(str(grand_rows[0][0] or 0)) if grand_rows else Decimal(0)
+        ytm_den_total = grand_rows[0][1] if grand_rows else None
+        ytm_missing_amount = grand_rows[0][2] if grand_rows else None
+        ytm_missing_count = grand_rows[0][3] if grand_rows else None
         denom_days = Decimal(num_days) if num_days else Decimal(0)
         items: list[dict[str, object]] = []
         for row in rows:
-            label, total_amt, bcount, w_ytm_n = row
+            label, total_amt, bcount, w_ytm_n, ytm_den = row
             amt = Decimal(str(total_amt or 0))
             pct = (amt / grand * Decimal(100)) if grand else Decimal(0)
             avg_daily = (amt / denom_days) if denom_days else Decimal(0)
-            mv = amt
             items.append(
                 {
                     "industry": str(label),
                     "total_amount": _fmt_amount(amt),
                     "avg_daily_balance": _fmt_amount(avg_daily),
-                    "weighted_rate": _weighted_rate_str(w_ytm_n, mv),
+                    "weighted_rate": _weighted_rate_str(w_ytm_n, ytm_den),
                     "bond_count": int(bcount or 0),
                     "percentage": _fmt_amount(pct),
                 }
@@ -700,6 +767,9 @@ class PositionsRepository(DuckDBRepository):
             "items": items,
             "total_amount": _fmt_amount(grand),
             "total_avg_daily": _fmt_amount((grand / denom_days) if denom_days else Decimal(0)),
+            "ytm_rate_coverage": _rate_coverage(
+                ytm_den_total, ytm_missing_amount, ytm_missing_count, grand
+            ),
         }
 
     def _empty_rating_industry(self, start_date: str, end_date: str, _kind: str) -> dict[str, object]:
@@ -710,6 +780,7 @@ class PositionsRepository(DuckDBRepository):
             "items": [],
             "total_amount": "0",
             "total_avg_daily": "0",
+            "ytm_rate_coverage": _rate_coverage(0, 0, 0, 0),
         }
 
     def get_customer_bond_details(self, customer_name: str, report_date: str) -> dict[str, object]:

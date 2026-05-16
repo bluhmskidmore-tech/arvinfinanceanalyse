@@ -56,6 +56,14 @@ class CounterpartyStatItem(BaseModel):
     transaction_count: int
 
 
+class RateCoverage(BaseModel):
+    policy: str
+    covered_amount: str
+    missing_amount: str
+    missing_count: int
+    coverage_ratio: str
+
+
 class CounterpartyStatsResponse(BaseModel):
     start_date: str
     end_date: str
@@ -66,6 +74,8 @@ class CounterpartyStatsResponse(BaseModel):
     total_weighted_rate: str | None = None
     total_weighted_coupon_rate: str | None = None
     total_customers: int
+    ytm_rate_coverage: RateCoverage | None = None
+    coupon_rate_coverage: RateCoverage | None = None
     cr10_ratio: str | None = None  # top-10 对手方市值 / 总市值，如 "68.50%"
 
 
@@ -85,6 +95,7 @@ class RatingStatsResponse(BaseModel):
     items: list[RatingStatItem]
     total_amount: str
     total_avg_daily: str
+    ytm_rate_coverage: RateCoverage | None = None
 
 
 class IndustryStatItem(BaseModel):
@@ -103,6 +114,7 @@ class IndustryStatsResponse(BaseModel):
     items: list[IndustryStatItem]
     total_amount: str
     total_avg_daily: str
+    ytm_rate_coverage: RateCoverage | None = None
 
 
 class CustomerBondDetailItem(BaseModel):
