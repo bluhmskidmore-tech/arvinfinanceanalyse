@@ -1,3 +1,235 @@
+.risk-tensor-brief {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.risk-tensor-brief__lead {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--moss-color-border-default);
+  border-left: 4px solid var(--moss-color-warm-slate-blue);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.risk-tensor-brief__lead[data-tone="warning"] {
+  border-left-color: var(--moss-color-warm-terracotta);
+  background: rgba(255, 248, 238, 0.82);
+}
+
+.risk-tensor-brief__lead[data-tone="danger"] {
+  border-left-color: var(--moss-color-warm-burgundy);
+  background: rgba(251, 242, 243, 0.82);
+}
+
+.risk-tensor-brief__lead[data-tone="ok"] {
+  border-left-color: var(--moss-color-state-success-text);
+}
+
+.risk-tensor-brief__lead span,
+.risk-tensor-brief__tile span {
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-brief__lead h2 {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.risk-tensor-brief__lead p {
+  max-width: 980px;
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.risk-tensor-brief__lead ul {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding-left: 18px;
+  color: var(--moss-color-warm-burgundy);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.risk-tensor-brief__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.risk-tensor-brief__badges span {
+  padding: 5px 8px;
+  border: 1px solid rgba(124, 88, 61, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.74);
+  color: var(--moss-color-warm-taupe);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.risk-tensor-brief__tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-tensor-brief__tile {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  min-height: 128px;
+  padding: 13px;
+  border: 1px solid rgba(124, 88, 61, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.risk-tensor-brief__tile[data-tone="warning"] {
+  border-color: rgba(184, 121, 47, 0.28);
+  background: rgba(255, 248, 238, 0.74);
+}
+
+.risk-tensor-brief__tile[data-tone="danger"] {
+  border-color: rgba(141, 48, 58, 0.2);
+  background: rgba(251, 242, 243, 0.62);
+}
+
+.risk-tensor-brief__tile[data-tone="ok"] {
+  border-color: rgba(45, 138, 94, 0.18);
+  background: rgba(245, 252, 248, 0.78);
+}
+
+.risk-tensor-brief__tile strong {
+  color: var(--moss-color-text-primary);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-brief__tile[data-tone="warning"] strong {
+  color: var(--moss-color-warm-terracotta);
+}
+
+.risk-tensor-brief__tile[data-tone="danger"] strong {
+  color: var(--moss-color-warm-burgundy);
+}
+
+.risk-tensor-brief__tile[data-tone="ok"] strong {
+  color: var(--moss-color-state-success-text);
+}
+
+.risk-tensor-brief__tile p {
+  margin: 0;
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-prior-change {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(249, 244, 235, 0.72)),
+    var(--moss-color-card-bg);
+}
+
+.risk-tensor-prior-change__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.risk-tensor-prior-change__header span,
+.risk-tensor-prior-change__metric span {
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-prior-change__header h2 {
+  margin: 4px 0 0;
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.risk-tensor-prior-change__header strong {
+  padding: 7px 9px;
+  border: 1px solid rgba(124, 88, 61, 0.16);
+  border-radius: 8px;
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-prior-change__summary {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.risk-tensor-prior-change__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-tensor-prior-change__metric {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(124, 88, 61, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.risk-tensor-prior-change__metric strong {
+  color: var(--moss-color-text-primary);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.risk-tensor-prior-change__metric[data-tone="warning"] strong {
+  color: var(--moss-color-warm-burgundy);
+}
+
+.risk-tensor-prior-change__metric[data-tone="good"] strong {
+  color: var(--moss-color-state-success-text);
+}
+
+.risk-tensor-prior-change__metric p,
+.risk-tensor-prior-change__metric small {
+  margin: 0;
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .risk-tensor-dv01-controls {
   margin-top: 18px;
   padding: 18px;
@@ -191,6 +423,14 @@
 }
 
 @media (max-width: 1180px) {
+  .risk-tensor-brief__tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .risk-tensor-prior-change__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .risk-tensor-dv01-controls__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -201,10 +441,24 @@
 }
 
 @media (max-width: 640px) {
+  .risk-tensor-brief__lead {
+    padding: 14px;
+  }
+
+  .risk-tensor-brief__lead h2 {
+    font-size: 18px;
+  }
+
   .risk-tensor-dv01-controls {
     padding: 14px;
   }
 
+  .risk-tensor-prior-change {
+    padding: 14px;
+  }
+
+  .risk-tensor-prior-change__metrics,
+  .risk-tensor-brief__tiles,
   .risk-tensor-dv01-controls__grid,
   .risk-tensor-dv01-controls__stress,
   .risk-tensor-dv01-controls__actions {

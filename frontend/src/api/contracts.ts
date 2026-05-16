@@ -629,6 +629,30 @@ export type Dv01ControlAction = {
   action: string;
 };
 
+export type RiskTensorChangeMetric = {
+  key: string;
+  label: string;
+  current: Numeric;
+  previous: Numeric;
+  delta: Numeric;
+  current_display: string;
+  previous_display: string;
+  delta_display: string;
+  direction: string;
+  tone: string;
+  interpretation: string;
+};
+
+export type RiskTensorPriorPeriodChange = {
+  status: string;
+  comparison_report_date: string | null;
+  summary: string;
+  dominant_krd_bucket: string;
+  previous_dominant_krd_bucket: string | null;
+  dominant_krd_shifted: boolean;
+  metrics: RiskTensorChangeMetric[];
+};
+
 export type Dv01ControlsPayload = {
   basis: string;
   limit_status: string;
@@ -671,6 +695,7 @@ export type RiskTensorPayload = {
   bond_count: number;
   quality_flag: string;
   warnings: string[];
+  prior_period_change?: RiskTensorPriorPeriodChange | null;
   dv01_controls?: Dv01ControlsPayload | null;
 };
 

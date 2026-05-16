@@ -26,6 +26,30 @@ class Dv01ControlAction(BaseModel):
     action: str
 
 
+class RiskTensorChangeMetric(BaseModel):
+    key: str
+    label: str
+    current: Numeric
+    previous: Numeric
+    delta: Numeric
+    current_display: str
+    previous_display: str
+    delta_display: str
+    direction: str
+    tone: str
+    interpretation: str
+
+
+class RiskTensorPriorPeriodChange(BaseModel):
+    status: str
+    comparison_report_date: date | None = None
+    summary: str
+    dominant_krd_bucket: str
+    previous_dominant_krd_bucket: str | None = None
+    dominant_krd_shifted: bool = False
+    metrics: list[RiskTensorChangeMetric] = Field(default_factory=list)
+
+
 class Dv01ControlsPayload(BaseModel):
     basis: str
     limit_status: str
@@ -104,6 +128,7 @@ class RiskTensorPayload(BaseModel):
     bond_count: int = 0
     quality_flag: str = "ok"
     warnings: list[str] = Field(default_factory=list)
+    prior_period_change: RiskTensorPriorPeriodChange | None = None
     dv01_controls: Dv01ControlsPayload | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {

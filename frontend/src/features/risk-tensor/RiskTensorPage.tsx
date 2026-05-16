@@ -9,16 +9,14 @@ import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
-import type { RiskTensorPayload } from "../../api/contracts";
+import type { ResultMeta, RiskTensorPayload } from "../../api/contracts";
 import {
-  formatRatioAsPercent,
   parseDisplayNumber,
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
 import {
   bondChartMagnitude,
   bondNumericDisplay,
-  bondNumericRaw,
   bondNumericRawOrNull,
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
 import "./RiskTensorPage.css";
@@ -128,6 +126,99 @@ function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) 
 
 function ratioTone(value: Parameters<typeof bondNumericRawOrNull>[0]) {
   return toneFromSignedDisplayString(ratioPercentDisplay(value));
+}
+
+function priorMetricTone(tone: string) {
+  if (tone === "good" || tone === "warning") {
+    return tone;
+  }
+  return "neutral";
+}
+
+function qualityFlagLabel(flag: string | undefined) {
+  if (flag === "ok") {
+    return "正常";
+  }
+  if (flag === "warning") {
+    return "预警";
+  }
+  if (flag === "error") {
+    return "错误";
+  }
+  if (flag === "stale") {
+    return "陈旧";
+  }
+  return flag || "未提供";
+}
+
+function qualityTone(flag: string | undefined) {
+  if (flag === "error" || flag === "stale") {
+    return "danger";
+  }
+  if (flag === "warning") {
+    return "warning";
+  }
+  if (flag === "ok") {
+    return "ok";
+  }
+  return "neutral";
+}
+
+function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | undefined) {
+  if (mode === "none") {
+    return "未降级";
+  }
+  if (mode === "latest") {
+    return "latest fallback";
+  }
+  if (mode === "mock") {
+    return "mock fallback";
+  }
+  if (mode === "degraded") {
+    return "降级";
+  }
+  return mode || "未提供";
+}
+
+function compactVersion(value: string | undefined) {
+  if (!value) {
+    return "未提供";
+  }
+  if (value.length <= 42) {
+    return value;
+  }
+  return `${value.slice(0, 22)}...${value.slice(-12)}`;
+}
+
+function liquidityGapLabel(raw: number | null) {
+  if (raw === null) {
+    return "30 日缺口待确认";
+  }
+  if (raw < 0) {
+    return "30 日缺口为负";
+  }
+  if (raw > 0) {
+    return "30 日缺口为正";
+  }
+  return "30 日缺口持平";
+}
+
+function liquidityGapTone(raw: number | null) {
+  if (raw === null) {
+    return "neutral";
+  }
+  return raw < 0 ? "danger" : "ok";
+}
+
+function requiredActionSummary(actions: NonNullable<RiskTensorPayload["dv01_controls"]>["control_actions"] | undefined) {
+  if (!actions) {
+    return "控制项未接入";
+  }
+  const required = actions.filter((item) => item.status === "required");
+  if (required.length === 0) {
+    return "暂无必做项";
+  }
+  return `${required.length} 项必做`;
 }
 
 function dynamicAxisMax(raw: number, fallback: number) {
@@ -327,6 +418,24 @@ export default function RiskTensorPage() {
   }, [selectedTenor, tenorRows]);
 
   const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? tenorRows[0];
+  const tensorMeta = envelope?.result_meta;
+  const primaryTenor = selectedTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
+  const primaryTenorValue = selectedTenorRow
+    ? displayStr(selectedTenorRow.value)
+    : result?.dv01_controls
+      ? displayStr(result.dv01_controls.dominant_krd)
+      : "--";
+  const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
+  const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
+  const firstRequiredAction = requiredActions[0];
+  const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 ? "warning" : "ok";
+  const topLineSummary = result
+    ? [
+        `主风险桶 ${primaryTenor}`,
+        liquidityGapLabel(liquidity30dRaw),
+        `质量标记：${qualityFlagLabel(result.quality_flag)}`,
+      ].join(" / ")
+    : "";
 
   const radarChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -421,8 +530,7 @@ export default function RiskTensorPage() {
             lineHeight: 1.75,
           }}
         >
-          消费正式风险张量接口，展示口径以后端 <code style={{ fontSize: 13 }}>/api/risk/tensor</code> 与
-          <code style={{ fontSize: 13 }}> /api/risk/tensor/dates</code> 为准。
+          第一屏先回答风险集中在哪个期限桶、30 日流动性是否有缺口、DV01 控制是否可判定，以及当前数据是否可用。
         </p>
       </div>
 
@@ -479,6 +587,78 @@ export default function RiskTensorPage() {
       >
         {result ? (
           <>
+            <section className="risk-tensor-brief" data-testid="risk-tensor-brief">
+              <div className="risk-tensor-brief__lead" data-tone={qualityTone(result.quality_flag)}>
+                <span>风险判读</span>
+                <h2>{topLineSummary}</h2>
+                <p>
+                  {result.prior_period_change?.summary ??
+                    result.dv01_controls?.operating_judgement ??
+                    "暂无可比上期，当前仅展示截面风险读数。"}
+                </p>
+                {result.warnings.length > 0 ? (
+                  <ul aria-label="risk tensor warnings">
+                    {result.warnings.slice(0, 2).map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <div className="risk-tensor-brief__badges" aria-label="risk tensor data status">
+                  <span>报告日 {result.report_date}</span>
+                  <span>{tensorMeta?.basis ?? "formal"} 口径</span>
+                  <span>{fallbackModeLabel(tensorMeta?.fallback_mode)}</span>
+                  <span>{blockedReportDates.length} 个陈旧日期已拦截</span>
+                </div>
+              </div>
+
+              <div className="risk-tensor-brief__tiles">
+                <article className="risk-tensor-brief__tile" data-tone="neutral">
+                  <span>主风险桶</span>
+                  <strong>{primaryTenor}</strong>
+                  <p>KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。</p>
+                </article>
+                <article className="risk-tensor-brief__tile" data-tone="warning">
+                  <span>DV01 控制</span>
+                  <strong>
+                    {result.dv01_controls
+                      ? dv01ControlStatusLabel(result.dv01_controls.limit_status)
+                      : "控制未接入"}
+                  </strong>
+                  <p>
+                    监管口径 {regulatoryDv01Display(result.regulatory_dv01)}
+                    {result.dv01_controls ? `；${result.dv01_controls.control_message}` : "；后端未返回限额控制载荷。"}
+                  </p>
+                </article>
+                <article className="risk-tensor-brief__tile" data-tone={liquidityGapTone(liquidity30dRaw)}>
+                  <span>流动性</span>
+                  <strong>{ratioPercentDisplay(result.liquidity_gap_30d_ratio)}</strong>
+                  <p>{displayStr(result.liquidity_gap_30d)} = 30 日资产现金流 - 负债现金流。</p>
+                </article>
+                <article className="risk-tensor-brief__tile" data-tone="neutral">
+                  <span>发行人集中度</span>
+                  <strong>{ratioPercentDisplay(result.issuer_top5_weight)}</strong>
+                  <p>前五大权重；HHI {displayStr(result.issuer_concentration_hhi)}。</p>
+                </article>
+                <article className="risk-tensor-brief__tile" data-tone={qualityTone(result.quality_flag)}>
+                  <span>数据状态</span>
+                  <strong>{qualityFlagLabel(result.quality_flag)}</strong>
+                  <p>
+                    来源 {compactVersion(tensorMeta?.source_version)}；规则{" "}
+                    {compactVersion(tensorMeta?.rule_version)}。
+                  </p>
+                </article>
+                <article className="risk-tensor-brief__tile" data-tone={actionTileTone}>
+                  <span>待补信息</span>
+                  <strong>{requiredActionSummary(result.dv01_controls?.control_actions)}</strong>
+                  <p>
+                    {firstRequiredAction?.title ??
+                      result.warnings[0] ??
+                      "后端未返回必做控制动作，继续按质量标记和明细核对。"}
+                  </p>
+                </article>
+              </div>
+            </section>
+
             <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
               <KpiCard
                 title="估值口径 DV01"
@@ -524,6 +704,41 @@ export default function RiskTensorPage() {
                 tone={toneFromSignedDisplayString(displayStr(result.total_market_value))}
               />
             </div>
+
+            {result.prior_period_change ? (
+              <section className="risk-tensor-prior-change" data-testid="risk-tensor-prior-period-change">
+                <div className="risk-tensor-prior-change__header">
+                  <div>
+                    <span>较上期变化</span>
+                    <h2>风险变化判断</h2>
+                  </div>
+                  <strong>
+                    {result.prior_period_change.comparison_report_date
+                      ? `对比 ${result.prior_period_change.comparison_report_date}`
+                      : "暂无可比日期"}
+                  </strong>
+                </div>
+                <p className="risk-tensor-prior-change__summary">{result.prior_period_change.summary}</p>
+                {result.prior_period_change.metrics.length > 0 ? (
+                  <div className="risk-tensor-prior-change__metrics">
+                    {result.prior_period_change.metrics.map((metric) => (
+                      <article
+                        className="risk-tensor-prior-change__metric"
+                        data-tone={priorMetricTone(metric.tone)}
+                        key={metric.key}
+                      >
+                        <span>{metric.label}</span>
+                        <strong>{metric.delta_display}</strong>
+                        <p>{metric.interpretation}</p>
+                        <small>
+                          当前 {metric.current_display} / 上期 {metric.previous_display}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             {result.dv01_controls ? (
               <section className="risk-tensor-dv01-controls" data-testid="risk-tensor-dv01-controls">
@@ -724,6 +939,7 @@ export default function RiskTensorPage() {
                 value={ratioPercentDisplay(result.liquidity_gap_30d_ratio)}
                 detail="liquidity_gap_30d_ratio。"
                 tone={ratioTone(result.liquidity_gap_30d_ratio)}
+                testId="risk-tensor-liquidity-gap-ratio"
               />
             </div>
 
@@ -737,7 +953,7 @@ export default function RiskTensorPage() {
             >
               现金流构成
             </h2>
-            <div style={summaryGridStyle}>
+            <div data-testid="risk-tensor-cashflow-grid" style={summaryGridStyle}>
               <KpiCard
                 title="30 日资产现金流"
                 value={displayStr(result.asset_cashflow_30d)}

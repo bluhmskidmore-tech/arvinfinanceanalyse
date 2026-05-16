@@ -45,6 +45,10 @@ function tensorResult(reportDate: string): RiskTensorPayload {
     portfolio_modified_duration: "4.2",
     issuer_concentration_hhi: "0.18",
     issuer_top5_weight: "0.35",
+    asset_cashflow_30d: "300.3",
+    asset_cashflow_90d: "500.5",
+    liability_cashflow_30d: "200.2",
+    liability_cashflow_90d: "300.3",
     liquidity_gap_30d: "100.1",
     liquidity_gap_90d: "200.2",
     liquidity_gap_30d_ratio: "0.05",
@@ -52,6 +56,78 @@ function tensorResult(reportDate: string): RiskTensorPayload {
     bond_count: 12,
     quality_flag: "warning",
     warnings: ["Issuer concentration above desk threshold"],
+    prior_period_change: {
+      status: "available",
+      comparison_report_date: "2026-02-27",
+      summary: "较上一报告日 2026-02-27：监管口径 DV01 增加 +4.34；主风险桶由 3Y 切至 5Y。",
+      dominant_krd_bucket: "5Y",
+      previous_dominant_krd_bucket: "3Y",
+      dominant_krd_shifted: true,
+      metrics: [
+        {
+          key: "regulatory_dv01",
+          label: "监管口径 DV01",
+          current: {
+            raw: 12.34,
+            unit: "dv01" as const,
+            display: "12.34",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous: {
+            raw: 8,
+            unit: "dv01" as const,
+            display: "8.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          delta: {
+            raw: 4.34,
+            unit: "dv01" as const,
+            display: "+4.34",
+            precision: 2,
+            sign_aware: true,
+          },
+          current_display: "12.34",
+          previous_display: "8.00",
+          delta_display: "+4.34",
+          direction: "up",
+          tone: "warning",
+          interpretation: "监管口径 DV01 扩大",
+        },
+        {
+          key: "liquidity_gap_30d_ratio",
+          label: "30 日流动性缺口比例",
+          current: {
+            raw: 0.05,
+            unit: "ratio" as const,
+            display: "0.05",
+            precision: 4,
+            sign_aware: true,
+          },
+          previous: {
+            raw: 0.03,
+            unit: "ratio" as const,
+            display: "0.03",
+            precision: 4,
+            sign_aware: true,
+          },
+          delta: {
+            raw: 0.02,
+            unit: "ratio" as const,
+            display: "+0.02",
+            precision: 4,
+            sign_aware: true,
+          },
+          current_display: "5.0%",
+          previous_display: "3.0%",
+          delta_display: "+2.0%",
+          direction: "up",
+          tone: "good",
+          interpretation: "30 日流动性缓冲改善",
+        },
+      ],
+    },
   };
 }
 
@@ -95,19 +171,40 @@ describe("RiskTensorPage", () => {
 
     expect(await screen.findByRole("heading", { name: "风险张量" })).toBeInTheDocument();
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
+    const brief = await screen.findByTestId("risk-tensor-brief");
+    expect(brief).toHaveTextContent("风险判读");
+    expect(brief).toHaveTextContent("主风险桶 5Y");
+    expect(brief).toHaveTextContent("30 日缺口为正");
+    expect(brief).toHaveTextContent("质量标记：预警");
+    expect(brief).toHaveTextContent("报告日 2026-02-28");
+    expect(brief).toHaveTextContent("未降级");
+    expect(brief).toHaveTextContent("来源 sv_tensor_test");
+    expect(brief).toHaveTextContent("控制项未接入");
     expect(kpi).toHaveTextContent("12.34");
     expect(kpi).toHaveTextContent("监管口径 DV01");
     expect(kpi).toHaveTextContent("待接入");
     expect(kpi).toHaveTextContent("8.88");
     expect(screen.getByText("集中度")).toBeInTheDocument();
-    expect(screen.queryByText("流动性缺口（市值）")).not.toBeInTheDocument();
-    expect(screen.queryByText("30 日内到期市值")).not.toBeInTheDocument();
-    expect(screen.queryByText("90 日内到期市值")).not.toBeInTheDocument();
     expect(screen.getByText("流动性现金流缺口")).toBeInTheDocument();
     expect(screen.getByText("30 日资产现金流 - 负债现金流")).toBeInTheDocument();
     expect(screen.getByText("90 日资产现金流 - 负债现金流")).toBeInTheDocument();
-    expect(screen.getByText("Issuer concentration above desk threshold")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-liquidity-gap-ratio")).toHaveTextContent("5.0%");
+    expect(screen.getAllByText("5.0%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("现金流构成")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-cashflow-grid")).toBeVisible();
+    expect(screen.getByText("30 日资产现金流")).toBeInTheDocument();
+    expect(screen.getByText("30 日负债现金流")).toBeInTheDocument();
+    expect(screen.getByText("90 日资产现金流")).toBeInTheDocument();
+    expect(screen.getByText("90 日负债现金流")).toBeInTheDocument();
+    expect(screen.getAllByText("Issuer concentration above desk threshold").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("质量标记：预警")).toBeInTheDocument();
+    const priorChange = screen.getByTestId("risk-tensor-prior-period-change");
+    expect(priorChange).toHaveTextContent("较上一报告日 2026-02-27");
+    expect(priorChange).toHaveTextContent("监管口径 DV01");
+    expect(priorChange).toHaveTextContent("+4.34");
+    expect(priorChange).toHaveTextContent("30 日流动性缺口比例");
+    expect(priorChange).toHaveTextContent("+2.0%");
+    expect(priorChange).toHaveTextContent("30 日流动性缓冲改善");
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toBeVisible();
@@ -118,6 +215,39 @@ describe("RiskTensorPage", () => {
       expect(getRiskTensorDates).toHaveBeenCalled();
       expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
     });
+  });
+
+  it("renders prior-period no-data state without comparison metric cards", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_no_prior_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        prior_period_change: {
+          status: "no_prior",
+          comparison_report_date: null,
+          summary: "no prior comparable data",
+          dominant_krd_bucket: "5Y",
+          previous_dominant_krd_bucket: null,
+          dominant_krd_shifted: false,
+          metrics: [],
+        },
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+    expect(priorChange).toHaveTextContent("no prior comparable data");
+    expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
   });
 
   it("renders governed Numeric tensor values using backend display and raw ratio", async () => {
@@ -162,7 +292,7 @@ describe("RiskTensorPage", () => {
 
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent("1,235 governed");
-    expect(screen.getByText("42.0%")).toBeInTheDocument();
+    expect(screen.getAllByText("42.0%").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3 governed");
   });
 
