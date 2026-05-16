@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from decimal import Decimal
+from pathlib import Path
 from typing import Literal
 
 from backend.app.governance.settings import get_settings
@@ -16,10 +18,17 @@ from backend.app.schemas.dashboard import (
     DailyChangesPayload,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 _DASHBOARD_CACHE_VERSION = "cv_dashboard_analytical_v1"
 _DASHBOARD_RULE_VERSION = "rv_dashboard_read_v1"
 _DASHBOARD_SOURCE_VERSION = "sv_dashboard_duckdb"
+_DASHBOARD_CACHE_TTL_SECONDS = 300.0
+_DashboardCacheKey = tuple[str, str | None, str, int | None]
+_DASHBOARD_CACHE: InMemoryTTLCache[_DashboardCacheKey, dict[str, object]] = get_runtime_cache(
+    "dashboard.read_models",
+    ttl_seconds=_DASHBOARD_CACHE_TTL_SECONDS,
+)
 
 _PeriodLiteral = Literal["day", "week", "month"]
 
@@ -28,8 +37,30 @@ def _repo() -> DashboardRepository:
     return DashboardRepository(str(get_settings().duckdb_path))
 
 
+def _normalize_dashboard_report_date(report_date: str | None) -> str | None:
+    normalized = str(report_date or "").strip()
+    return normalized or None
+
+
+def _dashboard_cache_key(endpoint: str, report_date: str | None) -> _DashboardCacheKey:
+    duckdb_path = str(get_settings().duckdb_path)
+    try:
+        duckdb_mtime_ns: int | None = Path(duckdb_path).stat().st_mtime_ns
+    except OSError:
+        duckdb_mtime_ns = None
+    return (endpoint, _normalize_dashboard_report_date(report_date), duckdb_path, duckdb_mtime_ns)
+
+
 def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
+
+
+def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
 
 
 def _pct_numeric_from_fraction(frac: Decimal | None, *, precision: int = 2) -> Numeric:
@@ -228,7 +259,21 @@ def _zeroed_metrics_card() -> CoreMetricsCardData:
     )
 
 
+def invalidate_dashboard_cache() -> None:
+    _DASHBOARD_CACHE.clear()
+
+
 def get_core_metrics(report_date: str | None = None) -> dict[str, object]:
+    normalized_report_date = _normalize_dashboard_report_date(report_date)
+    return _with_fresh_trace(
+        _DASHBOARD_CACHE.get_or_set(
+            _dashboard_cache_key("core_metrics", normalized_report_date),
+            lambda: _compute_core_metrics(normalized_report_date),
+        )
+    )
+
+
+def _compute_core_metrics(report_date: str | None = None) -> dict[str, object]:
     repo = _repo()
     canonical = sorted(repo.list_merged_report_dates())
     canonical_desc = sorted(canonical, reverse=True)
@@ -326,6 +371,16 @@ def _null_yuan_changes() -> tuple[Numeric, Numeric, Numeric, Numeric]:
 
 
 def get_daily_changes(report_date: str | None = None) -> dict[str, object]:
+    normalized_report_date = _normalize_dashboard_report_date(report_date)
+    return _with_fresh_trace(
+        _DASHBOARD_CACHE.get_or_set(
+            _dashboard_cache_key("daily_changes", normalized_report_date),
+            lambda: _compute_daily_changes(normalized_report_date),
+        )
+    )
+
+
+def _compute_daily_changes(report_date: str | None = None) -> dict[str, object]:
     repo = _repo()
     canonical = sorted(repo.list_merged_report_dates())
     canonical_desc = sorted(canonical, reverse=True)

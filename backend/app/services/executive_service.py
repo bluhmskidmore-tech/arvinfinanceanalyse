@@ -4,16 +4,16 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import date, datetime
-from threading import RLock
+from pathlib import Path
 from typing import Literal
 
 import duckdb
-
 from backend.app.core_finance.alert_engine import evaluate_alerts
-from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
+from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
@@ -25,17 +25,17 @@ from backend.app.repositories.product_category_pnl_repo import ProductCategoryPn
 from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
-    AlertsPayload,
     AlertItem,
+    AlertsPayload,
     AttributionSegment,
     ContributionPayload,
     ContributionRow,
     ExecutiveMetric,
     HomeSnapshotPayload,
     OverviewPayload,
+    PnlAttributionPayload,
     ProductCategoryMonthlyHeadlinePayload,
     ProductCategoryYtdHeadlinePayload,
-    PnlAttributionPayload,
     RiskOverviewPayload,
     RiskSignal,
     SummaryPayload,
@@ -46,14 +46,15 @@ from backend.app.schemas.executive_dashboard import (
     VerdictTone,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.product_category_pnl_service import (
-    product_category_pnl_envelope,
-    resolve_product_category_ytd_payload_for_home_snapshot,
-)
 from backend.app.services.kpi_service import (
     resolve_executive_kpi_metrics,
     resolve_kpi_authority_gate,
 )
+from backend.app.services.product_category_pnl_service import (
+    product_category_pnl_envelope,
+    resolve_product_category_ytd_payload_for_home_snapshot,
+)
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
@@ -62,6 +63,7 @@ _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
 _CACHE_VERSION = "cv_exec_dashboard_v1"
+logger = logging.getLogger(__name__)
 _logger = logging.getLogger(__name__)
 
 # Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
@@ -2319,8 +2321,29 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
 #   - 多 worker 部署下每个 worker 独立缓存，可接受（TTL 短）。
 
 _HOME_SNAPSHOT_CACHE_TTL_SECONDS: float = 300.0
-_HOME_SNAPSHOT_CACHE: dict[tuple[str | None, bool], tuple[float, dict[str, object]]] = {}
-_HOME_SNAPSHOT_CACHE_LOCK = RLock()
+_HomeSnapshotCacheKey = tuple[str | None, bool, str, int | None]
+_HOME_SNAPSHOT_CACHE: InMemoryTTLCache[_HomeSnapshotCacheKey, dict[str, object]] = get_runtime_cache(
+    "executive.home_snapshot",
+    ttl_seconds=_HOME_SNAPSHOT_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
+
+
+def _duckdb_version_token() -> tuple[str, int | None]:
+    duckdb_path = str(get_settings().duckdb_path)
+    try:
+        return duckdb_path, Path(duckdb_path).stat().st_mtime_ns
+    except OSError:
+        return duckdb_path, None
+
+
+def _home_snapshot_cache_key(
+    *,
+    report_date: str | None,
+    allow_partial: bool,
+) -> _HomeSnapshotCacheKey:
+    duckdb_path, duckdb_mtime_ns = _duckdb_version_token()
+    return (report_date, allow_partial, duckdb_path, duckdb_mtime_ns)
 
 
 def invalidate_home_snapshot_cache() -> None:
@@ -2331,8 +2354,7 @@ def invalidate_home_snapshot_cache() -> None:
       - 后台任务希望强制下次请求拿到新数据；
       - 测试隔离。
     """
-    with _HOME_SNAPSHOT_CACHE_LOCK:
-        _HOME_SNAPSHOT_CACHE.clear()
+    _HOME_SNAPSHOT_CACHE.clear()
 
 
 def home_snapshot_envelope(
@@ -2342,28 +2364,41 @@ def home_snapshot_envelope(
 ) -> dict[str, object]:
     """home snapshot envelope 入口（带 TTL 缓存）。
 
-    缓存命中：直接返回上次构造的 envelope（dict 引用，调用方不应 mutate）。
+    缓存命中：返回上次构造 envelope 的防御副本，避免调用方 mutation 污染缓存。
     缓存未命中或过期：执行 ``_compute_home_snapshot_envelope`` 并写回缓存。
     """
-    cache_key = (report_date, allow_partial)
-    now = time.monotonic()
-    with _HOME_SNAPSHOT_CACHE_LOCK:
-        cached = _HOME_SNAPSHOT_CACHE.get(cache_key)
-        if cached is not None:
-            cached_at, cached_envelope = cached
-            if now - cached_at < _HOME_SNAPSHOT_CACHE_TTL_SECONDS:
-                return cached_envelope
-            del _HOME_SNAPSHOT_CACHE[cache_key]
-
-    envelope = _compute_home_snapshot_envelope(
-        report_date=report_date,
+    total_t0 = time.perf_counter()
+    normalized_report_date = _normalize_report_date(report_date)
+    cache_key = _home_snapshot_cache_key(
+        report_date=normalized_report_date,
         allow_partial=allow_partial,
     )
+    t0 = time.perf_counter()
+    cache_state = "hit" if _HOME_SNAPSHOT_CACHE.get(cache_key)[0] else "miss"
+    logger.info(
+        "home_snapshot perf: step=cache_lookup ms=%d extra=cache=%s report_date=%s allow_partial=%s",
+        int((time.perf_counter() - t0) * 1000),
+        cache_state,
+        normalized_report_date,
+        allow_partial,
+    )
 
-    with _HOME_SNAPSHOT_CACHE_LOCK:
-        _HOME_SNAPSHOT_CACHE[cache_key] = (time.monotonic(), envelope)
+    envelope = _HOME_SNAPSHOT_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_home_snapshot_envelope(
+            report_date=normalized_report_date,
+            allow_partial=allow_partial,
+        ),
+    )
 
-    return envelope
+    logger.info(
+        "home_snapshot perf: step=total ms=%d extra=cache=%s report_date=%s allow_partial=%s",
+        int((time.perf_counter() - total_t0) * 1000),
+        cache_state,
+        normalized_report_date,
+        allow_partial,
+    )
+    return deepcopy(envelope)
 
 
 def warm_home_snapshot_cache_if_configured(settings: object) -> bool:

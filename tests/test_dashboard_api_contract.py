@@ -686,6 +686,75 @@ def test_daily_changes_uses_one_batch_per_domain(monkeypatch) -> None:
     assert [call for call in calls if "single" in call[0]] == []
 
 
+def test_dashboard_core_metrics_cache_reuses_normalized_report_date(monkeypatch) -> None:
+    service = load_module(
+        "tests._dashboard_service_core_cache",
+        "backend/app/services/dashboard_service.py",
+    )
+    service.invalidate_dashboard_cache()
+    calls: list[tuple[str, object]] = []
+
+    class Repo:
+        def list_merged_report_dates(self):
+            calls.append(("dates", None))
+            return ["2026-04-30", "2026-04-29"]
+
+        def fetch_bond_core_metrics_for_dates(self, report_dates):
+            calls.append(("bond-batch", tuple(report_dates)))
+            return {
+                "2026-04-30": (Decimal("110"), Decimal("0.03"), [], True),
+                "2026-04-29": (Decimal("100"), Decimal("0.02"), [], True),
+            }
+
+        def fetch_tyw_core_metrics_for_dates(self, report_dates, *, asset_side: bool):
+            calls.append(("tyw-batch", asset_side, tuple(report_dates)))
+            return {
+                "2026-04-30": (Decimal("210"), Decimal("0.025"), [], True),
+                "2026-04-29": (Decimal("200"), Decimal("0.02"), [], True),
+            }
+
+    monkeypatch.setattr(service, "_repo", lambda: Repo())
+
+    first = service.get_core_metrics(report_date="2026-04-30")
+    second = service.get_core_metrics(report_date=" 2026-04-30 ")
+
+    assert first["result"] == second["result"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+    assert [call for call in calls if call[0] == "dates"] == [("dates", None)]
+    assert len([call for call in calls if call[0].endswith("batch")]) == 3
+
+
+def test_dashboard_cache_clear_forces_recompute(monkeypatch) -> None:
+    service = load_module(
+        "tests._dashboard_service_cache_clear",
+        "backend/app/services/dashboard_service.py",
+    )
+    service.invalidate_dashboard_cache()
+    calls = 0
+
+    class Repo:
+        def list_merged_report_dates(self):
+            return ["2026-04-30"]
+
+        def fetch_bond_core_metrics_for_dates(self, report_dates):
+            nonlocal calls
+            calls += 1
+            return {"2026-04-30": (Decimal(str(calls)), Decimal("0.03"), [], True)}
+
+        def fetch_tyw_core_metrics_for_dates(self, report_dates, *, asset_side: bool):
+            return {"2026-04-30": (Decimal("0"), None, [], True)}
+
+    monkeypatch.setattr(service, "_repo", lambda: Repo())
+
+    first = service.get_core_metrics(report_date="2026-04-30")
+    service.invalidate_dashboard_cache()
+    second = service.get_core_metrics(report_date="2026-04-30")
+
+    assert calls == 2
+    assert first["result"]["bond_investments"]["total_amount"]["raw"] == pytest.approx(1.0)
+    assert second["result"]["bond_investments"]["total_amount"]["raw"] == pytest.approx(2.0)
+
+
 def test_dashboard_core_metrics_logs_api_perf(tmp_path, monkeypatch, caplog) -> None:
     duckdb_path = tmp_path / "empty-dash-perf.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
