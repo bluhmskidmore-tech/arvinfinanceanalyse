@@ -30,6 +30,59 @@
   margin-bottom: 18px;
 }
 
+.pnl-by-business-data-status-strip {
+  display: grid;
+  gap: 10px;
+  margin-bottom: var(--moss-space-4);
+  padding: 12px 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, var(--moss-color-warm-porcelain));
+}
+
+.pnl-by-business-data-status-strip__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pnl-by-business-data-status-strip__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--moss-color-warm-stone) 74%, transparent);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-data-status-strip__item small,
+.pnl-by-business-data-status-strip__meta {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pnl-by-business-data-status-strip__item strong {
+  overflow: hidden;
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-data-status-strip__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.pnl-by-business-data-status-strip__meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .pnl-by-business-filter-label {
   display: grid;
   gap: 6px;
@@ -517,6 +570,10 @@
   .pnl-by-business-adjustment-form,
   .pnl-by-business-adjustment-columns {
     grid-template-columns: 1fr;
+  }
+
+  .pnl-by-business-data-status-strip__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pnl-by-business-adjustment-actions {

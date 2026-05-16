@@ -11,10 +11,12 @@ import type {
   PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  ResultMeta,
 } from "../../api/contracts";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { DataStatusStrip } from "../../components/page/PagePrimitives";
 import { SectionLead } from "../../components/page/SectionLead";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
@@ -888,6 +890,46 @@ const VIEW_MODE_SUBTITLES: Record<PnlByBusinessViewMode, string> = {
   formal: "按所选报表日读取 formal primary 对账明细（GET /api/pnl/by-business），用于源数据追溯；不与月报或累计混加。",
 };
 
+const VIEW_MODE_STATUS_LABELS: Record<PnlByBusinessViewMode, string> = {
+  monthly: "月报 ZQTZ",
+  ytd: "年累计 YTD",
+  formal: "formal primary",
+};
+
+function formatPnlQualityStatus(
+  quality: ResultMeta["quality_flag"] | undefined,
+  state: { isLoading: boolean; isError: boolean; isEmpty: boolean },
+) {
+  if (state.isLoading) return "读取中";
+  if (state.isError) return "读取失败";
+  if (state.isEmpty) return "无数据";
+  if (!quality) return "待返回";
+  const labels: Record<ResultMeta["quality_flag"], string> = {
+    ok: "正常",
+    warning: "预警",
+    error: "错误",
+    stale: "陈旧",
+    missing: "缺失",
+  };
+  return labels[quality];
+}
+
+function formatPnlVendorStatus(status: ResultMeta["vendor_status"] | undefined) {
+  if (!status) return "待返回";
+  if (status === "vendor_stale") return "供应商陈旧";
+  if (status === "vendor_unavailable") return "供应商不可用";
+  return "正常";
+}
+
+function formatPnlFallbackMode(mode: ResultMeta["fallback_mode"] | undefined) {
+  if (!mode) return "待返回";
+  return mode === "latest_snapshot" ? "最新快照降级" : "未降级";
+}
+
+function formatPnlEvidenceRows(rows: ResultMeta["evidence_rows"] | undefined) {
+  return typeof rows === "number" ? `${rows.toLocaleString("zh-CN")} 行` : "待返回";
+}
+
 const ANALYSIS_DIMENSION_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
   monthly: "月份",
   portfolio: "组合",
@@ -1754,6 +1796,18 @@ export default function PnlByBusinessPage() {
     (viewMode === "monthly" && !monthlyBusinessQuery.isSuccess) ||
     (viewMode === "formal" && !formalBusinessQuery.isSuccess);
 
+  const activeResultMeta =
+    viewMode === "monthly"
+      ? monthlyBusinessQuery.data?.result_meta
+      : viewMode === "ytd"
+        ? businessQuery.data?.result_meta
+        : formalBusinessQuery.data?.result_meta;
+  const activeDataStatus = formatPnlQualityStatus(activeResultMeta?.quality_flag, {
+    isLoading: loading,
+    isError: error,
+    isEmpty: empty,
+  });
+
   return (
     <main data-testid="pnl-by-business-page">
       <div className="pnl-by-business-page-header">
@@ -1809,6 +1863,33 @@ export default function PnlByBusinessPage() {
           ) : null}
         </div>
       </FilterBar>
+
+      <DataStatusStrip testId="pnl-by-business-data-status-strip" className="pnl-by-business-data-status-strip">
+        <div className="pnl-by-business-data-status-strip__grid">
+          <span className="pnl-by-business-data-status-strip__item">
+            <small>当前口径</small>
+            <strong>{VIEW_MODE_STATUS_LABELS[viewMode]}</strong>
+          </span>
+          <span className="pnl-by-business-data-status-strip__item">
+            <small>数据状态</small>
+            <strong>{activeDataStatus}</strong>
+          </span>
+          <span className="pnl-by-business-data-status-strip__item">
+            <small>数据截至</small>
+            <strong>{activeResultMeta?.as_of_date ?? selectedReportDate ?? "待返回"}</strong>
+          </span>
+          <span className="pnl-by-business-data-status-strip__item">
+            <small>降级模式</small>
+            <strong>{formatPnlFallbackMode(activeResultMeta?.fallback_mode)}</strong>
+          </span>
+        </div>
+        <div className="pnl-by-business-data-status-strip__meta">
+          <span>供应商：{formatPnlVendorStatus(activeResultMeta?.vendor_status)}</span>
+          <span>证据行：{formatPnlEvidenceRows(activeResultMeta?.evidence_rows)}</span>
+          <span>生成：{activeResultMeta?.generated_at ?? "待返回"}</span>
+          <span>Trace：{activeResultMeta?.trace_id ?? "待返回"}</span>
+        </div>
+      </DataStatusStrip>
 
       <AsyncSection
         title="业务种类损益"

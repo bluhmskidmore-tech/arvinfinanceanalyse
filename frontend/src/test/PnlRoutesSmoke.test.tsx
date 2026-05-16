@@ -693,6 +693,10 @@ describe("pnl routed pages smoke", () => {
     expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent(
       "tr_route_business_monthly",
     );
+    expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent(
+      "tr_route_business_monthly",
+    );
+    expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("2025-12-31");
     await waitFor(() => {
       expect(screen.getByText("报表月份")).toBeInTheDocument();
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("月报合计损益");
@@ -762,6 +766,7 @@ describe("pnl routed pages smoke", () => {
       });
     });
     expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_ytd");
+    expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("tr_route_business_ytd");
 
     await waitFor(() => {
       expect(screen.getByText("分析截止日")).toBeInTheDocument();
