@@ -8,6 +8,7 @@ frontend/.env.local
 ## Local runtime and orchestration state
 .omx/
 .cursor/
+.claude/settings.local.json
 .codex-tmp/
 tmp-governance/
 .gitnexus/
