@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -11,6 +11,9 @@ import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta, RiskTensorPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
+
+const WAN_YUAN_UNIT = "\u4e07\u5143";
+const YI_YUAN_UNIT = "\u4ebf\u5143";
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
@@ -152,6 +155,52 @@ function renderRiskTensorRoute(
 }
 
 describe("RiskTensorPage", () => {
+  it("converts backend yuan amounts into the risk tensor page display units", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_yuan_unit_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_yuan_unit_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        portfolio_dv01: "120000",
+        regulatory_dv01: "880000",
+        krd_5y: "30000",
+        cs01: "45600",
+        total_market_value: "300000000",
+        asset_cashflow_30d: "300000000",
+        asset_cashflow_90d: "500000000",
+        liability_cashflow_30d: "200000000",
+        liability_cashflow_90d: "250000000",
+        liquidity_gap_30d: "100000000",
+        liquidity_gap_90d: "250000000",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
+    expect(kpi).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(kpi).toHaveTextContent(new RegExp(`88\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(kpi).toHaveTextContent(new RegExp(`4\\.56\\s*${WAN_YUAN_UNIT}`));
+    expect(kpi).toHaveTextContent(new RegExp(`3\\.00\\s*${YI_YUAN_UNIT}`));
+
+    const cashflowGrid = await screen.findByTestId("risk-tensor-cashflow-grid");
+    expect(within(cashflowGrid).getAllByText("3.00").length).toBeGreaterThanOrEqual(1);
+    expect(cashflowGrid).toHaveTextContent(new RegExp(`3\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(cashflowGrid).toHaveTextContent(new RegExp(`2\\.00\\s*${YI_YUAN_UNIT}`));
+
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
+      new RegExp(`3\\.00\\s*${WAN_YUAN_UNIT}`),
+    );
+  });
+
   it("uses latest available report date when querystring is absent", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -180,10 +229,10 @@ describe("RiskTensorPage", () => {
     expect(brief).toHaveTextContent("未降级");
     expect(brief).toHaveTextContent("来源 sv_tensor_test");
     expect(brief).toHaveTextContent("控制项未接入");
-    expect(kpi).toHaveTextContent("12.34");
+    expect(kpi).toHaveTextContent(new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent("监管口径 DV01");
     expect(kpi).toHaveTextContent("待接入");
-    expect(kpi).toHaveTextContent("8.88");
+    expect(kpi).toHaveTextContent(new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(screen.getByText("集中度")).toBeInTheDocument();
     expect(screen.getByText("流动性现金流缺口")).toBeInTheDocument();
     expect(screen.getByText("30 日资产现金流 - 负债现金流")).toBeInTheDocument();
@@ -291,9 +340,11 @@ describe("RiskTensorPage", () => {
     });
 
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
-    expect(kpi).toHaveTextContent("1,235 governed");
+    expect(kpi).toHaveTextContent(new RegExp(`0\\.12\\s*${WAN_YUAN_UNIT}`));
     expect(screen.getAllByText("42.0%").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3 governed");
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
+      new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`),
+    );
   });
 
   it("renders backend-provided regulatory DV01 instead of the pending marker", async () => {
@@ -318,7 +369,7 @@ describe("RiskTensorPage", () => {
 
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent("监管口径 DV01");
-    expect(kpi).toHaveTextContent("88.8");
+    expect(kpi).toHaveTextContent(new RegExp(`0\\.01\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).not.toHaveTextContent("待接入");
   });
 
@@ -424,10 +475,10 @@ describe("RiskTensorPage", () => {
 
     const controls = await screen.findByTestId("risk-tensor-dv01-controls");
     expect(controls).toHaveTextContent("DV01");
-    expect(controls).toHaveTextContent("120.50");
+    expect(controls).toHaveTextContent(new RegExp(`0\\.01\\s*${WAN_YUAN_UNIT}`));
     expect(controls).toHaveTextContent("5Y");
     expect(controls).toHaveTextContent("+10bp");
-    expect(controls).toHaveTextContent("-1,205.00");
+    expect(controls).toHaveTextContent(new RegExp(`-0\\.12\\s*${WAN_YUAN_UNIT}`));
     expect(controls).toHaveTextContent("未接入正式限额源");
     expect(controls).toHaveTextContent("当前监管口径 DV01 120.50");
     expect(controls).toHaveTextContent("配置审批限额");

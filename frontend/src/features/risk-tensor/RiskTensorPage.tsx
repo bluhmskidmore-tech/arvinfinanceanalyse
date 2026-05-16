@@ -9,7 +9,7 @@ import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
-import type { ResultMeta, RiskTensorPayload } from "../../api/contracts";
+import type { Numeric, ResultMeta, RiskTensorPayload } from "../../api/contracts";
 import {
   parseDisplayNumber,
   toneFromSignedDisplayString,
@@ -99,6 +99,91 @@ function chipButtonStyle(active: boolean) {
 
 function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
   return bondNumericDisplay(value);
+}
+
+type RiskTensorDisplayValue = Parameters<typeof bondNumericDisplay>[0];
+type PriorMetricValueKey = "current" | "previous" | "delta";
+
+const YUAN_PER_WAN = 10_000;
+const YUAN_PER_YI = 100_000_000;
+const WAN_YUAN_UNIT = "\u4e07\u5143";
+const YI_YUAN_UNIT = "\u4ebf\u5143";
+
+function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(/,/g, "");
+    if (!normalized) {
+      return null;
+    }
+    const raw = Number(normalized);
+    return Number.isFinite(raw) ? raw : null;
+  }
+  return value.raw !== null && Number.isFinite(value.raw) ? value.raw : null;
+}
+
+function amountUnit(value: RiskTensorDisplayValue, unit: string) {
+  return riskTensorRawOrNull(value) === null ? undefined : unit;
+}
+
+function shouldPrefixPositiveAmount(value: RiskTensorDisplayValue) {
+  if (typeof value === "string") {
+    return value.trim().startsWith("+");
+  }
+  return Boolean(value?.sign_aware);
+}
+
+function formatYuanAmount(value: RiskTensorDisplayValue, divisor: number) {
+  const raw = riskTensorRawOrNull(value);
+  if (raw === null) {
+    return displayStr(value);
+  }
+  const scaled = raw / divisor;
+  const formatted = Math.abs(scaled).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (scaled < 0) {
+    return `-${formatted}`;
+  }
+  return `${shouldPrefixPositiveAmount(value) && scaled > 0 ? "+" : ""}${formatted}`;
+}
+
+function yuanAsWanDisplay(value: RiskTensorDisplayValue) {
+  return formatYuanAmount(value, YUAN_PER_WAN);
+}
+
+function yuanAsYiDisplay(value: RiskTensorDisplayValue) {
+  return formatYuanAmount(value, YUAN_PER_YI);
+}
+
+function yuanAsWanWithUnit(value: RiskTensorDisplayValue) {
+  const display = yuanAsWanDisplay(value);
+  return riskTensorRawOrNull(value) === null ? display : `${display} ${WAN_YUAN_UNIT}`;
+}
+
+function yuanAsYiWithUnit(value: RiskTensorDisplayValue) {
+  const display = yuanAsYiDisplay(value);
+  return riskTensorRawOrNull(value) === null ? display : `${display} ${YI_YUAN_UNIT}`;
+}
+
+function yuanAsWanMagnitude(value: RiskTensorDisplayValue) {
+  const raw = riskTensorRawOrNull(value);
+  return raw === null ? 0 : raw / YUAN_PER_WAN;
+}
+
+function isWanAmountMetric(key: string) {
+  return key === "portfolio_dv01" || key === "regulatory_dv01" || key === "cs01" || key.startsWith("krd_");
+}
+
+function priorMetricDisplay(metric: RiskTensorPayload["prior_period_change"]["metrics"][number], key: PriorMetricValueKey) {
+  if (!isWanAmountMetric(metric.key)) {
+    const displayKey = `${key}_display` as const;
+    return metric[displayKey];
+  }
+  return yuanAsWanWithUnit(metric[key] as Numeric);
 }
 
 function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
@@ -233,14 +318,21 @@ function regulatoryDv01Display(value: RiskTensorPayload["regulatory_dv01"]) {
   if (value === null || value === undefined) {
     return "待接入";
   }
-  return displayStr(value);
+  return yuanAsWanDisplay(value);
+}
+
+function regulatoryDv01DisplayWithUnit(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return regulatoryDv01Display(value);
+  }
+  return `${regulatoryDv01Display(value)} ${WAN_YUAN_UNIT}`;
 }
 
 function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
   if (value === null || value === undefined) {
     return "warning";
   }
-  return toneFromSignedDisplayString(displayStr(value));
+  return toneFromSignedDisplayString(regulatoryDv01Display(value));
 }
 
 function dv01ControlStatusLabel(status: string) {
@@ -363,7 +455,7 @@ export default function RiskTensorPage() {
       "krd_10y",
       "krd_30y",
     ] as const;
-    const data = keys.map((key) => chartMagnitude(result[key]));
+    const data = keys.map((key) => yuanAsWanMagnitude(result[key]));
     return {
       grid: { left: 52, right: 16, top: 36, bottom: 28 },
       tooltip: {
@@ -421,9 +513,9 @@ export default function RiskTensorPage() {
   const tensorMeta = envelope?.result_meta;
   const primaryTenor = selectedTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
   const primaryTenorValue = selectedTenorRow
-    ? displayStr(selectedTenorRow.value)
+    ? yuanAsWanWithUnit(selectedTenorRow.value)
     : result?.dv01_controls
-      ? displayStr(result.dv01_controls.dominant_krd)
+      ? yuanAsWanWithUnit(result.dv01_controls.dominant_krd)
       : "--";
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
@@ -442,9 +534,9 @@ export default function RiskTensorPage() {
       return null;
     }
     const duration = chartMagnitude(result.portfolio_modified_duration);
-    const dv01 = chartMagnitude(result.portfolio_dv01);
+    const dv01 = yuanAsWanMagnitude(result.portfolio_dv01);
     const convexity = chartMagnitude(result.portfolio_convexity);
-    const cs01 = chartMagnitude(result.cs01);
+    const cs01 = yuanAsWanMagnitude(result.cs01);
     const hhi = chartMagnitude(result.issuer_concentration_hhi);
     const liqRatio = chartMagnitude(result.liquidity_gap_30d_ratio);
 
@@ -625,14 +717,14 @@ export default function RiskTensorPage() {
                       : "控制未接入"}
                   </strong>
                   <p>
-                    监管口径 {regulatoryDv01Display(result.regulatory_dv01)}
+                    监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}
                     {result.dv01_controls ? `；${result.dv01_controls.control_message}` : "；后端未返回限额控制载荷。"}
                   </p>
                 </article>
                 <article className="risk-tensor-brief__tile" data-tone={liquidityGapTone(liquidity30dRaw)}>
                   <span>流动性</span>
                   <strong>{ratioPercentDisplay(result.liquidity_gap_30d_ratio)}</strong>
-                  <p>{displayStr(result.liquidity_gap_30d)} = 30 日资产现金流 - 负债现金流。</p>
+                  <p>{yuanAsYiWithUnit(result.liquidity_gap_30d)} = 30 日资产现金流 - 负债现金流。</p>
                 </article>
                 <article className="risk-tensor-brief__tile" data-tone="neutral">
                   <span>发行人集中度</span>
@@ -662,14 +754,16 @@ export default function RiskTensorPage() {
             <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
               <KpiCard
                 title="估值口径 DV01"
-                value={displayStr(result.portfolio_dv01)}
+                value={yuanAsWanDisplay(result.portfolio_dv01)}
                 detail="portfolio_dv01，持仓估值敏感性口径，非监管限额口径。"
-                tone={toneFromSignedDisplayString(displayStr(result.portfolio_dv01))}
+                unit={WAN_YUAN_UNIT}
+                tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.portfolio_dv01))}
               />
               <KpiCard
                 title="监管口径 DV01"
                 value={regulatoryDv01Display(result.regulatory_dv01)}
                 detail="后端监管/限额口径字段；不得用估值 DV01 替代。"
+                unit={amountUnit(result.regulatory_dv01, WAN_YUAN_UNIT)}
                 tone={regulatoryDv01Tone(result.regulatory_dv01)}
               />
               <KpiCard
@@ -680,9 +774,10 @@ export default function RiskTensorPage() {
               />
               <KpiCard
                 title="CS01"
-                value={displayStr(result.cs01)}
+                value={yuanAsWanDisplay(result.cs01)}
                 detail="cs01（信用 spread DV01 聚合）。"
-                tone={toneFromSignedDisplayString(displayStr(result.cs01))}
+                unit={WAN_YUAN_UNIT}
+                tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.cs01))}
               />
               <KpiCard
                 title="组合凸性"
@@ -698,10 +793,10 @@ export default function RiskTensorPage() {
               />
               <KpiCard
                 title="总市值"
-                value={displayStr(result.total_market_value)}
+                value={yuanAsYiDisplay(result.total_market_value)}
                 detail="total_market_value。"
-                unit="元"
-                tone={toneFromSignedDisplayString(displayStr(result.total_market_value))}
+                unit={YI_YUAN_UNIT}
+                tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.total_market_value))}
               />
             </div>
 
@@ -728,10 +823,10 @@ export default function RiskTensorPage() {
                         key={metric.key}
                       >
                         <span>{metric.label}</span>
-                        <strong>{metric.delta_display}</strong>
+                        <strong>{priorMetricDisplay(metric, "delta")}</strong>
                         <p>{metric.interpretation}</p>
                         <small>
-                          当前 {metric.current_display} / 上期 {metric.previous_display}
+                          当前 {priorMetricDisplay(metric, "current")} / 上期 {priorMetricDisplay(metric, "previous")}
                         </small>
                       </article>
                     ))}
@@ -756,12 +851,12 @@ export default function RiskTensorPage() {
                 <div className="risk-tensor-dv01-controls__grid">
                   <div className="risk-tensor-dv01-controls__primary">
                     <span>监管口径 DV01</span>
-                    <strong>{regulatoryDv01Display(result.regulatory_dv01)}</strong>
+                    <strong>{regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}</strong>
                     <p>{result.dv01_controls.control_message}</p>
                   </div>
                   <div className="risk-tensor-dv01-controls__cell">
                     <span>审批限额</span>
-                    <strong>{displayStr(result.dv01_controls.approved_limit_dv01 ?? undefined)}</strong>
+                    <strong>{yuanAsWanWithUnit(result.dv01_controls.approved_limit_dv01 ?? undefined)}</strong>
                     <p>未接入正式限额前，不判定使用率。</p>
                   </div>
                   <div className="risk-tensor-dv01-controls__cell">
@@ -772,7 +867,7 @@ export default function RiskTensorPage() {
                   <div className="risk-tensor-dv01-controls__cell">
                     <span>主风险桶</span>
                     <strong>{result.dv01_controls.dominant_krd_bucket}</strong>
-                    <p>KRD {displayStr(result.dv01_controls.dominant_krd)}</p>
+                    <p>KRD {yuanAsWanWithUnit(result.dv01_controls.dominant_krd)}</p>
                   </div>
                   <div className="risk-tensor-dv01-controls__cell">
                     <span>利率波动</span>
@@ -785,7 +880,7 @@ export default function RiskTensorPage() {
                   {result.dv01_controls.stress_scenarios.map((scenario) => (
                     <div className="risk-tensor-dv01-controls__scenario" key={scenario.scenario_key}>
                       <span>{scenario.label}</span>
-                      <strong>{displayStr(scenario.estimated_pnl_impact)}</strong>
+                      <strong>{yuanAsWanWithUnit(scenario.estimated_pnl_impact)}</strong>
                       <p>{displayStr(scenario.shock_bp)} 平行冲击</p>
                     </div>
                   ))}
@@ -875,7 +970,7 @@ export default function RiskTensorPage() {
                     当前桶：<strong>{selectedTenorRow.tenor}</strong>
                   </div>
                   <div style={{ marginTop: 8, color: t.colorTextSecondary, fontSize: 13 }}>
-                    KRD：{displayStr(selectedTenorRow.value)}
+                    KRD：{yuanAsWanWithUnit(selectedTenorRow.value)}
                   </div>
                 </div>
               ) : null}
@@ -924,15 +1019,17 @@ export default function RiskTensorPage() {
             <div style={summaryGridStyle}>
               <KpiCard
                 title="30 日资产现金流 - 负债现金流"
-                value={displayStr(result.liquidity_gap_30d)}
+                value={yuanAsYiDisplay(result.liquidity_gap_30d)}
                 detail="liquidity_gap_30d。"
-                tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_30d))}
+                unit={YI_YUAN_UNIT}
+                tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_30d))}
               />
               <KpiCard
                 title="90 日资产现金流 - 负债现金流"
-                value={displayStr(result.liquidity_gap_90d)}
+                value={yuanAsYiDisplay(result.liquidity_gap_90d)}
                 detail="liquidity_gap_90d。"
-                tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_90d))}
+                unit={YI_YUAN_UNIT}
+                tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_90d))}
               />
               <KpiCard
                 title="30 日流动性缺口比例"
@@ -956,27 +1053,27 @@ export default function RiskTensorPage() {
             <div data-testid="risk-tensor-cashflow-grid" style={summaryGridStyle}>
               <KpiCard
                 title="30 日资产现金流"
-                value={displayStr(result.asset_cashflow_30d)}
+                value={yuanAsYiDisplay(result.asset_cashflow_30d)}
                 detail="asset_cashflow_30d。"
-                unit="元"
+                unit={YI_YUAN_UNIT}
               />
               <KpiCard
                 title="30 日负债现金流"
-                value={displayStr(result.liability_cashflow_30d)}
+                value={yuanAsYiDisplay(result.liability_cashflow_30d)}
                 detail="liability_cashflow_30d。"
-                unit="元"
+                unit={YI_YUAN_UNIT}
               />
               <KpiCard
                 title="90 日资产现金流"
-                value={displayStr(result.asset_cashflow_90d)}
+                value={yuanAsYiDisplay(result.asset_cashflow_90d)}
                 detail="asset_cashflow_90d。"
-                unit="元"
+                unit={YI_YUAN_UNIT}
               />
               <KpiCard
                 title="90 日负债现金流"
-                value={displayStr(result.liability_cashflow_90d)}
+                value={yuanAsYiDisplay(result.liability_cashflow_90d)}
                 detail="liability_cashflow_90d。"
-                unit="元"
+                unit={YI_YUAN_UNIT}
               />
             </div>
 
