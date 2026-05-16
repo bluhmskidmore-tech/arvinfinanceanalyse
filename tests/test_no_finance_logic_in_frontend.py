@@ -56,6 +56,9 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "code: ",
         "name: ",
         "reason: ",
+        "sourceParts.push(",
+        "risk: ",
+        "source: ",
     ),
 }
 
