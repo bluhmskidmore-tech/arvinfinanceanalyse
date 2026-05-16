@@ -43,6 +43,27 @@ def test_parse_daily_avg_coerces_codes_and_builds_expected_groups(tmp_path):
     assert next(row["日均余额"] for row in month_11 if row["科目代码"] == "14001000001") == 230 * B
 
 
+def test_parse_daily_avg_requires_currency_marker_for_fixed_blocks(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, _ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(avg_path)
+    for worksheet in workbook.worksheets[:2]:
+        worksheet.append([None] * 12 + ["CNX", "23401000001", 100, "CNX", "23402000001", -20, 20])
+    workbook.save(avg_path)
+    workbook.close()
+
+    parsed = module.parse_daily_avg(avg_path)
+
+    for rows in parsed.values():
+        assert "-20" not in {next(iter(row.values())) for row in rows}
+    month_11 = next(rows for key, rows in parsed.items() if key.endswith("CNX_11d"))
+    assert 100 in [list(row.values())[1] for row in month_11 if next(iter(row.values())) == "23401000001"]
+
+
 def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tmp_path):
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",

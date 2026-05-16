@@ -143,6 +143,9 @@ def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
                 key = f"{period_label}_{currency}_{level}"
                 rows: list[dict[str, Any]] = []
                 for row in worksheet.iter_rows(min_row=4, values_only=True):
+                    marker = str(row[code_col - 1] if len(row) > code_col - 1 else "").strip()
+                    if marker != currency:
+                        continue
                     code = _normalize_account_code(row[code_col] if len(row) > code_col else None)
                     if not code:
                         continue
