@@ -11,7 +11,10 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
-import { selectCashflowMonthlyProjectionSeries } from "./cashflowProjectionPageModel";
+import {
+  selectCashflowMonthlyProjectionSeries,
+  selectCashflowProjectionRiskReadout,
+} from "./cashflowProjectionPageModel";
 import styles from "./CashflowProjectionPage.module.css";
 
 type ConclusionTone = "positive" | "negative" | "neutral" | "pending";
@@ -28,6 +31,7 @@ type KpiSpec = {
   title: string;
   value: Numeric;
   detail: string;
+  priority: "primary" | "supporting" | "supplemental";
   tone?: "default" | "positive" | "negative" | "warning";
 };
 
@@ -149,6 +153,7 @@ export default function CashflowProjectionPage() {
   const vm = adapted.vm;
   const conclusion = buildConclusion(vm?.kpis.durationGap);
   const monthlySeries = useMemo(() => selectCashflowMonthlyProjectionSeries(vm), [vm]);
+  const riskReadout = useMemo(() => selectCashflowProjectionRiskReadout(vm), [vm]);
   const projectionRail = useMemo(() => buildProjectionRail(monthlySeries), [monthlySeries]);
   const kpis = useMemo<KpiSpec[]>(() => {
     if (!vm) return [];
@@ -159,6 +164,7 @@ export default function CashflowProjectionPage() {
         title: "久期缺口（年）",
         value: vm.kpis.durationGap,
         detail: "资产久期 - 负债久期",
+        priority: "primary",
         tone:
           vm.kpis.durationGap.raw === null || vm.kpis.durationGap.raw === undefined
             ? "warning"
@@ -167,11 +173,20 @@ export default function CashflowProjectionPage() {
               : "positive",
       },
       {
+        key: "dv01",
+        testId: "cashflow-kpi-dv01",
+        title: "1bp 敏感度",
+        value: vm.kpis.rateSensitivity1bp,
+        detail: "利率变动对估值的边际影响",
+        priority: "primary",
+      },
+      {
         key: "asset-duration",
         testId: "cashflow-kpi-asset-dur",
         title: "资产久期（年）",
         value: vm.kpis.assetDuration,
         detail: "资产侧久期",
+        priority: "supporting",
       },
       {
         key: "liability-duration",
@@ -179,13 +194,7 @@ export default function CashflowProjectionPage() {
         title: "负债久期（年）",
         value: vm.kpis.liabilityDuration,
         detail: "负债侧久期",
-      },
-      {
-        key: "dv01",
-        testId: "cashflow-kpi-dv01",
-        title: "1bp 敏感度",
-        value: vm.kpis.rateSensitivity1bp,
-        detail: "利率敏感度",
+        priority: "supporting",
       },
       {
         key: "equity-duration",
@@ -193,6 +202,7 @@ export default function CashflowProjectionPage() {
         title: "权益久期（年）",
         value: vm.kpis.equityDuration,
         detail: "权益侧久期",
+        priority: "supplemental",
       },
       {
         key: "reinvest-risk",
@@ -200,6 +210,7 @@ export default function CashflowProjectionPage() {
         title: "再投资风险（12M）",
         value: vm.kpis.reinvestmentRisk12m,
         detail: "12 个月再投资风险",
+        priority: "supplemental",
         tone: "warning",
       },
     ];
@@ -210,7 +221,11 @@ export default function CashflowProjectionPage() {
       return null;
     }
     return {
-      color: ["#2d8a5e", "#dc2626", "#1850a1"],
+      color: [
+        designTokens.color.warm.sage,
+        designTokens.color.warm.burgundy,
+        designTokens.color.warm.slateBlue,
+      ],
       animationDuration: 420,
       grid: { left: 64, right: 24, top: 54, bottom: 50 },
       tooltip: {
@@ -222,29 +237,29 @@ export default function CashflowProjectionPage() {
         right: 8,
         itemWidth: 10,
         itemHeight: 10,
-        textStyle: { color: designTokens.color.neutral[600], fontSize: 12 },
+        textStyle: { color: designTokens.color.warm.charcoal, fontSize: 12 },
         data: ["资产流入", "负债流出", "累计净现金流"],
       },
       xAxis: {
         type: "category",
         data: monthlySeries.categories,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: designTokens.color.neutral[200] } },
-        axisLabel: { color: designTokens.color.neutral[500], rotate: 30 },
+        axisLine: { lineStyle: { color: designTokens.color.warm.stone } },
+        axisLabel: { color: designTokens.color.warm.taupe, rotate: 30 },
       },
       yAxis: [
         {
           type: "value",
           name: "当月流量",
-          nameTextStyle: { color: designTokens.color.neutral[500] },
-          axisLabel: { color: designTokens.color.neutral[500], formatter: axisYiLabel },
-          splitLine: { lineStyle: { color: designTokens.color.neutral[100] } },
+          nameTextStyle: { color: designTokens.color.warm.taupe },
+          axisLabel: { color: designTokens.color.warm.taupe, formatter: axisYiLabel },
+          splitLine: { lineStyle: { color: designTokens.color.warm.stone } },
         },
         {
           type: "value",
           name: "累计",
-          nameTextStyle: { color: designTokens.color.neutral[500] },
-          axisLabel: { color: designTokens.color.neutral[500], formatter: axisYiLabel },
+          nameTextStyle: { color: designTokens.color.warm.taupe },
+          axisLabel: { color: designTokens.color.warm.taupe, formatter: axisYiLabel },
           splitLine: { show: false },
         },
       ],
@@ -399,7 +414,9 @@ export default function CashflowProjectionPage() {
                   <div
                     key={item.key}
                     data-testid={item.testId}
-                    className={`${styles.metricCell} ${item.tone ? styles[`metricCell_${item.tone}`] : ""}`}
+                    className={`${styles.metricCell} ${styles[`metricCell_${item.priority}`]} ${
+                      item.tone ? styles[`metricCell_${item.tone}`] : ""
+                    }`}
                   >
                     <span>{item.title}</span>
                     <strong>{item.value.display}</strong>
@@ -425,17 +442,40 @@ export default function CashflowProjectionPage() {
                 )}
               </div>
 
-              <aside className={styles.sidePanel}>
-                <div className={styles.sideMetric}>
-                  <span>权益久期（年）</span>
-                  <strong>{vm.kpis.equityDuration.display}</strong>
-                  <p>权益侧久期</p>
-                </div>
-                <div className={styles.sideMetric}>
-                  <span>再投资风险（12M）</span>
-                  <strong>{vm.kpis.reinvestmentRisk12m.display}</strong>
-                  <p>12 个月再投资风险</p>
-                </div>
+              <aside
+                className={`${styles.sidePanel} ${
+                  riskReadout ? styles[`sidePanel_${riskReadout.tone}`] : ""
+                }`}
+                data-testid="cashflow-risk-readout"
+              >
+                {riskReadout ? (
+                  <>
+                    <div className={styles.riskHeader}>
+                      <span>累计净流风险读数</span>
+                      <strong>{riskReadout.summary}</strong>
+                      <p>基于月度分桶的展示读数，不替代正式风险评级。</p>
+                    </div>
+                    <div className={styles.riskRows}>
+                      <div className={styles.riskRow}>
+                        <span>最弱累计月</span>
+                        <strong>{riskReadout.worstCumulativeMonth}</strong>
+                        <em>{riskReadout.worstCumulativeDisplay}</em>
+                      </div>
+                      <div className={styles.riskRow}>
+                        <span>最大负债流出</span>
+                        <strong>{riskReadout.largestOutflowMonth}</strong>
+                        <em>{riskReadout.largestOutflowDisplay}</em>
+                      </div>
+                      <div className={styles.riskRow}>
+                        <span>期末累计净流</span>
+                        <strong>{riskReadout.finalCumulativeDisplay}</strong>
+                        <em>{riskReadout.negativeCumulativeMonths} 个负值月</em>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className={styles.riskEmpty}>暂无月度分桶，无法生成累计净流读数。</div>
+                )}
                 <div className={styles.sideNote}>
                   指标定义仍以现金流预测接口返回为准，本页只调整展示层级。
                 </div>

@@ -80,6 +80,9 @@ describe("CashflowProjectionPage", () => {
     );
 
     expect(await screen.findByTestId("cashflow-echarts-stub")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-risk-readout")).toHaveTextContent("累计净流风险读数");
+    expect(screen.getByTestId("cashflow-risk-readout")).toHaveTextContent("未见累计净现金流为负月份");
+    expect(screen.getByTestId("cashflow-risk-readout")).toHaveTextContent("期末累计净流");
   });
 
   it("requests projection for the first available balance-analysis report date", async () => {

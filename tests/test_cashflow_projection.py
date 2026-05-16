@@ -123,7 +123,7 @@ def test_liability_cashflow_projection():
                 "position_side": "liability",
                 "maturity_date": date(2026, 1, 31),
                 "principal_amount": Decimal("365"),
-                "funding_cost_rate": Decimal("0.10"),
+                "funding_cost_rate": Decimal("10.0"),
                 "currency_code": "CNY",
             }
         ],
@@ -164,6 +164,34 @@ def test_interbank_percent_funding_rate_is_normalized():
         for event in events
     ] == [
         ("funding_income", "2026-01-31", Decimal("3.0")),
+        ("maturity", "2026-01-31", Decimal("365")),
+    ]
+
+
+def test_interbank_low_percent_funding_rate_is_normalized():
+    module = _core_module()
+
+    events = module.project_tyw_cashflows(
+        [
+            {
+                "position_id": "TYW-LOW-PCT",
+                "counterparty_name": "Bank A",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 1, 31),
+                "principal_amount": Decimal("365"),
+                "funding_cost_rate": Decimal("0.8"),
+                "currency_code": "CNY",
+            }
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=12,
+    )
+
+    assert [
+        (event.event_type, event.event_date.isoformat(), event.amount)
+        for event in events
+    ] == [
+        ("funding_income", "2026-01-31", Decimal("0.24")),
         ("maturity", "2026-01-31", Decimal("365")),
     ]
 
@@ -269,7 +297,7 @@ def test_duration_gap_calculation_uses_full_scope_term_proxy():
                 "position_scope": "asset",
                 "maturity_date": date(2026, 7, 1),
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -278,7 +306,7 @@ def test_duration_gap_calculation_uses_full_scope_term_proxy():
                 "position_scope": "liability",
                 "maturity_date": date(2028, 1, 1),
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -321,7 +349,7 @@ def test_duration_gap_warns_when_missing_maturity_excludes_rows():
                 "position_scope": "liability",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -330,7 +358,7 @@ def test_duration_gap_warns_when_missing_maturity_excludes_rows():
                 "position_scope": "liability",
                 "maturity_date": date(2028, 1, 1),
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -362,7 +390,7 @@ def test_tywl_demand_positions_without_maturity_use_one_month_proxy():
                 "position_scope": "asset",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -372,7 +400,7 @@ def test_tywl_demand_positions_without_maturity_use_one_month_proxy():
                 "position_scope": "liability",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -400,7 +428,7 @@ def test_tywl_demand_positions_without_maturity_project_into_next_month():
                 "position_scope": "asset",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -410,7 +438,7 @@ def test_tywl_demand_positions_without_maturity_project_into_next_month():
                 "position_scope": "liability",
                 "maturity_date": None,
                 "principal_amount": Decimal("80"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -502,7 +530,7 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
                 "position_scope": "liability",
                 "maturity_date": date(2026, 3, 1),
                 "principal_amount": Decimal("80"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
                 "source_version": "sv_tyw_1",
                 "rule_version": "rv_tyw_1",

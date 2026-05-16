@@ -435,7 +435,7 @@ def _project_tyw_row_cashflows(row: dict[str, Any], report_date: date, horizon_e
     code = _get_text(row, "position_id", default=_get_text(row, "instrument_code"))
     name = _get_text(row, "counterparty_name", default=_get_text(row, "instrument_name"))
     sign = Decimal("1") if scope == "asset" else Decimal("-1")
-    funding_rate = _coerce_rate_decimal(_get_value(row, "funding_cost_rate"))
+    funding_rate = _coerce_tyw_rate_decimal(_get_value(row, "funding_cost_rate"))
     days = max(0, (maturity_date - report_date).days)
 
     events: list[CashflowEvent] = []
@@ -604,6 +604,14 @@ def _coerce_rate_decimal(value: Any) -> Decimal:
     if normalized is None:
         return ZERO
     return Decimal(str(normalized))
+
+
+def _coerce_tyw_rate_decimal(value: Any) -> Decimal:
+    if value in (None, ""):
+        return ZERO
+    from backend.app.core_finance.rate_units import pct_to_decimal
+
+    return pct_to_decimal(value)
 
 
 def _coerce_optional_decimal(value: Any) -> Decimal | None:
