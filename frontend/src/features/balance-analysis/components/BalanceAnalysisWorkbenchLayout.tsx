@@ -1,4 +1,26 @@
 import type { ReactNode } from "react";
+import {
+  AuditOutlined,
+  BankOutlined,
+  BarChartOutlined,
+  BranchesOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ClusterOutlined,
+  ControlOutlined,
+  DatabaseOutlined,
+  DeploymentUnitOutlined,
+  ExceptionOutlined,
+  FileSearchOutlined,
+  FundProjectionScreenOutlined,
+  LineChartOutlined,
+  PartitionOutlined,
+  ProfileOutlined,
+  SafetyCertificateOutlined,
+  TableOutlined,
+  WarningOutlined,
+} from "@ant-design/icons";
 import { NavLink } from "react-router-dom";
 
 import type {
@@ -13,7 +35,6 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { primaryWorkbenchNavigationGroups } from "../../../mocks/navigation";
-import { KpiCard } from "../../../components/KpiCard";
 import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
@@ -40,9 +61,20 @@ export type BalanceWorkbenchKpiBar = {
   percent: number;
 };
 
+type BalanceMetricComparison = {
+  key: string;
+  title: string;
+  asset: BalanceWorkbenchMetric;
+  liability: BalanceWorkbenchMetric;
+  assetWidth: string;
+  liabilityWidth: string;
+};
+
 type BalanceWorkbenchCard = {
   key: string;
   title: string;
+  icon: ReactNode;
+  tone: "asset" | "liability" | "risk" | "evidence" | "action";
   span: 4 | 6 | 8 | 12;
   body: ReactNode;
 };
@@ -132,12 +164,98 @@ function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
+function parseMetricDisplayNumber(value: string): number | null {
+  const n = Number(value.replace(/,/g, "").trim());
+  return Number.isFinite(n) ? Math.abs(n) : null;
+}
+
+function comparisonWidth(value: number | null, scale: number): string {
+  if (value === null || value <= 0 || scale <= 0) {
+    return "0%";
+  }
+  return `${Math.max(8, Math.min(100, (value / scale) * 100))}%`;
+}
+
+function metricDisplay(metric: BalanceWorkbenchMetric): string {
+  return metric.unit ? `${metric.value} ${metric.unit}` : metric.value;
+}
+
+function workbookCardDisplay(card: BalanceAnalysisWorkbookPayload["cards"][number] | undefined): string {
+  return card ? `${formatBalanceAmountToYiFromWan(card.value)} 亿元` : "—";
+}
+
+function findWorkbookCardByKey(workbook: BalanceAnalysisWorkbookPayload | undefined, key: string) {
+  return workbook?.cards.find((card) => card.key === key);
+}
+
+function findMetricByKey(metrics: readonly BalanceWorkbenchMetric[], key: string) {
+  return metrics.find((metric) => metric.key === key);
+}
+
+function buildMetricComparisons(metrics: readonly BalanceWorkbenchMetric[]): BalanceMetricComparison[] {
+  const definitions = [
+    {
+      key: "market-value",
+      title: "市值规模",
+      assetKey: "asset-market-value",
+      liabilityKey: "liability-market-value",
+    },
+    {
+      key: "amortized-cost",
+      title: "摊余成本",
+      assetKey: "asset-amortized-cost",
+      liabilityKey: "liability-amortized-cost",
+    },
+    {
+      key: "accrued-interest",
+      title: "应计利息",
+      assetKey: "asset-accrued-interest",
+      liabilityKey: "liability-accrued-interest",
+    },
+  ] as const;
+
+  return definitions.flatMap((definition) => {
+    const asset = findMetricByKey(metrics, definition.assetKey);
+    const liability = findMetricByKey(metrics, definition.liabilityKey);
+    if (!asset || !liability) {
+      return [];
+    }
+    const assetValue = parseMetricDisplayNumber(asset.value);
+    const liabilityValue = parseMetricDisplayNumber(liability.value);
+    const scale = Math.max(assetValue ?? 0, liabilityValue ?? 0);
+    return [
+      {
+        key: definition.key,
+        title: definition.title,
+        asset,
+        liability,
+        assetWidth: comparisonWidth(assetValue, scale),
+        liabilityWidth: comparisonWidth(liabilityValue, scale),
+      },
+    ];
+  });
+}
+
 function renderEmpty(label: string) {
   return <div className="balance-workbench-card__empty">{label}</div>;
 }
 
 function firstRows<T>(rows: readonly T[], count = 4): T[] {
   return rows.slice(0, count);
+}
+
+function IconBadge({ tone, icon }: { tone: BalanceWorkbenchCard["tone"]; icon: ReactNode }) {
+  return <span className={`balance-workbench__icon-badge balance-workbench__icon-badge--${tone}`}>{icon}</span>;
+}
+
+function MetricIcon({ group, label }: { group: "asset" | "liability" | "evidence"; label: string }) {
+  if (group === "asset") {
+    return label.includes("利息") ? <LineChartOutlined /> : <BankOutlined />;
+  }
+  if (group === "liability") {
+    return label.includes("利息") ? <LineChartOutlined /> : <ProfileOutlined />;
+  }
+  return label.includes("明细") ? <TableOutlined /> : <DatabaseOutlined />;
 }
 
 function buildCards({
@@ -170,6 +288,8 @@ function buildCards({
     {
       key: "structure",
       title: "资产负债结构",
+      icon: <PartitionOutlined />,
+      tone: "asset",
       span: 8,
       body:
         workbookTables.length > 0 ? (
@@ -189,12 +309,14 @@ function buildCards({
     },
     {
       key: "attribution",
-      title: "损益归因",
+      title: "工作簿规模拆分",
+      icon: <BranchesOutlined />,
+      tone: "evidence",
       span: 4,
       body: (
         <ul className="balance-workbench-card__list">
           {workbookCards.length > 0
-            ? firstRows(workbookCards, 3).map((card) => (
+            ? firstRows(workbookCards, 5).map((card) => (
                 <li key={card.key} className="balance-workbench-card__item">
                   <strong>
                     {card.label} {formatBalanceAmountToYiFromWan(card.value)} 亿元
@@ -215,7 +337,9 @@ function buildCards({
     },
     {
       key: "governance",
-      title: "治理与行动信号",
+      title: "治理行动台",
+      icon: <AuditOutlined />,
+      tone: "action",
       span: 4,
       body:
         decisionRows.length > 0 ? (
@@ -240,6 +364,8 @@ function buildCards({
     {
       key: "basis",
       title: "口径与币种分布",
+      icon: <ControlOutlined />,
+      tone: "evidence",
       span: 4,
       body: (
         <ul className="balance-workbench-card__list">
@@ -259,6 +385,8 @@ function buildCards({
     {
       key: "risk",
       title: "风险监控",
+      icon: <WarningOutlined />,
+      tone: "risk",
       span: 4,
       body:
         riskAlerts.length > 0 ? (
@@ -279,6 +407,8 @@ function buildCards({
     {
       key: "focus",
       title: "今日关注 / 交易要点",
+      icon: <CalendarOutlined />,
+      tone: "action",
       span: 4,
       body:
         calendarEvents.length > 0 ? (
@@ -298,7 +428,9 @@ function buildCards({
     },
     {
       key: "details",
-      title: "正式数据明细",
+      title: "证据工作区",
+      icon: <FileSearchOutlined />,
+      tone: "evidence",
       span: 8,
       body:
         tableRows.length > 0 ? (
@@ -327,13 +459,13 @@ function buildCards({
     },
   ];
   const conclusionFirstOrder = [
-    "structure",
+    "details",
     "governance",
     "risk",
-    "details",
+    "focus",
+    "structure",
     "attribution",
     "basis",
-    "focus",
   ];
 
   return conclusionFirstOrder.flatMap((key) => {
@@ -353,9 +485,9 @@ function getMetricGroup(metric: BalanceWorkbenchMetric): "asset" | "liability" |
 }
 
 const metricGroupLabels = {
-  asset: "资产端",
-  liability: "负债端",
-  evidence: "证据规模",
+  asset: { label: "资产端", icon: <BankOutlined /> },
+  liability: { label: "负债端", icon: <ProfileOutlined /> },
+  evidence: { label: "证据规模", icon: <DatabaseOutlined /> },
 } as const;
 
 export default function BalanceAnalysisWorkbenchLayout({
@@ -388,6 +520,11 @@ export default function BalanceAnalysisWorkbenchLayout({
   const topEvent = calendarEvents[0];
   const metricDefinitions = overview?.metric_definitions ?? [];
   const firstMetricDefinition = metricDefinitions[0];
+  const comparisonPairs = buildMetricComparisons(metrics);
+  const assetMarketMetric = findMetricByKey(metrics, "asset-market-value");
+  const liabilityMarketMetric = findMetricByKey(metrics, "liability-market-value");
+  const netPositionCard = findWorkbookCardByKey(workbook, "net_position");
+  const issuanceCard = findWorkbookCardByKey(workbook, "issuance_liabilities");
   const metricGroups = (["asset", "liability", "evidence"] as const)
     .map((key) => ({
       key,
@@ -403,11 +540,16 @@ export default function BalanceAnalysisWorkbenchLayout({
       >
         <section data-testid="balance-analysis-priority-board" className="balance-workbench__judgement">
           <div data-testid="balance-analysis-daily-judgement">
-            <span className="balance-workbench__eyebrow">正式口径</span>
-            <h2 className="balance-workbench__judgement-title">正式状态判断</h2>
-            <p className="balance-workbench__judgement-lede">
-              当前页先确认正式口径下的规模、质量和治理信号，再进入汇总表与工作簿下钻。
-            </p>
+            <div className="balance-workbench__terminal-header">
+              <IconBadge tone="asset" icon={<FundProjectionScreenOutlined />} />
+              <div>
+                <span className="balance-workbench__eyebrow">Investment banking terminal memo</span>
+                <h2 className="balance-workbench__judgement-title">正式状态判断</h2>
+                <p className="balance-workbench__judgement-lede">
+                  先看净头寸、风险 tape 与治理状态，再进入汇总表、工作簿和明细底稿下钻。
+                </p>
+              </div>
+            </div>
             <p className="balance-workbench__judgement-copy">
               {[
                 topRisk ? `风险: ${topRisk.title} / ${topRisk.severity}` : null,
@@ -419,6 +561,52 @@ export default function BalanceAnalysisWorkbenchLayout({
                 .filter(Boolean)
                 .join("。") || "当前报告日未返回治理异常信号。"}
             </p>
+            <div className="balance-workbench__terminal-tape" data-testid="balance-analysis-terminal-tape">
+              <div className="balance-workbench__tape-item balance-workbench__tape-item--asset">
+                <BankOutlined aria-hidden />
+                <span>资产市值</span>
+                <strong>{assetMarketMetric ? metricDisplay(assetMarketMetric) : "—"}</strong>
+              </div>
+              <div className="balance-workbench__tape-item balance-workbench__tape-item--liability">
+                <ProfileOutlined aria-hidden />
+                <span>负债市值</span>
+                <strong>{liabilityMarketMetric ? metricDisplay(liabilityMarketMetric) : "—"}</strong>
+              </div>
+              <div className="balance-workbench__tape-item balance-workbench__tape-item--action">
+                <DeploymentUnitOutlined aria-hidden />
+                <span>净头寸</span>
+                <strong>{workbookCardDisplay(netPositionCard)}</strong>
+              </div>
+              <div className="balance-workbench__tape-item balance-workbench__tape-item--risk">
+                <ExceptionOutlined aria-hidden />
+                <span>发行类负债</span>
+                <strong>{workbookCardDisplay(issuanceCard)}</strong>
+              </div>
+            </div>
+            <div data-testid="balance-analysis-signal-strip" className="balance-workbench__signal-strip">
+              <div className="balance-workbench__signal">
+                <IconBadge tone="risk" icon={<WarningOutlined />} />
+                <span>最高风险</span>
+                <strong>{topRisk?.title ?? "未返回风险预警"}</strong>
+                <small>{topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : "risk_alerts"}</small>
+              </div>
+              <div className="balance-workbench__signal">
+                <IconBadge tone="action" icon={<AuditOutlined />} />
+                <span>待办决策</span>
+                <strong>{topDecision?.title ?? "未返回决策事项"}</strong>
+                <small>
+                  {topDecision?.latest_status?.status
+                    ? formatBalanceDecisionWorkflowStatusDisplay(topDecision.latest_status.status)
+                    : "decision_items"}
+                </small>
+              </div>
+              <div className="balance-workbench__signal">
+                <IconBadge tone="evidence" icon={<ClockCircleOutlined />} />
+                <span>最近事件</span>
+                <strong>{topEvent?.title ?? "未返回事件日历"}</strong>
+                <small>{topEvent?.event_date ?? "event_calendar"}</small>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -430,44 +618,53 @@ export default function BalanceAnalysisWorkbenchLayout({
           <div className="balance-workbench__status-head">
             <span className="balance-workbench__eyebrow">链路 / 治理状态</span>
             <strong id="balance-analysis-status-rail-title">
+              <SafetyCertificateOutlined aria-hidden />{" "}
               {formalStatus?.result_kind ?? "result_meta 未返回"}
             </strong>
           </div>
           <dl className="balance-workbench__status-pills">
             <div className="balance-workbench__status-pill">
+              <ControlOutlined aria-hidden />
               <dt>口径</dt>
               <dd>{formalStatus?.basis ?? "—"}</dd>
             </div>
             <div className="balance-workbench__status-pill">
+              <CheckCircleOutlined aria-hidden />
               <dt>正式可用</dt>
               <dd>{formatFormalAllowed(formalStatus)}</dd>
             </div>
             <div className="balance-workbench__status-pill">
+              <SafetyCertificateOutlined aria-hidden />
               <dt>质量</dt>
               <dd>{formatQualityFlag(formalStatus)}</dd>
             </div>
             <div className="balance-workbench__status-pill">
+              <BranchesOutlined aria-hidden />
               <dt>降级</dt>
               <dd>{formatFallbackMode(formalStatus)}</dd>
             </div>
           </dl>
           <div className="balance-workbench__status-grid">
             <div className="balance-workbench__status-metric">
+              <TableOutlined aria-hidden className="balance-workbench__status-icon" />
               <span>正式汇总查询</span>
               <strong>{String(overview?.summary_row_count ?? "—")}</strong>
               <small>汇总行</small>
             </div>
             <div className="balance-workbench__status-metric">
+              <FileSearchOutlined aria-hidden className="balance-workbench__status-icon" />
               <span>正式明细查询</span>
               <strong>{String(overview?.detail_row_count ?? "—")}</strong>
               <small>明细行</small>
             </div>
             <div className="balance-workbench__status-metric">
+              <ClusterOutlined aria-hidden className="balance-workbench__status-icon" />
               <span>工作簿摘要卡</span>
               <strong>{String(workbook?.cards.length ?? 0)}</strong>
               <small>摘要卡</small>
             </div>
             <div className="balance-workbench__status-metric">
+              <DatabaseOutlined aria-hidden className="balance-workbench__status-icon" />
               <span>指标定义</span>
               <strong>{metricDefinitions.length} 项</strong>
               <small>
@@ -478,36 +675,91 @@ export default function BalanceAnalysisWorkbenchLayout({
           </div>
           <div className="balance-workbench__status-meta">
             <span>{formatFormalStatus(formalStatus)}</span>
-            <span>trace_id: {formalStatus?.trace_id ?? "—"}</span>
+            <span><BranchesOutlined aria-hidden /> trace_id: {formalStatus?.trace_id ?? "—"}</span>
           </div>
           <div className="balance-workbench__filter-note">{compactFilters}</div>
         </aside>
       </section>
 
-      <div data-testid="balance-analysis-overview-cards" className="balance-workbench__metrics">
-        {metricGroups.map((group) => (
-          <section key={group.key} className={`balance-workbench__metric-group balance-workbench__metric-group--${group.key}`}>
-            <h2 className="balance-workbench__metric-group-title">{metricGroupLabels[group.key]}</h2>
-            <div className="balance-workbench__metric-group-grid">
-              {group.metrics.map((metric) => (
-                <div
-                  key={metric.key}
-                  data-testid="balance-analysis-horizontal-metric"
-                  className="balance-workbench__metric"
-                >
-                  <KpiCard
-                    label={metric.label}
-                    value={metric.value}
-                    unit={metric.unit}
-                    detail={metric.detail}
-                    valueVariant="text"
-                  />
+      {comparisonPairs.length > 0 ? (
+        <section
+          data-testid="balance-analysis-comparison-matrix"
+          className="balance-workbench__comparison-matrix"
+        >
+          <div className="balance-workbench__comparison-head">
+            <IconBadge tone="asset" icon={<BarChartOutlined />} />
+            <span className="balance-workbench__eyebrow">核心规模对比</span>
+            <h2>资产端 / 负债端并排判断</h2>
+          </div>
+          <div className="balance-workbench__comparison-grid">
+            {comparisonPairs.map((pair) => (
+              <article
+                key={pair.key}
+                data-testid={`balance-analysis-comparison-row-${pair.key}`}
+                className="balance-workbench__comparison-card"
+              >
+                <h3>
+                  <LineChartOutlined aria-hidden />
+                  {pair.title}
+                </h3>
+                <div className="balance-workbench__comparison-row balance-workbench__comparison-row--asset">
+                  <span>{pair.asset.label}</span>
+                  <strong>{metricDisplay(pair.asset)}</strong>
+                  <div className="balance-workbench__comparison-track" aria-hidden>
+                    <i style={{ width: pair.assetWidth }} />
+                  </div>
                 </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+                <div className="balance-workbench__comparison-row balance-workbench__comparison-row--liability">
+                  <span>{pair.liability.label}</span>
+                  <strong>{metricDisplay(pair.liability)}</strong>
+                  <div className="balance-workbench__comparison-track" aria-hidden>
+                    <i style={{ width: pair.liabilityWidth }} />
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <details className="balance-workbench__metric-drawer">
+        <summary className="balance-workbench__metric-drawer-summary">
+          <span className="balance-workbench__eyebrow">完整指标卡片</span>
+          <strong>资产端、负债端与证据规模明细</strong>
+          <span>默认收起，首屏以并排规模矩阵和证据工作区为主。</span>
+        </summary>
+        <div data-testid="balance-analysis-overview-cards" className="balance-workbench__metrics">
+          {metricGroups.map((group) => (
+            <section key={group.key} className={`balance-workbench__metric-group balance-workbench__metric-group--${group.key}`}>
+              <h2 className="balance-workbench__metric-group-title">
+                <IconBadge tone={group.key === "asset" ? "asset" : group.key === "liability" ? "liability" : "evidence"} icon={metricGroupLabels[group.key].icon} />
+                {metricGroupLabels[group.key].label}
+              </h2>
+              <div className="balance-workbench__metric-group-grid">
+                {group.metrics.map((metric) => (
+                  <div
+                    key={metric.key}
+                    data-testid="balance-analysis-horizontal-metric"
+                    className="balance-workbench__metric"
+                  >
+                    <div className="balance-workbench__metric-card">
+                      <IconBadge
+                        tone={group.key === "asset" ? "asset" : group.key === "liability" ? "liability" : "evidence"}
+                        icon={<MetricIcon group={group.key} label={metric.label} />}
+                      />
+                      <div className="balance-workbench__metric-copy">
+                        <span>{metric.label}</span>
+                        <strong>{metric.value}{metric.unit ? <small>{metric.unit}</small> : null}</strong>
+                        {metric.detail ? <em>{metric.detail}</em> : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </details>
 
       {kpiBars.length > 0 ? (
         <div className="balance-workbench__kpis">
@@ -533,10 +785,13 @@ export default function BalanceAnalysisWorkbenchLayout({
         {cards.map((card) => (
           <article
             key={card.key}
-            className={`balance-workbench-card balance-workbench-card--span-${card.span}`}
+            className={`balance-workbench-card balance-workbench-card--span-${card.span} balance-workbench-card--${card.key}`}
             data-testid={`balance-analysis-workbench-card-${card.key}`}
           >
-            <h2 className="balance-workbench-card__heading">{card.title}</h2>
+            <h2 className="balance-workbench-card__heading">
+              <IconBadge tone={card.tone} icon={card.icon} />
+              {card.title}
+            </h2>
             {card.body}
           </article>
         ))}
@@ -547,7 +802,10 @@ export default function BalanceAnalysisWorkbenchLayout({
         className="balance-workbench__portfolio-nav"
         aria-label="组合工作台导航"
       >
-        <strong className="balance-workbench__portfolio-nav-title">组合工作台导航</strong>
+        <strong className="balance-workbench__portfolio-nav-title">
+          <ClusterOutlined aria-hidden />
+          组合工作台导航
+        </strong>
         <div className="balance-workbench__portfolio-nav-links">
           {portfolioNavigationItems.map((section) => (
             <NavLink

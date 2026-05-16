@@ -84,25 +84,29 @@ export const stagedScenarioShellStyle = {
 export const controlBarStyle = {
   display: "flex",
   flexWrap: "wrap",
-  gap: s[3],
+  gap: s[2],
   alignItems: "center",
+  justifyContent: "flex-end",
   marginBottom: 0,
 } as const;
 
 export const controlStyle = {
-  minWidth: 180,
-  padding: `${s[3] - s[1]}px ${s[3]}px`,
-  borderRadius: r.md,
+  minWidth: 132,
+  padding: `${s[2]}px ${s[3]}px`,
+  borderRadius: 999,
   border: `1px solid ${c.neutral[300]}`,
-  background: c.primary[50],
+  background: shellTokens.colorBgSurface,
   color: c.neutral[900],
 } as const;
 
 export const actionButtonStyle = {
-  padding: `${s[3] - s[1]}px ${s[3] + s[1]}px`,
-  borderRadius: r.md,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: `${s[2]}px ${s[3]}px`,
+  borderRadius: 999,
   border: `1px solid ${c.info[200]}`,
-  background: c.info[50],
+  background: shellTokens.colorBgSurface,
   color: c.info[600],
   fontWeight: 600,
   cursor: "pointer",
@@ -117,11 +121,11 @@ export const tableShellStyle = {
 } as const;
 
 export const workbookPanelStyle = {
-  borderRadius: r.lg,
-  border: `1px solid ${c.neutral[200]}`,
-  background: c.primary[50],
+  borderRadius: r.sm,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: shellTokens.colorBgSurface,
   padding: s[4],
-  boxShadow: designTokens.shadow.card,
+  boxShadow: "0 8px 18px rgba(76, 58, 44, 0.035)",
 } as const;
 
 export const workbookPanelHeaderStyle = {
@@ -136,9 +140,10 @@ export const workbookPanelBadgeStyle = {
   display: "inline-flex",
   alignItems: "center",
   padding: `${s[1]}px ${s[2]}px`,
-  borderRadius: 999,
-  background: c.primary[100],
-  color: c.neutral[600],
+  borderRadius: r.sm,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: shellTokens.colorBgMuted,
+  color: shellTokens.colorTextSecondary,
   fontSize: fs[12],
   fontWeight: 600,
 } as const;
@@ -204,8 +209,8 @@ export const currentUserCardStyle = {
 
 export const barTrackStyle = {
   width: "100%",
-  height: s[2],
+  height: s[2] - 1,
   borderRadius: 999,
-  background: c.neutral[100],
+  background: "rgba(226, 230, 236, 0.76)",
   overflow: "hidden",
 } as const;

@@ -1,6 +1,15 @@
 ﻿import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Collapse } from "antd";
+import {
+  CalendarOutlined,
+  DownloadOutlined,
+  FileExcelOutlined,
+  FilterOutlined,
+  ReloadOutlined,
+  SafetyCertificateOutlined,
+  SwapOutlined,
+} from "@ant-design/icons";
 import "../../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
@@ -1869,8 +1878,8 @@ export default function BalanceAnalysisPage() {
         title="资产负债分析"
         titleTestId="balance-analysis-page-title"
         questionTestId="balance-analysis-page-subtitle"
-        businessQuestion="正式链路下先看规模、质量和治理信号，再进入汇总与工作簿下钻。"
-        eyebrow="总览"
+        businessQuestion="正式链路下先判断资产负债状态，再进入证据、汇总与治理行动。"
+        eyebrow="正式余额"
         reportDateSlot={
           <span data-testid="balance-analysis-report-date-slot">报告日 {selectedReportDate || "—"}</span>
         }
@@ -1905,15 +1914,27 @@ export default function BalanceAnalysisPage() {
                   : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
               }}
             >
+              <SafetyCertificateOutlined aria-hidden style={{ marginRight: 6 }} />
               {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
             </span>
           </div>
         }
       >
-        <PageFilterTray>
+        <PageFilterTray
+          testId="balance-analysis-filter-tray"
+          style={{
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            boxShadow: "none",
+          }}
+        >
           <FilterBar style={controlBarStyle}>
             <label>
-              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>报告日</span>
+              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>
+                <CalendarOutlined aria-hidden style={{ marginRight: 6 }} />
+                报告日
+              </span>
               <select
                 aria-label="balance-report-date"
                 value={selectedReportDate}
@@ -1929,7 +1950,10 @@ export default function BalanceAnalysisPage() {
             </label>
 
             <label>
-              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>头寸范围</span>
+              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>
+                <FilterOutlined aria-hidden style={{ marginRight: 6 }} />
+                头寸范围
+              </span>
               <select
                 aria-label="balance-position-scope"
                 value={positionScope}
@@ -1943,7 +1967,10 @@ export default function BalanceAnalysisPage() {
             </label>
 
             <label>
-              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>币种口径</span>
+              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>
+                <SwapOutlined aria-hidden style={{ marginRight: 6 }} />
+                币种口径
+              </span>
               <select
                 aria-label="balance-currency-basis"
                 value={currencyBasis}
@@ -1962,6 +1989,7 @@ export default function BalanceAnalysisPage() {
               disabled={!selectedReportDate || isRefreshing}
               style={actionButtonStyle}
             >
+              <ReloadOutlined aria-hidden style={{ marginRight: 6 }} />
               {isRefreshing ? "刷新中..." : "刷新正式结果"}
             </button>
             <button
@@ -1971,6 +1999,7 @@ export default function BalanceAnalysisPage() {
               disabled={!selectedReportDate || isExportingCsv}
               style={actionButtonStyle}
             >
+              <DownloadOutlined aria-hidden style={{ marginRight: 6 }} />
               {isExportingCsv ? "导出中..." : "导出 CSV"}
             </button>
             <button
@@ -1980,6 +2009,7 @@ export default function BalanceAnalysisPage() {
               disabled={!selectedReportDate || isExportingWorkbook}
               style={actionButtonStyle}
             >
+              <FileExcelOutlined aria-hidden style={{ marginRight: 6 }} />
               {isExportingWorkbook ? "导出中..." : "导出 Excel"}
             </button>
           </FilterBar>
@@ -2032,12 +2062,18 @@ export default function BalanceAnalysisPage() {
         {headlineAmountCards.map((card) => card.value).join(" ")}
       </div>
 
-      <div style={{ marginTop: 24 }}>
-        <PageSectionLead
-          eyebrow="汇总"
-          title="正式汇总驾驶舱"
-          description="先阅读分页汇总表，再进入下方明细汇总和明细下钻，保持汇总与明细查询分层不变。"
-        />
+      <details
+        data-testid="balance-analysis-formal-summary-details"
+        className="balance-analysis-stage-details balance-analysis-stage-details--summary"
+      >
+        <summary className="balance-analysis-stage-details__summary">
+          <span className="balance-analysis-stage-details__eyebrow">汇总</span>
+          <h2 className="balance-analysis-stage-details__heading">正式汇总驾驶舱</h2>
+          <span>
+            分页汇总、明细汇总和明细下钻默认收起；首屏先保留状态判断、规模证据和治理行动。
+          </span>
+        </summary>
+        <div className="balance-analysis-stage-details__content">
         <AsyncSection
           title="资产负债汇总"
           isLoading={
@@ -2159,7 +2195,8 @@ export default function BalanceAnalysisPage() {
             )}
           </div>
         </AsyncSection>
-      </div>
+        </div>
+      </details>
 
       <details
         data-testid="balance-analysis-supplemental-panels"
@@ -2272,76 +2309,83 @@ export default function BalanceAnalysisPage() {
           }}
         >
           <div data-testid="balance-analysis-workbook-cockpit" className="balance-analysis-workbook-cockpit">
-            <div className="balance-analysis-workbook-main">
-              {renderBalanceReconciliationLinkPanel(reconciliationLinkModel)}
-              <div
-                data-testid="balance-analysis-workbook-primary-grid"
-                className="balance-analysis-workbook-primary-grid"
-              >
-                {primaryWorkbookTables.map((table) => (
-                  <article
-                    key={table.key}
-                    data-testid={`balance-analysis-workbook-panel-${table.key}`}
-                    style={workbookPanelStyle}
-                  >
-                    <div style={workbookPanelHeaderStyle}>
-                      <div>
-                        <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
-                        <p
-                          style={{
-                            marginTop: 6,
-                            marginBottom: 0,
-                            color: designTokens.color.neutral[700],
-                            fontSize: 13,
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          {workbookPanelNotes[table.key as (typeof primaryWorkbookTableKeys)[number]]}
-                        </p>
+            <details className="balance-analysis-workbook-main-details">
+              <summary className="balance-analysis-workbook-main-details__summary">
+                <span className="balance-analysis-workbook-full-details__eyebrow">工作簿图谱</span>
+                <strong>工作簿结构与分布面板</strong>
+                <span>默认收起，治理行动保持常驻；展开后查看债券分类、评级、期限缺口和支持面板。</span>
+              </summary>
+              <div className="balance-analysis-workbook-main">
+                {renderBalanceReconciliationLinkPanel(reconciliationLinkModel)}
+                <div
+                  data-testid="balance-analysis-workbook-primary-grid"
+                  className="balance-analysis-workbook-primary-grid"
+                >
+                  {primaryWorkbookTables.map((table) => (
+                    <article
+                      key={table.key}
+                      data-testid={`balance-analysis-workbook-panel-${table.key}`}
+                      style={workbookPanelStyle}
+                    >
+                      <div style={workbookPanelHeaderStyle}>
+                        <div>
+                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                          <p
+                            style={{
+                              marginTop: 6,
+                              marginBottom: 0,
+                              color: designTokens.color.neutral[700],
+                              fontSize: 13,
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            {workbookPanelNotes[table.key as (typeof primaryWorkbookTableKeys)[number]]}
+                          </p>
+                        </div>
+                        <span style={workbookPanelBadgeStyle}>
+                          {table.key === "bond_business_types" && isBondBusinessLinkedToMovement ? "movement" : "workbook"}
+                        </span>
                       </div>
-                      <span style={workbookPanelBadgeStyle}>
-                        {table.key === "bond_business_types" && isBondBusinessLinkedToMovement ? "movement" : "workbook"}
-                      </span>
-                    </div>
-                    {renderWorkbookPrimaryPanel(table)}
-                  </article>
-                ))}
-              </div>
+                      {renderWorkbookPrimaryPanel(table)}
+                    </article>
+                  ))}
+                </div>
 
-              <div
-                data-testid="balance-analysis-workbook-secondary-panels"
-                className="balance-analysis-workbook-secondary-panels"
-              >
-                {secondaryWorkbookPanelTables.map((table) => (
-                  <article
-                    key={table.key}
-                    data-testid={`balance-analysis-workbook-panel-${table.key}`}
-                    style={workbookPanelStyle}
-                  >
-                    <div style={workbookPanelHeaderStyle}>
-                      <div>
-                        <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
-                        <p
-                          style={{
-                            marginTop: 6,
-                            marginBottom: 0,
-                            color: designTokens.color.neutral[700],
-                            fontSize: 13,
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          {workbookSecondaryPanelNotes[table.key as (typeof secondaryWorkbookPanelKeys)[number]]}
-                        </p>
+                <div
+                  data-testid="balance-analysis-workbook-secondary-panels"
+                  className="balance-analysis-workbook-secondary-panels"
+                >
+                  {secondaryWorkbookPanelTables.map((table) => (
+                    <article
+                      key={table.key}
+                      data-testid={`balance-analysis-workbook-panel-${table.key}`}
+                      style={workbookPanelStyle}
+                    >
+                      <div style={workbookPanelHeaderStyle}>
+                        <div>
+                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                          <p
+                            style={{
+                              marginTop: 6,
+                              marginBottom: 0,
+                              color: designTokens.color.neutral[700],
+                              fontSize: 13,
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            {workbookSecondaryPanelNotes[table.key as (typeof secondaryWorkbookPanelKeys)[number]]}
+                          </p>
+                        </div>
+                        <span style={workbookPanelBadgeStyle}>
+                          {table.key === "industry_distribution" && isIndustryLinkedToMovement ? "movement" : "supporting"}
+                        </span>
                       </div>
-                      <span style={workbookPanelBadgeStyle}>
-                        {table.key === "industry_distribution" && isIndustryLinkedToMovement ? "movement" : "supporting"}
-                      </span>
-                    </div>
-                    {renderWorkbookSecondaryPanel(table)}
-                  </article>
-                ))}
+                      {renderWorkbookSecondaryPanel(table)}
+                    </article>
+                  ))}
+                </div>
               </div>
-            </div>
+            </details>
 
             <aside data-testid="balance-analysis-right-rail" className="balance-analysis-right-rail">
               <article
