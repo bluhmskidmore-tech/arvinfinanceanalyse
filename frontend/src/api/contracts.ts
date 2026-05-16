@@ -3026,6 +3026,7 @@ export type AgentConversationContextTurn = {
   answer: string;
   run_id?: string | null;
   trace_id?: string | null;
+  result_kind?: string | null;
 };
 
 export type AgentConversationContext = {

@@ -122,6 +122,234 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+def test_explicit_context_intent_routes_without_keyword_guessing(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "pnl_summary": lambda request: {
+                "answer": calls.append(request.question) or "pnl ok",
+                "basis": "formal",
+                "result_kind": "agent.pnl_summary",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Total PnL", "value": "9"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="解释当前页面",
+            context={"intent": "pnl_summary"},
+        )
+    )
+
+    assert calls == ["解释当前页面"]
+    assert envelope.result_meta.result_kind == "agent.pnl_summary"
+    assert "Total PnL=9" in envelope.answer
+
+
+def test_generic_dashboard_page_question_routes_to_page_default_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "dashboard overview ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Total Market Value", "value": "100"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="解释当前页面的主要结论和风险点",
+            page_context=request_module.AgentPageContext(
+                page_id="dashboard",
+                current_filters={"report_date": "2026-03-31"},
+            ),
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.portfolio_overview"
+    assert "dashboard overview ok" in envelope.answer
+
+
+def test_specific_duration_question_with_page_context_beats_page_default_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "dashboard overview ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+            },
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Portfolio DV01", "value": "12"}],
+            },
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="当前页面久期风险在哪里",
+            page_context=request_module.AgentPageContext(
+                page_id="dashboard",
+                current_filters={"report_date": "2026-03-31"},
+            ),
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert "Portfolio DV01=12" in envelope.answer
+
+
+def test_follow_up_question_reuses_last_local_agent_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Portfolio DV01", "value": "12"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="继续看这个",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "question": "当前久期风险在哪里？",
+                            "answer": "口径边界：basis=formal；可正式使用；result_kind=agent.duration_risk；report_date=2026-03-31。",
+                            "trace_id": "tr_agent_duration_risk_abc",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert "Portfolio DV01=12" in envelope.answer
+
+
+def test_follow_up_question_uses_structured_result_kind_when_answer_has_no_marker(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Portfolio DV01", "value": "12"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="continue this",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "question": "show duration risk",
+                            "answer": "The previous answer mentioned DV01, but no marker text.",
+                            "result_kind": "agent.duration_risk",
+                            "trace_id": "tr_previous_without_intent_suffix",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert "Portfolio DV01=12" in envelope.answer
+
+
 def test_agent_answers_use_business_analysis_sections(tmp_path):
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",
@@ -323,6 +551,16 @@ def test_agent_report_date_context_precedence_filters_context_current_filters_la
         ),
         available_dates,
     ) == "2025-12-31"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            page_context=request_module.AgentPageContext(
+                page_id="dashboard",
+                current_filters={"report_date": "2026-02-28"},
+            ),
+        ),
+        available_dates,
+    ) == "2026-02-28"
     assert service_module._latest_or_requested(
         request_module.AgentQueryRequest(question="组合概览"),
         available_dates,

@@ -39,13 +39,25 @@ _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("product_pnl", ("产品损益", "ftp")),
     ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
-    ("duration_risk", ("久期", "dv01", "风险", "duration")),
+    ("duration_risk", ("久期", "dv01", "duration")),
     ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
     ("portfolio_overview", ("组合概览", "资产规模", "总览", "portfolio overview", "market value", "portfolio value", "asset size")),
     ("pnl_summary", ("损益", "收益", "pnl")),
     ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
     ("news", ("新闻", "事件", "news", "headline", "latest news")),
 ]
+
+_PAGE_DEFAULT_INTENTS = {
+    "dashboard": "portfolio_overview",
+    "bond-dashboard": "portfolio_overview",
+    "balance-analysis": "portfolio_overview",
+    "pnl-attribution": "pnl_summary",
+    "product-category-pnl": "product_pnl",
+    "risk-tensor": "risk_tensor",
+    "bond-analytics": "duration_risk",
+    "market-data": "market_data",
+    "stock-analysis": "market_data",
+}
 
 
 class AnalysisViewTool:
@@ -92,12 +104,71 @@ class AnalysisViewTool:
         explicit_intent = str(request.context.get("intent") or "").strip().lower()
         if explicit_intent == "cube_query" or "cube_query" in request.context:
             return "cube_query"
+        if explicit_intent in self._intent_handlers:
+            return explicit_intent
 
         normalized = str(request.question or "").strip().lower()
         for intent, keywords in _INTENT_PATTERNS:
-            if any(keyword.lower() in normalized for keyword in keywords):
+            if intent in self._intent_handlers and any(keyword.lower() in normalized for keyword in keywords):
                 return intent
+        follow_up_intent = self._conversation_intent(request)
+        if follow_up_intent is not None:
+            return follow_up_intent
+        if self._is_page_context_question(normalized):
+            page_intent = self._page_default_intent(request)
+            if page_intent is not None:
+                return page_intent
         return "unknown"
+
+    def _conversation_intent(self, request: AgentQueryRequest) -> str | None:
+        conversation = request.context.get("conversation")
+        if not isinstance(conversation, dict):
+            return None
+        turns = conversation.get("recent_turns")
+        if not isinstance(turns, list):
+            return None
+        for turn in reversed(turns):
+            if not isinstance(turn, dict):
+                continue
+            for value in (turn.get("result_kind"), turn.get("trace_id"), turn.get("answer")):
+                intent = self._intent_from_text(value)
+                if intent is not None:
+                    return intent
+        return None
+
+    def _intent_from_text(self, value: Any) -> str | None:
+        text = str(value or "").strip().lower()
+        if not text:
+            return None
+        for intent in self._intent_handlers:
+            if f"agent.{intent}" in text:
+                return intent
+        return None
+
+    def _page_default_intent(self, request: AgentQueryRequest) -> str | None:
+        if request.page_context is None:
+            return None
+        page_id = request.page_context.page_id.strip().lower()
+        intent = _PAGE_DEFAULT_INTENTS.get(page_id)
+        if intent in self._intent_handlers:
+            return intent
+        return None
+
+    def _is_page_context_question(self, normalized_question: str) -> bool:
+        if not normalized_question:
+            return False
+        return any(
+            token in normalized_question
+            for token in (
+                "当前页",
+                "当前页面",
+                "这个页面",
+                "本页",
+                "页面",
+                "current page",
+                "this page",
+            )
+        )
 
     def _workflow_envelope(
         self,

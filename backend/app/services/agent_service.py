@@ -577,8 +577,9 @@ def _requested_report_date(request: AgentQueryRequest) -> str | None:
     current_filters = request.context.get("current_filters")
     if not isinstance(current_filters, dict):
         current_filters = {}
+    page_current_filters = request.page_context.current_filters if request.page_context else {}
     for key in ("report_date", "date"):
-        for container in (request.filters, request.context, current_filters):
+        for container in (request.filters, request.context, current_filters, page_current_filters):
             value = container.get(key)
             if value is not None and str(value).strip():
                 return str(value).strip()

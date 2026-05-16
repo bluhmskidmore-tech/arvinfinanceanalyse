@@ -227,7 +227,8 @@ function isAgentConversationContext(value: unknown): value is AgentConversationC
         typeof turn.question === "string" &&
         typeof turn.answer === "string" &&
         (turn.run_id === undefined || turn.run_id === null || typeof turn.run_id === "string") &&
-        (turn.trace_id === undefined || turn.trace_id === null || typeof turn.trace_id === "string"),
+        (turn.trace_id === undefined || turn.trace_id === null || typeof turn.trace_id === "string") &&
+        (turn.result_kind === undefined || turn.result_kind === null || typeof turn.result_kind === "string"),
     )
   );
 }
@@ -335,11 +336,13 @@ function buildConversationContext(turns: AgentConversationTurn[]): AgentConversa
     .slice(-MAX_AGENT_CONTEXT_TURNS)
     .map((turn) => {
       const traceId = turn.result?.result_meta.trace_id;
+      const resultKind = turn.result?.result_meta.result_kind;
       return {
         question: trimAgentContextText(turn.question, MAX_AGENT_CONTEXT_QUESTION_LENGTH),
         answer: trimAgentContextText(turn.result?.answer ?? "", MAX_AGENT_CONTEXT_ANSWER_LENGTH),
         run_id: turn.agentRun?.run_id ?? null,
         trace_id: typeof traceId === "string" ? traceId : null,
+        result_kind: typeof resultKind === "string" ? resultKind : null,
       };
     });
 
