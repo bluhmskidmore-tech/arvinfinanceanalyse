@@ -38,6 +38,7 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
     workbook = load_workbook(BytesIO(response.content))
     assert workbook.sheetnames == [
         "经营概览",
+        "财务指标落地状态",
         "3位科目总览",
         "资产结构",
         "负债结构",

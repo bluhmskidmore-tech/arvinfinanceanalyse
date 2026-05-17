@@ -47,6 +47,7 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
     assert workbook_payload["result"]["report_month"] == "202602"
     assert [sheet["title"] for sheet in workbook_payload["result"]["sheets"]] == [
         "经营概览",
+        "财务指标落地状态",
         "3位科目总览",
         "资产结构",
         "负债结构",
@@ -291,6 +292,7 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
     assert scenario_payload["result"]["scenario_name"] == "threshold-stress"
     assert [sheet["key"] for sheet in scenario_payload["result"]["sheets"]] == [
         "overview",
+        "financial_indicator_status",
         "summary_3d",
         "asset_structure",
         "liability_structure",

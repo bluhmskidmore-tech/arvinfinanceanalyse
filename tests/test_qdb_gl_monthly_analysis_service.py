@@ -263,6 +263,7 @@ def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_overrid
     assert scenario["result"]["report_month"] == "202602"
     assert [sheet["key"] for sheet in scenario["result"]["sheets"]] == [
         "overview",
+        "financial_indicator_status",
         "summary_3d",
         "asset_structure",
         "liability_structure",

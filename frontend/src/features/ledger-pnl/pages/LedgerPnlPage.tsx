@@ -79,6 +79,103 @@ function pickDisplayColumns(sheet: QdbGlMonthlyAnalysisSheet | undefined, limit 
   return (sheet?.columns ?? []).slice(0, limit);
 }
 
+type FinancialIndicatorStatusRow = {
+  name: string;
+  value: unknown;
+  unit: string;
+  status: string;
+  source: string;
+};
+
+function textCell(row: Record<string, unknown>, column: string | undefined) {
+  return column ? String(row[column] ?? "").trim() : "";
+}
+
+function buildFinancialIndicatorStatusRows(sheet: QdbGlMonthlyAnalysisSheet | undefined) {
+  const columns = sheet?.columns ?? [];
+  const nameColumn = columns.find((column) => column === "指标") ?? columns[0];
+  const valueColumn = columns.find((column) => column === "当前值") ?? columns[1];
+  const unitColumn = columns.find((column) => column === "单位") ?? columns[2];
+  const statusColumn = columns.find((column) => column === "口径状态") ?? columns[3];
+  const sourceColumn = columns.find((column) => column === "口径来源") ?? columns[4];
+
+  return (sheet?.rows ?? [])
+    .map((row): FinancialIndicatorStatusRow => ({
+      name: textCell(row, nameColumn),
+      value: valueColumn ? row[valueColumn] : undefined,
+      unit: textCell(row, unitColumn),
+      status: textCell(row, statusColumn),
+      source: textCell(row, sourceColumn),
+    }))
+    .filter((row) => row.name);
+}
+
+function financialIndicatorTone(row: FinancialIndicatorStatusRow) {
+  if (row.status.includes("QDB")) {
+    return "analytical";
+  }
+  if (row.status.includes("待接入") || row.source.startsWith("formal_pending:")) {
+    return "pending";
+  }
+  return "warning";
+}
+
+function formatFinancialIndicatorValue(row: FinancialIndicatorStatusRow) {
+  if (row.value === null || row.value === undefined || row.value === "") {
+    return "未接入";
+  }
+  const formatted = formatAnalysisValue(row.value);
+  return row.unit && row.unit !== "待确认" ? `${formatted} ${row.unit}` : formatted;
+}
+
+function FinancialIndicatorStatusPanel(props: { rows: FinancialIndicatorStatusRow[] }) {
+  const qdbCount = props.rows.filter((row) => financialIndicatorTone(row) === "analytical").length;
+  const pendingCount = props.rows.filter((row) => financialIndicatorTone(row) === "pending").length;
+  const sourceGapCount = props.rows.filter((row) => row.source.includes("source_missing") || row.source.includes("formal_pending")).length;
+
+  return (
+    <section data-testid="ledger-pnl-formal-indicator-status-panel" className="ledger-pnl-analysis__status-panel">
+      <div className="ledger-pnl-analysis__status-header">
+        <div>
+          <h3 className="ledger-pnl-analysis__status-title">正式财务指标状态</h3>
+          <div className="ledger-pnl-analysis__status-subtitle">
+            展示后端月度工作簿返回的指标值、口径状态和来源缺口。
+          </div>
+        </div>
+        <div className="ledger-pnl-analysis__status-summary">
+          <span>QDB 可复算 {qdbCount}</span>
+          <span>正式待接入 {pendingCount}</span>
+          <span>缺口说明 {sourceGapCount}</span>
+        </div>
+      </div>
+      {props.rows.length > 0 ? (
+        <div className="ledger-pnl-analysis__status-list">
+          {props.rows.map((row) => {
+            const tone = financialIndicatorTone(row);
+            return (
+              <article
+                key={row.name}
+                className={`ledger-pnl-analysis__status-row ledger-pnl-analysis__status-row--${tone}`}
+              >
+                <div className="ledger-pnl-analysis__status-main">
+                  <span className="ledger-pnl-analysis__status-name">{row.name}</span>
+                  <span className="ledger-pnl-analysis__status-badge">{row.status || "口径待确认"}</span>
+                </div>
+                <div className="ledger-pnl-analysis__status-value">
+                  {formatFinancialIndicatorValue(row)}
+                </div>
+                <div className="ledger-pnl-analysis__status-source">{row.source || "来源待确认"}</div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="ledger-pnl-analysis__empty">暂无财务指标状态数据</div>
+      )}
+    </section>
+  );
+}
+
 function AnalysisTable(props: {
   title: string;
   sheet: QdbGlMonthlyAnalysisSheet | undefined;
@@ -192,8 +289,26 @@ export default function LedgerPnlPage() {
 
   const monthlyAnalysisWorkbook = monthlyAnalysisWorkbookQuery.data?.result;
   const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
+  const financialIndicatorStatusSheet = findAnalysisSheet(
+    monthlyAnalysisWorkbook?.sheets,
+    "financial_indicator_status",
+  );
+  const financialIndicatorStatusRows = useMemo(
+    () => buildFinancialIndicatorStatusRows(financialIndicatorStatusSheet),
+    [financialIndicatorStatusSheet],
+  );
+  const summary3dSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "summary_3d");
+  const assetStructureSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "asset_structure");
+  const liabilityStructureSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "liability_structure");
+  const loanIndustrySheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "loan_industry");
+  const depositDemandIndustrySheet = findAnalysisSheet(
+    monthlyAnalysisWorkbook?.sheets,
+    "deposit_demand_industry",
+  );
+  const depositTermIndustrySheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "deposit_term_industry");
   const top11dSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "top_11d");
   const alertsSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "alerts");
+  const foreignCurrencySheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "foreign_currency");
   const segmentBaseScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_base_scale");
   const segmentScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_scale_compare");
   const companyScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale");
@@ -379,6 +494,8 @@ export default function LedgerPnlPage() {
           </div>
         ) : null}
 
+        <FinancialIndicatorStatusPanel rows={financialIndicatorStatusRows} />
+
         {overviewRows.length > 0 ? (
           <div data-testid="ledger-pnl-monthly-analysis-overview" className="ledger-pnl-analysis__kpis">
             {overviewRows.map((row) => (
@@ -399,6 +516,55 @@ export default function LedgerPnlPage() {
         )}
 
         <div className="ledger-pnl-analysis__tables">
+          <AnalysisTable
+            title="财务指标落地状态"
+            sheet={financialIndicatorStatusSheet}
+            testId="ledger-pnl-monthly-analysis-financial-indicator-status"
+            columnLimit={5}
+            rowLimit={20}
+          />
+          <AnalysisTable
+            title="3位科目总览"
+            sheet={summary3dSheet}
+            testId="ledger-pnl-monthly-analysis-summary-3d"
+            columnLimit={8}
+            rowLimit={8}
+          />
+          <AnalysisTable
+            title="资产结构"
+            sheet={assetStructureSheet}
+            testId="ledger-pnl-monthly-analysis-asset-structure"
+            columnLimit={6}
+            rowLimit={8}
+          />
+          <AnalysisTable
+            title="负债结构"
+            sheet={liabilityStructureSheet}
+            testId="ledger-pnl-monthly-analysis-liability-structure"
+            columnLimit={6}
+            rowLimit={8}
+          />
+          <AnalysisTable
+            title="贷款行业"
+            sheet={loanIndustrySheet}
+            testId="ledger-pnl-monthly-analysis-loan-industry"
+            columnLimit={7}
+            rowLimit={8}
+          />
+          <AnalysisTable
+            title="存款行业_活期"
+            sheet={depositDemandIndustrySheet}
+            testId="ledger-pnl-monthly-analysis-deposit-demand-industry"
+            columnLimit={7}
+            rowLimit={8}
+          />
+          <AnalysisTable
+            title="存款行业_定期"
+            sheet={depositTermIndustrySheet}
+            testId="ledger-pnl-monthly-analysis-deposit-term-industry"
+            columnLimit={7}
+            rowLimit={8}
+          />
           <AnalysisTable
             title="11位偏离TOP"
             sheet={top11dSheet}
@@ -484,6 +650,13 @@ export default function LedgerPnlPage() {
             testId="ledger-pnl-monthly-analysis-parent-company-revenue"
             columnLimit={11}
             rowLimit={17}
+          />
+          <AnalysisTable
+            title="外币分析"
+            sheet={foreignCurrencySheet}
+            testId="ledger-pnl-monthly-analysis-foreign-currency"
+            columnLimit={6}
+            rowLimit={8}
           />
           <AnalysisTable
             title="行业存贷差"

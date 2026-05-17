@@ -147,6 +147,33 @@ describe("LedgerPnlPage", () => {
           ],
         },
         {
+          key: "financial_indicator_status",
+          title: "财务指标落地状态",
+          columns: ["指标", "当前值", "单位", "口径状态", "口径来源"],
+          rows: [
+            {
+              指标: "贷款总额（QDB源）",
+              当前值: 4189.47,
+              单位: "亿元",
+              口径状态: "QDB源可复算",
+              口径来源: "QDB源分析：总账对账+日均可复算",
+            },
+            {
+              指标: "集团营业收入",
+              当前值: null,
+              单位: "待确认",
+              口径状态: "正式口径待接入",
+              口径来源: "formal_pending: 正式财务指标依赖合并范围、拨备/核销/收回、子公司抵消或管理层调整来源，当前未接入",
+            },
+          ],
+        },
+        {
+          key: "summary_3d",
+          title: "3位科目总览",
+          columns: ["科目代码", "名称", "期末余额", "月日均", "年日均", "偏离额", "偏离%", "趋势额"],
+          rows: [{ 科目代码: "123", 名称: "公司贷款", 期末余额: 3044.84, 月日均: 3009.19, 年日均: 2969.67, 偏离额: 35.65, "偏离%": 1.18, 趋势额: 39.52 }],
+        },
+        {
           key: "top_11d",
           title: "11位偏离TOP",
           columns: ["科目代码", "科目名称", "偏离额"],
@@ -208,6 +235,21 @@ describe("LedgerPnlPage", () => {
               年日均: 2458.66,
               月日均: 2522.26,
               口径来源: "金融市场规模：总账对账+日均同源科目重建",
+            },
+          ],
+        },
+        {
+          key: "foreign_currency",
+          title: "外币分析",
+          columns: ["科目代码", "科目名称", "期末余额_综本", "期末余额_人民币", "外币部分", "外币占比%"],
+          rows: [
+            {
+              科目代码: "14201000001",
+              科目名称: "AC债券投资",
+              期末余额_综本: 150,
+              期末余额_人民币: 100,
+              外币部分: 50,
+              "外币占比%": 33.33,
             },
           ],
         },
@@ -478,6 +520,21 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-panel")).toHaveTextContent("总账对账 + 日均分析");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202603");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).toHaveTextContent("总资产(亿)");
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-indicator-status")).toHaveTextContent(
+      "贷款总额（QDB源）",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-indicator-status")).toHaveTextContent(
+      "正式口径待接入",
+    );
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("正式财务指标状态");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("QDB 可复算");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("正式待接入");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("贷款总额（QDB源）");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("4,189.47");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("集团营业收入");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("未接入");
+    expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("formal_pending");
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-summary-3d")).toHaveTextContent("公司贷款");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-alerts")).toHaveTextContent("14001000001");
     expect(screen.getByText("分部基础规模")).toBeInTheDocument();
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-base-scale")).toHaveTextContent("微贷中心");
@@ -555,6 +612,7 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-parent-company-revenue")).toHaveTextContent(
       "source_missing",
     );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-foreign-currency")).toHaveTextContent("AC债券投资");
   });
 
   it("does not fall back to an unrelated monthly analysis workbook", async () => {

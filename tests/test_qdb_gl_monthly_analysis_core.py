@@ -82,6 +82,7 @@ def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tm
     sheet_titles = [sheet["title"] for sheet in workbook["sheets"]]
     assert sheet_titles == [
         "经营概览",
+        "财务指标落地状态",
         "3位科目总览",
         "资产结构",
         "负债结构",
@@ -107,6 +108,15 @@ def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tm
     assert overview_rows["存款总额(亿)"] == 1600
     assert overview_rows["存贷比%"] == 67.88
     assert overview_rows["贷款减值准备率%"] == 2.76
+
+    status_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "financial_indicator_status")
+    status_columns = status_sheet["columns"]
+    status_rows = {row[status_columns[0]]: row for row in status_sheet["rows"]}
+    assert status_rows["贷款总额（QDB源）"][status_columns[1]] == 1086
+    assert status_rows["贷款总额（QDB源）"][status_columns[3]] == "QDB源可复算"
+    assert status_rows["集团营业收入"][status_columns[1]] is None
+    assert status_rows["集团营业收入"][status_columns[3]] == "正式口径待接入"
+    assert str(status_rows["集团营业收入"][status_columns[4]]).startswith("formal_pending:")
 
     gap_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "industry_gap")
     agriculture = next(row for row in gap_sheet["rows"] if row["行业"] == "农林牧渔")
