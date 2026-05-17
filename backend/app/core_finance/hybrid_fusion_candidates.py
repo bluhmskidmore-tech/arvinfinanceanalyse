@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 FORMULA_VERSION = "rv_hybrid_fusion_candidates_v1"
-ACTIVE_MARKET_STATES = {"PENDING_DATA", "WARM", "HOT"}
+ACTIVE_MARKET_STATES = {"WARM", "HOT"}
 MAX_CANDIDATES = 10
 
 

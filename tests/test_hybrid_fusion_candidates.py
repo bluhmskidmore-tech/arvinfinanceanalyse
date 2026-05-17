@@ -142,6 +142,22 @@ def test_hybrid_fusion_stays_empty_outside_warm_or_hot_market_state() -> None:
     assert "inactive for market_state OVERHEAT" in payload["coverage_note"]
 
 
+def test_hybrid_fusion_stays_empty_when_market_state_is_pending_data() -> None:
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="PENDING_DATA",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload={"items": [{"stock_code": "688001.SH", "stock_name": "Alpha", "rank": 1}]},
+        factor_screen_payload=None,
+        theme_breakout_payload=None,
+    )
+
+    payload = result.payload
+    assert payload["candidate_count"] == 0
+    assert payload["items"] == []
+    assert "inactive for market_state PENDING_DATA" in payload["coverage_note"]
+
+
 def test_hybrid_fusion_reports_missing_candidate_sources() -> None:
     result = compute_hybrid_fusion_candidates(
         as_of_date="2026-05-08",
