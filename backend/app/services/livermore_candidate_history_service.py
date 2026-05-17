@@ -7,14 +7,13 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-from backend.app.tasks.choice_stock_materialize import load_choice_stock_materialization_coverage
-
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
     VendorStatus,
     build_result_envelope,
 )
+from backend.app.tasks.choice_stock_materialize import load_choice_stock_materialization_coverage
 
 EMPTY_SOURCE_VERSION = "sv_livermore_candidate_history_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
@@ -24,10 +23,20 @@ CACHE_VERSION = "cv_livermore_candidate_history_v1"
 STRATEGY_SCORE_RESULT_KIND = "market_data.livermore.strategy_score"
 STRATEGY_SCORE_RULE_VERSION = "rv_livermore_strategy_score_v1"
 STRATEGY_SCORE_CACHE_VERSION = "cv_livermore_strategy_score_v1"
+STRATEGY_OPTIMIZATION_RESULT_KIND = "market_data.livermore.strategy_optimization"
+STRATEGY_OPTIMIZATION_RULE_VERSION = "rv_livermore_strategy_optimization_v1"
+STRATEGY_OPTIMIZATION_CACHE_VERSION = "cv_livermore_strategy_optimization_v1"
+CYCLE_PROXY_BACKTEST_RESULT_KIND = "market_data.livermore.cycle_proxy_backtest"
+CYCLE_PROXY_BACKTEST_RULE_VERSION = "rv_livermore_cycle_proxy_backtest_v1"
+CYCLE_PROXY_BACKTEST_CACHE_VERSION = "cv_livermore_cycle_proxy_backtest_v1"
+CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND = "market_data.livermore.candidate_history_portfolio_backtest"
+CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION = "rv_livermore_candidate_history_portfolio_backtest_v1"
+CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION = "cv_livermore_candidate_history_portfolio_backtest_v1"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
-_DEFAULT_SIGNAL_KINDS = ["stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
+_DEFAULT_SIGNAL_KINDS = ["hybrid_fusion", "stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
 _STRATEGY_LABELS = {
+    "hybrid_fusion": "融合策略",
     "stock_candidate": "趋势突破",
     "factor_screen": "多因子",
     "theme_breakout": "题材突变",
@@ -36,8 +45,31 @@ _STRATEGY_LABELS = {
 _HORIZON_LABELS = {
     "return_1d": "T+1",
     "return_5d": "T+5",
+    "return_10d": "T+10",
     "return_20d": "T+20",
 }
+_ENTRY_ALLOWED_STATES = {"WARM", "HOT"}
+_COMPLETION_HORIZONS = ("return_1d", "return_5d", "return_20d")
+_CYCLE_PROXY_SIGNAL_KIND = "stock_candidate"
+_CYCLE_PROXY_MAX_RANK = 6
+_CYCLE_PROXY_ALLOWED_MARKET_STATES = {"WARM", "HOT"}
+_PORTFOLIO_BACKTEST_SIGNAL_KIND = "stock_candidate"
+_PORTFOLIO_BACKTEST_MAX_RANK = 6
+_PORTFOLIO_BACKTEST_ALLOWED_MARKET_STATES = {"WARM", "HOT"}
+_PORTFOLIO_BACKTEST_BUY_COST_RATE = 0.0008
+_PORTFOLIO_BACKTEST_SELL_COST_RATE = 0.0013
+_CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS = [
+    "PMI",
+    "credit_impulse",
+    "price_spread",
+    "industry_profit_cycle",
+    "industry_revenue_cycle",
+    "fund_flow",
+    "turnover_persistence",
+    "northbound_flow",
+    "valuation_percentile_history",
+    "earnings_revision",
+]
 
 _SELECT_COLUMNS = (
     "snapshot_as_of_date",
@@ -49,9 +81,11 @@ _SELECT_COLUMNS = (
     "selection_close",
     "forward_trade_date_1d",
     "forward_trade_date_5d",
+    "forward_trade_date_10d",
     "forward_trade_date_20d",
     "return_1d",
     "return_5d",
+    "return_10d",
     "return_20d",
     "data_status",
     "formula_version",
@@ -66,6 +100,15 @@ _SELECT_COLUMNS = (
     "theme_rank",
     "stock_rank_in_theme",
     "sector_rank",
+    "market_state",
+    "abnormal_turnover",
+    "gap_norm",
+    "breakout_extension_norm",
+    "breakout_level",
+    "ema10",
+    "ma20",
+    "ma60",
+    "ma120",
     "strength_pctchange",
     "strength_turn",
     "strength_amplitude",
@@ -253,14 +296,23 @@ def livermore_candidate_history_strategy_score_envelope(
             snapshot_from=resolved_from,
             snapshot_to=resolved_to,
         )
+        row_dates = _snapshot_row_dates(items)
+        trade_dates = _resolve_replay_trade_dates(
+            conn,
+            tables=tables,
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+            row_dates=row_dates,
+        )
     finally:
         conn.close()
 
-    backtest_window_summary = livermore_candidate_history_backtest_window_summary(
+    backtest_window_summary = _build_backtest_window_summary_from_rows(
         duckdb_path=duckdb_path,
-        stock_code=None,
-        snapshot_from=resolved_from,
-        snapshot_to=resolved_to,
+        rows=items,
+        trade_dates=trade_dates,
+        history_table_present=True,
+        base_summary=_empty_backtest_window_summary(snapshot_from=resolved_from, snapshot_to=resolved_to),
     )
     if backtest_window_summary.get("status") in {"valid", "partial"}:
         scoring_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
@@ -281,6 +333,256 @@ def livermore_candidate_history_strategy_score_envelope(
         vendor_version=_first_nonempty_vendor_version(scoring_items or items) or EMPTY_VENDOR_VERSION,
         evidence_rows=len(scoring_items),
         quality_flag="ok" if scoring_items else "warning",
+    )
+
+
+def livermore_candidate_history_strategy_optimization_envelope(
+    *,
+    duckdb_path: str,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    current_market_state: str | None,
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, object]:
+    """Read candidate history and diagnose T+n strategy slices; DuckDB SELECT only."""
+    normalized_horizon = primary_horizon if primary_horizon in _HORIZON_LABELS else "return_5d"
+    path = Path(duckdb_path)
+    if not path.is_file():
+        resolved_to = _normalize_date_text(snapshot_to) or date.today().isoformat()
+        resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
+        payload = _build_strategy_optimization_payload(
+            items=[],
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+            current_market_state=current_market_state,
+            min_sample=min_sample,
+            primary_horizon=normalized_horizon,
+            backtest_window_summary=_empty_backtest_window_summary(
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+            ),
+        )
+        return _wrap_strategy_optimization_envelope(
+            payload=payload,
+            source_version=EMPTY_SOURCE_VERSION,
+            vendor_version=EMPTY_VENDOR_VERSION,
+            evidence_rows=0,
+            quality_flag="warning",
+        )
+
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        if TABLE_HIST not in tables:
+            resolved_to = _normalize_date_text(snapshot_to) or date.today().isoformat()
+            resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
+            payload = _build_strategy_optimization_payload(
+                items=[],
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+                current_market_state=current_market_state,
+                min_sample=min_sample,
+                primary_horizon=normalized_horizon,
+                backtest_window_summary=_empty_backtest_window_summary(
+                    snapshot_from=resolved_from,
+                    snapshot_to=resolved_to,
+                ),
+            )
+            return _wrap_strategy_optimization_envelope(
+                payload=payload,
+                source_version=EMPTY_SOURCE_VERSION,
+                vendor_version=EMPTY_VENDOR_VERSION,
+                evidence_rows=0,
+                quality_flag="warning",
+            )
+
+        resolved_to = _normalize_date_text(snapshot_to) or _latest_history_snapshot_date(conn) or date.today().isoformat()
+        resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
+        items = _load_backtest_window_rows(
+            conn,
+            stock_code=None,
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+        )
+        row_dates = _snapshot_row_dates(items)
+        trade_dates = _resolve_replay_trade_dates(
+            conn,
+            tables=tables,
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+            row_dates=row_dates,
+        )
+    finally:
+        conn.close()
+
+    backtest_window_summary = _build_backtest_window_summary_from_rows(
+        duckdb_path=duckdb_path,
+        rows=items,
+        trade_dates=trade_dates,
+        history_table_present=True,
+        base_summary=_empty_backtest_window_summary(snapshot_from=resolved_from, snapshot_to=resolved_to),
+    )
+    if backtest_window_summary.get("status") in {"valid", "partial"}:
+        optimizer_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
+    else:
+        optimizer_items = items
+    payload = _build_strategy_optimization_payload(
+        items=optimizer_items,
+        snapshot_from=resolved_from,
+        snapshot_to=resolved_to,
+        current_market_state=current_market_state,
+        min_sample=min_sample,
+        primary_horizon=normalized_horizon,
+        backtest_window_summary=backtest_window_summary,
+    )
+    return _wrap_strategy_optimization_envelope(
+        payload=payload,
+        source_version=_first_nonempty_source_version(optimizer_items or items),
+        vendor_version=_first_nonempty_vendor_version(optimizer_items or items) or EMPTY_VENDOR_VERSION,
+        evidence_rows=len(optimizer_items),
+        quality_flag="ok" if optimizer_items else "warning",
+    )
+
+
+def livermore_candidate_history_cycle_proxy_backtest_envelope(
+    *,
+    duckdb_path: str,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+) -> dict[str, object]:
+    """Build a point-in-time proxy NAV from completed stock-candidate rows; DuckDB SELECT only."""
+    path = Path(duckdb_path)
+    resolved_from = _normalize_date_text(snapshot_from)
+    resolved_to = _normalize_date_text(snapshot_to)
+    if not path.is_file():
+        payload = _build_cycle_proxy_backtest_payload(
+            items=[],
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+        )
+        return _wrap_cycle_proxy_backtest_envelope(
+            payload=payload,
+            source_version=EMPTY_SOURCE_VERSION,
+            vendor_version=EMPTY_VENDOR_VERSION,
+            evidence_rows=0,
+            quality_flag="warning",
+        )
+
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        if TABLE_HIST not in tables:
+            payload = _build_cycle_proxy_backtest_payload(
+                items=[],
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+            )
+            return _wrap_cycle_proxy_backtest_envelope(
+                payload=payload,
+                source_version=EMPTY_SOURCE_VERSION,
+                vendor_version=EMPTY_VENDOR_VERSION,
+                evidence_rows=0,
+                quality_flag="warning",
+            )
+        if resolved_to is None:
+            resolved_to = _latest_history_snapshot_date(conn)
+        rows = _load_backtest_window_rows(
+            conn,
+            stock_code=None,
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+        )
+    finally:
+        conn.close()
+
+    payload = _build_cycle_proxy_backtest_payload(
+        items=rows,
+        snapshot_from=resolved_from,
+        snapshot_to=resolved_to,
+    )
+    proxy_items = _cycle_proxy_items(rows)
+    return _wrap_cycle_proxy_backtest_envelope(
+        payload=payload,
+        source_version=_first_nonempty_source_version(proxy_items or rows),
+        vendor_version=_first_nonempty_vendor_version(proxy_items or rows) or EMPTY_VENDOR_VERSION,
+        evidence_rows=len(proxy_items),
+        quality_flag="ok" if proxy_items else "warning",
+    )
+
+
+def livermore_candidate_history_portfolio_backtest_envelope(
+    *,
+    duckdb_path: str,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+) -> dict[str, object]:
+    """Build a monthly candidate-history portfolio proxy from landed daily closes; DuckDB SELECT only."""
+    path = Path(duckdb_path)
+    resolved_from = _normalize_date_text(snapshot_from)
+    resolved_to = _normalize_date_text(snapshot_to)
+    if not path.is_file():
+        payload = _build_candidate_history_portfolio_backtest_payload(
+            items=[],
+            close_rows=[],
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+        )
+        return _wrap_candidate_history_portfolio_backtest_envelope(
+            payload=payload,
+            source_version=EMPTY_SOURCE_VERSION,
+            vendor_version=EMPTY_VENDOR_VERSION,
+            evidence_rows=0,
+            quality_flag="warning",
+        )
+
+    conn = duckdb.connect(str(path), read_only=True)
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        if TABLE_HIST not in tables or TABLE_OBS not in tables:
+            payload = _build_candidate_history_portfolio_backtest_payload(
+                items=[],
+                close_rows=[],
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+            )
+            return _wrap_candidate_history_portfolio_backtest_envelope(
+                payload=payload,
+                source_version=EMPTY_SOURCE_VERSION,
+                vendor_version=EMPTY_VENDOR_VERSION,
+                evidence_rows=0,
+                quality_flag="warning",
+            )
+        if resolved_to is None:
+            resolved_to = _latest_history_snapshot_date(conn)
+        rows = _load_backtest_window_rows(
+            conn,
+            stock_code=None,
+            snapshot_from=resolved_from,
+            snapshot_to=resolved_to,
+        )
+        monthly_rebalances = _candidate_history_portfolio_rebalance_rows(rows)
+        close_rows = _load_candidate_history_portfolio_close_rows(
+            conn,
+            rebalances=monthly_rebalances,
+            snapshot_to=resolved_to,
+        )
+    finally:
+        conn.close()
+
+    payload = _build_candidate_history_portfolio_backtest_payload(
+        items=rows,
+        close_rows=close_rows,
+        snapshot_from=resolved_from,
+        snapshot_to=resolved_to,
+    )
+    evidence_items = [row for rebalance in _candidate_history_portfolio_rebalance_rows(rows) for row in rebalance["items"]]
+    return _wrap_candidate_history_portfolio_backtest_envelope(
+        payload=payload,
+        source_version=_first_nonempty_source_version(evidence_items or rows),
+        vendor_version=_first_nonempty_vendor_version(evidence_items or rows) or EMPTY_VENDOR_VERSION,
+        evidence_rows=len(evidence_items),
+        quality_flag="ok" if payload["summary"] else "warning",
     )
 
 
@@ -328,6 +630,27 @@ def livermore_candidate_history_backtest_window_summary(
     finally:
         conn.close()
 
+    return _build_backtest_window_summary_from_rows(
+        duckdb_path=duckdb_path,
+        rows=rows,
+        trade_dates=trade_dates,
+        history_table_present=history_table_present,
+        base_summary=base_summary,
+    )
+
+
+def _snapshot_row_dates(rows: list[dict[str, Any]]) -> list[str]:
+    return sorted({str(row.get("snapshot_as_of_date") or "")[:10] for row in rows if row.get("snapshot_as_of_date")})
+
+
+def _build_backtest_window_summary_from_rows(
+    *,
+    duckdb_path: str,
+    rows: list[dict[str, Any]],
+    trade_dates: list[str],
+    history_table_present: bool,
+    base_summary: dict[str, Any],
+) -> dict[str, Any]:
     if not trade_dates:
         return base_summary
 
@@ -511,12 +834,11 @@ def _build_summary(
         "pending_count": _count_status(items, "pending"),
         "partial_halt_count": _count_status(items, "partial_halt"),
         "missing_forward_return_count": sum(
-            1
-            for item in items
-            if item.get("return_1d") is None or item.get("return_5d") is None or item.get("return_20d") is None
+            1 for item in items if any(item.get(horizon) is None for horizon in _COMPLETION_HORIZONS)
         ),
         "avg_return_1d": _avg_present(items, "return_1d"),
         "avg_return_5d": _avg_present(items, "return_5d"),
+        "avg_return_10d": _avg_present(items, "return_10d"),
         "avg_return_20d": _avg_present(items, "return_20d"),
         "horizon_stats": _build_horizon_stats(items),
         "by_signal_kind": _count_by_signal_kind(items),
@@ -554,15 +876,15 @@ def _build_decision_usable_stats(
         "pending_row_count": _count_status(usable_items, "pending"),
         "partial_halt_row_count": _count_status(usable_items, "partial_halt"),
         "missing_forward_return_count": sum(
-            1
-            for item in usable_items
-            if item.get("return_1d") is None or item.get("return_5d") is None or item.get("return_20d") is None
+            1 for item in usable_items if any(item.get(horizon) is None for horizon in _COMPLETION_HORIZONS)
         ),
         "avg_return_1d": _avg_present(usable_items, "return_1d"),
         "avg_return_5d": _avg_present(usable_items, "return_5d"),
+        "avg_return_10d": _avg_present(usable_items, "return_10d"),
         "avg_return_20d": _avg_present(usable_items, "return_20d"),
         "win_rate_1d": _win_rate_present(usable_items, "return_1d"),
         "win_rate_5d": _win_rate_present(usable_items, "return_5d"),
+        "win_rate_10d": _win_rate_present(usable_items, "return_10d"),
         "win_rate_20d": _win_rate_present(usable_items, "return_20d"),
         "by_signal_kind": _count_by_signal_kind(usable_items),
         "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(usable_items),
@@ -736,7 +1058,33 @@ def _win_rate_present(items: list[dict[str, Any]], key: str) -> float | None:
 
 
 def _build_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {key: _horizon_stat(items, key) for key in ("return_1d", "return_5d", "return_20d")}
+    values_by_key: dict[str, list[float]] = {key: [] for key in _HORIZON_LABELS}
+    for item in items:
+        for key, raw in item.items():
+            if key not in values_by_key:
+                continue
+            if raw is None:
+                continue
+            try:
+                values_by_key[key].append(float(raw))
+            except (TypeError, ValueError):
+                continue
+    return {
+        key: _horizon_stat_from_values(values, item_count=len(items))
+        for key, values in values_by_key.items()
+    }
+
+
+def _horizon_stat_from_values(values: list[float], *, item_count: int) -> dict[str, Any]:
+    positive_count = sum(1 for value in values if value > 0)
+    return {
+        "available_count": len(values),
+        "missing_count": item_count - len(values),
+        "positive_count": positive_count,
+        "non_positive_count": len(values) - positive_count,
+        "avg_return": round(sum(values) / len(values), 6) if values else None,
+        "win_rate": round(positive_count / len(values), 6) if values else None,
+    }
 
 
 def _build_signal_kind_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, Any]]]:
@@ -761,6 +1109,32 @@ def _build_market_state_signal_kind_horizon_stats(
             for signal_kind, rows in sorted(signal_groups.items())
         }
         for market_state, signal_groups in sorted(grouped.items())
+    }
+
+
+def _stock_candidate_state_scopes(items: list[dict[str, Any]]) -> dict[str, Any]:
+    stock_items = [item for item in items if _normalized_signal_kind(item) == "stock_candidate"]
+    entry_items: list[dict[str, Any]] = []
+    overheat_count = 0
+    unknown_count = 0
+    missing_turnover_count = 0
+    for item in stock_items:
+        market_state = _market_state_from_signal_evidence(item)
+        if market_state in _ENTRY_ALLOWED_STATES:
+            entry_items.append(item)
+        elif market_state == "OVERHEAT":
+            overheat_count += 1
+        elif market_state == "unknown":
+            unknown_count += 1
+        if _abnormal_turnover_value(item) is None:
+            missing_turnover_count += 1
+    total = len(stock_items)
+    return {
+        "stock_candidate_all_states": _build_horizon_stats(stock_items),
+        "stock_candidate_entry_allowed_states_only": _build_horizon_stats(entry_items),
+        "overheat_ratio": overheat_count / total if total else None,
+        "unknown_market_state_ratio": unknown_count / total if total else None,
+        "abnormal_turnover_missing_ratio": missing_turnover_count / total if total else None,
     }
 
 
@@ -832,7 +1206,1090 @@ def _build_strategy_score_payload(
         "backtest_window_summary": backtest_window_summary,
         "rows": _sort_strategy_score_rows(rows),
         "current_market_state_rows": current_rows,
+        "stock_candidate_state_scopes": _stock_candidate_state_scopes(items),
     }
+
+
+def _build_strategy_optimization_payload(
+    *,
+    items: list[dict[str, Any]],
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    current_market_state: str | None,
+    min_sample: int,
+    primary_horizon: str,
+    backtest_window_summary: dict[str, Any],
+) -> dict[str, Any]:
+    effective_min_sample = max(1, int(min_sample))
+    normalized_current_state = _normalized_text(current_market_state) or None
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        grouped.setdefault(_normalized_signal_kind(item), []).append(item)
+
+    signal_kinds = [
+        *[kind for kind in _DEFAULT_SIGNAL_KINDS if kind in grouped],
+        *sorted(kind for kind in grouped if kind not in _DEFAULT_SIGNAL_KINDS),
+    ]
+    if not signal_kinds:
+        signal_kinds = list(_DEFAULT_SIGNAL_KINDS)
+
+    strategy_summaries = _sort_strategy_optimization_summaries(
+        [
+            _strategy_optimization_summary(
+                signal_kind=signal_kind,
+                items=grouped.get(signal_kind, []),
+                min_sample=effective_min_sample,
+                primary_horizon=primary_horizon,
+            )
+            for signal_kind in signal_kinds
+        ]
+    )
+    slices = _sort_strategy_optimization_slices(
+        _build_strategy_optimization_slices(
+            items,
+            min_sample=effective_min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    recommendations = _strategy_optimization_recommendations(
+        strategy_summaries=strategy_summaries,
+        slices=slices,
+    )
+
+    return {
+        "as_of_date": snapshot_to,
+        "snapshot_from": snapshot_from,
+        "snapshot_to": snapshot_to,
+        "primary_horizon": primary_horizon,
+        "min_sample": effective_min_sample,
+        "current_market_state": normalized_current_state,
+        "backtest_window_summary": backtest_window_summary,
+        "strategy_summaries": strategy_summaries,
+        "slices": slices,
+        "recommendations": recommendations,
+        "pending_summary": _strategy_optimization_pending_summary(items, primary_horizon=primary_horizon),
+        "sample_maturity": _strategy_optimization_sample_maturity(
+            strategy_summaries=strategy_summaries,
+            slices=slices,
+            min_sample=effective_min_sample,
+            primary_horizon=primary_horizon,
+        ),
+    }
+
+
+def _build_cycle_proxy_backtest_payload(
+    *,
+    items: list[dict[str, Any]],
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+) -> dict[str, Any]:
+    proxy_items = _cycle_proxy_items(items)
+    nav_series = _build_cycle_proxy_nav_series(proxy_items)
+    summary = _build_cycle_proxy_summary(nav_series, candidate_rows=len(proxy_items))
+    return {
+        "status": "proxy" if summary is not None else "unsupported",
+        "full_strategy_status": "blocked_missing_inputs",
+        "proxy_signal_kind": _CYCLE_PROXY_SIGNAL_KIND,
+        "proxy_rule": (
+            "Equal-weight non-overlapping T+5 baskets of completed rank<=6 stock_candidate rows in WARM/HOT states, "
+            "re-entering only after the previous basket's latest realized T+5 exit date."
+        ),
+        "snapshot_from": snapshot_from,
+        "snapshot_to": snapshot_to,
+        "missing_full_strategy_inputs": list(_CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS),
+        "warnings": [
+            "This is a reduced proxy backtest, not the full A-share cycle-rotation strategy.",
+            "It uses daily candidate rows already persisted by the existing Livermore replay pipeline.",
+            "Transaction costs, slippage, benchmark-relative attribution, and the report's monthly core cadence are not modeled here.",
+        ],
+        "summary": summary,
+        "nav_series": nav_series,
+    }
+
+
+def _build_candidate_history_portfolio_backtest_payload(
+    *,
+    items: list[dict[str, Any]],
+    close_rows: list[dict[str, Any]],
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+) -> dict[str, Any]:
+    rebalances = _candidate_history_portfolio_rebalance_rows(items)
+    nav_series, rebalance_log = _build_candidate_history_portfolio_series(
+        rebalances=rebalances,
+        close_rows=close_rows,
+    )
+    summary = _build_candidate_history_portfolio_summary(
+        nav_series,
+        rebalance_log=rebalance_log,
+    )
+    return {
+        "status": "portfolio_proxy" if summary is not None else "unsupported",
+        "full_strategy_status": "blocked_missing_inputs",
+        "signal_kind": _PORTFOLIO_BACKTEST_SIGNAL_KIND,
+        "rebalance_rule": "first_available_monthly_snapshot",
+        "weighting_rule": "equal_weight_top_6",
+        "snapshot_from": snapshot_from,
+        "snapshot_to": snapshot_to,
+        "missing_full_strategy_inputs": list(_CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS),
+        "warnings": [
+            "This is a candidate-history portfolio proxy, not the full A-share cycle-rotation strategy.",
+            "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, daily close mark-to-market, and fixed transaction-cost assumptions.",
+            "It still lacks the report's macro, industry-cycle, fund-flow, valuation-history, and earnings-revision inputs.",
+        ],
+        "summary": summary,
+        "nav_series": nav_series,
+        "rebalance_log": rebalance_log,
+    }
+
+
+def _cycle_proxy_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    proxy_items: list[dict[str, Any]] = []
+    for item in items:
+        if _normalized_signal_kind(item) != _CYCLE_PROXY_SIGNAL_KIND:
+            continue
+        if str(item.get("data_status") or "").strip() != "complete":
+            continue
+        if _candidate_rank(item) is None or _candidate_rank(item) > _CYCLE_PROXY_MAX_RANK:
+            continue
+        if _market_state_from_signal_evidence(item) not in _CYCLE_PROXY_ALLOWED_MARKET_STATES:
+            continue
+        if item.get("return_1d") is None:
+            continue
+        proxy_items.append(item)
+    return proxy_items
+
+
+def _candidate_history_portfolio_rebalance_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows_by_date: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        if _normalized_signal_kind(item) != _PORTFOLIO_BACKTEST_SIGNAL_KIND:
+            continue
+        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
+        if snapshot_date:
+            rows_by_date.setdefault(snapshot_date, []).append(item)
+
+    first_dates_by_month: dict[str, str] = {}
+    for snapshot_date in sorted(rows_by_date):
+        month_key = snapshot_date[:7]
+        first_dates_by_month.setdefault(month_key, snapshot_date)
+
+    rebalances: list[dict[str, Any]] = []
+    for month_key in sorted(first_dates_by_month):
+        snapshot_date = first_dates_by_month[month_key]
+        rows = sorted(
+            rows_by_date[snapshot_date],
+            key=lambda item: (_candidate_rank(item) or 999999, str(item.get("stock_code") or "")),
+        )
+        market_state = _market_state_from_signal_evidence(rows[0]) if rows else "unknown"
+        eligible_items = [
+            item
+            for item in rows
+            if _candidate_rank(item) is not None
+            and _candidate_rank(item) <= _PORTFOLIO_BACKTEST_MAX_RANK
+            and _market_state_from_signal_evidence(item) in _PORTFOLIO_BACKTEST_ALLOWED_MARKET_STATES
+        ]
+        rebalances.append(
+            {
+                "date": snapshot_date,
+                "month": month_key,
+                "market_state": market_state,
+                "items": eligible_items[:_PORTFOLIO_BACKTEST_MAX_RANK],
+            }
+        )
+    return rebalances
+
+
+def _load_candidate_history_portfolio_close_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    rebalances: list[dict[str, Any]],
+    snapshot_to: str | None,
+) -> list[dict[str, Any]]:
+    stock_codes = sorted(
+        {
+            str(item.get("stock_code") or "").strip()
+            for rebalance in rebalances
+            for item in rebalance["items"]
+            if str(item.get("stock_code") or "").strip()
+        }
+    )
+    if not rebalances or not stock_codes:
+        return []
+    start_date = str(rebalances[0]["date"])
+    placeholders = ", ".join("?" for _ in stock_codes)
+    where_to = "and trade_date <= ?" if snapshot_to else ""
+    bindings: list[object] = [*stock_codes, start_date]
+    if snapshot_to:
+        bindings.append(snapshot_to)
+    rows = conn.execute(
+        f"""
+        select trade_date, stock_code, close_value
+        from {TABLE_OBS}
+        where stock_code in ({placeholders})
+          and trade_date >= ?
+          {where_to}
+        order by trade_date asc, stock_code asc
+        """,
+        bindings,
+    ).fetchall()
+    return [
+        {
+            "trade_date": str(trade_date)[:10],
+            "stock_code": str(stock_code),
+            "close_value": float(close_value),
+        }
+        for trade_date, stock_code, close_value in rows
+        if close_value is not None
+    ]
+
+
+def _build_candidate_history_portfolio_series(
+    *,
+    rebalances: list[dict[str, Any]],
+    close_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not rebalances or not close_rows:
+        return [], []
+
+    closes_by_date: dict[str, dict[str, float]] = {}
+    for row in close_rows:
+        date_key = str(row["trade_date"])
+        closes_by_date.setdefault(date_key, {})[str(row["stock_code"])] = float(row["close_value"])
+
+    rebalance_by_date = {str(rebalance["date"]): rebalance for rebalance in rebalances}
+    positions: dict[str, float] = {}
+    cash = 1.0
+    nav = 1.0
+    nav_series: list[dict[str, Any]] = []
+    rebalance_log: list[dict[str, Any]] = []
+
+    for trade_date in sorted(closes_by_date):
+        closes = closes_by_date[trade_date]
+        market_value_before = sum(shares * closes.get(code, 0.0) for code, shares in positions.items())
+        nav_before_rebalance = cash + market_value_before
+        rebalance = rebalance_by_date.get(trade_date)
+        if rebalance is not None:
+            target_codes = [
+                str(item.get("stock_code") or "").strip()
+                for item in rebalance["items"]
+                if str(item.get("stock_code") or "").strip() in closes
+            ]
+            target_weight = 1.0 / len(target_codes) if target_codes else 0.0
+            current_values = {code: positions.get(code, 0.0) * closes.get(code, 0.0) for code in set(positions) | set(target_codes)}
+            target_values = {code: nav_before_rebalance * target_weight for code in target_codes}
+            buy_value = sum(max(target_values.get(code, 0.0) - current_values.get(code, 0.0), 0.0) for code in set(current_values) | set(target_values))
+            sell_value = sum(max(current_values.get(code, 0.0) - target_values.get(code, 0.0), 0.0) for code in set(current_values) | set(target_values))
+            buy_turnover = buy_value / nav_before_rebalance if nav_before_rebalance > 0 else 0.0
+            sell_turnover = sell_value / nav_before_rebalance if nav_before_rebalance > 0 else 0.0
+            cost = buy_value * _PORTFOLIO_BACKTEST_BUY_COST_RATE + sell_value * _PORTFOLIO_BACKTEST_SELL_COST_RATE
+            investable_nav = max(nav_before_rebalance - cost, 0.0)
+            if target_codes:
+                target_value_after_cost = investable_nav / len(target_codes)
+                positions = {code: target_value_after_cost / closes[code] for code in target_codes if closes[code] > 0}
+                cash = 0.0
+            else:
+                positions = {}
+                cash = investable_nav
+            nav = cash + sum(shares * closes.get(code, 0.0) for code, shares in positions.items())
+            rebalance_log.append(
+                {
+                    "date": trade_date,
+                    "market_state": rebalance["market_state"],
+                    "target_count": len(target_codes),
+                    "buy_turnover": round(buy_turnover, 6),
+                    "sell_turnover": round(sell_turnover, 6),
+                    "transaction_cost": round(cost, 6),
+                }
+            )
+        else:
+            nav = cash + market_value_before
+        nav_series.append(
+            {
+                "date": trade_date,
+                "nav": round(nav, 6),
+                "cash_weight": round(cash / nav, 6) if nav > 0 else 0.0,
+                "holding_count": len(positions),
+            }
+        )
+    return nav_series, rebalance_log
+
+
+def _build_candidate_history_portfolio_summary(
+    nav_series: list[dict[str, Any]],
+    *,
+    rebalance_log: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not nav_series or not rebalance_log:
+        return None
+    terminal_nav = float(nav_series[-1]["nav"])
+    cumulative_return = terminal_nav - 1.0
+    sample_days = max(len(nav_series) - 1, 0)
+    annualized_return = terminal_nav ** (252 / sample_days) - 1 if sample_days > 0 and terminal_nav > 0 else None
+    buy_turnover = sum(float(row["buy_turnover"]) for row in rebalance_log)
+    sell_turnover = sum(float(row["sell_turnover"]) for row in rebalance_log)
+    transaction_cost = sum(float(row["transaction_cost"]) for row in rebalance_log)
+    return {
+        "sample_days": sample_days,
+        "candidate_rows": sum(int(row["target_count"]) for row in rebalance_log),
+        "rebalance_count": len(rebalance_log),
+        "invested_rebalance_count": sum(1 for row in rebalance_log if int(row["target_count"]) > 0),
+        "cash_rebalance_count": sum(1 for row in rebalance_log if int(row["target_count"]) == 0),
+        "gross_turnover": round(buy_turnover + sell_turnover, 6),
+        "cost_drag": round(transaction_cost, 6),
+        "cumulative_return": round(cumulative_return, 6),
+        "annualized_return": round(annualized_return, 6) if annualized_return is not None else None,
+        "max_gain": _max_gain_interval(nav_series),
+        "max_drawdown": _max_drawdown_interval(nav_series),
+    }
+
+
+def _build_cycle_proxy_nav_series(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows_by_date: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
+        if snapshot_date:
+            rows_by_date.setdefault(snapshot_date, []).append(item)
+
+    nav = 1.0
+    next_entry_after: str | None = None
+    series: list[dict[str, Any]] = []
+    for snapshot_date, rows in sorted(rows_by_date.items()):
+        if next_entry_after is not None and snapshot_date <= next_entry_after:
+            continue
+        values = _present_float_values(rows, "return_5d")
+        if not values:
+            continue
+        period_return = sum(values) / len(values)
+        exit_dates = [
+            str(row.get("forward_trade_date_5d") or "").strip()[:10]
+            for row in rows
+            if str(row.get("forward_trade_date_5d") or "").strip()
+        ]
+        if not exit_dates:
+            continue
+        exit_date = max(exit_dates)
+        nav *= 1 + period_return
+        series.append(
+            {
+                "date": snapshot_date,
+                "exit_date": exit_date,
+                "period_return": round(period_return, 6),
+                "nav": round(nav, 6),
+                "candidate_count": len(values),
+            }
+        )
+        next_entry_after = exit_date
+    return series
+
+
+def _build_cycle_proxy_summary(
+    nav_series: list[dict[str, Any]],
+    *,
+    candidate_rows: int,
+) -> dict[str, Any] | None:
+    if not nav_series:
+        return None
+
+    terminal_nav = float(nav_series[-1]["nav"])
+    cumulative_return = terminal_nav - 1
+    sample_days = len(nav_series)
+    annualized_return = terminal_nav ** (252 / (sample_days * 5)) - 1 if sample_days > 0 else None
+    max_gain = _max_gain_interval(nav_series)
+    max_drawdown = _max_drawdown_interval(nav_series)
+    return {
+        "sample_days": sample_days,
+        "candidate_rows": candidate_rows,
+        "cumulative_return": round(cumulative_return, 6),
+        "annualized_return": round(annualized_return, 6) if annualized_return is not None else None,
+        "max_gain": max_gain,
+        "max_drawdown": max_drawdown,
+    }
+
+
+def _max_gain_interval(nav_series: list[dict[str, Any]]) -> dict[str, Any]:
+    best_return = float("-inf")
+    trough_nav = 1.0
+    trough_date = str(nav_series[0]["date"])
+    best_start = trough_date
+    best_end = str(nav_series[0].get("exit_date") or trough_date)
+    for row in nav_series:
+        nav = float(row["nav"])
+        current_date = str(row.get("exit_date") or row["date"])
+        gain = nav / trough_nav - 1 if trough_nav > 0 else 0.0
+        if gain > best_return:
+            best_return = gain
+            best_start = trough_date
+            best_end = current_date
+        if nav < trough_nav:
+            trough_nav = nav
+            trough_date = current_date
+    return {
+        "return": round(max(best_return, 0.0), 6),
+        "start_date": best_start,
+        "end_date": best_end,
+    }
+
+
+def _max_drawdown_interval(nav_series: list[dict[str, Any]]) -> dict[str, Any]:
+    peak_nav = 1.0
+    peak_date = str(nav_series[0]["date"])
+    worst_return = 0.0
+    worst_peak_date = peak_date
+    worst_trough_date = peak_date
+    for row in nav_series:
+        nav = float(row["nav"])
+        current_date = str(row.get("exit_date") or row["date"])
+        if nav > peak_nav:
+            peak_nav = nav
+            peak_date = current_date
+        drawdown = nav / peak_nav - 1 if peak_nav > 0 else 0.0
+        if drawdown < worst_return:
+            worst_return = drawdown
+            worst_peak_date = peak_date
+            worst_trough_date = current_date
+    return {
+        "return": round(worst_return, 6),
+        "peak_date": worst_peak_date,
+        "trough_date": worst_trough_date,
+    }
+
+
+def _strategy_optimization_summary(
+    *,
+    signal_kind: str,
+    items: list[dict[str, Any]],
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    stats = _build_horizon_stats(items)
+    recommendation = _optimization_recommendation(
+        primary_stats=stats[primary_horizon],
+        min_sample=min_sample,
+        primary_horizon=primary_horizon,
+    )
+    return {
+        "summary_key": f"strategy:{signal_kind}",
+        "signal_kind": signal_kind,
+        "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        "sample_status": "sufficient" if recommendation["action"] != "pending_more_history" else "insufficient",
+        "stats": stats,
+        "date_weighted_stats": _build_date_weighted_horizon_stats(items),
+        "recommendation": recommendation,
+    }
+
+
+def _build_strategy_optimization_slices(
+    items: list[dict[str, Any]],
+    *,
+    min_sample: int,
+    primary_horizon: str,
+) -> list[dict[str, Any]]:
+    evidence_by_item = _signal_evidence_by_item(items)
+    factor_items = [item for item in items if _normalized_signal_kind(item) == "factor_screen"]
+    trend_items = [item for item in items if _normalized_signal_kind(item) == "stock_candidate"]
+    theme_items = [item for item in items if _normalized_signal_kind(item) == "theme_breakout"]
+
+    slices: list[dict[str, Any]] = []
+    slices.extend(
+        _rank_optimization_slices(
+            signal_kind="factor_screen",
+            dimension="rank",
+            items=factor_items,
+            buckets=[(1, 10, "1-10"), (11, 20, "11-20"), (21, 30, "21-30")],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _rank_optimization_slices(
+            signal_kind="stock_candidate",
+            dimension="rank",
+            items=trend_items,
+            buckets=[(1, 10, "1-10"), (11, 20, "11-20"), (21, 30, "21-30")],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="stock_candidate",
+            dimension="market_state",
+            items=trend_items,
+            label_prefix="market state",
+            classifier=lambda item: _market_state_from_signal_evidence(item, evidence_by_item=evidence_by_item),
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="stock_candidate",
+            dimension="fundamental_overlay",
+            items=trend_items,
+            label_prefix="基本面 overlay",
+            classifier=lambda item: _fundamental_overlay_status(item, evidence_by_item=evidence_by_item),
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="stock_candidate",
+            dimension="abnormal_turnover",
+            items=trend_items,
+            label_prefix="换手异动",
+            classifier=lambda item: _abnormal_turnover_bucket(
+                _number_from_item_or_evidence(item, "abnormal_turnover", evidence_by_item=evidence_by_item)
+            ),
+            ordered_labels=["<1", "1-2", "2-3.5", ">3.5", "unknown"],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="stock_candidate",
+            dimension="gap_norm",
+            items=trend_items,
+            label_prefix="跳空",
+            classifier=lambda item: _gap_norm_bucket(
+                _number_from_item_or_evidence(item, "gap_norm", evidence_by_item=evidence_by_item)
+            ),
+            ordered_labels=["<=0", "0-0.2", "0.2-0.45", ">0.45", "unknown"],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="stock_candidate",
+            dimension="breakout_extension_norm",
+            items=trend_items,
+            label_prefix="突破延展",
+            classifier=lambda item: _breakout_extension_bucket(
+                _number_from_item_or_evidence(item, "breakout_extension_norm", evidence_by_item=evidence_by_item)
+            ),
+            ordered_labels=["<=0.1", "0.1-0.25", "0.25-0.35", ">0.35", "unknown"],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _rank_value_optimization_slices(
+            signal_kind="theme_breakout",
+            dimension="theme_rank",
+            items=theme_items,
+            label_prefix="theme rank",
+            value_key="theme_rank",
+            buckets=[(1, 3, "1-3"), (4, 10, "4-10"), (11, None, "11+")],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _rank_value_optimization_slices(
+            signal_kind="theme_breakout",
+            dimension="stock_rank_in_theme",
+            items=theme_items,
+            label_prefix="stock rank",
+            value_key="stock_rank_in_theme",
+            buckets=[(1, 3, "1-3"), (4, 5, "4-5"), (6, None, "6+")],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="theme_breakout",
+            dimension="movement_event_count",
+            items=theme_items,
+            label_prefix="题材异动事件",
+            classifier=lambda item: _movement_event_bucket(
+                _integer_from_item_or_evidence(item, "movement_event_count", evidence_by_item=evidence_by_item)
+            ),
+            ordered_labels=["0", "1-5", "6-10", ">10", "unknown"],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    slices.extend(
+        _categorical_optimization_slices(
+            signal_kind="theme_breakout",
+            dimension="stock_movement_event_count",
+            items=theme_items,
+            label_prefix="个股异动事件",
+            classifier=lambda item: _stock_movement_event_bucket(
+                _integer_from_item_or_evidence(item, "stock_movement_event_count", evidence_by_item=evidence_by_item)
+            ),
+            ordered_labels=["0", "1", "2+", "unknown"],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+    )
+    return slices
+
+
+def _rank_optimization_slices(
+    *,
+    signal_kind: str,
+    dimension: str,
+    items: list[dict[str, Any]],
+    buckets: list[tuple[int, int | None, str]],
+    min_sample: int,
+    primary_horizon: str,
+) -> list[dict[str, Any]]:
+    return _rank_value_optimization_slices(
+        signal_kind=signal_kind,
+        dimension=dimension,
+        items=items,
+        label_prefix="rank",
+        value_key="candidate_rank",
+        buckets=buckets,
+        min_sample=min_sample,
+        primary_horizon=primary_horizon,
+    )
+
+
+def _rank_value_optimization_slices(
+    *,
+    signal_kind: str,
+    dimension: str,
+    items: list[dict[str, Any]],
+    label_prefix: str,
+    value_key: str,
+    buckets: list[tuple[int, int | None, str]],
+    min_sample: int,
+    primary_horizon: str,
+) -> list[dict[str, Any]]:
+    slices: list[dict[str, Any]] = []
+    for rank_from, rank_to, label in buckets:
+        bucket_items = [
+            item
+            for item in items
+            if (rank := _integer_from_item_or_evidence(item, value_key)) is not None
+            and rank >= rank_from
+            and (rank_to is None or rank <= rank_to)
+        ]
+        if not bucket_items:
+            continue
+        slices.append(
+            _strategy_optimization_slice(
+                signal_kind=signal_kind,
+                dimension=dimension,
+                bucket_key=label,
+                label=f"{label_prefix} {label}",
+                items=bucket_items,
+                min_sample=min_sample,
+                primary_horizon=primary_horizon,
+            )
+        )
+    return slices
+
+
+def _categorical_optimization_slices(
+    *,
+    signal_kind: str,
+    dimension: str,
+    items: list[dict[str, Any]],
+    label_prefix: str,
+    classifier: Any,
+    min_sample: int,
+    primary_horizon: str,
+    ordered_labels: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        label = _normalized_text(classifier(item)) or "unknown"
+        grouped.setdefault(label, []).append(item)
+    labels = ordered_labels or sorted(grouped)
+    labels = [label for label in labels if label in grouped]
+    labels.extend(sorted(label for label in grouped if label not in labels))
+    return [
+        _strategy_optimization_slice(
+            signal_kind=signal_kind,
+            dimension=dimension,
+            bucket_key=label,
+            label=f"{label_prefix} {label}",
+            items=grouped[label],
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        )
+        for label in labels
+    ]
+
+
+def _strategy_optimization_slice(
+    *,
+    signal_kind: str,
+    dimension: str,
+    bucket_key: str,
+    label: str,
+    items: list[dict[str, Any]],
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    stats = _build_horizon_stats(items)
+    recommendation = _optimization_recommendation(
+        primary_stats=stats[primary_horizon],
+        min_sample=min_sample,
+        primary_horizon=primary_horizon,
+    )
+    return {
+        "slice_key": f"{signal_kind}:{dimension}:{_slug_text(bucket_key)}",
+        "signal_kind": signal_kind,
+        "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        "dimension": dimension,
+        "bucket": bucket_key,
+        "label": label,
+        "sample_status": "sufficient" if recommendation["action"] != "pending_more_history" else "insufficient",
+        "stats": stats,
+        "date_weighted_stats": _build_date_weighted_horizon_stats(items),
+        "recommendation": recommendation,
+    }
+
+
+def _optimization_recommendation(
+    *,
+    primary_stats: dict[str, Any],
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    available_count = int(primary_stats.get("available_count") or 0)
+    avg_return = primary_stats.get("avg_return")
+    win_rate = primary_stats.get("win_rate")
+    score = _optimization_score(avg_return=avg_return, win_rate=win_rate)
+    horizon_label = _HORIZON_LABELS[primary_horizon]
+    if available_count < min_sample or avg_return is None or win_rate is None:
+        return {
+            "action": "pending_more_history",
+            "priority_label": "样本不足",
+            "reason": f"{horizon_label} 可用样本 {available_count}/{min_sample}，样本不足，只展示不作为调参依据。",
+            "primary_horizon": primary_horizon,
+            "available_count": available_count,
+            "min_sample": min_sample,
+            "avg_return": avg_return,
+            "win_rate": win_rate,
+            "score": score,
+        }
+
+    avg = float(avg_return)
+    win = float(win_rate)
+    if avg > 0 and win >= 0.5:
+        action = "promote"
+        priority_label = "优先复核"
+        reason = f"{horizon_label} 样本 {available_count}，均值 {avg * 100:+.2f}%，胜率 {win * 100:.1f}%，优先复核排序。"
+    elif avg <= 0 or win < 0.45:
+        action = "downgrade"
+        priority_label = "降权观察"
+        reason = f"{horizon_label} 样本 {available_count}，均值 {avg * 100:+.2f}%，胜率 {win * 100:.1f}%，降权观察。"
+    else:
+        action = "observe"
+        priority_label = "继续观察"
+        reason = f"{horizon_label} 样本 {available_count}，均值 {avg * 100:+.2f}%，胜率 {win * 100:.1f}%，信号不够强。"
+    return {
+        "action": action,
+        "priority_label": priority_label,
+        "reason": reason,
+        "primary_horizon": primary_horizon,
+        "available_count": available_count,
+        "min_sample": min_sample,
+        "avg_return": avg_return,
+        "win_rate": win_rate,
+        "score": score,
+    }
+
+
+def _optimization_score(*, avg_return: Any, win_rate: Any) -> float | None:
+    if avg_return is None or win_rate is None:
+        return None
+    try:
+        return round(float(win_rate) * 100 + float(avg_return) * 100, 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_date_weighted_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    by_horizon_date: dict[str, dict[str, list[float]]] = {key: {} for key in _HORIZON_LABELS}
+    for item in items:
+        snapshot_date = str(item.get("snapshot_as_of_date") or "").strip()[:10]
+        if not snapshot_date:
+            continue
+        for key, by_date in by_horizon_date.items():
+            value = _float_value(item.get(key))
+            if value is None:
+                continue
+            by_date.setdefault(snapshot_date, []).append(value)
+    return {
+        key: _date_weighted_horizon_stat_from_daily(by_date)
+        for key, by_date in by_horizon_date.items()
+    }
+
+
+def _date_weighted_horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    by_date: dict[str, list[float]] = {}
+    for item in items:
+        snapshot_date = str(item.get("snapshot_as_of_date") or "").strip()[:10]
+        if not snapshot_date:
+            continue
+        value = _float_value(item.get(key))
+        if value is None:
+            continue
+        by_date.setdefault(snapshot_date, []).append(value)
+    return _date_weighted_horizon_stat_from_daily(by_date)
+
+
+def _date_weighted_horizon_stat_from_daily(by_date: dict[str, list[float]]) -> dict[str, Any]:
+    daily_returns = [sum(values) / len(values) for values in by_date.values() if values]
+    return {
+        "available_day_count": len(daily_returns),
+        "candidate_row_count": sum(len(values) for values in by_date.values()),
+        "avg_return": round(sum(daily_returns) / len(daily_returns), 6) if daily_returns else None,
+        "positive_day_rate": round(sum(1 for value in daily_returns if value > 0) / len(daily_returns), 6)
+        if daily_returns
+        else None,
+        "worst_day_return": round(min(daily_returns), 6) if daily_returns else None,
+        "best_day_return": round(max(daily_returns), 6) if daily_returns else None,
+    }
+
+
+def _strategy_optimization_pending_summary(items: list[dict[str, Any]], *, primary_horizon: str) -> dict[str, Any]:
+    pending_items = [item for item in items if item.get(primary_horizon) is None]
+    pending_dates = sorted(
+        {
+            str(item.get("snapshot_as_of_date") or "").strip()[:10]
+            for item in pending_items
+            if str(item.get("snapshot_as_of_date") or "").strip()
+        }
+    )
+    latest_pending_date = pending_dates[-1] if pending_dates else None
+    horizon_label = _HORIZON_LABELS[primary_horizon]
+    if pending_items:
+        message = (
+            f"{horizon_label} 仍有 {len(pending_items)} 条收益待成熟"
+            + (f"，最新 pending 日期 {latest_pending_date}" if latest_pending_date else "")
+            + "。"
+        )
+    else:
+        message = f"{horizon_label} 已成熟样本内暂无 pending 收益。"
+    return {
+        "primary_horizon": primary_horizon,
+        "pending_rows": len(pending_items),
+        "pending_dates": pending_dates,
+        "latest_pending_date": latest_pending_date,
+        "message": message,
+    }
+
+
+def _strategy_optimization_sample_maturity(
+    *,
+    strategy_summaries: list[dict[str, Any]],
+    slices: list[dict[str, Any]],
+    min_sample: int,
+    primary_horizon: str,
+) -> dict[str, Any]:
+    all_items = [*strategy_summaries, *slices]
+    sufficient_count = sum(1 for item in all_items if item.get("sample_status") == "sufficient")
+    insufficient_count = sum(1 for item in all_items if item.get("sample_status") != "sufficient")
+    return {
+        "status": "sufficient" if sufficient_count else "insufficient",
+        "primary_horizon": primary_horizon,
+        "min_sample": min_sample,
+        "sufficient_count": sufficient_count,
+        "insufficient_count": insufficient_count,
+    }
+
+
+def _strategy_optimization_recommendations(
+    *,
+    strategy_summaries: list[dict[str, Any]],
+    slices: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    recommendations: list[dict[str, Any]] = []
+    for row in strategy_summaries:
+        recommendations.append(
+            {
+                **cast(dict[str, Any], row["recommendation"]),
+                "target_type": "strategy",
+                "target_key": row["summary_key"],
+                "signal_kind": row["signal_kind"],
+                "label": row["strategy_label"],
+            }
+        )
+    for row in slices:
+        recommendations.append(
+            {
+                **cast(dict[str, Any], row["recommendation"]),
+                "target_type": "slice",
+                "target_key": row["slice_key"],
+                "signal_kind": row["signal_kind"],
+                "label": row["label"],
+            }
+        )
+    return sorted(recommendations, key=_strategy_optimization_recommendation_sort_key)
+
+
+def _sort_strategy_optimization_summaries(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=_strategy_optimization_row_sort_key)
+
+
+def _sort_strategy_optimization_slices(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=_strategy_optimization_row_sort_key)
+
+
+def _strategy_optimization_row_sort_key(row: dict[str, Any]) -> tuple[int, float, int, str]:
+    recommendation = cast(dict[str, Any], row.get("recommendation") or {})
+    score = recommendation.get("score")
+    signal_kind = str(row.get("signal_kind") or "")
+    return (
+        0 if score is not None else 1,
+        -(float(score) if score is not None else -1.0),
+        _strategy_order_index(signal_kind),
+        str(row.get("slice_key") or row.get("summary_key") or ""),
+    )
+
+
+def _strategy_optimization_recommendation_sort_key(row: dict[str, Any]) -> tuple[int, float, str]:
+    action_order = {
+        "promote": 0,
+        "downgrade": 1,
+        "observe": 2,
+        "pending_more_history": 3,
+    }
+    score = row.get("score")
+    return (
+        action_order.get(str(row.get("action") or ""), 9),
+        -(float(score) if score is not None else -1.0),
+        str(row.get("target_key") or ""),
+    )
+
+
+def _strategy_order_index(signal_kind: str) -> int:
+    return _DEFAULT_SIGNAL_KINDS.index(signal_kind) if signal_kind in _DEFAULT_SIGNAL_KINDS else 999
+
+
+def _fundamental_overlay_status(
+    item: dict[str, Any],
+    *,
+    evidence_by_item: dict[int, dict[str, Any]] | None = None,
+) -> str:
+    evidence = _signal_evidence(item, evidence_by_item=evidence_by_item)
+    value = _normalized_text(evidence.get("fundamental_overlay_status"))
+    if value:
+        return value
+    overlay = evidence.get("fundamental_overlay")
+    if isinstance(overlay, dict):
+        value = _normalized_text(overlay.get("status"))
+        if value:
+            return value
+    return "unknown"
+
+
+def _number_from_item_or_evidence(
+    item: dict[str, Any],
+    key: str,
+    *,
+    evidence_by_item: dict[int, dict[str, Any]] | None = None,
+) -> float | None:
+    raw = item.get(key)
+    if raw is None:
+        raw = _signal_evidence(item, evidence_by_item=evidence_by_item).get(key)
+    return _float_value(raw)
+
+
+def _integer_from_item_or_evidence(
+    item: dict[str, Any],
+    key: str,
+    *,
+    evidence_by_item: dict[int, dict[str, Any]] | None = None,
+) -> int | None:
+    raw = item.get(key)
+    if raw is None:
+        raw = _signal_evidence(item, evidence_by_item=evidence_by_item).get(key)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _abnormal_turnover_bucket(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    if value < 1:
+        return "<1"
+    if value < 2:
+        return "1-2"
+    if value <= 3.5:
+        return "2-3.5"
+    return ">3.5"
+
+
+def _gap_norm_bucket(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    if value <= 0:
+        return "<=0"
+    if value <= 0.2:
+        return "0-0.2"
+    if value <= 0.45:
+        return "0.2-0.45"
+    return ">0.45"
+
+
+def _breakout_extension_bucket(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    if value <= 0.1:
+        return "<=0.1"
+    if value <= 0.25:
+        return "0.1-0.25"
+    if value <= 0.35:
+        return "0.25-0.35"
+    return ">0.35"
+
+
+def _movement_event_bucket(value: int | None) -> str:
+    if value is None:
+        return "unknown"
+    if value <= 0:
+        return "0"
+    if value <= 5:
+        return "1-5"
+    if value <= 10:
+        return "6-10"
+    return ">10"
+
+
+def _stock_movement_event_bucket(value: int | None) -> str:
+    if value is None:
+        return "unknown"
+    if value <= 0:
+        return "0"
+    if value == 1:
+        return "1"
+    return "2+"
+
+
+def _slug_text(value: str) -> str:
+    return (
+        str(value or "unknown")
+        .strip()
+        .replace(" ", "_")
+        .replace("<=", "lte")
+        .replace(">=", "gte")
+        .replace("<", "lt")
+        .replace(">", "gt")
+        .replace("+", "plus")
+    )
 
 
 def _strategy_score_row(
@@ -1146,13 +2603,14 @@ def _maturity_diagnostics(
     snapshot_groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
-        if not snapshot_date or item.get(primary_horizon) is None:
+        if not snapshot_date:
             continue
         snapshot_groups.setdefault(snapshot_date, []).append(item)
 
     snapshot_stats = [
         _snapshot_maturity_stat(snapshot_date, snapshot_items, primary_horizon=primary_horizon)
         for snapshot_date, snapshot_items in sorted(snapshot_groups.items())
+        if any(item.get(primary_horizon) is not None for item in snapshot_items)
     ]
     mature_count = len(snapshot_stats)
     status = "sufficient" if mature_count >= min_mature_snapshot_count else "narrow"
@@ -1169,7 +2627,7 @@ def _maturity_diagnostics(
         "min_mature_snapshot_count": min_mature_snapshot_count,
         "mature_snapshot_count": mature_count,
         "snapshot_stats": snapshot_stats,
-        "tracked_snapshots": _tracked_snapshot_stats(items),
+        "tracked_snapshots": _tracked_snapshot_stats_from_groups(snapshot_groups),
         "worst_snapshot": _worst_snapshot_stat(snapshot_stats),
     }
 
@@ -1181,6 +2639,12 @@ def _tracked_snapshot_stats(items: list[dict[str, Any]]) -> list[dict[str, Any]]
         if not snapshot_date:
             continue
         snapshot_groups.setdefault(snapshot_date, []).append(item)
+    return _tracked_snapshot_stats_from_groups(snapshot_groups)
+
+
+def _tracked_snapshot_stats_from_groups(
+    snapshot_groups: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
     return [
         _tracked_snapshot_stat(snapshot_date, snapshot_items)
         for snapshot_date, snapshot_items in sorted(snapshot_groups.items())
@@ -1190,8 +2654,8 @@ def _tracked_snapshot_stats(items: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _tracked_snapshot_stat(snapshot_date: str, items: list[dict[str, Any]]) -> dict[str, Any]:
     candidate_count = len(items)
     horizons: dict[str, dict[str, Any]] = {}
-    for horizon in _HORIZON_LABELS:
-        stat = _horizon_stat(items, horizon)
+    horizon_stats = _build_horizon_stats(items)
+    for horizon, stat in horizon_stats.items():
         available_count = int(stat["available_count"])
         if available_count >= candidate_count and candidate_count > 0:
             status = "complete"
@@ -1315,8 +2779,15 @@ def _normalized_signal_kind(item: dict[str, Any]) -> str:
     return str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
 
 
-def _market_state_from_signal_evidence(item: dict[str, Any]) -> str:
-    evidence = _parse_signal_evidence_json(item.get("signal_evidence_json"))
+def _market_state_from_signal_evidence(
+    item: dict[str, Any],
+    *,
+    evidence_by_item: dict[int, dict[str, Any]] | None = None,
+) -> str:
+    direct = _normalized_text(item.get("market_state"))
+    if direct:
+        return direct
+    evidence = _signal_evidence(item, evidence_by_item=evidence_by_item)
     for key in ("market_state", "market_state_kind", "market_gate_state"):
         value = _normalized_text(evidence.get(key))
         if value:
@@ -1327,6 +2798,36 @@ def _market_state_from_signal_evidence(item: dict[str, Any]) -> str:
         if value:
             return value
     return "unknown"
+
+
+def _abnormal_turnover_value(
+    item: dict[str, Any],
+    *,
+    evidence_by_item: dict[int, dict[str, Any]] | None = None,
+) -> float | None:
+    raw = item.get("abnormal_turnover")
+    if raw is None:
+        raw = _signal_evidence(item, evidence_by_item=evidence_by_item).get("abnormal_turnover")
+    if raw is None:
+        raw = item.get("strength_turn")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _signal_evidence(
+    item: dict[str, Any],
+    *,
+    evidence_by_item: dict[int, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    if evidence_by_item is not None:
+        return evidence_by_item.get(id(item), {})
+    return _parse_signal_evidence_json(item.get("signal_evidence_json"))
+
+
+def _signal_evidence_by_item(items: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    return {id(item): _parse_signal_evidence_json(item.get("signal_evidence_json")) for item in items}
 
 
 def _parse_signal_evidence_json(value: Any) -> dict[str, Any]:
@@ -1488,6 +2989,99 @@ def _wrap_strategy_score_envelope(
             "primary_horizon": payload.get("primary_horizon"),
         },
         tables_used=[TABLE_HIST],
+        evidence_rows=evidence_rows,
+        result_payload=payload,
+    )
+
+
+def _wrap_strategy_optimization_envelope(
+    *,
+    payload: dict[str, object],
+    source_version: str,
+    vendor_version: str,
+    evidence_rows: int,
+    quality_flag: str,
+) -> dict[str, object]:
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_strategy_optimization_{uuid.uuid4().hex[:12]}",
+        result_kind=STRATEGY_OPTIMIZATION_RESULT_KIND,
+        cache_version=STRATEGY_OPTIMIZATION_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=STRATEGY_OPTIMIZATION_RULE_VERSION,
+        quality_flag=cast(QualityFlag, quality_flag),
+        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
+        vendor_status=cast(VendorStatus, "ok"),
+        fallback_mode=cast(FallbackMode, "none"),
+        filters_applied={
+            "snapshot_from": payload.get("snapshot_from"),
+            "snapshot_to": payload.get("snapshot_to"),
+            "current_market_state": payload.get("current_market_state"),
+            "min_sample": payload.get("min_sample"),
+            "primary_horizon": payload.get("primary_horizon"),
+        },
+        tables_used=[TABLE_HIST],
+        evidence_rows=evidence_rows,
+        result_payload=payload,
+    )
+
+
+def _wrap_cycle_proxy_backtest_envelope(
+    *,
+    payload: dict[str, object],
+    source_version: str,
+    vendor_version: str,
+    evidence_rows: int,
+    quality_flag: str,
+) -> dict[str, object]:
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_cycle_proxy_backtest_{uuid.uuid4().hex[:12]}",
+        result_kind=CYCLE_PROXY_BACKTEST_RESULT_KIND,
+        cache_version=CYCLE_PROXY_BACKTEST_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=CYCLE_PROXY_BACKTEST_RULE_VERSION,
+        quality_flag=cast(QualityFlag, quality_flag),
+        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
+        vendor_status=cast(VendorStatus, "ok"),
+        fallback_mode=cast(FallbackMode, "none"),
+        filters_applied={
+            "snapshot_from": payload.get("snapshot_from"),
+            "snapshot_to": payload.get("snapshot_to"),
+            "proxy_signal_kind": payload.get("proxy_signal_kind"),
+        },
+        tables_used=[TABLE_HIST],
+        evidence_rows=evidence_rows,
+        result_payload=payload,
+    )
+
+
+def _wrap_candidate_history_portfolio_backtest_envelope(
+    *,
+    payload: dict[str, object],
+    source_version: str,
+    vendor_version: str,
+    evidence_rows: int,
+    quality_flag: str,
+) -> dict[str, object]:
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_candidate_history_portfolio_backtest_{uuid.uuid4().hex[:12]}",
+        result_kind=CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND,
+        cache_version=CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION,
+        quality_flag=cast(QualityFlag, quality_flag),
+        vendor_version=vendor_version or EMPTY_VENDOR_VERSION,
+        vendor_status=cast(VendorStatus, "ok"),
+        fallback_mode=cast(FallbackMode, "none"),
+        filters_applied={
+            "snapshot_from": payload.get("snapshot_from"),
+            "snapshot_to": payload.get("snapshot_to"),
+            "signal_kind": payload.get("signal_kind"),
+            "rebalance_rule": payload.get("rebalance_rule"),
+        },
+        tables_used=[TABLE_HIST, TABLE_OBS],
         evidence_rows=evidence_rows,
         result_payload=payload,
     )
