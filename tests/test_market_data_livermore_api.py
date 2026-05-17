@@ -204,6 +204,44 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
     )
 
 
+def _seed_minimal_factor_snapshot(conn: duckdb.DuckDBPyConnection, *, as_of_date: str) -> None:
+    conn.execute(
+        """
+        create table if not exists choice_stock_factor_snapshot (
+          as_of_date varchar,
+          stock_code varchar,
+          pe double,
+          pb double,
+          ps double,
+          roe double,
+          gross_margin double,
+          three_month_return double,
+          twelve_month_return double,
+          volatility double,
+          dividend_yield double,
+          industry varchar
+        )
+        """
+    )
+    conn.execute(
+        "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            as_of_date,
+            "688001.SH",
+            18.0,
+            1.2,
+            2.1,
+            0.16,
+            0.35,
+            0.22,
+            0.41,
+            0.19,
+            0.015,
+            "电子",
+        ],
+    )
+
+
 def _build_client(tmp_path, monkeypatch, *, choice_stock_catalog_file=None) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -365,6 +403,40 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert "LIVERMORE_RISK_INPUTS_MISSING" in diag_codes
     diag_by_code = {row["code"]: row for row in result["diagnostics"]}
     assert "Choice stock catalog is missing" in diag_by_code["LIVERMORE_STOCK_INPUTS_MISSING"]["message"]
+    get_settings.cache_clear()
+
+
+def test_livermore_api_marks_hybrid_fusion_unsupported_when_gate_is_pending_data(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(65)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _seed_minimal_factor_snapshot(conn, as_of_date="2026-04-06")
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    assert result["market_gate"]["state"] == "PENDING_DATA"
+    assert "factor_screen_candidates" in result["supported_outputs"]
+    assert "hybrid_fusion" not in result["supported_outputs"]
+    hybrid = result["hybrid_fusion_candidates"]
+    assert hybrid["candidate_count"] == 0
+    assert hybrid["items"] == []
+    unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
+    assert "WARM/HOT" in unsupported_by_key["hybrid_fusion"]["reason"]
     get_settings.cache_clear()
 
 

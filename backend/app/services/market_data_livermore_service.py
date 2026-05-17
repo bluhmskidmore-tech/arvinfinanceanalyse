@@ -1950,7 +1950,7 @@ def _build_supported_outputs(
                 ),
             }
         )
-    if stock_outputs.hybrid_fusion_payload is not None:
+    if _payload_item_count(stock_outputs.hybrid_fusion_payload) > 0:
         supported.append("hybrid_fusion")
     else:
         unsupported.append(
