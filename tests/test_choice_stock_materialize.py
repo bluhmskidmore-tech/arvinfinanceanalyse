@@ -130,10 +130,14 @@ def _write_confirmed_catalog_with_theme_inputs(path: Path) -> None:
             {
                 "input_family": "intraday_movement",
                 "field_key": "choice_intraday_movement",
-                "vendor_indicator": "STOCK_INTRADAY_MOVEMENT",
+                "vendor_indicator": "StockInfo",
                 "call": "ctr",
                 "required": False,
-                "request_options": {"TradeDate": "__AS_OF_DATE__", "Ispandas": 0},
+                "request_options": {
+                    "StartDate": "__AS_OF_DATE__",
+                    "EndDate": "__AS_OF_DATE__",
+                    "Ispandas": 0,
+                },
                 "confirmed": True,
                 "confirmation_source": "unit test optional movement probe",
                 "confirmed_at": "2026-05-11",
@@ -228,34 +232,32 @@ class ThemeChoiceStockClient(FakeChoiceStockClient):
 
     def ctr(self, *args: object, options: str = "") -> Any:
         self.calls.append(("ctr", args, options))
+        assert args == ("StockInfo", "")
+        assert options == "StartDate=2026-04-28,EndDate=2026-04-28,Ispandas=0"
         return SimpleNamespace(
             ErrorCode=0,
             Indicators=[
-                "EVENTTIME",
-                "CODE",
-                "NAME",
-                "CONCEPTCODE",
-                "CONCEPTNAME",
-                "EVENTTYPE",
-                "TITLE",
-                "PCTCHANGE",
-                "TURN",
-                "URL",
+                "SECURITYCODE",
+                "SECURITYSHORTNAME",
+                "TDATE",
+                "VCCHNAME",
+                "CHGRADIO",
+                "TURNOVER",
+                "STR_PUBLISHNAMEZJH",
+                "STR_PUBLISHNAMEDC3",
             ],
-            Data=[
-                [
-                    "2026-04-28 10:05:00",
+            Data={
+                0: [
                     "000001.SZ",
                     "PAB",
-                    "C001",
-                    "Semiconductor",
-                    "intraday_surge",
-                    "Semiconductor concept intraday surge",
+                    "2026-04-28",
+                    "日涨幅达到15%的前5只证券",
                     10.2,
                     5.1,
-                    "https://choice.example/news/1",
+                    "金融业",
+                    "银行",
                 ]
-            ],
+            },
         )
 
 
@@ -370,6 +372,75 @@ class FakeTushareStockClient:
                 }
             )
         return pd.DataFrame(rows)
+
+
+class FakeTushareThsConceptClient(FakeTushareStockClient):
+    def ths_index(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("ths_index", kwargs))
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "885001.TI",
+                    "name": "Chiplet",
+                    "count": 2,
+                    "exchange": "A",
+                    "list_date": "20200101",
+                    "type": "N",
+                },
+                {
+                    "ts_code": "883300.TI",
+                    "name": "Broad Sample",
+                    "count": 300,
+                    "exchange": "A",
+                    "list_date": "20100413",
+                    "type": "N",
+                },
+                {
+                    "ts_code": "886999.TI",
+                    "name": "Future Concept",
+                    "count": 1,
+                    "exchange": "A",
+                    "list_date": "20270101",
+                    "type": "N",
+                },
+            ]
+        )
+
+    def ths_member(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("ths_member", kwargs))
+        if str(kwargs["con_code"]) != "000001.SZ":
+            return pd.DataFrame(columns=["ts_code", "con_code", "con_name", "weight", "in_date", "out_date", "is_new"])
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "885001.TI",
+                    "con_code": "000001.SZ",
+                    "con_name": "PAB",
+                    "weight": None,
+                    "in_date": None,
+                    "out_date": None,
+                    "is_new": "Y",
+                },
+                {
+                    "ts_code": "885001.TI",
+                    "con_code": "000001.SZ",
+                    "con_name": "PAB",
+                    "weight": None,
+                    "in_date": None,
+                    "out_date": None,
+                    "is_new": "N",
+                },
+                {
+                    "ts_code": "883300.TI",
+                    "con_code": "000001.SZ",
+                    "con_name": "PAB",
+                    "weight": None,
+                    "in_date": None,
+                    "out_date": None,
+                    "is_new": "Y",
+                },
+            ]
+        )
 
 
 class MultiDateTushareStockClient(FakeTushareStockClient):
@@ -688,16 +759,64 @@ def test_choice_stock_materialize_persists_optional_concept_and_movement_inputs(
     assert movement_rows == [
         (
             "000001.SZ",
-            "C001",
-            "Semiconductor",
-            "intraday_surge",
-            "Semiconductor concept intraday surge",
+            "",
+            "",
+            "日涨幅达到15%的前5只证券",
+            "日涨幅达到15%的前5只证券",
             10.2,
             5.1,
         )
     ]
     assert coverage.full_coverage is True
     assert coverage.missing_request_items == []
+
+
+def test_choice_stock_materialize_can_fill_tushare_ths_concept_fallback(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    tushare_client = FakeTushareThsConceptClient()
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=PermissionDeniedCsdChoiceStockClient(),
+        tushare_client=tushare_client,
+        enable_tushare_concept_fallback=True,
+    )
+
+    assert result["status"] == "completed"
+    assert [name for name, _kwargs in tushare_client.calls if name in {"ths_index", "ths_member"}] == [
+        "ths_index",
+        "ths_member",
+        "ths_member",
+    ]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        concept_rows = conn.execute(
+            """
+            select stock_code, concept_code, concept_name, concept_source, field_key
+            from choice_stock_concept_membership
+            order by stock_code, concept_code
+            """
+        ).fetchall()
+        audit = conn.execute(
+            """
+            select call, vendor_indicator, status, row_count
+            from choice_stock_request_audit
+            where input_family = 'concept_membership'
+              and field_key = 'tushare_ths_concept_membership'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert concept_rows == [
+        ("000001.SZ", "885001.TI", "Chiplet", "tushare_ths_current", "tushare_ths_concept_membership")
+    ]
+    assert audit == ("tushare", "ths_index,ths_member", "completed_tushare_ths_fallback", 1)
 
 
 def test_choice_stock_materialize_batches_csd_history_requests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

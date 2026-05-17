@@ -5,6 +5,7 @@ from typing import Any, cast
 from backend.app.core_finance.livermore_theme_breakout import (
     FORMULA_VERSION,
     MAX_REVIEW_ITEMS,
+    MAX_THEMES,
     ThemeBreakoutSnapshot,
     compute_theme_breakout,
 )
@@ -284,3 +285,65 @@ def test_theme_breakout_review_items_are_additive_capped_and_carry_failed_gate_c
     assert "buy" not in serialized
     assert "sell" not in serialized
     assert "order" not in serialized
+
+
+def test_theme_breakout_caps_selected_real_concepts_to_ranked_top_themes() -> None:
+    snapshots: list[ThemeBreakoutSnapshot] = []
+    for theme_index in range(MAX_THEMES + 5):
+        for stock_index in range(3):
+            snapshots.append(
+                _snapshot(
+                    stock_code=f"688{theme_index:03d}{stock_index}.SH",
+                    stock_name=f"Theme {theme_index} Stock {stock_index}",
+                    pctchange=12.0 - theme_index * 0.01,
+                    concept_code=f"C{theme_index:03d}",
+                    concept_name=f"Theme {theme_index}",
+                )
+            )
+
+    result = compute_theme_breakout(as_of_date="2026-05-08", snapshots=snapshots)
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert payload["theme_count"] == MAX_THEMES
+    assert len(items) == MAX_THEMES
+    assert items[0]["theme_key"] == "concept:C000"
+    assert items[-1]["theme_key"] == f"concept:C{MAX_THEMES - 1:03d}"
+
+
+def test_theme_breakout_ranking_uses_movement_events_as_confirmation_signal() -> None:
+    movement_confirmed = [
+        _snapshot(
+            stock_code=f"68810{index}.SH",
+            stock_name=f"Movement Confirmed {index}",
+            pctchange=8.0,
+            closed_up_limit=index == 0,
+            concept_code="CMOVE",
+            concept_name="Movement Confirmed",
+            movement_event_count=1,
+            latest_event_title="Movement event",
+            latest_event_time="2026-05-08 10:00:00",
+        )
+        for index in range(3)
+    ]
+    higher_average_without_events = [
+        _snapshot(
+            stock_code=f"68820{index}.SH",
+            stock_name=f"No Event {index}",
+            pctchange=9.0,
+            closed_up_limit=index == 0,
+            concept_code="CNOEVENT",
+            concept_name="No Event",
+        )
+        for index in range(3)
+    ]
+
+    result = compute_theme_breakout(
+        as_of_date="2026-05-08",
+        snapshots=[*higher_average_without_events, *movement_confirmed],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert items[0]["theme_key"] == "concept:CMOVE"
+    assert items[0]["movement_event_count"] == 3

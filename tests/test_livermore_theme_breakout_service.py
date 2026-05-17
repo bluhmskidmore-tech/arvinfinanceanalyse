@@ -279,6 +279,97 @@ def test_theme_breakout_loader_handles_varchar_limit_flags(tmp_path) -> None:
     assert provenance.concept_date_row_count == 0
 
 
+def test_theme_breakout_loader_handles_choice_chinese_limit_flags(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              stock_code varchar,
+              stock_name varchar,
+              as_of_date varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              stock_code varchar,
+              as_of_date varchar,
+              sw2021code varchar,
+              sw2021 varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              stock_code varchar,
+              trade_date varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              pctchange double,
+              turn double,
+              amplitude double,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_limit_quality (
+              stock_code varchar,
+              as_of_date varchar,
+              issurgedlimit varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_universe values (?, ?, ?, ?, ?)",
+            ("688001.SH", "Alpha Semiconductor", "2026-05-08", "sv_u", "vv_u"),
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values (?, ?, ?, ?, ?, ?)",
+            ("688001.SH", "2026-05-08", "801080", "Electronic", "sv_s", "vv_s"),
+        )
+        conn.execute(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("688001.SH", "2026-05-08", 9.6, 10.1, 9.4, 10.0, 12.1, 4.2, 7.0, "sv_d", "vv_d"),
+        )
+        conn.execute(
+            "insert into choice_stock_limit_quality values (?, ?, ?, ?, ?)",
+            ("688001.SH", "2026-05-08", "是", "sv_l", "vv_l"),
+        )
+    finally:
+        conn.close()
+
+    snapshots, _, _, _, _ = _load_theme_breakout_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        sector_rank_payload={
+            "items": [
+                {
+                    "rank": 9,
+                    "sector_code": "801080",
+                    "sector_name": "Electronic",
+                }
+            ]
+        },
+    )
+
+    assert snapshots[0].closed_up_limit is True
+
+
 def test_theme_breakout_loader_enriches_snapshots_with_real_concept_and_movement_rows(tmp_path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -430,6 +521,25 @@ def test_theme_breakout_loader_enriches_snapshots_with_real_concept_and_movement
                     "rv",
                     "run",
                 ),
+                (
+                    "2026-05-08",
+                    "2026-05-08 10:12:00",
+                    "688001.SH",
+                    "Alpha Semiconductor",
+                    "",
+                    "",
+                    "stockinfo",
+                    "Alpha Semiconductor abnormal trading event",
+                    12.5,
+                    4.6,
+                    "https://choice.example/news/3",
+                    "choice_intraday_movement",
+                    "{}",
+                    "sv_m",
+                    "vv_m",
+                    "rv",
+                    "run",
+                ),
             ],
         )
     finally:
@@ -452,14 +562,14 @@ def test_theme_breakout_loader_enriches_snapshots_with_real_concept_and_movement
     assert len(snapshots) == 1
     assert snapshots[0].concept_code == "C001"
     assert snapshots[0].concept_name == "Chiplet"
-    assert snapshots[0].movement_event_count == 2
-    assert snapshots[0].latest_event_title == "Chiplet concept extends gains"
+    assert snapshots[0].movement_event_count == 3
+    assert snapshots[0].latest_event_title == "Alpha Semiconductor abnormal trading event"
     assert "choice_stock_concept_membership" in tables_used
     assert "choice_stock_intraday_movement_event" in tables_used
     assert provenance.concept_date_row_count == 1
     assert provenance.concept_matched_row_count == 1
-    assert provenance.movement_date_row_count == 2
-    assert provenance.movement_matched_row_count == 2
+    assert provenance.movement_date_row_count == 3
+    assert provenance.movement_matched_row_count == 3
 
 
 def test_theme_breakout_evidence_state_prefers_catalog_unconfirmed_over_table_state(tmp_path) -> None:
@@ -484,6 +594,23 @@ def test_theme_breakout_evidence_state_prefers_catalog_unconfirmed_over_table_st
     assert evidence_state["concept_membership"]["input_family"] == "concept_membership"
     assert evidence_state["intraday_movement"]["state"] == "catalog_unconfirmed"
     assert evidence_state["intraday_movement"]["status"] == "catalog_unconfirmed"
+
+
+def test_theme_breakout_evidence_state_accepts_landed_tushare_concept_fallback(tmp_path) -> None:
+    readiness = _write_theme_catalog(tmp_path, concept_confirmed=False, movement_confirmed=False)
+
+    evidence_state = _build_theme_breakout_evidence_state(
+        stock_readiness=readiness,
+        tables_used=["choice_stock_concept_membership"],
+        provenance=_ThemeBreakoutEvidenceProvenance(
+            concept_date_row_count=3,
+            concept_matched_row_count=2,
+            concept_fallback_row_count=3,
+        ),
+    )
+
+    assert evidence_state["concept_membership"]["state"] == "matched_rows"
+    assert evidence_state["concept_membership"]["fallback_row_count"] == 3
 
 
 def test_theme_breakout_evidence_state_marks_confirmed_optional_tables_missing(tmp_path) -> None:

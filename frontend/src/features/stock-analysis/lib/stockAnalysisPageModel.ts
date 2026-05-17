@@ -189,6 +189,47 @@ export type StockDataBoundarySummary = {
   topMessages: string[];
 };
 
+export type StockAnalysisKpiKey =
+  | "market-state"
+  | "review-queue"
+  | "sector-strength"
+  | "risk-observation"
+  | "closed-loop"
+  | "data-boundary";
+
+export type StockAnalysisKpiItem = {
+  key: StockAnalysisKpiKey;
+  label: string;
+  value: string;
+  detail: string;
+  tone: StockClosedLoopTone;
+};
+
+export type StockAnalysisEvidenceStatusKey =
+  | "as-of-date"
+  | "lineage"
+  | "basis"
+  | "rule-version"
+  | "quality"
+  | "exceptions";
+
+export type StockAnalysisEvidenceStatusItem = {
+  key: StockAnalysisEvidenceStatusKey;
+  label: string;
+  statusLabel: string;
+  tone: StockClosedLoopTone;
+  detail: string;
+};
+
+export type StockAnalysisEventMonitorRow = {
+  key: string;
+  source: "diagnostic" | "data_gap" | "unsupported" | "signal_confluence" | "risk_exit";
+  level: "info" | "warning" | "error";
+  event: string;
+  impact: string;
+  detail: string;
+};
+
 export type StockSectorFilterSummary = {
   sectorCode: string | null;
   sectorLabel: string;
@@ -283,6 +324,75 @@ function formatRatioAsPercent(value: number | null | undefined, digits = 0) {
     return "待补";
   }
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+function finiteNumber(value: number | null | undefined): number | null {
+  return value == null || !Number.isFinite(value) ? null : value;
+}
+
+function buildCandidateFundamentalEvidence(item: LivermoreStockCandidateItem): StockCandidateEvidenceBullet[] {
+  const bullets: StockCandidateEvidenceBullet[] = [];
+  const factorScore = finiteNumber(item.factor_score);
+  const factorRank = finiteNumber(item.factor_overlay_rank);
+  if (factorScore != null || factorRank != null) {
+    bullets.push({
+      key: "fundamental_overlay",
+      label: "基本面 overlay",
+      value: [
+        factorScore != null ? `因子分 ${formatNumber(factorScore, 4)}` : null,
+        factorRank != null ? `overlay #${factorRank.toFixed(0)}` : null,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" / "),
+    });
+  }
+
+  const valuationParts = [
+    finiteNumber(item.pe) != null ? `PE ${formatNumber(item.pe, 2)}` : null,
+    finiteNumber(item.pb) != null ? `PB ${formatNumber(item.pb, 2)}` : null,
+    finiteNumber(item.ps) != null ? `PS ${formatNumber(item.ps, 2)}` : null,
+  ].filter((part): part is string => Boolean(part));
+  if (valuationParts.length > 0) {
+    bullets.push({
+      key: "valuation",
+      label: "估值",
+      value: valuationParts.join(" / "),
+    });
+  }
+
+  const qualityParts = [
+    finiteNumber(item.roe) != null ? `ROE ${formatRatioAsPercent(item.roe, 1)}` : null,
+    finiteNumber(item.gross_margin) != null ? `毛利率 ${formatRatioAsPercent(item.gross_margin, 1)}` : null,
+  ].filter((part): part is string => Boolean(part));
+  if (qualityParts.length > 0) {
+    bullets.push({
+      key: "quality",
+      label: "质量",
+      value: qualityParts.join(" / "),
+    });
+  }
+
+  const momentumParts = [
+    finiteNumber(item.three_month_return) != null ? `3月 ${formatRatioAsPercent(item.three_month_return, 1)}` : null,
+    finiteNumber(item.twelve_month_return) != null ? `12月 ${formatRatioAsPercent(item.twelve_month_return, 1)}` : null,
+  ].filter((part): part is string => Boolean(part));
+  if (momentumParts.length > 0) {
+    bullets.push({
+      key: "fundamental_momentum",
+      label: "基本面动量",
+      value: momentumParts.join(" / "),
+    });
+  }
+
+  return bullets;
+}
+
+function candidateFundamentalCounterEvidence(item: LivermoreStockCandidateItem): string {
+  const hasOverlay = finiteNumber(item.factor_score) != null || finiteNumber(item.factor_overlay_rank) != null;
+  if (hasOverlay) {
+    return "基本面 overlay 已接入候选排序，但财报口径、最新公告和一致预期仍需复核。";
+  }
+  return "基本面与估值证据未接入，不参与当前候选排序。";
 }
 
 function normalizeEvidence(evidence: string[] | string | null | undefined): string[] {
@@ -480,6 +590,243 @@ export function buildDataBoundarySummary(
     detailLabel: `诊断 ${diagnostics.length} / 缺口 ${dataGaps.length} / 未支持 ${unsupported.length} / ${freshnessLabel}`,
     topMessages,
   };
+}
+
+function isMetaBoundary(meta: StockViewModelMeta = {}): boolean {
+  const quality = meta.quality_flag ?? "pending";
+  const vendor = meta.vendor_status ?? "pending";
+  const fallback = meta.fallback_mode ?? "none";
+  return quality !== "ok" || vendor !== "ok" || fallback !== "none";
+}
+
+function evidenceToneForStatus(status: string): StockClosedLoopTone {
+  const normalized = status.toLowerCase();
+  if (normalized === "ok" || normalized === "complete" || normalized === "analytical") {
+    return "positive";
+  }
+  if (normalized === "error" || normalized === "blocked") {
+    return "negative";
+  }
+  if (
+    normalized === "warning" ||
+    normalized === "degraded" ||
+    normalized === "stale" ||
+    normalized === "pending" ||
+    normalized === "missing" ||
+    normalized === "fallback"
+  ) {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function eventLevelFromSeverity(severity: string): StockAnalysisEventMonitorRow["level"] {
+  return severity === "error" ? "error" : severity === "warning" ? "warning" : "info";
+}
+
+function eventToneLevel(tone: StockClosedLoopTone): StockAnalysisEventMonitorRow["level"] {
+  return tone === "negative" ? "error" : tone === "positive" ? "info" : "warning";
+}
+
+function detailFromEventEvidence(evidence: string[] | string | null | undefined, fallback: string): string {
+  return normalizeEvidence(evidence)[0] ?? fallback;
+}
+
+export function buildStockAnalysisKpiStrip(
+  payload: LivermoreStrategyPayload,
+  confluence: LivermoreSignalConfluencePayload | null,
+  meta: StockViewModelMeta = {},
+): StockAnalysisKpiItem[] {
+  const queue = buildCandidateReviewQueue(payload);
+  const sectors = buildSectorRows(payload);
+  const riskRows = buildRiskExitRows(payload, confluence);
+  const boundarySummary = buildDataBoundarySummary(payload, meta);
+  const closedLoopSummary = buildClosedLoopSummary(payload, confluence, meta);
+  const strongest = sectors[0];
+  const weakest = sectors.length ? sectors[sectors.length - 1] : null;
+  const riskTriggered = riskRows.filter((row) => row.status === "triggered").length;
+  const riskWatch = riskRows.filter((row) => row.status === "watch").length;
+  const hasBoundary = boundarySummary.boundaryCount > 0 || isMetaBoundary(meta);
+
+  return [
+    {
+      key: "market-state",
+      label: "市场状态",
+      value: payload.market_gate.state,
+      detail: `观察暴露 ${formatRatioAsPercent(payload.market_gate.exposure)}`,
+      tone: hasBoundary ? "warning" : "positive",
+    },
+    {
+      key: "review-queue",
+      label: "复核队列",
+      value: String(queue.length),
+      detail: queue[0] ? `优先 ${queue[0].stockName} / ${queue[0].sectorName}` : "候选待补",
+      tone: queue.length > 0 ? "positive" : "neutral",
+    },
+    {
+      key: "sector-strength",
+      label: "板块强弱",
+      value: strongest ? strongest.sectorName : "待补",
+      detail: weakest ? `弱侧 ${weakest.sectorName} / ${weakest.pctChange}` : "弱侧待补",
+      tone: strongest ? "positive" : "warning",
+    },
+    {
+      key: "risk-observation",
+      label: "风险观察",
+      value: String(riskRows.length),
+      detail: `触发 ${riskTriggered} / 观察 ${riskWatch}`,
+      tone: riskTriggered > 0 ? "negative" : riskWatch > 0 ? "warning" : "positive",
+    },
+    {
+      key: "closed-loop",
+      label: "闭环状态",
+      value: closedLoopSummary.referenceRating.label,
+      detail: closedLoopSummary.summaryLabel,
+      tone: closedLoopSummary.referenceRating.tone,
+    },
+    {
+      key: "data-boundary",
+      label: "数据边界",
+      value: String(boundarySummary.boundaryCount),
+      detail: boundarySummary.detailLabel,
+      tone: boundarySummary.boundaryCount > 0 || isMetaBoundary(meta) ? "warning" : "positive",
+    },
+  ];
+}
+
+export function buildStockAnalysisEvidenceStatus(
+  payload: LivermoreStrategyPayload,
+  meta: StockViewModelMeta = {},
+): StockAnalysisEvidenceStatusItem[] {
+  const boundarySummary = buildDataBoundarySummary(payload, meta);
+  const quality = meta.quality_flag ?? "pending";
+  const vendor = meta.vendor_status ?? "pending";
+  const fallback = meta.fallback_mode ?? "none";
+  const qualityTone = isMetaBoundary(meta) ? "warning" : "positive";
+  const lineageLabel = meta.source_version ?? "待补";
+  const ruleVersion =
+    meta.rule_version ??
+    payload.sector_rank?.formula_version ??
+    payload.stock_candidates?.formula_version ??
+    payload.risk_exit?.formula_version ??
+    "待补";
+
+  return [
+    {
+      key: "as-of-date",
+      label: "数据日期",
+      statusLabel: payload.as_of_date ?? "待补",
+      tone: payload.as_of_date ? "positive" : "warning",
+      detail: payload.requested_as_of_date ? `请求日期 ${payload.requested_as_of_date}` : "使用接口返回日期",
+    },
+    {
+      key: "lineage",
+      label: "来源版本",
+      statusLabel: lineageLabel,
+      tone: lineageLabel === "待补" ? "warning" : "positive",
+      detail: meta.trace_id ? `trace ${meta.trace_id}` : "trace 待补",
+    },
+    {
+      key: "basis",
+      label: "计算口径",
+      statusLabel: payload.basis ?? "待补",
+      tone: evidenceToneForStatus(payload.basis ?? "pending"),
+      detail: payload.strategy_name,
+    },
+    {
+      key: "rule-version",
+      label: "规则版本",
+      statusLabel: ruleVersion,
+      tone: ruleVersion === "待补" ? "warning" : "positive",
+      detail: `supported ${payload.supported_outputs.length} / unsupported ${payload.unsupported_outputs.length}`,
+    },
+    {
+      key: "quality",
+      label: "数据质量",
+      statusLabel: qualityTone === "positive" ? "正常" : "需复核",
+      tone: qualityTone,
+      detail: `${quality} / ${vendor}${fallback !== "none" ? ` / fallback ${fallback}` : ""}`,
+    },
+    {
+      key: "exceptions",
+      label: "例外状态",
+      statusLabel: boundarySummary.boundaryCount > 0 ? `${boundarySummary.boundaryCount} 条边界` : "无边界",
+      tone: boundarySummary.boundaryCount > 0 ? "warning" : "positive",
+      detail: boundarySummary.detailLabel,
+    },
+  ];
+}
+
+export function buildStockAnalysisEventMonitorRows(
+  payload: LivermoreStrategyPayload,
+  confluence: LivermoreSignalConfluencePayload | null,
+): StockAnalysisEventMonitorRow[] {
+  const rows: StockAnalysisEventMonitorRow[] = [];
+
+  for (const item of payload.diagnostics) {
+    rows.push({
+      key: `diagnostic:${item.code}`,
+      source: "diagnostic",
+      level: eventLevelFromSeverity(item.severity),
+      event: item.code,
+      impact: item.input_family ?? "strategy",
+      detail: item.message,
+    });
+  }
+
+  for (const gap of payload.data_gaps.filter((item) => item.status !== "ready")) {
+    rows.push({
+      key: `data_gap:${gap.input_family}:${gap.status}`,
+      source: "data_gap",
+      level: gap.status === "stale" ? "warning" : "error",
+      event: gap.status,
+      impact: gap.input_family,
+      detail: gap.evidence,
+    });
+  }
+
+  for (const item of payload.unsupported_outputs) {
+    rows.push({
+      key: `unsupported:${item.key}`,
+      source: "unsupported",
+      level: "warning",
+      event: `${item.key}: ${item.reason}`,
+      impact: item.key,
+      detail: item.reason,
+    });
+  }
+
+  for (const item of confluence?.diagnostics ?? []) {
+    const row =
+      typeof item === "string"
+        ? { severity: "warning", code: item, message: item }
+        : {
+            severity: item.severity ?? "warning",
+            code: item.code ?? item.message ?? "signal_confluence",
+            message: item.message ?? item.code ?? "Signal confluence diagnostic pending detail.",
+          };
+    rows.push({
+      key: `signal_confluence:${row.code}`,
+      source: "signal_confluence",
+      level: eventLevelFromSeverity(row.severity),
+      event: row.code,
+      impact: "signal_confluence",
+      detail: row.message,
+    });
+  }
+
+  for (const row of buildRiskExitRows(payload, confluence).filter((item) => item.status === "triggered")) {
+    rows.push({
+      key: `risk_exit:${row.stockCode}`,
+      source: "risk_exit",
+      level: eventToneLevel("negative"),
+      event: `${row.stockCode} ${row.stockName}`,
+      impact: "risk_exit",
+      detail: detailFromEventEvidence(row.reason, "风险退出观察触发复核"),
+    });
+  }
+
+  return rows;
 }
 
 export function buildSectorFilterSummary(
@@ -943,12 +1290,21 @@ export function buildCandidateEvidenceCards(
         label: "强度 / 换手观察",
         value: `收盘强度 ${formatRatioAsPercent(item.close_strength, 2)} · 换手观察值 ${formatNumber(item.abnormal_turnover, 3)}`,
       },
+      ...buildCandidateFundamentalEvidence(item),
       {
         key: "gap_norm",
         label: "跳空归一观察",
         value:
           item.gap_norm != null && Number.isFinite(item.gap_norm)
             ? `${item.gap_norm.toFixed(4)}`
+            : "待补",
+      },
+      {
+        key: "breakout_extension_norm",
+        label: "突破延展观察",
+        value:
+          item.breakout_extension_norm != null && Number.isFinite(item.breakout_extension_norm)
+            ? `${item.breakout_extension_norm.toFixed(4)}`
             : "待补",
       },
       {
@@ -973,7 +1329,7 @@ export function buildCandidateEvidenceCards(
       evidenceBullets,
       evidence,
       counterEvidence: [
-        "基本面与估值证据未接入，不参与当前候选排序。",
+        candidateFundamentalCounterEvidence(item),
         "新闻、公告、财报事件尚未进入候选卡。",
         "ATR、真实盘中成交顺序和精确涨跌停状态未在当前只读卡片中完整验证。",
       ],
@@ -989,7 +1345,23 @@ export function buildCandidateEvidenceCards(
         { key: "ma120", label: "ma120", value: formatNumber(item.ma120) },
         { key: "abnormal_turnover", label: "abnormal_turnover", value: formatNumber(item.abnormal_turnover, 4) },
         { key: "gap_norm", label: "gap_norm", value: item.gap_norm != null ? String(item.gap_norm) : "待补" },
+        {
+          key: "breakout_extension_norm",
+          label: "breakout_extension_norm",
+          value: formatNumber(item.breakout_extension_norm, 4),
+        },
         { key: "close_strength", label: "close_strength", value: formatNumber(item.close_strength, 4) },
+        { key: "factor_score", label: "factor_score", value: formatNumber(item.factor_score, 4) },
+        {
+          key: "factor_overlay_rank",
+          label: "factor_overlay_rank",
+          value: item.factor_overlay_rank != null ? String(item.factor_overlay_rank) : "待补",
+        },
+        { key: "pe", label: "pe", value: formatNumber(item.pe, 4) },
+        { key: "pb", label: "pb", value: formatNumber(item.pb, 4) },
+        { key: "ps", label: "ps", value: formatNumber(item.ps, 4) },
+        { key: "roe", label: "roe", value: formatNumber(item.roe, 4) },
+        { key: "gross_margin", label: "gross_margin", value: formatNumber(item.gross_margin, 4) },
       ],
     };
   });

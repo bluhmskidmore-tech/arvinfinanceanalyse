@@ -624,11 +624,19 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_pat
         )
         conn.executemany(
             "insert into choice_stock_universe values (?, ?, ?)",
-            [("2026-05-08", row[1], f"Name {idx}") for idx, row in enumerate(factor_rows, start=1)],
+            [
+                ("2026-04-29", row[1], f"As-of Name {idx}")
+                for idx, row in enumerate(factor_rows, start=1)
+            ]
+            + [
+                ("2026-05-08", row[1], f"Future Name {idx}")
+                for idx, row in enumerate(factor_rows, start=1)
+            ],
         )
         conn.executemany(
             "insert into choice_stock_sector_membership values (?, ?, ?, ?)",
-            [("2026-05-08", row[1], "801080", "电子") for row in factor_rows],
+            [("2026-04-29", row[1], "801080", "Electronics") for row in factor_rows]
+            + [("2026-05-08", row[1], "801999", "Future Sector") for row in factor_rows],
         )
     finally:
         conn.close()
@@ -643,11 +651,141 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_pat
     payload = result["factor_screen_candidates"]
     assert payload["as_of_date"] == "2026-04-30"
     assert payload["factor_snapshot_as_of_date"] == "2026-04-30"
+    assert payload["items"][0]["stock_name"].startswith("As-of Name")
     assert payload["items"][0]["sector_code"] == "801080"
     tables_used = envelope["result_meta"]["tables_used"]
     assert "choice_stock_factor_snapshot" in tables_used
     assert "choice_stock_universe" in tables_used
     assert "choice_stock_sector_membership" in tables_used
+
+
+def test_livermore_stock_candidate_loader_attaches_latest_factor_snapshot(tmp_path) -> None:
+    from backend.app.services.market_data_livermore_service import _load_stock_candidate_snapshots
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              sw2021code varchar,
+              sw2021 varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              turn double,
+              highlimit double,
+              lowlimit double,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_limit_quality (
+              as_of_date varchar,
+              stock_code varchar,
+              issurgedlimit varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_universe values ('2026-05-08', '000001.SZ', 'Alpha', 'sv_u', 'vv_u')"
+        )
+        conn.execute(
+            "insert into choice_stock_universe values ('2026-05-09', '000001.SZ', 'Future Alpha', 'sv_u_future', 'vv_u_future')"
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values ('2026-05-08', '000001.SZ', '801001', 'AI', 'sv_s', 'vv_s')"
+        )
+        conn.execute(
+            "insert into choice_stock_sector_membership values ('2026-05-09', '000001.SZ', '801999', 'Future AI', 'sv_s_future', 'vv_s_future')"
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-07", "000001.SZ", 9.8, 10.1, 9.7, 10.0, 1.0, 11.0, 9.0, "sv_d", "vv_d"),
+                ("2026-05-08", "000001.SZ", 10.2, 10.6, 10.1, 10.5, 1.4, 11.0, 9.0, "sv_d", "vv_d"),
+            ],
+        )
+        conn.execute(
+            "insert into choice_stock_limit_quality values ('2026-05-08', '000001.SZ', '否', 'sv_l', 'vv_l')"
+        )
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-07", "000001.SZ", 12.0, 1.4, 1.8, 0.16, 0.32, 0.08, 0.18, 0.24, 0.025, "AI"),
+                ("2026-05-09", "000001.SZ", 99.0, 9.9, 9.9, -0.10, -0.20, -0.30, -0.40, 0.90, 0.0, "AI"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    snapshots, tables_used, _source_versions, _vendor_versions = _load_stock_candidate_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        sector_rank_payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+    )
+
+    assert "choice_stock_factor_snapshot" in tables_used
+    assert len(snapshots) == 1
+    snapshot = snapshots[0]
+    assert snapshot.stock_name == "Alpha"
+    assert snapshot.sector_code == "801001"
+    assert snapshot.pe == 12.0
+    assert snapshot.pb == 1.4
+    assert snapshot.ps == 1.8
+    assert snapshot.roe == 0.16
+    assert snapshot.gross_margin == 0.32
+    assert snapshot.three_month_return == 0.08
+    assert snapshot.twelve_month_return == 0.18
+    assert snapshot.volatility == 0.24
+    assert snapshot.dividend_yield == 0.025
 
 
 def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolved_date_inputs(

@@ -18,6 +18,9 @@ import {
   buildSectorRows,
   buildSectorFilterSummary,
   buildSectorViewModel,
+  buildStockAnalysisEvidenceStatus,
+  buildStockAnalysisEventMonitorRows,
+  buildStockAnalysisKpiStrip,
   buildThemeBreakoutCards,
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
@@ -125,7 +128,17 @@ const strategyPayload: LivermoreStrategyPayload = {
         ma120: 16.05,
         close_strength: 0.833333,
         gap_norm: -0.114679,
+        breakout_extension_norm: 0.045872,
         abnormal_turnover: 1.386294,
+        pe: 12.4,
+        pb: 1.8,
+        ps: 2.6,
+        roe: 0.18,
+        gross_margin: 0.32,
+        three_month_return: 0.11,
+        twelve_month_return: 0.24,
+        factor_score: 0.4812,
+        factor_overlay_rank: 1,
       },
     ],
   },
@@ -237,12 +250,16 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].distanceToBreakoutPct).toMatch(/%/);
     expect(cards[0].evidence.join(" ")).toContain("行业排名第 1");
     expect(cards[0].evidence.join(" ")).toContain("收盘价 21.90");
+    expect(cards[0].evidence.join(" ")).toContain("基本面 overlay");
+    expect(cards[0].evidence.join(" ")).toContain("因子分 0.4812");
+    expect(cards[0].evidence.join(" ")).toContain("ROE 18.0%");
     expect(cards[0].evidence.join(" ")).toContain("10EMA 失效观察");
-    expect(cards[0].counterEvidence.join(" ")).toContain("基本面与估值证据未接入");
+    expect(cards[0].counterEvidence.join(" ")).toContain("基本面 overlay 已接入候选排序");
     expect(cards[0].counterEvidence.join(" ")).toContain("新闻、公告、财报事件尚未进入候选卡");
     expect(cards[0].invalidationRules.join(" ")).toContain("10EMA");
     expect(cards[0].invalidationRules.join(" ")).toContain("涨跌停状态");
     expect(cards[0].rawFields.some((row) => row.key === "gap_norm")).toBe(true);
+    expect(cards[0].rawFields.some((row) => row.key === "breakout_extension_norm")).toBe(true);
   });
 
   it("builds a decision summary and review queue without inventing unavailable evidence", () => {
@@ -265,7 +282,8 @@ describe("stockAnalysisPageModel", () => {
       "close_vs_break",
       "ma_curve",
     ]);
-    expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面与估值证据未接入");
+    expect(queue[0].supportingEvidence.map((item) => item.key)).toContain("fundamental_overlay");
+    expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面 overlay 已接入候选排序");
     expect(queue[0].invalidationFocus).toContain("10EMA");
     expect(queue[0].reviewFocus).not.toContain("买入");
   });
@@ -1046,6 +1064,88 @@ describe("stockAnalysisPageModel", () => {
     expect(unfiltered.isFiltered).toBe(false);
     expect(unfiltered.sectorLabel).toBe("all sectors");
     expect(unfiltered.summaryLabel).toBe("sector all sectors / showing 1 of 1");
+  });
+
+  it("builds first-screen KPI strip from existing strategy evidence only", () => {
+    const items = buildStockAnalysisKpiStrip(strategyPayload, confluencePayload, {
+      quality_flag: "warning",
+      vendor_status: "ok",
+      fallback_mode: "latest_snapshot",
+    });
+
+    expect(items.map((item) => item.key)).toEqual([
+      "market-state",
+      "review-queue",
+      "sector-strength",
+      "risk-observation",
+      "closed-loop",
+      "data-boundary",
+    ]);
+    expect(items.find((item) => item.key === "market-state")).toMatchObject({
+      label: "市场状态",
+      value: "WARM",
+      detail: "观察暴露 40%",
+      tone: "warning",
+    });
+    expect(items.find((item) => item.key === "review-queue")).toMatchObject({
+      label: "复核队列",
+      value: "1",
+    });
+    expect(items.find((item) => item.key === "risk-observation")?.detail).toContain("触发 1");
+    expect(items.find((item) => item.key === "data-boundary")).toMatchObject({
+      value: "2",
+      tone: "warning",
+    });
+    expect(items.map((item) => `${item.label}${item.value}${item.detail}`).join(" ")).not.toContain("买入");
+  });
+
+  it("builds evidence status and event monitor rows with explicit pending boundaries", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      unsupported_outputs: [
+        {
+          key: "theme_breakout",
+          reason: "concept membership table pending",
+        },
+      ],
+    };
+    const evidence = buildStockAnalysisEvidenceStatus(payload, {
+      quality_flag: "warning",
+      vendor_status: "vendor_stale",
+      source_version: "sv_livermore_test",
+      rule_version: "rv_livermore_market_gate_v1",
+      fallback_mode: "latest_snapshot",
+    });
+    const events = buildStockAnalysisEventMonitorRows(payload, confluencePayload);
+
+    expect(evidence.map((item) => item.key)).toEqual([
+      "as-of-date",
+      "lineage",
+      "basis",
+      "rule-version",
+      "quality",
+      "exceptions",
+    ]);
+    expect(evidence.find((item) => item.key === "quality")).toMatchObject({
+      label: "数据质量",
+      statusLabel: "需复核",
+      tone: "warning",
+    });
+    expect(evidence.find((item) => item.key === "exceptions")?.detail).toContain("诊断 1 / 缺口 1 / 未支持 1");
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diagnostic",
+          level: "warning",
+          impact: "breadth",
+        }),
+        expect.objectContaining({
+          source: "unsupported",
+          level: "warning",
+          event: expect.stringContaining("theme_breakout"),
+        }),
+      ]),
+    );
   });
 
 });

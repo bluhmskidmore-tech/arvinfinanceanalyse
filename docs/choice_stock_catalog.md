@@ -66,7 +66,9 @@ The checked-in catalog is populated with live-probed fields from 2026-05-01:
 - Choice `css(..., 'SW2021,SW2021CODE', EndDate=..., ClassiFication=1)` for SW2021 level-1 sector membership.
 - Choice `csd` field definitions for return, turnover, amplitude, OHLCV, trading status, and limit flags.
 - Choice `css(..., 'ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS', TradeDate=...)` for point-in-time limit streak quality.
-- Optional concept membership and intraday movement entries are present as unconfirmed templates. They are intentionally not executed until a live Choice entitlement smoke test fills `vendor_indicator`, `confirmation_source`, and `confirmed_at`.
+- Optional intraday movement is confirmed through Choice `ctr('StockInfo', '', StartDate=..., EndDate=...)` and lands stock-level abnormal trading events.
+- Optional concept membership remains unconfirmed: 2026-05-16 live probes for `CONCEPTCODE,CONCEPTNAME`, `CONCEPT_CODE,CONCEPTNAME`, `BKCODE,BKNAME`, and `THEMECODE,THEMENAME` returned Choice service error `10000013`. It must stay disabled until a Choice field/export returns stock/concept rows.
+- Tushare THS concept fallback can be run explicitly with `--tushare-ths-concept-fallback`. It uses `ths_index(exchange='A')` plus stock-level `ths_member(con_code=...)` on strong stocks to populate `choice_stock_concept_membership` with `concept_source='tushare_ths_current'`. It filters passive market-access tags such as financing margin, Shanghai Stock Connect, and Shenzhen Stock Connect. Treat this as a live/current membership overlay, not a strict historical point-in-time concept source, because Tushare may return blank `in_date` / `out_date`.
 
 Important evidence boundary: Choice `HIGHLIMIT` / `LOWLIMIT` are yes/no limit **flags**, not limit **prices**. The Tushare stock fallback maps `stk_limit.up_limit` / `down_limit` into the same `HIGHLIMIT` / `LOWLIMIT` observation slots as **numeric prices** so downstream `limit_ratio` can use actual limits; interpret those cells as prices only when the row is under `completed_tushare_fallback` (or when values are clearly price-like), not as Choice flag encodings.
 

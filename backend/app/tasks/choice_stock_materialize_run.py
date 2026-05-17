@@ -37,6 +37,7 @@ def main() -> None:
     parser.add_argument("--verify-coverage", action="store_true")
     parser.add_argument("--factor-snapshot", action="store_true")
     parser.add_argument("--factor-max-stock-count", type=int)
+    parser.add_argument("--tushare-ths-concept-fallback", action="store_true")
     args = parser.parse_args()
 
     if args.factor_snapshot:
@@ -52,6 +53,7 @@ def main() -> None:
         as_of_date=args.as_of_date,
         duckdb_path=args.duckdb_path,
         catalog_path=args.catalog_path,
+        enable_tushare_concept_fallback=args.tushare_ths_concept_fallback,
     )
     if args.verify_coverage:
         coverage_duckdb_path = args.duckdb_path or str(get_settings().duckdb_path)

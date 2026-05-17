@@ -478,6 +478,11 @@ def _build_vendor_payload(
         "signal_kinds": sorted({_text(i.get("signal_kind")) or "stock_candidate" for i in items}),
         "market_gate_state": (_mapping(payload.get("market_gate")).get("state")),
         "stock_candidate_policy": _mapping(payload.get("stock_candidates")).get("selection_policy"),
+        "stock_candidates_formula_version": _mapping(payload.get("stock_candidates")).get("formula_version"),
+        "stock_candidates_fundamental_overlay": _mapping(payload.get("stock_candidates")).get("fundamental_overlay"),
+        "factor_screen_formula_version": _mapping(payload.get("factor_screen_candidates")).get("formula_version"),
+        "theme_breakout_formula_version": _mapping(payload.get("theme_breakout")).get("formula_version"),
+        "mean_reversion_formula_version": _mapping(payload.get("mean_reversion_candidates")).get("formula_version"),
     }
 
 
@@ -554,6 +559,7 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                             item,
                             market_state=market_state,
                             rank=rank,
+                            stock_candidates_payload=stock_candidates_raw,
                         ),
                     }
                 )
@@ -599,14 +605,22 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                                 "market_state": market_state,
                                 "theme_key": theme.get("theme_key"),
                                 "theme_name": theme.get("theme_name"),
+                                "source_kind": theme.get("source_kind"),
                                 "theme_source_kind": theme.get("source_kind"),
                                 "theme_rank": theme_rank,
                                 "strong_stock_count": theme.get("strong_stock_count"),
                                 "limit_stock_count": theme.get("limit_stock_count"),
                                 "avg_pctchange": theme.get("avg_pctchange"),
                                 "avg_turn": theme.get("avg_turn"),
+                                "movement_event_count": theme.get("movement_event_count"),
+                                "latest_event_title": theme.get("latest_event_title"),
+                                "latest_event_time": theme.get("latest_event_time"),
                                 "stock_rank_in_theme": stock_rank,
                                 "stock_code": stock.get("stock_code"),
+                                "stock_movement_event_count": stock.get("movement_event_count"),
+                                "stock_latest_event_title": stock.get("latest_event_title"),
+                                "stock_latest_event_time": stock.get("latest_event_time"),
+                                "evidence_state": _mapping(theme_breakout_raw.get("evidence_state")),
                             },
                         }
                     )
@@ -736,6 +750,7 @@ def _stock_candidate_signal_evidence(
     *,
     market_state: str | None,
     rank: int,
+    stock_candidates_payload: object | None = None,
 ) -> dict[str, object]:
     evidence = {
         "signal_kind": "stock_candidate",
@@ -754,6 +769,29 @@ def _stock_candidate_signal_evidence(
         "ma60": item.get("ma60"),
         "ma120": item.get("ma120"),
     }
+    stock_candidates = _mapping(stock_candidates_payload)
+    selection_formula_version = _optional_text(stock_candidates.get("formula_version"))
+    if selection_formula_version:
+        evidence["selection_formula_version"] = selection_formula_version
+    overlay_status = _optional_text(_mapping(stock_candidates.get("fundamental_overlay")).get("status"))
+    if overlay_status:
+        evidence["fundamental_overlay_status"] = overlay_status
+    for key in (
+        "pe",
+        "pb",
+        "ps",
+        "roe",
+        "gross_margin",
+        "three_month_return",
+        "twelve_month_return",
+        "volatility",
+        "dividend_yield",
+        "factor_score",
+        "factor_overlay_rank",
+    ):
+        value = item.get(key)
+        if value is not None and _text(value):
+            evidence[key] = value
     selection_policy = _optional_text(item.get("selection_policy"))
     if selection_policy:
         evidence["selection_policy"] = selection_policy
@@ -770,6 +808,7 @@ def _stock_candidate_universe_evidence(
             item,
             market_state=_optional_text(item.get("market_state")) or _payload_market_state(payload),
             rank=_safe_int(item.get("new_rank"), default=1),
+            stock_candidates_payload=_mapping(payload.get("stock_candidates")),
         ),
         "old_rank": item.get("old_rank"),
         "new_rank": item.get("new_rank"),

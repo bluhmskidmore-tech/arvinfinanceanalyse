@@ -49,8 +49,16 @@ CHOICE_CSS_FINANCIAL_CHUNK_SIZE = max(50, min(400, int(os.environ.get("MOSS_CHOI
 CHOICE_CSS_FINANCIAL_INDICATORS = (
     os.environ.get("MOSS_CHOICE_CSS_FINANCIAL_INDICATORS", "ROEWA,GPMARGIN").strip() or "ROEWA,GPMARGIN"
 )
+TUSHARE_THS_CONCEPT_STOCK_LIMIT = max(1, int(os.environ.get("MOSS_TUSHARE_THS_CONCEPT_STOCK_LIMIT", "500")))
+TUSHARE_THS_EXCLUDED_CONCEPT_NAMES = {
+    "\u878d\u8d44\u878d\u5238",
+    "\u6df1\u80a1\u901a",
+    "\u6caa\u80a1\u901a",
+}
 CHOICE_CSD_PERMISSION_DENIED_ERROR_CODE = 10001012
 TUSHARE_FALLBACK_AUDIT_STATUS = "completed_tushare_fallback"
+TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS = "completed_tushare_ths_fallback"
+TUSHARE_THS_CONCEPT_FIELD_KEY = "tushare_ths_concept_membership"
 
 
 @dataclass(frozen=True)
@@ -79,6 +87,9 @@ class _DefaultChoiceStockClient:
 
     def csd(self, *args: object, options: str = "") -> object:
         return self._choice_client.csd(*args, options=options)
+
+    def ctr(self, *args: object, options: str = "") -> object:
+        return self._choice_client.ctr(*args, options=options)
 
     def sector(self, *args: object, options: str = "") -> object:
         self._choice_client.start()
@@ -111,6 +122,12 @@ class _DefaultTushareStockClient:
     def fina_indicator(self, **kwargs: object) -> object:
         return self._api().fina_indicator(**kwargs)
 
+    def ths_index(self, **kwargs: object) -> object:
+        return self._api().ths_index(**kwargs)
+
+    def ths_member(self, **kwargs: object) -> object:
+        return self._api().ths_member(**kwargs)
+
     def _api(self) -> Any:
         if self._pro is None:
             token = resolve_tushare_token_with_settings_fallback(get_settings())
@@ -135,6 +152,7 @@ def materialize_choice_stock_inputs(
     catalog_path: str | None = None,
     client: object | None = None,
     tushare_client: object | None = None,
+    enable_tushare_concept_fallback: bool = False,
 ) -> dict[str, object]:
     settings = get_settings()
     resolved_date = _normalize_date(as_of_date)
@@ -252,6 +270,37 @@ def materialize_choice_stock_inputs(
                     error_msg=audit_error_msg,
                 )
             )
+        if enable_tushare_concept_fallback and not concept_rows:
+            try:
+                concept_rows = _load_tushare_ths_concept_membership_rows(
+                    tushare_cache.client if tushare_cache is not None else tushare_client or _DefaultTushareStockClient(),
+                    as_of_date=resolved_date,
+                    stock_codes=_tushare_ths_concept_probe_stock_codes(
+                        daily_by_key,
+                        as_of_date=resolved_date,
+                        stock_codes=stock_codes,
+                    ),
+                )
+                request_audits.append(
+                    _build_tushare_ths_concept_audit(
+                        run_id=run_id,
+                        as_of_date=resolved_date,
+                        row_count=len(concept_rows),
+                        status=TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS,
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Tushare THS concept fallback failed for %s: %s", resolved_date, exc)
+                request_audits.append(
+                    _build_tushare_ths_concept_audit(
+                        run_id=run_id,
+                        as_of_date=resolved_date,
+                        row_count=0,
+                        status="failed",
+                        error_code=1,
+                        error_msg=str(exc),
+                    )
+                )
         current_request = None
     except Exception as exc:
         _persist_failed_materialization(
@@ -1151,6 +1200,116 @@ class _TushareStockFallbackCache:
         return self._limit_rows
 
 
+def _load_tushare_ths_concept_membership_rows(
+    client: object,
+    *,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> list[dict[str, object]]:
+    stock_code_list = [code for code in dict.fromkeys(stock_codes) if code]
+    as_of_compact = _compact_date(as_of_date)
+    index_frame = _call_tushare_with_retry(
+        client,
+        "ths_index",
+        exchange="A",
+        fields="ts_code,name,count,exchange,list_date,type",
+    )
+    concept_names = {
+        _record_text(record, "ts_code"): _record_text(record, "name")
+        for record in _records_from_tabular_payload(index_frame)
+        if _is_tushare_ths_concept_index(record, as_of_compact=as_of_compact)
+        and _record_text(record, "name") not in TUSHARE_THS_EXCLUDED_CONCEPT_NAMES
+    }
+    rows_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    for stock_code in stock_code_list:
+        member_frame = _call_tushare_with_retry(
+            client,
+            "ths_member",
+            con_code=stock_code,
+            fields="ts_code,con_code,con_name,weight,in_date,out_date,is_new",
+        )
+        for member in _records_from_tabular_payload(member_frame):
+            concept_code = _record_text(member, "ts_code")
+            concept_name = concept_names.get(concept_code, "")
+            if not concept_name:
+                continue
+            if _record_text(member, "is_new").upper() == "N":
+                continue
+            key = (stock_code, concept_code)
+            rows_by_key[key] = {
+                "as_of_date": as_of_date,
+                "stock_code": stock_code,
+                "concept_code": concept_code,
+                "concept_name": concept_name,
+                "concept_source": "tushare_ths_current",
+                "field_key": TUSHARE_THS_CONCEPT_FIELD_KEY,
+            }
+    return sorted(rows_by_key.values(), key=lambda row: (str(row["stock_code"]), str(row["concept_code"])))
+
+
+def _tushare_ths_concept_probe_stock_codes(
+    daily_by_key: dict[tuple[str, str], dict[str, object]],
+    *,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> list[str]:
+    candidates: list[tuple[float, str]] = []
+    for (trade_date, stock_code), row in daily_by_key.items():
+        if _normalize_date(trade_date) != as_of_date or stock_code not in stock_codes:
+            continue
+        pctchange = _float_or_none_safe(row.get("pctchange"))
+        if pctchange is None or pctchange < 5.0:
+            continue
+        candidates.append((pctchange, stock_code))
+    ordered = [stock_code for _pctchange, stock_code in sorted(candidates, reverse=True)]
+    return ordered[:TUSHARE_THS_CONCEPT_STOCK_LIMIT]
+
+
+def _is_tushare_ths_concept_index(record: dict[str, object], *, as_of_compact: str) -> bool:
+    ts_code = _record_text(record, "ts_code")
+    if not (ts_code.startswith("885") or ts_code.startswith("886")):
+        return False
+    if _record_text(record, "exchange").upper() not in {"", "A"}:
+        return False
+    list_date = _record_text(record, "list_date")
+    if list_date and _compact_date(list_date) > as_of_compact:
+        return False
+    return True
+
+
+def _build_tushare_ths_concept_audit(
+    *,
+    run_id: str,
+    as_of_date: str,
+    row_count: int,
+    status: str,
+    error_code: int = 0,
+    error_msg: str = "",
+) -> dict[str, object]:
+    return {
+        "run_id": run_id,
+        "as_of_date": as_of_date,
+        "input_family": "concept_membership",
+        "field_key": TUSHARE_THS_CONCEPT_FIELD_KEY,
+        "call": "tushare",
+        "vendor_indicator": "ths_index,ths_member",
+        "request_arguments_json": json.dumps(["type=N", "exchange=A"], ensure_ascii=False, separators=(",", ":")),
+        "request_options_json": json.dumps(
+            {
+                "as_of_date": as_of_date,
+                "fields": "ts_code,name,count,exchange,list_date,type;ts_code,con_code,con_name,weight,in_date,out_date,is_new",
+                "point_in_time_note": "ths_member returns current membership; in_date/out_date may be blank",
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        "status": status,
+        "row_count": row_count,
+        "error_code": error_code,
+        "error_msg": error_msg,
+    }
+
+
 def _call_tushare_with_retry(client: object, method_name: str, **kwargs: object) -> object:
     method = getattr(client, method_name)
     for attempt in range(1, TUSHARE_FALLBACK_RETRY_ATTEMPTS + 1):
@@ -1233,7 +1392,10 @@ def _compact_date(value: object) -> str:
 
 
 def _used_tushare_fallback(request_audits: list[dict[str, object]]) -> bool:
-    return any(audit.get("status") == TUSHARE_FALLBACK_AUDIT_STATUS for audit in request_audits)
+    return any(
+        audit.get("status") in {TUSHARE_FALLBACK_AUDIT_STATUS, TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS}
+        for audit in request_audits
+    )
 
 
 def _build_request_audit(
@@ -1478,23 +1640,32 @@ def _normalize_intraday_movement_rows(
 ) -> list[dict[str, object]]:
     normalized: list[dict[str, object]] = []
     for row in rows:
-        stock_code = _text(row.get("stock_code") or row.get("CODE") or row.get("SECUCODE") or row.get("SECURITYCODE"))
+        stock_code = _text(row.get("SECURITYCODE") or row.get("SECUCODE") or row.get("CODE") or row.get("stock_code"))
         concept_code = _text(row.get("CONCEPTCODE") or row.get("CONCEPT_CODE") or row.get("BKCODE") or row.get("THEMECODE"))
         concept_name = _text(row.get("CONCEPTNAME") or row.get("CONCEPT") or row.get("BKNAME") or row.get("THEMENAME"))
-        title = _text(row.get("TITLE") or row.get("EVENTTITLE") or row.get("EVENT") or row.get("CONTENT"))
+        title = _text(row.get("TITLE") or row.get("EVENTTITLE") or row.get("EVENT") or row.get("CONTENT") or row.get("VCCHNAME"))
         if not stock_code and not (concept_code or concept_name or title):
             continue
         normalized.append(
             {
                 "as_of_date": as_of_date,
-                "event_time": _text(row.get("EVENTTIME") or row.get("DATETIME") or row.get("TIME") or row.get("EITIME")),
+                "event_time": _text(
+                    row.get("EVENTTIME")
+                    or row.get("DATETIME")
+                    or row.get("TIME")
+                    or row.get("EITIME")
+                    or row.get("TDATE")
+                    or row.get("CSDATE")
+                ),
                 "stock_code": stock_code,
                 "stock_name": _text(row.get("NAME") or row.get("SECURITYSHORTNAME") or row.get("STOCKNAME")),
                 "concept_code": concept_code,
                 "concept_name": concept_name,
-                "event_type": _text(row.get("EVENTTYPE") or row.get("TYPE") or row.get("LABEL")),
+                "event_type": _text(row.get("EVENTTYPE") or row.get("TYPE") or row.get("LABEL") or row.get("VCCHNAME")),
                 "event_title": title,
-                "pctchange": _float_or_none(row.get("PCTCHANGE") or row.get("PCT_CHG") or row.get("CHANGE")),
+                "pctchange": _float_or_none(
+                    row.get("PCTCHANGE") or row.get("PCT_CHG") or row.get("CHANGE") or row.get("CHGRADIO")
+                ),
                 "turn": _float_or_none(row.get("TURN") or row.get("TURNOVER") or row.get("TURNOVER_RATE")),
                 "source_url": _text(row.get("URL") or row.get("SOURCEURL")),
                 "field_key": request.field_key,

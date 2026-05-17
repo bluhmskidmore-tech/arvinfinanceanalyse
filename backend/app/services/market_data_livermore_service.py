@@ -360,6 +360,7 @@ class _ChoiceStockOutputs:
 class _ThemeBreakoutEvidenceProvenance:
     concept_date_row_count: int = 0
     concept_matched_row_count: int = 0
+    concept_fallback_row_count: int = 0
     movement_date_row_count: int = 0
     movement_matched_row_count: int = 0
 
@@ -614,6 +615,14 @@ def _load_sector_rank_inputs(
         required_tables = {"choice_stock_sector_membership", "choice_stock_daily_observation"}
         if not required_tables.issubset(tables):
             return [], [], [], []
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if membership_snapshot_date is None:
+            return [], list(required_tables), [], []
         rows = conn.execute(
             """
             select
@@ -631,11 +640,9 @@ def _load_sector_rank_inputs(
             join choice_stock_daily_observation daily
               on daily.stock_code = membership.stock_code
              and cast(daily.trade_date as date) = cast(? as date)
-            where membership.as_of_date = (
-                select max(as_of_date) from choice_stock_sector_membership
-            )
+            where membership.as_of_date = ?
             """,
-            [as_of_date],
+            [as_of_date, membership_snapshot_date],
         ).fetchall()
     except duckdb.Error:
         return [], ["choice_stock_sector_membership", "choice_stock_daily_observation"], [], []
@@ -681,8 +688,95 @@ def _load_stock_candidate_snapshots(
         }
         if not required_tables.issubset(tables):
             return [], [], [], []
-        current_rows = conn.execute(
+        universe_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_universe",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        limit_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_limit_quality",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if universe_snapshot_date is None or membership_snapshot_date is None or limit_snapshot_date is None:
+            return [], list(required_tables), [], []
+        factor_columns = [
+            "as_of_date",
+            "stock_code",
+            "pe",
+            "pb",
+            "ps",
+            "roe",
+            "gross_margin",
+            "three_month_return",
+            "twelve_month_return",
+            "volatility",
+            "dividend_yield",
+        ]
+        factor_snapshot_date: str | None = None
+        if "choice_stock_factor_snapshot" in tables and _table_has_columns(
+            conn,
+            "choice_stock_factor_snapshot",
+            factor_columns,
+        ):
+            latest_factor = conn.execute(
+                """
+                select max(as_of_date)
+                from choice_stock_factor_snapshot
+                where as_of_date <= ?
+                """,
+                [as_of_date],
+            ).fetchone()
+            if latest_factor and latest_factor[0]:
+                factor_snapshot_date = str(latest_factor[0])
+        factor_select = (
             """
+              f.pe,
+              f.pb,
+              f.ps,
+              f.roe,
+              f.gross_margin,
+              f.three_month_return,
+              f.twelve_month_return,
+              f.volatility,
+              f.dividend_yield
+            """
+            if factor_snapshot_date is not None
+            else """
+              null as pe,
+              null as pb,
+              null as ps,
+              null as roe,
+              null as gross_margin,
+              null as three_month_return,
+              null as twelve_month_return,
+              null as volatility,
+              null as dividend_yield
+            """
+        )
+        factor_join = (
+            """
+            left join choice_stock_factor_snapshot f
+              on f.stock_code = universe.stock_code
+             and f.as_of_date = ?
+            """
+            if factor_snapshot_date is not None
+            else ""
+        )
+        params: list[object] = [membership_snapshot_date, as_of_date, limit_snapshot_date]
+        if factor_snapshot_date is not None:
+            params.append(factor_snapshot_date)
+        params.append(universe_snapshot_date)
+        current_rows = conn.execute(
+            f"""
             select
               universe.stock_code,
               universe.stock_name,
@@ -703,24 +797,22 @@ def _load_stock_candidate_snapshots(
               daily.source_version,
               daily.vendor_version,
               limits.source_version,
-              limits.vendor_version
+              limits.vendor_version,
+              {factor_select}
             from choice_stock_universe universe
             join choice_stock_sector_membership membership
               on membership.stock_code = universe.stock_code
-             and membership.as_of_date = (
-                 select max(as_of_date) from choice_stock_sector_membership
-             )
+             and membership.as_of_date = ?
             join choice_stock_daily_observation daily
               on daily.stock_code = universe.stock_code
              and cast(daily.trade_date as date) = cast(? as date)
             join choice_stock_limit_quality limits
               on limits.stock_code = universe.stock_code
-             and limits.as_of_date = universe.as_of_date
-            where universe.as_of_date = (
-                select max(as_of_date) from choice_stock_universe
-            )
+             and limits.as_of_date = ?
+            {factor_join}
+            where universe.as_of_date = ?
             """,
-            [as_of_date],
+            params,
         ).fetchall()
         stock_codes = [str(row[0]) for row in current_rows if row[0]]
         if not stock_codes:
@@ -808,6 +900,15 @@ def _load_stock_candidate_snapshots(
                 closed_up_limit=closed_up_limit,
                 close_history=history["close"],
                 turnover_history=history["turn"],
+                pe=row[20],
+                pb=row[21],
+                ps=row[22],
+                roe=row[23],
+                gross_margin=row[24],
+                three_month_return=row[25],
+                twelve_month_return=row[26],
+                volatility=row[27],
+                dividend_yield=row[28],
             )
         )
         source_versions.extend(str(value) for value in (row[12], row[14], row[16], row[18]) if value)
@@ -819,6 +920,8 @@ def _load_stock_candidate_snapshots(
         "choice_stock_daily_observation",
         "choice_stock_limit_quality",
     ]
+    if factor_snapshot_date is not None:
+        tables_used.append("choice_stock_factor_snapshot")
     return snapshots, tables_used, source_versions, vendor_versions
 
 
@@ -843,6 +946,20 @@ def _load_mean_reversion_snapshots(
         }
         if not required_tables.issubset(tables):
             return []
+        universe_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_universe",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if universe_snapshot_date is None or membership_snapshot_date is None:
+            return []
         current_rows = conn.execute(
             """
             select
@@ -857,18 +974,14 @@ def _load_mean_reversion_snapshots(
             from choice_stock_daily_observation daily
             left join choice_stock_universe universe
               on universe.stock_code = daily.stock_code
-             and universe.as_of_date = (
-                 select max(as_of_date) from choice_stock_universe
-             )
+             and universe.as_of_date = ?
             left join choice_stock_sector_membership membership
               on membership.stock_code = daily.stock_code
-             and membership.as_of_date = (
-                 select max(as_of_date) from choice_stock_sector_membership
-             )
+             and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
               and trim(coalesce(daily.tradestatus, '')) = 'Trading'
             """,
-            [as_of_date],
+            [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
         stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
         if not stock_codes:
@@ -1009,6 +1122,28 @@ def _load_factor_screen_rows(
             "choice_stock_sector_membership",
             ["stock_code", "sw2021code", "sw2021", "as_of_date"],
         )
+        universe_snapshot_date = (
+            _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_universe",
+                column_name="as_of_date",
+                as_of_date=str(snap_date),
+            )
+            if has_universe
+            else None
+        )
+        sector_snapshot_date = (
+            _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_sector_membership",
+                column_name="as_of_date",
+                as_of_date=str(snap_date),
+            )
+            if has_sector
+            else None
+        )
+        has_universe = has_universe and universe_snapshot_date is not None
+        has_sector = has_sector and sector_snapshot_date is not None
         if has_universe:
             tables_used.append("choice_stock_universe")
         if has_sector:
@@ -1020,7 +1155,7 @@ def _load_factor_screen_rows(
             LEFT JOIN (
                 SELECT stock_code, stock_name
                 FROM choice_stock_universe
-                WHERE as_of_date = (SELECT MAX(as_of_date) FROM choice_stock_universe)
+                WHERE as_of_date = ?
             ) u ON f.stock_code = u.stock_code
             """
             if has_universe
@@ -1033,12 +1168,18 @@ def _load_factor_screen_rows(
             LEFT JOIN (
                 SELECT stock_code, sw2021code, sw2021
                 FROM choice_stock_sector_membership
-                WHERE as_of_date = (SELECT MAX(as_of_date) FROM choice_stock_sector_membership)
+                WHERE as_of_date = ?
             ) s ON f.stock_code = s.stock_code
             """
             if has_sector
             else ""
         )
+        params: list[object] = []
+        if has_universe:
+            params.append(universe_snapshot_date)
+        if has_sector:
+            params.append(sector_snapshot_date)
+        params.append(snap_date)
 
         rows = conn.execute(
             f"""
@@ -1056,7 +1197,7 @@ def _load_factor_screen_rows(
             {sector_join}
             WHERE f.as_of_date = ?
         """,
-            [snap_date],
+            params,
         ).fetchall()
 
         cols = [
@@ -1111,6 +1252,27 @@ def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]
         return set()
 
 
+def _latest_table_date_on_or_before(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    table_name: str,
+    column_name: str,
+    as_of_date: str,
+) -> str | None:
+    try:
+        row = conn.execute(
+            f"""
+            select max({column_name})
+            from {table_name}
+            where cast({column_name} as date) <= cast(? as date)
+            """,
+            [as_of_date],
+        ).fetchone()
+    except duckdb.Error:
+        return None
+    return str(row[0]) if row and row[0] else None
+
+
 def _load_theme_breakout_snapshots(
     *,
     duckdb_path: str,
@@ -1138,6 +1300,31 @@ def _load_theme_breakout_snapshots(
         has_limit_quality = "choice_stock_limit_quality" in tables
         has_concept_membership = "choice_stock_concept_membership" in tables
         has_intraday_movement = "choice_stock_intraday_movement_event" in tables
+        universe_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_universe",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if universe_snapshot_date is None or membership_snapshot_date is None:
+            return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
+        limit_snapshot_date = (
+            _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_limit_quality",
+                column_name="as_of_date",
+                as_of_date=as_of_date,
+            )
+            if has_limit_quality
+            else None
+        )
+        has_limit_quality = has_limit_quality and limit_snapshot_date is not None
         limit_select = (
             "coalesce(cast(limits.issurgedlimit as varchar), '') as issurgedlimit, "
             "limits.source_version, limits.vendor_version"
@@ -1148,11 +1335,15 @@ def _load_theme_breakout_snapshots(
             """
             left join choice_stock_limit_quality limits
               on limits.stock_code = universe.stock_code
-             and limits.as_of_date = universe.as_of_date
+             and limits.as_of_date = ?
             """
             if has_limit_quality
             else ""
         )
+        params: list[object] = [membership_snapshot_date, as_of_date]
+        if has_limit_quality:
+            params.append(limit_snapshot_date)
+        params.append(universe_snapshot_date)
         rows = conn.execute(
             f"""
             select
@@ -1177,7 +1368,7 @@ def _load_theme_breakout_snapshots(
             from choice_stock_universe universe
             join choice_stock_sector_membership membership
               on membership.stock_code = universe.stock_code
-             and membership.as_of_date = universe.as_of_date
+             and membership.as_of_date = ?
             join choice_stock_daily_observation daily
               on daily.stock_code = universe.stock_code
              and cast(daily.trade_date as date) = cast(? as date)
@@ -1185,7 +1376,7 @@ def _load_theme_breakout_snapshots(
             where universe.as_of_date = ?
             order by universe.stock_code asc
             """,
-            [as_of_date, as_of_date],
+            params,
         ).fetchall()
         if has_concept_membership:
             concept_rows = conn.execute(
@@ -1194,6 +1385,7 @@ def _load_theme_breakout_snapshots(
                   stock_code,
                   concept_code,
                   concept_name,
+                  concept_source,
                   source_version,
                   vendor_version
                 from choice_stock_concept_membership
@@ -1238,6 +1430,7 @@ def _load_theme_breakout_snapshots(
     concept_by_stock: dict[str, list[tuple[str, str]]] = {}
     concept_date_row_count = 0
     concept_matched_row_count = 0
+    concept_fallback_row_count = 0
     for row in concept_rows:
         stock_code = str(row[0] or "")
         concept_code = str(row[1] or "")
@@ -1247,9 +1440,11 @@ def _load_theme_breakout_snapshots(
         concept_date_row_count += 1
         if stock_code in universe_codes:
             concept_matched_row_count += 1
+        if str(row[3] or "").lower() not in {"", "choice"}:
+            concept_fallback_row_count += 1
         concept_by_stock.setdefault(stock_code, []).append((concept_code, concept_name))
-        source_versions.extend(str(value) for value in (row[3],) if value)
-        vendor_versions.extend(str(value) for value in (row[4],) if value)
+        source_versions.extend(str(value) for value in (row[4],) if value)
+        vendor_versions.extend(str(value) for value in (row[5],) if value)
 
     movement_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
     movement_date_row_count = 0
@@ -1336,6 +1531,7 @@ def _load_theme_breakout_snapshots(
         _ThemeBreakoutEvidenceProvenance(
             concept_date_row_count=concept_date_row_count,
             concept_matched_row_count=concept_matched_row_count,
+            concept_fallback_row_count=concept_fallback_row_count,
             movement_date_row_count=movement_date_row_count,
             movement_matched_row_count=movement_matched_row_count,
         ),
@@ -1356,6 +1552,7 @@ def _build_theme_breakout_evidence_state(
             tables_used=tables_used,
             date_row_count=provenance.concept_date_row_count,
             matched_row_count=provenance.concept_matched_row_count,
+            fallback_row_count=provenance.concept_fallback_row_count,
         ),
         "intraday_movement": _theme_breakout_evidence_entry(
             input_family="intraday_movement",
@@ -1364,6 +1561,7 @@ def _build_theme_breakout_evidence_state(
             tables_used=tables_used,
             date_row_count=provenance.movement_date_row_count,
             matched_row_count=provenance.movement_matched_row_count,
+            fallback_row_count=0,
         ),
     }
 
@@ -1376,8 +1574,9 @@ def _theme_breakout_evidence_entry(
     tables_used: list[str],
     date_row_count: int,
     matched_row_count: int,
+    fallback_row_count: int = 0,
 ) -> dict[str, object]:
-    if catalog_status == "catalog_unconfirmed":
+    if catalog_status == "catalog_unconfirmed" and fallback_row_count <= 0:
         state = "catalog_unconfirmed"
     elif table_name not in tables_used:
         state = "table_missing"
@@ -1394,6 +1593,7 @@ def _theme_breakout_evidence_entry(
         "row_count": date_row_count,
         "date_row_count": date_row_count,
         "matched_row_count": matched_row_count,
+        "fallback_row_count": fallback_row_count,
         "message": _theme_breakout_evidence_message(
             input_family=input_family,
             state=state,
@@ -1435,9 +1635,6 @@ def _movement_for_concept(
     }
     if not movement_by_key:
         return empty
-    exact = movement_by_key.get((stock_code, concept_code, concept_name))
-    if exact is not None:
-        return exact
     candidates = [
         value
         for (code, row_concept_code, row_concept_name), value in movement_by_key.items()
@@ -1445,6 +1642,7 @@ def _movement_for_concept(
         and (
             (concept_code and row_concept_code == concept_code)
             or (concept_name and row_concept_name == concept_name)
+            or (not row_concept_code and not row_concept_name)
             or (not concept_code and not concept_name)
         )
     ]

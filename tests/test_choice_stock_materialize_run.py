@@ -51,6 +51,7 @@ def test_choice_stock_materialize_run_main_forwards_args_and_emits_json(monkeypa
             "as_of_date": "2026-04-28",
             "duckdb_path": "tmp/moss.duckdb",
             "catalog_path": "tmp/choice_stock_catalog.json",
+            "enable_tushare_concept_fallback": False,
         }
     ]
     assert json.loads(captured.out) == {
@@ -84,6 +85,7 @@ def test_choice_stock_materialize_run_main_forwards_none_for_omitted_paths(monke
             "as_of_date": "2026-04-28",
             "duckdb_path": None,
             "catalog_path": None,
+            "enable_tushare_concept_fallback": False,
         }
     ]
     assert json.loads(captured.out) == {"status": "completed"}
@@ -144,6 +146,7 @@ def test_choice_stock_materialize_run_main_can_emit_post_run_coverage(monkeypatc
                 "as_of_date": "2026-04-28",
                 "duckdb_path": "tmp/moss.duckdb",
                 "catalog_path": "tmp/choice_stock_catalog.json",
+                "enable_tushare_concept_fallback": False,
             },
         ),
         (

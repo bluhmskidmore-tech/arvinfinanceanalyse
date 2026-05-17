@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_theme_breakout_proxy_v1"
+FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_v3"
 STRONG_PCTCHANGE_THRESHOLD = 5.0
 MIN_STRONG_STOCK_COUNT = 3
 MIN_LIMIT_STOCK_COUNT = 2
 MIN_ADVANCE_RATIO = 0.55
 MIN_AVG_PCTCHANGE = 3.0
 MAX_ITEMS_PER_THEME = 8
+MAX_THEMES = 30
 MAX_REVIEW_ITEMS = 5
 
 
@@ -126,7 +127,7 @@ def compute_theme_breakout(
             if row is not None:
                 evaluated_rows.append(row)
 
-    ordered = sorted([row.row for row in evaluated_rows if row.passed], key=_theme_sort_key)
+    ordered = sorted([row.row for row in evaluated_rows if row.passed], key=_theme_sort_key)[:MAX_THEMES]
     ranked = [{"rank": index, **row} for index, row in enumerate(ordered, start=1)]
     review_items = [
         _review_row(row)
@@ -325,9 +326,10 @@ def _matches_theme(definition: _ThemeDefinition, snapshot: ThemeBreakoutSnapshot
     return any(keyword.lower() in stock_name for keyword in definition.stock_name_keywords)
 
 
-def _theme_sort_key(row: dict[str, object]) -> tuple[int, int, float, float, int, str]:
+def _theme_sort_key(row: dict[str, object]) -> tuple[int, int, int, float, float, int, str]:
     return (
         -cast(int, row["limit_stock_count"]),
+        -cast(int, row["movement_event_count"]),
         -cast(int, row["strong_stock_count"]),
         -cast(float, row["avg_pctchange"]),
         -cast(float, row["avg_turn"]),

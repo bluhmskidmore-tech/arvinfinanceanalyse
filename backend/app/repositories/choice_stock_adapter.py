@@ -285,7 +285,7 @@ def _request_arguments_for_entry(
     if entry.call == "csd":
         return ["__STOCK_CODES__", entry.vendor_indicator, choice_stock_history_start_date(as_of_date), as_of_date]
     if entry.call == "ctr":
-        return [entry.vendor_indicator, as_of_date]
+        return [entry.vendor_indicator, ""]
     return []
 
 

@@ -85,6 +85,12 @@ class ChoiceClient:
         merged = self._merge_request_options(options, include_recv_timeout=True)
         return cmod.csd(*args, merged)
 
+    def ctr(self, *args: Any, options: str = "") -> Any:
+        self.start()
+        cmod = _get_em_c()
+        merged = self._merge_request_options(options, include_recv_timeout=False)
+        return cmod.ctr(*args, merged)
+
     def fut_transaction_rankings(self, symbols: str, trade_date: str = "", indicators: str = "volume,long,short") -> Any:
         self.start()
         cmod = _get_em_c()

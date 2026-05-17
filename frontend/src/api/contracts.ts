@@ -1157,6 +1157,18 @@ export type LivermoreStockCandidateItem = {
   gap_norm: number;
   breakout_extension_norm?: number | null;
   abnormal_turnover: number;
+  selection_policy?: string | null;
+  pe?: number | null;
+  pb?: number | null;
+  ps?: number | null;
+  roe?: number | null;
+  gross_margin?: number | null;
+  three_month_return?: number | null;
+  twelve_month_return?: number | null;
+  volatility?: number | null;
+  dividend_yield?: number | null;
+  factor_score?: number | null;
+  factor_overlay_rank?: number | null;
 };
 
 export type LivermoreStockCandidatesPayload = {
@@ -1167,6 +1179,14 @@ export type LivermoreStockCandidatesPayload = {
   candidate_count: number;
   excluded_stock_count: number;
   insufficient_history_count: number;
+  selection_policy?: string | null;
+  fundamental_overlay?: {
+    status?: string | null;
+    input_candidate_count?: number | null;
+    valid_factor_count?: number | null;
+    selected_factor_count?: number | null;
+    top_fraction?: number | null;
+  };
   items: LivermoreStockCandidateItem[];
 };
 

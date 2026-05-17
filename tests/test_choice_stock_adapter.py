@@ -186,9 +186,14 @@ def test_optional_theme_inputs_are_planned_without_becoming_required_gates(tmp_p
                     {
                         "input_family": "intraday_movement",
                         "field_key": "choice_intraday_movement",
-                        "vendor_indicator": "STOCK_INTRADAY_MOVEMENT",
+                        "vendor_indicator": "StockInfo",
                         "call": "ctr",
                         "required": False,
+                        "request_options": {
+                            "StartDate": "__AS_OF_DATE__",
+                            "EndDate": "__AS_OF_DATE__",
+                            "Ispandas": 0,
+                        },
                         "confirmed": True,
                         "confirmation_source": "unit test optional movement probe",
                         "confirmed_at": "2026-05-11",
@@ -207,6 +212,9 @@ def test_optional_theme_inputs_are_planned_without_becoming_required_gates(tmp_p
     planned = {f"{item.input_family}:{item.field_key}" for item in plan.requests}
     assert "concept_membership:choice_concept_membership" in planned
     assert "intraday_movement:choice_intraday_movement" in planned
+    movement_request = next(item for item in plan.requests if item.input_family == "intraday_movement")
+    assert movement_request.request_arguments == ["StockInfo", ""]
+    assert movement_request.request_options_text == "StartDate=2026-05-11,EndDate=2026-05-11,Ispandas=0"
 
 
 def test_optional_theme_inputs_can_stay_non_blocking_while_reporting_catalog_unconfirmed(tmp_path: Path) -> None:
@@ -296,6 +304,16 @@ def test_checked_in_choice_stock_catalog_json_documents_sector_strength_units_an
     policy_l = policy.lower()
     assert "limit_ratio" in policy_l
     assert "tushare" in policy_l
+
+    concept_entry = fields["choice_concept_membership"]
+    assert concept_entry["confirmed"] is False
+
+    movement_entry = fields["choice_intraday_movement"]
+    assert movement_entry["call"] == "ctr"
+    assert movement_entry["vendor_indicator"] == "StockInfo"
+    assert movement_entry["request_options"]["StartDate"] == "__AS_OF_DATE__"
+    assert movement_entry["request_options"]["EndDate"] == "__AS_OF_DATE__"
+    assert movement_entry["confirmed"] is True
 
 
 def test_invalid_choice_stock_catalog_is_incomplete(tmp_path: Path) -> None:

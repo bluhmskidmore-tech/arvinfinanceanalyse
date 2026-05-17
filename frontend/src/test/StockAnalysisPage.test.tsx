@@ -126,6 +126,15 @@ function buildStrategyPayload(
           close_strength: 0.833333,
           gap_norm: -0.114679,
           abnormal_turnover: 1.386294,
+          pe: 12.4,
+          pb: 1.8,
+          ps: 2.6,
+          roe: 0.18,
+          gross_margin: 0.32,
+          three_month_return: 0.11,
+          twelve_month_return: 0.24,
+          factor_score: 0.4812,
+          factor_overlay_rank: 1,
         },
         {
           rank: 2,
@@ -238,8 +247,10 @@ function buildReplayStatus(overrides: Partial<ConfluenceReplayStatus> = {}): Con
   };
 }
 
-function buildCandidateHistoryPayload(): LivermoreCandidateHistoryPayload {
-  return {
+function buildCandidateHistoryPayload(
+  overrides: Partial<LivermoreCandidateHistoryPayload> = {},
+): LivermoreCandidateHistoryPayload {
+  const payload: LivermoreCandidateHistoryPayload = {
     stock_code: null,
     snapshot_from: "2026-05-03",
     snapshot_to: "2026-05-13",
@@ -399,6 +410,7 @@ function buildCandidateHistoryPayload(): LivermoreCandidateHistoryPayload {
     },
     items: [],
   };
+  return { ...payload, ...overrides };
 }
 
 function buildStrategyScorePayload(
@@ -767,6 +779,15 @@ function stockClient(options?: {
 }
 
 describe("StockAnalysisPage", () => {
+  it("marks the research desk layout shell without changing the stock data path", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const page = await screen.findByTestId("stock-analysis-page");
+    expect(page.querySelector(".stock-analysis-page")).toHaveAttribute("data-layout-rev", "2026-05-16b");
+    expect(page.querySelector(".stock-analysis-page")).toHaveAttribute("data-data-viz-rev", "2026-05-16c");
+    expect(await screen.findByTestId("stock-analysis-first-screen-workbench")).toBeInTheDocument();
+  });
+
   it("puts the decision summary and review queue on the first analysis surface", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
@@ -806,7 +827,9 @@ describe("StockAnalysisPage", () => {
     expect(candidate).toHaveTextContent("Alpha");
     expect(candidate).toHaveTextContent("行业排名第 1");
     expect(candidate).toHaveTextContent("10EMA 失效观察");
-    expect(candidate).toHaveTextContent("基本面与估值证据未接入");
+    expect(candidate).toHaveTextContent("基本面 overlay");
+    expect(candidate).toHaveTextContent("因子分 0.4812");
+    expect(candidate).toHaveTextContent("基本面 overlay 已接入候选排序");
     expect(candidate).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
     expect(candidate).toHaveTextContent("10EMA");
   });
@@ -1544,6 +1567,61 @@ describe("StockAnalysisPage", () => {
             state: "OVERHEAT",
           },
         }),
+        candidateHistory: buildCandidateHistoryPayload({
+          items: [
+            {
+              snapshot_as_of_date: "2026-05-07",
+              stock_code: "688001.SH",
+              stock_name: "候选一",
+              signal_kind: "factor_screen",
+              candidate_rank: 1,
+              sector_code: "S270000",
+              sector_name: "电子",
+              selection_close: 10,
+              forward_trade_date_1d: "2026-05-08",
+              forward_trade_date_5d: null,
+              forward_trade_date_20d: null,
+              return_1d: 0.021,
+              return_5d: null,
+              return_20d: null,
+              data_status: "pending",
+            },
+            {
+              snapshot_as_of_date: "2026-05-07",
+              stock_code: "688011.SH",
+              stock_name: "候选十一",
+              signal_kind: "factor_screen",
+              candidate_rank: 11,
+              sector_code: "S270000",
+              sector_name: "电子",
+              selection_close: 10,
+              forward_trade_date_1d: "2026-05-08",
+              forward_trade_date_5d: null,
+              forward_trade_date_20d: null,
+              return_1d: 0.011,
+              return_5d: null,
+              return_20d: null,
+              data_status: "pending",
+            },
+            {
+              snapshot_as_of_date: "2026-05-07",
+              stock_code: "300001.SZ",
+              stock_name: "趋势候选",
+              signal_kind: "stock_candidate",
+              candidate_rank: 1,
+              sector_code: "S270000",
+              sector_name: "电子",
+              selection_close: 10,
+              forward_trade_date_1d: "2026-05-08",
+              forward_trade_date_5d: null,
+              forward_trade_date_20d: null,
+              return_1d: 0.031,
+              return_5d: null,
+              return_20d: null,
+              data_status: "pending",
+            },
+          ],
+        }),
       }),
     });
 
@@ -1578,6 +1656,12 @@ describe("StockAnalysisPage", () => {
     expect(summary).toHaveTextContent("还差 2 个成熟快照");
     expect(summary).toHaveTextContent("2026-05-07");
     expect(summary).toHaveTextContent("T+5 待成熟");
+    expect(summary).toHaveTextContent("候选明细");
+    expect(summary).toHaveTextContent("候选一");
+    expect(summary).toHaveTextContent("688001.SH");
+    expect(summary).toHaveTextContent("#1");
+    expect(summary).not.toHaveTextContent("候选十一");
+    expect(summary).not.toHaveTextContent("趋势候选");
 
     const page = screen.getByTestId("stock-analysis-page");
     expect(page).not.toHaveTextContent("买入");

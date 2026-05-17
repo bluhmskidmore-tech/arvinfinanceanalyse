@@ -1,7 +1,7 @@
 {
-  "catalog_version": "choice_stock_live_probe_20260501_v1",
+  "catalog_version": "choice_stock_live_probe_20260516_v2",
   "vendor_name": "choice",
-  "generated_from": "live_choice_api_probe_20260501",
+  "generated_from": "live_choice_api_probe_20260501_and_20260516",
   "policy_note": "Confirmed through local Choice API probes. Choice HIGHLIMIT/LOWLIMIT are limit flags, not limit-price inputs. When Choice CSD returns entitlement error 10001012, the backend materializer may fill daily OHLCV, turnover, trading status, and limit prices from the localized Tushare stock fallback with audit status completed_tushare_fallback. Tushare stk_limit up_limit/down_limit populate the same HIGHLIMIT/LOWLIMIT keys as numeric prices for limit_ratio-style derivation; they are not the Choice flag semantics.",
   "fields": [
     {
@@ -121,22 +121,23 @@
       "confirmed": false,
       "confirmation_source": "",
       "confirmed_at": "",
-      "description": "Optional real concept-board membership for Livermore theme breakout radar. Fill vendor_indicator and confirmation metadata only after a live Choice entitlement smoke test."
+      "description": "Optional real concept-board membership for Livermore theme breakout radar. Leave unconfirmed until a live Choice entitlement smoke test returns stock/concept rows; 2026-05-16 probes for CONCEPTCODE/CONCEPTNAME, CONCEPT_CODE/CONCEPTNAME, BKCODE/BKNAME, and THEMECODE/THEMENAME returned Choice service error 10000013."
     },
     {
       "input_family": "intraday_movement",
       "field_key": "choice_intraday_movement",
-      "vendor_indicator": "",
+      "vendor_indicator": "StockInfo",
       "call": "ctr",
       "required": false,
       "request_options": {
-        "TradeDate": "__AS_OF_DATE__",
+        "StartDate": "__AS_OF_DATE__",
+        "EndDate": "__AS_OF_DATE__",
         "Ispandas": 0
       },
-      "confirmed": false,
-      "confirmation_source": "",
-      "confirmed_at": "",
-      "description": "Optional intraday movement/event feed for Livermore theme breakout radar. Fill vendor_indicator and confirmation metadata only after a live Choice entitlement smoke test."
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: ctr('StockInfo','',StartDate=2026-05-13,EndDate=2026-05-13,Ispandas=0) returned SECURITYCODE/SECURITYSHORTNAME/TDATE/VCCHNAME/CHGRADIO/TURNOVER rows",
+      "confirmed_at": "2026-05-16T21:43:51+08:00",
+      "description": "Optional Choice StockInfo abnormal-trading event feed for Livermore theme breakout radar. Rows are stock-level events; concept fields remain blank unless Choice returns concept columns in a future entitlement."
     }
   ]
 }

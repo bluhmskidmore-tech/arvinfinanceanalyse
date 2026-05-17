@@ -334,7 +334,7 @@ def test_stock_candidate_history_persists_breakout_evidence_fields(monkeypatch, 
     _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=35)
 
     def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
-        return _fake_payload(
+        payload, meta = _fake_payload(
             as_of_date=snap.isoformat(),
             items=[
                 {
@@ -353,9 +353,25 @@ def test_stock_candidate_history_persists_breakout_evidence_fields(monkeypatch, 
                     "ma20": 97.2,
                     "ma60": 95.3,
                     "ma120": 90.4,
+                    "pe": 12.3,
+                    "pb": 1.4,
+                    "ps": 2.1,
+                    "roe": 0.18,
+                    "gross_margin": 0.36,
+                    "factor_score": 1.2345,
+                    "factor_overlay_rank": 1,
                 },
             ],
         )
+        payload["stock_candidates"]["formula_version"] = "rv_livermore_stock_candidates_bundle_v7"
+        payload["stock_candidates"]["fundamental_overlay"] = {
+            "status": "applied",
+            "input_candidate_count": 2,
+            "valid_factor_count": 2,
+            "selected_factor_count": 1,
+            "top_fraction": 0.5,
+        }
+        return payload, meta
 
     monkeypatch.setattr(
         "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
@@ -387,14 +403,23 @@ def test_stock_candidate_history_persists_breakout_evidence_fields(monkeypatch, 
         "breakout_level": 99.5,
         "close_strength": 0.97,
         "ema10": 98.1,
+        "factor_overlay_rank": 1,
+        "factor_score": 1.2345,
+        "fundamental_overlay_status": "applied",
         "gap_norm": 0.12,
+        "gross_margin": 0.36,
         "ma120": 90.4,
         "ma20": 97.2,
         "ma60": 95.3,
         "market_state": "HOT",
+        "pb": 1.4,
+        "pe": 12.3,
+        "ps": 2.1,
         "rank": 1,
+        "roe": 0.18,
         "sector_code": "S1",
         "sector_rank": 2,
+        "selection_formula_version": "rv_livermore_stock_candidates_bundle_v7",
         "signal_kind": "stock_candidate",
         "stock_code": stock,
     }
@@ -827,6 +852,9 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
                     "limit_stock_count": 2,
                     "avg_pctchange": 9.5,
                     "avg_turn": 5.2,
+                    "movement_event_count": 4,
+                    "latest_event_title": "Chiplet intraday surge",
+                    "latest_event_time": "2026-05-01 10:15:00",
                     "items": [
                         {
                             "stock_code": stock,
@@ -839,10 +867,19 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
                             "amplitude": 7.0,
                             "close_strength": 0.86,
                             "closed_up_limit": True,
+                            "movement_event_count": 2,
+                            "latest_event_title": "Alpha Semiconductor intraday surge",
+                            "latest_event_time": "2026-05-01 10:15:00",
                         }
                     ],
                 }
-            ]
+            ],
+            "evidence_state": {
+                "intraday_movement": {
+                    "state": "matched_rows",
+                    "matched_row_count": 2,
+                }
+            },
         }
         return payload, meta
 
@@ -878,7 +915,8 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
               return_1d,
               forward_trade_date_5d,
               return_5d,
-              data_status
+              data_status,
+              signal_evidence_json
             from livermore_candidate_history
             """
         ).fetchone()
@@ -906,6 +944,12 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
     assert row[17] is None
     assert row[18] is None
     assert row[19] == "pending"
+    evidence = json.loads(row[20])
+    assert evidence["movement_event_count"] == 4
+    assert evidence["stock_movement_event_count"] == 2
+    assert evidence["latest_event_title"] == "Chiplet intraday surge"
+    assert evidence["stock_latest_event_title"] == "Alpha Semiconductor intraday surge"
+    assert evidence["evidence_state"]["intraday_movement"]["state"] == "matched_rows"
 
 
 def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tmp_path) -> None:

@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v6"
+FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v7"
 DEFAULT_STOCK_CANDIDATE_POLICY = "default"
 EXP3B_STOCK_CANDIDATE_POLICY = "exp3b"
 MIN_HISTORY = 120
 EMA_WINDOW = 10
 MAX_RANKED = 6
 MAX_BREAKOUT_EXTENSION_NORM = 0.35
+DEFAULT_FUNDAMENTAL_TOP_FRACTION = 0.5
+WARM_FUNDAMENTAL_TOP_FRACTION = 1 / 3
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,15 @@ class StockCandidateSnapshot:
     closed_up_limit: bool = False
     close_history: Sequence[object] = ()
     turnover_history: Sequence[object] = ()
+    pe: object = None
+    pb: object = None
+    ps: object = None
+    roe: object = None
+    gross_margin: object = None
+    three_month_return: object = None
+    twelve_month_return: object = None
+    volatility: object = None
+    dividend_yield: object = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +119,9 @@ def compute_stock_candidates(
             continue
         items.append(candidate)
 
+    pre_overlay_count = len(items)
+    items, fundamental_overlay = _apply_fundamental_overlay(items, market_state=market_state)
+    fundamental_excluded_count = pre_overlay_count - len(items)
     ordered = sorted(
         items,
         key=_candidate_close_strength_first_sort_key if policy.close_strength_first else _candidate_sort_key,
@@ -127,10 +141,11 @@ def compute_stock_candidates(
                 market_state=market_state,
                 selection_policy=policy.name,
                 input_stock_count=len(snapshots),
-                excluded_stock_count=excluded_stock_count + max(0, len(ordered) - MAX_RANKED),
+                excluded_stock_count=excluded_stock_count + fundamental_excluded_count + max(0, len(ordered) - MAX_RANKED),
                 insufficient_history_count=insufficient_history_count,
                 items=ranked,
                 universe_items=universe_items,
+                fundamental_overlay=fundamental_overlay,
         )
     )
 
@@ -215,6 +230,15 @@ def _candidate_row(
         "breakout_extension_norm": round(breakout_extension_norm, 6),
         "abnormal_turnover": round(abnormal_turnover, 6),
         "selection_policy": policy.name,
+        "pe": _round_optional(snapshot.pe),
+        "pb": _round_optional(snapshot.pb),
+        "ps": _round_optional(snapshot.ps),
+        "roe": _round_optional(snapshot.roe),
+        "gross_margin": _round_optional(snapshot.gross_margin),
+        "three_month_return": _round_optional(snapshot.three_month_return),
+        "twelve_month_return": _round_optional(snapshot.twelve_month_return),
+        "volatility": _round_optional(snapshot.volatility),
+        "dividend_yield": _round_optional(snapshot.dividend_yield),
     }
 
 
@@ -228,6 +252,7 @@ def _build_payload(
     insufficient_history_count: int,
     items: list[dict[str, object]],
     universe_items: list[dict[str, object]] | None = None,
+    fundamental_overlay: dict[str, object] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "as_of_date": as_of_date,
@@ -240,6 +265,8 @@ def _build_payload(
         "insufficient_history_count": insufficient_history_count,
         "items": items,
     }
+    if fundamental_overlay is not None:
+        payload["fundamental_overlay"] = fundamental_overlay
     if universe_items is not None:
         payload["universe_items"] = universe_items
     return payload
@@ -307,6 +334,113 @@ def _abnormal_turnover(*, turnover_free: float, turns: list[float]) -> float:
     return math.log1p(turnover_free / (median20 + EPS))
 
 
+def _apply_fundamental_overlay(
+    items: list[dict[str, object]],
+    *,
+    market_state: str,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    valid_rows: list[tuple[dict[str, object], dict[str, float | None]]] = []
+    for row in items:
+        factor_inputs = _fundamental_factor_inputs(row)
+        if factor_inputs is None:
+            continue
+        valid_rows.append((row, factor_inputs))
+
+    if not valid_rows:
+        return items, {
+            "status": "not_applied",
+            "input_candidate_count": len(items),
+            "valid_factor_count": 0,
+            "selected_factor_count": len(items),
+            "top_fraction": None,
+        }
+
+    scored_rows = _score_fundamental_rows(valid_rows)
+    top_fraction = WARM_FUNDAMENTAL_TOP_FRACTION if market_state == "WARM" else DEFAULT_FUNDAMENTAL_TOP_FRACTION
+    selected_count = min(len(scored_rows), max(1, math.ceil(len(scored_rows) * top_fraction)))
+    factor_ranked = sorted(scored_rows, key=lambda item: (-item[1], str(item[0]["stock_code"])))
+    selected_codes = {str(row["stock_code"]) for row, _score in factor_ranked[:selected_count]}
+
+    for rank, (row, score) in enumerate(factor_ranked, start=1):
+        row["factor_score"] = round(score, 4)
+        row["factor_overlay_rank"] = rank
+
+    return [row for row, _score in scored_rows if str(row["stock_code"]) in selected_codes], {
+        "status": "applied",
+        "input_candidate_count": len(items),
+        "valid_factor_count": len(valid_rows),
+        "selected_factor_count": selected_count,
+        "top_fraction": round(top_fraction, 6),
+    }
+
+
+def _fundamental_factor_inputs(row: dict[str, object]) -> dict[str, float | None] | None:
+    pe = _valid_float(row.get("pe"))
+    pb = _valid_float(row.get("pb"))
+    ps = _valid_float(row.get("ps"))
+    roe = _valid_float(row.get("roe"))
+    gross_margin = _valid_float(row.get("gross_margin"))
+    three_month_return = _valid_float(row.get("three_month_return"))
+    twelve_month_return = _valid_float(row.get("twelve_month_return"))
+    volatility = _valid_float(row.get("volatility"))
+    dividend_yield = _valid_float(row.get("dividend_yield"))
+    if (
+        pe is None
+        or pe <= 0
+        or pb is None
+        or pb <= 0
+        or ps is None
+        or ps <= 0
+        or roe is None
+        or gross_margin is None
+    ):
+        return None
+    return {
+        "value": (1 / pe + 1 / pb + 1 / ps) / 3,
+        "quality": (roe + gross_margin) / 2,
+        "momentum": (
+            (three_month_return + twelve_month_return) / 2
+            if three_month_return is not None and twelve_month_return is not None
+            else None
+        ),
+        "low_vol": 1 / volatility if volatility is not None and volatility > 0 else None,
+        "dividend": dividend_yield,
+    }
+
+
+def _score_fundamental_rows(rows: list[tuple[dict[str, object], dict[str, float | None]]]) -> list[tuple[dict[str, object], float]]:
+    value_z = _z_scores_optional([inputs["value"] for _row, inputs in rows])
+    quality_z = _z_scores_optional([inputs["quality"] for _row, inputs in rows])
+    momentum_z = _z_scores_optional([inputs["momentum"] for _row, inputs in rows])
+    low_vol_z = _z_scores_optional([inputs["low_vol"] for _row, inputs in rows])
+    dividend_z = _z_scores_optional([inputs["dividend"] for _row, inputs in rows])
+    scored: list[tuple[dict[str, object], float]] = []
+    for index, (row, _inputs) in enumerate(rows):
+        score = (
+            0.30 * value_z[index]
+            + 0.25 * quality_z[index]
+            + 0.15 * momentum_z[index]
+            + 0.15 * low_vol_z[index]
+            + 0.15 * dividend_z[index]
+        )
+        scored.append((row, score))
+    return scored
+
+
+def _z_scores_optional(values: list[float | None]) -> list[float]:
+    valid_values = [value for value in values if value is not None]
+    if not valid_values:
+        return [0.0 for _value in values]
+    if len(valid_values) == 1:
+        return [0.0 for _value in values]
+    mean = sum(valid_values) / len(valid_values)
+    variance = sum((value - mean) ** 2 for value in valid_values) / (len(valid_values) - 1)
+    stddev = math.sqrt(variance)
+    if stddev <= EPS:
+        return [0.0 for _value in values]
+    return [0.0 if value is None else (value - mean) / stddev for value in values]
+
+
 def _candidate_sort_key(row: dict[str, object]) -> tuple[float, float, int, str]:
     return (
         -cast(float, row["abnormal_turnover"]),
@@ -360,6 +494,11 @@ def _valid_float(value: object) -> float | None:
     except ValueError:
         return None
     return number if math.isfinite(number) else None
+
+
+def _round_optional(value: object, ndigits: int = 6) -> float | None:
+    number = _valid_float(value)
+    return None if number is None else round(number, ndigits)
 
 
 def _valid_int(value: object) -> int | None:
