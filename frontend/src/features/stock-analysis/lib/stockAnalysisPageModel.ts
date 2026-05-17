@@ -6,6 +6,7 @@ import type {
   LivermoreSignalConfluencePayload,
   LivermoreStockCandidateItem,
   LivermoreStrategyPayload,
+  HybridFusionCandidateItem,
   LivermoreThemeBreakoutReviewItem,
   LivermoreThemeEvidenceInputState,
   LivermoreThemeBreakoutItem,
@@ -409,6 +410,10 @@ function sortedCandidateItems(payload: LivermoreStrategyPayload) {
   return [...(payload.stock_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
 
+function sortedHybridFusionItems(payload: LivermoreStrategyPayload) {
+  return [...(payload.hybrid_fusion_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
+}
+
 function sortedThemeBreakoutItems(payload: LivermoreStrategyPayload): LivermoreThemeBreakoutItem[] {
   return [...(payload.theme_breakout?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
@@ -445,6 +450,79 @@ function formatDistanceToBreakoutPct(item: LivermoreStockCandidateItem): string 
     return "待补";
   }
   return `${(((close - breakout) / breakout) * 100).toFixed(2)}%`;
+}
+
+function fusionConfidenceLabel(value: string | null | undefined): string {
+  if (value === "high") return "高";
+  if (value === "medium") return "中";
+  if (value === "low") return "低";
+  return value?.trim() || "待补";
+}
+
+function buildHybridFusionEvidenceCards(
+  payload: LivermoreStrategyPayload,
+): StockCandidateEvidenceCard[] {
+  const formula = payload.hybrid_fusion_candidates?.formula_version ?? "hybrid_fusion";
+  return sortedHybridFusionItems(payload).map((item: HybridFusionCandidateItem) => {
+    const evidenceBullets: StockCandidateEvidenceBullet[] = [
+      { key: "fusion_score", label: "融合分", value: formatNumber(item.fusion_score, 4) },
+      { key: "cycle_score", label: "景气周期", value: formatNumber(item.cycle_score, 4) },
+      {
+        key: "lifecourt_proxy_score",
+        label: "生命法庭代理",
+        value: formatNumber(item.lifecourt_proxy_score, 4),
+      },
+      { key: "attention_score", label: "关注代理", value: formatNumber(item.attention_score, 4) },
+      { key: "price_confirm_score", label: "价格确认", value: formatNumber(item.price_confirm_score, 4) },
+      { key: "crowding_penalty", label: "拥挤惩罚", value: formatNumber(item.crowding_penalty, 4) },
+      { key: "confidence", label: "置信度", value: fusionConfidenceLabel(item.confidence) },
+      { key: "formula_version", label: "公式版本", value: formula },
+    ];
+    const sourceKinds = Array.isArray(item.evidence?.source_kinds)
+      ? item.evidence.source_kinds.map((value) => String(value)).join(" / ")
+      : "待补";
+    const evidence = evidenceBullets.map((bullet) => `${bullet.label}：${bullet.value}`);
+
+    return {
+      rank: item.rank,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorCode: item.sector_code,
+      sectorName: item.sector_name,
+      headline: `融合策略 #${item.rank} · ${item.stock_name}`,
+      pattern: "待补",
+      patternNote: "融合策略为研究只读候选，形态标签需回看趋势与题材证据",
+      distanceToBreakoutPct: "融合优先",
+      evidenceBullets,
+      evidence,
+      counterEvidence: [
+        "生命法庭层为代理信号，未接入真实大V文本、OCR/ASR或社交情绪生产线。",
+        "仅作观察与复核，不生成实盘订单或仓位建议。",
+        `来源命中：${sourceKinds}`,
+      ],
+      invalidationRules: [
+        "市场状态离开 WARM/HOT、题材/趋势/因子来源失效或拥挤惩罚上升时，需要降级复核。",
+        "数据质量为 stale / missing 时，不得解释为有效观察。",
+      ],
+      rawFields: [
+        { key: "fusion_score", label: "fusion_score", value: formatNumber(item.fusion_score, 6) },
+        { key: "cycle_score", label: "cycle_score", value: formatNumber(item.cycle_score, 6) },
+        {
+          key: "lifecourt_proxy_score",
+          label: "lifecourt_proxy_score",
+          value: formatNumber(item.lifecourt_proxy_score, 6),
+        },
+        { key: "attention_score", label: "attention_score", value: formatNumber(item.attention_score, 6) },
+        {
+          key: "price_confirm_score",
+          label: "price_confirm_score",
+          value: formatNumber(item.price_confirm_score, 6),
+        },
+        { key: "crowding_penalty", label: "crowding_penalty", value: formatNumber(item.crowding_penalty, 6) },
+        { key: "confidence", label: "confidence", value: item.confidence },
+      ],
+    };
+  });
 }
 
 function mapGateStateToTone(state: LivermoreMarketGateState): "进攻" | "中性" | "防御" {
@@ -1055,7 +1133,10 @@ export function buildDecisionSummary(
   const isFallback = fallbackMode !== "none";
   const fallbackLabel = isFallback ? ` / fallback ${fallbackMode}` : "";
   const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok" && !isFallback;
-  const candidateCount = payload.stock_candidates?.candidate_count ?? queue.length;
+  const candidateCount =
+    payload.hybrid_fusion_candidates?.candidate_count ??
+    payload.stock_candidates?.candidate_count ??
+    queue.length;
   const boundaryCount = countBoundaryItems(payload);
 
   return {
@@ -1089,6 +1170,9 @@ export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): strin
   }
   if (payload.stock_candidates?.formula_version) {
     notes.push(`stock_candidates formula: ${payload.stock_candidates.formula_version}`);
+  }
+  if (payload.hybrid_fusion_candidates?.formula_version) {
+    notes.push(`hybrid_fusion formula: ${payload.hybrid_fusion_candidates.formula_version}`);
   }
   if (payload.risk_exit?.formula_version) {
     notes.push(`risk_exit formula: ${payload.risk_exit.formula_version}`);
@@ -1264,6 +1348,9 @@ export function buildSectorTableSortComparator(
 export function buildCandidateEvidenceCards(
   payload: LivermoreStrategyPayload,
 ): StockCandidateEvidenceCard[] {
+  const hybridCards = buildHybridFusionEvidenceCards(payload);
+  if (hybridCards.length > 0) return hybridCards;
+
   return sortedCandidateItems(payload).map((item) => {
     const pattern = deriveCandidatePattern(item);
     const patternNote = "UI 辅助归类标签，不构成正式结论";

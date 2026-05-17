@@ -15,10 +15,11 @@ export type BuildStockAnalysisAgentPageContextInput = {
     reviewRank?: number;
     sectorCode?: string;
     sectorName?: string;
-    source?: "review_queue" | "risk_exit" | "mean_reversion" | "factor_screen" | "consensus";
+    source?: "review_queue" | "risk_exit" | "mean_reversion" | "factor_screen" | "hybrid_fusion" | "consensus";
     livermoreRank?: number | null;
     meanReversionRank?: number | null;
     factorScreenRank?: number | null;
+    hybridFusionRank?: number | null;
   } | null;
 };
 
@@ -65,6 +66,9 @@ export function buildStockAnalysisAgentPageContext(
     }
     if (input.detailSelection.factorScreenRank != null) {
       row.factor_screen_rank = input.detailSelection.factorScreenRank;
+    }
+    if (input.detailSelection.hybridFusionRank != null) {
+      row.hybrid_fusion_rank = input.detailSelection.hybridFusionRank;
     }
     selected_rows.push(row);
   }

@@ -26,6 +26,9 @@ from backend.app.core_finance.livermore_stock_candidates import (
 from backend.app.core_finance.factor_screen_candidates import (
     compute_factor_screen_candidates,
 )
+from backend.app.core_finance.hybrid_fusion_candidates import (
+    compute_hybrid_fusion_candidates,
+)
 from backend.app.core_finance.mean_reversion_candidates import (
     MeanReversionSnapshot,
     compute_mean_reversion_candidates,
@@ -185,6 +188,10 @@ def load_livermore_strategy_payload(
         "diagnostics": diagnostics,
         "supported_outputs": supported_outputs,
         "unsupported_outputs": unsupported_outputs,
+        "cycle_rotation_framework": _build_cycle_rotation_framework(
+            market_gate=market_gate,
+            stock_outputs=stock_outputs,
+        ),
     }
     if stock_outputs.sector_rank_payload is not None:
         payload["sector_rank"] = stock_outputs.sector_rank_payload
@@ -196,6 +203,8 @@ def load_livermore_strategy_payload(
         payload["factor_screen_candidates"] = stock_outputs.factor_screen_payload
     if stock_outputs.theme_breakout_payload is not None:
         payload["theme_breakout"] = stock_outputs.theme_breakout_payload
+    if stock_outputs.hybrid_fusion_payload is not None:
+        payload["hybrid_fusion_candidates"] = stock_outputs.hybrid_fusion_payload
     if stock_outputs.risk_exit_payload is not None:
         payload["risk_exit"] = stock_outputs.risk_exit_payload
     source_versions = [row.source_version for row in history_rows if row.source_version] + stock_outputs.source_versions
@@ -347,6 +356,8 @@ class _ChoiceStockOutputs:
     factor_screen_payload: dict[str, object] | None
     factor_screen_block_reason: str
     theme_breakout_payload: dict[str, object] | None
+    hybrid_fusion_payload: dict[str, object] | None
+    hybrid_fusion_block_reason: str
     risk_exit_payload: dict[str, object] | None
     risk_exit_block_reason: str
     stock_candidate_block_reason: str
@@ -414,6 +425,11 @@ def _load_choice_stock_outputs(
             factor_screen_payload=None,
             factor_screen_block_reason="choice_stock_factor_snapshot is unavailable because no resolved as_of_date is available.",
             theme_breakout_payload=None,
+            hybrid_fusion_payload=None,
+            hybrid_fusion_block_reason=(
+                "Hybrid fusion requires at least one landed candidate source: "
+                "stock_candidates, factor_screen_candidates, or theme_breakout."
+            ),
             risk_exit_payload=None,
             risk_exit_block_reason="",
             stock_candidate_block_reason="",
@@ -557,6 +573,27 @@ def _load_choice_stock_outputs(
             ),
         }
 
+    hybrid_fusion_payload: dict[str, object] | None = None
+    hybrid_fusion_block_reason = _hybrid_fusion_unavailable_reason_from_payloads(
+        market_state=market_state,
+        stock_candidates_payload=stock_candidates_payload,
+        factor_screen_payload=factor_screen_payload,
+        theme_breakout_payload=theme_breakout_payload,
+    )
+    if _has_hybrid_fusion_candidate_source(
+        stock_candidates_payload=stock_candidates_payload,
+        factor_screen_payload=factor_screen_payload,
+        theme_breakout_payload=theme_breakout_payload,
+    ):
+        hybrid_fusion_payload = compute_hybrid_fusion_candidates(
+            as_of_date=as_of_date,
+            market_state=market_state,
+            sector_rank_payload=sector_rank_payload,
+            stock_candidates_payload=stock_candidates_payload,
+            factor_screen_payload=factor_screen_payload,
+            theme_breakout_payload=theme_breakout_payload,
+        ).payload
+
     risk_exit_payload: dict[str, object] | None = None
     risk_exit_block_reason = ""
     if stock_coverage.full_coverage:
@@ -588,6 +625,8 @@ def _load_choice_stock_outputs(
         factor_screen_payload=factor_screen_payload,
         factor_screen_block_reason=factor_screen_block_reason,
         theme_breakout_payload=theme_breakout_payload,
+        hybrid_fusion_payload=hybrid_fusion_payload,
+        hybrid_fusion_block_reason=hybrid_fusion_block_reason,
         risk_exit_payload=risk_exit_payload,
         risk_exit_block_reason=risk_exit_block_reason,
         stock_candidate_block_reason=stock_candidate_block_reason,
@@ -1911,6 +1950,15 @@ def _build_supported_outputs(
                 ),
             }
         )
+    if stock_outputs.hybrid_fusion_payload is not None:
+        supported.append("hybrid_fusion")
+    else:
+        unsupported.append(
+            {
+                "key": "hybrid_fusion",
+                "reason": stock_outputs.hybrid_fusion_block_reason,
+            }
+        )
     if stock_outputs.risk_exit_payload is not None:
         supported.append("risk_exit")
     else:
@@ -1918,6 +1966,113 @@ def _build_supported_outputs(
             {"key": "risk_exit", "reason": _risk_unavailable_reason(stock_outputs.risk_exit_block_reason)}
         )
     return supported, unsupported
+
+
+def _build_cycle_rotation_framework(
+    *,
+    market_gate: dict[str, object],
+    stock_outputs: _ChoiceStockOutputs,
+) -> dict[str, object]:
+    gate_state = str(market_gate.get("state", "NO_DATA"))
+    gate_available = gate_state not in {"NO_DATA"}
+    sector_count = _safe_int((stock_outputs.sector_rank_payload or {}).get("sector_count"))
+    factor_count = _safe_int((stock_outputs.factor_screen_payload or {}).get("candidate_count"))
+    candidate_count = _safe_int((stock_outputs.stock_candidates_payload or {}).get("candidate_count"))
+    risk_count = _safe_int((stock_outputs.risk_exit_payload or {}).get("signal_count"))
+
+    return {
+        "strategy_name": "A-share cycle rotation research framework",
+        "display_name": "A股景气周期选股与行业轮动",
+        "observation_only": True,
+        "implementation_stage": "verification_pending",
+        "score_formula": (
+            "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport"
+        ),
+        "macro_formula": "MacroScore = 0.40 PMI + 0.35 CreditImpulse + 0.25 PriceSpread",
+        "rebalance_cadence": "Monthly core review with weekly satellite monitoring.",
+        "layers": [
+            {
+                "key": "macro_direction",
+                "title": "Macro direction",
+                "weight": 0.30,
+                "status": "missing_inputs",
+                "evidence": (
+                    f"Livermore market gate is {gate_state}; PMI, credit impulse and price spread "
+                    "are not landed for this framework."
+                ),
+                "available_inputs": ["market_gate"] if gate_available else [],
+                "missing_inputs": ["PMI", "credit_impulse", "price_spread"],
+            },
+            {
+                "key": "industry_cycle",
+                "title": "Industry cycle",
+                "weight": 0.35,
+                "status": "provisional" if stock_outputs.sector_rank_payload is not None else "missing_inputs",
+                "evidence": (
+                    f"sector_rank is available for {sector_count} sectors; industry profit and revenue cycle "
+                    "inputs are not landed."
+                    if stock_outputs.sector_rank_payload is not None
+                    else "sector_rank is unavailable, so the industry-cycle layer is blocked."
+                ),
+                "available_inputs": ["sector_rank"] if stock_outputs.sector_rank_payload is not None else [],
+                "missing_inputs": ["industry_profit_cycle", "industry_revenue_cycle"],
+            },
+            {
+                "key": "market_flow",
+                "title": "Market flow",
+                "weight": 0.20,
+                "status": "provisional" if stock_outputs.stock_candidates_payload is not None else "missing_inputs",
+                "evidence": (
+                    f"Stock candidate review has {candidate_count} rows; fund-flow confirmation is not landed."
+                    if stock_outputs.stock_candidates_payload is not None
+                    else "Stock candidate review is unavailable, and fund-flow confirmation is not landed."
+                ),
+                "available_inputs": ["stock_candidates"] if stock_outputs.stock_candidates_payload is not None else [],
+                "missing_inputs": ["fund_flow", "turnover_persistence", "northbound_flow"],
+            },
+            {
+                "key": "valuation_support",
+                "title": "Valuation support",
+                "weight": 0.15,
+                "status": "provisional" if stock_outputs.factor_screen_payload is not None else "missing_inputs",
+                "evidence": (
+                    f"factor_screen_candidates has {factor_count} rows; valuation percentile history is not landed."
+                    if stock_outputs.factor_screen_payload is not None
+                    else "factor_screen_candidates is unavailable, so valuation support is not confirmed."
+                ),
+                "available_inputs": (
+                    ["factor_screen_candidates"] if stock_outputs.factor_screen_payload is not None else []
+                ),
+                "missing_inputs": ["valuation_percentile_history", "earnings_revision"],
+            },
+            {
+                "key": "execution_constraints",
+                "title": "Execution constraints",
+                "weight": None,
+                "status": "verification_pending",
+                "evidence": (
+                    f"Risk-exit evidence has {risk_count} signals; sizing, cost and liquidity controls still "
+                    "need governed replay evidence."
+                    if stock_outputs.risk_exit_payload is not None
+                    else "Risk-exit evidence is unavailable; sizing, cost and liquidity controls remain pending."
+                ),
+                "available_inputs": ["risk_exit"] if stock_outputs.risk_exit_payload is not None else [],
+                "missing_inputs": ["transaction_cost", "disclosure_lag", "liquidity_floor"],
+            },
+        ],
+        "constraints": [
+            "monthly core review; weekly satellite monitoring",
+            "industry cap 25%",
+            "single stock cap 5%",
+            "exclude ST and suspended stocks",
+            "exclude bottom 30% liquidity names until liquidity evidence is landed",
+            "require 250 trading-day history before replay statistics are trusted",
+        ],
+        "boundary": (
+            "Research-only framework assembled from available read-only evidence; no return, sizing or "
+            "execution claim is produced until missing inputs are governed."
+        ),
+    }
 
 
 def _gate_supplement_breadth_limit(
@@ -2452,6 +2607,65 @@ def _theme_breakout_unavailable_reason(
     return "Theme breakout proxy produced no payload for the resolved inputs."
 
 
+def _has_hybrid_fusion_candidate_source(
+    *,
+    stock_candidates_payload: dict[str, object] | None,
+    factor_screen_payload: dict[str, object] | None,
+    theme_breakout_payload: dict[str, object] | None,
+) -> bool:
+    return any(
+        (
+            _payload_item_count(stock_candidates_payload) > 0,
+            _payload_item_count(factor_screen_payload) > 0,
+            _theme_breakout_stock_item_count(theme_breakout_payload) > 0,
+        )
+    )
+
+
+def _hybrid_fusion_unavailable_reason_from_payloads(
+    *,
+    market_state: str,
+    stock_candidates_payload: dict[str, object] | None,
+    factor_screen_payload: dict[str, object] | None,
+    theme_breakout_payload: dict[str, object] | None,
+) -> str:
+    missing_sources: list[str] = []
+    if _payload_item_count(stock_candidates_payload) <= 0:
+        missing_sources.append("stock_candidates")
+    if _payload_item_count(factor_screen_payload) <= 0:
+        missing_sources.append("factor_screen_candidates")
+    if _theme_breakout_stock_item_count(theme_breakout_payload) <= 0:
+        missing_sources.append("theme_breakout")
+    if len(missing_sources) == 3:
+        return (
+            "Hybrid fusion requires at least one landed candidate source: "
+            "stock_candidates, factor_screen_candidates, or theme_breakout. "
+            f"Missing candidate source rows: {', '.join(missing_sources)}."
+        )
+    if market_state not in {"WARM", "HOT"}:
+        return f"Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is {market_state}."
+    return ""
+
+
+def _payload_item_count(payload: dict[str, object] | None) -> int:
+    raw = payload.get("items") if isinstance(payload, dict) else None
+    return len(raw) if isinstance(raw, list) else 0
+
+
+def _theme_breakout_stock_item_count(payload: dict[str, object] | None) -> int:
+    raw_themes = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(raw_themes, list):
+        return 0
+    count = 0
+    for raw_theme in raw_themes:
+        if not isinstance(raw_theme, dict):
+            continue
+        raw_items = raw_theme.get("items")
+        if isinstance(raw_items, list):
+            count += sum(1 for raw_item in raw_items if isinstance(raw_item, dict))
+    return count
+
+
 def _stock_unavailable_input_family(stock_outputs: _ChoiceStockOutputs) -> str:
     if stock_outputs.stock_candidate_block_reason:
         return "limit_up_quality"
@@ -2635,6 +2849,10 @@ def _safe_float(value: object) -> float | None:
 def _safe_int(value: object) -> int | None:
     number = _safe_float(value)
     return None if number is None else int(number)
+
+
+def _safe_int_or_none(value: object) -> int | None:
+    return _safe_int(value)
 
 
 def _truthy(value: object) -> bool:

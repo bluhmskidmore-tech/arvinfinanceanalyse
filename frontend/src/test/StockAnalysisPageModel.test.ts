@@ -288,6 +288,52 @@ describe("stockAnalysisPageModel", () => {
     expect(queue[0].reviewFocus).not.toContain("买入");
   });
 
+  it("uses hybrid fusion candidates as the primary review queue when present", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      supported_outputs: [...strategyPayload.supported_outputs, "hybrid_fusion"],
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_hybrid_fusion_candidates_v1",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        coverage_note: "Hybrid fusion uses existing proxy inputs.",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000009.SZ",
+            stock_name: "Fusion Alpha",
+            sector_code: "801009",
+            sector_name: "机器人",
+            fusion_score: 0.812345,
+            cycle_score: 0.7,
+            lifecourt_proxy_score: 0.6,
+            attention_score: 0.55,
+            price_confirm_score: 0.8,
+            crowding_penalty: 0.1,
+            confidence: "medium",
+            reason: "Fusion observation-only candidate",
+            evidence: { source_kinds: ["factor_screen", "theme_breakout"] },
+          },
+        ],
+      },
+    };
+
+    const cards = buildCandidateEvidenceCards(payload);
+    const queue = buildCandidateReviewQueue(payload);
+    const summary = buildDecisionSummary(payload, { quality_flag: "ok", vendor_status: "ok" });
+
+    expect(cards[0].headline).toContain("融合策略");
+    expect(cards[0].stockCode).toBe("000009.SZ");
+    expect(cards[0].evidence.join(" ")).toContain("融合分");
+    expect(cards[0].counterEvidence.join(" ")).toContain("代理信号");
+    expect(queue[0].stockName).toBe("Fusion Alpha");
+    expect(summary.candidateCountLabel).toBe("候选 1");
+    expect(summary.nextReviewAction).toContain("Fusion Alpha");
+    expect(summary.nextReviewAction).not.toContain("买入");
+  });
+
   it("treats fallback snapshots as data that needs review", () => {
     const summary = buildDecisionSummary(strategyPayload, {
       quality_flag: "ok",

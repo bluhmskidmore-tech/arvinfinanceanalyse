@@ -1073,6 +1073,7 @@ export type LivermoreOutputKey =
   | "mean_reversion_candidates"
   | "factor_screen_candidates"
   | "theme_breakout"
+  | "hybrid_fusion"
   | "risk_exit";
 
 export type LivermoreMarketCondition = {
@@ -1367,6 +1368,139 @@ export type FactorScreenCandidatesPayload = {
   items: FactorScreenCandidateItem[];
 };
 
+export type HybridFusionCandidateItem = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  fusion_score: number;
+  cycle_score: number;
+  lifecourt_proxy_score: number;
+  attention_score: number;
+  price_confirm_score: number;
+  crowding_penalty: number;
+  confidence: "high" | "medium" | "low" | string;
+  reason: string;
+  evidence: Record<string, unknown>;
+};
+
+export type HybridFusionCandidatesPayload = {
+  as_of_date: string;
+  formula_version: string;
+  market_state: LivermoreMarketGateState;
+  observation_only: boolean;
+  candidate_count: number;
+  coverage_note?: string;
+  items: HybridFusionCandidateItem[];
+};
+
+export type LivermoreCycleRotationLayer = {
+  key: "macro_direction" | "industry_cycle" | "market_flow" | "valuation_support" | "execution_constraints";
+  title: string;
+  weight: number | null;
+  status: string;
+  evidence: string;
+  available_inputs: string[];
+  missing_inputs: string[];
+};
+
+export type LivermoreCycleRotationFramework = {
+  strategy_name: string;
+  display_name: string;
+  observation_only: boolean;
+  implementation_stage: string;
+  score_formula: string;
+  macro_formula?: string;
+  rebalance_cadence: string;
+  layers: LivermoreCycleRotationLayer[];
+  constraints: string[];
+  boundary: string;
+};
+
+export type LivermoreCycleProxyBacktestInterval = {
+  return: number;
+  start_date?: string;
+  end_date?: string;
+  peak_date?: string;
+  trough_date?: string;
+};
+
+export type LivermoreCycleProxyBacktestSummary = {
+  sample_days: number;
+  candidate_rows: number;
+  cumulative_return: number;
+  annualized_return: number | null;
+  max_gain: LivermoreCycleProxyBacktestInterval;
+  max_drawdown: LivermoreCycleProxyBacktestInterval;
+};
+
+export type LivermoreCycleProxyBacktestNavPoint = {
+  date: string;
+  exit_date?: string;
+  period_return: number;
+  nav: number;
+  candidate_count: number;
+};
+
+export type LivermoreCycleProxyBacktestPayload = {
+  status: "proxy" | "unsupported" | string;
+  full_strategy_status: "blocked_missing_inputs" | string;
+  proxy_signal_kind: string;
+  proxy_rule: string;
+  snapshot_from: string | null;
+  snapshot_to: string | null;
+  missing_full_strategy_inputs: string[];
+  warnings: string[];
+  summary: LivermoreCycleProxyBacktestSummary | null;
+  nav_series: LivermoreCycleProxyBacktestNavPoint[];
+};
+
+export type LivermoreCandidateHistoryPortfolioBacktestNavPoint = {
+  date: string;
+  nav: number;
+  cash_weight: number;
+  holding_count: number;
+};
+
+export type LivermoreCandidateHistoryPortfolioBacktestRebalance = {
+  date: string;
+  market_state: string;
+  target_count: number;
+  buy_turnover: number;
+  sell_turnover: number;
+  transaction_cost: number;
+};
+
+export type LivermoreCandidateHistoryPortfolioBacktestSummary = {
+  sample_days: number;
+  candidate_rows: number;
+  rebalance_count: number;
+  invested_rebalance_count: number;
+  cash_rebalance_count: number;
+  gross_turnover: number;
+  cost_drag: number;
+  cumulative_return: number;
+  annualized_return: number | null;
+  max_gain: LivermoreCycleProxyBacktestInterval;
+  max_drawdown: LivermoreCycleProxyBacktestInterval;
+};
+
+export type LivermoreCandidateHistoryPortfolioBacktestPayload = {
+  status: "portfolio_proxy" | "unsupported" | string;
+  full_strategy_status: "blocked_missing_inputs" | string;
+  signal_kind: string;
+  rebalance_rule: string;
+  weighting_rule: string;
+  snapshot_from: string | null;
+  snapshot_to: string | null;
+  missing_full_strategy_inputs: string[];
+  warnings: string[];
+  summary: LivermoreCandidateHistoryPortfolioBacktestSummary | null;
+  nav_series: LivermoreCandidateHistoryPortfolioBacktestNavPoint[];
+  rebalance_log: LivermoreCandidateHistoryPortfolioBacktestRebalance[];
+};
+
 export type LivermoreStrategyPayload = {
   as_of_date: string | null;
   requested_as_of_date: string | null;
@@ -1378,11 +1512,13 @@ export type LivermoreStrategyPayload = {
   data_gaps: LivermoreDataGap[];
   supported_outputs: LivermoreOutputKey[];
   unsupported_outputs: LivermoreUnsupportedOutput[];
+  cycle_rotation_framework?: LivermoreCycleRotationFramework;
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
   mean_reversion_candidates?: MeanReversionCandidatesPayload;
   factor_screen_candidates?: FactorScreenCandidatesPayload;
   theme_breakout?: LivermoreThemeBreakoutPayload;
+  hybrid_fusion_candidates?: HybridFusionCandidatesPayload;
   risk_exit?: LivermoreRiskExitPayload;
 };
 
@@ -1659,6 +1795,109 @@ export type LivermoreStrategyScorePayload = {
   backtest_window_summary?: BacktestWindowSummary | null;
   rows: LivermoreStrategyScoreRow[];
   current_market_state_rows: LivermoreStrategyScoreRow[];
+};
+
+export type LivermoreStrategyOptimizationHorizonKey =
+  | LivermoreCandidateHistoryHorizonKey
+  | "return_10d";
+
+export type LivermoreStrategyOptimizationAction =
+  | "promote"
+  | "downgrade"
+  | "observe"
+  | "pending_more_history"
+  | string;
+
+export type LivermoreStrategyOptimizationRecommendation = {
+  action: LivermoreStrategyOptimizationAction;
+  priority_label: "优先复核" | "降权观察" | "继续观察" | "样本不足" | string;
+  reason: string;
+  primary_horizon: LivermoreStrategyOptimizationHorizonKey;
+  available_count: number;
+  min_sample: number;
+  avg_return: number | null;
+  win_rate: number | null;
+  score: number | null;
+};
+
+export type LivermoreStrategyOptimizationDateWeightedStats = {
+  available_day_count: number;
+  candidate_row_count: number;
+  avg_return: number | null;
+  positive_day_rate: number | null;
+  worst_day_return: number | null;
+  best_day_return: number | null;
+};
+
+export type LivermoreStrategyOptimizationHorizonStatsByKey = Record<
+  string,
+  LivermoreCandidateHistoryHorizonStats
+>;
+
+export type LivermoreStrategyOptimizationDateWeightedStatsByKey = Record<
+  string,
+  LivermoreStrategyOptimizationDateWeightedStats
+>;
+
+export type LivermoreStrategyOptimizationSummary = {
+  summary_key: string;
+  signal_kind: string;
+  strategy_label: string;
+  sample_status: LivermoreStrategyScoreSampleStatus;
+  stats: LivermoreStrategyOptimizationHorizonStatsByKey;
+  date_weighted_stats: LivermoreStrategyOptimizationDateWeightedStatsByKey;
+  recommendation: LivermoreStrategyOptimizationRecommendation;
+};
+
+export type LivermoreStrategyOptimizationSlice = {
+  slice_key: string;
+  signal_kind: string;
+  strategy_label: string;
+  dimension: string;
+  bucket: string;
+  label: string;
+  sample_status: LivermoreStrategyScoreSampleStatus;
+  stats: LivermoreStrategyOptimizationHorizonStatsByKey;
+  date_weighted_stats: LivermoreStrategyOptimizationDateWeightedStatsByKey;
+  recommendation: LivermoreStrategyOptimizationRecommendation;
+};
+
+export type LivermoreStrategyOptimizationPendingSummary = {
+  primary_horizon: LivermoreStrategyOptimizationHorizonKey;
+  pending_rows: number;
+  pending_dates: string[];
+  latest_pending_date: string | null;
+  message: string;
+};
+
+export type LivermoreStrategyOptimizationSampleMaturity = {
+  status: "sufficient" | "insufficient" | string;
+  primary_horizon: LivermoreStrategyOptimizationHorizonKey;
+  min_sample: number;
+  sufficient_count: number;
+  insufficient_count: number;
+};
+
+export type LivermoreStrategyOptimizationPayload = {
+  as_of_date: string | null;
+  snapshot_from: string | null;
+  snapshot_to: string | null;
+  primary_horizon: LivermoreStrategyOptimizationHorizonKey;
+  min_sample: number;
+  current_market_state: string | null;
+  backtest_window_summary?: BacktestWindowSummary | null;
+  strategy_summaries: LivermoreStrategyOptimizationSummary[];
+  slices: LivermoreStrategyOptimizationSlice[];
+  recommendations: Array<
+    LivermoreStrategyOptimizationRecommendation & {
+      target_type: "strategy" | "slice" | string;
+      target_key: string;
+      signal_kind: string;
+      label: string;
+    }
+  >;
+  pending_summary: LivermoreStrategyOptimizationPendingSummary;
+  sample_maturity?: LivermoreStrategyOptimizationSampleMaturity | null;
 };
 
 export type ConfluenceReplayBlockedDate = {
@@ -4086,6 +4325,46 @@ export type CashflowProjectionPayload = {
   monthly_buckets: CashflowMonthlyBucket[];
   top_maturing_assets_12m: CashflowMaturingAsset[];
   warnings: string[];
+  computed_at: string;
+};
+
+export type CashflowForecastFormalOperatingIncome = {
+  basis: "formal";
+  amount: Numeric;
+  source: string;
+};
+
+export type CashflowForecastManagementNetProfit = {
+  basis: "analytical";
+  amount: Numeric;
+  assumption: string;
+};
+
+export type CashflowForecastMonthlyPressure = {
+  year_month: string;
+  maturity_principal: Numeric;
+  liability_maturity: Numeric;
+  net_pressure: Numeric;
+};
+
+export type CashflowProfitForecastPayload = {
+  report_date: string;
+  forecast_year_end: string;
+  actual_ytd_operating_net_income: CashflowForecastFormalOperatingIncome;
+  projected_remaining_operating_net_income: Record<string, Numeric>;
+  projected_full_year_operating_net_income: Record<string, Numeric>;
+  coupon_income_remaining: Numeric;
+  ftp_cost_remaining: Numeric;
+  net_coupon_income_remaining: Numeric;
+  maturity_principal_by_month: Record<string, Numeric>;
+  reinvestment_income_by_scenario: Record<string, Numeric>;
+  reinvestment_ftp_cost_by_scenario: Record<string, Numeric>;
+  net_reinvestment_income_by_scenario: Record<string, Numeric>;
+  liability_rollover_cost_by_scenario: Record<string, Numeric>;
+  net_cashflow_pressure_by_month: CashflowForecastMonthlyPressure[];
+  management_net_profit_estimate_by_scenario: Record<string, CashflowForecastManagementNetProfit>;
+  warnings: string[];
+  source_versions: Record<string, string>;
   computed_at: string;
 };
 

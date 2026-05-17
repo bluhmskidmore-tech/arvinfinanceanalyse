@@ -107,6 +107,7 @@ export type StockDetailDrawerProps = {
     livermoreRank?: number | null;
     meanReversionRank?: number | null;
     factorScreenRank?: number | null;
+    hybridFusionRank?: number | null;
   } | null;
   onClose: () => void;
 };
@@ -133,6 +134,19 @@ function candidateHistoryRowClass(status: string): string {
   if (status === "pending") return "stock-detail-drawer__history-row--pending";
   if (status === "partial_halt") return "stock-detail-drawer__history-row--halt";
   return "";
+}
+
+const candidateHistorySignalLabels: Record<string, string> = {
+  hybrid_fusion: "融合策略",
+  stock_candidate: "趋势突破",
+  factor_screen: "多因子",
+  theme_breakout: "题材突变",
+  mean_reversion: "超跌反弹",
+};
+
+function candidateHistorySignalLabel(value: string | null | undefined): string {
+  const key = value?.trim() || "stock_candidate";
+  return candidateHistorySignalLabels[key] ?? key;
 }
 
 export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContext, onClose }: StockDetailDrawerProps) {
@@ -228,7 +242,8 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
               {reviewContext &&
               (reviewContext.livermoreRank != null ||
                 reviewContext.meanReversionRank != null ||
-                reviewContext.factorScreenRank != null) ? (
+                reviewContext.factorScreenRank != null ||
+                reviewContext.hybridFusionRank != null) ? (
                 <div
                   className="stock-detail-drawer__strategy-ranks"
                   data-testid="stock-detail-strategy-ranks"
@@ -238,6 +253,11 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                   {reviewContext.livermoreRank != null ? (
                     <span className="stock-detail-drawer__strategy-ranks-badge">
                       趋势 #{reviewContext.livermoreRank}
+                    </span>
+                  ) : null}
+                  {reviewContext.hybridFusionRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      融合策略 #{reviewContext.hybridFusionRank}
                     </span>
                   ) : null}
                   {reviewContext.meanReversionRank != null ? (
@@ -252,6 +272,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                   ) : null}
                   {[
                     reviewContext.livermoreRank,
+                    reviewContext.hybridFusionRank,
                     reviewContext.meanReversionRank,
                     reviewContext.factorScreenRank,
                   ].filter((v) => v != null).length >= 2 ? (
@@ -361,6 +382,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                     <thead>
                       <tr>
                         <th scope="col">入选日</th>
+                        <th scope="col">策略</th>
                         <th scope="col">排名</th>
                         <th scope="col">入选收盘</th>
                         <th scope="col">T+1</th>
@@ -377,6 +399,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                           data-testid={`stock-detail-candidate-history-row-${row.snapshot_as_of_date}-${row.candidate_rank}`}
                         >
                           <td className="stock-detail-drawer__tabular">{row.snapshot_as_of_date}</td>
+                          <td>{candidateHistorySignalLabel(row.signal_kind)}</td>
                           <td className="stock-detail-drawer__tabular">{row.candidate_rank}</td>
                           <td className="stock-detail-drawer__tabular">{row.selection_close ?? "—"}</td>
                           <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_1d ?? null)}</td>

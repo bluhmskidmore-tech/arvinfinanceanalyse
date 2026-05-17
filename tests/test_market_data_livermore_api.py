@@ -332,6 +332,8 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert "Choice stock catalog is missing" in unsupported_by_key["mean_reversion_candidates"]["reason"]
     assert "choice_stock_factor_snapshot" in unsupported_by_key["factor_screen_candidates"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["theme_breakout"]["reason"]
+    assert "hybrid fusion" in unsupported_by_key["hybrid_fusion"]["reason"].lower()
+    assert "candidate source" in unsupported_by_key["hybrid_fusion"]["reason"].lower()
     unsupported_keys = {row["key"] for row in result["unsupported_outputs"]}
     assert unsupported_keys == {
         "sector_rank",
@@ -339,6 +341,7 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
         "mean_reversion_candidates",
         "factor_screen_candidates",
         "theme_breakout",
+        "hybrid_fusion",
         "risk_exit",
     }
     gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
@@ -363,6 +366,169 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     diag_by_code = {row["code"]: row for row in result["diagnostics"]}
     assert "Choice stock catalog is missing" in diag_by_code["LIVERMORE_STOCK_INPUTS_MISSING"]["message"]
     get_settings.cache_clear()
+
+
+def test_livermore_api_embeds_cycle_rotation_framework_without_trade_claims(
+    tmp_path, monkeypatch
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(65)],
+    )
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get("/ui/market-data/livermore")
+
+    assert response.status_code == 200
+    framework = response.json()["result"]["cycle_rotation_framework"]
+    assert framework["strategy_name"] == "A-share cycle rotation research framework"
+    assert framework["observation_only"] is True
+    assert framework["score_formula"] == (
+        "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport"
+    )
+    layer_by_key = {row["key"]: row for row in framework["layers"]}
+    assert set(layer_by_key) == {
+        "macro_direction",
+        "industry_cycle",
+        "market_flow",
+        "valuation_support",
+        "execution_constraints",
+    }
+    assert layer_by_key["macro_direction"]["weight"] == 0.30
+    assert "PMI" in layer_by_key["macro_direction"]["missing_inputs"]
+    assert "credit_impulse" in layer_by_key["macro_direction"]["missing_inputs"]
+    assert layer_by_key["execution_constraints"]["status"] == "verification_pending"
+    assert any("industry cap" in item for item in framework["constraints"])
+    serialized = str(framework).lower()
+    assert "buy" not in serialized
+    assert "sell" not in serialized
+    assert "order" not in serialized
+    get_settings.cache_clear()
+
+
+def test_cycle_proxy_backtest_api_happy_path(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        from backend.app.tasks.livermore_candidate_history_materialize import (
+            ensure_livermore_candidate_history_schema,
+        )
+
+        ensure_livermore_candidate_history_schema(conn)
+        conn.executemany(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date, stock_code, stock_name, candidate_rank,
+              selection_close, forward_trade_date_1d, forward_trade_date_5d, forward_trade_date_20d,
+              return_1d, return_5d, return_20d, data_status,
+              formula_version, source_version, vendor_version, rule_version, run_id, signal_kind, signal_evidence_json
+            ) values (?, ?, ?, ?, 10.0, ?, ?, ?, ?, ?, ?, 'complete', 'fv1', 'sv_proxy', 'vv_proxy', 'rv_proxy', ?, 'stock_candidate', ?)
+            """,
+            [
+                (
+                    "2026-05-01",
+                    "000001.SZ",
+                    "Proxy A",
+                    1,
+                    "2026-05-02",
+                    "2026-05-08",
+                    "2026-05-29",
+                    0.10,
+                    0.12,
+                    0.20,
+                    "run-1",
+                    '{"market_state":"WARM"}',
+                ),
+                (
+                    "2026-05-02",
+                    "000002.SZ",
+                    "Proxy B",
+                    1,
+                    "2026-05-03",
+                    "2026-05-09",
+                    "2026-05-30",
+                    0.20,
+                    0.18,
+                    0.10,
+                    "run-2",
+                    '{"market_state":"HOT"}',
+                ),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-02")
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/cycle-proxy-backtest",
+        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-02"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
+    assert body["result"]["status"] == "proxy"
+    assert body["result"]["summary"]["sample_days"] == 1
+    assert body["result"]["summary"]["cumulative_return"] == 0.12
+
+
+def test_candidate_history_portfolio_backtest_api_happy_path(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        from backend.app.tasks.livermore_candidate_history_materialize import (
+            ensure_livermore_candidate_history_schema,
+        )
+
+        ensure_livermore_candidate_history_schema(conn)
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-02", "000001.SZ", 105.0),
+            ],
+        )
+        conn.execute(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date, stock_code, stock_name, candidate_rank,
+              selection_close, data_status, formula_version, source_version,
+              vendor_version, rule_version, run_id, signal_kind, signal_evidence_json
+            ) values (
+              '2026-05-01', '000001.SZ', 'Proxy A', 1,
+              100.0, 'pending', 'fv1', 'sv_portfolio', 'vv_portfolio',
+              'rv_portfolio', 'run-1', 'stock_candidate', '{"market_state":"WARM"}'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-02"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["rule_version"] == "rv_livermore_candidate_history_portfolio_backtest_v1"
+    assert body["result"]["status"] == "portfolio_proxy"
+    assert body["result"]["summary"]["invested_rebalance_count"] == 1
+    assert body["result"]["summary"]["cumulative_return"] > 0
 
 
 def test_livermore_api_missing_stock_catalog_does_not_call_choice_stock_api(tmp_path, monkeypatch) -> None:
@@ -493,6 +659,23 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
     try:
         conn.execute(
             """
+            create table fact_livermore_gate_supplement_daily (
+              trade_date varchar,
+              breadth_5d double,
+              limit_up_quality_ok boolean,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into fact_livermore_gate_supplement_daily values (?, ?, ?, ?, ?, ?, ?)",
+            ["2026-05-08", 1.0, False, "sv_t", "vv_t", "rv_t", "run_t"],
+        )
+        conn.execute(
+            """
             create table choice_stock_factor_snapshot (
               as_of_date varchar,
               stock_code varchar,
@@ -545,12 +728,19 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
     assert payload["observation_only"] is True
     assert payload["candidate_count"] >= 1
     assert payload["items"][0]["stock_name"].endswith(".SH")
+    assert result["market_gate"]["state"] == "HOT"
+    hybrid = result["hybrid_fusion_candidates"]
+    assert hybrid["observation_only"] is True
+    assert hybrid["candidate_count"] >= 1
+    assert hybrid["items"][0]["stock_code"] == payload["items"][0]["stock_code"]
+    assert hybrid["items"][0]["evidence"]["source_kinds"] == ["factor_screen"]
     assert "choice_stock_factor_snapshot" in envelope["result_meta"]["tables_used"]
     assert "choice_stock_universe" not in envelope["result_meta"]["tables_used"]
     assert "choice_stock_sector_membership" not in envelope["result_meta"]["tables_used"]
-    assert result["supported_outputs"] == ["market_gate", "factor_screen_candidates"]
+    assert result["supported_outputs"] == ["market_gate", "factor_screen_candidates", "hybrid_fusion"]
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "factor_screen_candidates" not in unsupported_by_key
+    assert "hybrid_fusion" not in unsupported_by_key
 
 
 def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_path, monkeypatch) -> None:

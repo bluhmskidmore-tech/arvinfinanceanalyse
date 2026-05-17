@@ -483,6 +483,7 @@ def _build_vendor_payload(
         "factor_screen_formula_version": _mapping(payload.get("factor_screen_candidates")).get("formula_version"),
         "theme_breakout_formula_version": _mapping(payload.get("theme_breakout")).get("formula_version"),
         "mean_reversion_formula_version": _mapping(payload.get("mean_reversion_candidates")).get("formula_version"),
+        "hybrid_fusion_formula_version": _mapping(payload.get("hybrid_fusion_candidates")).get("formula_version"),
     }
 
 
@@ -522,6 +523,34 @@ def _load_configured_stock_readiness() -> ChoiceStockReadiness:
 def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     market_state = _payload_market_state(payload)
+    hybrid_fusion_raw = payload.get("hybrid_fusion_candidates")
+    if isinstance(hybrid_fusion_raw, dict):
+        raw_items = hybrid_fusion_raw.get("items")
+        if isinstance(raw_items, list):
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                item = cast(dict[str, object], raw)
+                rank = _safe_int(item.get("rank"), default=1)
+                rows.append(
+                    {
+                        "signal_kind": "hybrid_fusion",
+                        "rank": rank,
+                        "stock_code": item.get("stock_code"),
+                        "stock_name": item.get("stock_name"),
+                        "sector_code": item.get("sector_code"),
+                        "sector_name": item.get("sector_name"),
+                        "close_strength": item.get("price_confirm_score"),
+                        "market_state": market_state,
+                        "signal_evidence": _hybrid_fusion_signal_evidence(
+                            item,
+                            market_state=market_state,
+                            rank=rank,
+                            hybrid_fusion_payload=hybrid_fusion_raw,
+                        ),
+                    }
+                )
+
     stock_candidates_raw = payload.get("stock_candidates")
     if isinstance(stock_candidates_raw, dict):
         raw_items = stock_candidates_raw.get("items")
@@ -699,10 +728,11 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                 )
 
     signal_order = {
-        "stock_candidate": 0,
-        "theme_breakout": 1,
-        "factor_screen": 2,
-        "mean_reversion": 3,
+        "hybrid_fusion": 0,
+        "stock_candidate": 1,
+        "theme_breakout": 2,
+        "factor_screen": 3,
+        "mean_reversion": 4,
     }
     return sorted(
         rows,
@@ -795,6 +825,39 @@ def _stock_candidate_signal_evidence(
     selection_policy = _optional_text(item.get("selection_policy"))
     if selection_policy:
         evidence["selection_policy"] = selection_policy
+    return evidence
+
+
+def _hybrid_fusion_signal_evidence(
+    item: dict[str, object],
+    *,
+    market_state: str | None,
+    rank: int,
+    hybrid_fusion_payload: object | None = None,
+) -> dict[str, object]:
+    nested = _mapping(item.get("evidence"))
+    payload = _mapping(hybrid_fusion_payload)
+    evidence: dict[str, object] = {
+        **nested,
+        "signal_kind": "hybrid_fusion",
+        "market_state": market_state,
+        "rank": rank,
+        "stock_code": item.get("stock_code"),
+        "sector_code": item.get("sector_code"),
+        "formula_version": payload.get("formula_version") or nested.get("formula_version"),
+        "observation_only": payload.get("observation_only", True),
+        "fusion_score": item.get("fusion_score"),
+        "cycle_score": item.get("cycle_score"),
+        "lifecourt_proxy_score": item.get("lifecourt_proxy_score"),
+        "attention_score": item.get("attention_score"),
+        "price_confirm_score": item.get("price_confirm_score"),
+        "crowding_penalty": item.get("crowding_penalty"),
+        "confidence": item.get("confidence"),
+        "reason": item.get("reason"),
+    }
+    source_kinds = nested.get("source_kinds")
+    if source_kinds is not None:
+        evidence["source_kinds"] = source_kinds
     return evidence
 
 

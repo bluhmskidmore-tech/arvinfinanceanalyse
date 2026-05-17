@@ -7,7 +7,10 @@ import type {
   ApiEnvelope,
   ConfluenceReplayStatus,
   LivermoreCandidateHistoryPayload,
+  LivermoreCandidateHistoryPortfolioBacktestPayload,
+  LivermoreCycleProxyBacktestPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
@@ -726,13 +729,215 @@ function buildStrategyScorePayload(
   };
 }
 
+function buildStrategyOptimizationPayload(
+  overrides: Partial<LivermoreStrategyOptimizationPayload> = {},
+): LivermoreStrategyOptimizationPayload {
+  const promotedStats = {
+    return_1d: {
+      available_count: 30,
+      missing_count: 0,
+      positive_count: 18,
+      non_positive_count: 12,
+      avg_return: 0.01,
+      win_rate: 0.6,
+    },
+    return_5d: {
+      available_count: 30,
+      missing_count: 0,
+      positive_count: 20,
+      non_positive_count: 10,
+      avg_return: 0.023333,
+      win_rate: 0.666667,
+    },
+    return_20d: {
+      available_count: 0,
+      missing_count: 30,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
+    },
+  };
+  const weakStats = {
+    return_1d: {
+      available_count: 10,
+      missing_count: 0,
+      positive_count: 4,
+      non_positive_count: 6,
+      avg_return: -0.002,
+      win_rate: 0.4,
+    },
+    return_5d: {
+      available_count: 10,
+      missing_count: 0,
+      positive_count: 5,
+      non_positive_count: 5,
+      avg_return: -0.02,
+      win_rate: 0.5,
+    },
+    return_20d: {
+      available_count: 0,
+      missing_count: 10,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
+    },
+  };
+  const pendingStats = {
+    return_1d: {
+      available_count: 2,
+      missing_count: 0,
+      positive_count: 2,
+      non_positive_count: 0,
+      avg_return: 0.01,
+      win_rate: 1,
+    },
+    return_5d: {
+      available_count: 2,
+      missing_count: 0,
+      positive_count: 2,
+      non_positive_count: 0,
+      avg_return: 0.06,
+      win_rate: 1,
+    },
+    return_20d: {
+      available_count: 0,
+      missing_count: 2,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
+    },
+  };
+  const dateWeighted = {
+    return_1d: {
+      available_day_count: 1,
+      candidate_row_count: 30,
+      avg_return: 0.01,
+      positive_day_rate: 1,
+      worst_day_return: 0.01,
+      best_day_return: 0.01,
+    },
+    return_5d: {
+      available_day_count: 1,
+      candidate_row_count: 30,
+      avg_return: 0.023333,
+      positive_day_rate: 1,
+      worst_day_return: 0.023333,
+      best_day_return: 0.023333,
+    },
+    return_20d: {
+      available_day_count: 0,
+      candidate_row_count: 0,
+      avg_return: null,
+      positive_day_rate: null,
+      worst_day_return: null,
+      best_day_return: null,
+    },
+  };
+
+  return {
+    as_of_date: "2026-05-13",
+    snapshot_from: "2026-05-01",
+    snapshot_to: "2026-05-13",
+    primary_horizon: "return_5d",
+    min_sample: 20,
+    current_market_state: "HOT",
+    backtest_window_summary: null,
+    strategy_summaries: [
+      {
+        summary_key: "strategy:factor_screen",
+        signal_kind: "factor_screen",
+        strategy_label: "多因子",
+        sample_status: "sufficient",
+        stats: promotedStats,
+        date_weighted_stats: dateWeighted,
+        recommendation: {
+          action: "promote",
+          priority_label: "优先复核",
+          reason: "T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。",
+          primary_horizon: "return_5d",
+          available_count: 30,
+          min_sample: 20,
+          avg_return: 0.023333,
+          win_rate: 0.666667,
+          score: 69,
+        },
+      },
+      {
+        summary_key: "strategy:theme_breakout",
+        signal_kind: "theme_breakout",
+        strategy_label: "题材突变",
+        sample_status: "insufficient",
+        stats: pendingStats,
+        date_weighted_stats: dateWeighted,
+        recommendation: {
+          action: "pending_more_history",
+          priority_label: "样本不足",
+          reason: "T+5 可用样本 2/20，样本不足，只展示不作为调参依据。",
+          primary_horizon: "return_5d",
+          available_count: 2,
+          min_sample: 20,
+          avg_return: 0.06,
+          win_rate: 1,
+          score: 106,
+        },
+      },
+    ],
+    slices: [
+      {
+        slice_key: "factor_screen:rank:21-30",
+        signal_kind: "factor_screen",
+        strategy_label: "多因子",
+        dimension: "rank",
+        bucket: "21-30",
+        label: "rank 21-30",
+        sample_status: "sufficient",
+        stats: weakStats,
+        date_weighted_stats: dateWeighted,
+        recommendation: {
+          action: "downgrade",
+          priority_label: "降权观察",
+          reason: "T+5 样本 10，均值 -2.00%，胜率 50.0%，降权观察。",
+          primary_horizon: "return_5d",
+          available_count: 10,
+          min_sample: 10,
+          avg_return: -0.02,
+          win_rate: 0.5,
+          score: 48,
+        },
+      },
+    ],
+    recommendations: [],
+    pending_summary: {
+      primary_horizon: "return_5d",
+      pending_rows: 18,
+      pending_dates: ["2026-05-13"],
+      latest_pending_date: "2026-05-13",
+      message: "T+5 仍有 18 条收益待成熟，最新 pending 日期 2026-05-13。",
+    },
+    sample_maturity: {
+      status: "sufficient",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      sufficient_count: 2,
+      insufficient_count: 1,
+    },
+    ...overrides,
+  };
+}
+
 function stockClient(options?: {
   strategy?: LivermoreStrategyPayload;
   strategyError?: Error;
   confluence?: LivermoreSignalConfluencePayload;
   confluenceError?: Error;
   candidateHistory?: LivermoreCandidateHistoryPayload;
+  candidateHistoryPortfolioBacktest?: LivermoreCandidateHistoryPortfolioBacktestPayload;
+  cycleProxyBacktest?: LivermoreCycleProxyBacktestPayload;
   strategyScore?: LivermoreStrategyScorePayload;
+  strategyOptimization?: LivermoreStrategyOptimizationPayload;
   metaOverrides?: Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
 }): ApiClient {
   return {
@@ -770,10 +975,86 @@ function stockClient(options?: {
         "market_data.livermore.candidate_history",
         options?.candidateHistory ?? buildCandidateHistoryPayload(),
       ),
+    getLivermoreCandidateHistoryPortfolioBacktest: async (): Promise<
+      ApiEnvelope<LivermoreCandidateHistoryPortfolioBacktestPayload>
+    > =>
+      buildMockApiEnvelope(
+        "market_data.livermore.candidate_history_portfolio_backtest",
+        options?.candidateHistoryPortfolioBacktest ?? {
+          status: "portfolio_proxy",
+          full_strategy_status: "blocked_missing_inputs",
+          signal_kind: "stock_candidate",
+          rebalance_rule: "first_available_monthly_snapshot",
+          weighting_rule: "equal_weight_top_6",
+          snapshot_from: "2024-09-24",
+          snapshot_to: "2026-03-02",
+          missing_full_strategy_inputs: ["PMI", "credit_impulse"],
+          warnings: ["Portfolio proxy only."],
+          summary: {
+            sample_days: 352,
+            candidate_rows: 52,
+            rebalance_count: 17,
+            invested_rebalance_count: 14,
+            cash_rebalance_count: 3,
+            gross_turnover: 21.4,
+            cost_drag: 0.0206,
+            cumulative_return: -0.1842,
+            annualized_return: -0.1315,
+            max_gain: {
+              return: 0.2834,
+              start_date: "2024-09-24",
+              end_date: "2024-10-08",
+            },
+            max_drawdown: {
+              return: -0.4125,
+              peak_date: "2024-10-08",
+              trough_date: "2025-04-25",
+            },
+          },
+          nav_series: [],
+          rebalance_log: [],
+        },
+      ),
+    getLivermoreCycleProxyBacktest: async (): Promise<ApiEnvelope<LivermoreCycleProxyBacktestPayload>> =>
+      buildMockApiEnvelope(
+        "market_data.livermore.cycle_proxy_backtest",
+        options?.cycleProxyBacktest ?? {
+          status: "proxy",
+          full_strategy_status: "blocked_missing_inputs",
+          proxy_signal_kind: "stock_candidate",
+          proxy_rule: "Equal-weight non-overlapping T+5 baskets of completed stock_candidate rows.",
+          snapshot_from: "2024-09-24",
+          snapshot_to: "2026-03-02",
+          missing_full_strategy_inputs: ["PMI", "credit_impulse"],
+          warnings: ["Proxy only."],
+          summary: {
+            sample_days: 225,
+            candidate_rows: 755,
+            cumulative_return: -0.297,
+            annualized_return: -0.4801,
+            max_gain: {
+              return: 0.9185,
+              start_date: "2024-09-24",
+              end_date: "2024-12-02",
+            },
+            max_drawdown: {
+              return: -0.6342,
+              peak_date: "2024-12-02",
+              trough_date: "2026-01-21",
+            },
+          },
+          nav_series: [],
+        },
+      ),
     getLivermoreStrategyScore: async (): Promise<ApiEnvelope<LivermoreStrategyScorePayload>> =>
       buildMockApiEnvelope(
         "market_data.livermore.strategy_score",
         options?.strategyScore ?? buildStrategyScorePayload(),
+      ),
+    getLivermoreStrategyOptimization: async (): Promise<ApiEnvelope<LivermoreStrategyOptimizationPayload>> =>
+      buildMockApiEnvelope(
+        "market_data.livermore.strategy_optimization",
+        options?.strategyOptimization ?? buildStrategyOptimizationPayload(),
       ),
   };
 }
@@ -832,6 +1113,69 @@ describe("StockAnalysisPage", () => {
     expect(candidate).toHaveTextContent("基本面 overlay 已接入候选排序");
     expect(candidate).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
     expect(candidate).toHaveTextContent("10EMA");
+  });
+
+  it("renders the cycle rotation framework as research-only evidence", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: {
+            strategy_name: "A-share cycle rotation research framework",
+            display_name: "A股景气周期选股与行业轮动",
+            observation_only: true,
+            implementation_stage: "verification_pending",
+            score_formula:
+              "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport",
+            rebalance_cadence: "Monthly core review with weekly satellite monitoring.",
+            constraints: [
+              "industry cap 25%",
+              "stock cap 5%",
+              "exclude ST and suspended stocks",
+            ],
+            layers: [
+              {
+                key: "macro_direction",
+                title: "Macro direction",
+                weight: 0.3,
+                status: "missing_inputs",
+                evidence: "Market gate is available; PMI and credit impulse are not landed.",
+                available_inputs: ["market_gate"],
+                missing_inputs: ["PMI", "credit_impulse"],
+              },
+              {
+                key: "industry_cycle",
+                title: "Industry cycle",
+                weight: 0.35,
+                status: "provisional",
+                evidence: "sector_rank is available.",
+                available_inputs: ["sector_rank"],
+                missing_inputs: ["profit_cycle"],
+              },
+            ],
+          },
+        } as Partial<LivermoreStrategyPayload>),
+      }),
+    });
+
+    const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+    expect(framework).toHaveTextContent("A股景气周期选股与行业轮动");
+    expect(framework).toHaveTextContent("CycleScore");
+    expect(framework).toHaveTextContent("Macro direction");
+    expect(framework).toHaveTextContent("PMI");
+    expect(framework).toHaveTextContent("industry cap 25%");
+    expect(framework).toHaveTextContent("verification_pending");
+    expect(within(framework).getByTestId("stock-analysis-candidate-history-portfolio-backtest")).toHaveTextContent("组合回测");
+    expect(within(framework).getByTestId("stock-analysis-cycle-proxy-backtest")).toHaveTextContent("代理回测");
+    await waitFor(() => expect(framework).toHaveTextContent("-18.42%"));
+    expect(framework).toHaveTextContent("2024-09-24 至 2024-10-08");
+    expect(framework).toHaveTextContent("2024-10-08 至 2025-04-25");
+    await waitFor(() => expect(framework).toHaveTextContent("-29.70%"));
+    expect(framework).toHaveTextContent("-29.70%");
+    expect(framework).toHaveTextContent("2024-09-24 至 2024-12-02");
+    expect(framework).toHaveTextContent("2024-12-02 至 2026-01-21");
+    expect(framework).not.toHaveTextContent("买入");
+    expect(framework).not.toHaveTextContent("下单");
+    expect(framework).not.toHaveTextContent("调仓");
   });
 
   it("renders theme breakout radar as observation-only proxy evidence", async () => {
@@ -1017,6 +1361,57 @@ describe("StockAnalysisPage", () => {
     expect(page).not.toHaveTextContent("卖出");
     expect(page).not.toHaveTextContent("下单");
     expect(page).not.toHaveTextContent("调仓指令");
+  });
+
+  it("renders hybrid fusion candidates as the primary review queue", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: [
+            "market_gate",
+            "sector_rank",
+            "stock_candidates",
+            "factor_screen_candidates",
+            "hybrid_fusion",
+            "risk_exit",
+          ],
+          hybrid_fusion_candidates: {
+            as_of_date: "2026-04-29",
+            formula_version: "rv_hybrid_fusion_candidates_v1",
+            market_state: "WARM",
+            observation_only: true,
+            candidate_count: 1,
+            coverage_note: "Hybrid fusion uses existing proxy inputs.",
+            items: [
+              {
+                rank: 1,
+                stock_code: "000009.SZ",
+                stock_name: "Fusion Alpha",
+                sector_code: "801009",
+                sector_name: "机器人",
+                fusion_score: 0.812345,
+                cycle_score: 0.7,
+                lifecourt_proxy_score: 0.6,
+                attention_score: 0.55,
+                price_confirm_score: 0.8,
+                crowding_penalty: 0.1,
+                confidence: "medium",
+                reason: "Fusion observation-only candidate",
+                evidence: { source_kinds: ["factor_screen", "theme_breakout"] },
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    const queue = await screen.findByTestId("stock-analysis-review-queue");
+    expect(queue).toHaveTextContent("融合策略 / 复核队列");
+    expect(queue).toHaveTextContent("Fusion Alpha");
+    expect(queue).toHaveTextContent("融合分");
+    expect(queue).toHaveTextContent("生命法庭代理");
+    expect(queue).toHaveTextContent("代理信号");
+    expect(queue).not.toHaveTextContent("买入");
   });
 
   it("shows staleness banner when quality_flag is not ok", async () => {
@@ -1668,6 +2063,34 @@ describe("StockAnalysisPage", () => {
     expect(page).not.toHaveTextContent("卖出");
     expect(page).not.toHaveTextContent("下单");
     expect(page).not.toHaveTextContent("调仓");
+  });
+
+  it("shows the T+5 optimization diagnosis without turning it into trading rules", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          market_gate: {
+            ...buildStrategyPayload().market_gate,
+            state: "HOT",
+          },
+        }),
+        strategyOptimization: buildStrategyOptimizationPayload(),
+      }),
+    });
+
+    const card = await screen.findByTestId("stock-analysis-strategy-optimization");
+    await waitFor(() => expect(card).toHaveTextContent("优化诊断"));
+    expect(card).toHaveTextContent("三策略 T+5 排名");
+    expect(card).toHaveTextContent("多因子");
+    expect(card).toHaveTextContent("优先复核");
+    expect(card).toHaveTextContent("题材突变");
+    expect(card).toHaveTextContent("样本不足");
+    expect(card).toHaveTextContent("rank 21-30");
+    expect(card).toHaveTextContent("降权观察");
+    expect(card).toHaveTextContent("最新 pending 日期 2026-05-13");
+    expect(card).toHaveTextContent("建议只用于复核排序，不自动改交易规则");
+    expect(card).not.toHaveTextContent("买入");
+    expect(card).not.toHaveTextContent("下单");
   });
 
   it("shows current market sample insufficiency instead of a strategy recommendation", async () => {
