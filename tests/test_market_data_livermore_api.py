@@ -480,6 +480,158 @@ def test_livermore_api_embeds_cycle_rotation_framework_without_trade_claims(
     get_settings.cache_clear()
 
 
+def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_missing_sources(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.executemany(
+            "insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "CA.CSI300_PE",
+                    "CSI300 PE",
+                    "2026-05-08",
+                    14.5,
+                    "daily",
+                    "x",
+                    "sv_pe",
+                    "vv_pe",
+                    "rv_choice_macro",
+                    "ok",
+                    "run-pe",
+                ),
+                (
+                    "EMM00166466",
+                    "China 10Y treasury yield",
+                    "2026-05-08",
+                    2.1,
+                    "daily",
+                    "%",
+                    "sv_cn10y",
+                    "vv_cn10y",
+                    "rv_choice_macro",
+                    "ok",
+                    "run-cn10y",
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            create table fact_livermore_gate_supplement_daily (
+              trade_date varchar,
+              breadth_5d double,
+              limit_up_quality_ok boolean,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into fact_livermore_gate_supplement_daily values (?, ?, ?, ?, ?, ?, ?)",
+            ["2026-05-08", 1.0, False, "sv_t", "vv_t", "rv_t", "run_t"],
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              turn double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-07", "000001.SZ", 10.0, 1.1, "sv_obs", "vv_obs", "rv_obs", "run-obs"),
+                ("2026-05-08", "000001.SZ", 10.2, 1.3, "sv_obs", "vv_obs", "rv_obs", "run-obs"),
+            ],
+        )
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-05-08",
+                    f"60000{i}.SH",
+                    10.0 + i,
+                    1.1 + i * 0.1,
+                    0.8 + i * 0.05,
+                    0.08 + i * 0.01,
+                    0.25 + i * 0.02,
+                    0.01 + i * 0.01,
+                    0.05 + i * 0.02,
+                    0.18 + i * 0.01,
+                    0.01 + i * 0.002,
+                    "electronics",
+                )
+                for i in range(1, 8)
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    layer_by_key = {row["key"]: row for row in result["cycle_rotation_framework"]["layers"]}
+    assert "price_spread" in layer_by_key["macro_direction"]["available_inputs"]
+    assert "price_spread" not in layer_by_key["macro_direction"]["missing_inputs"]
+    assert "PMI" in layer_by_key["macro_direction"]["missing_inputs"]
+    assert "credit_impulse" in layer_by_key["macro_direction"]["missing_inputs"]
+    assert "turnover_persistence" in layer_by_key["market_flow"]["available_inputs"]
+    assert "turnover_persistence" not in layer_by_key["market_flow"]["missing_inputs"]
+    assert "northbound_flow" in layer_by_key["market_flow"]["missing_inputs"]
+    assert "valuation_percentile_history" in layer_by_key["valuation_support"]["available_inputs"]
+    assert "valuation_percentile_history" not in layer_by_key["valuation_support"]["missing_inputs"]
+    assert "earnings_revision" in layer_by_key["valuation_support"]["missing_inputs"]
+    gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
+    assert gap_by_family["price_spread"]["status"] == "ready"
+    assert "CA.CSI300_PE" in gap_by_family["price_spread"]["evidence"]
+    assert gap_by_family["turnover_persistence"]["status"] == "ready"
+    assert gap_by_family["valuation_percentile_history"]["status"] == "ready"
+    assert "fact_choice_macro_daily" in envelope["result_meta"]["tables_used"]
+    assert "choice_stock_daily_observation" in envelope["result_meta"]["tables_used"]
+    assert "choice_stock_factor_snapshot" in envelope["result_meta"]["tables_used"]
+    get_settings.cache_clear()
+
+
 def test_cycle_proxy_backtest_api_happy_path(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)

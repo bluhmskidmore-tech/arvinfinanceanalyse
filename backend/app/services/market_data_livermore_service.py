@@ -131,6 +131,10 @@ def load_livermore_strategy_payload(
     supplement: MarketGateSupplement | None = None
     if latest_trade_date is not None:
         supplement = fetch_market_gate_supplement(duckdb_path=duckdb_path, trade_date=latest_trade_date)
+    cycle_input_evidence = _load_cycle_input_evidence(
+        duckdb_path=duckdb_path,
+        as_of_date=latest_trade_date,
+    )
 
     market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows), supplement=supplement)
     requested_text = None if as_of_date is None else as_of_date.isoformat()
@@ -160,6 +164,7 @@ def load_livermore_strategy_payload(
         resolved_as_of_date=resolved_as_of_date,
         stock_readiness=resolved_stock_readiness,
         stock_outputs=stock_outputs,
+        cycle_input_evidence=cycle_input_evidence,
         supplement=supplement,
         latest_trade_date=latest_trade_date,
     )
@@ -191,6 +196,7 @@ def load_livermore_strategy_payload(
         "cycle_rotation_framework": _build_cycle_rotation_framework(
             market_gate=market_gate,
             stock_outputs=stock_outputs,
+            cycle_input_evidence=cycle_input_evidence,
         ),
     }
     if stock_outputs.sector_rank_payload is not None:
@@ -212,14 +218,18 @@ def load_livermore_strategy_payload(
     tables_used = [*broad_index_tables, *stock_outputs.tables_used]
     if supplement is not None:
         tables_used.append("fact_livermore_gate_supplement_daily")
+    tables_used.extend(cycle_input_evidence.tables_used)
     meta: dict[str, object] = {
         "quality_flag": quality_flag,
         "vendor_status": _vendor_status_for_state(str(market_gate["state"])),
         "fallback_mode": "latest_snapshot" if quality_flag == "stale" else "none",
-        "source_version": _aggregate_lineage(source_versions, empty_value=EMPTY_SOURCE_VERSION),
+        "source_version": _aggregate_lineage(
+            source_versions + list(cycle_input_evidence.source_versions),
+            empty_value=EMPTY_SOURCE_VERSION,
+        ),
         "vendor_version": _aggregate_lineage(vendor_versions, empty_value=EMPTY_VENDOR_VERSION),
         "tables_used": _unique_preserving_order(tables_used),
-        "evidence_rows": len(history_rows) + stock_outputs.evidence_rows,
+        "evidence_rows": len(history_rows) + stock_outputs.evidence_rows + cycle_input_evidence.evidence_rows,
     }
     return payload, meta
 
@@ -342,6 +352,144 @@ def _load_broad_index_history(
     return ordered, tables_used
 
 
+def _load_cycle_input_evidence(
+    *,
+    duckdb_path: str,
+    as_of_date: date | None,
+) -> _CycleInputEvidence:
+    path = Path(duckdb_path)
+    if as_of_date is None or not path.exists():
+        return _CycleInputEvidence()
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return _CycleInputEvidence()
+    tables_used: list[str] = []
+    source_versions: list[str] = []
+    evidence_rows = 0
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        price_spread_ready = False
+        price_spread_evidence = ""
+        if "fact_choice_macro_daily" in tables:
+            price_rows = conn.execute(
+                """
+                with ranked as (
+                  select
+                    series_id,
+                    trade_date,
+                    value_numeric,
+                    coalesce(source_version, '') as source_version,
+                    row_number() over (
+                      partition by series_id
+                      order by cast(trade_date as date) desc
+                    ) as rn
+                  from fact_choice_macro_daily
+                  where series_id in ('CA.CSI300_PE', 'EMM00166466')
+                    and cast(trade_date as date) <= cast(? as date)
+                    and value_numeric is not null
+                )
+                select series_id, trade_date, value_numeric, source_version
+                from ranked
+                where rn = 1
+                """,
+                [as_of_date.isoformat()],
+            ).fetchall()
+            price_by_id = {str(row[0]): row for row in price_rows}
+            if "CA.CSI300_PE" in price_by_id and "EMM00166466" in price_by_id:
+                pe_row = price_by_id["CA.CSI300_PE"]
+                yield_row = price_by_id["EMM00166466"]
+                pe = _safe_float(pe_row[2])
+                cn10y = _safe_float(yield_row[2])
+                if pe is not None and pe > 0 and cn10y is not None:
+                    earnings_yield = 100.0 / pe
+                    spread = earnings_yield - cn10y
+                    price_spread_ready = True
+                    price_spread_evidence = (
+                        f"CA.CSI300_PE {pe:.2f} and EMM00166466 10Y yield {cn10y:.2f}% "
+                        f"landed by {as_of_date.isoformat()}; proxy price_spread is {spread:.2f}ppt."
+                    )
+                    tables_used.append("fact_choice_macro_daily")
+                    source_versions.extend(str(row[3]) for row in price_rows if row[3])
+                    evidence_rows += len(price_rows)
+
+        turnover_ready = False
+        turnover_evidence = ""
+        if _table_has_columns(conn, "choice_stock_daily_observation", ["trade_date", "stock_code", "turn"]):
+            turnover_row = conn.execute(
+                """
+                select count(*) as row_count, count(distinct stock_code) as stock_count, coalesce(max(source_version), '')
+                from choice_stock_daily_observation
+                where cast(trade_date as date) <= cast(? as date)
+                  and cast(trade_date as date) >= cast(? as date) - interval 20 day
+                  and turn is not null
+                """,
+                [as_of_date.isoformat(), as_of_date.isoformat()],
+            ).fetchone()
+            row_count = _safe_int(turnover_row[0]) if turnover_row else 0
+            stock_count = _safe_int(turnover_row[1]) if turnover_row else 0
+            if row_count and row_count > 0:
+                turnover_ready = True
+                turnover_evidence = (
+                    f"choice_stock_daily_observation has {row_count} turn rows for {stock_count or 0} stocks "
+                    f"in the 20-day window ending {as_of_date.isoformat()}."
+                )
+                tables_used.append("choice_stock_daily_observation")
+                if turnover_row and turnover_row[2]:
+                    source_versions.append(str(turnover_row[2]))
+                evidence_rows += int(row_count)
+
+        valuation_ready = False
+        valuation_evidence = ""
+        if _table_has_columns(conn, "choice_stock_factor_snapshot", ["as_of_date", "stock_code", "pe", "pb"]):
+            valuation_source_expr = (
+                "coalesce(max(source_version), '')"
+                if "source_version" in _table_columns(conn, "choice_stock_factor_snapshot")
+                else "''"
+            )
+            valuation_row = conn.execute(
+                f"""
+                select as_of_date, count(*) as row_count, {valuation_source_expr}
+                from choice_stock_factor_snapshot
+                where cast(as_of_date as date) <= ?
+                  and pe is not null
+                  and pb is not null
+                group by as_of_date
+                order by cast(as_of_date as date) desc
+                limit 1
+                """,
+                [as_of_date.isoformat()],
+            ).fetchone()
+            if valuation_row:
+                row_count = _safe_int(valuation_row[1]) or 0
+                if row_count > 0:
+                    valuation_ready = True
+                    valuation_evidence = (
+                        f"choice_stock_factor_snapshot has {row_count} PE/PB rows on {valuation_row[0]} "
+                        "for valuation percentile proxy history."
+                    )
+                    tables_used.append("choice_stock_factor_snapshot")
+                    if len(valuation_row) > 2 and valuation_row[2]:
+                        source_versions.append(str(valuation_row[2]))
+                    evidence_rows += row_count
+
+        return _CycleInputEvidence(
+            price_spread_ready=price_spread_ready,
+            price_spread_evidence=price_spread_evidence,
+            turnover_persistence_ready=turnover_ready,
+            turnover_persistence_evidence=turnover_evidence,
+            valuation_percentile_history_ready=valuation_ready,
+            valuation_percentile_history_evidence=valuation_evidence,
+            tables_used=tuple(_unique_preserving_order(tables_used)),
+            source_versions=tuple(_unique_preserving_order(source_versions)),
+            evidence_rows=evidence_rows,
+        )
+    except duckdb.Error:
+        return _CycleInputEvidence()
+    finally:
+        conn.close()
+
+
 class _LoadedObservation(BroadIndexObservation):
     pass
 
@@ -365,6 +513,19 @@ class _ChoiceStockOutputs:
     source_versions: list[str]
     vendor_versions: list[str]
     evidence_rows: int
+
+
+@dataclass(frozen=True)
+class _CycleInputEvidence:
+    price_spread_ready: bool = False
+    price_spread_evidence: str = ""
+    turnover_persistence_ready: bool = False
+    turnover_persistence_evidence: str = ""
+    valuation_percentile_history_ready: bool = False
+    valuation_percentile_history_evidence: str = ""
+    tables_used: tuple[str, ...] = ()
+    source_versions: tuple[str, ...] = ()
+    evidence_rows: int = 0
 
 
 @dataclass(frozen=True)
@@ -1972,6 +2133,7 @@ def _build_cycle_rotation_framework(
     *,
     market_gate: dict[str, object],
     stock_outputs: _ChoiceStockOutputs,
+    cycle_input_evidence: _CycleInputEvidence,
 ) -> dict[str, object]:
     gate_state = str(market_gate.get("state", "NO_DATA"))
     gate_available = gate_state not in {"NO_DATA"}
@@ -1979,6 +2141,24 @@ def _build_cycle_rotation_framework(
     factor_count = _safe_int((stock_outputs.factor_screen_payload or {}).get("candidate_count"))
     candidate_count = _safe_int((stock_outputs.stock_candidates_payload or {}).get("candidate_count"))
     risk_count = _safe_int((stock_outputs.risk_exit_payload or {}).get("signal_count"))
+    macro_available = ["market_gate"] if gate_available else []
+    macro_missing = ["PMI", "credit_impulse"]
+    if cycle_input_evidence.price_spread_ready:
+        macro_available.append("price_spread")
+    else:
+        macro_missing.append("price_spread")
+    market_flow_available = ["stock_candidates"] if stock_outputs.stock_candidates_payload is not None else []
+    market_flow_missing = ["fund_flow", "northbound_flow"]
+    if cycle_input_evidence.turnover_persistence_ready:
+        market_flow_available.append("turnover_persistence")
+    else:
+        market_flow_missing.append("turnover_persistence")
+    valuation_available = ["factor_screen_candidates"] if stock_outputs.factor_screen_payload is not None else []
+    valuation_missing = ["earnings_revision"]
+    if cycle_input_evidence.valuation_percentile_history_ready:
+        valuation_available.append("valuation_percentile_history")
+    else:
+        valuation_missing.append("valuation_percentile_history")
 
     return {
         "strategy_name": "A-share cycle rotation research framework",
@@ -1995,13 +2175,17 @@ def _build_cycle_rotation_framework(
                 "key": "macro_direction",
                 "title": "Macro direction",
                 "weight": 0.30,
-                "status": "missing_inputs",
+                "status": "partial" if cycle_input_evidence.price_spread_ready else "missing_inputs",
                 "evidence": (
-                    f"Livermore market gate is {gate_state}; PMI, credit impulse and price spread "
-                    "are not landed for this framework."
+                    f"Livermore market gate is {gate_state}; "
+                    + (
+                        cycle_input_evidence.price_spread_evidence
+                        if cycle_input_evidence.price_spread_ready
+                        else "PMI, credit impulse and price spread are not landed for this framework."
+                    )
                 ),
-                "available_inputs": ["market_gate"] if gate_available else [],
-                "missing_inputs": ["PMI", "credit_impulse", "price_spread"],
+                "available_inputs": macro_available,
+                "missing_inputs": macro_missing,
             },
             {
                 "key": "industry_cycle",
@@ -2021,29 +2205,51 @@ def _build_cycle_rotation_framework(
                 "key": "market_flow",
                 "title": "Market flow",
                 "weight": 0.20,
-                "status": "provisional" if stock_outputs.stock_candidates_payload is not None else "missing_inputs",
-                "evidence": (
-                    f"Stock candidate review has {candidate_count} rows; fund-flow confirmation is not landed."
+                "status": (
+                    "provisional"
                     if stock_outputs.stock_candidates_payload is not None
-                    else "Stock candidate review is unavailable, and fund-flow confirmation is not landed."
+                    or cycle_input_evidence.turnover_persistence_ready
+                    else "missing_inputs"
                 ),
-                "available_inputs": ["stock_candidates"] if stock_outputs.stock_candidates_payload is not None else [],
-                "missing_inputs": ["fund_flow", "turnover_persistence", "northbound_flow"],
+                "evidence": (
+                    (
+                        f"Stock candidate review has {candidate_count} rows; "
+                        if stock_outputs.stock_candidates_payload is not None
+                        else "Stock candidate review is unavailable; "
+                    )
+                    + (
+                        cycle_input_evidence.turnover_persistence_evidence
+                        if cycle_input_evidence.turnover_persistence_ready
+                        else "fund-flow confirmation is not landed."
+                    )
+                ),
+                "available_inputs": market_flow_available,
+                "missing_inputs": market_flow_missing,
             },
             {
                 "key": "valuation_support",
                 "title": "Valuation support",
                 "weight": 0.15,
-                "status": "provisional" if stock_outputs.factor_screen_payload is not None else "missing_inputs",
-                "evidence": (
-                    f"factor_screen_candidates has {factor_count} rows; valuation percentile history is not landed."
+                "status": (
+                    "provisional"
                     if stock_outputs.factor_screen_payload is not None
-                    else "factor_screen_candidates is unavailable, so valuation support is not confirmed."
+                    or cycle_input_evidence.valuation_percentile_history_ready
+                    else "missing_inputs"
                 ),
-                "available_inputs": (
-                    ["factor_screen_candidates"] if stock_outputs.factor_screen_payload is not None else []
+                "evidence": (
+                    (
+                        f"factor_screen_candidates has {factor_count} rows; "
+                        if stock_outputs.factor_screen_payload is not None
+                        else "factor_screen_candidates is unavailable; "
+                    )
+                    + (
+                        cycle_input_evidence.valuation_percentile_history_evidence
+                        if cycle_input_evidence.valuation_percentile_history_ready
+                        else "valuation support is not confirmed."
+                    )
                 ),
-                "missing_inputs": ["valuation_percentile_history", "earnings_revision"],
+                "available_inputs": valuation_available,
+                "missing_inputs": valuation_missing,
             },
             {
                 "key": "execution_constraints",
@@ -2209,6 +2415,7 @@ def _build_data_gaps(
     resolved_as_of_date: str | None,
     stock_readiness: ChoiceStockReadiness,
     stock_outputs: _ChoiceStockOutputs,
+    cycle_input_evidence: _CycleInputEvidence,
     supplement: MarketGateSupplement | None = None,
     latest_trade_date: date | None = None,
 ) -> list[dict[str, str]]:
@@ -2218,6 +2425,30 @@ def _build_data_gaps(
     )
     date_label = resolved_as_of_date or (latest_trade_date.isoformat() if latest_trade_date else "resolved date")
     gaps = []
+    gaps.append(
+        {
+            "input_family": "price_spread",
+            "status": "ready" if cycle_input_evidence.price_spread_ready else "missing",
+            "evidence": cycle_input_evidence.price_spread_evidence
+            or "CSI300 PE and China 10Y yield inputs are not both landed for price_spread.",
+        }
+    )
+    gaps.append(
+        {
+            "input_family": "turnover_persistence",
+            "status": "ready" if cycle_input_evidence.turnover_persistence_ready else "missing",
+            "evidence": cycle_input_evidence.turnover_persistence_evidence
+            or "choice_stock_daily_observation turn history is not landed for turnover persistence.",
+        }
+    )
+    gaps.append(
+        {
+            "input_family": "valuation_percentile_history",
+            "status": "ready" if cycle_input_evidence.valuation_percentile_history_ready else "missing",
+            "evidence": cycle_input_evidence.valuation_percentile_history_evidence
+            or "choice_stock_factor_snapshot PE/PB history is not landed for valuation support.",
+        }
+    )
     if not breadth_landed:
         gaps.append(
             {
