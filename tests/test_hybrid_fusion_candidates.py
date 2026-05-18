@@ -172,3 +172,42 @@ def test_hybrid_fusion_reports_missing_candidate_sources() -> None:
     assert payload["candidate_count"] == 0
     assert payload["items"] == []
     assert payload["coverage_note"] == "No usable hybrid fusion candidate sources."
+
+
+def test_hybrid_fusion_uses_sector_from_factor_source_when_trend_source_lacks_it() -> None:
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "sector_name": "Electronic", "rank": 1}]},
+        stock_candidates_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "Alpha Semi",
+                    "close_strength": 0.9,
+                    "abnormal_turnover": 1.6,
+                    "breakout_extension_norm": 0.12,
+                }
+            ]
+        },
+        factor_screen_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "Alpha Semi",
+                    "sector_code": "801080",
+                    "sector_name": "Electronic",
+                    "score": 0.88,
+                }
+            ]
+        },
+        theme_breakout_payload=None,
+    )
+
+    item = cast(list[dict[str, Any]], result.payload["items"])[0]
+    assert item["sector_code"] == "801080"
+    assert item["sector_name"] == "Electronic"
+    assert item["cycle_score"] == 1.0
+    assert item["evidence"]["sector_rank"] == 1

@@ -58,7 +58,8 @@ def compute_hybrid_fusion_candidates(
             theme_rows=theme_rows,
         )
         base = _first_row(sources)
-        sector_code = _text(base.get("sector_code"))
+        sector_code = _first_text(*(row.get("sector_code") for row in sources))
+        sector_name = _first_text(*(row.get("sector_name") for row in sources))
         sector_rank = _first_int(
             stock_rows.get(stock_code, {}).get("sector_rank"),
             theme_rows.get(stock_code, {}).get("sector_rank"),
@@ -84,7 +85,7 @@ def compute_hybrid_fusion_candidates(
                 "stock_code": stock_code,
                 "stock_name": _text(base.get("stock_name")) or stock_code,
                 "sector_code": sector_code,
-                "sector_name": _text(base.get("sector_name")),
+                "sector_name": sector_name,
                 "fusion_score": fusion_score,
                 "cycle_score": round(cycle_score, 6),
                 "lifecourt_proxy_score": round(lifecourt_proxy_score, 6),
@@ -324,6 +325,14 @@ def _first_int(*values: object) -> int | None:
         if number is not None:
             return number
     return None
+
+
+def _first_text(*values: object) -> str:
+    for value in values:
+        text = _text(value)
+        if text:
+            return text
+    return ""
 
 
 def _safe_int(value: object) -> int | None:
