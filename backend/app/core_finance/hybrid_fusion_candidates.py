@@ -58,6 +58,7 @@ def compute_hybrid_fusion_candidates(
             theme_rows=theme_rows,
         )
         base = _first_row(sources)
+        stock_name = _first_text(*(row.get("stock_name") for row in sources)) or stock_code
         sector_code = _first_text(*(row.get("sector_code") for row in sources))
         sector_name = _first_text(*(row.get("sector_name") for row in sources))
         sector_rank = _first_int(
@@ -83,7 +84,7 @@ def compute_hybrid_fusion_candidates(
         scored.append(
             {
                 "stock_code": stock_code,
-                "stock_name": _text(base.get("stock_name")) or stock_code,
+                "stock_name": stock_name,
                 "sector_code": sector_code,
                 "sector_name": sector_name,
                 "fusion_score": fusion_score,
