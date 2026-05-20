@@ -84,6 +84,16 @@ _POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
         abnormal_turnover_max=2.4,
         close_strength_first=True,
     ),
+    # v6_compat: looser turnover band for OVERHEAT fallback (win_5d -4.3pp under v7).
+    # Registered for market_data_livermore_service wiring; not active until OVERHEAT maps here.
+    "v6_compat": _StockCandidatePolicy(
+        name="v6_compat",
+        active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
+        close_strength_min=0.95,
+        gap_norm_max=0.45,
+        abnormal_turnover_min=1.0,
+        abnormal_turnover_max=3.5,
+    ),
 }
 ACTIVE_MARKET_STATES = set(_POLICY_BY_NAME[DEFAULT_STOCK_CANDIDATE_POLICY].active_market_states)
 

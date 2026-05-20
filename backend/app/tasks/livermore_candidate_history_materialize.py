@@ -141,6 +141,45 @@ _UNIVERSE_ADDED_COLUMN_SQL = (
     ("selected_new_top6", "boolean"),
     ("evidence_json", "varchar"),
 )
+_UNIVERSE_BASE_TABLE_SQL = f"""
+create table if not exists {TABLE_STOCK_UNIVERSE} (
+  snapshot_as_of_date varchar,
+  stock_code varchar,
+  stock_name varchar,
+  sector_code varchar,
+  sector_name varchar,
+  sector_rank integer,
+  selection_close double,
+  close_strength double,
+  gap_norm double,
+  breakout_extension_norm double,
+  abnormal_turnover double,
+  breakout_level double,
+  ema10 double,
+  ma20 double,
+  ma60 double,
+  ma120 double,
+  old_rank integer,
+  new_rank integer,
+  eligible_before_truncation boolean,
+  selected_old_top6 boolean,
+  selected_new_top6 boolean,
+  forward_trade_date_1d varchar,
+  forward_trade_date_5d varchar,
+  forward_trade_date_20d varchar,
+  return_1d double,
+  return_5d double,
+  return_20d double,
+  market_state varchar,
+  data_status varchar,
+  formula_version varchar,
+  source_version varchar,
+  vendor_version varchar,
+  rule_version varchar,
+  run_id varchar,
+  evidence_json varchar
+)
+"""
 
 
 def ensure_livermore_candidate_history_schema(conn: duckdb.DuckDBPyConnection) -> None:
@@ -151,6 +190,7 @@ def ensure_livermore_candidate_history_schema(conn: duckdb.DuckDBPyConnection) -
     for column, definition in _ADDED_COLUMN_SQL:
         if column not in existing:
             conn.execute(f"alter table {TABLE_HIST} add column {column} {definition}")
+    conn.execute(_UNIVERSE_BASE_TABLE_SQL)
     universe_existing = {
         str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_STOCK_UNIVERSE}')").fetchall()
     }
@@ -450,7 +490,7 @@ def backfill_livermore_candidate_history(
             }
         )
 
-    return {
+    result = {
         "status": "ok" if partial_dates == 0 else "partial",
         "start_date": parsed_start.isoformat(),
         "end_date": parsed_end.isoformat(),
@@ -463,6 +503,11 @@ def backfill_livermore_candidate_history(
         "formula_version": FORMULA_VERSION,
         "stock_candidate_policy": stock_candidate_policy or "default",
     }
+    if trade_dates:
+        from backend.app.tasks.livermore_monitor_append import append_daily_monitor
+
+        append_daily_monitor(duckdb_path=str(duckdb_file), as_of_date=trade_dates[-1])
+    return result
 
 
 def _build_vendor_payload(

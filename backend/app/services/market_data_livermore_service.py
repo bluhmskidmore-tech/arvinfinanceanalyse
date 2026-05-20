@@ -658,12 +658,23 @@ def _load_choice_stock_outputs(
         if snapshots and not any(_safe_float(snapshot.limit_ratio) is not None for snapshot in snapshots):
             stock_candidate_block_reason = STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON
         else:
+            # 各市场状态暂用 default（v7）；OVERHEAT 可后续改为 v6_compat fallback
+            _POLICY_BY_MARKET_STATE: dict[str, str | None] = {
+                "WARM": None,  # None = 使用函数默认值（default policy = v7）
+                "HOT": None,
+                "OVERHEAT": None,  # 暂时也用 default；如需 fallback 改为 "v6_compat"
+            }
+            resolved_stock_candidate_policy = (
+                stock_candidate_policy
+                or _POLICY_BY_MARKET_STATE.get(market_state)
+                or "default"
+            )
             stock_candidates_payload = compute_stock_candidates(
                 as_of_date=as_of_date,
                 market_state=market_state,
                 snapshots=snapshots,
                 include_universe=backfill_mode,
-                policy_name=stock_candidate_policy or "default",
+                policy_name=resolved_stock_candidate_policy,
             ).payload
 
     mean_reversion_payload: dict[str, object] | None = None
