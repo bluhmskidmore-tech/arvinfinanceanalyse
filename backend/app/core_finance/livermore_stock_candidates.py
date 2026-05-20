@@ -14,6 +14,10 @@ MIN_HISTORY = 120
 EMA_WINDOW = 10
 MAX_RANKED = 6
 MAX_BREAKOUT_EXTENSION_NORM = 0.35
+GAP_NORM_MIN = 0.0
+ABNORMAL_TURNOVER_MIN_V7 = 1.2
+ABNORMAL_TURNOVER_MAX_V7 = 2.0
+CROWDED_LEADER_TURNOVER_BLOCK = 2.0
 DEFAULT_FUNDAMENTAL_TOP_FRACTION = 0.5
 WARM_FUNDAMENTAL_TOP_FRACTION = 1 / 3
 
@@ -68,8 +72,8 @@ _POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
         active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
         close_strength_min=0.95,
         gap_norm_max=0.45,
-        abnormal_turnover_min=1.0,
-        abnormal_turnover_max=3.5,
+        abnormal_turnover_min=1.2,
+        abnormal_turnover_max=2.0,
     ),
     EXP3B_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
         name=EXP3B_STOCK_CANDIDATE_POLICY,
@@ -199,16 +203,25 @@ def _candidate_row(
     )
     abnormal_turnover = _abnormal_turnover(turnover_free=turnover_free, turns=turns)
 
+    if sector_rank == 1 and abnormal_turnover >= CROWDED_LEADER_TURNOVER_BLOCK:
+        return None
+
+    atu_in_band = policy.abnormal_turnover_min <= abnormal_turnover
+    if policy.abnormal_turnover_max == ABNORMAL_TURNOVER_MAX_V7:
+        atu_in_band = atu_in_band and abnormal_turnover < policy.abnormal_turnover_max
+    else:
+        atu_in_band = atu_in_band and abnormal_turnover <= policy.abnormal_turnover_max
+
     signal = (
         close_value > breakout_level
         and ma20 > ma60 > ma120
         and close_strength >= policy.close_strength_min
-        and gap_norm <= policy.gap_norm_max
+        and GAP_NORM_MIN <= gap_norm <= policy.gap_norm_max
         and _breakout_extension_allowed(
             market_state=market_state,
             breakout_extension_norm=breakout_extension_norm,
         )
-        and policy.abnormal_turnover_min <= abnormal_turnover <= policy.abnormal_turnover_max
+        and atu_in_band
     )
     if not signal:
         return None

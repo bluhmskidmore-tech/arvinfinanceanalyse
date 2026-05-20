@@ -101,7 +101,7 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
                 sector_rank=1,
                 close_history=alpha_closes,
                 turnover_history=_turnover_history(baseline=0.5, current=1.5),
-                open_value=21.55,
+                open_value=21.85,
                 high_value=21.92,
                 low_value=21.4,
             ),
@@ -113,7 +113,7 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
                 sector_rank=2,
                 close_history=beta_closes,
                 turnover_history=_turnover_history(baseline=0.4, current=1.25),
-                open_value=29.38,
+                open_value=29.45,
                 high_value=29.53,
                 low_value=29.2,
             ),
@@ -148,7 +148,7 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
     assert alpha["sector_rank"] == 1
     assert alpha["breakout_level"] == pytest.approx(max(alpha_closes[-56:-1]))
     assert alpha["close_strength"] == pytest.approx((21.9 - 21.4) / (21.92 - 21.4))
-    assert alpha["gap_norm"] == pytest.approx(((21.55 - 21.8) / 21.8) / 0.1)
+    assert alpha["gap_norm"] == pytest.approx(((21.85 - 21.8) / 21.8) / 0.1, abs=1e-6)
     assert alpha["breakout_extension_norm"] == pytest.approx(((21.9 - 21.8) / 21.8) / 0.1, abs=1e-6)
     assert alpha["abnormal_turnover"] == pytest.approx(math.log1p(1.5 / 0.5))
     assert alpha["ema10"] == pytest.approx(_ema(alpha_closes, 10)[-1])
@@ -164,7 +164,7 @@ def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> No
         sector_rank=1,
         close_history=_close_history(start=10.0, step=0.1),
         turnover_history=_turnover_history(baseline=0.5, current=1.5),
-        open_value=21.55,
+        open_value=21.85,
         high_value=21.92,
         low_value=21.4,
     )
@@ -176,7 +176,7 @@ def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> No
         sector_rank=2,
         close_history=_close_history(start=10.0, step=0.1, count=60),
         turnover_history=_turnover_history(baseline=0.5, current=1.5, count=60),
-        open_value=15.75,
+        open_value=15.81,
         high_value=15.97,
         low_value=15.5,
     )
@@ -210,11 +210,11 @@ def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_t
             sector_rank=1,
             close_history=closes,
             turnover_history=_turnover_history(baseline=0.5, current=current_turnover),
-            open_value=21.55,
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
         )
-        for index, current_turnover in enumerate([1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0], start=1)
+        for index, current_turnover in enumerate([1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4], start=1)
     ]
     snapshots.append(
         _snapshot(
@@ -225,7 +225,7 @@ def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_t
             sector_rank=4,
             close_history=closes,
             turnover_history=_turnover_history(baseline=0.5, current=1.5),
-            open_value=21.55,
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
         )
@@ -263,8 +263,8 @@ def test_stock_candidates_apply_fundamental_overlay_when_factor_inputs_are_avail
             sector_name="AI",
             sector_rank=1,
             close_history=closes,
-            turnover_history=_turnover_history(baseline=0.5, current=6.0),
-            open_value=21.55,
+            turnover_history=_turnover_history(baseline=0.5, current=1.5),
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
             pe=180.0,
@@ -284,8 +284,8 @@ def test_stock_candidates_apply_fundamental_overlay_when_factor_inputs_are_avail
             sector_name="AI",
             sector_rank=1,
             close_history=closes,
-            turnover_history=_turnover_history(baseline=0.5, current=2.5),
-            open_value=21.55,
+            turnover_history=_turnover_history(baseline=0.5, current=1.8),
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
             pe=12.0,
@@ -305,8 +305,8 @@ def test_stock_candidates_apply_fundamental_overlay_when_factor_inputs_are_avail
             sector_name="Power",
             sector_rank=2,
             close_history=closes,
-            turnover_history=_turnover_history(baseline=0.5, current=2.0),
-            open_value=21.55,
+            turnover_history=_turnover_history(baseline=0.5, current=1.6),
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
             pe=16.0,
@@ -326,8 +326,8 @@ def test_stock_candidates_apply_fundamental_overlay_when_factor_inputs_are_avail
             sector_name="Retail",
             sector_rank=3,
             close_history=closes,
-            turnover_history=_turnover_history(baseline=0.5, current=5.0),
-            open_value=21.55,
+            turnover_history=_turnover_history(baseline=0.5, current=1.8),
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
             pe=120.0,
@@ -374,11 +374,11 @@ def test_stock_candidates_can_emit_pre_truncation_universe_for_research() -> Non
             sector_rank=1,
             close_history=closes,
             turnover_history=_turnover_history(baseline=0.5, current=current_turnover),
-            open_value=21.55,
+            open_value=21.85,
             high_value=21.91,
             low_value=21.6,
         )
-        for index, current_turnover in enumerate([1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0], start=1)
+        for index, current_turnover in enumerate([1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4], start=1)
     ]
 
     default_result = compute_stock_candidates(
@@ -399,10 +399,10 @@ def test_stock_candidates_can_emit_pre_truncation_universe_for_research() -> Non
     items = cast(list[dict[str, Any]], payload["items"])
     universe = cast(list[dict[str, Any]], payload["universe_items"])
     assert len(items) == 6
-    assert len(universe) == 8
-    assert [row["new_rank"] for row in universe] == list(range(1, 9))
-    assert [row["eligible_before_truncation"] for row in universe] == [True] * 8
-    assert [row["selected_new_top6"] for row in universe] == [True] * 6 + [False, False]
+    assert len(universe) == 7
+    assert [row["new_rank"] for row in universe] == list(range(1, 8))
+    assert [row["eligible_before_truncation"] for row in universe] == [True] * 7
+    assert [row["selected_new_top6"] for row in universe] == [True] * 6 + [False]
     assert [row["stock_code"] for row in universe[:6]] == [row["stock_code"] for row in items]
 
 
@@ -417,7 +417,7 @@ def test_stock_candidates_exclude_overextended_breakouts_after_pivot_only_when_m
         sector_rank=1,
         close_history=controlled_closes,
         turnover_history=_turnover_history(baseline=0.5, current=1.5),
-        open_value=21.55,
+        open_value=21.85,
         high_value=21.92,
         low_value=21.4,
     )
@@ -429,7 +429,7 @@ def test_stock_candidates_exclude_overextended_breakouts_after_pivot_only_when_m
         sector_rank=1,
         close_history=overextended_closes,
         turnover_history=_turnover_history(baseline=0.5, current=1.5),
-        open_value=21.9,
+        open_value=22.65,
         high_value=22.72,
         low_value=22.1,
     )
@@ -468,7 +468,7 @@ def test_stock_candidates_exp3b_policy_keeps_entry_only_stricter_gate_and_sorts_
         sector_name="AI",
         sector_rank=1,
         close_history=closes,
-        turnover_history=_turnover_history(baseline=0.5, current=4.5),
+        turnover_history=_turnover_history(baseline=0.5, current=3.0),
         open_value=22.05,
         high_value=21.91,
         low_value=20.65,
