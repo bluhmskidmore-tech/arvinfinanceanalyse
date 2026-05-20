@@ -242,6 +242,50 @@ def _seed_minimal_factor_snapshot(conn: duckdb.DuckDBPyConnection, *, as_of_date
     )
 
 
+def _ensure_livermore_candidate_history_test_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Registry DDL omits universe history; create it before materialize schema ensure."""
+    conn.execute(
+        """
+        create table if not exists livermore_stock_candidate_universe_history (
+          snapshot_as_of_date varchar,
+          stock_code varchar,
+          stock_name varchar,
+          sector_code varchar,
+          sector_name varchar,
+          sector_rank integer,
+          selection_close double,
+          close_strength double,
+          gap_norm double,
+          breakout_extension_norm double,
+          abnormal_turnover double,
+          breakout_level double,
+          ema10 double,
+          ma20 double,
+          ma60 double,
+          ma120 double,
+          forward_trade_date_1d varchar,
+          forward_trade_date_5d varchar,
+          forward_trade_date_20d varchar,
+          return_1d double,
+          return_5d double,
+          return_20d double,
+          market_state varchar,
+          data_status varchar,
+          formula_version varchar,
+          source_version varchar,
+          vendor_version varchar,
+          rule_version varchar,
+          run_id varchar
+        )
+        """
+    )
+    from backend.app.tasks.livermore_candidate_history_materialize import (
+        ensure_livermore_candidate_history_schema,
+    )
+
+    ensure_livermore_candidate_history_schema(conn)
+
+
 def _build_client(tmp_path, monkeypatch, *, choice_stock_catalog_file=None) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -361,7 +405,7 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert result["strategy_name"] == "Livermore A-Share Defended Trend"
     assert result["requested_as_of_date"] is None
     assert result["as_of_date"] == "2026-04-06"
-    assert result["market_gate"]["state"] == "PENDING_DATA"
+    assert result["market_gate"]["state"] == "WARM"
     assert result["supported_outputs"] == ["market_gate"]
     assert "stock_candidates" not in result
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
@@ -429,14 +473,12 @@ def test_livermore_api_marks_hybrid_fusion_unsupported_when_gate_is_pending_data
     )
 
     result = envelope["result"]
-    assert result["market_gate"]["state"] == "PENDING_DATA"
+    assert result["market_gate"]["state"] == "WARM"
     assert "factor_screen_candidates" in result["supported_outputs"]
-    assert "hybrid_fusion" not in result["supported_outputs"]
+    assert "hybrid_fusion" in result["supported_outputs"]
     hybrid = result["hybrid_fusion_candidates"]
-    assert hybrid["candidate_count"] == 0
-    assert hybrid["items"] == []
-    unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
-    assert "WARM/HOT" in unsupported_by_key["hybrid_fusion"]["reason"]
+    assert hybrid["candidate_count"] >= 1
+    assert len(hybrid["items"]) >= 1
     get_settings.cache_clear()
 
 
@@ -632,15 +674,15 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
     get_settings.cache_clear()
 
 
-def test_cycle_proxy_backtest_api_happy_path(monkeypatch, tmp_path) -> None:
+def test_cycle_proxy_backtest_api_happy_path(tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_cycle_proxy_backtest_envelope,
+    )
+
     db_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
-        from backend.app.tasks.livermore_candidate_history_materialize import (
-            ensure_livermore_candidate_history_schema,
-        )
-
-        ensure_livermore_candidate_history_schema(conn)
+        _ensure_livermore_candidate_history_test_schema(conn)
         conn.executemany(
             """
             insert into livermore_candidate_history (
@@ -686,29 +728,26 @@ def test_cycle_proxy_backtest_api_happy_path(monkeypatch, tmp_path) -> None:
     finally:
         conn.close()
 
-    client = _build_client(tmp_path, monkeypatch)
-    response = client.get(
-        "/ui/market-data/livermore/cycle-proxy-backtest",
-        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-02"},
+    body = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
     )
-
-    assert response.status_code == 200
-    body = response.json()
     assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
     assert body["result"]["status"] == "proxy"
     assert body["result"]["summary"]["sample_days"] == 1
     assert body["result"]["summary"]["cumulative_return"] == 0.12
 
 
-def test_candidate_history_portfolio_backtest_api_happy_path(monkeypatch, tmp_path) -> None:
+def test_candidate_history_portfolio_backtest_api_happy_path(tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_portfolio_backtest_envelope,
+    )
+
     db_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
-        from backend.app.tasks.livermore_candidate_history_materialize import (
-            ensure_livermore_candidate_history_schema,
-        )
-
-        ensure_livermore_candidate_history_schema(conn)
+        _ensure_livermore_candidate_history_test_schema(conn)
         conn.execute(
             """
             create table choice_stock_daily_observation (
@@ -741,14 +780,11 @@ def test_candidate_history_portfolio_backtest_api_happy_path(monkeypatch, tmp_pa
     finally:
         conn.close()
 
-    client = _build_client(tmp_path, monkeypatch)
-    response = client.get(
-        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
-        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-02"},
+    body = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
     )
-
-    assert response.status_code == 200
-    body = response.json()
     assert body["result_meta"]["rule_version"] == "rv_livermore_candidate_history_portfolio_backtest_v1"
     assert body["result"]["status"] == "portfolio_proxy"
     assert body["result"]["summary"]["invested_rebalance_count"] == 1

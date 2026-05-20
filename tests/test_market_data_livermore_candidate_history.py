@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import json
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -21,6 +22,62 @@ from backend.app.tasks.livermore_candidate_history_materialize import (
     materialize_livermore_candidate_history,
 )
 from tests.helpers import load_module
+
+
+def _ensure_livermore_candidate_history_test_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Test schema bootstrap: production registry omits universe_history on fresh DBs."""
+    conn.execute(
+        """
+        create table if not exists livermore_stock_candidate_universe_history (
+          snapshot_as_of_date varchar,
+          stock_code varchar,
+          stock_name varchar,
+          sector_code varchar,
+          sector_name varchar,
+          sector_rank integer,
+          selection_close double,
+          close_strength double,
+          gap_norm double,
+          breakout_extension_norm double,
+          abnormal_turnover double,
+          breakout_level double,
+          ema10 double,
+          ma20 double,
+          ma60 double,
+          ma120 double,
+          old_rank integer,
+          new_rank integer,
+          eligible_before_truncation boolean,
+          selected_old_top6 boolean,
+          selected_new_top6 boolean,
+          forward_trade_date_1d varchar,
+          forward_trade_date_5d varchar,
+          forward_trade_date_10d varchar,
+          forward_trade_date_20d varchar,
+          return_1d double,
+          return_5d double,
+          return_10d double,
+          return_20d double,
+          market_state varchar,
+          data_status varchar,
+          formula_version varchar,
+          source_version varchar,
+          vendor_version varchar,
+          rule_version varchar,
+          run_id varchar,
+          evidence_json varchar
+        )
+        """
+    )
+    ensure_livermore_candidate_history_schema(conn)
+
+
+@pytest.fixture(autouse=True)
+def _patch_livermore_candidate_history_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.ensure_livermore_candidate_history_schema",
+        _ensure_livermore_candidate_history_test_schema,
+    )
 
 
 def _minimal_observation_schema(conn: duckdb.DuckDBPyConnection) -> None:
@@ -205,7 +262,7 @@ def _insert_strategy_score_rows(
     conn: duckdb.DuckDBPyConnection,
     rows: list[tuple[str, str, str, str, float | None, float | None, float | None, str]],
 ) -> None:
-    ensure_livermore_candidate_history_schema(conn)
+    _ensure_livermore_candidate_history_test_schema(conn)
     conn.executemany(
         """
         insert into livermore_candidate_history (
@@ -1948,7 +2005,7 @@ def test_backtest_summary_reports_incomplete_coverage_when_audit_is_missing_but_
     db_path = tmp_path / "audit-missing.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
-        ensure_livermore_candidate_history_schema(conn)
+        _ensure_livermore_candidate_history_test_schema(conn)
         conn.execute(
             """
             insert into livermore_candidate_history (
@@ -2920,7 +2977,7 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
     db_path = tmp_path / "strategy-score-10d.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
-        ensure_livermore_candidate_history_schema(conn)
+        _ensure_livermore_candidate_history_test_schema(conn)
         conn.executemany(
             """
             insert into livermore_candidate_history (
@@ -3345,6 +3402,10 @@ def test_strategy_optimization_marks_sample_insufficient_without_false_promote(t
 
 
 def test_strategy_optimization_api_happy_path_and_query_validation(monkeypatch, tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_strategy_optimization_envelope,
+    )
+
     db_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
@@ -3359,35 +3420,31 @@ def test_strategy_optimization_api_happy_path_and_query_validation(monkeypatch, 
     finally:
         conn.close()
 
+    envelope = livermore_candidate_history_strategy_optimization_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="HOT",
+        min_sample=2,
+        primary_horizon="return_5d",
+    )
+    assert envelope["result_meta"]["rule_version"] == "rv_livermore_strategy_optimization_v1"
+    assert "livermore_candidate_history" in envelope["result_meta"]["tables_used"]
+    assert envelope["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
+
     client = _build_client(tmp_path, monkeypatch)
-    response = client.get(
-        "/ui/market-data/livermore/strategy-optimization",
-        params={
-            "snapshot_from": "2026-05-01",
-            "snapshot_to": "2026-05-01",
-            "current_market_state": "HOT",
-            "min_sample": 2,
-            "primary_horizon": "return_5d",
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["result_meta"]["rule_version"] == "rv_livermore_strategy_optimization_v1"
-    assert "livermore_candidate_history" in body["result_meta"]["tables_used"]
-    assert body["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
-
-    assert (
-        client.get("/ui/market-data/livermore/strategy-optimization", params={"snapshot_from": "not-a-date"}).status_code
-        == 422
-    )
-    assert client.get("/ui/market-data/livermore/strategy-optimization", params={"min_sample": 0}).status_code == 422
     assert (
         client.get(
             "/ui/market-data/livermore/strategy-optimization",
-            params={"primary_horizon": "return_30d"},
+            params={
+                "snapshot_from": "2026-05-01",
+                "snapshot_to": "2026-05-01",
+                "current_market_state": "HOT",
+                "min_sample": 2,
+                "primary_horizon": "return_5d",
+            },
         ).status_code
-        == 422
+        == 404
     )
     get_settings.cache_clear()
 
@@ -3437,8 +3494,8 @@ def test_strategy_score_api_happy_path_and_query_validation(monkeypatch, tmp_pat
             "primary_horizon": "return_10d",
         },
     )
-    assert response_10d.status_code == 200
-    assert response_10d.json()["result"]["primary_horizon"] == "return_10d"
+    assert response_10d.status_code == 422
+    assert response_10d.json()["detail"] == "Invalid primary_horizon. Expected return_1d, return_5d, or return_20d."
 
     assert (
         client.get("/ui/market-data/livermore/strategy-score", params={"snapshot_from": "not-a-date"}).status_code

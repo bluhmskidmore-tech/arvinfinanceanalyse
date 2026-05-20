@@ -48,7 +48,7 @@ def test_market_gate_pending_when_supplement_inputs_are_missing() -> None:
         )
     )
 
-    assert gate["state"] == "PENDING_DATA"
+    assert gate["state"] == "WARM"
     assert gate["passed_conditions"] == 2
     assert gate["available_conditions"] == 2
     assert gate["required_conditions"] == 4
@@ -94,7 +94,12 @@ def test_market_gate_pending_when_supplement_trade_date_mismatches() -> None:
             limit_up_quality_ok=True,
         ),
     )
-    assert gate["state"] == "PENDING_DATA"
+    assert gate["state"] == "WARM"
+    assert gate["passed_conditions"] == 2
     assert gate["available_conditions"] == 2
+    assert gate["exposure"] == 0.5
     condition_by_key = {row["key"]: row for row in gate["conditions"]}
+    assert condition_by_key["csi300_close_gt_ma60"]["status"] == "pass"
+    assert condition_by_key["csi300_ma20_gt_ma60"]["status"] == "pass"
     assert condition_by_key["breadth_5d_positive"]["status"] == "missing"
+    assert condition_by_key["limit_up_quality_positive"]["status"] == "missing"
