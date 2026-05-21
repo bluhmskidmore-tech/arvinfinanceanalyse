@@ -89,6 +89,40 @@ export type LivermoreStrategyModel = {
       abnormalTurnover: string;
     }>;
   };
+  meanReversionCandidates: null | {
+    formulaVersion: string;
+    marketState: LivermoreStrategyPayload["market_gate"]["state"];
+    items: Array<{
+      rank: number;
+      stockCode: string;
+      stockName: string;
+      sectorName: string;
+      close: string;
+      score: string;
+    }>;
+  };
+  factorScreenCandidates: null | {
+    formulaVersion: string;
+    marketState: LivermoreStrategyPayload["market_gate"]["state"];
+    coverageNote: string;
+    items: Array<{
+      rank: number;
+      stockCode: string;
+      stockName: string;
+      sectorName: string;
+      score: string;
+    }>;
+  };
+  themeBreakout: null | {
+    formulaVersion: string;
+    isProxy: boolean;
+    items: Array<{
+      rank: number;
+      themeName: string;
+      parentSectorName: string;
+      reason: string;
+    }>;
+  };
   riskExit: null | {
     formulaVersion: string;
     positionCount: number;
@@ -269,6 +303,46 @@ export function buildLivermoreStrategyModel(input: {
             closeStrength: formatMetric(item.close_strength),
             gapNorm: formatMetric(item.gap_norm),
             abnormalTurnover: formatMetric(item.abnormal_turnover),
+          })),
+        }
+      : null,
+    meanReversionCandidates: payload.mean_reversion_candidates
+      ? {
+          formulaVersion: payload.mean_reversion_candidates.formula_version,
+          marketState: payload.mean_reversion_candidates.market_state,
+          items: payload.mean_reversion_candidates.items.map((item) => ({
+            rank: item.rank,
+            stockCode: item.stock_code,
+            stockName: item.stock_name,
+            sectorName: item.sector_name,
+            close: formatMetric(item.close),
+            score: formatMetric(item.score),
+          })),
+        }
+      : null,
+    factorScreenCandidates: payload.factor_screen_candidates
+      ? {
+          formulaVersion: payload.factor_screen_candidates.formula_version,
+          marketState: payload.factor_screen_candidates.market_state,
+          coverageNote: payload.factor_screen_candidates.coverage_note,
+          items: payload.factor_screen_candidates.items.map((item) => ({
+            rank: item.rank,
+            stockCode: item.stock_code,
+            stockName: item.stock_name,
+            sectorName: item.sector_name,
+            score: formatMetric(item.score),
+          })),
+        }
+      : null,
+    themeBreakout: payload.theme_breakout
+      ? {
+          formulaVersion: payload.theme_breakout.formula_version,
+          isProxy: payload.theme_breakout.is_proxy,
+          items: payload.theme_breakout.items.map((item) => ({
+            rank: item.rank,
+            themeName: item.theme_name,
+            parentSectorName: item.parent_sector_name,
+            reason: item.reason,
           })),
         }
       : null,

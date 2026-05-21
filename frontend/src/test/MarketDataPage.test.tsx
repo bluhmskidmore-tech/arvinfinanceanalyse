@@ -41,6 +41,24 @@ function renderPage(client: ApiClient) {
   );
 }
 
+function renderPageWithQueryClient(client: ApiClient) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
+    },
+  });
+
+  const result = render(
+    <QueryClientProvider client={queryClient}>
+      <ApiClientProvider client={client}>
+        <MarketDataPage />
+      </ApiClientProvider>
+    </QueryClientProvider>,
+  );
+
+  return { ...result, queryClient };
+}
+
 function buildResultMeta(partial: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_market_data_test",
@@ -1195,6 +1213,7 @@ describe("MarketDataPage", () => {
     const getMacroFoundation = vi.fn(() => base.getMacroFoundation());
     const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
     const getFxAnalytical = vi.fn(() => base.getFxAnalytical());
+    const getNcdFundingProxy = vi.fn(() => base.getNcdFundingProxy());
     const getMacroBondLinkageAnalysis = vi.fn((options: { reportDate: string }) =>
       base.getMacroBondLinkageAnalysis(options),
     );
@@ -1228,6 +1247,7 @@ describe("MarketDataPage", () => {
       getMacroFoundation,
       getChoiceMacroLatest,
       getFxAnalytical,
+      getNcdFundingProxy,
       getMacroBondLinkageAnalysis,
       refreshChoiceMacro,
       getChoiceMacroRefreshStatus,
@@ -1238,6 +1258,7 @@ describe("MarketDataPage", () => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
       expect(getFxAnalytical).toHaveBeenCalledTimes(1);
+      expect(getNcdFundingProxy).toHaveBeenCalledTimes(1);
       expect(getMacroBondLinkageAnalysis).toHaveBeenCalledTimes(1);
     });
 
@@ -1266,8 +1287,171 @@ describe("MarketDataPage", () => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(2);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(2);
       expect(getFxAnalytical).toHaveBeenCalledTimes(2);
+      expect(getNcdFundingProxy).toHaveBeenCalledTimes(2);
       expect(getMacroBondLinkageAnalysis).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("registers section-level refresh policy without pulling stable/date-slice sections into fallback polling", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getMacroFoundation = vi.fn(() => base.getMacroFoundation());
+    const getChoiceMacroLatest = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical",
+        result_kind: "macro.choice.latest",
+        formal_use_allowed: false,
+        quality_flag: "warning",
+        vendor_status: "vendor_stale",
+        fallback_mode: "latest_snapshot",
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: [
+          buildMacroPoint({
+            series_id: "M002",
+            series_name: "DR007",
+            refresh_tier: "fallback",
+            fetch_mode: "latest",
+            quality_flag: "warning",
+          }),
+        ],
+      },
+    }));
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        result_kind: "market_data.rates",
+        vendor_status: "ok",
+        fallback_mode: "none",
+        quality_flag: "ok",
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: [
+          buildMacroPoint({
+            series_id: "M001",
+            series_name: "Open Market 7D Reverse Repo",
+            refresh_tier: "stable",
+            fetch_mode: "date_slice",
+            quality_flag: "ok",
+          }),
+        ],
+      },
+    }));
+    const getFxAnalytical = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical",
+        result_kind: "fx.analytical.groups",
+        formal_use_allowed: false,
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        groups: [],
+      },
+    }));
+    const getNcdFundingProxy = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical",
+        result_kind: "market_data.ncd_proxy",
+        formal_use_allowed: false,
+      }),
+      result: {
+        as_of_date: "2026-05-21",
+        proxy_label: "test ncd proxy",
+        is_actual_ncd_matrix: false,
+        rows: [],
+        warnings: [],
+      },
+    }));
+    const getMacroBondLinkageAnalysis = vi.fn(async (options: { reportDate: string }) => ({
+      result_meta: buildResultMeta({
+        basis: "analytical",
+        result_kind: "macro_bond_linkage.analysis",
+        formal_use_allowed: false,
+        quality_flag: "warning",
+      }),
+      result: {
+        report_date: options.reportDate,
+        environment_score: {},
+        top_correlations: [],
+        portfolio_impact: {},
+        warnings: [],
+        computed_at: "2026-05-21T09:00:00Z",
+      },
+    }));
+    const getLivermoreStrategy = vi.fn(async (options?: { asOfDate?: string }) => ({
+      result_meta: buildResultMeta({
+        basis: "analytical",
+        result_kind: "market_data.livermore",
+        formal_use_allowed: false,
+      }),
+      result: {
+        as_of_date: options?.asOfDate ?? "2026-05-21",
+        requested_as_of_date: options?.asOfDate ?? null,
+        strategy_name: "test strategy",
+        basis: "analytical" as const,
+        market_gate: {
+          state: "OFF" as const,
+          exposure: 0,
+          passed_conditions: 0,
+          available_conditions: 0,
+          required_conditions: 4,
+          conditions: [],
+        },
+        rule_readiness: [],
+        diagnostics: [],
+        data_gaps: [],
+        supported_outputs: ["market_gate" as const],
+        unsupported_outputs: [],
+        warnings: [],
+      },
+    }));
+
+    const { queryClient } = renderPageWithQueryClient({
+      ...base,
+      getMacroFoundation,
+      getChoiceMacroLatest,
+      getMarketDataRates,
+      getFxAnalytical,
+      getNcdFundingProxy,
+      getMacroBondLinkageAnalysis,
+      getLivermoreStrategy,
+    });
+
+    expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getMacroFoundation).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+      expect(getMarketDataRates).toHaveBeenCalledTimes(1);
+    });
+
+    const macroLatest = queryClient.getQueryCache().find({
+      queryKey: ["market-data", "choice-macro-latest", "mock"],
+      exact: true,
+    });
+    const formalRates = queryClient.getQueryCache().find({
+      queryKey: ["market-data", "formal-rates", "mock"],
+      exact: true,
+    });
+    const catalog = queryClient.getQueryCache().find({
+      queryKey: ["market-data", "macro-foundation", "mock"],
+      exact: true,
+    });
+
+    expect(
+      typeof macroLatest?.observers[0]?.options.refetchInterval === "function"
+        ? macroLatest.observers[0].options.refetchInterval(macroLatest)
+        : macroLatest?.observers[0]?.options.refetchInterval,
+    ).toBe(3 * 60 * 1000);
+    expect(
+      typeof formalRates?.observers[0]?.options.refetchInterval === "function"
+        ? formalRates.observers[0].options.refetchInterval(formalRates)
+        : formalRates?.observers[0]?.options.refetchInterval,
+    ).toBe(false);
+    expect(
+      typeof catalog?.observers[0]?.options.refetchInterval === "function"
+        ? catalog.observers[0].options.refetchInterval(catalog)
+        : catalog?.observers[0]?.options.refetchInterval,
+    ).toBe(false);
   });
 
   it("updates shell filter state locally without changing the current query contract", async () => {

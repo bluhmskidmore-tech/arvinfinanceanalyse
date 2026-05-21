@@ -147,6 +147,47 @@
   gap: var(--moss-space-2);
 }
 
+.market-data-contract-status,
+.market-data-workbench-shared-meta,
+.market-data-source-pending-summary,
+.market-data-macro-evidence-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.market-data-contract-status,
+.market-data-workbench-shared-meta,
+.market-data-source-pending-summary {
+  margin-top: var(--moss-space-2);
+}
+
+.market-data-contract-status > span,
+.market-data-workbench-shared-meta > span,
+.market-data-source-pending-summary,
+.market-data-macro-evidence-rail > span {
+  padding: 2px 7px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-xs);
+  background: #ffffff;
+}
+
+.market-data-macro-evidence-rail {
+  margin-top: var(--moss-space-3);
+  padding: var(--moss-space-2);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.market-data-macro-evidence-rail strong {
+  color: var(--moss-color-text-primary);
+}
+
 .market-data-command-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.95fr);

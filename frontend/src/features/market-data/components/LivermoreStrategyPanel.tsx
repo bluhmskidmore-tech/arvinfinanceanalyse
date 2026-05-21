@@ -152,6 +152,9 @@ export function LivermoreStrategyPanel({
   const noData = model.marketGate.state === "NO_DATA";
   const sectorRank = model.sectorRank;
   const stockCandidates = model.stockCandidates;
+  const meanReversionCandidates = model.meanReversionCandidates;
+  const factorScreenCandidates = model.factorScreenCandidates;
+  const themeBreakout = model.themeBreakout;
   const riskExit = model.riskExit;
   const watchedCodes = new Set(watchPool.map((item) => item.stockCode));
 
@@ -413,6 +416,78 @@ export function LivermoreStrategyPanel({
             ) : (
               <div className="livermore-strategy-panel__state">尚未选中候选股。</div>
             )}
+          </div>
+        ) : null}
+
+        {meanReversionCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-mean-reversion-candidates">
+            <h3 className="livermore-strategy-panel__block-title">超跌反弹观察池</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {meanReversionCandidates.formulaVersion}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {meanReversionCandidates.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.stockName} | {item.stockCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.sectorName} | close {item.close} | score {item.score}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>{meanReversionCandidates.marketState}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {factorScreenCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-factor-screen-candidates">
+            <h3 className="livermore-strategy-panel__block-title">多因子选股</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {factorScreenCandidates.formulaVersion} | {factorScreenCandidates.coverageNote}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {factorScreenCandidates.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.stockName} | {item.stockCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.sectorName} | factor score {item.score}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>{factorScreenCandidates.marketState}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {themeBreakout ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-theme-breakout">
+            <h3 className="livermore-strategy-panel__block-title">题材突变</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {themeBreakout.formulaVersion} | {themeBreakout.isProxy ? "proxy" : "landed"}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {themeBreakout.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.themeName}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.themeName}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.parentSectorName} | {item.reason}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>观察</span>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
 

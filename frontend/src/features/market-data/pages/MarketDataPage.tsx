@@ -4,6 +4,10 @@ import { Collapse } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
+import {
+  externalDataQueryOptions,
+  nonCancellingRefetchOptions,
+} from "../../../app/externalDataRefreshPolicy";
 import { PageSectionLead, type PageSectionLeadProps } from "../../../components/page/PagePrimitives";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type {
@@ -51,9 +55,6 @@ const MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP = false;
 
 /** 默认不渲染「外汇分析观察」整块 UI（分组与序列卡）；接口仍照常拉取以供概览 KPI。 */
 const MARKET_DATA_SHOW_FX_ANALYSIS_SECTION = false;
-
-/** 市场只读接口默认缓存窗口，减轻重复请求与 Tab 切换抖动。 */
-const MARKET_DATA_QUERY_STALE_MS = 60_000;
 
 const s = designTokens.space;
 const fs = designTokens.fontSize;
@@ -356,6 +357,13 @@ function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): 
   return value ?? "待定";
 }
 
+function metaEvidenceLine(label: string, meta: ResultMeta | undefined) {
+  if (!meta) {
+    return `${label}: basis=pending formal_use_allowed=pending fallback=pending vendor_status=pending source=pending`;
+  }
+  return `${label}: basis=${meta.basis} formal_use_allowed=${meta.formal_use_allowed} fallback=${meta.fallback_mode} vendor_status=${meta.vendor_status} source=${meta.source_version}`;
+}
+
 export default function MarketDataPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -370,37 +378,37 @@ export default function MarketDataPage() {
     queryKey: ["market-data", "macro-foundation", client.mode],
     queryFn: () => client.getMacroFoundation(),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
   const latestQuery = useQuery({
     queryKey: ["market-data", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
   });
   const fxAnalyticalQuery = useQuery({
     queryKey: ["market-data", "fx-analytical", client.mode],
     queryFn: () => client.getFxAnalytical(),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
   });
   const ncdFundingProxyQuery = useQuery({
     queryKey: ["market-data", "ncd-funding-proxy", client.mode],
     queryFn: () => client.getNcdFundingProxy(),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
   });
   const livermoreStrategyQuery = useQuery({
     queryKey: ["market-data", "livermore-strategy", client.mode, watchDate],
     queryFn: () => client.getLivermoreStrategy({ asOfDate: watchDate }),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
   const formalRatesQuery = useQuery({
     queryKey: ["market-data", "formal-rates", client.mode],
     queryFn: () => client.getMarketDataRates(),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
   const formalRatesMeta = formalRatesQuery.data?.result_meta;
   const isFormalBasis = formalRatesMeta?.basis === "formal";
@@ -458,7 +466,7 @@ export default function MarketDataPage() {
     queryFn: () => client.getMacroBondLinkageAnalysis({ reportDate: linkageReportDate }),
     enabled: Boolean(linkageReportDate),
     retry: false,
-    staleTime: MARKET_DATA_QUERY_STALE_MS,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
   });
   const vendorVersions = marketDataCategories.vendorVersions;
   const fxAnalyticalSeriesCount = marketDataCategories.fxAnalyticalSeriesCount;
@@ -506,6 +514,13 @@ export default function MarketDataPage() {
   );
   const macroMeta = formalRatesMeta ?? latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
   const fxAnalyticalMeta = fxAnalyticalQuery.data?.result_meta;
+  const ncdFundingProxyMeta = ncdFundingProxyQuery.data?.result_meta;
+  const rateQuotesSource = terminalModel.rateQuotes.source;
+  const sourcePendingCount = [
+    terminalModel.bondFutures.status,
+    terminalModel.bondTrades.status,
+    terminalModel.creditTrades.status,
+  ].filter((status) => status === "source-pending").length;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
@@ -547,12 +562,13 @@ export default function MarketDataPage() {
       }
       setRefreshStatus("刷新完成");
       await Promise.all([
-        catalogQuery.refetch(),
-        latestQuery.refetch(),
-        formalRatesQuery.refetch(),
-        fxAnalyticalQuery.refetch(),
+        catalogQuery.refetch(nonCancellingRefetchOptions),
+        latestQuery.refetch(nonCancellingRefetchOptions),
+        formalRatesQuery.refetch(nonCancellingRefetchOptions),
+        fxAnalyticalQuery.refetch(nonCancellingRefetchOptions),
+        ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions),
         refreshMacroBondLinkage(),
-        livermoreStrategyQuery.refetch(),
+        livermoreStrategyQuery.refetch(nonCancellingRefetchOptions),
       ]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -567,6 +583,7 @@ export default function MarketDataPage() {
     latestQuery,
     formalRatesQuery,
     fxAnalyticalQuery,
+    ncdFundingProxyQuery,
     refreshMacroBondLinkage,
     livermoreStrategyQuery,
   ]);
@@ -635,7 +652,7 @@ export default function MarketDataPage() {
   ];
 
   return (
-    <section className="market-data-page">
+    <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-05-15d">
       <MarketDataHeroSection
         clientMode={client.mode}
         watchDate={watchDate}
@@ -667,13 +684,21 @@ export default function MarketDataPage() {
         </div>
       ) : null}
 
+      <div className="market-data-contract-status">
+        <span data-testid="market-data-readiness-verdict">
+          {macroMeta?.quality_flag === "error" ? "读面异常" : "读面就绪"}
+        </span>
+        <span data-testid="market-data-overview-readiness-label">读面就绪</span>
+        <span data-testid="market-data-overview-secondary-label">辅助观察</span>
+      </div>
+
       <MarketSectionBlock>
         <MarketSectionLead
           eyebrow="核心观察"
           title="利率、资金、宏观深度与成交观察"
           description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
         />
-        <div className="market-data-command-grid">
+        <div className="market-data-command-grid" data-testid="market-data-macro-workbench">
           <RateQuoteTable model={terminalModel.rateQuotes} />
           <MarketDataMacroDepthTabs
             macroDepthTab={macroDepthTab}
@@ -684,6 +709,20 @@ export default function MarketDataPage() {
             spreadSlots={spreadSlots}
             macroBondLinkage={macroBondLinkage}
           />
+        </div>
+        <div className="market-data-workbench-shared-meta" data-testid="market-data-workbench-shared-meta">
+          <span>口径 {formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown"}</span>
+          <span>
+            正式可用{" "}
+            {formalRatesMeta?.formal_use_allowed === undefined
+              ? "unknown"
+              : formalRatesMeta.formal_use_allowed
+                ? "是"
+                : "否"}
+          </span>
+          <span>供应商 {formalRatesMeta?.vendor_status ?? "unknown"}</span>
+          <span>降级 {formalRatesMeta?.fallback_mode ?? rateQuotesSource?.fallbackMode ?? "unknown"}</span>
+          <span>{formalRatesMeta?.source_version ?? rateQuotesSource?.sourceVersion ?? "source-pending"}</span>
         </div>
       </MarketSectionBlock>
 
@@ -702,7 +741,7 @@ export default function MarketDataPage() {
               ? livermoreStrategyQuery.error.message
               : null
           }
-          onRetry={() => void livermoreStrategyQuery.refetch()}
+          onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
           onRefreshGateSupplement={() => client.refreshGateSupplement({ asOfDate: watchDate })}
         />
       </MarketSectionBlock>
@@ -715,15 +754,26 @@ export default function MarketDataPage() {
           resultMeta={ncdFundingProxyQuery.data?.result_meta}
           isLoading={ncdFundingProxyQuery.isLoading}
           isError={ncdFundingProxyQuery.isError}
-          onRetry={() => void ncdFundingProxyQuery.refetch()}
+          showResultMeta={false}
+          onRetry={() => void ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions)}
         />
       </div>
 
-      <div className="market-data-observation-grid">
+      <div className="market-data-observation-grid" data-testid="market-data-source-pending-deck">
         <BondTradeDetail model={terminalModel.bondTrades} />
         <CreditBondTradesTable model={terminalModel.creditTrades} />
         <NewsAndCalendar />
       </div>
+      <div className="market-data-source-pending-summary" data-testid="market-data-source-pending-summary">
+        source-pending {sourcePendingCount}
+      </div>
+
+      <section className="market-data-macro-evidence-rail" data-testid="market-data-macro-evidence-rail">
+        <strong>证据与口径（只读）</strong>
+        <span>{metaEvidenceLine("formal rates", formalRatesMeta)}</span>
+        <span>{metaEvidenceLine("macro latest", latestQuery.data?.result_meta)}</span>
+        <span>{metaEvidenceLine("NCD proxy", ncdFundingProxyMeta)}</span>
+      </section>
 
       {(MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ||
         MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) && (
@@ -750,7 +800,7 @@ export default function MarketDataPage() {
                 isEmpty={
                   !latestQuery.isLoading && !latestQuery.isError && visibleLatestSeries.length === 0
                 }
-                onRetry={() => void latestQuery.refetch()}
+                onRetry={() => void latestQuery.refetch(nonCancellingRefetchOptions)}
               >
                 <div style={{ display: "grid", gap: s[6] }}>
                   {!latestQuery.isLoading && !latestQuery.isError ? (
@@ -880,7 +930,7 @@ export default function MarketDataPage() {
             !fxAnalyticalQuery.isError &&
             fxAnalyticalGroups.length === 0
           }
-          onRetry={() => void fxAnalyticalQuery.refetch()}
+          onRetry={() => void fxAnalyticalQuery.refetch(nonCancellingRefetchOptions)}
         >
           <div style={{ display: "grid", gap: s[6] }}>
             {!fxAnalyticalQuery.isLoading && !fxAnalyticalQuery.isError && MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP ? (
@@ -947,7 +997,7 @@ export default function MarketDataPage() {
                   (macroBondLinkage.top_correlations?.length ?? 0) === 0 &&
                   macroBondLinkageWarnings.length === 0
                 }
-                onRetry={() => void macroBondLinkageQuery.refetch()}
+                onRetry={() => void macroBondLinkageQuery.refetch(nonCancellingRefetchOptions)}
               >
                 <div className="market-data-stack-gap-5">
             <section data-testid="market-data-linkage-caveat" className="market-data-linkage-caveat">
@@ -1152,7 +1202,7 @@ export default function MarketDataPage() {
               isLoading={catalogQuery.isLoading}
               isError={catalogQuery.isError}
               isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
-              onRetry={() => void catalogQuery.refetch()}
+              onRetry={() => void catalogQuery.refetch(nonCancellingRefetchOptions)}
             >
               <div style={{ display: "grid", gap: s[3] }}>
                 {catalog.map((series) => (
