@@ -20,6 +20,15 @@ describe("MacroToolkitPage", () => {
       await screen.findByRole("heading", { level: 2, name: "核心信号" }),
     ).toBeInTheDocument();
     expect(
+      await screen.findByRole("heading", { level: 2, name: "市场踩踏风险" }),
+    ).toBeInTheDocument();
+    expect((await screen.findAllByText("橙色风险")).length).toBeGreaterThanOrEqual(2);
+    expect(await screen.findByText("总仓位上限30%，高位主题只减不加，午后不做冲高追买。")).toBeInTheDocument();
+    expect(await screen.findByText("上涨家数")).toBeInTheDocument();
+    expect(await screen.findByText("跌停家数")).toBeInTheDocument();
+    expect(await screen.findByText("触发规则")).toBeInTheDocument();
+    expect(await screen.findByText("观察条件")).toBeInTheDocument();
+    expect(
       await screen.findByRole("heading", { level: 2, name: "指标矩阵" }),
     ).toBeInTheDocument();
     expect(

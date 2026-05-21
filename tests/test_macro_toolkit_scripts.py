@@ -358,11 +358,18 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert payload["result"]["coverage"]["hit_count"] >= 6
     assert {item["key"] for item in payload["result"]["signal_cards"]} == {
         "crisis_score_cn",
+        "a_share_stampede_risk",
         "liquidity",
         "risk_appetite",
         "credit",
         "outputs",
     }
+    a_share_risk = payload["result"]["a_share_risk"]
+    assert a_share_risk["status"] == "unavailable"
+    assert a_share_risk["risk_level"] == "unknown"
+    assert a_share_risk["risk_score"] is None
+    risk_card = next(item for item in payload["result"]["signal_cards"] if item["key"] == "a_share_stampede_risk")
+    assert risk_card["tone"] == "missing"
     capability_results = {item["key"]: item for item in payload["result"]["capability_results"]}
     assert set(capability_results) == {
         "monetary_policy_stance",
@@ -488,7 +495,17 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
         "strong_up",
     }
     assert "FACTOR_SNAPSHOT_REQUIRED_FOR_LOW_CROWDING_MULTIFACTOR" in low_crowding["warnings"]
+    a_share_risk = payload["result"]["a_share_risk"]
+    assert a_share_risk["trade_date"] == "2026-04-30"
+    assert a_share_risk["status"] in {"complete", "degraded"}
+    assert a_share_risk["risk_level"] in {"green", "yellow", "orange", "red"}
+    assert isinstance(a_share_risk["metrics"]["up_count"], (int, float))
+    assert "choice_stock_daily_observation" in a_share_risk["tables_used"]
+    assert "choice_stock_limit_quality" in a_share_risk["tables_used"]
+    signal_cards = {item["key"]: item for item in payload["result"]["signal_cards"]}
+    assert signal_cards["a_share_stampede_risk"]["title"] == "市场踩踏风险"
     assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
+    assert "choice_stock_limit_quality" in payload["result_meta"]["tables_used"]
 
 
 def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_path, monkeypatch) -> None:
@@ -1303,6 +1320,23 @@ def _seed_choice_stock_strategy_db(path) -> None:
             )
             """
         )
+        conn.execute(
+            """
+            create table choice_stock_limit_quality (
+              as_of_date varchar,
+              stock_code varchar,
+              issurgedlimit varchar,
+              isdeclinelimit varchar,
+              hlimitedays integer,
+              llimitedays integer,
+              field_key varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
         conn.executemany(
             "insert into choice_stock_universe values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -1357,6 +1391,14 @@ def _seed_choice_stock_strategy_db(path) -> None:
             )
             """,
             rows,
+        )
+        conn.executemany(
+            "insert into choice_stock_limit_quality values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-04-30", "000001.SZ", "否", "否", 0, 0, "limit_quality", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+                ("2026-04-30", "000002.SZ", "否", "否", 0, 0, "limit_quality", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+                ("2026-04-30", "600000.SH", "否", "否", 0, 0, "limit_quality", "sv_stock", "vv_stock", "rv_stock", "run-stock"),
+            ],
         )
     finally:
         conn.close()

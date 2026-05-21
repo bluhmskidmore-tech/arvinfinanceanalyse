@@ -223,6 +223,21 @@ export type MacroToolkitStrategySummary = {
   result: Record<string, unknown>;
 };
 
+export type MacroToolkitAShareRiskPayload = {
+  trade_date: string | null;
+  status: "complete" | "degraded" | "unavailable";
+  risk_score: number | null;
+  risk_level: "green" | "yellow" | "orange" | "red" | "unknown";
+  risk_name: string;
+  summary: string;
+  position_rule: string;
+  metrics: Record<string, number | null>;
+  triggered_rules: string[];
+  watch_next: string[];
+  warnings: string[];
+  tables_used: string[];
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -241,6 +256,7 @@ export type MacroToolkitAnalysisPayload = {
   };
   indicators: MacroToolkitIndicator[];
   signal_cards: MacroToolkitSignalCard[];
+  a_share_risk?: MacroToolkitAShareRiskPayload;
   capability_results: MacroToolkitCapabilityResult[];
   strategy_summaries: MacroToolkitStrategySummary[];
   output_files: MacroToolkitOutputFile[];
@@ -580,6 +596,31 @@ const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
   default_factor_max_stock_count: null,
 };
 
+const MOCK_A_SHARE_RISK: MacroToolkitAShareRiskPayload = {
+  trade_date: "2026-04-30",
+  status: "degraded",
+  risk_score: 64,
+  risk_level: "orange",
+  risk_name: "橙色风险",
+  summary: "市场踩踏风险升温：上涨家数低于700或上涨比例低于18% / 跌停家数超过50。",
+  position_rule: "总仓位上限30%，高位主题只减不加，午后不做冲高追买。",
+  metrics: {
+    core_stock_count: 1000,
+    up_count: 186,
+    up_ratio: 0.186,
+    drop_3_count: 338,
+    drop_5_count: 96,
+    limit_down_count: 56,
+    near_down_count: 118,
+    turnover_ratio_ma20: 1.42,
+    index_drawdown_from_high: 0.018,
+  },
+  triggered_rules: ["上涨家数低于700或上涨比例低于18%", "跌停家数超过50", "指数从日内高点回落超过1.5%且收在低位"],
+  watch_next: ["跌停家数是否收敛到30只以内", "上涨家数是否恢复到1500只以上", "午后是否再次放量下杀"],
+  warnings: ["主题拥挤 V1 仅按可用行业证据降级计算。"],
+  tables_used: ["choice_stock_daily_observation", "choice_stock_limit_quality", "choice_stock_factor_snapshot"],
+};
+
 const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   default_data_sources: ["choice", "tushare"],
   as_of_date: "2026-04-30",
@@ -648,6 +689,14 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   ],
   signal_cards: [
     {
+      key: "a_share_stampede_risk",
+      title: "市场踩踏风险",
+      stance: "橙色风险",
+      tone: "negative",
+      score: 64,
+      evidence: ["上涨家数低于700或上涨比例低于18%", "跌停家数超过50"],
+    },
+    {
       key: "liquidity",
       title: "流动性",
       stance: "偏松",
@@ -680,6 +729,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
       evidence: ["尚未发现输出文件"],
     },
   ],
+  a_share_risk: MOCK_A_SHARE_RISK,
   capability_results: MOCK_CAPABILITY_RESULTS,
   strategy_summaries: MOCK_STRATEGY_SUMMARIES,
   output_files: [],

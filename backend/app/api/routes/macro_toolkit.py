@@ -26,6 +26,10 @@ from backend.app.core_finance.macro import (
     moving_average_strategy,
     multi_factor_selection,
 )
+from backend.app.core_finance.macro.a_share_stampede_risk import (
+    compute_a_share_stampede_risk,
+    load_a_share_stampede_risk_config,
+)
 from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
 from backend.app.core_finance.macro.helpers import (
     build_curve_history,
@@ -260,7 +264,13 @@ def macro_toolkit_analysis() -> dict[str, object]:
         settings.duckdb_path,
         report_date=analysis_date,
     )
-    signal_cards = _analysis_signal_cards(indicator_by_key, output_files, capability_results)
+    a_share_risk = _a_share_stampede_risk(settings.duckdb_path)
+    signal_cards = _analysis_signal_cards(
+        indicator_by_key,
+        output_files,
+        capability_results,
+        a_share_risk,
+    )
     hit_count = sum(1 for item in indicators if item["latest_value"] is not None)
     coverage = {
         "indicator_count": len(indicators),
@@ -279,6 +289,7 @@ def macro_toolkit_analysis() -> dict[str, object]:
             "coverage": coverage,
             "indicators": indicators,
             "signal_cards": signal_cards,
+            "a_share_risk": a_share_risk,
             "capability_results": capability_results,
             "strategy_summaries": _equity_strategy_summaries(settings.duckdb_path),
             "output_files": output_files,
@@ -980,6 +991,8 @@ def _macro_capability_results(
 _EQUITY_PRICE_LOOKBACK_DAYS = 260
 _EQUITY_PRICE_MIN_OBSERVATIONS = 80
 _EQUITY_PRICE_MAX_STOCKS = 500
+_A_SHARE_RISK_LOOKBACK_DAYS = 35
+_A_SHARE_RISK_MAX_STOCKS = 8000
 
 
 def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[dict[str, object]]:
@@ -1083,6 +1096,239 @@ def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[di
                 "result": {"data_status": "unavailable"},
             }
         ]
+
+
+def _a_share_stampede_risk(duckdb_path: str | Path | None) -> dict[str, object]:
+    config = load_a_share_stampede_risk_config()
+    context = _load_a_share_stampede_risk_context(duckdb_path)
+    if context is None:
+        return compute_a_share_stampede_risk(pd.DataFrame(), config=config)
+    payload = compute_a_share_stampede_risk(
+        context["observations"],
+        config=config,
+        theme_frame=context.get("theme_frame") if isinstance(context.get("theme_frame"), pd.DataFrame) else None,
+    )
+    tables_used = [str(item) for item in context.get("tables_used", [])]
+    payload["tables_used"] = _unique_texts([*payload.get("tables_used", []), *tables_used])
+    if context.get("warnings"):
+        payload["warnings"] = _unique_texts([*payload.get("warnings", []), *context["warnings"]])
+        if payload.get("status") == "complete":
+            payload["status"] = "degraded"
+    return payload
+
+
+def _load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[str, object] | None:
+    if duckdb_path is None:
+        return None
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return None
+    try:
+        if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
+            return None
+        latest_row = conn.execute(
+            """
+            select max(try_cast(trade_date as date))
+            from choice_stock_daily_observation
+            where close_value is not null
+              and close_value > 0
+            """
+        ).fetchone()
+        latest_trade_date = latest_row[0] if latest_row else None
+        if latest_trade_date is None:
+            return None
+        start_date = latest_trade_date - timedelta(days=_A_SHARE_RISK_LOOKBACK_DAYS)
+        rows = conn.execute(
+            f"""
+            with latest_sample as (
+              select stock_code
+              from choice_stock_daily_observation
+              where try_cast(trade_date as date) = ?
+                and close_value is not null
+                and close_value > 0
+              order by coalesce(amount, 0) desc, stock_code asc
+              limit {_A_SHARE_RISK_MAX_STOCKS}
+            )
+            select
+              daily.try_cast_date as trade_date,
+              daily.stock_code,
+              daily.open_value,
+              daily.high_value,
+              daily.low_value,
+              daily.close_value,
+              daily.amount,
+              daily.pctchange,
+              daily.turn,
+              daily.amplitude,
+              daily.tradestatus,
+              try_cast(daily.highlimit as double) as highlimit,
+              try_cast(daily.lowlimit as double) as lowlimit,
+              daily.source_version,
+              daily.vendor_version
+            from (
+              select
+                try_cast(trade_date as date) as try_cast_date,
+                stock_code,
+                open_value,
+                high_value,
+                low_value,
+                close_value,
+                amount,
+                pctchange,
+                turn,
+                amplitude,
+                tradestatus,
+                highlimit,
+                lowlimit,
+                source_version,
+                vendor_version
+              from choice_stock_daily_observation
+            ) daily
+            join latest_sample sample
+              on sample.stock_code = daily.stock_code
+            where daily.try_cast_date > ?
+              and daily.try_cast_date <= ?
+              and daily.close_value is not null
+              and daily.close_value > 0
+            order by daily.try_cast_date asc, daily.stock_code asc
+            """,
+            [latest_trade_date, start_date, latest_trade_date],
+        ).fetchall()
+        if not rows:
+            return None
+        observations = pd.DataFrame(
+            rows,
+            columns=[
+                "trade_date",
+                "stock_code",
+                "open_value",
+                "high_value",
+                "low_value",
+                "close_value",
+                "amount",
+                "pctchange",
+                "turn",
+                "amplitude",
+                "tradestatus",
+                "highlimit",
+                "lowlimit",
+                "source_version",
+                "vendor_version",
+            ],
+        )
+        tables_used = ["choice_stock_daily_observation"]
+        warnings: list[str] = []
+        _merge_a_share_universe(conn, observations, latest_trade_date, tables_used, warnings)
+        _merge_a_share_limit_quality(conn, observations, latest_trade_date, tables_used)
+        theme_frame = _load_a_share_theme_frame(conn, latest_trade_date, tables_used)
+    except duckdb.Error:
+        return None
+    finally:
+        conn.close()
+    return {
+        "observations": observations,
+        "theme_frame": theme_frame,
+        "tables_used": tables_used,
+        "warnings": warnings,
+    }
+
+
+def _merge_a_share_universe(
+    conn: duckdb.DuckDBPyConnection,
+    observations: pd.DataFrame,
+    latest_trade_date: date,
+    tables_used: list[str],
+    warnings: list[str],
+) -> None:
+    if not _duckdb_table_exists(conn, "choice_stock_universe"):
+        warnings.append("choice_stock_universe 未命中，ST/北交所/新股过滤仅按日线字段能力降级判断。")
+        return
+    rows = conn.execute(
+        """
+        select stock_code, stock_name
+        from choice_stock_universe
+        where try_cast(as_of_date as date) = ?
+        """,
+        [latest_trade_date],
+    ).fetchall()
+    if not rows:
+        warnings.append("choice_stock_universe 最新交易日无样本，ST/北交所/新股过滤按日线字段能力降级判断。")
+        return
+    universe = pd.DataFrame(rows, columns=["stock_code", "stock_name"])
+    universe["is_st"] = universe["stock_name"].astype(str).str.contains("ST|退", case=False, regex=True, na=False)
+    universe["is_bse"] = universe["stock_code"].astype(str).str.endswith((".BJ", ".BSE"))
+    latest_mask = pd.to_datetime(observations["trade_date"]).dt.date == latest_trade_date
+    merged = observations.loc[latest_mask, ["stock_code"]].merge(universe, on="stock_code", how="left")
+    observations.loc[latest_mask, "stock_name"] = merged["stock_name"].to_numpy()
+    observations.loc[latest_mask, "is_st"] = merged["is_st"].fillna(False).to_numpy()
+    observations.loc[latest_mask, "is_bse"] = merged["is_bse"].fillna(False).to_numpy()
+    observations["is_st"] = observations["is_st"].map(lambda value: False if pd.isna(value) else bool(value))
+    observations["is_bse"] = observations["is_bse"].map(lambda value: False if pd.isna(value) else bool(value))
+    observations["is_st"] = observations.groupby("stock_code")["is_st"].transform("max").astype(bool)
+    observations["is_bse"] = observations.groupby("stock_code")["is_bse"].transform("max").astype(bool)
+    tables_used.append("choice_stock_universe")
+
+
+def _merge_a_share_limit_quality(
+    conn: duckdb.DuckDBPyConnection,
+    observations: pd.DataFrame,
+    latest_trade_date: date,
+    tables_used: list[str],
+) -> None:
+    if not _duckdb_table_exists(conn, "choice_stock_limit_quality"):
+        return
+    rows = conn.execute(
+        """
+        select stock_code, issurgedlimit, isdeclinelimit
+        from choice_stock_limit_quality
+        where try_cast(as_of_date as date) = ?
+        """,
+        [latest_trade_date],
+    ).fetchall()
+    if not rows:
+        return
+    quality = pd.DataFrame(rows, columns=["stock_code", "is_limit_up_flag", "is_limit_down_flag"])
+    latest_mask = pd.to_datetime(observations["trade_date"]).dt.date == latest_trade_date
+    merged = observations.loc[latest_mask, ["stock_code"]].merge(quality, on="stock_code", how="left")
+    observations.loc[latest_mask, "is_limit_up_flag"] = merged["is_limit_up_flag"].to_numpy()
+    observations.loc[latest_mask, "is_limit_down_flag"] = merged["is_limit_down_flag"].to_numpy()
+    tables_used.append("choice_stock_limit_quality")
+
+
+def _load_a_share_theme_frame(
+    conn: duckdb.DuckDBPyConnection,
+    latest_trade_date: date,
+    tables_used: list[str],
+) -> pd.DataFrame | None:
+    if _duckdb_table_exists(conn, "choice_stock_factor_snapshot"):
+        rows = conn.execute(
+            """
+            select stock_code, industry, three_month_return
+            from choice_stock_factor_snapshot
+            where try_cast(as_of_date as date) = ?
+            """,
+            [latest_trade_date],
+        ).fetchall()
+        if rows:
+            tables_used.append("choice_stock_factor_snapshot")
+            return pd.DataFrame(rows, columns=["stock_code", "industry", "three_month_return"])
+    if _duckdb_table_exists(conn, "choice_stock_sector_membership"):
+        rows = conn.execute(
+            """
+            select stock_code, sw2021 as industry
+            from choice_stock_sector_membership
+            where try_cast(as_of_date as date) = ?
+            """,
+            [latest_trade_date],
+        ).fetchall()
+        if rows:
+            tables_used.append("choice_stock_sector_membership")
+            return pd.DataFrame(rows, columns=["stock_code", "industry"])
+    return None
 
 
 def _real_equity_strategy_summaries(price_context: dict[str, object]) -> list[dict[str, object]]:
@@ -2467,15 +2713,52 @@ def _analysis_signal_cards(
     indicator_by_key: dict[str, dict[str, object]],
     output_files: list[dict[str, object]],
     capability_results: list[dict[str, object]],
+    a_share_risk: dict[str, object] | None = None,
 ) -> list[dict[str, object]]:
     cards = [
         _crisis_score_card(capability_results),
+        _a_share_stampede_risk_card(a_share_risk),
         _liquidity_card(indicator_by_key),
         _risk_appetite_card(indicator_by_key),
         _credit_card(indicator_by_key),
         _script_output_card(output_files),
     ]
     return cards
+
+
+def _a_share_stampede_risk_card(a_share_risk: dict[str, object] | None) -> dict[str, object]:
+    if not a_share_risk or a_share_risk.get("status") == "unavailable":
+        warnings = a_share_risk.get("warnings") if isinstance(a_share_risk, dict) else []
+        return _signal_card(
+            "a_share_stampede_risk",
+            "市场踩踏风险",
+            "数据不足",
+            "missing",
+            None,
+            [str(item) for item in warnings[:3]] if isinstance(warnings, list) else ["股票日线读面未命中"],
+        )
+    level = str(a_share_risk.get("risk_level") or "unknown")
+    tone_by_level = {
+        "green": "positive",
+        "yellow": "neutral",
+        "orange": "negative",
+        "red": "negative",
+        "unknown": "missing",
+    }
+    score = _float_or_none(a_share_risk.get("risk_score"))
+    triggered = a_share_risk.get("triggered_rules") if isinstance(a_share_risk.get("triggered_rules"), list) else []
+    warnings = a_share_risk.get("warnings") if isinstance(a_share_risk.get("warnings"), list) else []
+    evidence = [str(item) for item in [*triggered[:2], *warnings[:1]]]
+    if not evidence and a_share_risk.get("summary"):
+        evidence = [str(a_share_risk["summary"])]
+    return _signal_card(
+        "a_share_stampede_risk",
+        "市场踩踏风险",
+        str(a_share_risk.get("risk_name") or level),
+        tone_by_level.get(level, "missing"),
+        round(score, 2) if score is not None else None,
+        evidence,
+    )
 
 
 def _crisis_score_card(capability_results: list[dict[str, object]]) -> dict[str, object]:
@@ -2672,6 +2955,11 @@ def _envelope(
         tables_used.append("choice_stock_factor_snapshot")
     if "choice_stock_refresh" in result:
         tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
+    a_share_risk = result.get("a_share_risk")
+    if isinstance(a_share_risk, dict):
+        risk_tables = a_share_risk.get("tables_used")
+        if isinstance(risk_tables, list):
+            tables_used.extend(str(table) for table in risk_tables)
     return build_result_envelope(
         basis="analytical",
         trace_id=f"macro-toolkit-{uuid.uuid4().hex[:12]}",
@@ -2684,7 +2972,7 @@ def _envelope(
         vendor_version="choice+tushare",
         vendor_status="ok",
         fallback_mode=fallback_mode or "none",
-        tables_used=tables_used,
+        tables_used=_unique_texts(tables_used),
         evidence_rows=_evidence_rows(result),
         as_of_date=as_of_date,
         generated_at=generated_at,

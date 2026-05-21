@@ -18,6 +18,7 @@ import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
   MacroToolkitChoiceStockRefreshRun,
+  MacroToolkitAShareRiskPayload,
   MacroToolkitIndicator,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
@@ -81,6 +82,20 @@ function toneTagColor(tone: MacroToolkitSignalCard["tone"]) {
   if (tone === "negative") return "red";
   if (tone === "missing") return "default";
   return "blue";
+}
+
+function riskLevelColor(level: MacroToolkitAShareRiskPayload["risk_level"]) {
+  if (level === "green") return "green";
+  if (level === "yellow") return "gold";
+  if (level === "orange") return "orange";
+  if (level === "red") return "red";
+  return "default";
+}
+
+function riskLevelTone(level: MacroToolkitAShareRiskPayload["risk_level"]): MacroToolkitSignalCard["tone"] {
+  if (level === "green") return "positive";
+  if (level === "unknown") return "missing";
+  return level === "yellow" ? "neutral" : "negative";
 }
 
 function statusLabel(status: string) {
@@ -673,6 +688,15 @@ export default function MacroToolkitPage() {
 
           <section className="macro-toolkit-section">
             <PageSectionLead
+              eyebrow="risk"
+              title="市场踩踏风险"
+              description="接入宏观分析结果链路的 A股盘后宽度、跌停、成交与回落压力判断。"
+            />
+            <AShareRiskPanel risk={analysis.a_share_risk} />
+          </section>
+
+          <section className="macro-toolkit-section">
+            <PageSectionLead
               eyebrow="indicators"
               title="指标矩阵"
               description="展示每个宏观指标的最新值、变化、日期和数据来源。"
@@ -1153,6 +1177,92 @@ function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrategySumma
       <small>{strategy.evidence.slice(0, 2).join(" / ") || "暂无证据"}</small>
     </div>
   );
+}
+
+const A_SHARE_RISK_METRICS: Array<{
+  key: string;
+  label: string;
+  format?: "percent" | "ratio";
+}> = [
+  { key: "up_count", label: "上涨家数" },
+  { key: "up_ratio", label: "上涨比例", format: "percent" },
+  { key: "drop_3_count", label: "跌超3%" },
+  { key: "drop_5_count", label: "跌超5%" },
+  { key: "limit_down_count", label: "跌停家数" },
+  { key: "near_down_count", label: "近跌停" },
+  { key: "turnover_ratio_ma20", label: "成交额/20日", format: "ratio" },
+  { key: "index_drawdown_from_high", label: "回落幅度", format: "percent" },
+];
+
+function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload }) {
+  if (!risk) {
+    return (
+      <div className="macro-toolkit-empty-output">
+        市场踩踏风险数据未返回，当前不能形成风险等级判断。
+      </div>
+    );
+  }
+  const tone = riskLevelTone(risk.risk_level);
+  const scoreText = risk.risk_score === null ? "缺失" : risk.risk_score;
+  return (
+    <div className={`macro-toolkit-a-share-risk macro-toolkit-a-share-risk--${tone}`}>
+      <div className="macro-toolkit-a-share-risk__summary" style={scoreStyle(risk.risk_score)}>
+        <div className="macro-toolkit-capability-result-head">
+          <span>{risk.trade_date ?? "日期缺失"}</span>
+          <div className="macro-toolkit-tag-row">
+            <Tag color={statusColor(risk.status)}>{statusLabel(risk.status)}</Tag>
+            <Tag color={riskLevelColor(risk.risk_level)}>{risk.risk_name}</Tag>
+          </div>
+        </div>
+        <strong>{scoreText}</strong>
+        <div className="macro-toolkit-score-track" aria-hidden="true">
+          <span />
+        </div>
+        <p>{risk.summary || "风险摘要缺失。"}</p>
+        <small>{risk.position_rule || "仓位规则缺失，不能据此放大仓位。"}</small>
+      </div>
+
+      <div className="macro-toolkit-a-share-risk__metrics">
+        {A_SHARE_RISK_METRICS.map((metric) => (
+          <div className="macro-toolkit-strategy-metric" key={metric.key}>
+            <span>{metric.label}</span>
+            <b>{formatRiskMetric(risk.metrics[metric.key], metric.format)}</b>
+          </div>
+        ))}
+      </div>
+
+      <div className="macro-toolkit-a-share-risk__lists">
+        <RiskList title="触发规则" items={risk.triggered_rules} emptyText="未触发明确踩踏规则。" />
+        <RiskList title="观察条件" items={risk.watch_next} emptyText="暂无下一步观察条件。" />
+        <RiskList title="数据提示" items={risk.warnings} emptyText={risk.status === "complete" ? "数据能力完整。" : "降级原因缺失。"} />
+      </div>
+    </div>
+  );
+}
+
+function RiskList({ title, items, emptyText }: { title: string; items: string[]; emptyText: string }) {
+  const visibleItems = items.length ? items : [emptyText];
+  return (
+    <div className="macro-toolkit-a-share-risk__list">
+      <span>{title}</span>
+      {visibleItems.slice(0, 4).map((item) => (
+        <small key={item}>{item}</small>
+      ))}
+    </div>
+  );
+}
+
+function formatRiskMetric(value: number | null | undefined, format?: "percent" | "ratio") {
+  if (value == null) {
+    return "缺失";
+  }
+  if (format === "percent") {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+  if (format === "ratio") {
+    return `${value.toFixed(2)}x`;
+  }
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }
 
 function formatMetricDisplay(metric: NonNullable<MacroToolkitCapabilityResult["primary_metric"]>) {

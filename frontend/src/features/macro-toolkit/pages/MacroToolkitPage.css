@@ -335,6 +335,92 @@
   line-height: 1.1;
 }
 
+.macro-toolkit-a-share-risk {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(120, 99, 76, 0.18);
+  border-left: 3px solid var(--moss-color-warm-slateBlue, #456882);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg, #fffaf4);
+}
+
+.macro-toolkit-a-share-risk--positive {
+  border-left-color: var(--moss-color-warm-sage, #6f8b6a);
+}
+
+.macro-toolkit-a-share-risk--negative {
+  border-left-color: var(--moss-color-warm-burgundy, #8f3f3f);
+}
+
+.macro-toolkit-a-share-risk--missing {
+  border-left-color: var(--moss-color-neutral-400);
+}
+
+.macro-toolkit-a-share-risk__summary {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-a-share-risk__summary strong {
+  color: var(--moss-color-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.macro-toolkit-a-share-risk__summary p {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-a-share-risk__summary small,
+.macro-toolkit-a-share-risk__list small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-a-share-risk__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-a-share-risk__lists {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-a-share-risk__list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(120, 99, 76, 0.16);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.macro-toolkit-a-share-risk__list span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 .macro-toolkit-input-evidence {
   display: grid;
   gap: 4px;
@@ -613,6 +699,8 @@
   }
 
   .macro-toolkit-signal-grid,
+  .macro-toolkit-a-share-risk,
+  .macro-toolkit-a-share-risk__lists,
   .macro-toolkit-readiness-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -632,6 +720,9 @@
   .macro-toolkit-operations-brief,
   .macro-toolkit-cffex-metrics,
   .macro-toolkit-signal-grid,
+  .macro-toolkit-a-share-risk,
+  .macro-toolkit-a-share-risk__metrics,
+  .macro-toolkit-a-share-risk__lists,
   .macro-toolkit-readiness-strip {
     grid-template-columns: 1fr;
   }
