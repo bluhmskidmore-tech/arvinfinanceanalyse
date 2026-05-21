@@ -14,6 +14,8 @@ tmp-governance/
 .gitnexus/
 .gitnexus-tool/
 .tmp-gitnexus*/
+.tmp-servers/
+.tmp-macro-backfill-dryrun.json
 
 ## Data and generated artifacts
 data/
