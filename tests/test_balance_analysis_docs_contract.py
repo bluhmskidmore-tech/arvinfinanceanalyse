@@ -84,6 +84,32 @@ def test_data_contracts_zqtz_snapshot_grain_preserves_multi_classification_lots(
     assert "multi-classification positions" in contracts
 
 
+def test_data_contracts_formal_fact_grains_preserve_accounting_and_classification_lots():
+    contracts = _read_doc("docs/data_contracts.md")
+    expected_zqtz_grain = (
+        "(report_date, instrument_code, portfolio_name, cost_center, currency_basis, "
+        "position_scope, accounting_basis, account_category, asset_class, bond_type, "
+        "sub_type, business_type_primary, currency_code, maturity_date, is_issuance_like)"
+    )
+    expected_fi_pnl_grain = (
+        "(report_date, instrument_code, portfolio_name, cost_center, accounting_basis, currency_basis)"
+    )
+
+    assert expected_zqtz_grain in contracts
+    assert f"`fact_formal_zqtz_balance_daily` grain = `{expected_zqtz_grain}`" in contracts
+    assert f"`fact_formal_pnl_fi` grain = `{expected_fi_pnl_grain}`" in contracts
+    assert f"`fi_pnl_record` 的 canonical grain = `{expected_fi_pnl_grain}`" in contracts
+    assert (
+        "(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)"
+    ) in contracts
+    assert (
+        "(report_date, instrument_code, portfolio_name, cost_center, currency_basis)"
+    ) in contracts
+    assert "is a report-position lookup / aggregation key" in contracts
+    assert "not the canonical storage grain" in contracts
+    assert "not the formal-recognized storage grain" in contracts
+
+
 def test_balance_analysis_advanced_attribution_boundary_design_note_exists():
     doc = _read_doc("docs/plans/2026-04-12-balance-analysis-advanced-attribution-boundary.md")
 

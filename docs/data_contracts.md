@@ -225,7 +225,11 @@ formal-only derived later：
 - 不允许读取任何 `phase1_*preview*` 表
 
 canonical grain：
-- `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)`
+- `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope, accounting_basis, account_category, asset_class, bond_type, sub_type, business_type_primary, currency_code, maturity_date, is_issuance_like)`
+
+note:
+- `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)` is a report-position lookup / aggregation key, not the canonical storage grain.
+- The storage grain keeps accounting buckets and maturity / classification lots separate so materialization does not collapse same-bond multi-classification positions.
 
 first-wave required now：
 - `report_date`
@@ -233,6 +237,10 @@ first-wave required now：
 - `portfolio_name`
 - `cost_center`
 - `account_category`
+- `asset_class`
+- `bond_type`
+- `sub_type`
+- `business_type_primary`
 - `invest_type_std`
 - `accounting_basis`
 - `position_scope`
@@ -258,8 +266,6 @@ first-wave required now：
 
 deferred enrichment：
 - `instrument_name`
-- `asset_class`
-- `bond_type`
 - `issuer_name`
 - `industry_name`
 - `rating`
@@ -375,7 +381,8 @@ deferred enrichment：
 - `invest_type_std` 由正式映射规则生成
 - `fi_pnl_record.total_pnl` 仅表示 standardized total = `514 + 516 + 517 + manual_adjustment`，不直接等于 formal-recognized total；formal-recognized total 由 `fact_formal_pnl_fi.total_pnl` 表示。
 
-- `fi_pnl_record` 的 canonical grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)`
+- `fi_pnl_record` 的 canonical grain = `(report_date, instrument_code, portfolio_name, cost_center, accounting_basis, currency_basis)`
+- `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)` is a report-position lookup / aggregation key, not the formal-recognized storage grain.
 - `fair_value_change_516` 是 standardized component，不天然等于 formal-recognized pnl
 - `capital_gain_517` 是 standardized realized component，是否进入 formal 取决于 `accounting_basis` 与 event semantics
 - `manual_adjustment` 只有在治理/审批状态字段（如 `approval_status` / `governance_status`）为 approved 时才可进入 formal total；未批准 adjustment 不进入 formal total_pnl。
@@ -597,9 +604,9 @@ canonical grain：
 - `fact_risk_tensor_daily`
 - `fact_formal_analytical_bridge_daily`
 
-- `fact_formal_zqtz_balance_daily` grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)`
+- `fact_formal_zqtz_balance_daily` grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope, accounting_basis, account_category, asset_class, bond_type, sub_type, business_type_primary, currency_code, maturity_date, is_issuance_like)`
 - `fact_formal_tyw_balance_daily` grain = `(report_date, position_id, currency_basis, position_scope)`
-- `fact_formal_pnl_fi` grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)`
+- `fact_formal_pnl_fi` grain = `(report_date, instrument_code, portfolio_name, cost_center, accounting_basis, currency_basis)`
 - `fact_nonstd_pnl_bridge` grain = `(report_date, bond_code, portfolio_name, cost_center)`
 - `fact_nonstd_pnl_bridge` 是 bridge / aggregation fact，不是 raw ledger 明细。
 
@@ -630,12 +637,12 @@ canonical grain：
 
 ### fi pnl 主键
 ```text
-(report_date, instrument_code, portfolio_name, cost_center, currency_basis)
+(report_date, instrument_code, portfolio_name, cost_center, accounting_basis, currency_basis)
 ```
 
 ### zqtz formal balance 主键
 ```text
-(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)
+(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope, accounting_basis, account_category, asset_class, bond_type, sub_type, business_type_primary, currency_code, maturity_date, is_issuance_like)
 ```
 
 ### tyw formal balance 主键
