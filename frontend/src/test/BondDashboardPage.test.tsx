@@ -258,6 +258,20 @@ describe("BondDashboardPage", () => {
         ],
       },
     });
+    client.getBondBusinessTypeMetrics = async () => ({
+      result_meta: resultMeta("bond_dashboard.business_type_metrics"),
+      result: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            name: "Core book",
+            market_value: "343822795478.69",
+            weighted_avg_ytm_pct: "2.565621",
+            weighted_avg_duration: "4.13678311",
+          },
+        ],
+      },
+    });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -274,8 +288,10 @@ describe("BondDashboardPage", () => {
     expect(scaleCard.textContent?.replace(/,/g, "")).toContain("3438.23");
 
     await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-conclusion")).toHaveTextContent("29.3%");
       expect(screen.getByTestId("bond-dashboard-risk-row-credit_ratio")).toHaveTextContent("29.25%");
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
+      expect(screen.getByTestId("bond-dashboard-business-type-metrics")).toHaveTextContent("2.57%");
     });
   });
 

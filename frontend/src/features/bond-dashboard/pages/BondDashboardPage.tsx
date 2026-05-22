@@ -36,7 +36,7 @@ function buildDashboardConclusion(
   return {
     title: "当前结论",
     body: `组合规模约 ${formatYi(headline.kpis.total_market_value)}，久期约 ${formatYears(headline.kpis.weighted_duration)}，${creditTone}。`,
-    detail: `当前信用占比 ${formatRatePercent(risk.credit_ratio, 1)}，总市值${totalMarketValue > 0 ? "处于已投放状态" : "尚未形成有效持仓"}。`,
+    detail: `当前信用占比 ${formatRatePercent(risk.credit_ratio, 1)}%，总市值${totalMarketValue > 0 ? "处于已投放状态" : "尚未形成有效持仓"}。`,
   };
 }
 
@@ -274,7 +274,7 @@ export default function BondDashboardPage() {
                   title: "加权 YTM",
                   dataIndex: "weighted_avg_ytm_pct",
                   align: "right",
-                  render: (v: string) => formatRatePercent(Number(v) / 100),
+                  render: (v: string) => `${formatRatePercent(Number(v) / 100)}%`,
                 },
                 {
                   title: "加权久期",

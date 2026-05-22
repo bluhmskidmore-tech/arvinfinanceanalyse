@@ -81,6 +81,18 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       }
       return base.getBondDashboardMaturityStructure(reportDate);
     });
+    const getBondAnalyticsTopHoldings = vi.fn(async (reportDate: string, limit: number) => {
+      if (reportDate !== "2026-02-28") {
+        throw new Error(`unsupported holdings date ${reportDate}`);
+      }
+      return base.getBondAnalyticsTopHoldings(reportDate, limit);
+    });
+    const getBondAnalyticsPortfolioHeadlines = vi.fn(async (reportDate: string) => {
+      if (reportDate !== "2026-02-28") {
+        throw new Error(`unsupported portfolio-headlines date ${reportDate}`);
+      }
+      return base.getBondAnalyticsPortfolioHeadlines(reportDate);
+    });
 
     const client = {
       ...base,
@@ -88,6 +100,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       getBondDashboardHeadlineKpis,
       getBondDashboardSpreadAnalysis,
       getBondDashboardMaturityStructure,
+      getBondAnalyticsTopHoldings,
+      getBondAnalyticsPortfolioHeadlines,
     };
 
     renderCockpit(client);
@@ -99,6 +113,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-02-28");
       expect(getBondDashboardSpreadAnalysis).toHaveBeenCalledWith("2026-02-28");
       expect(getBondDashboardMaturityStructure).toHaveBeenCalledWith("2026-02-28");
+      expect(getBondAnalyticsTopHoldings).toHaveBeenCalledWith("2026-02-28", 10);
+      expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith("2026-02-28");
     });
 
     expect(screen.queryByText("部分驾驶舱指标未就绪")).not.toBeInTheDocument();

@@ -501,14 +501,14 @@ export function BondAnalyticsInstitutionalCockpit({
         enabled: Boolean(dashboardReportDate),
       },
       {
-        queryKey: ["bond-analytics-institutional", "holdings", client.mode, reportDate],
-        queryFn: () => client.getBondAnalyticsTopHoldings(reportDate, 10),
-        enabled: Boolean(reportDate),
+        queryKey: ["bond-analytics-institutional", "holdings", client.mode, dashboardReportDate],
+        queryFn: () => client.getBondAnalyticsTopHoldings(dashboardReportDate, 10),
+        enabled: Boolean(dashboardReportDate),
       },
       {
-        queryKey: ["bond-analytics-institutional", "portfolio-hl", client.mode, reportDate],
-        queryFn: () => client.getBondAnalyticsPortfolioHeadlines(reportDate),
-        enabled: Boolean(reportDate),
+        queryKey: ["bond-analytics-institutional", "portfolio-hl", client.mode, dashboardReportDate],
+        queryFn: () => client.getBondAnalyticsPortfolioHeadlines(dashboardReportDate),
+        enabled: Boolean(dashboardReportDate),
       },
     ],
   });
