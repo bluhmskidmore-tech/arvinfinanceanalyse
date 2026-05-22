@@ -266,12 +266,8 @@ describe("DashboardPage", () => {
     renderDashboard(slowClient);
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(screen.getByRole("navigation")).toBeInTheDocument();
-    const summary = screen.getByTestId("dashboard-business-balance-summary");
-    expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
-    expect(within(summary).getByTestId("dashboard-overview-hero-empty")).toHaveTextContent(
-      "资产负债小卡片",
-    );
+    expect(await screen.findByTestId("workbench-group-nav")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-kpi-band")).toBeInTheDocument();
     await waitFor(() => {
       expect(releaseSnapshot).toBeDefined();
     });
@@ -324,9 +320,10 @@ describe("DashboardPage", () => {
 
     renderDashboard(fallbackClient);
 
-    const heroStrip = await screen.findByTestId("dashboard-overview-hero-strip");
-    expect(within(heroStrip).getByTestId("dashboard-overview-hero-empty")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-kpi-band")).toBeInTheDocument();
 
+    const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
+    fireEvent.click(within(supplement).getByText("同报告日补充读面（展开）"));
     const metricRail = await screen.findByTestId("dashboard-cockpit-metric-rail");
     expect(
       within(metricRail).queryByTestId("dashboard-cockpit-metric-core-bond-investments"),
@@ -388,183 +385,95 @@ describe("DashboardPage", () => {
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     const toolbar = await screen.findByTestId("dashboard-home-toolbar");
-    const toolbarTitle = await screen.findByTestId("dashboard-executive-hero-title");
-    const commandDeck = await screen.findByTestId("dashboard-command-deck");
-    const executiveHero = await screen.findByTestId("dashboard-executive-hero");
-    const judgmentBand = await screen.findByTestId("dashboard-judgment-band");
-    const statusStack = await screen.findByTestId("dashboard-command-status-stack");
-    const marketTicker = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    const judgmentStrip = await screen.findByTestId("dashboard-judgment-strip");
+    const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    const marketPulse = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    const triptych = await screen.findByTestId("dashboard-main-triptych");
+    const depthZone = screen.getByTestId("dashboard-depth-zone");
     const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
-    const metricRail = await screen.findByTestId("dashboard-cockpit-metric-rail");
-    const mainGrid = await screen.findByTestId("dashboard-cockpit-main-grid");
-    const businessDetailStrip = await screen.findByTestId("dashboard-business-detail-strip");
-    const lowerGrid = await screen.findByTestId("dashboard-cockpit-lower-grid");
-    const businessBalanceSummary = await screen.findByTestId("dashboard-business-balance-summary");
-    const actionQueue = await screen.findByTestId("dashboard-action-queue");
     const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
 
-    expect(marketTicker.compareDocumentPosition(supplement)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(supplement).not.toHaveAttribute("open");
-    expect(supplement).toContainElement(metricRail);
-    expect(supplement).toContainElement(mainGrid);
+    expect(page).toHaveClass("dashboard-cockpit-page");
+    expect(page).toHaveClass("dashboard-cockpit-page--shell-nav");
+    expect(screen.queryByTestId("dashboard-cockpit-sidebar")).not.toBeInTheDocument();
+    expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(6);
+    expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(8);
+    expect(triptych).toContainElement(screen.getByTestId("dashboard-portfolio-overview"));
+    expect(triptych).toContainElement(screen.getByTestId("dashboard-attribution-panel"));
+    expect(triptych).toContainElement(screen.getByTestId("dashboard-risk-alert-panel"));
+    expect(depthZone).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("dashboard-command-deck")).toHaveAttribute("hidden");
+    expect(judgmentStrip).toHaveTextContent("今日经营判断");
+    expect(judgmentStrip).toHaveTextContent("估值已完成");
+    expect(within(depthZone).getByTestId("dashboard-exposure-table")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-balance-summary")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-product-pnl-trend")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-quick-drilldown")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-improvement-notes")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("债券资产规模")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("风险集中度（Top5）")).toBeInTheDocument();
+    expect(within(marketPulse).getByText("10年国债")).toBeInTheDocument();
+    expect(within(marketPulse).getByText("信用利差 中短票AAA")).toBeInTheDocument();
+    expect(screen.getByText("组合数")).toBeInTheDocument();
+    expect(screen.getByText("1,256 只")).toBeInTheDocument();
+    expect(screen.getByText("组合变化说明")).toBeInTheDocument();
+    expect(screen.getByText("高风险预警")).toBeInTheDocument();
+    expect(within(depthZone).getByText("账户与暴露摘要")).toBeInTheDocument();
+    expect(screen.getByText("产品分类损益趋势图")).toBeInTheDocument();
 
     expectTestIdsInOrder(page, [
       "dashboard-home-toolbar",
-      "dashboard-command-deck",
-      "dashboard-data-warning",
+      "dashboard-judgment-strip",
+      "dashboard-kpi-band",
       "dashboard-cockpit-market-ticker",
-      "dashboard-cockpit-metric-rail",
-      "dashboard-cockpit-main-grid",
+      "dashboard-main-triptych",
+      "dashboard-improvement-notes",
+      "dashboard-data-warning",
+      "dashboard-depth-zone",
       "dashboard-action-queue",
-      "dashboard-business-detail-strip",
-      "dashboard-cockpit-lower-grid",
-      "dashboard-cockpit-account-table",
-      "dashboard-business-balance-summary",
+      "dashboard-cockpit-supplement",
       "dashboard-detail-drilldown",
     ]);
-    expect(page).toHaveClass("dashboard-home-shell");
-    expect(screen.queryByTestId("dashboard-action-ledger")).not.toBeInTheDocument();
 
-    const pills = await screen.findByTestId("dashboard-governance-pills");
-    expect(pills).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-report-date")).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-snapshot")).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-attention")).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-source")).toBeInTheDocument();
-    const dataWarning = screen.getByTestId("dashboard-data-warning");
-    expect(dataWarning).toBeInTheDocument();
-    expect(dataWarning.querySelector(".dashboard-home-warning__title")).toBeInTheDocument();
-    expect(dataWarning.querySelector(".dashboard-home-warning__body")).toBeInTheDocument();
-
-    expect(toolbar).toBeInTheDocument();
-    expect(toolbar).toContainElement(toolbarTitle);
-    expect(toolbarTitle.tagName.toLowerCase()).toBe("h1");
-    expect(toolbarTitle).toHaveClass("dashboard-home-toolbar__title");
-    expect(toolbarTitle).toHaveTextContent("经营驾驶舱");
-    expect(within(toolbar).getByLabelText("搜索债券、指标、报告")).toBeInTheDocument();
-    expect(within(toolbar).getByLabelText("报告日")).toBeInTheDocument();
-    expect(within(toolbar).getByLabelText("允许历史日（含缺域）")).toBeInTheDocument();
-    expect(within(toolbar).getByText("演示视角")).toBeInTheDocument();
-    expect(within(toolbar).getByRole("link", { name: "报表中心" })).toHaveAttribute("href", "/source-preview");
-    expect(within(toolbar).getByRole("link", { name: "中台配置" })).toHaveAttribute("href", "/platform-config");
-    expect(within(toolbar).getByRole("button", { name: "刷新" })).toBeInTheDocument();
-    expect(commandDeck).toContainElement(executiveHero);
-    expect(commandDeck).toHaveClass("dashboard-command-deck");
-    expect(executiveHero).toContainElement(judgmentBand);
-    expect(judgmentBand).toHaveClass("dashboard-executive-hero");
-    expect(judgmentBand).toHaveTextContent("今日判断");
-    expect(commandDeck).toContainElement(statusStack);
-    expect(page).toContainElement(marketTicker);
-    expect(marketTicker).toHaveClass("dashboard-warm-evidence-workspace");
-    expect(marketTicker.querySelector(".dashboard-cockpit-unit")).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
-    expect(judgmentBand).toBeInTheDocument();
-    expect(metricRail).toHaveClass("dashboard-warm-kpi-ledger");
-    expect(mainGrid).toHaveClass("dashboard-warm-cockpit-main");
-    expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-curve-panel"));
-    expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-judgment-cards"));
-    expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-waterfall"));
-    expect(mainGrid.querySelector(".dashboard-cockpit-curve-list")).toBeInTheDocument();
-    expect(mainGrid.querySelectorAll(".dashboard-cockpit-curve-row").length).toBeGreaterThan(0);
-    expect(mainGrid.querySelector(".dashboard-cockpit-mini-chart")).not.toBeInTheDocument();
-    expect(mainGrid.querySelectorAll(".dashboard-cockpit-waterfall__bar").length).toBeGreaterThan(0);
-    expect(
-      within(businessDetailStrip).queryByTestId("dashboard-core-metrics-section") ??
-        within(businessDetailStrip).getByTestId("dashboard-core-metrics-blocked"),
-    ).toBeInTheDocument();
-    expect(
-      within(businessDetailStrip).queryByTestId("dashboard-daily-changes-section") ??
-        within(businessDetailStrip).getByTestId("dashboard-daily-changes-blocked"),
-    ).toBeInTheDocument();
-    expect(businessDetailStrip).toHaveClass("dashboard-cockpit-business-strip");
-    expect(lowerGrid).toHaveClass("dashboard-warm-cockpit-assist");
-    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-portfolio-panel"));
-    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-risk-panel"));
-    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-calendar-panel"));
-    expect(lowerGrid).toContainElement(screen.getByTestId("dashboard-cockpit-watch-table"));
-    expect(within(lowerGrid).getByTestId("dashboard-cockpit-portfolio-donut")).toBeInTheDocument();
-    expect(lowerGrid.querySelector(".dashboard-cockpit-portfolio-list__head")).toBeInTheDocument();
-    expect(lowerGrid.querySelector(".dashboard-cockpit-portfolio-row__bar")).toBeInTheDocument();
-    expect(lowerGrid.querySelector(".dashboard-cockpit-risk-item__meter")).toBeInTheDocument();
-    expect(lowerGrid.querySelectorAll(".dashboard-cockpit-risk-item")).toHaveLength(4);
-    expect(lowerGrid.querySelector(".dashboard-cockpit-watch__change")).toBeInTheDocument();
-    expect(lowerGrid.querySelector(".dashboard-cockpit-watch__rating")).toBeInTheDocument();
-    expect(within(lowerGrid).getByRole("link", { name: "看久期" })).toHaveAttribute("href", "/bond-analysis");
-    expect(within(lowerGrid).getByRole("link", { name: "看风险" })).toHaveAttribute("href", "/risk-tensor");
-    expect(mainGrid).not.toHaveTextContent(/headline|portfolio headlines|daily changes|adapter/i);
-    expect(lowerGrid).not.toHaveTextContent(/headline|portfolio headlines|daily changes|adapter|PORT-/i);
-    expect(businessBalanceSummary).toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
-    expect(actionQueue).toHaveTextContent("待处理事项");
-    expect(actionQueue).toHaveTextContent("事项标题");
-    expect(actionQueue).toHaveTextContent("优先级");
-    expect(actionQueue).toHaveTextContent("状态");
-    expect(within(actionQueue).getByTestId("dashboard-action-queue-table")).toHaveAttribute("role", "table");
-    expect(actionQueue).not.toHaveTextContent(/截图|示例|mock/i);
-    expect(detailDrilldown.tagName.toLowerCase()).toBe("details");
+    expect(supplement).not.toHaveAttribute("open");
     expect(detailDrilldown).not.toHaveAttribute("open");
-    expect(within(detailDrilldown).queryByTestId("dashboard-business-detail-strip")).not.toBeInTheDocument();
-    expect(within(detailDrilldown).queryByTestId("dashboard-structure-risk-focus")).not.toBeInTheDocument();
-    expect(within(detailDrilldown).queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
+    expect(within(toolbar).getByLabelText("搜索指标 / 报表 / 功能")).toBeInTheDocument();
+    expect(within(toolbar).getByRole("link", { name: "报表中心" })).toHaveAttribute("href", "/reports");
+    expect(within(toolbar).getByRole("button", { name: "刷新" })).toBeInTheDocument();
+    expect(marketPulse.querySelector(".dashboard-cockpit-pulse__spark")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-product-pnl-empty")).not.toBeInTheDocument();
   });
 
   it("keeps the top action toolbar ordered around filters and primary routes", async () => {
     renderDashboard();
 
     const toolbar = await screen.findByTestId("dashboard-home-toolbar");
-    const identity = toolbar.querySelector(".dashboard-home-toolbar__identity");
+    const left = toolbar.querySelector(".dashboard-cockpit-header__left");
     const search = toolbar.querySelector(".dashboard-home-toolbar__search");
-    const actions = toolbar.querySelector(".dashboard-home-toolbar__actions");
+    const right = toolbar.querySelector(".dashboard-cockpit-header__right");
 
-    expect(identity).not.toBeNull();
+    expect(left).not.toBeNull();
     expect(search).not.toBeNull();
-    expect(actions).not.toBeNull();
+    expect(right).not.toBeNull();
 
-    const toolbarNodes = [identity as HTMLElement, search as HTMLElement, actions as HTMLElement];
+    const toolbarNodes = [left as HTMLElement, search as HTMLElement, right as HTMLElement];
     for (let index = 0; index < toolbarNodes.length - 1; index += 1) {
       expect(toolbarNodes[index].compareDocumentPosition(toolbarNodes[index + 1])).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING,
       );
     }
 
-    const viewPill = actions?.querySelector(".dashboard-home-view-pill");
-    const reportDateControl = actions?.querySelector(".dashboard-home-control");
-    const allowPartialToggle = actions?.querySelector(".dashboard-home-check");
-    const divider = actions?.querySelector(".dashboard-home-actions__divider");
-    const bankLedgerLink = within(actions as HTMLElement).getByTestId("dashboard-bank-ledger-header-link");
-    const reportCenterLink = Array.from(within(actions as HTMLElement).getAllByRole("link")).find(
-      (candidate) => candidate.getAttribute("href") === "/source-preview",
+    expect(within(right as HTMLElement).getByRole("link", { name: "报表中心" })).toHaveAttribute(
+      "href",
+      "/reports",
     );
-    const platformConfigLink = Array.from(within(actions as HTMLElement).getAllByRole("link")).find(
-      (candidate) => candidate.getAttribute("href") === "/platform-config",
+    expect(within(right as HTMLElement).getByRole("link", { name: "数据中心" })).toHaveAttribute(
+      "href",
+      "/platform-config",
     );
-    const refreshButton = within(actions as HTMLElement).getByRole("button");
-
-    expect(viewPill).not.toBeNull();
-    expect(reportDateControl).not.toBeNull();
-    expect(allowPartialToggle).not.toBeNull();
-    expect(divider).not.toBeNull();
-    expect(bankLedgerLink).toHaveAttribute("href", "/bank-ledger-dashboard");
-    expect(reportCenterLink).toBeDefined();
-    expect(reportCenterLink).toHaveAttribute("href", "/source-preview");
-    expect(platformConfigLink).toBeDefined();
-    expect(platformConfigLink).toHaveAttribute("href", "/platform-config");
-
-    const actionNodes = [
-      viewPill as HTMLElement,
-      reportDateControl as HTMLElement,
-      allowPartialToggle as HTMLElement,
-      divider as HTMLElement,
-      bankLedgerLink,
-      reportCenterLink as HTMLElement,
-      platformConfigLink as HTMLElement,
-      refreshButton,
-    ];
-    for (let index = 0; index < actionNodes.length - 1; index += 1) {
-      expect(actionNodes[index].compareDocumentPosition(actionNodes[index + 1])).toBe(
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    }
+    expect(within(left as HTMLElement).getByLabelText("报告日")).toBeInTheDocument();
+    expect(within(right as HTMLElement).getByRole("button", { name: "刷新" })).toBeInTheDocument();
   });
 
   it("keeps an empty cockpit calendar explicit while linking to observation rows", async () => {
@@ -572,6 +481,8 @@ describe("DashboardPage", () => {
 
     renderDashboard(client);
 
+    const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
+    fireEvent.click(within(supplement).getByText("同报告日补充读面（展开）"));
     const calendarPanel = await screen.findByTestId("dashboard-cockpit-calendar-panel");
     const empty = await within(calendarPanel).findByTestId("dashboard-cockpit-calendar-empty");
     expect(empty).toHaveTextContent("无同日事件");
@@ -606,6 +517,8 @@ describe("DashboardPage", () => {
 
     renderDashboard(client);
 
+    const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
+    fireEvent.click(within(supplement).getByText("同报告日补充读面（展开）"));
     await screen.findByTestId("dashboard-cockpit-metric-rail");
     await waitFor(() => {
       expect(client.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
@@ -619,23 +532,29 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("keeps business income and asset-liability summary cards visible before drilldown", async () => {
+  it("keeps business income and asset-liability summary cards in the deferred depth zone", async () => {
     renderDashboard();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const depthZone = screen.getByTestId("dashboard-depth-zone");
+    expect(depthZone).not.toHaveAttribute("hidden");
+    expect(within(depthZone).getByTestId("dashboard-balance-summary")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-exposure-table")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-product-pnl-trend")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-quick-drilldown")).toBeInTheDocument();
+
+    const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
+    fireEvent.click(within(supplement).getByText("同报告日补充读面（展开）"));
     const summary = await screen.findByTestId("dashboard-business-balance-summary");
     const productPanel = within(summary).getByTestId("dashboard-product-category-ytd");
 
     expectTestIdsInOrder(page, [
-      "dashboard-cockpit-metric-rail",
-      "dashboard-cockpit-main-grid",
-      "dashboard-action-queue",
-      "dashboard-cockpit-lower-grid",
-      "dashboard-cockpit-account-table",
-      "dashboard-business-balance-summary",
+      "dashboard-kpi-band",
+      "dashboard-main-triptych",
+      "dashboard-depth-zone",
+      "dashboard-cockpit-supplement",
       "dashboard-detail-drilldown",
     ]);
-    expect(summary).toHaveClass("dashboard-business-balance-summary--terminal");
     expect(within(summary).getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
     expect(productPanel).toHaveClass("dashboard-product-category-ytd-panel");
     expect(productPanel.querySelectorAll(".dashboard-product-category-ytd-card")).toHaveLength(3);
@@ -643,34 +562,29 @@ describe("DashboardPage", () => {
     expect(summary).not.toHaveTextContent(/product_category|view=|grand_|report_date|intermediate_business_income/i);
   });
 
-  it("keeps the action queue and lower review workspace visible before drilldown opens", async () => {
+  it("shows the action queue and decision sidebar before drilldown opens", async () => {
     renderDashboard();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
-    const lowerGrid = await screen.findByTestId("dashboard-cockpit-lower-grid");
-    const calendarPanel = within(lowerGrid).getByTestId("dashboard-cockpit-calendar-panel");
-    const watchTable = within(lowerGrid).getByTestId("dashboard-cockpit-watch-table");
-    const summary = await screen.findByTestId("dashboard-business-balance-summary");
-    const actionQueue = await screen.findByTestId("dashboard-action-queue");
+    const actionQueue = screen.getByTestId("dashboard-action-queue");
+    const notes = screen.getByTestId("dashboard-improvement-notes");
     const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
 
+    expect(actionQueue).toBeVisible();
+    expect(notes).toBeVisible();
+    expect(within(actionQueue).getByRole("table")).toBeInTheDocument();
+    expect(notes).toHaveTextContent("首页改造重点");
+    expect(notes).toHaveTextContent("信息分层重构");
+    expect(notes).toHaveTextContent("风险预警前置");
+    expect(detailDrilldown).not.toHaveAttribute("open");
+    expect(await screen.findByTestId("dashboard-risk-alert-panel")).toBeInTheDocument();
     expectTestIdsInOrder(page, [
+      "dashboard-main-triptych",
+      "dashboard-improvement-notes",
+      "dashboard-depth-zone",
       "dashboard-action-queue",
-      "dashboard-cockpit-lower-grid",
-      "dashboard-cockpit-account-table",
-      "dashboard-business-balance-summary",
       "dashboard-detail-drilldown",
     ]);
-    expect(calendarPanel).toBeVisible();
-    expect(calendarPanel).toContainElement(
-      within(calendarPanel).getByRole("heading", { level: 2 }),
-    );
-    expect(watchTable).toBeVisible();
-    expect(watchTable).toContainElement(within(watchTable).getByRole("table"));
-    expect(summary).toBeVisible();
-    expect(actionQueue).toBeVisible();
-    expect(within(actionQueue).getByRole("table")).toBeInTheDocument();
-    expect(detailDrilldown).not.toHaveAttribute("open");
   });
 
   it("turns the drilldown area into a review workspace under the summary cockpit", async () => {
@@ -685,8 +599,7 @@ describe("DashboardPage", () => {
     expect(detail).toHaveTextContent("定位数据证据");
     expect(detail).toHaveTextContent("进入专题页复核");
     expectTestIdsInOrder(page, [
-      "dashboard-cockpit-lower-grid",
-      "dashboard-cockpit-account-table",
+      "dashboard-main-triptych",
       "dashboard-detail-drilldown",
     ]);
 
@@ -741,7 +654,7 @@ describe("DashboardPage", () => {
     );
   });
 
-  it("renders a quiet degraded market strip when macro data is unavailable", async () => {
+  it("falls back to demo market pulse when macro data is unavailable", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
@@ -753,10 +666,9 @@ describe("DashboardPage", () => {
     renderDashboard(client);
 
     const strip = await screen.findByTestId("dashboard-cockpit-market-ticker");
-    const unavailable = await within(strip).findByTestId("dashboard-cockpit-market-ticker-unavailable");
-    expect(unavailable).toHaveTextContent("市场数据暂不可用");
-    expect(unavailable).toHaveTextContent("不使用替代数字");
-    expect(within(strip).getByRole("button", { name: "重试" })).toBeEnabled();
+    expect(within(strip).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(8);
+    expect(within(strip).queryByTestId("dashboard-cockpit-market-ticker-unavailable")).not.toBeInTheDocument();
+    expect(within(strip).queryByText("Failed to fetch")).not.toBeInTheDocument();
     expect(within(strip).queryByText("数据加载失败")).not.toBeInTheDocument();
   });
 
@@ -764,63 +676,36 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-executive-hero")).toContainElement(
-      screen.getByTestId("dashboard-judgment-band"),
-    );
-    expect(screen.getByTestId("dashboard-judgment-band")).toHaveClass("dashboard-executive-hero");
-    expect(screen.getByTestId("dashboard-bank-ledger-header-link")).toHaveAttribute(
-      "href",
-      "/bank-ledger-dashboard",
-    );
-    const pills = await screen.findByTestId("dashboard-governance-pills");
-    expect(pills).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-report-date")).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-snapshot")).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-attention")).toBeInTheDocument();
-    expect(within(pills).getByTestId("governance-pill-source")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-command-deck")).toHaveAttribute("hidden");
+    const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/)).toHaveLength(6);
+    expect(within(kpiBand).getByText("年度损益（不扣FTP）")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("+29.71 亿")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("较昨日 +1.82 亿")).toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-data-status-strip")).not.toBeInTheDocument();
-    const judgment = await screen.findByTestId("dashboard-global-judgment");
-    expect(judgment).toBeInTheDocument();
+
+    const marketPulse = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/)).toHaveLength(8);
+    expect(within(marketPulse).getByText("人民币汇率")).toBeInTheDocument();
+    expect(within(marketPulse).getByText("7.2431")).toBeInTheDocument();
+
+    const triptych = await screen.findByTestId("dashboard-main-triptych");
+    expect(within(triptych).getByTestId("dashboard-portfolio-overview")).toHaveTextContent("同业资产");
+    expect(within(triptych).getByTestId("dashboard-attribution-panel")).toHaveTextContent("当日损益");
+    expect(within(triptych).getByTestId("dashboard-risk-alert-panel")).toHaveTextContent("预警 11 项");
+
+    const depthZone = await screen.findByTestId("dashboard-depth-zone");
+    expect(within(depthZone).getByText("账户")).toBeInTheDocument();
+    expect(within(depthZone).getByText("资产规模（亿）")).toBeInTheDocument();
+    expect(within(depthZone).getByText("风险总计")).toBeInTheDocument();
     expect(
-      await within(judgment).findByText("演示：首屏定调结论占位，用于展示 Pyramid 叙事结构。"),
-    ).toBeInTheDocument();
-    const moduleSnapshot = await screen.findByTestId("dashboard-module-snapshot");
-    expect(moduleSnapshot).toBeInTheDocument();
-    const moduleSnapshotLinks = within(moduleSnapshot).getAllByRole("link");
-    expect(moduleSnapshotLinks).toHaveLength(7);
+      within(depthZone).getByRole("link", { name: /收益归因分析/ }),
+    ).toHaveAttribute("href", "/pnl-attribution");
     expect(
-      moduleSnapshotLinks.some((link) => link.getAttribute("href") === "/bank-ledger-dashboard"),
-    ).toBe(true);
-    expect(
-      within(moduleSnapshot).getByRole("link", { name: /产品损益/ }),
-    ).toHaveAttribute("href", "/product-category-pnl");
-    expect(
-      within(moduleSnapshot).getByRole("link", { name: /风险复核/ }),
-    ).toHaveAttribute("href", "/risk-tensor");
-    expect(
-      within(moduleSnapshot).queryByRole("link", { name: /决策事项/ }),
-    ).not.toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-alert-center")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
-    const moduleEntryGrid = await screen.findByTestId("dashboard-module-entry-grid");
-    expect(moduleEntryGrid).toBeInTheDocument();
-    expect(
-      within(moduleEntryGrid).getByRole("link", { name: /决策事项/ }),
-    ).toHaveAttribute("href", "/decision-items");
-    expect(
-      within(moduleEntryGrid).getByRole("link", { name: /损益解释/ }),
-    ).toHaveAttribute("href", "/pnl-bridge");
-    expect(
-      within(moduleEntryGrid).getByRole("link", { name: /持仓透视/ }),
+      within(depthZone).getByRole("link", { name: /持仓明细/ }),
     ).toHaveAttribute("href", "/positions");
-    expect(
-      within(moduleEntryGrid).getByRole("link", { name: /中台配置/ }),
-    ).toHaveAttribute("href", "/platform-config");
-    expect(await screen.findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-cockpit-market-ticker-items")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-news-digest-list")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-liability-counterparty-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-action-queue")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-improvement-notes")).toHaveTextContent("首页改造重点");
     expect(screen.queryByTestId("dashboard-governed-meta")).not.toBeInTheDocument();
   });
 
@@ -994,11 +879,11 @@ describe("DashboardPage", () => {
     expect(within(liabilitySection).getByText(/余额 60\.00 亿/)).toBeInTheDocument();
   });
 
-  it("surfaces a strong mock-data warning when the app is not using real APIs", async () => {
+  it("surfaces a gentle mock-data warning when the app is not using real APIs", async () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent("模拟数据源");
+    expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent("本地模拟数据");
   });
 
   it("falls back to demo data when the real home snapshot is unreachable", async () => {
@@ -1015,11 +900,116 @@ describe("DashboardPage", () => {
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     const warning = await screen.findByTestId("dashboard-data-warning");
     expect(warning).toHaveTextContent("实时数据源当前不可用");
-    expect(warning).toHaveTextContent("Failed to fetch");
+    expect(warning).not.toHaveTextContent("Failed to fetch");
     expect(await screen.findByText("演示回落")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "重试实时数据" })).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-cockpit-metric-rail")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-action-queue")).toBeInTheDocument();
+    const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(6);
+    expect(within(kpiBand).getByText("3,708.10 亿")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-cockpit-market-ticker")).toBeInTheDocument();
+  });
+
+  it("prefers real first-screen values over local fallback", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const getHomeSnapshot = vi.fn(async (options) => {
+      const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+      return {
+        ...envelope,
+        result_meta: {
+          ...envelope.result_meta,
+          generated_at: "2026-04-30T10:45:00+08:00",
+        },
+        result: {
+          ...envelope.result,
+          report_date: "2026-04-30",
+          overview: {
+            ...envelope.result.overview,
+            metrics: [
+              {
+                id: "aum",
+                label: "债券资产规模",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({
+                  raw: 4_567_890_000_000,
+                  unit: "yuan",
+                  sign_aware: false,
+                }),
+                delta: formatRawAsNumeric({
+                  raw: 12_300_000_000,
+                  unit: "yuan",
+                  sign_aware: true,
+                }),
+                tone: "positive",
+                detail: "测试真实接口返回值。",
+              },
+            ],
+          },
+        },
+      };
+    });
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_market_real_first",
+        basis: "formal" as const,
+        result_kind: "market_data.rates",
+        formal_use_allowed: true,
+        source_version: "sv_test",
+        vendor_version: "vv_test",
+        rule_version: "rv_test",
+        cache_version: "cv_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        as_of_date: "2026-04-30",
+        generated_at: "2026-04-30T10:40:00+08:00",
+      },
+      result: {
+        read_target: "duckdb" as const,
+        series: [
+          {
+            series_id: "CA.CN_GOV_10Y",
+            series_name: "10年国债",
+            trade_date: "2026-04-30",
+            value_numeric: 2.31,
+            frequency: "D",
+            unit: "%",
+            source_version: "sv_test",
+            vendor_version: "vv_test",
+            quality_flag: "ok" as const,
+            latest_change: -0.04,
+          },
+        ],
+      },
+    }));
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot,
+      getMarketDataRates,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    };
+
+    renderDashboard(client);
+
+    const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    await waitFor(() => {
+      expect(getHomeSnapshot).toHaveBeenCalled();
+      expect(within(kpiBand).getByText("45678.90 亿")).toBeInTheDocument();
+    });
+    expect(within(kpiBand).getByText("年度损益（不扣FTP）")).toBeInTheDocument();
+    expect(within(kpiBand).queryByText("3,708.10 亿")).not.toBeInTheDocument();
+
+    const marketPulse = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    await waitFor(() => {
+      expect(getMarketDataRates).toHaveBeenCalled();
+      expect(within(marketPulse).getByText("2.31%")).toBeInTheDocument();
+    });
+    expect(within(marketPulse).queryByText("1.76%")).not.toBeInTheDocument();
+    expect(await screen.findByText("管理视角")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText(/数据已更新/).length).toBeGreaterThan(0);
+    });
   });
 
   it("uses current report date for home snapshot and YTD bond counterparty range", async () => {

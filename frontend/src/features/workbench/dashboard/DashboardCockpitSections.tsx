@@ -2,8 +2,10 @@ import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
 import "./DashboardCockpitSections.css";
+import "./dashboardCockpitTheme.css";
 
 import type {
+  DashboardCockpitAccountRow,
   DashboardCockpitAnalysisCard,
   DashboardCockpitCalendarItem,
   DashboardCockpitMetricItem,
@@ -14,6 +16,7 @@ import type {
   DashboardCockpitWaterfallItem,
 } from "./dashboardCockpitModel";
 import { getDashboardCockpitSectionStatusLabel } from "./dashboardCockpitModel";
+import { COCKPIT_CHART_PALETTE } from "./dashboardCockpitVisualTokens";
 
 function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -78,7 +81,7 @@ function buildMiniChartArea(points: readonly MiniChartPoint[], height = MINI_CHA
   ].join(" ");
 }
 
-const PORTFOLIO_COLORS = ["#2b66b1", "#d35b2a", "#208b63", "#8795a8"];
+const PORTFOLIO_COLORS = COCKPIT_CHART_PALETTE;
 const CURVE_SERIES_IDS = new Set([
   "CA.CN_GOV_10Y",
   "E1000180",
@@ -695,6 +698,92 @@ function DashboardCockpitCalendarPanel({
             </article>
           ))
         )}
+      </div>
+    </section>
+  );
+}
+
+type DashboardCockpitAccountTableProps = {
+  rows: readonly DashboardCockpitAccountRow[];
+  className?: string;
+};
+
+export function DashboardCockpitAccountTable({ rows, className }: DashboardCockpitAccountTableProps) {
+  return (
+    <section
+      data-testid="dashboard-cockpit-account-table"
+      className={cx(
+        "dashboard-cockpit-card",
+        "dashboard-cockpit-panel",
+        "dashboard-cockpit-account-table",
+        "dashboard-home-panel",
+        className,
+      )}
+    >
+      <div className="dashboard-cockpit-panel-head">
+        <div>
+          <span className="dashboard-cockpit-eyebrow">组合 / 资产分层</span>
+          <h2 className="dashboard-cockpit-title">账户与暴露摘要</h2>
+        </div>
+      </div>
+      <div className="dashboard-cockpit-account-table__wrap">
+        <div className="dashboard-cockpit-account-table__table" role="table">
+          <div
+            className="dashboard-cockpit-account-table__row dashboard-cockpit-account-table__row--head"
+            role="row"
+          >
+            <span role="columnheader">账户</span>
+            <span role="columnheader">分类</span>
+            <span role="columnheader">规模</span>
+            <span role="columnheader">权重</span>
+            <span role="columnheader">久期</span>
+            <span role="columnheader">收益率</span>
+            <span role="columnheader">日变动</span>
+            <span role="columnheader">风险</span>
+            <span role="columnheader">来源 / 动作</span>
+          </div>
+          {rows.map((row) => {
+            const change = parseDisplayNumber(row.dailyChange);
+            const changeClass =
+              change == null
+                ? null
+                : change > 0
+                  ? "dashboard-cockpit-watch__change--positive"
+                  : change < 0
+                    ? "dashboard-cockpit-watch__change--negative"
+                    : "dashboard-cockpit-watch__change--flat";
+
+            return (
+              <div
+                key={row.id}
+                data-testid={`dashboard-cockpit-account-row-${row.id}`}
+                className={cx(
+                  "dashboard-cockpit-account-table__row",
+                  statusClass(row.status),
+                  toneClass(row.tone),
+                )}
+                role="row"
+              >
+                <strong role="cell">{row.accountName}</strong>
+                <span role="cell">{row.segment}</span>
+                <span role="cell">{row.exposure}</span>
+                <span role="cell">{row.weight}</span>
+                <span role="cell">{row.duration}</span>
+                <span role="cell">{row.ytm}</span>
+                <span className={cx("dashboard-cockpit-account-table__change", changeClass)} role="cell">
+                  {row.dailyChange}
+                </span>
+                <span role="cell">{row.risk}</span>
+                <span className="dashboard-cockpit-account-table__action-cell" role="cell" title={row.source}>
+                  <span>{row.source}</span>
+                  <Link className="dashboard-cockpit-watch__action" to={row.route}>
+                    {row.actionLabel}
+                  </Link>
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

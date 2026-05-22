@@ -614,7 +614,7 @@ describe("WorkbenchShell", () => {
       background: shellTokens.railBg,
     });
     expect(screen.getByTestId("workbench-support-nav")).toBeInTheDocument();
-    expect(screen.getByTestId("workbench-terminal-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
   });
 
   it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {

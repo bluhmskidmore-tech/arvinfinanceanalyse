@@ -36,7 +36,6 @@ import {
   DashboardCockpitAccountTable,
   DashboardCockpitLowerGrid,
   DashboardCockpitMainGrid,
-  DashboardCockpitMarketTicker,
   DashboardCockpitMetricRail,
 } from "../dashboard/DashboardCockpitSections";
 import { DashboardCoreMetricsSection } from "../dashboard/DashboardCoreMetricsSection";
@@ -47,6 +46,21 @@ import {
   type DashboardCockpitPreviewSignal,
 } from "../dashboard/dashboardCockpitModel";
 import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
+import { buildDashboardCockpitHomeViewModel } from "../dashboard/dashboardCockpitHomeModel";
+import "../dashboard/DashboardCockpitPage.css";
+import "../dashboard/dashboardCockpitTheme.css";
+import { DashboardCockpitHeader } from "../dashboard/sections/DashboardCockpitHeader";
+import { KpiCard } from "../dashboard/sections/KpiCard";
+import { MarketPulseCard } from "../dashboard/sections/MarketPulseCard";
+import { PortfolioOverview } from "../dashboard/sections/PortfolioOverview";
+import { AttributionPanel } from "../dashboard/sections/AttributionPanel";
+import { RiskAlertPanel } from "../dashboard/sections/RiskAlertPanel";
+import { ExposureTable } from "../dashboard/sections/ExposureTable";
+import { BalanceSummary } from "../dashboard/sections/BalanceSummary";
+import { ProductPnlTrendChart } from "../dashboard/sections/ProductPnlTrendChart";
+import { QuickDrilldown } from "../dashboard/sections/QuickDrilldown";
+import { DashboardJudgmentStrip } from "../dashboard/sections/DashboardJudgmentStrip";
+import { DecisionSidebar } from "../dashboard/sections/DecisionSidebar";
 import { workbenchNavigation } from "../../../mocks/navigation";
 import { AgentPanel } from "../../agent/AgentPanel";
 
@@ -579,10 +593,8 @@ export default function DashboardPage() {
   const [isDetailDrilldownOpen, setIsDetailDrilldownOpen] = useState(false);
   const [isCockpitSupplementOpen, setIsCockpitSupplementOpen] = useState(false);
   const [forceMockFallback, setForceMockFallback] = useState(false);
-  const [liveFallbackReason, setLiveFallbackReason] = useState<string | null>(null);
   const dataClient = forceMockFallback ? fallbackClient : sourceClient;
   const displayMode = sourceClient.mode;
-  const isLiveDataFallback = sourceClient.mode === "real" && forceMockFallback;
   const requestedDateLabel = reportDate || "latest";
 
   const snapshotQuery = useQuery({
@@ -594,6 +606,12 @@ export default function DashboardPage() {
       }),
     retry: false,
   });
+  const isSnapshotNetworkFallback =
+    sourceClient.mode === "real" &&
+    snapshotQuery.isError &&
+    isNetworkUnavailableError(snapshotQuery.error);
+  const isLiveDataFallback =
+    sourceClient.mode === "real" && (forceMockFallback || isSnapshotNetworkFallback);
 
   useEffect(() => {
     if (
@@ -602,7 +620,6 @@ export default function DashboardPage() {
       snapshotQuery.isError &&
       isNetworkUnavailableError(snapshotQuery.error)
     ) {
-      setLiveFallbackReason(readErrorMessage(snapshotQuery.error));
       setForceMockFallback(true);
     }
   }, [
@@ -790,13 +807,14 @@ export default function DashboardPage() {
           !initialEffectiveReportDate ||
           (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
         calendarIsError: researchCalendarQuery.isError,
-        isMockMode: dataClient.mode !== "real",
+        isMockMode: dataClient.mode !== "real" || isLiveDataFallback,
         heroMetricFallbackDelta: "读链路",
       }),
     [
       adapterOutput.verdict,
       attributionMeta,
       dataClient.mode,
+      isLiveDataFallback,
       coreMetricsQuery.data?.result.report_date,
       dailyChangesQuery.data?.result.report_date,
       initialEffectiveReportDate,
@@ -994,6 +1012,35 @@ export default function DashboardPage() {
     [dashboardHome.alerts],
   );
 
+  const cockpitHome = useMemo(
+    () =>
+      buildDashboardCockpitHomeViewModel({
+        home: dashboardHome,
+        cockpit: dashboardCockpit,
+        metrics: sanitizedOverviewMetrics,
+        snapshotMeta: snapshotQuery.data?.result_meta ?? null,
+        marketMeta: marketRatesQuery.data?.result_meta ?? null,
+        coreMetrics: coreMetricsQuery.data?.result ?? null,
+        bondHeadline: bondHeadlineQuery.data?.result ?? null,
+        portfolio: portfolioHeadlinesQuery.data?.result ?? null,
+        attribution: adapterOutput.attribution.vm,
+        useMockFallback: isLiveDataFallback || dataClient.mode !== "real",
+      }),
+    [
+      adapterOutput.attribution.vm,
+      bondHeadlineQuery.data?.result,
+      coreMetricsQuery.data?.result,
+      dashboardCockpit,
+      dashboardHome,
+      dataClient.mode,
+      isLiveDataFallback,
+      marketRatesQuery.data?.result_meta,
+      portfolioHeadlinesQuery.data?.result,
+      sanitizedOverviewMetrics,
+      snapshotQuery.data?.result_meta,
+    ],
+  );
+
   const agentPanelFilters = useMemo(
     () => ({
       allow_partial: allowPartial,
@@ -1004,13 +1051,14 @@ export default function DashboardPage() {
 
   const toolbarModeLabel = isLiveDataFallback
     ? "演示回落"
-    : displayMode === "real"
-      ? "管理视角"
-      : "演示视角";
+    : cockpitHome.dataSource === "mock"
+      ? "数据待同步"
+      : displayMode === "real"
+        ? "管理视角"
+        : "演示视角";
   const shouldRenderDetailDrilldown = displayMode !== "real" || isDetailDrilldownOpen;
   const handleRefresh = () => {
     if (isLiveDataFallback) {
-      setLiveFallbackReason(null);
       setForceMockFallback(false);
       return;
     }
@@ -1018,264 +1066,199 @@ export default function DashboardPage() {
   };
 
   return (
-    <section data-testid="fixed-income-dashboard-page" className="dashboard-home-shell">
-      <header
-        data-testid="dashboard-home-toolbar"
-        className="dashboard-home-toolbar"
-      >
-        <div className="dashboard-home-toolbar__identity">
-          <h1
-            data-testid="dashboard-executive-hero-title"
-            className="dashboard-home-toolbar__title"
-          >
-            经营驾驶舱
-          </h1>
-          <span className="dashboard-home-toolbar__eyebrow">
-            报告日 {effectiveReportDate || "最新可用"}
-          </span>
-        </div>
-        <label className="dashboard-home-search dashboard-home-toolbar__search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="搜索债券、指标、报告"
-            placeholder="搜索债券 / 指标 / 报告"
-            value={toolbarSearch}
-            onChange={(event) => setToolbarSearch(event.target.value)}
+    <section
+      data-testid="fixed-income-dashboard-page"
+      className="dashboard-cockpit-page dashboard-cockpit-page--shell-nav dashboard-home-shell"
+    >
+      {/* 左侧导航由 WorkbenchShell 统一提供，避免与页面内 DashboardCockpitSidebar 重复 */}
+      <div className="dashboard-cockpit-page__frame">
+        <div className="dashboard-cockpit-page__main">
+          <DashboardCockpitHeader
+            viewModel={cockpitHome}
+            toolbarSearch={toolbarSearch}
+            onSearchChange={setToolbarSearch}
+            reportDateInput={reportDate || effectiveReportDate || ""}
+            onReportDateChange={setReportDate}
+            allowPartial={allowPartial}
+            onAllowPartialChange={setAllowPartial}
+            modeLabel={toolbarModeLabel}
+            onRefresh={handleRefresh}
+            refreshLabel={isLiveDataFallback ? "重试实时数据" : "刷新"}
           />
-        </label>
-        <div className="dashboard-home-actions dashboard-home-toolbar__actions">
-          <span
-            className={
-              displayMode === "real"
-                ? "dashboard-home-view-pill dashboard-governance-tone-ok"
-                : "dashboard-home-view-pill dashboard-governance-tone-warning"
-            }
+
+          <DashboardJudgmentStrip viewModel={cockpitHome} />
+
+          <section
+            data-testid="dashboard-command-deck"
+            className="dashboard-command-deck dashboard-cockpit-judgment-strip dashboard-cockpit-deferred"
+            hidden
           >
-            {toolbarModeLabel}
-          </span>
-          <label className="dashboard-home-control">
-            <span>报告日</span>
-            <input
-              aria-label="报告日"
-              type="date"
-              value={reportDate || effectiveReportDate || ""}
-              onChange={(event) => setReportDate(event.target.value)}
-              className="dashboard-home-date-input"
-              style={tabularNumsStyle}
+            <div data-testid="dashboard-executive-hero" className="dashboard-command-deck__hero">
+              <DashboardJudgmentBand
+                verdict={cockpitHome.judgment}
+                className="dashboard-executive-hero dashboard-command-deck__judgment"
+              />
+            </div>
+            <aside
+              data-testid="dashboard-command-status-stack"
+              className="dashboard-home-panel dashboard-command-status"
+            >
+              <GovernancePills pills={dashboardHome.kpiRibbon} />
+            </aside>
+          </section>
+
+          <div className="dashboard-cockpit-home-layout">
+            <div className="dashboard-cockpit-home-layout__main">
+              <section data-testid="dashboard-kpi-band" className="dashboard-cockpit-kpi-band">
+                {cockpitHome.kpiCards.map((card) => (
+                  <KpiCard key={card.id} card={card} />
+                ))}
+              </section>
+
+              <section
+                data-testid="dashboard-cockpit-market-ticker"
+                className="dashboard-cockpit-pulse-grid"
+                aria-label="市场脉冲"
+              >
+                {cockpitHome.marketPulse.map((item) => (
+                  <MarketPulseCard key={item.id} item={item} />
+                ))}
+              </section>
+
+              <section data-testid="dashboard-main-triptych" className="dashboard-cockpit-triptych">
+                <PortfolioOverview
+                  stats={cockpitHome.portfolioStats}
+                  assetBars={cockpitHome.assetBars}
+                  interbankAssets={cockpitHome.interbankAssets}
+                  interbankLiabilities={cockpitHome.interbankLiabilities}
+                  interbankNetPosition={cockpitHome.interbankNetPosition}
+                />
+                <AttributionPanel
+                  tabs={cockpitHome.attributionTabs}
+                  waterfall={cockpitHome.attributionWaterfall}
+                  note={cockpitHome.attributionNote}
+                />
+                <RiskAlertPanel
+                  radar={cockpitHome.riskRadar}
+                  alertCount={cockpitHome.alertCount}
+                  alertCounts={cockpitHome.riskAlertCounts}
+                  todos={cockpitHome.todos}
+                  watchlist={cockpitHome.watchlist}
+                />
+              </section>
+            </div>
+
+            <aside className="dashboard-cockpit-home-layout__rail">
+              <DecisionSidebar viewModel={cockpitHome} />
+              {cockpitHome.showDataWarning ? (
+                <section data-testid="dashboard-data-warning" className="dashboard-home-warning">
+                  <div className="dashboard-home-warning__title">数据状态</div>
+                  {isLiveDataFallback ? (
+                    <div className="dashboard-home-warning__body">
+                      实时数据源当前不可用，页面已自动切换为本地模拟数据展示。
+                    </div>
+                  ) : null}
+                  {cockpitHome.dataWarningMessages.map((message) => (
+                    <div key={message} className="dashboard-home-warning__body">
+                      {message}
+                    </div>
+                  ))}
+                </section>
+              ) : null}
+            </aside>
+          </div>
+
+          <div className="dashboard-cockpit-page__bottom">
+            <section data-testid="dashboard-depth-zone" className="dashboard-cockpit-depth">
+              <div className="dashboard-cockpit-depth__charts">
+                <ExposureTable rows={cockpitHome.exposureRows} />
+                <ProductPnlTrendChart data={cockpitHome.productPnl} />
+              </div>
+              <div className="dashboard-cockpit-depth__side">
+                <BalanceSummary metrics={cockpitHome.balanceMetrics} />
+                <QuickDrilldown items={cockpitHome.quickDrilldowns} />
+              </div>
+            </section>
+
+            <DashboardActionQueue
+              alerts={reviewAlerts}
+              effectiveReportDate={effectiveReportDate}
             />
-          </label>
-          <label className="dashboard-home-check">
-            <input
-              aria-label="允许历史日（含缺域）"
-              type="checkbox"
-              checked={allowPartial}
-              onChange={(event) => setAllowPartial(event.target.checked)}
+          </div>
+
+          <details
+            data-testid="dashboard-cockpit-supplement"
+            className="dashboard-cockpit-supplement dashboard-progressive-disclosure"
+            open={isCockpitSupplementOpen}
+            onToggle={(event) => setIsCockpitSupplementOpen(event.currentTarget.open)}
+          >
+            <summary className="dashboard-progressive-disclosure__summary">
+              同报告日补充读面（展开）
+            </summary>
+            <DashboardCockpitSupplementPreview signals={dashboardCockpit.previewSignals} />
+            <DashboardCockpitMetricRail
+              className="dashboard-warm-kpi-ledger"
+              items={dashboardCockpit.metricRail}
             />
-            含缺域
-          </label>
-          <span aria-hidden="true" className="dashboard-home-actions__divider" />
-          <Link
-            data-testid="dashboard-bank-ledger-header-link"
-            to="/bank-ledger-dashboard"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            银行台账
-          </Link>
-          <Link
-            to="/source-preview"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            报表中心
-          </Link>
-          <Link
-            to="/platform-config"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            中台配置
-          </Link>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="dashboard-home-action-button dashboard-home-action-button--primary"
-          >
-            {isLiveDataFallback ? "重试实时数据" : "刷新"}
-          </button>
-        </div>
-      </header>
+            <DashboardCockpitMainGrid
+              className="dashboard-warm-cockpit-main"
+              ticker={dashboardCockpit.marketTicker}
+              cards={dashboardCockpit.analysisCards}
+              waterfall={dashboardCockpit.waterfall}
+            />
+            <section
+              data-testid="dashboard-business-detail-strip"
+              className="dashboard-business-detail-strip dashboard-cockpit-business-strip"
+            >
+              {coreMetricsDateMismatch ? (
+                <DashboardSupplementalBlockedSection
+                  testId="dashboard-core-metrics-blocked"
+                  title="债券 / 同业核心指标"
+                  expectedReportDate={effectiveReportDate}
+                  actualReportDate={coreMetricsQuery.data?.result.report_date ?? "未知"}
+                />
+              ) : (
+                <DashboardCoreMetricsSection
+                  query={coreMetricsQuery}
+                  reportDate={effectiveReportDate}
+                />
+              )}
+              {dailyChangesDateMismatch ? (
+                <DashboardSupplementalBlockedSection
+                  testId="dashboard-daily-changes-blocked"
+                  title="日 / 周 / 月变动"
+                  expectedReportDate={effectiveReportDate}
+                  actualReportDate={dailyChangesQuery.data?.result.report_date ?? "未知"}
+                />
+              ) : (
+                <DashboardDailyChangesSection query={dailyChangesQuery} />
+              )}
+            </section>
+            <DashboardCockpitLowerGrid
+              className="dashboard-warm-cockpit-assist"
+              portfolioMix={dashboardCockpit.portfolioMix}
+              riskItems={dashboardCockpit.riskItems}
+              calendarItems={dashboardCockpit.calendarItems}
+              watchRows={dashboardCockpit.watchRows}
+            />
+            <DashboardCockpitAccountTable rows={dashboardCockpit.accountRows} />
+            <section
+              data-testid="dashboard-business-balance-summary"
+              className="dashboard-business-balance-summary dashboard-home-panel"
+            >
+              <DashboardOverviewHeroStrip metrics={dashboardHome.heroMetrics} />
+              <DashboardProductCategoryYtdCards
+                state={adapterOutput.productCategoryYtd.state}
+                vm={adapterOutput.productCategoryYtd.vm}
+                monthlyState={adapterOutput.productCategoryMonthly.state}
+                monthlyVm={adapterOutput.productCategoryMonthly.vm}
+                onRetry={() => void snapshotQuery.refetch()}
+              />
+            </section>
+          </details>
 
-      <section
-        data-testid="dashboard-command-deck"
-        className="dashboard-command-deck"
-      >
-        <div
-          data-testid="dashboard-executive-hero"
-          className="dashboard-command-deck__hero"
-        >
-          <DashboardJudgmentBand
-            verdict={dashboardHome.judgment}
-            className="dashboard-executive-hero dashboard-command-deck__judgment"
-          />
-        </div>
-
-        <aside
-          data-testid="dashboard-command-status-stack"
-          className="dashboard-home-panel dashboard-command-status"
-        >
-          <div className="dashboard-home-section-heading">
-            <span className="dashboard-home-section-eyebrow">状态 / 可信度</span>
-            <h2 className="dashboard-home-section-title">治理状态</h2>
-          </div>
-          <GovernancePills pills={dashboardHome.kpiRibbon} />
-          <div className="dashboard-command-status__grid">
-            <article className="dashboard-home-inset dashboard-command-status__metric">
-              <span className="dashboard-home-muted-label">待复核</span>
-              <strong className="dashboard-home-value">{dashboardHome.reviewCount}</strong>
-              <p className="dashboard-home-muted">高/中优先级事项</p>
-            </article>
-            <article className="dashboard-home-inset dashboard-command-status__metric">
-              <span className="dashboard-home-muted-label">快照</span>
-              <strong className="dashboard-home-value">
-                {dashboardHome.snapshotModeLabel}
-              </strong>
-              <p className="dashboard-home-muted">
-                {snapshotPartialNote || "覆盖状态可用于首屏判断"}
-              </p>
-            </article>
-          </div>
-        </aside>
-      </section>
-
-      {(dataClient.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote) && (
-        <section
-          data-testid="dashboard-data-warning"
-          className="dashboard-home-warning"
-        >
-          <div className="dashboard-home-warning__title">
-            数据状态 · 需人工复核
-          </div>
-          {isLiveDataFallback ? (
-            <div className="dashboard-home-warning__body">
-              实时数据源当前不可用，页面已自动回落到演示数据，避免首页整屏失效。当前错误：
-              {liveFallbackReason ?? "Failed to fetch"}
-            </div>
-          ) : null}
-          {!isLiveDataFallback && dataClient.mode !== "real" ? (
-            <div className="dashboard-home-warning__body">
-              当前页面正在使用模拟数据源，首页数字仅用于界面演示，不应直接作为业务判断依据。
-            </div>
-          ) : null}
-          {attentionItems.length > 0 ? (
-            <div className="dashboard-home-warning__body">
-              {attentionItems.join("；")}
-            </div>
-          ) : null}
-          {snapshotPartialNote ? (
-            <div className="dashboard-home-warning__body">
-              {snapshotPartialNote}
-            </div>
-          ) : null}
-        </section>
-      )}
-
-      <DashboardCockpitMarketTicker
-        className="dashboard-warm-evidence-workspace"
-        items={dashboardCockpit.marketTicker}
-        isLoading={marketRatesQuery.isLoading}
-        isError={marketRatesQuery.isError}
-        onRetry={() => void marketRatesQuery.refetch()}
-      />
-
-      <details
-        data-testid="dashboard-cockpit-supplement"
-        className="dashboard-cockpit-supplement dashboard-progressive-disclosure"
-        open={isCockpitSupplementOpen}
-        onToggle={(event) => setIsCockpitSupplementOpen(event.currentTarget.open)}
-      >
-        <summary className="dashboard-progressive-disclosure__summary dashboard-cockpit-supplement__summary">
-          <div className="dashboard-home-section-heading">
-            <span className="dashboard-home-section-eyebrow">同报告日补充</span>
-            <h2 className="dashboard-progressive-disclosure__title">债券与组合读面及市场拆解</h2>
-          </div>
-          <span className="dashboard-progressive-disclosure__description">
-            展开查看 KPI 读面带与利率 / 持仓体感；不替代首页快照 KPI。
-          </span>
-          <span className="dashboard-progressive-disclosure__cue">展开</span>
-          <DashboardCockpitSupplementPreview signals={dashboardCockpit.previewSignals} />
-        </summary>
-        <DashboardCockpitMetricRail
-          className="dashboard-warm-kpi-ledger"
-          items={dashboardCockpit.metricRail}
-          omitHeader
-        />
-        <DashboardCockpitMainGrid
-          className="dashboard-warm-cockpit-main"
-          ticker={dashboardCockpit.marketTicker}
-          cards={dashboardCockpit.analysisCards}
-          waterfall={dashboardCockpit.waterfall}
-        />
-      </details>
-      <DashboardActionQueue alerts={reviewAlerts} effectiveReportDate={effectiveReportDate} />
-      <section
-        data-testid="dashboard-business-detail-strip"
-        className="dashboard-business-detail-strip dashboard-cockpit-business-strip"
-      >
-        {coreMetricsDateMismatch ? (
-          <DashboardSupplementalBlockedSection
-            testId="dashboard-core-metrics-blocked"
-            title="债券 / 同业核心指标"
-            expectedReportDate={effectiveReportDate}
-            actualReportDate={coreMetricsQuery.data?.result.report_date ?? "未知"}
-          />
-        ) : (
-          <DashboardCoreMetricsSection
-            query={coreMetricsQuery}
-            reportDate={effectiveReportDate}
-          />
-        )}
-        {dailyChangesDateMismatch ? (
-          <DashboardSupplementalBlockedSection
-            testId="dashboard-daily-changes-blocked"
-            title="日 / 周 / 月变动"
-            expectedReportDate={effectiveReportDate}
-            actualReportDate={dailyChangesQuery.data?.result.report_date ?? "未知"}
-          />
-        ) : (
-          <DashboardDailyChangesSection query={dailyChangesQuery} />
-        )}
-      </section>
-      <DashboardCockpitLowerGrid
-        className="dashboard-warm-cockpit-assist"
-        portfolioMix={dashboardCockpit.portfolioMix}
-        riskItems={dashboardCockpit.riskItems}
-        calendarItems={dashboardCockpit.calendarItems}
-        watchRows={dashboardCockpit.watchRows}
-      />
-      <DashboardCockpitAccountTable rows={dashboardCockpit.accountRows} />
-      <section
-        data-testid="dashboard-business-balance-summary"
-        className="dashboard-business-balance-summary dashboard-business-balance-summary--terminal dashboard-home-panel"
-      >
-        <div className="dashboard-business-balance-summary__header">
-          <div className="dashboard-home-section-heading">
-            <span className="dashboard-home-section-eyebrow">经营 / 资产负债</span>
-            <h2 className="dashboard-business-balance-summary__title">经营与资产负债摘要</h2>
-          </div>
-          <p className="dashboard-home-muted">
-            同日报告日的经营口径复核；年度看业务种类，月度看产品分类。
-          </p>
-        </div>
-        <DashboardOverviewHeroStrip metrics={dashboardHome.heroMetrics} />
-        <DashboardProductCategoryYtdCards
-          state={adapterOutput.productCategoryYtd.state}
-          vm={adapterOutput.productCategoryYtd.vm}
-          monthlyState={adapterOutput.productCategoryMonthly.state}
-          monthlyVm={adapterOutput.productCategoryMonthly.vm}
-          onRetry={() => void snapshotQuery.refetch()}
-        />
-      </section>
-
-      <details
-        data-testid="dashboard-detail-drilldown"
+          <details
+            data-testid="dashboard-detail-drilldown"
         className="dashboard-detail-drilldown dashboard-progressive-disclosure"
         open={isDetailDrilldownOpen}
         onToggle={(event) => setIsDetailDrilldownOpen(event.currentTarget.open)}
@@ -1355,7 +1338,8 @@ export default function DashboardPage() {
           </>
         ) : null}
       </details>
-
+        </div>
+      </div>
     </section>
   );
 }

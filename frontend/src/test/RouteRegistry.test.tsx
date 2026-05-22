@@ -248,7 +248,9 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-governed-surface")).toBeInTheDocument();
     expect(
-      within(await screen.findByRole("navigation")).getByRole("link", { name: /经营驾驶舱/ }),
+      within(await screen.findByTestId("workbench-group-nav")).getByRole("link", {
+        name: /经营驾驶舱/,
+      }),
     ).toBeInTheDocument();
   });
 

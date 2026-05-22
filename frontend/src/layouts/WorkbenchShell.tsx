@@ -362,7 +362,7 @@ export function WorkbenchShell() {
   const isDashboardCockpitShell = currentSection.key === "dashboard";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   const useCockpitShellFrame = isDashboardCockpitShell || isBondAnalysisMinimalShell;
-  const showShellTerminalBar = !isBondAnalysisMinimalShell;
+  const showShellTerminalBar = !isDashboardCockpitShell && !isBondAnalysisMinimalShell;
   const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
