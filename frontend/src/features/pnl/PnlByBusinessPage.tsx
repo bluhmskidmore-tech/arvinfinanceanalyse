@@ -79,9 +79,9 @@ function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   return (value / YUAN_PER_YI).toFixed(2);
 }
 
-function formatAvgBalanceYi(raw: string | number | null | undefined): string {
+export function formatAvgBalanceYi(raw: string | number | null | undefined): string {
   const value = numeric(raw);
-  if (value === null || value <= 0) {
+  if (value === null) {
     return "日均缺失";
   }
   return formatYuanAsYiCell(value);

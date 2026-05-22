@@ -30,4 +30,26 @@ describe("RankingBarsCard", () => {
     expect(within(row).getByText("517 投资收益")).toBeInTheDocument();
     expect(within(row).getByText("2.00 万")).toBeInTheDocument();
   });
+
+  it("renders invalid aggregate money values as missing instead of NaN", () => {
+    render(
+      <RankingBarsCard
+        title="按投资组合"
+        rows={[
+          {
+            key: "Broken row",
+            total_pnl: Number.NaN,
+            interest_income: Number.NaN,
+            fair_value_change: Number.NaN,
+            capital_gain: Number.NaN,
+            proportion: Number.NaN,
+          },
+        ]}
+      />,
+    );
+
+    const row = screen.getByTestId("yield-ranking-row-0");
+    expect(row).not.toHaveTextContent("NaN");
+    expect(within(row).getAllByText("-").length).toBeGreaterThanOrEqual(4);
+  });
 });

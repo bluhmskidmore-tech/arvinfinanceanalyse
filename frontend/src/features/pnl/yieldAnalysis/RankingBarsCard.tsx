@@ -18,7 +18,7 @@ type Props = {
 };
 
 function fmtWan(value: number | null | undefined) {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
     return "-";
   }
   return `${(value / 10_000).toFixed(2)} 万`;
@@ -78,11 +78,14 @@ export function RankingBarsCard({
           items.slice(0, maxDisplay).map((row, index) => {
             const key = String(row?.key ?? "-");
             const displayLabel = getDisplayLabel(key);
-            const value = Number(row?.total_pnl ?? 0);
+            const value = Number(row?.total_pnl ?? Number.NaN);
+            const validValue = Number.isFinite(value);
             const width = maxAbs > 0 ? (Math.abs(value) / maxAbs) * 100 : 0;
-            const positive = value >= 0;
+            const positive = validValue ? value >= 0 : true;
             const proportion =
-              row?.proportion === null || row?.proportion === undefined ? null : Number(row.proportion) * 100;
+              row?.proportion === null || row?.proportion === undefined || !Number.isFinite(Number(row.proportion))
+                ? null
+                : Number(row.proportion) * 100;
             const breakdownParts = buildBreakdownParts(row);
             const breakdown = breakdownParts.map((part) => `${part.label} ${part.value}`).join(" · ");
             const rowClassName = `yield-ranking-row ${isClickable ? "yield-ranking-row--clickable" : ""}`.trim();
