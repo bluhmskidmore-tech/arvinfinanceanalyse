@@ -116,6 +116,10 @@ def test_hybrid_fusion_scores_dedupes_and_orders_existing_signal_sources() -> No
     assert items[0]["fusion_score"] > items[1]["fusion_score"] > items[2]["fusion_score"]
     assert items[0]["cycle_score"] > 0
     assert items[0]["lifecourt_proxy_score"] > 0
+    assert items[0]["vcov_score"] == items[0]["attention_score"]
+    assert items[0]["consensus_score"] == 1.0
+    assert items[0]["life_long_pass"] is True
+    assert items[0]["fusion_action"] in {"core_plus_trading", "core_reduce_trading", "satellite_trial"}
     assert items[0]["attention_score"] > 0
     assert items[0]["price_confirm_score"] > 0
     assert items[0]["confidence"] == "high"
@@ -124,6 +128,80 @@ def test_hybrid_fusion_scores_dedupes_and_orders_existing_signal_sources() -> No
     assert "observation-only" in str(payload).lower()
     assert "buy" not in str(payload).lower()
     assert "order" not in str(payload).lower()
+
+
+def test_hybrid_fusion_applies_report_lifecourt_formula_and_life_long_gates() -> None:
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "Strong",
+                    "sector_code": "801080",
+                    "close_strength": 0.95,
+                    "abnormal_turnover": 1.5,
+                    "breakout_extension_norm": 0.12,
+                },
+                {
+                    "rank": 2,
+                    "stock_code": "000001.SZ",
+                    "stock_name": "Crowded",
+                    "sector_code": "801080",
+                    "close_strength": 0.4,
+                    "abnormal_turnover": 4.2,
+                    "breakout_extension_norm": 0.4,
+                    "closed_up_limit": True,
+                },
+            ]
+        },
+        factor_screen_payload={
+            "items": [
+                {"rank": 1, "stock_code": "688001.SH", "stock_name": "Strong", "sector_code": "801080"},
+                {"rank": 2, "stock_code": "000001.SZ", "stock_name": "Crowded", "sector_code": "801080"},
+            ]
+        },
+        theme_breakout_payload=None,
+    )
+
+    items = cast(list[dict[str, Any]], result.payload["items"])
+    assert result.payload["formula_version"] == FORMULA_VERSION
+    assert items[0]["stock_code"] == "688001.SH"
+    assert items[0]["life_long_pass"] is True
+    assert items[1]["life_long_pass"] is False
+    assert "0.18*VCOV" in str(items[0]["evidence"]["lifecourt_formula"])
+
+
+def test_hybrid_fusion_uses_macro_score_when_landed() -> None:
+    common_kwargs = {
+        "as_of_date": "2026-05-08",
+        "market_state": "HOT",
+        "sector_rank_payload": {"items": [{"sector_code": "801080", "rank": 1}]},
+        "stock_candidates_payload": {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "Alpha",
+                    "sector_code": "801080",
+                    "close_strength": 0.9,
+                    "abnormal_turnover": 1.6,
+                    "breakout_extension_norm": 0.12,
+                }
+            ]
+        },
+        "factor_screen_payload": {
+            "items": [{"rank": 1, "stock_code": "688001.SH", "stock_name": "Alpha", "sector_code": "801080"}]
+        },
+        "theme_breakout_payload": None,
+    }
+    without_macro = compute_hybrid_fusion_candidates(macro_score=None, **common_kwargs).payload["items"][0]
+    with_macro = compute_hybrid_fusion_candidates(macro_score=0.2, **common_kwargs).payload["items"][0]
+    assert without_macro["cycle_score"] != with_macro["cycle_score"]
+    assert str(with_macro["evidence"]["cycle_formula"]).startswith("0.30 Macro")
 
 
 def test_hybrid_fusion_stays_empty_outside_warm_or_hot_market_state() -> None:

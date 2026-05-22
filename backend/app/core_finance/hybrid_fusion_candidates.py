@@ -4,7 +4,12 @@ import math
 from dataclasses import dataclass
 from typing import Any, cast
 
-FORMULA_VERSION = "rv_hybrid_fusion_candidates_v1"
+from backend.app.core_finance.hybrid_fusion_config import (
+    HybridFusionThresholds,
+    load_hybrid_fusion_thresholds,
+)
+
+FORMULA_VERSION = "rv_hybrid_fusion_candidates_v3"
 ACTIVE_MARKET_STATES = {"WARM", "HOT"}
 MAX_CANDIDATES = 10
 
@@ -22,7 +27,10 @@ def compute_hybrid_fusion_candidates(
     stock_candidates_payload: dict[str, object] | None,
     factor_screen_payload: dict[str, object] | None,
     theme_breakout_payload: dict[str, object] | None,
+    macro_score: float | None = None,
+    thresholds: HybridFusionThresholds | None = None,
 ) -> HybridFusionResult:
+    resolved_thresholds = thresholds or load_hybrid_fusion_thresholds()
     if market_state not in ACTIVE_MARKET_STATES:
         return HybridFusionResult(
             payload=_build_payload(
@@ -49,6 +57,7 @@ def compute_hybrid_fusion_candidates(
         )
 
     factor_rank_count = max(1, len(factor_rows))
+    movement_event_counts = _movement_event_counts(theme_rows)
     scored: list[dict[str, object]] = []
     for stock_code in stock_codes:
         sources = _source_rows(
@@ -68,19 +77,39 @@ def compute_hybrid_fusion_candidates(
         )
         sector_score = _sector_score(sector_rank)
         factor_rank_score = _factor_rank_score(factor_rows.get(stock_code), factor_rank_count)
-        cycle_score = _clamp(0.7 * sector_score + 0.3 * factor_rank_score)
-        attention_score = _attention_score(theme_rows.get(stock_code))
-        price_confirm_score = _price_confirm_score(
-            stock_row=stock_rows.get(stock_code),
-            theme_row=theme_rows.get(stock_code),
-        )
-        crowding_penalty = _crowding_penalty(
-            stock_row=stock_rows.get(stock_code),
-            theme_row=theme_rows.get(stock_code),
-        )
-        lifecourt_proxy_score = _clamp(0.5 * attention_score + 0.4 * price_confirm_score - crowding_penalty)
-        fusion_score = round(0.65 * cycle_score + 0.35 * lifecourt_proxy_score, 6)
         source_kinds = _source_kinds(stock_code, stock_rows=stock_rows, factor_rows=factor_rows, theme_rows=theme_rows)
+        theme_row = theme_rows.get(stock_code)
+        stock_row = stock_rows.get(stock_code)
+        price_confirm_score = _price_confirm_score(stock_row=stock_row, theme_row=theme_row)
+        cycle_score = _cycle_score(
+            macro_score=macro_score,
+            sector_score=sector_score,
+            market_flow_score=price_confirm_score,
+            factor_rank_score=factor_rank_score,
+            thresholds=resolved_thresholds,
+        )
+        crowding_score = _crowding_score(stock_row=stock_row, theme_row=theme_row)
+        crowding_penalty = _crowding_penalty(stock_row=stock_row, theme_row=theme_row)
+        vcov_score = _vcov_score(theme_row)
+        consensus_score = _consensus_score(source_kinds)
+        burst_score = _burst_score(theme_row, movement_event_counts=movement_event_counts)
+        hygiene_score = _hygiene_score(stock_row=stock_row, theme_row=theme_row, sector_rank=sector_rank)
+        regime_score = _clamp(cycle_score)
+        lifecourt_proxy_score = _lifecourt_proxy_score(
+            vcov_score=vcov_score,
+            consensus_score=consensus_score,
+            burst_score=burst_score,
+            price_confirm_score=price_confirm_score,
+            crowding_score=crowding_score,
+            hygiene_score=hygiene_score,
+            regime_score=regime_score,
+        )
+        fusion_score = round(
+            resolved_thresholds.fusion_cycle_weight * cycle_score
+            + resolved_thresholds.fusion_life_weight * lifecourt_proxy_score,
+            6,
+        )
+        attention_score = vcov_score
         scored.append(
             {
                 "stock_code": stock_code,
@@ -93,6 +122,12 @@ def compute_hybrid_fusion_candidates(
                 "attention_score": round(attention_score, 6),
                 "price_confirm_score": round(price_confirm_score, 6),
                 "crowding_penalty": round(crowding_penalty, 6),
+                "crowding_score": round(crowding_score, 6),
+                "vcov_score": round(vcov_score, 6),
+                "consensus_score": round(consensus_score, 6),
+                "burst_score": round(burst_score, 6),
+                "hygiene_score": round(hygiene_score, 6),
+                "regime_score": round(regime_score, 6),
                 "confidence": _confidence(source_kinds),
                 "reason": _reason(
                     cycle_score=cycle_score,
@@ -107,13 +142,45 @@ def compute_hybrid_fusion_candidates(
                     "sector_score": round(sector_score, 6),
                     "factor_rank_score": round(factor_rank_score, 6),
                     "formula_version": FORMULA_VERSION,
+                    "lifecourt_formula": (
+                        "0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF "
+                        "- 0.16*CROWD + 0.10*HYGIENE + 0.08*REGIME"
+                    ),
+                    "fusion_weights": {
+                        "cycle": resolved_thresholds.fusion_cycle_weight,
+                        "lifecourt": resolved_thresholds.fusion_life_weight,
+                    },
+                    "macro_score": macro_score,
+                    "cycle_formula": (
+                        "0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 Valuation"
+                        if macro_score is not None
+                        else "0.70 Industry + 0.30 Valuation (macro pending)"
+                    ),
                 },
             }
+        )
+
+    life_long_thresholds = _life_long_thresholds(scored, thresholds=resolved_thresholds)
+    stance_thresholds = _stance_thresholds(scored, thresholds=resolved_thresholds)
+    for row in scored:
+        row["life_long_pass"] = _life_long_pass(row, thresholds=life_long_thresholds)
+        row["fusion_action"] = _fusion_action(
+            cycle_score=cast(float, row["cycle_score"]),
+            lifecourt_proxy_score=cast(float, row["lifecourt_proxy_score"]),
+            stance_thresholds=stance_thresholds,
+        )
+        row["reason"] = _reason(
+            cycle_score=cast(float, row["cycle_score"]),
+            lifecourt_proxy_score=cast(float, row["lifecourt_proxy_score"]),
+            source_kinds=cast(list[str], row["evidence"]["source_kinds"]),
+            life_long_pass=cast(bool, row["life_long_pass"]),
+            fusion_action=str(row["fusion_action"]),
         )
 
     ordered = sorted(
         scored,
         key=lambda row: (
+            -int(cast(bool, row["life_long_pass"])),
             -cast(float, row["fusion_score"]),
             -cast(float, row["cycle_score"]),
             -cast(float, row["lifecourt_proxy_score"]),
@@ -126,8 +193,40 @@ def compute_hybrid_fusion_candidates(
             as_of_date=as_of_date,
             market_state=market_state,
             items=ranked,
-            coverage_note="Hybrid fusion uses existing sector, factor, trend, and theme proxy inputs.",
+            macro_score=macro_score,
+            coverage_note=_coverage_note(macro_score=macro_score),
         )
+    )
+
+
+def _coverage_note(*, macro_score: float | None) -> str:
+    base = (
+        "Hybrid fusion uses cycle rotation + lifecourt proxy reconstruction "
+        "(VCOV/CONS/BURST/PCONF/CROWD/HYGIENE/REGIME); observation-only."
+    )
+    if macro_score is None:
+        return f"{base} Macro layer pending PMI/credit_impulse/price_spread."
+    return f"{base} Macro layer landed (MacroScore={macro_score:.3f})."
+
+
+def _cycle_score(
+    *,
+    macro_score: float | None,
+    sector_score: float,
+    market_flow_score: float,
+    factor_rank_score: float,
+    thresholds: HybridFusionThresholds,
+) -> float:
+    if macro_score is None:
+        return _clamp(
+            thresholds.legacy_cycle_sector_weight * sector_score
+            + thresholds.legacy_cycle_factor_weight * factor_rank_score
+        )
+    return _clamp(
+        thresholds.cycle_macro_weight * macro_score
+        + thresholds.cycle_industry_weight * sector_score
+        + thresholds.cycle_market_flow_weight * market_flow_score
+        + thresholds.cycle_valuation_weight * factor_rank_score
     )
 
 
@@ -137,12 +236,14 @@ def _build_payload(
     market_state: str,
     items: list[dict[str, object]],
     coverage_note: str,
+    macro_score: float | None = None,
 ) -> dict[str, object]:
     return {
         "as_of_date": as_of_date,
         "formula_version": FORMULA_VERSION,
         "market_state": market_state,
         "observation_only": True,
+        "macro_score": macro_score,
         "candidate_count": len(items),
         "coverage_note": coverage_note,
         "items": items,
@@ -256,6 +357,10 @@ def _factor_rank_score(row: dict[str, object] | None, rank_count: int) -> float:
 
 
 def _attention_score(row: dict[str, object] | None) -> float:
+    return _vcov_score(row)
+
+
+def _vcov_score(row: dict[str, object] | None) -> float:
     if not row:
         return 0.0
     theme_rank = _safe_int(row.get("theme_rank")) or 99
@@ -266,6 +371,187 @@ def _attention_score(row: dict[str, object] | None) -> float:
     event_component = _clamp(event_count / 5)
     strong_component = 0.25 if bool(row.get("closed_up_limit")) or (_safe_float(row.get("pctchange")) or 0) >= 5 else 0
     return _clamp(0.55 * rank_component + 0.3 * event_component + strong_component)
+
+
+def _consensus_score(source_kinds: list[str]) -> float:
+    if len(source_kinds) >= 3:
+        return 1.0
+    if len(source_kinds) == 2:
+        return 0.667
+    if len(source_kinds) == 1:
+        return 0.333
+    return 0.0
+
+
+def _movement_event_counts(theme_rows: dict[str, dict[str, object]]) -> list[int]:
+    counts: list[int] = []
+    for row in theme_rows.values():
+        event_count = (_safe_int(row.get("movement_event_count")) or 0) + (
+            _safe_int(row.get("theme_movement_event_count")) or 0
+        )
+        counts.append(event_count)
+    return counts
+
+
+def _burst_score(row: dict[str, object] | None, *, movement_event_counts: list[int]) -> float:
+    if not row:
+        return 0.0
+    event_count = (_safe_int(row.get("movement_event_count")) or 0) + (
+        _safe_int(row.get("theme_movement_event_count")) or 0
+    )
+    if not movement_event_counts:
+        return _clamp(event_count / 5)
+    median = sorted(movement_event_counts)[len(movement_event_counts) // 2]
+    if median <= 0:
+        return _clamp(event_count / 5)
+    return _clamp((event_count - median) / max(median, 1))
+
+
+def _crowding_score(
+    *,
+    stock_row: dict[str, object] | None,
+    theme_row: dict[str, object] | None,
+) -> float:
+    return _crowding_penalty(stock_row=stock_row, theme_row=theme_row)
+
+
+def _hygiene_score(
+    *,
+    stock_row: dict[str, object] | None,
+    theme_row: dict[str, object] | None,
+    sector_rank: int | None,
+) -> float:
+    score = 1.0
+    if sector_rank is not None and sector_rank > 3:
+        score -= 0.25
+    if bool((stock_row or {}).get("closed_up_limit")) or bool((theme_row or {}).get("closed_up_limit")):
+        score -= 0.35
+    abnormal_turnover = _safe_float(stock_row.get("abnormal_turnover") if stock_row else None)
+    if abnormal_turnover is not None and abnormal_turnover > 3.5:
+        score -= 0.2
+    return _clamp(score)
+
+
+def _lifecourt_proxy_score(
+    *,
+    vcov_score: float,
+    consensus_score: float,
+    burst_score: float,
+    price_confirm_score: float,
+    crowding_score: float,
+    hygiene_score: float,
+    regime_score: float,
+) -> float:
+    raw = (
+        0.18 * vcov_score
+        + 0.14 * consensus_score
+        + 0.14 * burst_score
+        + 0.20 * price_confirm_score
+        - 0.16 * crowding_score
+        + 0.10 * hygiene_score
+        + 0.08 * regime_score
+    )
+    return _clamp(raw)
+
+
+def _percentile_threshold(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, int(round((len(ordered) - 1) * quantile))))
+    return ordered[index]
+
+
+@dataclass(frozen=True)
+class _LifeLongThresholds:
+    lifecourt_min: float
+    price_confirm_min: float
+    crowding_max: float
+
+
+def _life_long_thresholds(
+    rows: list[dict[str, object]],
+    *,
+    thresholds: HybridFusionThresholds,
+) -> _LifeLongThresholds:
+    lifecourt_values = [cast(float, row["lifecourt_proxy_score"]) for row in rows]
+    pconf_values = [cast(float, row["price_confirm_score"]) for row in rows]
+    crowd_values = [cast(float, row["crowding_score"]) for row in rows]
+    return _LifeLongThresholds(
+        lifecourt_min=_percentile_threshold(lifecourt_values, thresholds.life_long_top_q),
+        price_confirm_min=_percentile_threshold(pconf_values, thresholds.life_long_pconf_top_q),
+        crowding_max=_percentile_threshold(crowd_values, thresholds.life_long_crowd_max_q),
+    )
+
+
+def _life_long_pass(row: dict[str, object], *, thresholds: _LifeLongThresholds) -> bool:
+    return (
+        cast(float, row["lifecourt_proxy_score"]) >= thresholds.lifecourt_min
+        and cast(float, row["price_confirm_score"]) >= thresholds.price_confirm_min
+        and cast(float, row["crowding_score"]) <= thresholds.crowding_max
+        and cast(float, row["hygiene_score"]) > 0
+    )
+
+
+@dataclass(frozen=True)
+class _StanceThresholds:
+    cycle_strong_min: float
+    cycle_neutral_min: float
+    life_strong_min: float
+    life_neutral_min: float
+
+
+def _stance_thresholds(
+    rows: list[dict[str, object]],
+    *,
+    thresholds: HybridFusionThresholds,
+) -> _StanceThresholds:
+    cycle_values = [cast(float, row["cycle_score"]) for row in rows]
+    life_values = [cast(float, row["lifecourt_proxy_score"]) for row in rows]
+    return _StanceThresholds(
+        cycle_strong_min=_percentile_threshold(cycle_values, thresholds.stance_strong_q),
+        cycle_neutral_min=_percentile_threshold(cycle_values, thresholds.stance_neutral_q),
+        life_strong_min=_percentile_threshold(life_values, thresholds.stance_strong_q),
+        life_neutral_min=_percentile_threshold(life_values, thresholds.stance_neutral_q),
+    )
+
+
+def _cycle_stance(cycle_score: float, *, thresholds: _StanceThresholds) -> str:
+    if cycle_score >= thresholds.cycle_strong_min:
+        return "strong"
+    if cycle_score >= thresholds.cycle_neutral_min:
+        return "neutral"
+    return "weak"
+
+
+def _life_stance(lifecourt_proxy_score: float, *, thresholds: _StanceThresholds) -> str:
+    if lifecourt_proxy_score >= thresholds.life_strong_min:
+        return "strong"
+    if lifecourt_proxy_score >= thresholds.life_neutral_min:
+        return "neutral"
+    return "weak"
+
+
+def _fusion_action(
+    *,
+    cycle_score: float,
+    lifecourt_proxy_score: float,
+    stance_thresholds: _StanceThresholds,
+) -> str:
+    cycle = _cycle_stance(cycle_score, thresholds=stance_thresholds)
+    life = _life_stance(lifecourt_proxy_score, thresholds=stance_thresholds)
+    matrix = {
+        ("strong", "strong"): "core_plus_trading",
+        ("strong", "neutral"): "core_reduce_trading",
+        ("neutral", "strong"): "satellite_trial",
+        ("weak", "strong"): "high_liquidity_trial_only",
+        ("weak", "neutral"): "defensive_only",
+        ("weak", "weak"): "clear_or_defensive",
+        ("strong", "weak"): "core_only",
+        ("neutral", "neutral"): "monitor_only",
+        ("neutral", "weak"): "defensive_only",
+    }
+    return matrix.get((cycle, life), "monitor_only")
 
 
 def _price_confirm_score(
@@ -312,12 +598,25 @@ def _confidence(source_kinds: list[str]) -> str:
     return "low"
 
 
-def _reason(*, cycle_score: float, lifecourt_proxy_score: float, source_kinds: list[str]) -> str:
-    return (
-        "Fusion observation-only candidate: "
-        f"cycle {cycle_score:.2f}, lifecourt proxy {lifecourt_proxy_score:.2f}, "
-        f"sources {', '.join(source_kinds) or 'none'}."
-    )
+def _reason(
+    *,
+    cycle_score: float,
+    lifecourt_proxy_score: float,
+    source_kinds: list[str],
+    life_long_pass: bool | None = None,
+    fusion_action: str | None = None,
+) -> str:
+    parts = [
+        "Fusion observation-only candidate:",
+        f"cycle {cycle_score:.2f}",
+        f"lifecourt proxy {lifecourt_proxy_score:.2f}",
+        f"sources {', '.join(source_kinds) or 'none'}",
+    ]
+    if life_long_pass is not None:
+        parts.append(f"life_long {'pass' if life_long_pass else 'fail'}")
+    if fusion_action:
+        parts.append(f"action {fusion_action}")
+    return ", ".join(parts) + "."
 
 
 def _first_int(*values: object) -> int | None:
