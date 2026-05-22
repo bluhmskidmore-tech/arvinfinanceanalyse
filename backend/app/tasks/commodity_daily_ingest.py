@@ -17,12 +17,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import duckdb
-from backend.app.governance.locks import LockDefinition, acquire_lock
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-from backend.app.repositories.tushare_adapter import import_tushare_pro, resolve_tushare_token_with_settings_fallback
-from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
+import duckdb  # noqa: E402
+from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
+from backend.app.governance.settings import get_settings  # noqa: E402
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection  # noqa: E402
+from backend.app.repositories.tushare_adapter import (  # noqa: E402
+    import_tushare_pro,
+    resolve_tushare_token_with_settings_fallback,
+)
+from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -366,9 +369,9 @@ def _fetch_tushare_futures_rows(
             continue
         joined_records.append(
             {
+                **daily,
                 "trade_date": trade_date,
                 "mapping_ts_code": contract_code,
-                **daily,
             }
         )
 
