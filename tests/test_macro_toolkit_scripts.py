@@ -619,6 +619,7 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     governance_path = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     get_settings.cache_clear()
     calls: list[tuple[str, dict[str, object]]] = []
 
