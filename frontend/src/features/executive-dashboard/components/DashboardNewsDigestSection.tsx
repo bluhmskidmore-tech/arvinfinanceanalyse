@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import {
+  externalDataQueryOptions,
+  nonCancellingRefetchOptions,
+} from "../../../app/externalDataRefreshPolicy";
 import type { ChoiceNewsEvent } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { shellTokens } from "../../../theme/tokens";
@@ -13,9 +17,6 @@ import { cockpitInsetCardStyle } from "./DashboardCockpitSection.styles";
 
 /** 与后端 limit 一致：最多展示 5 条，下拉切换阅读。 */
 const NEWS_DIGEST_LIMIT = 5;
-/** 每 2 小时自动刷新列表 */
-const NEWS_DIGEST_REFETCH_MS = 2 * 60 * 60 * 1000;
-
 type NewsKindKey = "all" | "policy" | "news" | "cctv" | "major" | "research";
 
 const KIND_OPTIONS: ReadonlyArray<{ key: NewsKindKey; label: string; groupId?: string }> = [
@@ -163,7 +164,7 @@ export function DashboardNewsDigestSection() {
         groupId: activeKind.groupId,
       }),
     retry: false,
-    refetchInterval: NEWS_DIGEST_REFETCH_MS,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
 
   const events = query.data?.result.events ?? [];
@@ -199,7 +200,7 @@ export function DashboardNewsDigestSection() {
             void (async () => {
               try {
                 await client.ingestTushareNprNews({ limit: 20 });
-                await query.refetch();
+                await query.refetch(nonCancellingRefetchOptions);
               } catch (e) {
                 setIngestError(e instanceof Error ? e.message : "拉取失败");
               } finally {
@@ -234,7 +235,7 @@ export function DashboardNewsDigestSection() {
       eyebrow="新闻摘要"
       title="市场资讯"
       state={state}
-      onRetry={() => void query.refetch()}
+      onRetry={() => void query.refetch(nonCancellingRefetchOptions)}
       emptyFooter={emptyFooter}
       extra={
         <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, fontWeight: 600 }}>

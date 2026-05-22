@@ -55,9 +55,6 @@ export function externalDataRefetchInterval(
   const status = meta?.vendor_status;
   const fallbackMode = meta?.fallback_mode;
   const quality = sectionSignal?.quality_flag ?? meta?.quality_flag;
-  const tier = sectionSignal?.refresh_tier ?? "stable";
-  const fetchMode = sectionSignal?.fetch_mode ?? "date_slice";
-
   if (status === "vendor_unavailable") {
     return applyFailureBackoff(EXTERNAL_REFRESH_INTERVALS_MS.unavailableReview, query);
   }
@@ -68,10 +65,6 @@ export function externalDataRefetchInterval(
     quality === "stale" ||
     quality === "warning"
   ) {
-    return applyFailureBackoff(EXTERNAL_REFRESH_INTERVALS_MS.staleReview, query);
-  }
-
-  if (tier === "fallback" || fetchMode === "latest") {
     return applyFailureBackoff(EXTERNAL_REFRESH_INTERVALS_MS.staleReview, query);
   }
 

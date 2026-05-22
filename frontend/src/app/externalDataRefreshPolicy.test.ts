@@ -5,6 +5,7 @@ import {
   EXTERNAL_REFRESH_INTERVALS_MS,
   externalDataQueryOptions,
   externalDataRefetchInterval,
+  nonCancellingRefetchOptions,
 } from "./externalDataRefreshPolicy";
 
 function resultMeta(partial: Partial<ResultMeta> = {}): ResultMeta {
@@ -105,11 +106,13 @@ describe("externalDataRefreshPolicy", () => {
     );
   });
 
-  it("polls fallback latest sections even when the result meta is otherwise healthy", () => {
+  it("does not poll fallback latest sections when freshness metadata is healthy", () => {
     const fallbackLatestPoint = { refresh_tier: "fallback", fetch_mode: "latest" };
 
-    expect(externalDataRefetchInterval(queryFor(envelope(resultMeta())), fallbackLatestPoint)).toBe(
-      EXTERNAL_REFRESH_INTERVALS_MS.staleReview,
-    );
+    expect(externalDataRefetchInterval(queryFor(envelope(resultMeta())), fallbackLatestPoint)).toBe(false);
+  });
+
+  it("exports refetch options that reuse an in-flight request instead of cancelling it", () => {
+    expect(nonCancellingRefetchOptions).toEqual({ cancelRefetch: false });
   });
 });

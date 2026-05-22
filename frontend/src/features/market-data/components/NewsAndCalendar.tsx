@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Spin, Tabs } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
 import type { ChoiceNewsEvent, ResearchCalendarEvent } from "../../../api/contracts";
 
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -64,12 +65,14 @@ export function NewsAndCalendar() {
     queryKey: ["market-data", "headlines", "choice-events", client.mode],
     queryFn: () => client.getChoiceNewsEvents({ limit: 12, offset: 0 }),
     retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
 
   const calendarQuery = useQuery({
     queryKey: ["market-data", "calendar", "supply-auctions", client.mode],
     queryFn: () => client.getResearchCalendarEvents({}),
     retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
 
   const headlineRows = useMemo(() => {
