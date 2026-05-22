@@ -1,4 +1,4 @@
-"""Verify all mutation routes enforce auth and refresh routes accept identity-only."""
+"""Verify write-route auth contracts, including scoped refresh exceptions."""
 from __future__ import annotations
 
 import pytest
@@ -105,29 +105,181 @@ def test_mutation_route_returns_403_without_scope_grant(method, path, body, tmp_
         assert "reserved" in response.text.lower()
 
 
-REFRESH_ROUTES = [
-    ("POST", "/api/data/refresh_pnl", None),
-    ("POST", "/ui/pnl/product-category/refresh", None),
-    ("POST", "/api/bond-analytics/refresh?report_date=2026-01-01", None),
-    ("POST", "/ui/balance-analysis/refresh?report_date=2026-01-01", None),
-    ("POST", "/ui/balance-movement-analysis/refresh?report_date=2026-01-01", None),
-    ("POST", "/ui/preview/source-foundation/refresh", None),
+def _patch_formal_pnl_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.pnl as route_module
+
+    class FakePnlService:
+        PnlRefreshConflictError = type("PnlRefreshConflictError", (Exception,), {})
+
+        def refresh_pnl(self, _settings, *, report_date=None):
+            calls.append("called")
+            return {"status": "queued", "run_id": "formal-pnl-refresh-test", "report_date": report_date}
+
+    monkeypatch.setattr(route_module, "_pnl_service", lambda: FakePnlService())
+    return "formal-pnl-refresh-test"
+
+
+def _patch_bond_analytics_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.bond_analytics as route_module
+
+    def fake_refresh(_settings, *, report_date: str):
+        calls.append("called")
+        return {"status": "queued", "run_id": "bond-analytics-refresh-test", "report_date": report_date}
+
+    monkeypatch.setattr(route_module, "refresh_bond_analytics", fake_refresh)
+    return "bond-analytics-refresh-test"
+
+
+def _patch_balance_analysis_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.balance_analysis as route_module
+
+    def fake_refresh(_settings, *, report_date: str):
+        calls.append("called")
+        return {"status": "queued", "run_id": "balance-analysis-refresh-test", "report_date": report_date}
+
+    monkeypatch.setattr(route_module, "refresh_balance_analysis", fake_refresh)
+    return "balance-analysis-refresh-test"
+
+
+def _patch_accounting_asset_movement_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.accounting_asset_movement as route_module
+
+    def fake_refresh(_settings, *, report_date: str, currency_basis: str):
+        calls.append("called")
+        return {
+            "status": "queued",
+            "run_id": "accounting-asset-movement-refresh-test",
+            "report_date": report_date,
+            "currency_basis": currency_basis,
+        }
+
+    monkeypatch.setattr(route_module, "refresh_accounting_asset_movement", fake_refresh)
+    return "accounting-asset-movement-refresh-test"
+
+
+def _patch_source_preview_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.source_preview as route_module
+
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "1")
+
+    def fake_refresh(_settings):
+        calls.append("called")
+        return {"status": "queued", "run_id": "source-preview-refresh-test"}
+
+    monkeypatch.setattr(route_module, "refresh_source_preview", fake_refresh)
+    return "source-preview-refresh-test"
+
+
+def _patch_choice_stock_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.macro_toolkit as route_module
+    from backend.app.services import macro_toolkit_service
+
+    def fake_refresh(**_kwargs):
+        calls.append("called")
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={"status": "queued", "run_id": "choice-stock-refresh-test"},
+            quality_flag="ok",
+            fallback_mode="none",
+            as_of_date="2026-04-30",
+        )
+
+    monkeypatch.setattr(macro_toolkit_service, "queue_choice_stock_refresh", fake_refresh)
+    monkeypatch.setattr(route_module, "_choice_stock_refresh_overview", lambda *_args, **_kwargs: {"status": "queued"})
+    return "choice-stock-refresh-test"
+
+
+def _patch_product_category_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.product_category_pnl as route_module
+
+    def fake_refresh(_settings):
+        calls.append("called")
+        return {"status": "queued", "run_id": "product-category-refresh-test"}
+
+    monkeypatch.setattr(route_module, "refresh_product_category_pnl", fake_refresh)
+    return "product-category-refresh-test"
+
+
+SCOPED_REFRESH_ROUTES = [
+    ("/api/data/refresh_pnl", None, "formal_pnl", _patch_formal_pnl_refresh),
+    ("/api/bond-analytics/refresh?report_date=2026-01-01", None, "bond_analytics", _patch_bond_analytics_refresh),
+    ("/ui/balance-analysis/refresh?report_date=2026-01-01", None, "balance_analysis", _patch_balance_analysis_refresh),
     (
-        "POST",
-        "/ui/macro/toolkit/choice-stock/refresh",
-        {"as_of_date": "2026-04-30", "refresh_history": False, "refresh_factors": False},
+        "/ui/balance-movement-analysis/refresh?report_date=2026-01-01",
+        None,
+        "accounting_asset_movement",
+        _patch_accounting_asset_movement_refresh,
     ),
+    ("/ui/preview/source-foundation/refresh", None, "source_preview.source_foundation", _patch_source_preview_refresh),
+    (
+        "/ui/macro/toolkit/choice-stock/refresh",
+        {"as_of_date": "2026-04-30", "refresh_history": True, "refresh_factors": False},
+        "macro_toolkit.choice_stock",
+        _patch_choice_stock_refresh,
+    ),
+    ("/ui/pnl/product-category/refresh", None, "product_category_pnl", _patch_product_category_refresh),
 ]
 
 
-@pytest.mark.parametrize("method,path,body", REFRESH_ROUTES, ids=[f"{m} {p.split('?')[0]}" for m, p, _ in REFRESH_ROUTES])
-def test_refresh_route_does_not_require_scope_grant(method, path, body, tmp_path, monkeypatch):
-    """Refresh routes should NOT return 403 even without scope grants (identity-only)."""
-    _setup_scope_store(tmp_path, monkeypatch, grant=False)
+@pytest.mark.parametrize(
+    "path,body,resource,patch_refresh",
+    SCOPED_REFRESH_ROUTES,
+    ids=[path.split("?")[0] for path, _, _, _ in SCOPED_REFRESH_ROUTES],
+)
+def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch_refresh, tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    calls: list[str] = []
+    expected_run_id = patch_refresh(monkeypatch, calls)
     client = TestClient(_load_app(), raise_server_exceptions=False)
-    headers = {"X-User-Id": "test-refresh-user"}
-    response = client.post(path, json=body, headers=headers)
-    assert response.status_code != 403, f"Refresh route {path} should not require permissions, got 403"
+
+    denied = client.post(
+        path,
+        json=body,
+        headers={"X-User-Id": "refresh-user"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="refresh-user",
+        role=None,
+        resource=resource,
+        action="refresh",
+    )
+    allowed = client.post(
+        path,
+        json=body,
+        headers={"X-User-Id": "refresh-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert expected_run_id in allowed.text
+    assert calls == ["called"]
+
+
+def test_product_category_refresh_returns_503_when_scope_store_unavailable(tmp_path, monkeypatch):
+    _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    calls: list[str] = []
+    _patch_product_category_refresh(monkeypatch, calls)
+    monkeypatch.setattr(
+        UserScopeRepository,
+        "has_permission",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("scope store down")),
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/pnl/product-category/refresh",
+        headers={"X-User-Id": "product-category-user"},
+    )
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "User scope store is unavailable."
+    assert calls == []
 
 
 def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):

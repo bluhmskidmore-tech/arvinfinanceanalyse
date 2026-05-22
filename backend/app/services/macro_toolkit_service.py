@@ -294,12 +294,12 @@ def latest_choice_stock_inflight_refresh(
 
 def build_choice_stock_refresh_permission_payload(auth: AuthContext | None = None) -> dict[str, object]:
     return {
-        "mode": "identity_only",
+        "mode": "scoped_refresh",
         "allowed": True,
         "user_id": auth.user_id if auth else None,
         "role": auth.role if auth else None,
         "identity_source": auth.identity_source if auth else None,
-        "resource": "choice_stock.refresh",
+        "resource": "macro_toolkit.choice_stock",
         "actions": ["history", "factor_snapshot"],
     }
 

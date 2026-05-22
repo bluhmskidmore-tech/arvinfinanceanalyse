@@ -26,6 +26,8 @@ from backend.app.core_finance.macro.toolkit.system_sources import load_series_by
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
 from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services import cffex_member_rank_service, macro_toolkit_service
 
 
@@ -262,7 +264,7 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "missing_table",
         "empty_table",
     }
-    assert payload["result"]["choice_stock_refresh"]["permission"]["mode"] == "identity_only"
+    assert payload["result"]["choice_stock_refresh"]["permission"]["mode"] == "scoped_refresh"
     assert "signal_aggregator" in scripts
     assert scripts["signal_aggregator"]["available"] is True
     assert payload["result_meta"]["tables_used"] == [
@@ -617,10 +619,18 @@ def test_macro_toolkit_multi_factor_uses_full_landed_factor_snapshot(tmp_path, m
 def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapshot(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     get_settings.cache_clear()
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="stock-refresh-user",
+        role=None,
+        resource="macro_toolkit.choice_stock",
+        action="refresh",
+    )
     calls: list[tuple[str, dict[str, object]]] = []
 
     def fake_materialize_choice_stock_inputs(**kwargs: object) -> dict[str, object]:
@@ -676,7 +686,7 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     refresh = payload["result"]["refresh"]
     assert refresh["status"] == "queued"
     assert refresh["trigger_mode"] == "async"
-    assert refresh["permission"]["mode"] == "identity_only"
+    assert refresh["permission"]["mode"] == "scoped_refresh"
     assert refresh["permission"]["user_id"] == "stock-refresh-user"
     assert calls == [
         (
@@ -704,11 +714,80 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     assert status_payload["result"]["refresh"]["trigger_mode"] == "terminal"
 
 
+def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    calls: list[dict[str, object]] = []
+
+    def fake_queue_choice_stock_refresh(**kwargs: object) -> macro_toolkit_service.MacroToolkitActionResult:
+        calls.append(dict(kwargs))
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "queued",
+                "run_id": "choice-stock-refresh-auth-test",
+                "permission": kwargs["permission"],
+            },
+            quality_flag="ok",
+            fallback_mode="none",
+            as_of_date="2026-04-30",
+        )
+
+    monkeypatch.setattr(macro_toolkit_service, "queue_choice_stock_refresh", fake_queue_choice_stock_refresh)
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+    payload = {
+        "as_of_date": "2026-04-30",
+        "refresh_history": True,
+        "refresh_factors": True,
+        "factor_max_stock_count": None,
+    }
+
+    denied = client.post(
+        "/ui/macro/toolkit/choice-stock/refresh",
+        json=payload,
+        headers={"X-User-Id": "choice-stock-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="choice-stock-refresh-user",
+        role=None,
+        resource="macro_toolkit.choice_stock",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/ui/macro/toolkit/choice-stock/refresh",
+        json=payload,
+        headers={"X-User-Id": "choice-stock-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["result"]["refresh"]["run_id"] == "choice-stock-refresh-auth-test"
+    assert len(calls) == 1
+    assert calls[0]["permission"]["resource"] == "macro_toolkit.choice_stock"
+    get_settings.cache_clear()
+
+
 def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monkeypatch) -> None:
     governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     get_settings.cache_clear()
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_toolkit.choice_stock",
+        action="refresh",
+    )
     GovernanceRepository(base_dir=governance_path).append(
         macro_toolkit_service.CACHE_BUILD_RUN_STREAM,
         macro_toolkit_service.build_choice_stock_refresh_run_payload(

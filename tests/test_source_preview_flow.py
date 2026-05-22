@@ -3,11 +3,13 @@ from datetime import datetime, timezone
 import sys
 
 import duckdb
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 
 REFRESH_SOURCE_FAMILIES = ["zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"]
@@ -232,6 +234,54 @@ def test_source_preview_refresh_queues_async_run_and_reports_latest_status(tmp_p
     assert status_payload["job_name"] == "source_preview_refresh"
     assert status_payload["trigger_mode"] == "async"
     assert status_payload["cache_key"] == "source_preview.foundation"
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch):
+    sqlite_path = _configure_source_preview_refresh_scope_store(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    route_module = load_module(
+        "backend.app.api.routes.source_preview",
+        "backend/app/api/routes/source_preview.py",
+    )
+    calls: list[str] = []
+
+    def fake_refresh(_settings):
+        calls.append("called")
+        return {"status": "queued", "run_id": "source-preview-refresh-auth-test"}
+
+    monkeypatch.setattr(route_module, "refresh_source_preview", fake_refresh)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    denied = client.post(
+        "/ui/preview/source-foundation/refresh",
+        headers={"X-User-Id": "source-preview-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="source-preview-refresh-user",
+        role=None,
+        resource="source_preview.source_foundation",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/ui/preview/source-foundation/refresh",
+        headers={"X-User-Id": "source-preview-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["run_id"] == "source-preview-refresh-auth-test"
+    assert calls == ["called"]
     get_settings.cache_clear()
 
 
@@ -539,7 +589,10 @@ def test_source_preview_refresh_clears_stale_inflight_run(tmp_path, monkeypatch)
     )
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
-    response = client.post("/ui/preview/source-foundation/refresh")
+    response = client.post(
+        "/ui/preview/source-foundation/refresh",
+        headers={"X-User-Id": "source-preview-refresh-user"},
+    )
 
     assert response.status_code == 200
     assert send_calls
@@ -693,6 +746,7 @@ def test_source_preview_refresh_returns_stable_503_when_authority_governance_que
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{(tmp_path / 'governance.db').as_posix()}")
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -985,6 +1039,7 @@ def test_source_preview_refresh_sql_authority_status_reads_sql_governance_when_j
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1036,6 +1091,7 @@ def test_source_preview_refresh_sql_authority_status_returns_503_when_sql_govern
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{(tmp_path / 'governance.db').as_posix()}")
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1078,6 +1134,7 @@ def test_source_preview_refresh_sync_fallback_sql_authority_persists_manifest_vi
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1126,6 +1183,7 @@ def test_source_preview_refresh_sql_shadow_status_prefers_jsonl_over_conflicting
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-shadow")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1197,6 +1255,7 @@ def test_source_preview_refresh_sync_fallback_sql_shadow_dual_writes_jsonl_and_s
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-shadow")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1711,8 +1770,30 @@ def _configure_source_preview_refresh_env(
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'source-preview-refresh-scope.db').as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     return duckdb_path, governance_dir, data_root
+
+
+def _configure_source_preview_refresh_scope_store(tmp_path, monkeypatch, *, user_id: str | None = None) -> object:
+    sqlite_path = tmp_path / "source-preview-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    if user_id is not None:
+        repo_module = load_module(
+            "backend.app.repositories.user_scope_repo",
+            "backend/app/repositories/user_scope_repo.py",
+        )
+        repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+            user_id=user_id,
+            role=None,
+            resource="source_preview.source_foundation",
+            action="refresh",
+        )
+    return sqlite_path
 
 
 def _configure_source_preview_status_env(tmp_path, monkeypatch):
@@ -1720,5 +1801,21 @@ def _configure_source_preview_status_env(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'source-preview-refresh-scope.db').as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
+    _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
     return governance_dir
+
+
+def _grant_source_preview_refresh_scope(*, settings, user_id: str) -> None:
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="source_preview.source_foundation",
+        action="refresh",
+    )

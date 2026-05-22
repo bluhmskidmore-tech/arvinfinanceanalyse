@@ -371,6 +371,7 @@ def macro_toolkit_refresh_choice_stock(
         )
 
     settings = get_settings()
+    _ensure_choice_stock_refresh_allowed(auth, settings)
     as_of_date = refresh_request.as_of_date or _default_choice_stock_refresh_as_of_date(settings.duckdb_path)
     permission = _choice_stock_refresh_permission_payload(auth)
     try:
@@ -452,6 +453,20 @@ def _ensure_cffex_member_rank_refresh_allowed(auth: AuthContext, settings: objec
             auth=auth,
             settings=settings,
             resource="macro_toolkit.cffex_member_rank",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_choice_stock_refresh_allowed(auth: AuthContext, settings: object) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_toolkit.choice_stock",
             action="refresh",
         )
     except PermissionError as exc:

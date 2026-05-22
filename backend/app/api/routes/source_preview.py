@@ -1,10 +1,8 @@
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.source_preview_refresh_service import (
     SourcePreviewRefreshConflictError,
     SourcePreviewRefreshServiceError,
@@ -12,12 +10,13 @@ from backend.app.services.source_preview_refresh_service import (
     source_preview_refresh_status,
 )
 from backend.app.services.source_preview_service import (
-    source_preview_history_envelope,
+    SUPPORTED_PREVIEW_SOURCE_FAMILIES,
     preview_rows_envelope,
     preview_traces_envelope,
     source_preview_envelope,
-    SUPPORTED_PREVIEW_SOURCE_FAMILIES,
+    source_preview_history_envelope,
 )
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui/preview")
 
@@ -82,8 +81,20 @@ def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
     _require_source_preview_http_enabled()
+    settings = get_settings()
     try:
-        return refresh_source_preview(get_settings())
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="source_preview.source_foundation",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        return refresh_source_preview(settings)
     except SourcePreviewRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SourcePreviewRefreshServiceError as exc:
