@@ -9,7 +9,7 @@ type MacroToolkitClientFactoryOptions = {
   baseUrl: string;
 };
 
-const MACRO_TOOLKIT_READ_TIMEOUT_MS = 15_000;
+const MACRO_TOOLKIT_READ_TIMEOUT_MS = 90_000;
 
 export type MacroToolkitScriptRecord = {
   name: string;

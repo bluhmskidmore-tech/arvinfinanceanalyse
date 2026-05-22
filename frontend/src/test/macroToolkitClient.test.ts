@@ -22,7 +22,7 @@ describe("macroToolkitClient", () => {
       const pending = expect(client.getMacroToolkitAnalysis()).rejects.toThrow(
         "Macro toolkit request timed out: /ui/macro/toolkit/analysis",
       );
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(90_000);
       await pending;
     } finally {
       vi.useRealTimers();
