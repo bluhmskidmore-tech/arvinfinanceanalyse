@@ -31,6 +31,10 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-EXEC-SUMMARY-001": (
         "narrative-only executive summary; no business metric bindings by design."
     ),
+    "PAGE-AGENT-001": (
+        "agent workbench is analytical/read-only and must not promote agent answers "
+        "into formal financial metrics without explicit formal-use approval."
+    ),
     "PAGE-BOND-001": (
         "candidate / blocked-by-contract-gap; page contract keeps display-field truth "
         "without promoting standalone `MTR-*` bindings yet."

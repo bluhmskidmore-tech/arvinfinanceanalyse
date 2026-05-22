@@ -64,6 +64,7 @@
 ### 4.1 指标 ID 规则
 
 - `MTR-BAL-*`：balance-analysis
+- `MTR-BMV-*`：balance-movement-analysis
 - `MTR-PNL-*`：formal PnL
 - `MTR-BRG-*`：PnL bridge
 - `MTR-RSK-*`：risk tensor
@@ -153,6 +154,27 @@
 | `MTR-BAL-201` | 投资类型标准分类 | business | `formal` | `invest_type_std`；规则见 `docs/calc_rules.md §2` | 明细/汇总/basis breakdown | 文本枚举：`H/A/T` | 不允许前端推导 | `tests/test_balance_analysis_core.py` |
 | `MTR-BAL-202` | 会计分类 | business | `formal` | `accounting_basis`；规则见 `docs/calc_rules.md` | 明细/汇总/basis breakdown | 文本枚举：`AC/FVOCI/FVTPL` | 不允许前端推导 | `tests/test_balance_analysis_core.py` |
 | `MTR-BAL-203` | source_family | control | `formal` | `zqtz/tyw/combined` | summary / basis breakdown / workbook | 文本枚举 | 仅表示来源族，不是业务口径 | `tests/test_balance_analysis_contracts.py` |
+
+## 6.4 Balance Movement Analysis
+
+| metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `MTR-BMV-001` | 上期余额总额 | business | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.previous_balance_total` | `/balance-movement-analysis` summary | 金额；页面仅做展示单位换算 | 与选定 `report_date` 对应的上期比较口径绑定；不得前端重算 | `tests/test_accounting_asset_movement_service.py` |
+| `MTR-BMV-002` | 本期余额总额 | business | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.current_balance_total` | `/balance-movement-analysis` summary | 金额；页面仅做展示单位换算 | `resolved_report_date` 绑定；lineage 缺失时沿用页面 fail-closed 语义 | `tests/test_accounting_asset_movement_service.py` |
+| `MTR-BMV-003` | 余额变动总额 | business | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.balance_change_total` | `/balance-movement-analysis` summary、首屏业务结论 | 金额；保留源字段正负号 | 与当前/上期余额比较窗口强绑定；不得脱离选定日期解释 | `tests/test_accounting_asset_movement_service.py` |
+| `MTR-BMV-004` | 对账差异总额 | quality | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.reconciliation_diff_total` | `/balance-movement-analysis` summary | 金额；用于治理/对账状态可见性 | 与 `result_meta.quality_flag`、refresh 状态共同解释；不得静默隐藏 | `tests/test_accounting_asset_movement_service.py` |
+
+## 6.5 Liability Analytics
+
+| metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `MTR-LIAB-001` | 负债总额 | business | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityCounterpartyPayload.total_value` / `LiabilityRiskBucketsPayload.liabilities_structure[].amount` | `/liability-analytics` daily headline and structure views | 金额；前端展示为亿元 | compatibility analytical read surface；必须随 `result_meta` 暴露 basis/quality/fallback | `tests/test_result_meta_on_all_ui_endpoints.py`; `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
+| `MTR-LIAB-002` | 负债成本 | business | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityYieldKpi.liability_cost` | `/liability-analytics` daily yield-cost KPI | 百分比 Numeric；保留后端 display / raw 语义 | 与选定 `report_date` 绑定；不可在前端重算 | `tests/test_result_meta_source_surface_followup.py`; `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
+| `MTR-LIAB-003` | 净息差（NIM） | business | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityYieldKpi.nim` | `/liability-analytics` conclusion and yield-cost KPI | 百分比 Numeric；必要时可派生 bp 说明 | compatibility read surface；不得伪装为 formal truth | `tests/test_result_meta_source_surface_followup.py`; `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
+| `MTR-LIAB-004` | 1 年内到期负债压力 | risk | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityRiskBucketsPayload.liabilities_term_buckets[]` where bucket represents <= 1Y | `/liability-analytics` daily pressure KPI and term structure | 金额；前端仅聚合已返回期限桶展示值 | 期限桶命名来自后端兼容口径；桶定义变化必须同步页面契约 | `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
+| `MTR-LIAB-005` | 头部对手方占比 | risk | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityCounterpartyPayload.top_10[].value / total_value` | `/liability-analytics` conclusion and counterparty view | 百分比；前端以总额计算展示占比 | 仅用于 concentration read model；total 缺失时显示缺失态 | `frontend/src/features/liability-analytics/adapters/liabilityAdapter.test.ts`; `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
+| `MTR-LIAB-006` | 月均负债总额 | business | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityMonthlyItem.avg_total_liabilities` | `/liability-analytics` monthly average-balance view | 金额；前端展示为亿元 | 月度平均余额语义；不可与日末余额混用 | `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
+| `MTR-LIAB-007` | 月均负债成本 | business | `analytical` | `backend/app/schemas/liability_analytics.py -> LiabilityMonthlyItem.avg_liability_cost` | `/liability-analytics` monthly snapshot / NIM stress view | 百分比 Numeric | 月度平均成本语义；与 daily `liability_cost` 分开解释 | `frontend/src/test/LiabilityAnalyticsPage.test.tsx` |
 
 ## 7. Formal PnL
 

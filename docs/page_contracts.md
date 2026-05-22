@@ -1422,7 +1422,16 @@
 - Failure state: date load/detail load/refresh failure must show a user-visible error and must not backfill with demo rows.
 - Stale/fallback state: `result_meta.quality_flag`, `fallback_mode`, source/version, and refresh status remain part of the governance line.
 
-### E. Tests
+### E. Metric bindings
+
+| Page display item | `metric_id` | Source field |
+| --- | --- | --- |
+| Previous balance total | `MTR-BMV-001` | `summary.previous_balance_total` |
+| Current balance total | `MTR-BMV-002` | `summary.current_balance_total` |
+| Balance change total | `MTR-BMV-003` | `summary.balance_change_total` |
+| Reconciliation diff total | `MTR-BMV-004` | `summary.reconciliation_diff_total` |
+
+### F. Tests
 
 - Frontend: `frontend/src/test/BalanceMovementAnalysisPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
 - Backend: `tests/test_accounting_asset_movement_api.py`, `tests/test_result_meta_on_all_ui_endpoints.py`.
@@ -1467,7 +1476,21 @@
 - Failure state: date load, daily core query, monthly query, and knowledge-query failures must be visible and retryable where supported.
 - Stale/fallback state: quality/fallback/vendor metadata and synthetic section notes must remain visible; the page may explain derived sections but may not hide pending metric definitions.
 
-### E. Tests
+### E. Metric bindings
+
+These bindings are analytical compatibility bindings, not formal balance/PnL truth. The page must keep result metadata visible and must not hide synthetic or derived section boundaries.
+
+| Page display item | `metric_id` | Source field |
+| --- | --- | --- |
+| Daily liability total | `MTR-LIAB-001` | `counterparty.total_value` / `risk_buckets.liabilities_structure[].amount` |
+| Daily liability cost | `MTR-LIAB-002` | `yield_metrics.kpi.liability_cost` |
+| Daily NIM | `MTR-LIAB-003` | `yield_metrics.kpi.nim` |
+| One-year maturity pressure | `MTR-LIAB-004` | `risk_buckets.liabilities_term_buckets[]` <= 1Y bucket |
+| Top counterparty share | `MTR-LIAB-005` | `counterparty.top_10[0].value / counterparty.total_value` |
+| Monthly average total liabilities | `MTR-LIAB-006` | `liabilities_monthly.months[].avg_total_liabilities` |
+| Monthly average liability cost | `MTR-LIAB-007` | `liabilities_monthly.months[].avg_liability_cost` |
+
+### F. Tests
 
 - Frontend: `frontend/src/test/LiabilityAnalyticsPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`, `frontend/src/features/liability-analytics/adapters/liabilityAdapter.test.ts`.
 - Backend: `tests/test_result_meta_on_all_ui_endpoints.py` and liability analytics route/service tests where present.
