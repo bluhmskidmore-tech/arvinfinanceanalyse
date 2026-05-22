@@ -136,6 +136,11 @@
       "path": "28_livermore_candidate_history.sql",
       "ensure_module": "backend.app.tasks.livermore_candidate_history_materialize",
       "ensure_symbol": "ensure_livermore_candidate_history_schema"
+    },
+    {
+      "path": "29_commodity_futures_daily.sql",
+      "ensure_module": "backend.app.tasks.commodity_daily_ingest",
+      "ensure_symbol": "ensure_commodity_futures_daily_schema"
     }
   ]
 }
