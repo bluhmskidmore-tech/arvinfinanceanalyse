@@ -25,6 +25,7 @@ import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateReviewQueue,
   buildClosedLoopSummary,
+  buildCycleMacroLayerSummary,
   buildDataBoundarySummary,
   buildDecisionSummary,
   buildInlineMetaSegments,
@@ -526,6 +527,10 @@ export default function StockAnalysisPage() {
   const hybridFusionPayload = strategyPayload?.hybrid_fusion_candidates;
   const reviewQueueUsesHybridFusion = (hybridFusionPayload?.items?.length ?? 0) > 0;
   const cycleRotationFramework = strategyPayload?.cycle_rotation_framework;
+  const cycleMacroLayerSummary = useMemo(
+    () => (strategyPayload ? buildCycleMacroLayerSummary(strategyPayload) : null),
+    [strategyPayload],
+  );
 
   const consensusSummary = useMemo(
     () => buildConsensusSummary(strategyPayload),
@@ -1282,8 +1287,55 @@ export default function StockAnalysisPage() {
                     {cycleRotationFramework.macro_formula ? (
                       <span>{cycleRotationFramework.macro_formula}</span>
                     ) : null}
+                    {cycleRotationFramework.lifecourt_formula ? (
+                      <span>{cycleRotationFramework.lifecourt_formula}</span>
+                    ) : null}
+                    {cycleRotationFramework.fusion_formula ? (
+                      <span>{cycleRotationFramework.fusion_formula}</span>
+                    ) : null}
                     <small>{cycleRotationFramework.rebalance_cadence}</small>
                   </div>
+                  {cycleMacroLayerSummary ? (
+                    <div
+                      className="stock-analysis-page__cycle-macro-layer"
+                      data-testid="stock-analysis-cycle-macro-layer"
+                    >
+                      <div className="stock-analysis-page__section-head">
+                        <strong>宏观层 MacroScore</strong>
+                        <span className="stock-analysis-page__pill">
+                          {cycleMacroLayerSummary.statusLabel}
+                        </span>
+                      </div>
+                      <p>
+                        MacroScore {cycleMacroLayerSummary.macroScoreLabel} · 融合公式{" "}
+                        {cycleMacroLayerSummary.formulaVersionLabel}
+                      </p>
+                      <p>{cycleMacroLayerSummary.evidence}</p>
+                      <small>{cycleMacroLayerSummary.detailLabel}</small>
+                      {cycleMacroLayerSummary.macroGapLabels.length > 0 ? (
+                        <div className="stock-analysis-page__cycle-constraints">
+                          {cycleMacroLayerSummary.macroGapLabels.map((gap) => (
+                            <span key={gap}>{gap}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {cycleRotationFramework.lifecourt_overlay ? (
+                    <div className="stock-analysis-page__cycle-lifecourt-overlay">
+                      <strong>{cycleRotationFramework.lifecourt_overlay.display_name}</strong>
+                      <p>{cycleRotationFramework.lifecourt_overlay.boundary}</p>
+                      <small>
+                        Available: {cycleRotationFramework.lifecourt_overlay.available_inputs.join(", ") || "-"} /
+                        Missing: {cycleRotationFramework.lifecourt_overlay.missing_inputs.join(", ") || "-"}
+                      </small>
+                      <div className="stock-analysis-page__cycle-constraints">
+                        {cycleRotationFramework.lifecourt_overlay.life_long_gates.map((gate) => (
+                          <span key={gate}>{gate}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="stock-analysis-page__cycle-layer-grid">
                     {cycleRotationFramework.layers.map((layer) => (
                       <article className="stock-analysis-page__cycle-layer" key={layer.key}>

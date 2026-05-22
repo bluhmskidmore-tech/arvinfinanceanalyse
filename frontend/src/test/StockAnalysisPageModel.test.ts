@@ -9,6 +9,7 @@ import {
   buildCandidateReviewQueue,
   buildCandidateEvidenceCards,
   buildClosedLoopSummary,
+  buildCycleMacroLayerSummary,
   buildDataBoundarySummary,
   buildDecisionSummary,
   buildDailyJudgmentStrip,
@@ -286,6 +287,91 @@ describe("stockAnalysisPageModel", () => {
     expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面 overlay 已接入候选排序");
     expect(queue[0].invalidationFocus).toContain("10EMA");
     expect(queue[0].reviewFocus).not.toContain("买入");
+  });
+
+  it("summarizes cycle macro layer landed state and macro gaps", () => {
+    const landed = buildCycleMacroLayerSummary({
+      ...strategyPayload,
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 0,
+        coverage_note: "Macro layer landed.",
+        items: [],
+      },
+      cycle_rotation_framework: {
+        strategy_name: "A-share cycle rotation research framework",
+        display_name: "A股景气周期选股与行业轮动",
+        observation_only: true,
+        implementation_stage: "verification_pending",
+        score_formula: "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport",
+        rebalance_cadence: "Monthly core review with weekly satellite monitoring.",
+        macro_layer: {
+          macro_score: 0.753,
+          ready: true,
+          evidence: "MacroScore=0.753 from PMI/credit_impulse/price_spread.",
+          available_inputs: ["pmi", "credit_impulse", "price_spread"],
+          missing_inputs: [],
+          lineage: { pmi_series_id: "M0017126" },
+        },
+        layers: [],
+        constraints: [],
+        boundary: "observation-only",
+      },
+      data_gaps: [
+        {
+          input_family: "breadth",
+          status: "missing",
+          evidence: "breadth missing",
+        },
+      ],
+    });
+
+    expect(landed?.statusLabel).toBe("已落地");
+    expect(landed?.macroScoreLabel).toBe("0.7530");
+    expect(landed?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v3");
+    expect(landed?.macroGapLabels).toEqual([]);
+
+    const missing = buildCycleMacroLayerSummary({
+      ...strategyPayload,
+      cycle_rotation_framework: {
+        strategy_name: "A-share cycle rotation research framework",
+        display_name: "A股景气周期选股与行业轮动",
+        observation_only: true,
+        implementation_stage: "verification_pending",
+        score_formula: "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport",
+        rebalance_cadence: "Monthly core review with weekly satellite monitoring.",
+        macro_layer: {
+          macro_score: null,
+          ready: false,
+          evidence: "PMI and credit impulse are not landed.",
+          available_inputs: ["market_gate"],
+          missing_inputs: ["pmi", "credit_impulse", "price_spread"],
+          lineage: {},
+        },
+        layers: [],
+        constraints: [],
+        boundary: "observation-only",
+      },
+      data_gaps: [
+        {
+          input_family: "PMI",
+          status: "missing",
+          evidence: "M0017126 not landed.",
+        },
+        {
+          input_family: "credit_impulse",
+          status: "missing",
+          evidence: "M5525763 not landed.",
+        },
+      ],
+    });
+
+    expect(missing?.statusLabel).toBe("部分就绪");
+    expect(missing?.macroGapLabels).toEqual(["PMI (missing)", "credit_impulse (missing)"]);
+    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v3");
   });
 
   it("uses hybrid fusion candidates as the primary review queue when present", () => {

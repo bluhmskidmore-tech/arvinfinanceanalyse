@@ -190,6 +190,18 @@ export type StockDataBoundarySummary = {
   topMessages: string[];
 };
 
+export type StockCycleMacroLayerSummary = {
+  statusLabel: "已落地" | "待补" | "部分就绪";
+  tone: StockClosedLoopTone;
+  macroScoreLabel: string;
+  formulaVersionLabel: string;
+  evidence: string;
+  availableInputs: string[];
+  missingInputs: string[];
+  macroGapLabels: string[];
+  detailLabel: string;
+};
+
 export type StockAnalysisKpiKey =
   | "market-state"
   | "review-queue"
@@ -475,6 +487,16 @@ function buildHybridFusionEvidenceCards(
       { key: "attention_score", label: "关注代理", value: formatNumber(item.attention_score, 4) },
       { key: "price_confirm_score", label: "价格确认", value: formatNumber(item.price_confirm_score, 4) },
       { key: "crowding_penalty", label: "拥挤惩罚", value: formatNumber(item.crowding_penalty, 4) },
+      {
+        key: "life_long_pass",
+        label: "生命法庭长仓门槛",
+        value: item.life_long_pass == null ? "待补" : item.life_long_pass ? "通过" : "未通过",
+      },
+      {
+        key: "fusion_action",
+        label: "融合裁决",
+        value: item.fusion_action?.trim() || "待补",
+      },
       { key: "confidence", label: "置信度", value: fusionConfidenceLabel(item.confidence) },
       { key: "formula_version", label: "公式版本", value: formula },
     ];
@@ -643,6 +665,70 @@ function countBoundaryItems(payload: LivermoreStrategyPayload): number {
   );
 }
 
+const MACRO_GAP_FAMILIES = new Set(["pmi", "credit_impulse", "macro_score", "price_spread"]);
+
+function isMacroGapFamily(inputFamily: string): boolean {
+  return MACRO_GAP_FAMILIES.has(inputFamily.trim().toLowerCase());
+}
+
+function macroGapLabels(payload: LivermoreStrategyPayload): string[] {
+  return payload.data_gaps
+    .filter((gap) => gap.status !== "ready" && isMacroGapFamily(gap.input_family))
+    .map((gap) => `${gap.input_family} (${gap.status})`);
+}
+
+export function buildCycleMacroLayerSummary(
+  payload: LivermoreStrategyPayload,
+): StockCycleMacroLayerSummary | null {
+  const macroLayer = payload.cycle_rotation_framework?.macro_layer;
+  if (!macroLayer) {
+    return null;
+  }
+
+  const hybridFormula = payload.hybrid_fusion_candidates?.formula_version?.trim() || "";
+  const formulaVersionLabel =
+    hybridFormula || "rv_hybrid_fusion_candidates_v3";
+  const macroScoreLabel =
+    macroLayer.macro_score == null ? "待补" : formatNumber(macroLayer.macro_score, 4);
+  const availableInputs = macroLayer.available_inputs ?? [];
+  const missingInputs = macroLayer.missing_inputs ?? [];
+  const macroGapLabelsList = macroGapLabels(payload);
+  const ready = macroLayer.ready === true;
+
+  let statusLabel: StockCycleMacroLayerSummary["statusLabel"];
+  let tone: StockClosedLoopTone;
+  if (ready) {
+    statusLabel = "已落地";
+    tone = "positive";
+  } else if (availableInputs.length > 0) {
+    statusLabel = "部分就绪";
+    tone = "warning";
+  } else {
+    statusLabel = "待补";
+    tone = "negative";
+  }
+
+  const detailParts = [
+    `可用 ${availableInputs.join(", ") || "-"}`,
+    `缺失 ${missingInputs.join(", ") || "-"}`,
+  ];
+  if (macroGapLabelsList.length > 0) {
+    detailParts.push(`gaps ${macroGapLabelsList.join(" / ")}`);
+  }
+
+  return {
+    statusLabel,
+    tone,
+    macroScoreLabel,
+    formulaVersionLabel,
+    evidence: macroLayer.evidence?.trim() || "宏观层证据待补",
+    availableInputs,
+    missingInputs,
+    macroGapLabels: macroGapLabelsList,
+    detailLabel: detailParts.join(" · "),
+  };
+}
+
 export function buildDataBoundarySummary(
   payload: LivermoreStrategyPayload,
   meta: StockViewModelMeta = {},
@@ -784,6 +870,7 @@ export function buildStockAnalysisEvidenceStatus(
   const lineageLabel = meta.source_version ?? "待补";
   const ruleVersion =
     meta.rule_version ??
+    payload.hybrid_fusion_candidates?.formula_version ??
     payload.sector_rank?.formula_version ??
     payload.stock_candidates?.formula_version ??
     payload.risk_exit?.formula_version ??
