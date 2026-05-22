@@ -141,7 +141,7 @@ export function MarketDataHeroSection({
         <div className="market-data-header-body">
           <div data-testid="market-data-filter-strip">
             <div className="market-data-filter-tray">
-              <FilterBar>
+              <FilterBar className="market-data-filter-row">
                 <label className="market-data-filter-label">
                   日期
                   <input

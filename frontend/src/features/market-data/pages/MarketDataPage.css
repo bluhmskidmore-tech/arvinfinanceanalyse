@@ -6,9 +6,9 @@
 
 .market-data-page .market-data-page__decision-hero-shell.moss-page-v2-decision-hero {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 0;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 1px solid rgba(115, 132, 153, 0.28);
   border-left: 3px solid var(--moss-color-primary-600);
   border-radius: var(--moss-radius-sm);
@@ -34,14 +34,39 @@
 
 .market-data-header-body {
   display: grid;
-  gap: var(--moss-space-2);
+  gap: 8px;
   min-width: 0;
+}
+
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__top {
+  align-items: center;
+  gap: 10px;
+}
+
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__titles {
+  gap: 3px;
+}
+
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__title {
+  font-size: 22px;
+  line-height: 1.08;
+}
+
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__question {
+  max-width: 76ch;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.market-data-page__decision-hero-shell .moss-page-v2-decision-hero__report {
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .market-data-header-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 3px 10px;
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 600;
@@ -54,16 +79,22 @@
 }
 
 .market-data-filter-tray {
-  padding: var(--moss-space-2);
+  padding: 8px 10px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   background: #ffffff;
+}
+
+.market-data-filter-row {
+  gap: 8px 10px !important;
+  align-items: end !important;
 }
 
 .market-data-overview-strip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   width: 100%;
   min-width: 0;
+  gap: 8px;
 }
 
 .market-data-overview-card {
@@ -71,9 +102,10 @@
   position: relative;
   overflow: hidden;
   display: grid;
-  gap: var(--moss-space-1);
-  min-height: 82px;
-  padding: var(--moss-space-3) var(--moss-space-3) 9px;
+  grid-template-rows: auto auto 1fr;
+  gap: 3px;
+  min-height: 66px;
+  padding: 10px 12px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   background: #ffffff;
@@ -114,31 +146,31 @@
 
 .market-data-overview-card__label {
   color: var(--moss-color-text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.2;
 }
 
 .market-data-overview-card__value {
   color: var(--market-overview-tone);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1;
   letter-spacing: 0;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .market-data-overview-card--text .market-data-overview-card__value {
-  font-size: 14px;
-  line-height: 1.25;
+  font-size: 13px;
+  line-height: 1.15;
 }
 
 .market-data-overview-card__detail {
   margin: 0;
   color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 11px;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
@@ -237,18 +269,18 @@
 }
 
 .market-data-filter-tray .ant-select {
-  height: 30px;
+  height: 28px;
 }
 
 .market-data-filter-tray .ant-select .ant-select-selector {
-  min-height: 30px !important;
-  height: 30px !important;
+  min-height: 28px !important;
+  height: 28px !important;
   border-radius: var(--moss-radius-sm);
   font-size: 12px;
 }
 
 .market-data-filter-tray .ant-select .ant-select-selection-item {
-  line-height: 28px;
+  line-height: 26px;
 }
 
 @media (max-width: 1180px) {
@@ -264,7 +296,7 @@
 }
 
 .market-data-section-block {
-  margin-top: var(--moss-space-3);
+  margin-top: var(--moss-space-2);
 }
 
 .market-data-section-inner-block {
@@ -329,15 +361,15 @@
 }
 
 .market-data-hero-inner {
-  margin-top: var(--moss-space-3);
+  margin-top: 6px;
   display: grid;
-  gap: var(--moss-space-3);
+  gap: 8px;
 }
 
 .market-data-mode-pill {
   display: inline-flex;
   align-items: center;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
@@ -372,7 +404,7 @@
 
 .market-data-filter-label {
   display: grid;
-  gap: var(--moss-space-1);
+  gap: 3px;
   font-size: 12px;
   font-weight: 600;
   color: var(--moss-color-neutral-600);
@@ -380,7 +412,7 @@
 
 .market-data-filter-control {
   width: 100%;
-  height: 30px;
+  height: 28px;
   padding: 0 var(--moss-space-3);
   border-radius: var(--moss-radius-sm);
   border: 1px solid var(--moss-color-neutral-200);
@@ -392,7 +424,7 @@
 }
 
 .market-data-filter-select {
-  width: 200px;
+  width: 190px;
 }
 
 .market-data-hero-refresh-btn {

@@ -1,23 +1,14 @@
-import { useMemo, useState, useCallback, type CSSProperties, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Collapse } from "antd";
 
-import { useApiClient } from "../../../api/client";
-import { runPollingTask } from "../../../app/jobs/polling";
-import {
-  externalDataQueryOptions,
-  nonCancellingRefetchOptions,
-} from "../../../app/externalDataRefreshPolicy";
+import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
 import { PageSectionLead, type PageSectionLeadProps } from "../../../components/page/PagePrimitives";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type {
-  ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
-  MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
   ResultMeta,
 } from "../../../api/contracts";
-import { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
@@ -32,19 +23,17 @@ import { NcdMatrix } from "../components/NcdMatrix";
 import { NewsAndCalendar } from "../components/NewsAndCalendar";
 import { RateQuoteTable } from "../components/RateQuoteTable";
 import {
-  buildMarketDataCategoryStore,
   marketCatalogRefreshTier,
   marketSeriesRefreshTier,
   type MarketObservationPoint,
 } from "../lib/marketDataCategoryStore";
-import { buildLivermoreStrategyModel } from "../lib/livermoreStrategyModel";
-import { buildMarketDataTerminalModel } from "../lib/marketDataTerminalModel";
 import { formatSignedNumber } from "../lib/marketDataFormat";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
-import { MarketDataHeroSection, type MarketOverviewMetric } from "./MarketDataHeroSection";
+import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
+import { MarketDataHeroSection } from "./MarketDataHeroSection";
 import { MarketDataMacroDepthTabs } from "./MarketDataMacroDepthTabs";
-import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";
+import { metaEvidenceLine } from "./marketDataPageModel";
 import "./MarketDataPage.css";
 
 /** 产品默认：不显式铺开 Choice 宏观序列读面大卡与页尾目录/追踪版本证据面板（仍为分析读面保留接口拉取与市场概览 KPI）。 */
@@ -80,72 +69,12 @@ function MarketSectionLead({
   return <PageSectionLead {...props} style={marketDataSectionLeadStyle} />;
 }
 
-type SpreadTenorSlot = "3Y" | "5Y" | "10Y";
-
-const SPREAD_TENOR_SLOTS: SpreadTenorSlot[] = ["3Y", "5Y", "10Y"];
 const TARGET_FAMILY_LABELS: Record<string, string> = {
   treasury: "国债收益率",
   cdb: "国开收益率",
   aaa_credit: "AAA 信用收益率",
   credit_spread: "信用利差",
 };
-
-function recentTimelineForMacroPoint(point: ChoiceMacroLatestPoint | undefined) {
-  const map = new Map<string, number>();
-  if (!point) {
-    return map;
-  }
-  for (const rp of point.recent_points ?? []) {
-    map.set(rp.trade_date, rp.value_numeric);
-  }
-  return map;
-}
-
-function buildRateTrendChartOption(series: ChoiceMacroLatestPoint[]): EChartsOption | null {
-  const byId = new Map(series.map((p) => [p.series_id, p]));
-  const dateSet = new Set<string>();
-  const maps = RATE_TREND_DEFINITIONS.map((def) => {
-    const timeline = recentTimelineForMacroPoint(byId.get(def.series_id));
-    for (const d of timeline.keys()) {
-      dateSet.add(d);
-    }
-    return timeline;
-  });
-  if (dateSet.size === 0) {
-    return null;
-  }
-  let unit = "";
-  for (const def of RATE_TREND_DEFINITIONS) {
-    const p = byId.get(def.series_id);
-    if (p?.unit) {
-      unit = p.unit;
-      break;
-    }
-  }
-  const categories = [...dateSet].sort((a, b) => a.localeCompare(b));
-  const lineSeries = RATE_TREND_DEFINITIONS.map((def, i) => ({
-    name: def.name,
-    type: "line" as const,
-    smooth: true,
-    showSymbol: categories.length <= 36,
-    connectNulls: true,
-    data: categories.map((d) => maps[i].get(d) ?? null),
-  }));
-  return {
-    color: [c.info[500], c.semantic.up, c.warning[400]],
-    tooltip: { trigger: "axis" },
-    legend: { bottom: 0 },
-    grid: { left: 52, right: 20, top: 28, bottom: 52 },
-    xAxis: { type: "category", boundaryGap: false, data: categories },
-    yAxis: {
-      type: "value",
-      scale: true,
-      name: unit || undefined,
-      axisLabel: { formatter: "{value}" },
-    },
-    series: lineSeries,
-  };
-}
 
 function formatRecentPoint(point: ChoiceMacroRecentPoint) {
   return `${point.trade_date} ${point.value_numeric.toFixed(2)}`;
@@ -206,14 +135,6 @@ function fxAnalyticalGroupDescription(description: string) {
       "人民币指数和估算指数序列保留为分析口径，不流入正式外汇读面。",
   };
   return labels[description] ?? description;
-}
-
-function correlationStrength(point: MacroBondLinkageTopCorrelation) {
-  return Math.max(
-    Math.abs(point.correlation_1y ?? 0),
-    Math.abs(point.correlation_6m ?? 0),
-    Math.abs(point.correlation_3m ?? 0),
-  );
 }
 
 function familyLabel(targetFamily: string) {
@@ -357,304 +278,63 @@ function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): 
   return value ?? "待定";
 }
 
-function metaEvidenceLine(label: string, meta: ResultMeta | undefined) {
-  if (!meta) {
-    return `${label}: basis=pending formal_use_allowed=pending fallback=pending vendor_status=pending source=pending`;
-  }
-  return `${label}: basis=${meta.basis} formal_use_allowed=${meta.formal_use_allowed} fallback=${meta.fallback_mode} vendor_status=${meta.vendor_status} source=${meta.source_version}`;
-}
-
 export default function MarketDataPage() {
-  const client = useApiClient();
-  const queryClient = useQueryClient();
-  const [watchDate, setWatchDate] = useState(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  });
-  const catalogQuery = useQuery({
-    queryKey: ["market-data", "macro-foundation", client.mode],
-    queryFn: () => client.getMacroFoundation(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
-  });
-  const latestQuery = useQuery({
-    queryKey: ["market-data", "choice-macro-latest", client.mode],
-    queryFn: () => client.getChoiceMacroLatest(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
-  });
-  const fxAnalyticalQuery = useQuery({
-    queryKey: ["market-data", "fx-analytical", client.mode],
-    queryFn: () => client.getFxAnalytical(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
-  });
-  const ncdFundingProxyQuery = useQuery({
-    queryKey: ["market-data", "ncd-funding-proxy", client.mode],
-    queryFn: () => client.getNcdFundingProxy(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
-  });
-  const livermoreStrategyQuery = useQuery({
-    queryKey: ["market-data", "livermore-strategy", client.mode, watchDate],
-    queryFn: () => client.getLivermoreStrategy({ asOfDate: watchDate }),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
-  });
-  const formalRatesQuery = useQuery({
-    queryKey: ["market-data", "formal-rates", client.mode],
-    queryFn: () => client.getMarketDataRates(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
-  });
-  const formalRatesMeta = formalRatesQuery.data?.result_meta;
-  const isFormalBasis = formalRatesMeta?.basis === "formal";
-
-  const catalog = useMemo(
-    () => catalogQuery.data?.result.series ?? [],
-    [catalogQuery.data?.result.series],
-  );
-  const latestSeries = useMemo(
-    () => latestQuery.data?.result.series ?? [],
-    [latestQuery.data?.result.series],
-  );
-  const terminalModel = useMemo(
-    () =>
-      buildMarketDataTerminalModel({
-        ratesEnvelope: formalRatesQuery.data,
-        latestEnvelope: latestQuery.data,
-      }),
-    [formalRatesQuery.data, latestQuery.data],
-  );
-  const fxAnalyticalGroups = useMemo(
-    () => fxAnalyticalQuery.data?.result.groups ?? [],
-    [fxAnalyticalQuery.data?.result.groups],
-  );
-  const ncdFundingProxy = ncdFundingProxyQuery.data?.result;
-  const marketDataCategories = useMemo(
-    () =>
-      buildMarketDataCategoryStore({
-        catalog,
-        latestSeries,
-        fxAnalyticalGroups,
-      }),
-    [catalog, fxAnalyticalGroups, latestSeries],
-  );
-  const visibleLatestSeries = marketDataCategories.visibleLatestSeries;
-  const stableSeries = marketDataCategories.stableSeries;
-  const fallbackSeries = marketDataCategories.fallbackSeries;
-  const stableCatalogSeries = marketDataCategories.stableCatalogSeries;
-  const missingStableSeries = marketDataCategories.missingStableSeries;
-  const stableLatestTradeDate = useMemo(() => {
-    if (stableSeries.length === 0) {
-      return "—";
-    }
-    return stableSeries
-      .map((point) => point.trade_date)
-      .sort((left, right) => right.localeCompare(left))[0];
-  }, [stableSeries]);
-  const linkageReportDate = marketDataCategories.linkageReportDate;
-  const macroBondLinkageQueryKey = useMemo(
-    () => ["market-data", "macro-bond-linkage", client.mode, linkageReportDate] as const,
-    [client.mode, linkageReportDate],
-  );
-  const macroBondLinkageQuery = useQuery({
-    queryKey: macroBondLinkageQueryKey,
-    queryFn: () => client.getMacroBondLinkageAnalysis({ reportDate: linkageReportDate }),
-    enabled: Boolean(linkageReportDate),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
-  });
-  const vendorVersions = marketDataCategories.vendorVersions;
-  const fxAnalyticalSeriesCount = marketDataCategories.fxAnalyticalSeriesCount;
-  const stablePipelineTone = marketDataCategories.stablePipelineTone;
-  const rateTrendChartOption = useMemo(
-    () => buildRateTrendChartOption(latestSeries),
-    [latestSeries],
-  );
-  const livermoreStrategy = useMemo(
-    () =>
-      livermoreStrategyQuery.data
-        ? buildLivermoreStrategyModel({ envelope: livermoreStrategyQuery.data })
-        : null,
-    [livermoreStrategyQuery.data],
-  );
-  const macroBondLinkage = useMemo(
-    () => macroBondLinkageQuery.data?.result ?? ({} as Partial<MacroBondLinkagePayload>),
-    [macroBondLinkageQuery.data?.result],
-  );
-  const macroBondLinkageMeta = macroBondLinkageQuery.data?.result_meta;
-  const macroBondLinkageWarnings = macroBondLinkage.warnings ?? [];
-  const hasPortfolioImpact =
-    Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0;
-  const spreadSlots = useMemo(
-    () =>
-      SPREAD_TENOR_SLOTS.map((tenor) => ({
-        tenor,
-        point:
-          (macroBondLinkage.top_correlations ?? [])
-            .filter(
-              (item) =>
-                item.target_family === "credit_spread" &&
-                item.target_tenor === tenor,
-            )
-            .sort((left, right) => correlationStrength(right) - correlationStrength(left))[0] ?? null,
-      })),
-    [macroBondLinkage.top_correlations],
-  );
-  const nonSpreadTopCorrelations = useMemo(
-    () =>
-      (macroBondLinkage.top_correlations ?? []).filter(
-        (item) => item.target_family !== "credit_spread",
-      ),
-    [macroBondLinkage.top_correlations],
-  );
-  const macroMeta = formalRatesMeta ?? latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
-  const fxAnalyticalMeta = fxAnalyticalQuery.data?.result_meta;
-  const ncdFundingProxyMeta = ncdFundingProxyQuery.data?.result_meta;
-  const rateQuotesSource = terminalModel.rateQuotes.source;
-  const sourcePendingCount = [
-    terminalModel.bondFutures.status,
-    terminalModel.bondTrades.status,
-    terminalModel.creditTrades.status,
-  ].filter((status) => status === "source-pending").length;
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshStatus, setRefreshStatus] = useState("");
-  const [refreshError, setRefreshError] = useState("");
+  const {
+    clientMode,
+    watchDate,
+    setWatchDate,
+    isRefreshing,
+    refreshStatus,
+    refreshError,
+    handleRefresh,
+    pageModel,
+    catalogQuery,
+    latestQuery,
+    fxAnalyticalQuery,
+    ncdFundingProxyQuery,
+    livermoreStrategyQuery,
+    macroBondLinkageQuery,
+    ncdFundingProxy,
+    refreshGateSupplement,
+  } = useMarketDataPageData();
+  const {
+    catalog,
+    visibleLatestSeries,
+    stableSeries,
+    fallbackSeries,
+    stableCatalogSeries,
+    missingStableSeries,
+    linkageReportDate,
+    vendorVersions,
+    terminalModel,
+    fxAnalyticalGroups,
+    rateTrendChartOption,
+    livermoreStrategy,
+    macroBondLinkage,
+    macroBondLinkageMeta,
+    macroBondLinkageWarnings,
+    hasPortfolioImpact,
+    spreadSlots,
+    nonSpreadTopCorrelations,
+    macroMeta,
+    formalRatesMeta,
+    fxAnalyticalMeta,
+    ncdFundingProxyMeta,
+    rateQuotesSource,
+    sourcePendingCount,
+    isFormalBasis,
+    statusBadges,
+    overviewMetrics,
+  } = pageModel;
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
   const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
 
-  const refreshMacroBondLinkage = useCallback(async () => {
-    if (!linkageReportDate) {
-      return;
-    }
-    await queryClient.cancelQueries({ queryKey: macroBondLinkageQueryKey, exact: true });
-    const envelope = await client.getMacroBondLinkageAnalysis({ reportDate: linkageReportDate });
-    queryClient.setQueryData(macroBondLinkageQueryKey, envelope);
-  }, [client, linkageReportDate, macroBondLinkageQueryKey, queryClient]);
-
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    setRefreshError("");
-    setRefreshStatus("正在刷新宏观数据（回填 30 天）…");
-    try {
-      const payload = await runPollingTask({
-        start: () => client.refreshChoiceMacro(30),
-        getStatus: (runId) => client.getChoiceMacroRefreshStatus(runId),
-        intervalMs: 3000,
-        maxAttempts: 120,
-        onUpdate: (p) => {
-          setRefreshStatus(
-            [p.status, p.run_id].filter(Boolean).join(" · "),
-          );
-        },
-      });
-      if (payload.status !== "completed") {
-        throw new Error(
-          payload.error_message ?? `刷新未完成：${payload.status}`,
-        );
-      }
-      setRefreshStatus("刷新完成");
-      await Promise.all([
-        catalogQuery.refetch(nonCancellingRefetchOptions),
-        latestQuery.refetch(nonCancellingRefetchOptions),
-        formalRatesQuery.refetch(nonCancellingRefetchOptions),
-        fxAnalyticalQuery.refetch(nonCancellingRefetchOptions),
-        ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions),
-        refreshMacroBondLinkage(),
-        livermoreStrategyQuery.refetch(nonCancellingRefetchOptions),
-      ]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setRefreshError(msg);
-      setRefreshStatus("");
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [
-    client,
-    catalogQuery,
-    latestQuery,
-    formalRatesQuery,
-    fxAnalyticalQuery,
-    ncdFundingProxyQuery,
-    refreshMacroBondLinkage,
-    livermoreStrategyQuery,
-  ]);
-
-  const overviewMetrics: MarketOverviewMetric[] = [
-    {
-      testId: "market-data-catalog-count",
-      title: "宏观序列目录",
-      value: String(catalog.length),
-      detail: "已登记的宏观序列数量。",
-    },
-    {
-      testId: "market-data-stable-count",
-      title: "稳定回收",
-      value: `${stableSeries.length} / ${stableCatalogSeries.length}`,
-      detail: "稳定主链路已回收 / 目录应有数量。",
-      tone: stablePipelineTone,
-    },
-    {
-      testId: "market-data-fallback-count",
-      title: "降级可用",
-      value: String(fallbackSeries.length),
-      detail: "仅取最新 / 单次抓取降级链路中的序列数量。",
-      tone: fallbackSeries.length > 0 ? "warning" : "default",
-    },
-    {
-      testId: "market-data-stable-trade-date",
-      title: "稳定最新日",
-      value: stableLatestTradeDate,
-      detail: "稳定主链路中可见序列的最大交易日期。",
-      valueVariant: "text",
-      tone: stableSeries.length === 0 ? "warning" : "default",
-    },
-    {
-      testId: "market-data-missing-stable-count",
-      title: "稳定缺口",
-      value: String(missingStableSeries.length),
-      detail: "目录中属于稳定主链路但当前尚未回收的序列数量。",
-      tone:
-        missingStableSeries.length > 5
-          ? "error"
-          : missingStableSeries.length > 0
-            ? "warning"
-            : "default",
-    },
-    {
-      testId: "market-data-fx-analytical-group-count",
-      title: "外汇观察分组",
-      value: String(fxAnalyticalGroups.length),
-      detail: "后端返回的分析口径外汇分组数量。",
-    },
-    {
-      testId: "market-data-fx-analytical-series-count",
-      title: "外汇观察序列",
-      value: String(fxAnalyticalSeriesCount),
-      detail: "分析口径外汇观察值与正式外汇状态保持分离。",
-    },
-    {
-      testId: "market-data-linkage-report-date",
-      title: "联动报告日",
-      value: linkageReportDate || "—",
-      detail: "宏观-债市联动分析使用的报告日期。",
-      valueVariant: "text",
-      tone: linkageReportDate ? "default" : "warning",
-    },
-  ];
-
   return (
     <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-05-15d">
       <MarketDataHeroSection
-        clientMode={client.mode}
+        clientMode={clientMode}
         watchDate={watchDate}
         onWatchDateChange={setWatchDate}
         isFormalBasis={isFormalBasis}
@@ -686,10 +366,12 @@ export default function MarketDataPage() {
 
       <div className="market-data-contract-status">
         <span data-testid="market-data-readiness-verdict">
-          {macroMeta?.quality_flag === "error" ? "读面异常" : "读面就绪"}
+          {statusBadges.readinessVerdict}
         </span>
-        <span data-testid="market-data-overview-readiness-label">读面就绪</span>
-        <span data-testid="market-data-overview-secondary-label">辅助观察</span>
+        <span data-testid="market-data-overview-readiness-label">
+          {statusBadges.overviewReadinessLabel}
+        </span>
+        <span data-testid="market-data-overview-secondary-label">{statusBadges.secondaryLabel}</span>
       </div>
 
       <MarketSectionBlock>
@@ -742,7 +424,7 @@ export default function MarketDataPage() {
               : null
           }
           onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
-          onRefreshGateSupplement={() => client.refreshGateSupplement({ asOfDate: watchDate })}
+          onRefreshGateSupplement={refreshGateSupplement}
         />
       </MarketSectionBlock>
 
