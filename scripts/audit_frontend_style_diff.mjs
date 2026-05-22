@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Incremental frontend style audit: fail on newly added hard-coded hex colors
- * outside designSystem.ts tokens. style= usage on new lines → warning only.
+ * outside designSystem.ts tokens. style= usage on new lines -> warning only.
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -17,6 +17,7 @@ const EXT_RE = /\.(tsx?|css|module\.css)$/i;
 const HEX_RE = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 const PRIVATE_SHADOW_RE = /\bboxShadow\s*:|box-shadow\s*:/;
 const TOKEN_SHADOW_RE = /designTokens\.shadow|shellTokens\.shadow|var\(--moss-shadow-/;
+const NONE_SHADOW_RE = /\bboxShadow\s*:\s*["']?none["']?|box-shadow\s*:\s*none\b/;
 const LARGE_RADIUS_RE = /\bborderRadius\s*:\s*(?:1[89]|[2-9]\d)|border-radius\s*:\s*(?:1[89]|[2-9]\d)px/;
 const TOKEN_RADIUS_RE = /designTokens\.radius|shellTokens\.radius|var\(--moss-radius-/;
 const KPI_DISPLAY_RE = /\b(KpiBandMetric|KpiCard|MetricCard|SummaryBlock)\b/;
@@ -133,7 +134,7 @@ function countStylePropsInLine(line) {
 }
 
 function hasPrivateShadow(line) {
-  return PRIVATE_SHADOW_RE.test(line) && !TOKEN_SHADOW_RE.test(line);
+  return PRIVATE_SHADOW_RE.test(line) && !TOKEN_SHADOW_RE.test(line) && !NONE_SHADOW_RE.test(line);
 }
 
 function hasLargeRadiusWithoutToken(line) {
@@ -192,8 +193,21 @@ function parseGitDiffAdditions(diffText) {
 function runDiff(baseRef, cached) {
   const scope = ["--", "frontend/src"];
   const args = cached
-    ? ["diff", "--cached", baseRef, "--unified=0", ...scope]
+    ? ["diff", "--cached", "HEAD", "--unified=0", ...scope]
     : ["diff", baseRef, "--unified=0", ...scope];
+  const r = git(args);
+  if (!r.ok) {
+    console.error(r.err || r.out || `git ${args.join(" ")} failed`);
+    process.exit(2);
+  }
+  return r.out;
+}
+
+function runWorkspaceDiff(cached) {
+  const scope = ["--", "frontend/src"];
+  const args = cached
+    ? ["diff", "--cached", "HEAD", "--unified=0", ...scope]
+    : ["diff", "HEAD", "--unified=0", ...scope];
   const r = git(args);
   if (!r.ok) {
     console.error(r.err || r.out || `git ${args.join(" ")} failed`);
@@ -257,6 +271,96 @@ function auditDiff(diffText, allowlist) {
   }
 
   return { hexFailures, styleWarnings, shadowFailures, radiusWarnings, stateWarnings };
+}
+
+function emptyAuditResult() {
+  return {
+    hexFailures: [],
+    styleWarnings: [],
+    shadowFailures: [],
+    radiusWarnings: [],
+    stateWarnings: [],
+  };
+}
+
+function findingKey(value) {
+  return value.trim();
+}
+
+function subtractFindings(allFindings, currentFindings) {
+  const current = new Set(currentFindings.map(findingKey));
+  return allFindings.filter((item) => !current.has(findingKey(item)));
+}
+
+function subtractAuditResult(allFindings, currentFindings) {
+  return {
+    hexFailures: subtractFindings(allFindings.hexFailures, currentFindings.hexFailures),
+    styleWarnings: subtractFindings(allFindings.styleWarnings, currentFindings.styleWarnings),
+    shadowFailures: subtractFindings(allFindings.shadowFailures, currentFindings.shadowFailures),
+    radiusWarnings: subtractFindings(allFindings.radiusWarnings, currentFindings.radiusWarnings),
+    stateWarnings: subtractFindings(allFindings.stateWarnings, currentFindings.stateWarnings),
+  };
+}
+
+function hasAnyFinding(findings) {
+  return (
+    findings.hexFailures.length > 0 ||
+    findings.styleWarnings.length > 0 ||
+    findings.shadowFailures.length > 0 ||
+    findings.radiusWarnings.length > 0 ||
+    findings.stateWarnings.length > 0
+  );
+}
+
+function hasBlockingFinding(findings) {
+  return findings.hexFailures.length > 0 || findings.shadowFailures.length > 0;
+}
+
+function printFindingGroup(title, findings, limit = 50) {
+  if (!findings.length) return;
+  console.warn(title);
+  for (const item of findings.slice(0, limit)) console.warn(`  ${item}`);
+  if (findings.length > limit) {
+    console.warn(`  ... and ${findings.length - limit} more`);
+  }
+}
+
+function printAuditResult(findings, label, { detailLimit = 50, blocking = true } = {}) {
+  printFindingGroup(
+    `[style:audit] ${label} warning: ${findings.styleWarnings.length} added line(s) with style= (review for debt)`,
+    findings.styleWarnings,
+    detailLimit,
+  );
+  printFindingGroup(
+    `[style:audit] ${label} warning: ${findings.radiusWarnings.length} added large-radius line(s) should use tokens/classes`,
+    findings.radiusWarnings,
+    detailLimit,
+  );
+  printFindingGroup(
+    `[style:audit] ${label} warning: ${findings.stateWarnings.length} added metric display file(s) need visible status evidence review`,
+    findings.stateWarnings,
+    detailLimit,
+  );
+  printFindingGroup(
+    `[style:audit] ${label} ${blocking ? "FAIL" : "non-blocking debt"}: ${findings.hexFailures.length} non-token hex on added line(s)`,
+    findings.hexFailures,
+    detailLimit,
+  );
+  printFindingGroup(
+    `[style:audit] ${label} ${blocking ? "FAIL" : "non-blocking debt"}: ${findings.shadowFailures.length} private shadow on added line(s)`,
+    findings.shadowFailures,
+    detailLimit,
+  );
+}
+
+function summarizeAuditResult(findings) {
+  const parts = [];
+  if (findings.hexFailures.length) parts.push(`${findings.hexFailures.length} non-token hex`);
+  if (findings.shadowFailures.length) parts.push(`${findings.shadowFailures.length} private shadow`);
+  if (findings.styleWarnings.length) parts.push(`${findings.styleWarnings.length} style= warning`);
+  if (findings.radiusWarnings.length) parts.push(`${findings.radiusWarnings.length} radius warning`);
+  if (findings.stateWarnings.length) parts.push(`${findings.stateWarnings.length} state warning`);
+  return parts.length ? parts.join(", ") : "no findings";
 }
 
 function die(msg, code = 1) {
@@ -329,6 +433,16 @@ function runSelfTest() {
     die("self-test: expected private shadow failure", 2);
   }
 
+  const noShadowDiff = [
+    "diff --git a/frontend/src/x/NoShadow.tsx b/frontend/src/x/NoShadow.tsx",
+    "+++ b/frontend/src/x/NoShadow.tsx",
+    `+  <section style={{ boxShadow: 'none' }} />`,
+  ].join("\n");
+  const ns = auditDiff(noShadowDiff, allow);
+  if (ns.shadowFailures.length !== 0) {
+    die("self-test: boxShadow none should not be treated as private shadow", 2);
+  }
+
   const largeRadiusDiff = [
     "diff --git a/frontend/src/x/Radius.tsx b/frontend/src/x/Radius.tsx",
     "+++ b/frontend/src/x/Radius.tsx",
@@ -367,76 +481,51 @@ function main() {
   }
   const allowlist = extractAllowlistFromDesignSystem(designSystemPath);
 
-  const diffText = runDiff(baseRef, cached);
-  if (!diffText) {
+  const fullDiffText = runDiff(baseRef, cached);
+  const workspaceDiffText = runWorkspaceDiff(cached);
+  if (!fullDiffText && !workspaceDiffText) {
     console.log(
       `style diff audit: no changes vs ${cached ? "index (staged)" : baseRef}`,
     );
     return;
   }
 
-  const {
-    hexFailures,
-    styleWarnings,
-    shadowFailures,
-    radiusWarnings,
-    stateWarnings,
-  } = auditDiff(diffText, allowlist);
+  const fullFindings = fullDiffText ? auditDiff(fullDiffText, allowlist) : emptyAuditResult();
+  const workspaceFindings = workspaceDiffText
+    ? auditDiff(workspaceDiffText, allowlist)
+    : emptyAuditResult();
+  const useWorkspaceGate = workspaceDiffText.length > 0;
+  const primaryFindings = useWorkspaceGate ? workspaceFindings : fullFindings;
+  const primaryLabel = useWorkspaceGate
+    ? cached
+      ? "staged delta vs HEAD"
+      : "workspace delta vs HEAD"
+    : `branch delta vs ${baseRef}`;
+  const existingBranchFindings = useWorkspaceGate
+    ? subtractAuditResult(fullFindings, workspaceFindings)
+    : emptyAuditResult();
 
-  if (styleWarnings.length) {
+  printAuditResult(primaryFindings, primaryLabel);
+
+  if (hasAnyFinding(existingBranchFindings)) {
     console.warn(
-      `[style:audit] warning: ${styleWarnings.length} added line(s) with style= (review for debt)`,
+      `[style:audit] existing branch/base debt vs ${baseRef}: ${summarizeAuditResult(existingBranchFindings)}`,
     );
-    for (const w of styleWarnings.slice(0, 50)) console.warn(`  ${w}`);
-    if (styleWarnings.length > 50)
-      console.warn(`  ... and ${styleWarnings.length - 50} more`);
+    printAuditResult(existingBranchFindings, "existing branch/base", {
+      detailLimit: 10,
+      blocking: false,
+    });
   }
 
-  if (radiusWarnings.length) {
-    console.warn(
-      `[style:audit] warning: ${radiusWarnings.length} added large-radius line(s) should use tokens/classes`,
-    );
-    for (const w of radiusWarnings.slice(0, 50)) console.warn(`  ${w}`);
-    if (radiusWarnings.length > 50)
-      console.warn(`  ... and ${radiusWarnings.length - 50} more`);
-  }
-
-  if (stateWarnings.length) {
-    console.warn(
-      `[style:audit] warning: ${stateWarnings.length} added metric display file(s) need visible status evidence review`,
-    );
-    for (const w of stateWarnings.slice(0, 50)) console.warn(`  ${w}`);
-    if (stateWarnings.length > 50)
-      console.warn(`  ... and ${stateWarnings.length - 50} more`);
-  }
-
-  if (hexFailures.length) {
+  if (hasBlockingFinding(primaryFindings)) {
     console.error(
-      `[style:audit] FAIL: ${hexFailures.length} non-token hex on added line(s)`,
-    );
-    for (const f of hexFailures) console.error(`  ${f}`);
-    console.error(
-      `  base: ${cached ? "(staged)" : baseRef} — use designTokens / designSystem or extend tokens`,
-    );
-    process.exit(1);
-  }
-
-  if (shadowFailures.length) {
-    console.error(
-      `[style:audit] FAIL: ${shadowFailures.length} private shadow on added line(s)`,
-    );
-    for (const f of shadowFailures) console.error(`  ${f}`);
-    console.error(
-      "  use designTokens.shadow, shellTokens.shadow, or --moss-shadow-* instead of one-off shadows",
+      `  gate: ${primaryLabel} failed; use designTokens / designSystem, token shadows, or documented primitives`,
     );
     process.exit(1);
   }
 
   console.log(
-    `style diff audit: pass (${cached ? "staged" : `vs ${baseRef}`})` +
-      (styleWarnings.length ? ` (${styleWarnings.length} style= warning(s))` : "") +
-      (radiusWarnings.length ? ` (${radiusWarnings.length} radius warning(s))` : "") +
-      (stateWarnings.length ? ` (${stateWarnings.length} state warning(s))` : ""),
+    `style diff audit: pass (${primaryLabel}; ${summarizeAuditResult(primaryFindings)})`,
   );
 }
 
