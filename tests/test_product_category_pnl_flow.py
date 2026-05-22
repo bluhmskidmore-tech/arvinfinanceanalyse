@@ -699,7 +699,7 @@ def test_monthly_and_qtd_views_produce_distinct_formal_results_when_multimonth_q
     get_settings.cache_clear()
 
 
-def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
+def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -869,6 +869,7 @@ def test_product_category_refresh_empty_source_keeps_existing_read_model(tmp_pat
 def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timestamps(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -924,6 +925,7 @@ def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timest
 def test_product_category_refresh_returns_409_when_refresh_is_already_in_progress(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
@@ -977,6 +979,7 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
 def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fails(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -1013,6 +1016,7 @@ def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fai
 def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -1058,6 +1062,7 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
 def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
@@ -1114,6 +1119,7 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
 def test_product_category_refresh_reconciles_stale_queued_run_and_requeues(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
@@ -1214,6 +1220,7 @@ def test_product_category_refresh_status_completed_has_terminal_trigger_and_stab
 def test_sync_fallback_governance_latest_record_matches_refresh_run(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
