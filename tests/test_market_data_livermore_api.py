@@ -502,6 +502,9 @@ def test_livermore_api_embeds_cycle_rotation_framework_without_trade_claims(
     assert framework["score_formula"] == (
         "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport"
     )
+    assert "LifeCourtScore" in framework["lifecourt_formula"]
+    assert framework["fusion_policy"]["conflict_policy"] == "cycle_filter_life_overlay"
+    assert framework["lifecourt_overlay"]["implementation_stage"] == "proxy_reconstruction"
     layer_by_key = {row["key"]: row for row in framework["layers"]}
     assert set(layer_by_key) == {
         "macro_direction",
@@ -563,6 +566,45 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
                     "rv_choice_macro",
                     "ok",
                     "run-cn10y",
+                ),
+                (
+                    "M0017126",
+                    "Manufacturing PMI",
+                    "2026-04-01",
+                    51.2,
+                    "monthly",
+                    "index",
+                    "sv_pmi",
+                    "vv_pmi",
+                    "rv_choice_macro",
+                    "ok",
+                    "run-pmi",
+                ),
+                (
+                    "M5525763",
+                    "Social financing YoY",
+                    "2026-03-01",
+                    8.4,
+                    "monthly",
+                    "%",
+                    "sv_sf",
+                    "vv_sf",
+                    "rv_choice_macro",
+                    "ok",
+                    "run-sf-1",
+                ),
+                (
+                    "M5525763",
+                    "Social financing YoY",
+                    "2026-04-01",
+                    9.1,
+                    "monthly",
+                    "%",
+                    "sv_sf",
+                    "vv_sf",
+                    "rv_choice_macro",
+                    "ok",
+                    "run-sf-2",
                 ),
             ],
         )
@@ -655,8 +697,11 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
     layer_by_key = {row["key"]: row for row in result["cycle_rotation_framework"]["layers"]}
     assert "price_spread" in layer_by_key["macro_direction"]["available_inputs"]
     assert "price_spread" not in layer_by_key["macro_direction"]["missing_inputs"]
-    assert "PMI" in layer_by_key["macro_direction"]["missing_inputs"]
-    assert "credit_impulse" in layer_by_key["macro_direction"]["missing_inputs"]
+    assert "PMI" in layer_by_key["macro_direction"]["available_inputs"]
+    assert "credit_impulse" in layer_by_key["macro_direction"]["available_inputs"]
+    assert result["cycle_rotation_framework"]["macro_layer"]["ready"] is True
+    assert result["cycle_rotation_framework"]["macro_layer"]["macro_score"] is not None
+    assert result["hybrid_fusion_candidates"]["macro_score"] is not None
     assert "turnover_persistence" in layer_by_key["market_flow"]["available_inputs"]
     assert "turnover_persistence" not in layer_by_key["market_flow"]["missing_inputs"]
     assert "northbound_flow" in layer_by_key["market_flow"]["missing_inputs"]
@@ -666,6 +711,9 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
     gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
     assert gap_by_family["price_spread"]["status"] == "ready"
     assert "CA.CSI300_PE" in gap_by_family["price_spread"]["evidence"]
+    assert gap_by_family["PMI"]["status"] == "ready"
+    assert gap_by_family["credit_impulse"]["status"] == "ready"
+    assert gap_by_family["macro_score"]["status"] == "ready"
     assert gap_by_family["turnover_persistence"]["status"] == "ready"
     assert gap_by_family["valuation_percentile_history"]["status"] == "ready"
     assert "fact_choice_macro_daily" in envelope["result_meta"]["tables_used"]
@@ -832,6 +880,199 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monk
     assert "Choice stock catalog is incomplete" in unsupported_by_key["stock_candidates"]["reason"]
     assert "Choice stock catalog is incomplete" in unsupported_by_key["mean_reversion_candidates"]["reason"]
     get_settings.cache_clear()
+
+
+def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates(monkeypatch) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    seen_policies: list[str] = []
+
+    monkeypatch.setattr(
+        service,
+        "_load_sector_rank_inputs",
+        lambda **_kwargs: ([object()], ["choice_stock_sector_membership"], [], []),
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(
+            ready=True,
+            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_stock_candidate_snapshots",
+        lambda **_kwargs: ([SimpleNamespace(limit_ratio=0.1)], ["choice_stock_daily_observation"], [], []),
+    )
+
+    def fake_compute_stock_candidates(**kwargs):
+        seen_policies.append(kwargs["policy_name"])
+        return SimpleNamespace(
+            payload={"selection_policy": kwargs["policy_name"], "candidate_count": 0, "items": []}
+        )
+
+    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="factor rows unavailable in policy unit test.",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-05-13",
+        market_state="OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        backfill_mode=True,
+    )
+
+    assert seen_policies == ["exp3b"]
+    assert outputs.stock_candidates_payload is not None
+    assert outputs.stock_candidates_payload["selection_policy"] == "exp3b"
+
+
+def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_default(monkeypatch) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    seen_policies: list[str] = []
+
+    monkeypatch.setattr(
+        service,
+        "_load_sector_rank_inputs",
+        lambda **_kwargs: ([object()], ["choice_stock_sector_membership"], [], []),
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(
+            ready=True,
+            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_stock_candidate_snapshots",
+        lambda **_kwargs: ([SimpleNamespace(limit_ratio=0.1)], ["choice_stock_daily_observation"], [], []),
+    )
+
+    def fake_compute_stock_candidates(**kwargs):
+        seen_policies.append(kwargs["policy_name"])
+        return SimpleNamespace(
+            payload={"selection_policy": kwargs["policy_name"], "candidate_count": 1, "items": []}
+        )
+
+    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="factor rows unavailable in policy unit test.",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-05-13",
+        market_state="OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        backfill_mode=True,
+        stock_candidate_policy="default",
+    )
+
+    assert seen_policies == ["default"]
+    assert outputs.stock_candidates_payload is not None
+    assert outputs.stock_candidates_payload["selection_policy"] == "default"
+
+
+def test_livermore_strategy_default_execution_pauses_theme_breakout_in_overheat(monkeypatch) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    called = False
+
+    monkeypatch.setattr(
+        service,
+        "_load_sector_rank_inputs",
+        lambda **_kwargs: ([object()], ["choice_stock_sector_membership"], [], []),
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(
+            ready=True,
+            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+        ),
+    )
+    monkeypatch.setattr(service, "_load_stock_candidate_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service,
+        "compute_stock_candidates",
+        lambda **kwargs: SimpleNamespace(payload={"selection_policy": kwargs["policy_name"], "items": []}),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="factor rows unavailable in policy unit test.",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([SimpleNamespace(stock_code="000001.SZ")], ["choice_stock_daily_observation"], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+
+    def fake_compute_theme_breakout(**_kwargs):
+        nonlocal called
+        called = True
+        return SimpleNamespace(payload={"items": [{"theme_key": "concept:C1", "items": [{"stock_code": "000001.SZ"}]}]})
+
+    monkeypatch.setattr(service, "compute_theme_breakout", fake_compute_theme_breakout)
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-05-13",
+        market_state="OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        backfill_mode=True,
+    )
+
+    assert called is False
+    assert outputs.theme_breakout_payload is None
+    supported, unsupported = service._build_supported_outputs(
+        "OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        stock_outputs=outputs,
+    )
+    assert "theme_breakout" not in supported
+    assert "OVERHEAT" in {row["key"]: row["reason"] for row in unsupported}["theme_breakout"]
 
 
 def test_livermore_api_returns_explicit_no_data_state(tmp_path, monkeypatch) -> None:

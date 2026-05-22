@@ -20,12 +20,23 @@ from backend.app.core_finance.livermore_sector_rank import (
     compute_sector_rank,
 )
 from backend.app.core_finance.livermore_stock_candidates import (
+    EXP3B_STOCK_CANDIDATE_POLICY,
     StockCandidateSnapshot,
     compute_stock_candidates,
+)
+from backend.app.core_finance.cycle_macro_score import (
+    CN10Y_SERIES_ID,
+    CSI300_PE_SERIES_ID,
+    M2_YOY_SERIES_ID,
+    PMI_SERIES_ID,
+    SOCIAL_FINANCING_YOY_SERIES_ID,
+    CycleMacroSnapshot,
+    build_cycle_macro_snapshot,
 )
 from backend.app.core_finance.factor_screen_candidates import (
     compute_factor_screen_candidates,
 )
+from backend.app.core_finance.hybrid_fusion_config import load_hybrid_fusion_thresholds
 from backend.app.core_finance.hybrid_fusion_candidates import (
     compute_hybrid_fusion_candidates,
 )
@@ -63,6 +74,7 @@ RULE_VERSION = "rv_livermore_strategy_v1"
 CACHE_VERSION = "cv_livermore_strategy_v1"
 RESULT_KIND = "market_data.livermore"
 STRATEGY_NAME = "Livermore A-Share Defended Trend"
+EXECUTION_STOCK_CANDIDATE_POLICY = EXP3B_STOCK_CANDIDATE_POLICY
 EMPTY_SOURCE_VERSION = "sv_livermore_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
 BROAD_INDEX_SERIES_ID = "CA.CSI300"
@@ -94,7 +106,7 @@ def livermore_strategy_envelope(
     filters_applied = {
         "requested_as_of_date": None if requested_date is None else requested_date.isoformat(),
         "as_of_date": payload["as_of_date"],
-        "stock_candidate_policy": stock_candidate_policy or "default",
+        "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
     }
     return build_result_envelope(
         basis="analytical",
@@ -147,6 +159,7 @@ def load_livermore_strategy_payload(
         stock_readiness=resolved_stock_readiness,
         backfill_mode=backfill_mode,
         stock_candidate_policy=stock_candidate_policy,
+        macro_score=cycle_input_evidence.macro_score,
     )
     diagnostics = _build_diagnostics(
         requested_as_of_date=requested_text,
@@ -371,6 +384,8 @@ def _load_cycle_input_evidence(
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         price_spread_ready = False
         price_spread_evidence = ""
+        pe_value: float | None = None
+        cn10y_value: float | None = None
         if "fact_choice_macro_daily" in tables:
             price_rows = conn.execute(
                 """
@@ -385,33 +400,69 @@ def _load_cycle_input_evidence(
                       order by cast(trade_date as date) desc
                     ) as rn
                   from fact_choice_macro_daily
-                  where series_id in ('CA.CSI300_PE', 'EMM00166466')
+                  where series_id in (?, ?, ?, ?, ?)
                     and cast(trade_date as date) <= cast(? as date)
                     and value_numeric is not null
                 )
                 select series_id, trade_date, value_numeric, source_version
                 from ranked
-                where rn = 1
+                where rn <= 2
+                order by series_id, cast(trade_date as date)
                 """,
-                [as_of_date.isoformat()],
+                [
+                    CSI300_PE_SERIES_ID,
+                    CN10Y_SERIES_ID,
+                    PMI_SERIES_ID,
+                    SOCIAL_FINANCING_YOY_SERIES_ID,
+                    M2_YOY_SERIES_ID,
+                    as_of_date.isoformat(),
+                ],
             ).fetchall()
-            price_by_id = {str(row[0]): row for row in price_rows}
-            if "CA.CSI300_PE" in price_by_id and "EMM00166466" in price_by_id:
-                pe_row = price_by_id["CA.CSI300_PE"]
-                yield_row = price_by_id["EMM00166466"]
-                pe = _safe_float(pe_row[2])
-                cn10y = _safe_float(yield_row[2])
-                if pe is not None and pe > 0 and cn10y is not None:
-                    earnings_yield = 100.0 / pe
-                    spread = earnings_yield - cn10y
+            points_by_series: dict[str, list[tuple[str, float]]] = {}
+            for series_id, trade_date, value_numeric, source_version in price_rows:
+                series_key = str(series_id)
+                value = _safe_float(value_numeric)
+                if value is None:
+                    continue
+                points_by_series.setdefault(series_key, []).append((str(trade_date), value))
+                if source_version:
+                    source_versions.append(str(source_version))
+                evidence_rows += 1
+            tables_used.append("fact_choice_macro_daily")
+
+            pe_points = points_by_series.get(CSI300_PE_SERIES_ID, [])
+            cn10y_points = points_by_series.get(CN10Y_SERIES_ID, [])
+            if pe_points and cn10y_points:
+                pe_value = pe_points[-1][1]
+                cn10y_value = cn10y_points[-1][1]
+                if pe_value > 0:
+                    earnings_yield = 100.0 / pe_value
+                    spread = earnings_yield - cn10y_value
                     price_spread_ready = True
                     price_spread_evidence = (
-                        f"CA.CSI300_PE {pe:.2f} and EMM00166466 10Y yield {cn10y:.2f}% "
+                        f"{CSI300_PE_SERIES_ID} {pe_value:.2f} and {CN10Y_SERIES_ID} 10Y yield {cn10y_value:.2f}% "
                         f"landed by {as_of_date.isoformat()}; proxy price_spread is {spread:.2f}ppt."
                     )
-                    tables_used.append("fact_choice_macro_daily")
-                    source_versions.extend(str(row[3]) for row in price_rows if row[3])
-                    evidence_rows += len(price_rows)
+
+            pmi_points = points_by_series.get(PMI_SERIES_ID)
+            sf_points = points_by_series.get(SOCIAL_FINANCING_YOY_SERIES_ID)
+            if not sf_points or len(sf_points) < 2:
+                sf_points = points_by_series.get(M2_YOY_SERIES_ID)
+            macro_snapshot = build_cycle_macro_snapshot(
+                pmi_points=pmi_points,
+                social_financing_yoy_points=sf_points,
+                pe=pe_value,
+                cn10y=cn10y_value,
+                as_of_date=as_of_date.isoformat(),
+            )
+        else:
+            macro_snapshot = build_cycle_macro_snapshot(
+                pmi_points=None,
+                social_financing_yoy_points=None,
+                pe=None,
+                cn10y=None,
+                as_of_date=as_of_date.isoformat(),
+            )
 
         turnover_ready = False
         turnover_evidence = ""
@@ -474,8 +525,24 @@ def _load_cycle_input_evidence(
                     evidence_rows += row_count
 
         return _CycleInputEvidence(
-            price_spread_ready=price_spread_ready,
-            price_spread_evidence=price_spread_evidence,
+            price_spread_ready=macro_snapshot.price_spread_ready,
+            price_spread_evidence=price_spread_evidence or macro_snapshot.evidence,
+            pmi_ready=macro_snapshot.pmi_ready,
+            pmi_evidence=(
+                f"PMI {macro_snapshot.pmi_value:.1f} ({PMI_SERIES_ID})"
+                if macro_snapshot.pmi_ready and macro_snapshot.pmi_value is not None
+                else ""
+            ),
+            credit_impulse_ready=macro_snapshot.credit_impulse_ready,
+            credit_impulse_evidence=(
+                f"credit_impulse {macro_snapshot.credit_impulse_value:+.2f}ppt"
+                if macro_snapshot.credit_impulse_ready and macro_snapshot.credit_impulse_value is not None
+                else ""
+            ),
+            macro_score=macro_snapshot.macro_score,
+            macro_score_ready=macro_snapshot.macro_score is not None,
+            macro_score_evidence=macro_snapshot.evidence,
+            macro_snapshot=macro_snapshot,
             turnover_persistence_ready=turnover_ready,
             turnover_persistence_evidence=turnover_evidence,
             valuation_percentile_history_ready=valuation_ready,
@@ -519,6 +586,14 @@ class _ChoiceStockOutputs:
 class _CycleInputEvidence:
     price_spread_ready: bool = False
     price_spread_evidence: str = ""
+    pmi_ready: bool = False
+    pmi_evidence: str = ""
+    credit_impulse_ready: bool = False
+    credit_impulse_evidence: str = ""
+    macro_score: float | None = None
+    macro_score_ready: bool = False
+    macro_score_evidence: str = ""
+    macro_snapshot: CycleMacroSnapshot | None = None
     turnover_persistence_ready: bool = False
     turnover_persistence_evidence: str = ""
     valuation_percentile_history_ready: bool = False
@@ -575,6 +650,7 @@ def _load_choice_stock_outputs(
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool = False,
     stock_candidate_policy: str | None = None,
+    macro_score: float | None = None,
 ) -> _ChoiceStockOutputs:
     if not stock_readiness.ready or as_of_date is None:
         return _ChoiceStockOutputs(
@@ -658,17 +734,7 @@ def _load_choice_stock_outputs(
         if snapshots and not any(_safe_float(snapshot.limit_ratio) is not None for snapshot in snapshots):
             stock_candidate_block_reason = STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON
         else:
-            # 各市场状态暂用 default（v7）；OVERHEAT 可后续改为 v6_compat fallback
-            _POLICY_BY_MARKET_STATE: dict[str, str | None] = {
-                "WARM": None,  # None = 使用函数默认值（default policy = v7）
-                "HOT": None,
-                "OVERHEAT": None,  # 暂时也用 default；如需 fallback 改为 "v6_compat"
-            }
-            resolved_stock_candidate_policy = (
-                stock_candidate_policy
-                or _POLICY_BY_MARKET_STATE.get(market_state)
-                or "default"
-            )
+            resolved_stock_candidate_policy = stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY
             stock_candidates_payload = compute_stock_candidates(
                 as_of_date=as_of_date,
                 market_state=market_state,
@@ -722,7 +788,7 @@ def _load_choice_stock_outputs(
     if (
         stock_coverage.full_coverage
         and sector_rank_payload is not None
-        and market_state not in {"NO_DATA", "PENDING_DATA", "STALE"}
+        and market_state not in {"NO_DATA", "PENDING_DATA", "STALE", "OVERHEAT"}
     ):
         theme_snapshots, theme_tables, theme_sources, theme_vendors, theme_provenance = _load_theme_breakout_snapshots(
             duckdb_path=duckdb_path,
@@ -764,6 +830,8 @@ def _load_choice_stock_outputs(
             stock_candidates_payload=stock_candidates_payload,
             factor_screen_payload=factor_screen_payload,
             theme_breakout_payload=theme_breakout_payload,
+            macro_score=macro_score,
+            thresholds=load_hybrid_fusion_thresholds(),
         ).payload
 
     risk_exit_payload: dict[str, object] | None = None
@@ -2153,7 +2221,15 @@ def _build_cycle_rotation_framework(
     candidate_count = _safe_int((stock_outputs.stock_candidates_payload or {}).get("candidate_count"))
     risk_count = _safe_int((stock_outputs.risk_exit_payload or {}).get("signal_count"))
     macro_available = ["market_gate"] if gate_available else []
-    macro_missing = ["PMI", "credit_impulse"]
+    macro_missing: list[str] = []
+    if cycle_input_evidence.pmi_ready:
+        macro_available.append("PMI")
+    else:
+        macro_missing.append("PMI")
+    if cycle_input_evidence.credit_impulse_ready:
+        macro_available.append("credit_impulse")
+    else:
+        macro_missing.append("credit_impulse")
     if cycle_input_evidence.price_spread_ready:
         macro_available.append("price_spread")
     else:
@@ -2180,19 +2256,76 @@ def _build_cycle_rotation_framework(
             "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport"
         ),
         "macro_formula": "MacroScore = 0.40 PMI + 0.35 CreditImpulse + 0.25 PriceSpread",
+        "lifecourt_formula": (
+            "LifeCourtScore = 0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF "
+            "- 0.16*CROWD + 0.10*HYGIENE + 0.08*REGIME"
+        ),
+        "fusion_formula": "FusionScore = 0.65*CycleScore + 0.35*LifeCourtScore",
+        "macro_layer": {
+            "macro_score": cycle_input_evidence.macro_score,
+            "ready": cycle_input_evidence.macro_score_ready,
+            "evidence": cycle_input_evidence.macro_score_evidence,
+            "available_inputs": macro_available,
+            "missing_inputs": macro_missing,
+            "lineage": (
+                cycle_input_evidence.macro_snapshot.lineage
+                if cycle_input_evidence.macro_snapshot is not None
+                else {}
+            ),
+        },
         "rebalance_cadence": "Monthly core review with weekly satellite monitoring.",
+        "lifecourt_overlay": {
+            "display_name": "生命法庭覆盖层（量化重建）",
+            "observation_only": True,
+            "implementation_stage": "proxy_reconstruction",
+            "rebalance_cadence": "Weekly overlay review on top of monthly cycle core.",
+            "boundary": (
+                "LifeCourt inputs are proxy-reconstructed from theme/trend/factor evidence; "
+                "original influencer rule text is not fully available."
+            ),
+            "available_inputs": _lifecourt_available_inputs(stock_outputs),
+            "missing_inputs": _lifecourt_missing_inputs(stock_outputs),
+            "life_long_gates": [
+                "LifeCourtScore in top 15%",
+                "PCONF in top 30%",
+                "CROWD below 80th percentile",
+                "HYGIENE > 0",
+            ],
+        },
+        "fusion_policy": {
+            "cycle_weight": 0.65,
+            "life_weight": 0.35,
+            "conflict_policy": "cycle_filter_life_overlay",
+            "matrix": [
+                {"cycle": "strong", "life": "strong", "action": "core_plus_trading"},
+                {"cycle": "strong", "life": "neutral", "action": "core_reduce_trading"},
+                {"cycle": "neutral", "life": "strong", "action": "satellite_trial"},
+                {"cycle": "weak", "life": "strong", "action": "high_liquidity_trial_only"},
+                {"cycle": "weak", "life": "weak", "action": "clear_or_defensive"},
+            ],
+        },
         "layers": [
             {
                 "key": "macro_direction",
                 "title": "Macro direction",
                 "weight": 0.30,
-                "status": "partial" if cycle_input_evidence.price_spread_ready else "missing_inputs",
+                "status": (
+                    "provisional"
+                    if cycle_input_evidence.macro_score_ready
+                    else "partial"
+                    if cycle_input_evidence.price_spread_ready
+                    else "missing_inputs"
+                ),
                 "evidence": (
                     f"Livermore market gate is {gate_state}; "
                     + (
-                        cycle_input_evidence.price_spread_evidence
-                        if cycle_input_evidence.price_spread_ready
-                        else "PMI, credit impulse and price spread are not landed for this framework."
+                        cycle_input_evidence.macro_score_evidence
+                        if cycle_input_evidence.macro_score_evidence
+                        else (
+                            cycle_input_evidence.price_spread_evidence
+                            if cycle_input_evidence.price_spread_ready
+                            else "PMI, credit impulse and price spread are not landed for this framework."
+                        )
                     )
                 ),
                 "available_inputs": macro_available,
@@ -2287,9 +2420,36 @@ def _build_cycle_rotation_framework(
         ],
         "boundary": (
             "Research-only framework assembled from available read-only evidence; no return, sizing or "
-            "execution claim is produced until missing inputs are governed."
+            "execution claim is produced until missing inputs are governed. LifeCourt layer uses "
+            "proxy reconstruction until social/text pipelines are landed."
         ),
     }
+
+
+def _lifecourt_available_inputs(stock_outputs: _ChoiceStockOutputs) -> list[str]:
+    available: list[str] = []
+    if stock_outputs.stock_candidates_payload is not None:
+        available.append("stock_candidates")
+    if stock_outputs.theme_breakout_payload is not None:
+        available.append("theme_breakout")
+    if stock_outputs.factor_screen_payload is not None:
+        available.append("factor_screen_candidates")
+    if stock_outputs.hybrid_fusion_payload is not None:
+        available.append("hybrid_fusion")
+    return available
+
+
+def _lifecourt_missing_inputs(stock_outputs: _ChoiceStockOutputs) -> list[str]:
+    missing = [
+        "social_text_raw",
+        "ocr_asr_pipeline",
+        "bot_spam_detection",
+        "margin_balance",
+        "unlock_event_panel",
+    ]
+    if stock_outputs.sector_rank_payload is None:
+        missing.append("sector_rank_for_regime")
+    return missing
 
 
 def _gate_supplement_breadth_limit(
@@ -2442,6 +2602,33 @@ def _build_data_gaps(
             "status": "ready" if cycle_input_evidence.price_spread_ready else "missing",
             "evidence": cycle_input_evidence.price_spread_evidence
             or "CSI300 PE and China 10Y yield inputs are not both landed for price_spread.",
+        }
+    )
+    gaps.append(
+        {
+            "input_family": "PMI",
+            "status": "ready" if cycle_input_evidence.pmi_ready else "missing",
+            "evidence": cycle_input_evidence.pmi_evidence
+            or f"Manufacturing PMI ({PMI_SERIES_ID}) is not landed in fact_choice_macro_daily.",
+        }
+    )
+    gaps.append(
+        {
+            "input_family": "credit_impulse",
+            "status": "ready" if cycle_input_evidence.credit_impulse_ready else "missing",
+            "evidence": cycle_input_evidence.credit_impulse_evidence
+            or (
+                f"Social financing YoY delta ({SOCIAL_FINANCING_YOY_SERIES_ID} or {M2_YOY_SERIES_ID}) "
+                "requires at least two monthly observations."
+            ),
+        }
+    )
+    gaps.append(
+        {
+            "input_family": "macro_score",
+            "status": "ready" if cycle_input_evidence.macro_score_ready else "missing",
+            "evidence": cycle_input_evidence.macro_score_evidence
+            or "MacroScore cannot be computed until PMI, credit impulse and/or price spread inputs land.",
         }
     )
     gaps.append(
@@ -2846,6 +3033,8 @@ def _theme_breakout_unavailable_reason(
         return "Sector rank is unavailable, so the theme breakout proxy is blocked."
     if market_state in {"NO_DATA", "PENDING_DATA", "STALE"}:
         return "Market gate is unavailable or stale, so theme breakout observations cannot be evaluated."
+    if market_state == "OVERHEAT":
+        return "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy."
     return "Theme breakout proxy produced no payload for the resolved inputs."
 
 

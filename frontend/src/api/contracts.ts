@@ -1380,6 +1380,14 @@ export type HybridFusionCandidateItem = {
   attention_score: number;
   price_confirm_score: number;
   crowding_penalty: number;
+  crowding_score?: number;
+  vcov_score?: number;
+  consensus_score?: number;
+  burst_score?: number;
+  hygiene_score?: number;
+  regime_score?: number;
+  life_long_pass?: boolean;
+  fusion_action?: string;
   confidence: "high" | "medium" | "low" | string;
   reason: string;
   evidence: Record<string, unknown>;
@@ -1390,6 +1398,7 @@ export type HybridFusionCandidatesPayload = {
   formula_version: string;
   market_state: LivermoreMarketGateState;
   observation_only: boolean;
+  macro_score?: number | null;
   candidate_count: number;
   coverage_note?: string;
   items: HybridFusionCandidateItem[];
@@ -1412,7 +1421,33 @@ export type LivermoreCycleRotationFramework = {
   implementation_stage: string;
   score_formula: string;
   macro_formula?: string;
+  lifecourt_formula?: string;
+  fusion_formula?: string;
   rebalance_cadence: string;
+  lifecourt_overlay?: {
+    display_name: string;
+    observation_only: boolean;
+    implementation_stage: string;
+    rebalance_cadence: string;
+    boundary: string;
+    available_inputs: string[];
+    missing_inputs: string[];
+    life_long_gates: string[];
+  };
+  fusion_policy?: {
+    cycle_weight: number;
+    life_weight: number;
+    conflict_policy: string;
+    matrix: Array<{ cycle: string; life: string; action: string }>;
+  };
+  macro_layer?: {
+    macro_score: number | null;
+    ready: boolean;
+    evidence: string;
+    available_inputs: string[];
+    missing_inputs: string[];
+    lineage: Record<string, unknown>;
+  };
   layers: LivermoreCycleRotationLayer[];
   constraints: string[];
   boundary: string;

@@ -1,0 +1,39 @@
+{
+  "description": "Deterministic monthly macro fixture for dev/test MacroScore (not production data).",
+  "run_id": "cycle_rotation_macro_fixture_v1",
+  "source_version": "sv_cycle_rotation_macro_fixture_v1",
+  "vendor_version": "vv_cycle_rotation_macro_fixture_v1",
+  "rule_version": "rv_cycle_rotation_macro_fixture_v1",
+  "series": [
+    {
+      "series_id": "M0017126",
+      "series_name": "制造业PMI",
+      "frequency": "monthly",
+      "unit": "index",
+      "points": [
+        ["2026-03-01", 50.2],
+        ["2026-04-01", 51.0]
+      ]
+    },
+    {
+      "series_id": "M5525763",
+      "series_name": "社会融资规模存量:同比",
+      "frequency": "monthly",
+      "unit": "%",
+      "points": [
+        ["2026-03-01", 8.5],
+        ["2026-04-01", 9.2]
+      ]
+    },
+    {
+      "series_id": "M0001385",
+      "series_name": "M2:同比",
+      "frequency": "monthly",
+      "unit": "%",
+      "points": [
+        ["2026-03-01", 7.0],
+        ["2026-04-01", 7.3]
+      ]
+    }
+  ]
+}
