@@ -12,7 +12,10 @@ import duckdb
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, load_choice_stock_readiness
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
-from backend.app.services.market_data_livermore_service import load_livermore_strategy_payload
+from backend.app.services.market_data_livermore_service import (
+    EXECUTION_STOCK_CANDIDATE_POLICY,
+    load_livermore_strategy_payload,
+)
 
 RULE_VERSION = "rv_livermore_candidate_history_v1"
 FORMULA_VERSION = "fv_livermore_candidate_forward_close_unadjusted_v1"
@@ -235,7 +238,7 @@ def materialize_livermore_candidate_history(
             "rule_version": RULE_VERSION,
             "formula_version": FORMULA_VERSION,
             "skipped": ["missing_resolved_as_of_date"],
-            "stock_candidate_policy": stock_candidate_policy or "default",
+            "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
             "message": "Strategy payload has no resolved as_of_date; nothing written.",
         }
 
@@ -423,7 +426,7 @@ def materialize_livermore_candidate_history(
             "skipped": skipped,
             "skipped_count": len(skipped),
             "universe_row_count": len(computed_universe_rows),
-            "stock_candidate_policy": stock_candidate_policy or "default",
+            "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
         }
     finally:
         conn.close()
@@ -460,7 +463,7 @@ def backfill_livermore_candidate_history(
             "skipped": ["missing_observation_trade_dates"],
             "rule_version": RULE_VERSION,
             "formula_version": FORMULA_VERSION,
-            "stock_candidate_policy": stock_candidate_policy or "default",
+            "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
         }
 
     date_results: list[dict[str, object]] = []
@@ -501,7 +504,7 @@ def backfill_livermore_candidate_history(
         "dates": date_results,
         "rule_version": RULE_VERSION,
         "formula_version": FORMULA_VERSION,
-        "stock_candidate_policy": stock_candidate_policy or "default",
+        "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
     }
     if trade_dates:
         from backend.app.tasks.livermore_monitor_append import append_daily_monitor
