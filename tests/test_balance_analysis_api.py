@@ -71,6 +71,23 @@ def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: s
     )
 
 
+def _seed_balance_refresh_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "auth-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="balance_analysis",
+        action="refresh",
+    )
+
+
 def _seed_overview_lineage_fixture(duckdb_path, governance_dir) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -1297,6 +1314,7 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1362,6 +1380,62 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_balance_analysis_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "auth-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    calls: list[str] = []
+
+    def fake_refresh(_settings, *, report_date: str):
+        calls.append(report_date)
+        return {"status": "queued", "run_id": "balance-refresh-test", "report_date": report_date}
+
+    monkeypatch.setattr(route_mod, "refresh_balance_analysis", fake_refresh)
+
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    denied = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers={"X-User-Id": "balance-refresh-user"},
+    )
+    assert denied.status_code == 403
+    assert calls == []
+
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="balance-refresh-user",
+        role=None,
+        resource="balance_analysis",
+        action="refresh",
+    )
+
+    allowed = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers={"X-User-Id": "balance-refresh-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["run_id"] == "balance-refresh-test"
+    assert calls == ["2025-12-31"]
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_refresh_returns_409_when_same_report_date_is_already_in_progress(
     tmp_path,
     monkeypatch,
@@ -1370,6 +1444,7 @@ def test_balance_analysis_refresh_returns_409_when_same_report_date_is_already_i
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1424,6 +1499,7 @@ def test_balance_analysis_refresh_returns_503_when_queue_dispatch_fails_without_
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1472,6 +1548,7 @@ def test_balance_analysis_refresh_reconciles_stale_inflight_run_and_requeues(
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 

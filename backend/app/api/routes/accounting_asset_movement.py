@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.accounting_asset_movement_service import (
     AccountingAssetMovementReadModelNotFoundError,
     accounting_asset_movement_dates_envelope,
@@ -45,8 +45,20 @@ def refresh(
     report_date: str = Query(...),
     currency_basis: str = Query("CNX"),
 ) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="accounting_asset_movement",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return refresh_accounting_asset_movement(
-        get_settings(),
+        settings,
         report_date=report_date,
         currency_basis=currency_basis,
     )

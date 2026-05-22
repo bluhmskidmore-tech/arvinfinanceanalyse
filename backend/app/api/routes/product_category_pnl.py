@@ -91,8 +91,20 @@ def attribution(
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return refresh_product_category_pnl(get_settings())
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="product_category_pnl",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        return refresh_product_category_pnl(settings)
     except ProductCategoryRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ProductCategoryRefreshServiceError as exc:

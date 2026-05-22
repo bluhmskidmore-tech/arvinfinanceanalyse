@@ -349,7 +349,15 @@ def refresh(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="balance_analysis",
+            action="refresh",
+        )
         return refresh_balance_analysis(settings, report_date=report_date)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except BalanceAnalysisRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BalanceAnalysisRefreshServiceError as exc:

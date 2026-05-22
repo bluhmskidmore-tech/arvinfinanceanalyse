@@ -289,6 +289,12 @@ def refresh_pnl(
     settings = get_settings()
     service = _pnl_service()
     try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="formal_pnl", action="refresh")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
         return service.refresh_pnl(settings, report_date=report_date)
     except service.PnlRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -16,6 +16,7 @@ from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import ROOT, load_module
 
@@ -24,6 +25,14 @@ def _force_pnl_ytd_refresh_bundle_contract(monkeypatch) -> None:
     """契约测试用 FakeRefreshInput 时关闭 formal 优先，避免与已物化的 DuckDB 行混用。"""
     monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "false")
     get_settings.cache_clear()
+
+
+def _setup_route_scope_store(tmp_path, monkeypatch) -> UserScopeRepository:
+    sqlite_path = tmp_path / "auth-scope-contract.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
 
 
 def test_fastapi_application_registers_pnl_routes():
@@ -2835,6 +2844,45 @@ def test_pnl_refresh_queue_and_latest_import_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_pnl_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch):
+    _configure_refresh_sources(tmp_path, monkeypatch)
+    scope_repo = _setup_route_scope_store(tmp_path, monkeypatch)
+    route_module = load_module("backend.app.api.routes.pnl", "backend/app/api/routes/pnl.py")
+    calls: list[str | None] = []
+
+    def fake_refresh(settings, *, report_date=None):
+        calls.append(report_date)
+        return {"status": "queued", "run_id": "pnl-refresh-auth-test"}
+
+    monkeypatch.setattr(route_module._pnl_service(), "refresh_pnl", fake_refresh)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+
+    denied = client.post(
+        "/api/data/refresh_pnl",
+        headers={"X-User-Id": "pnl-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    scope_repo.grant_scope(
+        user_id="pnl-refresh-user",
+        role=None,
+        resource="formal_pnl",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/api/data/refresh_pnl",
+        headers={"X-User-Id": "pnl-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["run_id"] == "pnl-refresh-auth-test"
+    assert calls == [None]
+    get_settings.cache_clear()
+
+
 def test_pnl_refresh_sync_fallback_materializes_latest_sources(tmp_path, monkeypatch):
     _configure_refresh_sources(tmp_path, monkeypatch)
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
@@ -4268,7 +4316,14 @@ def _configure_refresh_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
     monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", '["*"]')
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}")
     get_settings.cache_clear()
+    UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="formal_pnl",
+        action="refresh",
+    )
     return duckdb_path, governance_dir
 
 
