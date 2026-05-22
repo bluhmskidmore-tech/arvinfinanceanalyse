@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAvgBalanceYi } from "./PnlByBusinessPage";
+import { formatAvgBalanceYi } from "./pnlByBusinessPageModel";
 
 describe("PnlByBusinessPage avg balance display", () => {
   it("treats numeric zero as present rather than missing", () => {

@@ -7,11 +7,8 @@ import type {
   PnlByBusinessAnalysisRow,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessManualAdjustmentRequest,
-  PnlByBusinessMonthlyBucket,
-  PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
-  ResultMeta,
 } from "../../api/contracts";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
@@ -21,6 +18,19 @@ import { SectionLead } from "../../components/page/SectionLead";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
 import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
+import {
+  VIEW_MODE_SUBTITLES,
+  buildPnlByBusinessPageModel,
+  formatAnalysisYieldPct,
+  formatAvgBalanceYi,
+  formatAvgBalanceYiMetric,
+  formatRatioPct,
+  formatYuanAsWanUnit,
+  isDetailZqtzBusinessRow,
+  isParentZqtzBusinessRow,
+  toneFromSigned,
+  type PnlByBusinessViewMode,
+} from "./pnlByBusinessPageModel";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 import "./PnlByBusinessPage.css";
 
@@ -34,7 +44,6 @@ function numeric(raw: string | number | null | undefined): number | null {
 
 /** 与日均分析页明细表「日均(亿元)」列一致：两位小数，单位写在表头 */
 const YUAN_PER_YI = 100_000_000;
-const YUAN_PER_WAN = 10_000;
 const FTP_RATE_PCT = 1.6;
 const FTP_RATE_RATIO = 0.016;
 const ANALYSIS_QUERY_STALE_MS = 5 * 60 * 1000;
@@ -50,21 +59,12 @@ const EMPTY_MANUAL_ADJUSTMENT_DRAFT: ManualAdjustmentDraft = {
   reason: "",
 };
 
-/** 损益金额：接口为元，本页统一按万元展示 */
 function formatPnlWan(raw: string | number | null | undefined) {
   const value = numeric(raw);
   if (value === null) {
     return "-";
   }
-  return (value / YUAN_PER_WAN).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
-}
-
-function formatYuanAsWanUnit(raw: string | number | null | undefined) {
-  const value = numeric(raw);
-  if (value === null) {
-    return "-";
-  }
-  return `${(value / YUAN_PER_WAN).toLocaleString("zh-CN", { maximumFractionDigits: 2 })} 万元`;
+  return (value / 10_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
 
 function formatAdbAvgYiCell(yuan: number): string {
@@ -77,27 +77,6 @@ function formatYuanAsYiCell(raw: string | number | null | undefined): string {
     return "-";
   }
   return (value / YUAN_PER_YI).toFixed(2);
-}
-
-export function formatAvgBalanceYi(raw: string | number | null | undefined): string {
-  const value = numeric(raw);
-  if (value === null) {
-    return "日均缺失";
-  }
-  return formatYuanAsYiCell(value);
-}
-
-function formatAvgBalanceYiMetric(raw: string | number | null | undefined): string {
-  const display = formatAvgBalanceYi(raw);
-  return display === "日均缺失" ? display : `${display} 亿元`;
-}
-
-function formatAnalysisYieldPct(raw: string | number | null | undefined): string {
-  const value = numeric(raw);
-  if (value === null) {
-    return "-";
-  }
-  return `${value.toFixed(2)}%`;
 }
 
 function formatAdjustmentStatus(status: string): string {
@@ -173,14 +152,6 @@ function ftpValuesForYtdRow(
   };
 }
 
-function formatRatioPct(raw: string | number | null | undefined) {
-  const value = numeric(raw);
-  if (value === null) {
-    return "-";
-  }
-  return `${(value * 100).toFixed(2)}%`;
-}
-
 /** 单日 formal 接口 `yield_pct`：与后端 SQL 一致，为百分数点（如 10.14 表示 10.14%），非 0–1 占比 */
 function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
   const value = numeric(raw);
@@ -188,14 +159,6 @@ function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
     return "-";
   }
   return `${value.toFixed(2)}%`;
-}
-
-function toneFromSigned(raw: string | number | null | undefined): "default" | "positive" | "negative" {
-  const value = numeric(raw);
-  if (value === null || value === 0) {
-    return "default";
-  }
-  return value > 0 ? "positive" : "negative";
 }
 
 function buildYtdRangeFromResultDates(
@@ -212,46 +175,6 @@ function buildYtdRangeFromResultDates(
     startDate: periodStartDate,
     endDate: periodEndDate,
   };
-}
-
-type ZqtzBusinessDisplayRow = {
-  row_key: string;
-  business_type: string;
-  source_note?: string | null;
-};
-
-/** 与后端 ZQTZ 父级汇总一致：排除「其中」细分行，避免与父级重复加总 */
-function isParentZqtzBusinessRow(row: ZqtzBusinessDisplayRow): boolean {
-  if (row.row_key.includes("_detail_")) {
-    return false;
-  }
-  if (row.business_type.startsWith("其中：")) {
-    return false;
-  }
-  const note = String(row.source_note ?? "");
-  return !note.includes("其中项");
-}
-
-function isDetailZqtzBusinessRow(row: ZqtzBusinessDisplayRow): boolean {
-  return !isParentZqtzBusinessRow(row);
-}
-
-function pickDefaultBusinessRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
-  return rows.reduce<PnlByBusinessYtdItem | undefined>((current, row) => {
-    if (!current) {
-      return row;
-    }
-    return Math.abs(numeric(row.total_pnl) ?? 0) > Math.abs(numeric(current.total_pnl) ?? 0) ? row : current;
-  }, undefined);
-}
-
-function pickTopMonthlyBusinessRow(rows: PnlByBusinessMonthlyItem[]): PnlByBusinessMonthlyItem | undefined {
-  return rows.reduce<PnlByBusinessMonthlyItem | undefined>((current, row) => {
-    if (!current) {
-      return row;
-    }
-    return Math.abs(numeric(row.total_pnl) ?? 0) > Math.abs(numeric(current.total_pnl) ?? 0) ? row : current;
-  }, undefined);
 }
 
 function BusinessRowsTable({
@@ -884,52 +807,6 @@ function PnlByBusinessManualAdjustmentPanel({
 
 type PnlByBusinessViewMode = "monthly" | "ytd" | "formal";
 
-const VIEW_MODE_SUBTITLES: Record<PnlByBusinessViewMode, string> = {
-  monthly: "按月报表口径查看当月业务种类损益；月报与累计均使用 ZQTZ 管理披露分类。",
-  ytd: "按已发布月报累计业务种类损益；与月报同为 ZQTZ 管理披露分类。",
-  formal: "按所选报表日读取 formal primary 对账明细（GET /api/pnl/by-business），用于源数据追溯；不与月报或累计混加。",
-};
-
-const VIEW_MODE_STATUS_LABELS: Record<PnlByBusinessViewMode, string> = {
-  monthly: "月报 ZQTZ",
-  ytd: "年累计 YTD",
-  formal: "formal primary",
-};
-
-function formatPnlQualityStatus(
-  quality: ResultMeta["quality_flag"] | undefined,
-  state: { isLoading: boolean; isError: boolean; isEmpty: boolean },
-) {
-  if (state.isLoading) return "读取中";
-  if (state.isError) return "读取失败";
-  if (state.isEmpty) return "无数据";
-  if (!quality) return "待返回";
-  const labels: Record<ResultMeta["quality_flag"], string> = {
-    ok: "正常",
-    warning: "预警",
-    error: "错误",
-    stale: "陈旧",
-    missing: "缺失",
-  };
-  return labels[quality];
-}
-
-function formatPnlVendorStatus(status: ResultMeta["vendor_status"] | undefined) {
-  if (!status) return "待返回";
-  if (status === "vendor_stale") return "供应商陈旧";
-  if (status === "vendor_unavailable") return "供应商不可用";
-  return "正常";
-}
-
-function formatPnlFallbackMode(mode: ResultMeta["fallback_mode"] | undefined) {
-  if (!mode) return "待返回";
-  return mode === "latest_snapshot" ? "最新快照降级" : "未降级";
-}
-
-function formatPnlEvidenceRows(rows: ResultMeta["evidence_rows"] | undefined) {
-  return typeof rows === "number" ? `${rows.toLocaleString("zh-CN")} 行` : "待返回";
-}
-
 const ANALYSIS_DIMENSION_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
   monthly: "月份",
   portfolio: "组合",
@@ -1427,12 +1304,46 @@ export default function PnlByBusinessPage() {
     return map;
   }, [adbComparisonQuery.data?.assets_breakdown]);
 
-  const ytdRows = useMemo(() => ytdResult?.items ?? [], [ytdResult?.items]);
-  const parentYtdRows = useMemo(() => ytdRows.filter(isParentZqtzBusinessRow), [ytdRows]);
   const formalResult = formalBusinessQuery.data?.result;
-  const formalRows = formalResult?.rows ?? [];
-  const defaultBusinessRow = useMemo(() => pickDefaultBusinessRow(parentYtdRows), [parentYtdRows]);
-  const selectedBusinessRow = ytdRows.find((row) => row.row_key === selectedBusinessKey) ?? defaultBusinessRow;
+  const pageModel = useMemo(
+    () =>
+      buildPnlByBusinessPageModel({
+        viewMode,
+        selectedReportDate,
+        selectedYear,
+        selectedBusinessKey,
+        datesState: { isLoading: datesQuery.isLoading, isError: datesQuery.isError },
+        monthlyState: { isLoading: false, isError: false },
+        ytdState: { isLoading: businessQuery.isLoading, isError: businessQuery.isError },
+        formalState: { isLoading: formalBusinessQuery.isLoading, isError: formalBusinessQuery.isError },
+        ytdResult,
+        ytdMeta: businessQuery.data?.result_meta,
+        formalResult,
+        formalMeta: formalBusinessQuery.data?.result_meta,
+      }),
+    [
+      viewMode,
+      selectedReportDate,
+      selectedYear,
+      selectedBusinessKey,
+      datesQuery.isLoading,
+      datesQuery.isError,
+      businessQuery.isLoading,
+      businessQuery.isError,
+      businessQuery.data?.result_meta,
+      formalBusinessQuery.isLoading,
+      formalBusinessQuery.isError,
+      formalBusinessQuery.data?.result_meta,
+      ytdResult,
+      formalResult,
+    ],
+  );
+  const {
+    ytdRows,
+    defaultBusinessRow,
+    selectedBusinessRow,
+    formalRows,
+  } = pageModel;
   const adbComparisonSettled = adbComparisonQuery.isSuccess || adbComparisonQuery.isError;
   const analysisBaseReady = Boolean(
     selectedReportDate &&
@@ -1478,30 +1389,6 @@ export default function PnlByBusinessPage() {
     retry: false,
     staleTime: ANALYSIS_QUERY_STALE_MS,
   });
-  const monthlyBusinessMonths = useMemo(
-    () => monthlyBusinessQuery.data?.result.months ?? [],
-    [monthlyBusinessQuery.data?.result.months],
-  );
-  const activeMonthlyBucket = useMemo(
-    () =>
-      monthlyBusinessMonths.find((month) => month.period_end_date === selectedReportDate) ??
-      monthlyBusinessMonths[0],
-    [monthlyBusinessMonths, selectedReportDate],
-  );
-
-  useEffect(() => {
-    if (viewMode !== "monthly" || !activeMonthlyBucket?.month_key) {
-      return;
-    }
-    setOpenMonthlyKeys((current) => {
-      if (current.has(activeMonthlyBucket.month_key)) {
-        return current;
-      }
-      const next = new Set(current);
-      next.add(activeMonthlyBucket.month_key);
-      return next;
-    });
-  }, [activeMonthlyBucket?.month_key, viewMode]);
 
   const analysisQuery = useQuery({
     queryKey: [
@@ -1711,38 +1598,68 @@ export default function PnlByBusinessPage() {
     });
   };
 
-  const topYtdRow = defaultBusinessRow;
-  const ytdAssetCount = parentYtdRows.reduce((total, row) => total + row.assets_count, 0);
-  const parentMonthlyItems = useMemo(
-    () => activeMonthlyBucket?.items.filter(isParentZqtzBusinessRow) ?? [],
-    [activeMonthlyBucket?.items],
+  const completePageModel = useMemo(
+    () =>
+      buildPnlByBusinessPageModel({
+        viewMode,
+        selectedReportDate,
+        selectedYear,
+        selectedBusinessKey,
+        datesState: { isLoading: datesQuery.isLoading, isError: datesQuery.isError },
+        monthlyState: { isLoading: monthlyBusinessQuery.isLoading, isError: monthlyBusinessQuery.isError },
+        ytdState: { isLoading: businessQuery.isLoading, isError: businessQuery.isError },
+        formalState: { isLoading: formalBusinessQuery.isLoading, isError: formalBusinessQuery.isError },
+        monthlyResult: monthlyBusinessQuery.data?.result,
+        monthlyMeta: monthlyBusinessQuery.data?.result_meta,
+        ytdResult,
+        ytdMeta: businessQuery.data?.result_meta,
+        formalResult,
+        formalMeta: formalBusinessQuery.data?.result_meta,
+      }),
+    [
+      viewMode,
+      selectedReportDate,
+      selectedYear,
+      selectedBusinessKey,
+      datesQuery.isLoading,
+      datesQuery.isError,
+      monthlyBusinessQuery.isLoading,
+      monthlyBusinessQuery.isError,
+      monthlyBusinessQuery.data?.result,
+      monthlyBusinessQuery.data?.result_meta,
+      businessQuery.isLoading,
+      businessQuery.isError,
+      businessQuery.data?.result_meta,
+      formalBusinessQuery.isLoading,
+      formalBusinessQuery.isError,
+      formalBusinessQuery.data?.result_meta,
+      ytdResult,
+      formalResult,
+    ],
   );
-  const topMonthlyRow = useMemo(() => pickTopMonthlyBusinessRow(parentMonthlyItems), [parentMonthlyItems]);
+  const {
+    monthlyBusinessMonths,
+    activeMonthlyBucket,
+    loading,
+    error,
+    empty,
+    statusStrip,
+    summaryCards,
+  } = completePageModel;
 
-  const topFormalRow = formalRows.reduce<PnlByBusinessRow | undefined>((current, row) => {
-    if (!current) {
-      return row;
+  useEffect(() => {
+    if (viewMode !== "monthly" || !activeMonthlyBucket?.month_key) {
+      return;
     }
-    return Math.abs(numeric(row.total_pnl) ?? 0) > Math.abs(numeric(current.total_pnl) ?? 0) ? row : current;
-  }, undefined);
-
-  const loading =
-    datesQuery.isLoading ||
-    (viewMode === "monthly" && monthlyBusinessQuery.isLoading) ||
-    (viewMode === "ytd" && businessQuery.isLoading) ||
-    (viewMode === "formal" && formalBusinessQuery.isLoading);
-  const error =
-    datesQuery.isError ||
-    (viewMode === "monthly" && monthlyBusinessQuery.isError) ||
-    (viewMode === "ytd" && businessQuery.isError) ||
-    (viewMode === "formal" && formalBusinessQuery.isError);
-  const empty =
-    !loading &&
-    !error &&
-    (!selectedReportDate ||
-      (viewMode === "monthly" && monthlyBusinessMonths.length === 0) ||
-      (viewMode === "ytd" && ytdRows.length === 0) ||
-      (viewMode === "formal" && formalRows.length === 0));
+    setOpenMonthlyKeys((current) => {
+      if (current.has(activeMonthlyBucket.month_key)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(activeMonthlyBucket.month_key);
+      return next;
+    });
+  }, [activeMonthlyBucket?.month_key, viewMode]);
 
   const handleExportExcel = async () => {
     if (!selectedReportDate || exportingExcel) {
@@ -1795,18 +1712,6 @@ export default function PnlByBusinessPage() {
     (viewMode === "ytd" && !businessQuery.isSuccess) ||
     (viewMode === "monthly" && !monthlyBusinessQuery.isSuccess) ||
     (viewMode === "formal" && !formalBusinessQuery.isSuccess);
-
-  const activeResultMeta =
-    viewMode === "monthly"
-      ? monthlyBusinessQuery.data?.result_meta
-      : viewMode === "ytd"
-        ? businessQuery.data?.result_meta
-        : formalBusinessQuery.data?.result_meta;
-  const activeDataStatus = formatPnlQualityStatus(activeResultMeta?.quality_flag, {
-    isLoading: loading,
-    isError: error,
-    isEmpty: empty,
-  });
 
   return (
     <main data-testid="pnl-by-business-page">
@@ -1868,26 +1773,26 @@ export default function PnlByBusinessPage() {
         <div className="pnl-by-business-data-status-strip__grid">
           <span className="pnl-by-business-data-status-strip__item">
             <small>当前口径</small>
-            <strong>{VIEW_MODE_STATUS_LABELS[viewMode]}</strong>
+            <strong>{statusStrip.viewModeLabel}</strong>
           </span>
           <span className="pnl-by-business-data-status-strip__item">
             <small>数据状态</small>
-            <strong>{activeDataStatus}</strong>
+            <strong>{statusStrip.dataStatus}</strong>
           </span>
           <span className="pnl-by-business-data-status-strip__item">
             <small>数据截至</small>
-            <strong>{activeResultMeta?.as_of_date ?? selectedReportDate ?? "待返回"}</strong>
+            <strong>{statusStrip.asOfDate}</strong>
           </span>
           <span className="pnl-by-business-data-status-strip__item">
             <small>降级模式</small>
-            <strong>{formatPnlFallbackMode(activeResultMeta?.fallback_mode)}</strong>
+            <strong>{statusStrip.fallbackMode}</strong>
           </span>
         </div>
         <div className="pnl-by-business-data-status-strip__meta">
-          <span>供应商：{formatPnlVendorStatus(activeResultMeta?.vendor_status)}</span>
-          <span>证据行：{formatPnlEvidenceRows(activeResultMeta?.evidence_rows)}</span>
-          <span>生成：{activeResultMeta?.generated_at ?? "待返回"}</span>
-          <span>Trace：{activeResultMeta?.trace_id ?? "待返回"}</span>
+          <span>供应商：{statusStrip.vendorStatus}</span>
+          <span>证据行：{statusStrip.evidenceRows}</span>
+          <span>生成：{statusStrip.generatedAt}</span>
+          <span>Trace：{statusStrip.traceId}</span>
         </div>
       </DataStatusStrip>
 
@@ -1912,86 +1817,9 @@ export default function PnlByBusinessPage() {
       >
         <section className="pnl-by-business-content">
           <div className="pnl-by-business-summary-grid" data-testid="pnl-by-business-summary-cards">
-            {viewMode === "monthly" ? (
-              <>
-                <KpiCard
-                  label="月报合计损益"
-                  value={formatYuanAsWanUnit(activeMonthlyBucket?.summary.total_pnl)}
-                  detail={activeMonthlyBucket?.month_key ?? selectedReportDate}
-                  tone={toneFromSigned(activeMonthlyBucket?.summary.total_pnl)}
-                />
-                <KpiCard
-                  label="业务种类"
-                  value={`${parentMonthlyItems.length}`}
-                  detail="父级 ZQTZ 分类"
-                />
-                <KpiCard
-                  label="最大损益业务"
-                  value={topMonthlyRow?.business_type ?? "-"}
-                  detail={topMonthlyRow ? formatYuanAsWanUnit(topMonthlyRow.total_pnl) : "无明细"}
-                  valueVariant="text"
-                  tone={toneFromSigned(topMonthlyRow?.total_pnl)}
-                />
-                <KpiCard
-                  label="月报收益率"
-                  value={formatAnalysisYieldPct(activeMonthlyBucket?.summary.annualized_yield_pct)}
-                  detail="月度日均分母"
-                  tone={toneFromSigned(activeMonthlyBucket?.summary.annualized_yield_pct)}
-                />
-              </>
-            ) : viewMode === "ytd" ? (
-              <>
-                <KpiCard
-                  label="月报累计损益"
-                  value={formatYuanAsWanUnit(ytdResult?.total_pnl)}
-                  detail={ytdResult?.period_label ?? `${selectedYear} 年累计`}
-                  tone={toneFromSigned(ytdResult?.total_pnl)}
-                />
-                <KpiCard
-                  label="业务种类"
-                  value={`${parentYtdRows.length}`}
-                  detail={`${ytdAssetCount} 个父级归类命中`}
-                />
-                <KpiCard
-                  label="最大损益业务"
-                  value={topYtdRow?.business_type ?? "-"}
-                  detail={topYtdRow ? formatYuanAsWanUnit(topYtdRow.total_pnl) : "无明细"}
-                  valueVariant="text"
-                  tone={toneFromSigned(topYtdRow?.total_pnl)}
-                />
-                <KpiCard
-                  label="最大占比"
-                  value={formatRatioPct(topYtdRow?.proportion)}
-                  detail={topYtdRow?.business_type ?? "无明细"}
-                />
-              </>
-            ) : (
-              <>
-                <KpiCard
-                  label="报表日合计损益"
-                  value={formatYuanAsWanUnit(formalResult?.summary.total_pnl)}
-                  detail={`${formalResult?.report_date ?? selectedReportDate} · formal`}
-                  tone={toneFromSigned(formalResult?.summary.total_pnl)}
-                />
-                <KpiCard
-                  label="业务种类行数"
-                  value={`${formalRows.length}`}
-                  detail={`已追溯损益行 ${formalResult?.summary.traced_pnl_row_count ?? 0}`}
-                />
-                <KpiCard
-                  label="最大损益（行）"
-                  value={topFormalRow?.business_type_primary ?? "-"}
-                  detail={topFormalRow ? formatYuanAsWanUnit(topFormalRow.total_pnl) : "无明细"}
-                  valueVariant="text"
-                  tone={toneFromSigned(topFormalRow?.total_pnl)}
-                />
-                <KpiCard
-                  label="未追溯 PnL 行"
-                  value={`${formalResult?.summary.untraced_pnl_row_count ?? 0}`}
-                  detail="与余额 join 未命中时计数"
-                />
-              </>
-            )}
+            {summaryCards.map((card) => (
+              <KpiCard key={card.label} {...card} />
+            ))}
           </div>
 
           {viewMode === "monthly" && monthlyBusinessQuery.data ? (
