@@ -8,6 +8,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_SCRIPT = REPO_ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
 CODEX_CONFIG = REPO_ROOT / ".codex" / "config.toml"
@@ -275,6 +277,15 @@ def test_moss_codex_mcp_entries_handshake_from_declared_cwd() -> None:
         assert response["result"]["serverInfo"]["name"] == expected_server_info_name
 
 
+def test_moss_launcher_handshake_is_cwd_independent() -> None:
+    response = _request_initialize(
+        sys.executable,
+        [str(REPO_ROOT / "scripts" / "mcp" / "moss_mcp_launcher.py"), "metric-contracts"],
+        REPO_ROOT / "tests",
+    )
+    assert response["result"]["serverInfo"]["name"] == "moss-metric-contracts"
+
+
 def test_metric_contracts_mcp_exposes_contract_docs() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -299,7 +310,58 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
         server.close()
 
 
-def test_metric_contracts_mcp_exposes_product_category_page_trace_bundle() -> None:
+@pytest.mark.parametrize(
+    (
+        "page_slug",
+        "frontend_route",
+        "primary_api",
+        "truth_marker",
+        "backend_touchpoint",
+        "frontend_touchpoint",
+        "test_touchpoint",
+        "golden_sample",
+        "guardrail_marker",
+        "alias",
+    ),
+    [
+        (
+            "product-category-pnl",
+            "/product-category-pnl",
+            "/ui/pnl/product-category",
+            "product_category_pnl_formal_read_model",
+            "backend/app/services/product_category_source_service.py",
+            "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+            "tests/test_product_category_pnl_flow.py",
+            "tests/golden_samples/GS-PROD-CAT-PNL-A",
+            "zqtz holdings-side logic",
+            "/product-category-pnl",
+        ),
+        (
+            "dashboard-home",
+            "/",
+            "/ui/home/snapshot",
+            "home_snapshot_envelope",
+            "backend/app/services/executive_service.py",
+            "frontend/src/features/workbench/pages/DashboardPage.tsx",
+            "tests/test_home_snapshot_endpoint.py",
+            "tests/golden_samples/GS-EXEC-OVERVIEW-A",
+            "formal metric truth",
+            "/dashboard",
+        ),
+    ],
+)
+def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
+    page_slug: str,
+    frontend_route: str,
+    primary_api: str,
+    truth_marker: str,
+    backend_touchpoint: str,
+    frontend_touchpoint: str,
+    test_touchpoint: str,
+    golden_sample: str,
+    guardrail_marker: str,
+    alias: str,
+) -> None:
     server = McpProcess("metric-contracts")
     try:
         server.request("initialize")
@@ -310,21 +372,56 @@ def test_metric_contracts_mcp_exposes_product_category_page_trace_bundle() -> No
 
         result = server.request(
             "tools/call",
-            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "product-category-pnl"}},
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": page_slug}},
         )
         payload = json.loads(result["content"][0]["text"])
 
-        assert payload["page_slug"] == "product-category-pnl"
-        assert payload["frontend_route"] == "/product-category-pnl"
-        assert payload["primary_api"] == "/ui/pnl/product-category"
-        assert "product_category_pnl_formal_read_model" in payload["truth_chain"]
-        assert "backend/app/services/product_category_source_service.py" in payload["backend_touchpoints"]
-        assert "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx" in payload[
-            "frontend_touchpoints"
-        ]
-        assert "tests/test_product_category_pnl_flow.py" in payload["test_touchpoints"]
-        assert "frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx" in payload["test_touchpoints"]
-        assert any("zqtz holdings-side logic" in guardrail for guardrail in payload["guardrails"])
+        assert payload["page_slug"] == page_slug
+        assert payload["frontend_route"] == frontend_route
+        assert payload["primary_api"] == primary_api
+        assert any(truth_marker in item for item in payload["truth_chain"])
+        assert backend_touchpoint in payload["backend_touchpoints"]
+        assert frontend_touchpoint in payload["frontend_touchpoints"]
+        assert test_touchpoint in payload["test_touchpoints"]
+        assert golden_sample in payload["golden_samples"]
+        assert all(str(sample).startswith("tests/golden_samples/") for sample in payload["golden_samples"])
+        assert payload["contract_docs"]
+        assert payload["supporting_apis"]
+        assert payload["verification_focus"]
+        assert payload["guardrails"]
+        assert any(guardrail_marker in guardrail for guardrail in payload["guardrails"])
+
+        alias_result = server.request(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+        )
+        alias_payload = json.loads(alias_result["content"][0]["text"])
+        assert alias_payload["page_slug"] == page_slug
+    finally:
+        server.close()
+
+
+def test_dashboard_home_trace_bundle_preserves_mixed_source_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in ("dashboard-home", "/", "/dashboard"):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "dashboard-home"
+
+        supporting_apis = set(payload["supporting_apis"])
+        assert "/ui/home/snapshot" == payload["primary_api"]
+        assert "/ui/risk/overview" not in supporting_apis
+        assert "/ui/home/alerts" not in supporting_apis
+        assert "/ui/home/contribution" not in supporting_apis
+        assert any("analytical/mixed-source" in item for item in payload["guardrails"])
+        assert any("not a full-page formal sample" in item for item in payload["guardrails"])
     finally:
         server.close()
 
@@ -355,6 +452,7 @@ def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_
         )
         assert unknown_slug["code"] == -32602
         assert "Unknown page_slug: risk-tensor" in unknown_slug["message"]
+        assert "dashboard-home" in unknown_slug["message"]
         assert "product-category-pnl" in unknown_slug["message"]
     finally:
         server.close()

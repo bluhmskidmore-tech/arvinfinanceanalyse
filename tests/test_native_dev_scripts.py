@@ -55,6 +55,18 @@ def test_codex_verify_page_defaults_to_dry_run():
     assert "Codex verify page checks passed." not in output
 
 
+def test_codex_verify_page_supports_dashboard_home_dry_run():
+    output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "dashboard-home")
+
+    assert "Codex verify page: dashboard-home" in output
+    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_home_snapshot_endpoint.py" in output
+    assert "DashboardPage.test.tsx" in output
+    assert "dashboardCockpitHomeModel.test.ts" in output
+    assert "Codex verify page dry run complete. Pass -Run to execute checks." in output
+    assert "Codex verify page checks passed." not in output
+
+
 def test_codex_page_smoke_defaults_to_checklist_only():
     output = run_powershell_script("codex-page-smoke.ps1", "-PageSlug", "product-category-pnl")
 
@@ -62,4 +74,17 @@ def test_codex_page_smoke_defaults_to_checklist_only():
     assert "/product-category-pnl" in output
     assert "/ui/pnl/product-category" in output
     assert "Playwright MCP" in output
+    assert "Live checks:" not in output
+
+
+def test_codex_page_smoke_supports_dashboard_home_checklist_only():
+    output = run_powershell_script("codex-page-smoke.ps1", "-PageSlug", "dashboard-home")
+
+    assert "Codex page smoke: dashboard-home" in output
+    assert "Route aliases:" in output
+    assert "http://127.0.0.1:5888/dashboard" in output
+    assert "/ui/home/snapshot" in output
+    assert "/api/dashboard/core_metrics" in output
+    assert "Playwright MCP" in output
+    assert "formal metric truth" in output
     assert "Live checks:" not in output

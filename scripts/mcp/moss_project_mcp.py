@@ -224,7 +224,7 @@ class MetricContractsProvider(McpProvider):
                     "properties": {
                         "page_slug": {
                             "type": "string",
-                            "description": "Seeded page slug or route alias, for example product-category-pnl.",
+                            "description": "Seeded page slug or route alias, for example product-category-pnl or dashboard-home.",
                         }
                     },
                     "required": ["page_slug"],
@@ -673,7 +673,99 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Treat missing standalone as_of_date as an explicit contract gap, not an assumption.",
         ],
     }
-    return {alias.casefold(): product_category_bundle for alias in product_category_bundle["aliases"]}
+    dashboard_home_bundle = {
+        "page_slug": "dashboard-home",
+        "page_id": "PAGE-DASH-001",
+        "page_name": "Dashboard Home",
+        "aliases": [
+            "dashboard-home",
+            "dashboard",
+            "/dashboard",
+            "/",
+            "PAGE-DASH-001",
+        ],
+        "frontend_route": "/",
+        "primary_api": "/ui/home/snapshot",
+        "supporting_apis": [
+            "/ui/home/overview",
+            "/ui/home/summary",
+            "/api/dashboard/core_metrics",
+            "/api/dashboard/daily-changes",
+            "/api/bond-dashboard/headline-kpis",
+            "/api/bond-analytics/portfolio-headlines",
+            "/ui/market-data/rates",
+            "/ui/calendar/supply-auctions",
+        ],
+        "contract_docs": [
+            "docs/page_contracts.md",
+            "docs/dashboard_cockpit_contract.md",
+            "docs/metric_dictionary.md",
+            "docs/golden_sample_catalog.md",
+        ],
+        "truth_chain": [
+            "docs/page_contracts.md PAGE-DASH-001",
+            "docs/dashboard_cockpit_contract.md",
+            "backend/app/services/executive_service.py home_snapshot_envelope",
+            "backend/app/api/routes/executive.py GET /ui/home/snapshot",
+            "frontend/src/api/executiveHomeSnapshotFetch.ts",
+            "frontend/src/features/workbench/pages/useDashboardSnapshotBoundary.ts",
+            "frontend/src/features/workbench/pages/DashboardPage.tsx",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/executive.py",
+            "backend/app/services/executive_service.py",
+            "backend/app/services/dashboard_service.py",
+            "backend/app/services/bond_dashboard_service.py",
+            "backend/app/schemas/executive_dashboard.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/router/routes.tsx",
+            "frontend/src/api/executiveClient.ts",
+            "frontend/src/api/executiveHomeSnapshotFetch.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/workbench/pages/DashboardPage.tsx",
+            "frontend/src/features/workbench/pages/useDashboardSnapshotBoundary.ts",
+            "frontend/src/features/workbench/dashboard/dashboardHomeModel.ts",
+            "frontend/src/features/workbench/dashboard/dashboardCockpitHomeModel.ts",
+            "frontend/src/features/workbench/dashboard/sections/DashboardCockpitHeader.tsx",
+            "frontend/src/features/workbench/dashboard/sections/DashboardJudgmentStrip.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_home_snapshot_endpoint.py",
+            "tests/test_dashboard_api_contract.py",
+            "tests/test_executive_dashboard_endpoints.py",
+            "tests/test_executive_service_contract.py",
+            "frontend/src/test/DashboardPage.test.tsx",
+            "frontend/src/features/workbench/pages/useDashboardSnapshotBoundary.test.tsx",
+            "frontend/src/features/workbench/dashboard/dashboardHomeModel.test.ts",
+            "frontend/src/features/workbench/dashboard/dashboardCockpitHomeModel.test.ts",
+            "frontend/src/features/workbench/dashboard/sections/DashboardCockpitHeader.test.tsx",
+        ],
+        "golden_samples": [
+            "tests/golden_samples/GS-EXEC-OVERVIEW-A",
+            "tests/golden_samples/GS-EXEC-PNL-ATTR-A",
+            "tests/golden_samples/GS-EXEC-SUMMARY-A",
+        ],
+        "verification_focus": [
+            "Treat /ui/home/snapshot as the primary report-date, verdict, governance-status, and lineage source.",
+            "Trace snapshot result through getHomeSnapshot, useDashboardSnapshotBoundary, dashboardHomeModel, dashboardCockpitHomeModel, and DashboardPage before changing display logic.",
+            "Keep supplemental surfaces gated by report_date equality with the snapshot report_date before first-screen trust.",
+            "Check analytical basis, partial-mode domains, stale/fallback/vendor flags, mock fallback warnings, and reserved endpoint visibility.",
+        ],
+        "guardrails": [
+            "Do not promote dashboard-home aggregate values to formal metric truth without updating metric_dictionary and page contracts.",
+            "Do not request or render reserved /ui/risk/overview, /ui/home/alerts, or /ui/home/contribution as normal first-screen conclusions.",
+            "Do not fill missing homepage snapshot fields with demo, reserved, or stale figures in real mode.",
+            "Do not recompute formal business metrics in the frontend; consume backend-owned snapshot and supplemental payloads.",
+            "Treat the aggregate homepage as analytical/mixed-source; its executive golden samples cover sub-surfaces, not a full-page formal sample.",
+        ],
+    }
+    bundles = [product_category_bundle, dashboard_home_bundle]
+    return {
+        alias.casefold(): bundle
+        for bundle in bundles
+        for alias in bundle["aliases"]
+    }
 
 
 def page_trace_bundle(bundles: dict[str, dict[str, Any]], page_slug: str) -> dict[str, Any]:

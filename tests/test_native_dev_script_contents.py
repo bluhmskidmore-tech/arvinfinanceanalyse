@@ -275,12 +275,19 @@ def test_dev_governance_maintenance_script_runs_compaction_and_layering():
 
 def test_codex_verify_page_script_plans_product_category_checks():
     script = (ROOT / "scripts" / "codex-verify-page.ps1").read_text(encoding="utf-8")
-    assert "ValidateSet(\"product-category-pnl\")" in script
+    assert "ValidateSet(\"dashboard-home\", \"product-category-pnl\")" in script
     assert "Run" in script
     assert "DryRun" in script
     assert "Pass -Run to execute checks" in script
     assert "Codex verify page" in script
+    assert "dashboard-home" in script
     assert "tests/test_project_mcp_servers.py" in script
+    assert "tests/test_home_snapshot_endpoint.py" in script
+    assert "tests/test_dashboard_api_contract.py" in script
+    assert "DashboardPage.test.tsx" in script
+    assert "useDashboardSnapshotBoundary.test.tsx" in script
+    assert "dashboardHomeModel.test.ts" in script
+    assert "dashboardCockpitHomeModel.test.ts" in script
     assert "tests/test_product_category_pnl_flow.py" in script
     assert "tests/test_product_category_mapping_contract.py" in script
     assert "ProductCategoryPnlPage.test.tsx" in script
@@ -294,8 +301,15 @@ def test_codex_verify_page_script_plans_product_category_checks():
 
 def test_codex_page_smoke_script_emits_product_category_checklist():
     script = (ROOT / "scripts" / "codex-page-smoke.ps1").read_text(encoding="utf-8")
-    assert "ValidateSet(\"product-category-pnl\")" in script
+    assert "ValidateSet(\"dashboard-home\", \"product-category-pnl\")" in script
     assert "Codex page smoke" in script
+    assert "dashboard-home" in script
+    assert "routeAliases" in script
+    assert "/dashboard" in script
+    assert "Supplemental API probe" in script
+    assert "/ui/home/snapshot" in script
+    assert "/api/dashboard/core_metrics" in script
+    assert "formal metric truth" in script
     assert "/product-category-pnl" in script
     assert "/ui/pnl/product-category" in script
     assert "Playwright MCP" in script
