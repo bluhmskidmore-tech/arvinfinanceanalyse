@@ -3,49 +3,53 @@
  */
 
 [data-testid="fixed-income-dashboard-page"].dashboard-cockpit-page {
-  --cockpit-bg: #f7f4ef;
-  --cockpit-bg-accent: #fbfaf7;
+  --cockpit-bg: #f3f5f8;
+  --cockpit-bg-accent: #f7f9fc;
   --cockpit-card: #ffffff;
-  --cockpit-card-soft: #f9fbfd;
-  --cockpit-border: #e5eaf0;
-  --cockpit-border-strong: #d5dce6;
-  --cockpit-primary: #1d4e89;
+  --cockpit-card-soft: #fafbfd;
+  --cockpit-border: #dde4ec;
+  --cockpit-border-strong: #c8d3df;
+  --cockpit-divider: #e7ecf2;
+  --cockpit-primary: #1850a1;
+  --cockpit-primary-aux: #2f68b8;
   --cockpit-primary-soft: #e8f1fb;
-  --cockpit-primary-line: rgba(29, 78, 137, 0.18);
-  --cockpit-text: #101828;
+  --cockpit-primary-line: rgba(24, 80, 161, 0.18);
+  --cockpit-gold: #b88746;
+  --cockpit-gold-soft: #f8f1e8;
+  --cockpit-text: #0b1f3a;
   --cockpit-text-soft: #475467;
   --cockpit-muted: #667085;
-  --cockpit-success: #16835f;
+  --cockpit-success: #197a5a;
   --cockpit-success-soft: #ecfdf5;
-  --cockpit-danger: #c2413a;
+  --cockpit-danger: #b94743;
   --cockpit-danger-soft: #fff1f0;
-  --cockpit-warning: #c77700;
+  --cockpit-warning: #b76e00;
   --cockpit-warning-soft: #fff7e6;
   --cockpit-shadow-xs: 0 1px 2px rgba(11, 31, 58, 0.04);
-  --cockpit-shadow-sm: 0 2px 6px rgba(11, 31, 58, 0.05);
-  --cockpit-shadow-md: 0 4px 12px rgba(11, 31, 58, 0.06);
-  --cockpit-radius-lg: 12px;
-  --cockpit-radius-md: 12px;
-  --cockpit-radius-sm: 8px;
+  --cockpit-shadow-sm: 0 1px 3px rgba(11, 31, 58, 0.06);
+  --cockpit-shadow-md: 0 2px 6px rgba(11, 31, 58, 0.07);
+  --cockpit-radius-lg: 10px;
+  --cockpit-radius-md: 10px;
+  --cockpit-radius-sm: 6px;
 
-  --dashboard-terminal-blue: #1d4e89;
+  --dashboard-terminal-blue: #1850a1;
   --dashboard-terminal-blue-strong: #0b1f3a;
-  --dashboard-terminal-ink: #101828;
+  --dashboard-terminal-ink: #0b1f3a;
   --dashboard-terminal-ink-soft: #475467;
   --dashboard-terminal-muted: #667085;
-  --dashboard-terminal-line: #e5eaf0;
-  --dashboard-terminal-line-soft: #edf1f5;
+  --dashboard-terminal-line: #dde4ec;
+  --dashboard-terminal-line-soft: #e7ecf2;
   --dashboard-terminal-sheet: #ffffff;
-  --dashboard-terminal-sheet-soft: #f8fafc;
-  --dashboard-terminal-green: #16835f;
-  --dashboard-terminal-red: #c2413a;
-  --dashboard-terminal-amber: #c77700;
+  --dashboard-terminal-sheet-soft: #f7f9fc;
+  --dashboard-terminal-green: #197a5a;
+  --dashboard-terminal-red: #b94743;
+  --dashboard-terminal-amber: #b76e00;
 }
 
 /* —— 左侧导航（仅驾驶舱页） —— */
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) .workbench-shell-aside {
-  background: #071a2f !important;
-  border-right-color: #0b2542 !important;
+  background: #06182d !important;
+  border-right-color: #0a2038 !important;
   box-shadow: none !important;
 }
 
@@ -73,15 +77,16 @@
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) [data-testid="workbench-group-nav"] a[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) [data-testid="workbench-support-nav"] a[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) .workbench-shell-agent-nav__link[data-active="true"] {
-  color: #123e73 !important;
-  border-color: #c7daf4 !important;
-  background: #eaf2ff !important;
-  box-shadow: none !important;
+  color: #1850a1 !important;
+  border-color: transparent !important;
+  background: #eaf2fb !important;
+  box-shadow: inset 3px 0 0 #b88746 !important;
+  border-radius: 0 6px 6px 0 !important;
 }
 
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child,
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) [data-testid="workbench-support-nav"] a[data-active="true"] span:last-child {
-  color: #123e73 !important;
+  color: #1850a1 !important;
 }
 
 /* —— 卡片统一 —— */
@@ -90,7 +95,7 @@
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel,
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-notes,
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-card {
-  border-radius: 12px;
+  border-radius: var(--cockpit-radius-sm);
   border-color: var(--cockpit-border);
   background: var(--cockpit-card);
   box-shadow: var(--cockpit-shadow-xs);
@@ -124,7 +129,7 @@
   max-width: 100%;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: var(--cockpit-text-caption, 11px);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -162,7 +167,7 @@
   flex-shrink: 0;
   padding: 1px 6px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: var(--cockpit-text-caption, 11px);
   font-weight: 600;
   color: var(--cockpit-muted);
   background: #f1f5f9;
@@ -353,7 +358,7 @@
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse {
-  border-radius: 12px;
+  border-radius: 0;
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-frame,
@@ -473,16 +478,16 @@
 
 /* —— 最终覆盖：压过 Sections.css 末尾 warm / refined _pass —— */
 [data-testid="fixed-income-dashboard-page"] {
-  --dashboard-refined-ink: #101828;
+  --dashboard-refined-ink: #0b1f3a;
   --dashboard-refined-muted: #667085;
-  --dashboard-refined-border: #e5eaf0;
+  --dashboard-refined-border: #dde4ec;
   --dashboard-refined-paper: #ffffff;
-  --dashboard-refined-tint: #f8fafc;
-  --dashboard-refined-copper: #1d4e89;
-  --dashboard-refined-blue: #1d4e89;
-  --dashboard-refined-green: #16835f;
-  --dashboard-refined-red: #c2413a;
-  --dashboard-refined-amber: #c77700;
+  --dashboard-refined-tint: #f7f9fc;
+  --dashboard-refined-copper: #123e73;
+  --dashboard-refined-blue: #123e73;
+  --dashboard-refined-green: #197a5a;
+  --dashboard-refined-red: #b94743;
+  --dashboard-refined-amber: #b76e00;
 }
 
 [data-testid="fixed-income-dashboard-page"] :is(
@@ -560,7 +565,29 @@
   background: var(--cockpit-primary-soft) !important;
 }
 
-[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-metric-rail__item::before {
-  background: var(--cockpit-card) !important;
-  box-shadow: inset 0 0 0 2px var(--cockpit-primary-soft), var(--cockpit-shadow-xs) !important;
+.dashboard-cockpit-panel--risk .dashboard-cockpit-panel__head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.dashboard-cockpit-panel--risk .dashboard-cockpit-panel__head .dashboard-cockpit-pulse-section__more {
+  margin-top: 2px;
+}
+
+.dashboard-cockpit-pulse__spark-dot {
+  fill: currentColor;
+}
+
+.dashboard-cockpit-pulse[data-tone="up"] .dashboard-cockpit-pulse__spark-dot {
+  color: var(--cockpit-danger);
+}
+
+.dashboard-cockpit-pulse[data-tone="down"] .dashboard-cockpit-pulse__spark-dot {
+  color: var(--cockpit-success);
+}
+
+.dashboard-cockpit-pulse[data-tone="flat"] .dashboard-cockpit-pulse__spark-dot,
+.dashboard-cockpit-pulse[data-tone="muted"] .dashboard-cockpit-pulse__spark-dot,
+.dashboard-cockpit-pulse[data-tone="warn"] .dashboard-cockpit-pulse__spark-dot {
+  color: var(--cockpit-primary);
 }

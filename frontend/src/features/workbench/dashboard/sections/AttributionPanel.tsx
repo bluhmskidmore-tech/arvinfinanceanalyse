@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo } from "react";
 
 import { tabularNumsStyle } from "../../../../theme/designSystem";
-import type { DashboardAttributionTab, DashboardCockpitHomeViewModel } from "../dashboardCockpitHomeModel";
+import type { DashboardCockpitHomeViewModel } from "../dashboardCockpitHomeModel";
 import { resolveKpiDeltaClass } from "../dashboardCockpitHomeModel";
+import { parseCockpitDisplayNumber } from "../dashboardCockpitChartTheme";
 import type { DashboardCockpitWaterfallItem } from "../dashboardCockpitModel";
 
 type AttributionPanelProps = {
@@ -11,20 +12,34 @@ type AttributionPanelProps = {
   note: readonly string[];
 };
 
-function maxWaterfallRaw(items: readonly DashboardCockpitWaterfallItem[]): number {
-  return Math.max(
-    ...items.map((item) => {
-      const n = parseFloat(item.value.replace(/[^\d.-]/g, ""));
-      return Number.isFinite(n) ? Math.abs(n) : 0;
-    }),
-    1,
-  );
+function isAttributionRow(item: DashboardCockpitWaterfallItem): boolean {
+  const label = item.label.trim();
+  return label !== "期初" && label !== "期末" && !label.includes("合计");
+}
+
+function barWidth(value: string, maxAbs: number): number {
+  const parsed = parseCockpitDisplayNumber(value);
+  if (parsed == null || maxAbs <= 0) return 0;
+  return Math.min(100, (Math.abs(parsed) / maxAbs) * 100);
+}
+
+function toneClass(tone: DashboardCockpitWaterfallItem["tone"]): string {
+  if (tone === "positive") return "dashboard-cockpit-tone-positive";
+  if (tone === "negative") return "dashboard-cockpit-tone-negative";
+  return "dashboard-cockpit-tone-neutral";
 }
 
 export function AttributionPanel({ tabs, waterfall, note }: AttributionPanelProps) {
-  const [activeTab, setActiveTab] = useState<DashboardAttributionTab>("day");
-  const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0]!;
-  const max = maxWaterfallRaw(waterfall);
+  const active = tabs.find((tab) => tab.id === "day") ?? tabs[0]!;
+  const rows = useMemo(() => waterfall.filter(isAttributionRow), [waterfall]);
+  const maxAbs = useMemo(() => {
+    let max = 0;
+    for (const row of rows) {
+      const parsed = parseCockpitDisplayNumber(row.value);
+      if (parsed != null) max = Math.max(max, Math.abs(parsed));
+    }
+    return max;
+  }, [rows]);
 
   return (
     <section
@@ -32,67 +47,35 @@ export function AttributionPanel({ tabs, waterfall, note }: AttributionPanelProp
       className="dashboard-cockpit-panel dashboard-cockpit-panel--attribution"
     >
       <header className="dashboard-cockpit-panel__head">
-        <span className="dashboard-cockpit-panel__eyebrow">今日归因</span>
-        <h2 className="dashboard-cockpit-panel__title">损益拆解</h2>
-        <div className="dashboard-cockpit-tabs" role="tablist" aria-label="归因周期">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={tab.id === activeTab}
-              className={`dashboard-cockpit-tabs__btn${tab.id === activeTab ? " dashboard-cockpit-tabs__btn--active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <span className="dashboard-cockpit-panel__eyebrow">归因</span>
+        <h2 className="dashboard-cockpit-panel__title">收益拆解</h2>
       </header>
       <div className="dashboard-cockpit-panel__body">
-        <div className="dashboard-cockpit-attrib-summary">
-          <article>
-            <span>当日损益</span>
-            <strong style={tabularNumsStyle}>{active.pnl}</strong>
-          </article>
-          <article>
-            <span>变化</span>
-            <strong className={resolveKpiDeltaClass(active.changeTone)} style={tabularNumsStyle}>
-              {active.change}
-            </strong>
-          </article>
-          <article>
-            <span>收益率</span>
-            <strong style={tabularNumsStyle}>{active.yield}</strong>
-          </article>
-        </div>
+        <p
+          className={`dashboard-cockpit-attrib-total ${resolveKpiDeltaClass(active.changeTone)}`}
+          style={tabularNumsStyle}
+        >
+          {active.pnl}
+        </p>
         <div
           data-testid="dashboard-cockpit-waterfall"
-          className="dashboard-cockpit-waterfall"
+          className="dashboard-cockpit-attrib-rows"
         >
-          {waterfall.map((item) => {
-            const n = parseFloat(item.value.replace(/[^\d.-]/g, ""));
-            const height = Number.isFinite(n) ? Math.max(14, (Math.abs(n) / max) * 112) : 14;
-            return (
-              <div key={item.id} className="dashboard-cockpit-attrib-waterfall__step">
-                <div
-                  className={`dashboard-cockpit-attrib-waterfall__bar dashboard-cockpit-tone-${item.tone}`}
-                  style={{ height: `${height}px` }}
-                />
-                <span className="dashboard-cockpit-attrib-waterfall__label">{item.label}</span>
-                <strong style={tabularNumsStyle}>{item.value}</strong>
-              </div>
-            );
-          })}
+          {rows.map((item) => (
+            <div key={item.id} className="dashboard-cockpit-attrib-row">
+              <span className="dashboard-cockpit-attrib-row__label">{item.label}</span>
+              <span className="dashboard-cockpit-attrib-row__bar">
+                <i className={toneClass(item.tone)} style={{ width: `${barWidth(item.value, maxAbs)}%` }} />
+              </span>
+              <strong className={`dashboard-cockpit-attrib-row__value ${toneClass(item.tone)}`} style={tabularNumsStyle}>
+                {item.value}
+              </strong>
+            </div>
+          ))}
         </div>
-        <div className="dashboard-cockpit-attrib-note">
-          <h3>组合变化说明</h3>
-          <ul>
-            {note.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
+        {note[0] ? (
+          <p className="dashboard-cockpit-attrib-note-line">{note[0]}</p>
+        ) : null}
       </div>
     </section>
   );

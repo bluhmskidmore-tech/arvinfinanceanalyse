@@ -42,7 +42,7 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
   {
     key: "portfolio",
     label: "组合工作台",
-    description: "围绕持仓、资产负债、损益和专题分析展开。",
+    description: "持仓、资产负债、损益与分析归因入口。",
     icon: "bond",
     defaultPath: "/balance-analysis",
   },
@@ -69,8 +69,8 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
   },
   {
     key: "governance",
-    label: "治理工作台",
-    description: "放置配置、报表和自由查询工具。",
+    label: "报表与数据",
+    description: "报表中心、数据中心与自助查询工具。",
     icon: "settings",
     defaultPath: "/platform-config",
   },
@@ -226,7 +226,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "负债结构分析",
     path: "/liability-analytics",
     icon: "analysis",
-    description: "NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
+    description: "资金与负债：NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
     readiness: "live",
     readinessLabel: "已开放",
     readinessNote:
@@ -281,10 +281,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "platform-config",
-    label: "中台配置",
+    label: "数据中心",
     path: "/platform-config",
     icon: "settings",
-    description: "配置与治理入口",
+    description: "系统健康检查、数据源状态与中台配置。",
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
@@ -424,7 +424,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "product-category-pnl",
-    label: "产品损益",
+    label: "产品分析",
     path: "/product-category-pnl",
     icon: "analysis",
     description: "产品类别损益与场景分析入口",
@@ -455,7 +455,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl-attribution",
-    label: "损益归因",
+    label: "收益归因",
     path: "/pnl-attribution",
     icon: "analysis",
     description: "规模/利率效应、TPL 市场相关性、损益构成、高级归因与 Campisi",
@@ -465,7 +465,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "cube-query",
-    label: "多维查询",
+    label: "自助查询",
     path: "/cube-query",
     icon: "analysis",
     description: "对事实表进行自由维度聚合、筛选、钻取",

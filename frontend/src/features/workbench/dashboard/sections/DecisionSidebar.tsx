@@ -1,69 +1,68 @@
+import { Link } from "react-router-dom";
+
 import { tabularNumsStyle } from "../../../../theme/designSystem";
 import type { DashboardCockpitHomeViewModel } from "../dashboardCockpitHomeModel";
 
 type DecisionSidebarProps = {
   viewModel: DashboardCockpitHomeViewModel;
+  isLiveDataFallback?: boolean;
 };
 
-function splitImprovementNote(note: string): { title: string; body: string } {
-  const [title, ...rest] = note.split("：");
-  return {
-    title: title?.trim() || note,
-    body: rest.join("：").trim(),
-  };
-}
-
-export function DecisionSidebar({ viewModel }: DecisionSidebarProps) {
-  const dataStatus =
-    viewModel.dataSource === "mock" ? "数据使用本地模拟数据" : "部分指标使用本地模拟数据兜底";
-
+export function DecisionSidebar({ viewModel, isLiveDataFallback = false }: DecisionSidebarProps) {
   return (
     <aside
-      data-testid="dashboard-improvement-notes"
-      className="dashboard-cockpit-decision-sidebar"
-      aria-label="首页改造重点"
+      data-testid="dashboard-decision-sidebar"
+      className="dashboard-cockpit-panel dashboard-cockpit-decision-sidebar"
+      aria-label="今日决策侧舱"
     >
-      <header className="dashboard-cockpit-decision-sidebar__head">
-        <span>优化说明</span>
-        <h2>首页改造重点</h2>
+      <header className="dashboard-cockpit-panel__head dashboard-cockpit-decision-sidebar__head">
+        <span className="dashboard-cockpit-panel__eyebrow">决策侧舱</span>
+        <h2 className="dashboard-cockpit-panel__title">今日决策侧舱</h2>
       </header>
 
-      <div className="dashboard-cockpit-decision-sidebar__cards">
-        {viewModel.improvementNotes.map((note, index) => {
-          const item = splitImprovementNote(note);
-          return (
-            <article
-              key={note}
-              className="dashboard-cockpit-decision-card"
-              data-tone={index === 2 ? "warning" : "neutral"}
-            >
-              <span className="dashboard-cockpit-decision-card__index" style={tabularNumsStyle}>
-                {index + 1}
-              </span>
-              <div>
-                <strong>{item.title}</strong>
-                {item.body ? <p>{item.body}</p> : null}
+      <div className="dashboard-cockpit-panel__body dashboard-cockpit-decision-sidebar__body">
+        <div className="dashboard-cockpit-decision-sidebar__cards">
+        {viewModel.decisionSidebarSections.map((section, index) => (
+          <article
+            key={section.id}
+            className="dashboard-cockpit-decision-card"
+            data-tone={section.tone ?? "neutral"}
+          >
+            <span className="dashboard-cockpit-decision-card__index" style={tabularNumsStyle}>
+              {index + 1}
+            </span>
+            <div>
+              <div className="dashboard-cockpit-decision-card__title-row">
+                <strong>{section.title}</strong>
+                {section.badge ? (
+                  <span className="dashboard-cockpit-decision-card__badge">{section.badge}</span>
+                ) : null}
               </div>
-            </article>
-          );
-        })}
+              {section.body ? <p>{section.body}</p> : null}
+            </div>
+          </article>
+        ))}
+        </div>
+
+        {viewModel.showDataWarning || isLiveDataFallback ? (
+          <section
+            data-testid="dashboard-sidebar-data-warning"
+            className="dashboard-cockpit-decision-sidebar__todo"
+          >
+            <h3>首屏状态</h3>
+            {isLiveDataFallback ? (
+              <p>实时数据源当前不可用，页面已自动切换为本地模拟数据展示。</p>
+            ) : null}
+            {viewModel.dataWarningMessages.map((message) => (
+              <p key={message}>{message}</p>
+            ))}
+          </section>
+        ) : null}
+
+        <Link to="/decision-items" className="dashboard-cockpit-decision-sidebar__cta">
+          进入决策工作台 →
+        </Link>
       </div>
-
-      <section className="dashboard-cockpit-decision-sidebar__todo">
-        <h3>首屏状态</h3>
-        <p>
-          已固定核心 KPI、市场脉搏、组合概览、今日归因和风险预警。
-        </p>
-      </section>
-
-      <section className="dashboard-cockpit-decision-sidebar__data">
-        <h3>数据说明</h3>
-        <p>数据来源：交易系统、估值系统、风控系统。</p>
-        <p>
-          更新时间：{viewModel.reportDate} {viewModel.headerStatus.dataUpdatedAt}
-        </p>
-        <span>{dataStatus}</span>
-      </section>
     </aside>
   );
 }

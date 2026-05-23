@@ -146,9 +146,11 @@ export const designTokens = {
     /**
      * UI：Plus Jakarta Sans（拉丁）+ 中文系统栈；经 index.html Google Fonts 加载。
      */
-    sans: '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
+    sans:
+      '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
     /** 数字列、KPI（IBM Plex Mono + tabular nums） */
-    tabular: 'ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
+    tabular:
+      '"IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
   },
   radius: {
     sm: 6,

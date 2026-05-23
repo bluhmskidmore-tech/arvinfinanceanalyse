@@ -1,32 +1,71 @@
+import { useMemo } from "react";
+
+import ReactECharts, { type EChartsOption } from "../../../../lib/echarts";
 import { tabularNumsStyle } from "../../../../theme/designSystem";
-import type { DashboardCockpitHomeViewModel } from "../dashboardCockpitHomeModel";
+import type {
+  DashboardCockpitHomeViewModel,
+  DashboardPortfolioCenterAumVM,
+} from "../dashboardCockpitHomeModel";
+import { resolveKpiDeltaClass } from "../dashboardCockpitHomeModel";
+import { buildCockpitChartTooltip } from "../dashboardCockpitChartTheme";
+import { COCKPIT_VISUAL } from "../dashboardCockpitVisualTokens";
 
 type PortfolioOverviewProps = {
   stats: DashboardCockpitHomeViewModel["portfolioStats"];
   assetBars: DashboardCockpitHomeViewModel["assetBars"];
+  centerAum: DashboardPortfolioCenterAumVM;
   interbankAssets: string;
   interbankLiabilities: string;
   interbankNetPosition: string;
+  interbankNetPositionTone: DashboardCockpitHomeViewModel["interbankNetPositionTone"];
 };
 
-function buildDonutGradient(bars: PortfolioOverviewProps["assetBars"]): string {
-  let cursor = 0;
-  const segments = bars.map((bar) => {
-    const start = cursor;
-    const end = cursor + bar.pct * 3.6;
-    cursor = end;
-    return `${bar.color} ${start}deg ${end}deg`;
-  });
-  return segments.length > 0 ? `conic-gradient(${segments.join(", ")})` : "conic-gradient(#e5e7eb 0 360deg)";
+function buildDonutOption(
+  assetBars: PortfolioOverviewProps["assetBars"],
+): EChartsOption {
+  return {
+    color: assetBars.map((bar) => bar.color),
+    tooltip: {
+      ...buildCockpitChartTooltip(),
+      trigger: "item",
+      formatter: (params) => {
+        if (!params || typeof params !== "object" || !("name" in params)) return "";
+        const pct = assetBars.find((bar) => bar.label === params.name)?.pct;
+        return pct != null ? `${String(params.name)}<br/>${pct.toFixed(1)}%` : String(params.name);
+      },
+    },
+    series: [
+      {
+        type: "pie",
+        radius: ["56%", "78%"],
+        center: ["50%", "50%"],
+        padAngle: 1.5,
+        itemStyle: {
+          borderColor: COCKPIT_VISUAL.surface.card,
+          borderWidth: 2,
+        },
+        label: { show: false },
+        labelLine: { show: false },
+        data: assetBars.map((bar) => ({
+          name: bar.label,
+          value: bar.pct,
+        })),
+      },
+    ],
+  };
 }
 
 export function PortfolioOverview({
   stats,
   assetBars,
+  centerAum,
   interbankAssets,
   interbankLiabilities,
   interbankNetPosition,
+  interbankNetPositionTone,
 }: PortfolioOverviewProps) {
+  const donutOption = useMemo(() => buildDonutOption(assetBars), [assetBars]);
+
   return (
     <section
       data-testid="dashboard-portfolio-overview"
@@ -60,12 +99,14 @@ export function PortfolioOverview({
           </div>
           <div
             data-testid="dashboard-cockpit-portfolio-donut"
-            className="dashboard-cockpit-donut"
-            style={{ background: buildDonutGradient(assetBars) }}
-            aria-label="总资产规模 3,708.10 亿"
+            className="dashboard-cockpit-donut-chart"
+            aria-label={`${centerAum.label} ${centerAum.value}`}
           >
-            <span style={tabularNumsStyle}>3,708.10 亿</span>
-            <em>总资产规模</em>
+            <ReactECharts option={donutOption} style={{ height: 148, width: "100%" }} opts={{ renderer: "canvas" }} />
+            <div className="dashboard-cockpit-donut-chart__center" aria-hidden="true">
+              <span style={tabularNumsStyle}>{centerAum.value}</span>
+              <em>{centerAum.label}</em>
+            </div>
           </div>
         </div>
         <div className="dashboard-cockpit-interbank">
@@ -79,7 +120,10 @@ export function PortfolioOverview({
           </article>
           <article>
             <span>净头寸</span>
-            <strong className="dashboard-cockpit-delta--down" style={tabularNumsStyle}>
+            <strong
+              className={resolveKpiDeltaClass(interbankNetPositionTone)}
+              style={tabularNumsStyle}
+            >
               {interbankNetPosition}
             </strong>
           </article>

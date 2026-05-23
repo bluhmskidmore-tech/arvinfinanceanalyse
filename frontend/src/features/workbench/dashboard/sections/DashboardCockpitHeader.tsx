@@ -37,6 +37,10 @@ export function DashboardCockpitHeader({
 }: DashboardCockpitHeaderProps) {
   const { reportDate, headerStatus } = viewModel;
   const dateInputValue = toDateInputValue(reportDateInput) || toDateInputValue(reportDate);
+  const valuationClass =
+    headerStatus.valuationTone === "ok"
+      ? "dashboard-cockpit-header__pill dashboard-cockpit-header__pill--ok"
+      : "dashboard-cockpit-header__pill dashboard-cockpit-header__pill--muted";
 
   return (
     <header
@@ -88,21 +92,47 @@ export function DashboardCockpitHeader({
 
       <div className="dashboard-cockpit-header__right dashboard-home-toolbar__actions">
         <div className="dashboard-cockpit-header__status-group">
-          <span className="dashboard-cockpit-header__status" style={tabularNumsStyle}>
-            数据已更新 {headerStatus.dataUpdatedAt}
+          <span className="dashboard-cockpit-header__pill dashboard-cockpit-header__pill--info" style={tabularNumsStyle}>
+            {headerStatus.dataSyncPrefix} {headerStatus.dataUpdatedAt}
           </span>
-          <span className="dashboard-cockpit-header__status">{headerStatus.marketStatus}</span>
+          <span className="dashboard-cockpit-header__pill">{headerStatus.marketStatus}</span>
+          {headerStatus.valuationLabel ? (
+            <span className={valuationClass}>{headerStatus.valuationLabel}</span>
+          ) : null}
+          {headerStatus.showRiskReview ? (
+            <Link
+              to="/decision-items"
+              className="dashboard-cockpit-header__pill dashboard-cockpit-header__pill--warn"
+            >
+              风险待复核 <strong style={tabularNumsStyle}>{headerStatus.riskReviewCount}</strong>
+            </Link>
+          ) : null}
           <span className="dashboard-cockpit-header__mode">{modeLabel}</span>
         </div>
         <nav className="dashboard-cockpit-header__links" aria-label="快捷入口">
-          <Link to="/platform-config" className="dashboard-cockpit-header__link">
-            数据中心
+          <Link
+            to="/platform-config"
+            className="dashboard-cockpit-header__icon-btn"
+            title="数据中心"
+            aria-label="数据中心"
+          >
+            数
           </Link>
-          <Link to="/reports" className="dashboard-cockpit-header__link">
-            报表中心
+          <Link
+            to="/reports"
+            className="dashboard-cockpit-header__icon-btn"
+            title="报表中心"
+            aria-label="报表中心"
+          >
+            报
           </Link>
-          <Link to="/decision-items" className="dashboard-cockpit-header__link">
-            预警中心
+          <Link
+            to="/decision-items"
+            className="dashboard-cockpit-header__icon-btn"
+            title="预警中心"
+            aria-label="预警中心"
+          >
+            警
           </Link>
         </nav>
         <button

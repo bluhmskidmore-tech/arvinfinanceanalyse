@@ -5,7 +5,7 @@ import type { DashboardOverviewMetricVM } from "../../executive-dashboard/adapte
 import { formatRawAsNumeric } from "../../../utils/format";
 import { buildDashboardCockpitModel } from "./dashboardCockpitModel";
 import { buildDashboardHomeModel } from "./dashboardHomeModel";
-import { buildDashboardCockpitHomeViewModel, buildDashboardCockpitHeaderStatus } from "./dashboardCockpitHomeModel";
+import { buildDashboardCockpitHomeViewModel, buildDashboardCockpitHeaderStatus, buildDecisionSidebarSections, formatWaterfallValueDisplay, buildRiskRadarFromRiskItems } from "./dashboardCockpitHomeModel";
 
 function overviewMetric(partial: Partial<DashboardOverviewMetricVM>): DashboardOverviewMetricVM {
   return {
@@ -35,6 +35,10 @@ function buildRealModeView(input?: {
   metrics?: DashboardOverviewMetricVM[];
   coreMetrics?: CoreMetricsResult | null;
   reportDate?: string;
+  portfolioComparison?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["portfolioComparison"];
+  creditSpreadMigration?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["creditSpreadMigration"];
+  bondBucketMonthly?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["bondBucketMonthly"];
+  decisionItems?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["decisionItems"];
 }) {
   const reportDate = input?.reportDate ?? "2026-04-30";
   const home = buildDashboardHomeModel({
@@ -54,6 +58,10 @@ function buildRealModeView(input?: {
     cockpit,
     metrics: input?.metrics ?? [],
     coreMetrics: input?.coreMetrics ?? null,
+    portfolioComparison: input?.portfolioComparison ?? null,
+    creditSpreadMigration: input?.creditSpreadMigration ?? null,
+    decisionItems: input?.decisionItems ?? null,
+    bondBucketMonthly: input?.bondBucketMonthly ?? null,
   });
 }
 
@@ -105,7 +113,8 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(view.kpiCards).toHaveLength(6);
     expect(view.marketPulse).toHaveLength(8);
     expect(view.kpiCards[0]?.label).toContain("债券资产规模");
-    expect(view.improvementNotes).toHaveLength(5);
+    expect(view.decisionSidebarSections).toHaveLength(6);
+    expect(view.decisionSidebarSections[0]?.title).toBe("今日主线");
   });
 
   it("prefers real KPI and market pulse values over local mock fillers", () => {
@@ -172,6 +181,61 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(view.dataWarningMessages.join(" ")).not.toContain("本地模拟数据");
   });
 
+  it("uses available real market inputs for all first-screen market pulse slots", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: "2026-04-30",
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const marketPoint = (series_id: string, value_numeric: number, latest_change: number | null, unit = "%") => ({
+      series_id,
+      series_name: series_id,
+      trade_date: "2026-04-30",
+      value_numeric,
+      unit,
+      source_version: "sv",
+      vendor_version: "vv",
+      quality_flag: "ok",
+      latest_change,
+      recent_points: [],
+      refresh_tier: "stable" as const,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+      marketPoints: [
+        marketPoint("EMM00166458", 1.2057, 0.0112),
+        marketPoint("EMM00166466", 1.7514, -0.0078),
+        marketPoint("CA.DR007", 1.29, -0.01),
+        marketPoint("EMG00001310", 4.38, -0.03),
+        marketPoint("EMM00058124", 6.8502, 0.0015, "CNY/USD"),
+        marketPoint("CA.BRENT", 118.26, -5.98, "USD/bbl"),
+        marketPoint("CA.CSI300", 4998.3417, 50.2952, "index"),
+        marketPoint("CA.CSI300_PCT_CHG", 1.0165, 1.093),
+        marketPoint("EMM00166655", 1.5417, null, "unknown"),
+      ],
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+
+    expect(view.marketPulse).toHaveLength(8);
+    expect(view.marketPulse.map((item) => [item.id, item.value])).toEqual([
+      ["cgb10y", "1.75%"],
+      ["dr007", "1.29%"],
+      ["slope", "-54bp"],
+      ["us10y", "4.38%"],
+      ["usdcny", "6.85"],
+      ["brent", "118.26"],
+      ["csi300", "4,998.34"],
+      ["credit-spread", "33bp"],
+    ]);
+    expect(view.marketPulse.every((item) => item.value !== "—")).toBe(true);
+    expect(view.dataWarningMessages.join(" ")).not.toContain("本地模拟数据");
+  });
+
   it("marks missing KPI slots as pending in real mode instead of injecting mock numbers", () => {
     const home = buildDashboardHomeModel({
       metrics: [],
@@ -194,6 +258,43 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(view.kpiCards.find((card) => card.id === "aum")?.value).not.toBe("3,708.10 亿");
     expect(view.dataWarningMessages.join(" ")).toContain("部分指标待同步");
     expect(view.dataWarningMessages.join(" ")).not.toContain("本地模拟数据");
+  });
+
+  it("builds portfolio center AUM from KPI aum card in mock fallback", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics: [],
+      useMockFallback: true,
+    });
+
+    expect(view.portfolioCenterAum).toEqual({
+      value: "3,708.10 亿",
+      label: "债券资产规模",
+    });
+    expect(view.kpiCards.find((card) => card.id === "aum")?.value).toBe("3,708.10 亿");
+  });
+
+  it("shows gap portfolio center AUM when real mode has no aum KPI", () => {
+    const view = buildRealModeView({ metrics: [] });
+
+    expect(view.portfolioCenterAum).toEqual({
+      value: "—",
+      label: "债券资产规模",
+    });
+    expect(view.kpiCards.find((card) => card.id === "aum")?.value).toBe("—");
   });
 
   it("falls back to mock KPI and market pulse when useMockFallback is set", () => {
@@ -268,6 +369,154 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(status.dataUpdatedAt).toMatch(/09:15/);
     expect(status.marketStatus).toBe("市场已收盘");
     expect(status.notificationCount).toBe(3);
+    expect(status.dataSyncPrefix).toBe("数据已更新");
+    expect(status.valuationLabel).toBe("估值已完成");
+    expect(status.valuationTone).toBe("ok");
+    expect(status.riskReviewCount).toBe(3);
+    expect(status.showRiskReview).toBe(true);
+  });
+
+  it("marks mock header status as pending sync instead of completed valuation", () => {
+    const status = buildDashboardCockpitHeaderStatus({
+      useMockFallback: true,
+      alertCount: 11,
+    });
+
+    expect(status.dataSyncPrefix).toBe("数据待同步");
+    expect(status.valuationLabel).toBe("估值待同步");
+    expect(status.valuationTone).toBe("muted");
+    expect(status.riskReviewCount).toBe(11);
+    expect(status.showRiskReview).toBe(true);
+  });
+
+  it("does not mark live market pulse slots as estimated", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: "2026-04-30",
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+      marketPoints: [
+        {
+          series_id: "E1000180",
+          series_name: "10年国债",
+          trade_date: "2026-04-30",
+          value_numeric: 2.31,
+          unit: "%",
+          source_version: "sv",
+          vendor_version: "vv",
+          quality_flag: "ok",
+          latest_change: -0.04,
+          recent_points: [],
+          refresh_tier: "stable",
+        },
+      ],
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+    const live = view.marketPulse.find((item) => item.id === "cgb10y");
+
+    expect(live?.value).toBe("2.31%");
+    expect(live?.isEstimated).not.toBe(true);
+  });
+
+  it("marks derived market pulse spreads as estimated with flat sparklines", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: "2026-04-30",
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+      marketPoints: [
+        {
+          series_id: "EMM00166458",
+          series_name: "1Y国债",
+          trade_date: "2026-04-30",
+          value_numeric: 1.2057,
+          unit: "%",
+          source_version: "sv",
+          vendor_version: "vv",
+          quality_flag: "ok",
+          latest_change: 0.01,
+          recent_points: [],
+          refresh_tier: "stable",
+        },
+        {
+          series_id: "EMM00166466",
+          series_name: "10Y国债",
+          trade_date: "2026-04-30",
+          value_numeric: 1.7514,
+          unit: "%",
+          source_version: "sv",
+          vendor_version: "vv",
+          quality_flag: "ok",
+          latest_change: -0.01,
+          recent_points: [],
+          refresh_tier: "stable",
+        },
+      ],
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+    const slope = view.marketPulse.find((item) => item.id === "slope");
+
+    expect(slope?.isEstimated).toBe(true);
+    expect(slope?.sparkline.every((point) => point === slope?.sparkline[0])).toBe(true);
+  });
+
+  it("does not mark gap market pulse slots as estimated", () => {
+    const view = buildRealModeView({ metrics: [] });
+    const gapSlots = view.marketPulse.filter((item) => item.value === "—");
+
+    expect(gapSlots.length).toBeGreaterThan(0);
+    expect(gapSlots.every((item) => item.isEstimated !== true)).toBe(true);
+    expect(gapSlots.every((item) => item.statusLabel === "待同步")).toBe(true);
+  });
+
+  it("uses softer review wording in real-mode key risk sidebar when tier breakdown is unavailable", () => {
+    const sections = buildDecisionSidebarSections({
+      judgment: { conclusion: "测试", tone: "neutral", reasons: [], suggestions: [] },
+      kpiCards: [],
+      attributionWaterfall: [],
+      attributionNote: [],
+      alertCount: 5,
+      riskAlertCounts: [
+        { id: "high", label: "高风险预警", count: 5, tone: "warn" },
+        { id: "medium", label: "中风险预警", count: 0, tone: "flat" },
+        { id: "low", label: "低风险预警", count: 0, tone: "flat" },
+      ],
+      todos: [],
+      useMockFallback: false,
+    });
+    const keyRisk = sections.find((section) => section.id === "key-risk");
+
+    expect(keyRisk?.body).toBe("待复核 5 项");
+    expect(keyRisk?.body).not.toContain("高风险 5");
+  });
+
+  it("derives positive interbank net position tone from coreMetrics yuan raw", () => {
+    const view = buildRealModeView({
+      reportDate: "2026-04-08",
+      coreMetrics: {
+        report_date: "2026-04-08",
+        bond_investments: coreMetricCard(0, 0, 0, 0),
+        interbank_assets: coreMetricCard(8_800_000_000, 0.018, 0, 0),
+        interbank_liabilities: coreMetricCard(6_600_000_000, 0.016, -200_000_000, -0.03),
+      },
+    });
+
+    expect(view.interbankNetPosition).toBe("+22.00 亿");
+    expect(view.interbankNetPositionTone).toBe("up");
   });
 
   it("does not inject mock balance metrics in real mode when overview metrics are missing", () => {
@@ -322,5 +571,397 @@ describe("buildDashboardCockpitHomeViewModel", () => {
 
     expect(view.interbankAssets).toBe("88.00 亿");
     expect(view.interbankNetPosition).toBe("待同步");
+  });
+
+  it("builds business decision sidebar sections in mock fallback without refactor notes", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics: [],
+      useMockFallback: true,
+    });
+
+    const titles = view.decisionSidebarSections.map((section) => section.title);
+    expect(titles).toEqual([
+      "今日主线",
+      "关键风险",
+      "最大拖累",
+      "最大贡献",
+      "待处理事项",
+      "建议动作",
+    ]);
+    expect(view.decisionSidebarSections.some((section) => section.body.includes("信息分层重构"))).toBe(
+      false,
+    );
+    expect(view.decisionSidebarSections.find((section) => section.id === "mainline")?.body.length).toBeGreaterThan(
+      0,
+    );
+    expect(view.decisionSidebarSections.find((section) => section.id === "max-drag")?.body).toContain(
+      "利率变动",
+    );
+    expect(view.decisionSidebarSections.find((section) => section.id === "max-contribution")?.body).toContain(
+      "信用利差",
+    );
+    expect(view.decisionSidebarSections.find((section) => section.id === "pending-todos")?.body).toContain(
+      "组合久期超限处理",
+    );
+    expect(view.decisionSidebarSections.find((section) => section.id === "suggested-actions")?.body).toContain(
+      "利率上行",
+    );
+  });
+
+  it("shows pending sync for attribution extremes in real mode without waterfall", () => {
+    const view = buildRealModeView({ metrics: [] });
+    const drag = view.decisionSidebarSections.find((section) => section.id === "max-drag");
+    const contribution = view.decisionSidebarSections.find((section) => section.id === "max-contribution");
+
+    expect(drag?.body).toBe("待同步");
+    expect(contribution?.body).toBe("待同步");
+  });
+
+  it("formats waterfall values with known units as-is and avoids blind 万 suffix", () => {
+    expect(formatWaterfallValueDisplay("-368.09 万")).toBe("-368.09 万");
+    expect(formatWaterfallValueDisplay("+29.71 亿")).toBe("+29.71 亿");
+    expect(formatWaterfallValueDisplay("-512.34")).toBe("口径待确认");
+    expect(formatWaterfallValueDisplay("—")).toBe("—");
+    expect(formatWaterfallValueDisplay("待同步")).toBe("待同步");
+  });
+
+  it("uses tiered risk alert labels in real mode and keeps riskReviewOnly when medium/low are zero", () => {
+    const view = buildRealModeView({ metrics: [] });
+
+    expect(view.riskReviewOnly).toBe(true);
+    expect(view.riskAlertCounts.find((item) => item.id === "high")?.label).toBe("高风险预警");
+    expect(view.riskAlertCounts.find((item) => item.id === "medium")?.label).toBe("中风险预警");
+    expect(view.riskAlertCounts.find((item) => item.id === "low")?.label).toBe("低风险预警");
+  });
+
+  it("aggregates risk alert counts by severity from home alerts in real mode", () => {
+    const reportDate = "2026-04-30";
+    const home = buildDashboardHomeModel({
+      metrics: [
+        overviewMetric({ id: "aum", tone: "negative" }),
+        overviewMetric({ id: "yield", tone: "warning" }),
+      ],
+      snapshotReportDate: reportDate,
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({ reportDate, isMockMode: false });
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: home.heroMetrics });
+
+    expect(view.riskReviewOnly).toBe(false);
+    expect(view.riskAlertCounts.find((item) => item.id === "high")?.count).toBeGreaterThan(0);
+    expect(view.riskAlertCounts.find((item) => item.id === "medium")?.count).toBeGreaterThan(0);
+  });
+
+  it("derives portfolio book count and dominant rating from supplemental APIs", () => {
+    const view = buildRealModeView({
+      reportDate: "2026-04-30",
+      portfolioComparison: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            portfolio_name: "自营组合 A",
+            total_market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+            weighted_ytm: formatRawAsNumeric({ raw: 0.02, unit: "pct", sign_aware: false }),
+            weighted_duration: formatRawAsNumeric({ raw: 4, unit: "ratio", sign_aware: false }),
+            total_dv01: formatRawAsNumeric({ raw: 1, unit: "dv01", sign_aware: false }),
+            bond_count: 10,
+          },
+          {
+            portfolio_name: "自营组合 B",
+            total_market_value: formatRawAsNumeric({ raw: 2, unit: "yuan", sign_aware: false }),
+            weighted_ytm: formatRawAsNumeric({ raw: 0.02, unit: "pct", sign_aware: false }),
+            weighted_duration: formatRawAsNumeric({ raw: 3, unit: "ratio", sign_aware: false }),
+            total_dv01: formatRawAsNumeric({ raw: 1, unit: "dv01", sign_aware: false }),
+            bond_count: 8,
+          },
+        ],
+      },
+      creditSpreadMigration: {
+        report_date: "2026-04-30",
+        credit_bond_count: 1,
+        credit_market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+        credit_weight: formatRawAsNumeric({ raw: 0.3, unit: "pct", sign_aware: false }),
+        spread_dv01: formatRawAsNumeric({ raw: 1, unit: "dv01", sign_aware: false }),
+        weighted_avg_spread: formatRawAsNumeric({ raw: 0.01, unit: "pct", sign_aware: false }),
+        weighted_avg_spread_duration: formatRawAsNumeric({ raw: 3, unit: "ratio", sign_aware: false }),
+        spread_scenarios: [],
+        migration_scenarios: [],
+        concentration_by_rating: {
+          dimension: "rating",
+          hhi: formatRawAsNumeric({ raw: 0.1, unit: "pct", sign_aware: false }),
+          top5_concentration: formatRawAsNumeric({ raw: 0.5, unit: "pct", sign_aware: false }),
+          top_items: [
+            {
+              name: "AAA",
+              weight: formatRawAsNumeric({ raw: 0.4, unit: "pct", sign_aware: false }),
+              market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+            },
+          ],
+        },
+        oci_credit_exposure: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+        oci_spread_dv01: formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false }),
+        oci_sensitivity_25bp: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+        warnings: [],
+        computed_at: "2026-04-30T08:00:00Z",
+      },
+    });
+
+    expect(view.portfolioStats.find((stat) => stat.id === "books")?.value).toBe("2 个");
+    expect(view.portfolioStats.find((stat) => stat.id === "rating")?.value).toBe("AAA");
+  });
+
+  it("builds risk radar from cockpit risk items when at least three axes are available", () => {
+    const radar = buildRiskRadarFromRiskItems(
+      [
+        { id: "dv01", label: "DV01", value: "8800", hint: "", level: 62, status: "supplemental", tone: "warning" },
+        { id: "duration", label: "久期", value: "4.1", hint: "", level: 55, status: "supplemental", tone: "neutral" },
+        { id: "issuer-top5", label: "Top5", value: "42%", hint: "", level: 48, status: "supplemental", tone: "warning" },
+        { id: "credit-weight", label: "信用", value: "31%", hint: "", level: 40, status: "supplemental", tone: "neutral" },
+      ],
+      false,
+    );
+
+    expect(radar.usesMock).toBe(false);
+    expect(radar.radar.pending).toBe(false);
+    expect(radar.radar.dimensions).toEqual(["利率风险", "久期风险", "集中度风险", "信用风险"]);
+    expect(radar.radar.values).toEqual([62, 55, 48, 40]);
+  });
+
+  it("marks risk radar pending in real mode when fewer than three risk axes are usable", () => {
+    const radar = buildRiskRadarFromRiskItems(
+      [{ id: "portfolio-risk-blocked", label: "风险摘要", value: "—", hint: "", level: 0, status: "blocked", tone: "warning" }],
+      false,
+    );
+
+    expect(radar.usesMock).toBe(false);
+    expect(radar.radar.pending).toBe(true);
+    expect(radar.radar.dimensions).toEqual([]);
+  });
+
+  it("shows attribution note pending copy in real mode without judgment reasons", () => {
+    const view = buildRealModeView({ metrics: [] });
+
+    expect(view.attributionNote).toEqual(["归因说明待同步"]);
+  });
+
+  it("keeps product pnl trend pending in real mode without bond bucket monthly rows", () => {
+    const view = buildRealModeView({ metrics: [] });
+
+    expect(view.productPnl.pending).toBe(true);
+    expect(view.productPnl.months).toEqual([]);
+    expect(view.productPnl.series).toEqual([]);
+  });
+
+  it("builds product pnl trend from bond bucket monthly analysis in real mode", () => {
+    const view = buildRealModeView({
+      metrics: [],
+      bondBucketMonthly: {
+        year: 2026,
+        as_of_date: "2026-04-30",
+        business_key: null,
+        dimension: "bond_bucket_monthly",
+        period_start_date: "2026-01-01",
+        period_end_date: "2026-04-30",
+        source_tables: [],
+        rows: [
+          {
+            dimension_key: "2026-04-30::rate_bond",
+            dimension_label: "2026-04-30 利率债",
+            interest_income: "0",
+            fair_value_change: "0",
+            capital_gain: "0",
+            manual_adjustment: "0",
+            total_pnl: "100000000",
+            avg_balance: "0",
+            current_balance: "0",
+            annualized_yield_pct: null,
+            ftp_rate_pct: "1.6",
+            ftp_cost: "0",
+            ftp_net_pnl: "0",
+            ftp_net_annualized_yield_pct: null,
+            asset_count: 1,
+          },
+        ],
+      },
+    });
+
+    expect(view.productPnl.pending).toBe(false);
+    expect(view.productPnl.series.find((item) => item.id === "rate")?.values).toEqual([1]);
+  });
+
+  it("labels dominant portfolio rating as Top1 instead of average", () => {
+    const view = buildRealModeView({
+      reportDate: "2026-04-30",
+      creditSpreadMigration: {
+        report_date: "2026-04-30",
+        credit_bond_count: 1,
+        credit_market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+        credit_weight: formatRawAsNumeric({ raw: 0.3, unit: "pct", sign_aware: false }),
+        spread_dv01: formatRawAsNumeric({ raw: 1, unit: "dv01", sign_aware: false }),
+        weighted_avg_spread: formatRawAsNumeric({ raw: 0.01, unit: "pct", sign_aware: false }),
+        weighted_avg_spread_duration: formatRawAsNumeric({ raw: 3, unit: "ratio", sign_aware: false }),
+        spread_scenarios: [],
+        migration_scenarios: [],
+        concentration_by_rating: {
+          dimension: "rating",
+          hhi: formatRawAsNumeric({ raw: 0.1, unit: "pct", sign_aware: false }),
+          top5_concentration: formatRawAsNumeric({ raw: 0.5, unit: "pct", sign_aware: false }),
+          top_items: [
+            {
+              name: "AAA",
+              weight: formatRawAsNumeric({ raw: 0.4, unit: "pct", sign_aware: false }),
+              market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+            },
+          ],
+        },
+        oci_credit_exposure: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+        oci_spread_dv01: formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false }),
+        oci_sensitivity_25bp: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+        warnings: [],
+        computed_at: "2026-04-30T08:00:00Z",
+      },
+    });
+
+    expect(view.portfolioStats.find((stat) => stat.id === "rating")?.label).toBe("主导评级（Top1）");
+  });
+
+  it("prefers pending decision items for todos over home alerts", () => {
+    const view = buildRealModeView({
+      metrics: [overviewMetric({ id: "aum", tone: "negative" })],
+      decisionItems: [
+        {
+          decision_key: "decision-001",
+          title: "复核久期超限",
+          action_label: "进入处置",
+          severity: "high",
+          reason: "测试",
+          source_section: "risk",
+          rule_id: "r1",
+          rule_version: "v1",
+          latest_status: {
+            decision_key: "decision-001",
+            status: "pending",
+            updated_at: "2026-04-30T08:00:00Z",
+            updated_by: "tester",
+            comment: "",
+          },
+        },
+      ],
+    });
+
+    expect(view.todos[0]?.title).toBe("复核久期超限");
+    expect(view.todos[0]?.status).toBe("待复核");
+  });
+
+  it("shows pending watchlist row in real mode when cockpit watch rows are empty", () => {
+    const view = buildRealModeView({ metrics: [] });
+
+    expect(view.watchlist).toHaveLength(1);
+    expect(view.watchlist[0]?.label).toBe("观察清单");
+    expect(view.watchlist[0]?.count).toBe("待同步");
+  });
+
+  it("uses each watch row's risk metric in the home watchlist instead of daily PnL", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: "2026-04-30",
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+      dailyChanges: {
+        report_date: "2026-04-30",
+        periods: [
+          {
+            period: "day",
+            bond_investments_change: formatRawAsNumeric({ raw: -512_000_000, unit: "yuan", sign_aware: true }),
+            interbank_assets_change: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: true }),
+            interbank_liabilities_change: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: true }),
+            net_change: formatRawAsNumeric({ raw: -368_090_000, unit: "yuan", sign_aware: true }),
+          },
+        ],
+      },
+      bondHeadline: {
+        report_date: "2026-04-30",
+        prev_report_date: "2026-04-29",
+        kpis: {
+          total_market_value: formatRawAsNumeric({ raw: 370_810_000_000, unit: "yuan", sign_aware: false }),
+          unrealized_pnl: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: true }),
+          weighted_ytm: formatRawAsNumeric({ raw: 0.0257, unit: "pct", sign_aware: false }),
+          weighted_duration: formatRawAsNumeric({ raw: 4.14, unit: "ratio", sign_aware: false }),
+          weighted_coupon: formatRawAsNumeric({ raw: 0.0204, unit: "pct", sign_aware: false }),
+          credit_spread_median: formatRawAsNumeric({ raw: 239, unit: "bp", sign_aware: false }),
+          total_dv01: formatRawAsNumeric({ raw: 106_155_944.31, unit: "dv01", sign_aware: false }),
+          bond_count: 1256,
+        },
+        prev_kpis: null,
+      },
+      portfolio: {
+        report_date: "2026-04-30",
+        total_market_value: formatRawAsNumeric({ raw: 370_810_000_000, unit: "yuan", sign_aware: false }),
+        weighted_ytm: formatRawAsNumeric({ raw: 0.0257, unit: "pct", sign_aware: false }),
+        weighted_duration: formatRawAsNumeric({ raw: 4.14, unit: "ratio", sign_aware: false }),
+        weighted_coupon: formatRawAsNumeric({ raw: 0.0207, unit: "pct", sign_aware: false }),
+        total_dv01: formatRawAsNumeric({ raw: 106_155_944.31, unit: "dv01", sign_aware: false }),
+        bond_count: 1256,
+        credit_weight: formatRawAsNumeric({ raw: 0.2925, unit: "pct", sign_aware: false }),
+        issuer_hhi: formatRawAsNumeric({ raw: 0.0509, unit: "pct", sign_aware: false }),
+        issuer_top5_weight: formatRawAsNumeric({ raw: 0.4135, unit: "pct", sign_aware: false }),
+        by_asset_class: [],
+        warnings: [],
+        computed_at: "2026-04-30T09:15:00Z",
+      },
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+
+    expect(view.watchlist.find((item) => item.id === "portfolio-duration-watch")?.count).toBe("4.14");
+    expect(view.watchlist.map((item) => item.count)).not.toContain("-3.68 亿");
+  });
+
+  it("keeps tiered risk alert labels in mock fallback", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+    });
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics: [],
+      useMockFallback: true,
+    });
+
+    expect(view.riskReviewOnly).toBe(false);
+    expect(view.riskAlertCounts.find((item) => item.id === "high")?.label).toBe("高风险预警");
+    expect(view.usesMockRiskRadar).toBe(true);
+    expect(view.usesStaticQuickDrilldown).toBe(true);
   });
 });
