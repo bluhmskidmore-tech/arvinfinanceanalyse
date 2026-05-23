@@ -694,37 +694,14 @@ export default function DashboardPage() {
 
           <DashboardJudgmentStrip viewModel={cockpitHome} />
 
-          <section data-testid="dashboard-kpi-band" className="dashboard-cockpit-kpi-band">
-            <section
-              data-testid="dashboard-kpi-core-group"
-              aria-label="经营核心指标"
-              className="dashboard-cockpit-kpi-band__group"
-            >
-              <header className="dashboard-home-section-heading">
-                <span className="dashboard-home-section-eyebrow">KPI Zone</span>
-                <h2 className="dashboard-home-section-title">经营核心指标</h2>
-              </header>
-              <div className="dashboard-cockpit-kpi-band__group-cards">
-                {cockpitHome.kpiCards.slice(0, 3).map((card) => (
-                  <KpiCard key={card.id} card={card} />
-                ))}
-              </div>
-            </section>
-            <section
-              data-testid="dashboard-kpi-risk-group"
-              aria-label="风险约束指标"
-              className="dashboard-cockpit-kpi-band__group"
-            >
-              <header className="dashboard-home-section-heading">
-                <span className="dashboard-home-section-eyebrow">KPI Zone</span>
-                <h2 className="dashboard-home-section-title">风险约束指标</h2>
-              </header>
-              <div className="dashboard-cockpit-kpi-band__group-cards">
-                {cockpitHome.kpiCards.slice(3).map((card) => (
-                  <KpiCard key={card.id} card={card} />
-                ))}
-              </div>
-            </section>
+          <section
+            data-testid="dashboard-kpi-band"
+            className="dashboard-cockpit-kpi-band"
+            aria-label="经营与风险关键指标"
+          >
+            {cockpitHome.kpiCards.map((card) => (
+              <KpiCard key={card.id} card={card} />
+            ))}
           </section>
 
           <MarketPulseStrip items={cockpitHome.marketPulse} />
@@ -780,24 +757,6 @@ export default function DashboardPage() {
                   />
                 </section>
 
-                <section data-testid="dashboard-depth-zone" className="dashboard-cockpit-depth">
-                  <div className="dashboard-cockpit-depth__charts">
-                    <ExposureTable rows={cockpitHome.exposureRows} />
-                    <ProductPnlTrendChart data={cockpitHome.productPnl} />
-                  </div>
-                  <div className="dashboard-cockpit-depth__side">
-                    <BalanceSummary metrics={cockpitHome.balanceMetrics} />
-                    <QuickDrilldown
-                      items={cockpitHome.quickDrilldowns}
-                      showStaticNavigationNote={cockpitHome.usesStaticQuickDrilldown}
-                    />
-                    <DashboardActionQueue
-                      alerts={reviewAlerts}
-                      effectiveReportDate={effectiveReportDate}
-                    />
-                  </div>
-                </section>
-
               </section>
             </div>
 
@@ -823,14 +782,31 @@ export default function DashboardPage() {
                 首屏已展示经营驾驶舱主结构。此处仅保留次级补充入口，避免与首屏判断重复。
               </p>
               {isDepthDrawerOpen ? (
-                <section className="dashboard-cockpit-triptych">
+                <>
+                  <section data-testid="dashboard-depth-zone" className="dashboard-cockpit-depth">
+                    <div className="dashboard-cockpit-depth__charts">
+                      <ExposureTable rows={cockpitHome.exposureRows} />
+                      <ProductPnlTrendChart data={cockpitHome.productPnl} />
+                    </div>
+                    <div className="dashboard-cockpit-depth__side">
+                      <BalanceSummary metrics={cockpitHome.balanceMetrics} />
+                      <QuickDrilldown
+                        items={cockpitHome.quickDrilldowns}
+                        showStaticNavigationNote={cockpitHome.usesStaticQuickDrilldown}
+                      />
+                      <DashboardActionQueue
+                        alerts={reviewAlerts}
+                        effectiveReportDate={effectiveReportDate}
+                      />
+                    </div>
+                  </section>
                   <DashboardDecisionQueuePanel
                     todos={cockpitHome.todos}
                     showDataWarning={cockpitHome.showDataWarning}
                     dataWarningMessages={cockpitHome.dataWarningMessages}
                     isLiveDataFallback={isLiveDataFallback}
                   />
-                </section>
+                </>
               ) : null}
             </div>
           </details>
