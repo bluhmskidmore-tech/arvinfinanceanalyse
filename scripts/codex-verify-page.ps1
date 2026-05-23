@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("product-category-pnl")]
+  [ValidateSet("dashboard-home", "product-category-pnl")]
   [string]$PageSlug = "product-category-pnl",
 
   [switch]$Run,
@@ -15,10 +15,6 @@ Set-Location $root
 
 Write-Output "Codex verify page: $PageSlug"
 
-if ($PageSlug -ne "product-category-pnl") {
-  throw "Unsupported page slug: $PageSlug"
-}
-
 $planOnly = $DryRun -or -not $Run
 
 $checks = @(
@@ -27,27 +23,61 @@ $checks = @(
     WorkingDirectory = $root
     Command = "python"
     Args = @("-m", "pytest", "tests/test_project_mcp_servers.py", "-q")
-  },
-  @{
-    Label = "Product-category backend flow and mapping tests"
-    WorkingDirectory = $root
-    Command = "python"
-    Args = @("-m", "pytest", "tests/test_product_category_pnl_flow.py", "tests/test_product_category_mapping_contract.py", "-q")
-  },
-  @{
-    Label = "Product-category frontend tests"
-    WorkingDirectory = $frontendRoot
-    Command = "npm.cmd"
-    Args = @(
-      "run",
-      "test",
-      "--",
-      "src/test/ProductCategoryPnlPage.test.tsx",
-      "src/test/ProductCategoryBranchSwitcher.test.tsx",
-      "src/test/ProductCategoryAdjustmentAuditPage.test.tsx",
-      "src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts"
-    )
-  },
+  }
+)
+
+if ($PageSlug -eq "dashboard-home") {
+  $checks += @(
+    @{
+      Label = "Dashboard backend snapshot and API contract tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @("-m", "pytest", "tests/test_home_snapshot_endpoint.py", "tests/test_dashboard_api_contract.py", "tests/test_executive_dashboard_endpoints.py", "tests/test_executive_service_contract.py", "-q")
+    },
+    @{
+      Label = "Dashboard frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/DashboardPage.test.tsx",
+        "src/features/workbench/pages/useDashboardSnapshotBoundary.test.tsx",
+        "src/features/workbench/dashboard/dashboardHomeModel.test.ts",
+        "src/features/workbench/dashboard/dashboardCockpitHomeModel.test.ts",
+        "src/features/workbench/dashboard/sections/DashboardCockpitHeader.test.tsx"
+      )
+    }
+  )
+} elseif ($PageSlug -eq "product-category-pnl") {
+  $checks += @(
+    @{
+      Label = "Product-category backend flow and mapping tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @("-m", "pytest", "tests/test_product_category_pnl_flow.py", "tests/test_product_category_mapping_contract.py", "-q")
+    },
+    @{
+      Label = "Product-category frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/ProductCategoryPnlPage.test.tsx",
+        "src/test/ProductCategoryBranchSwitcher.test.tsx",
+        "src/test/ProductCategoryAdjustmentAuditPage.test.tsx",
+        "src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts"
+      )
+    }
+  )
+} else {
+  throw "Unsupported page slug: $PageSlug"
+}
+
+$checks += @(
   @{
     Label = "Frontend typecheck"
     WorkingDirectory = $frontendRoot
