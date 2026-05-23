@@ -1,6 +1,3 @@
-import { Link } from "react-router-dom";
-
-import { tabularNumsStyle } from "../../../../theme/designSystem";
 import type { DashboardCockpitHomeViewModel } from "../dashboardCockpitHomeModel";
 
 type DashboardJudgmentStripProps = {
@@ -8,38 +5,32 @@ type DashboardJudgmentStripProps = {
 };
 
 export function DashboardJudgmentStrip({ viewModel }: DashboardJudgmentStripProps) {
-  const isMock = viewModel.dataSource === "mock";
+  const { reportDate, judgment } = viewModel;
+  const question = reportDate
+    ? `报告日 ${reportDate}：组合规模与收益方向是否支持当前配置？`
+    : "组合规模与收益方向是否支持当前配置？";
 
   return (
     <section
       data-testid="dashboard-judgment-strip"
-      className="dashboard-cockpit-judgment-bar"
+      className="dashboard-cockpit-judgment-hero"
       aria-label="今日经营判断"
     >
-      <div className="dashboard-cockpit-judgment-bar__copy">
-        <span className="dashboard-cockpit-judgment-bar__rail" aria-hidden="true" />
-        <div>
-          <h2>今日经营判断</h2>
-          <p>
-            利率上行拖累估值，信用利差收窄提供对冲，组合久期小幅上升，需关注 Top5
-            集中度和久期超限账户。
-          </p>
+      <div className="dashboard-cockpit-judgment-hero__top">
+        <div className="dashboard-cockpit-judgment-hero__copy">
+          <span className="dashboard-cockpit-judgment-hero__eyebrow">本日判断</span>
+          <h2 className="dashboard-cockpit-judgment-hero__title">
+            {reportDate ? `报告日 ${reportDate} 经营快照` : "今日经营快照"}
+          </h2>
+          <p className="dashboard-cockpit-judgment-hero__question">{question}</p>
         </div>
+        {reportDate ? (
+          <div className="dashboard-cockpit-judgment-hero__meta">
+            报告日 <strong>{reportDate}</strong>
+          </div>
+        ) : null}
       </div>
-      <div className="dashboard-cockpit-judgment-bar__actions">
-        <span className="dashboard-cockpit-judgment-bar__badge dashboard-cockpit-judgment-bar__badge--ok">
-          估值已完成
-        </span>
-        <Link
-          to="/decision-items"
-          className="dashboard-cockpit-judgment-bar__badge dashboard-cockpit-judgment-bar__badge--warn"
-        >
-          风险待复核 <strong style={tabularNumsStyle}>3</strong>
-        </Link>
-        <span className="dashboard-cockpit-judgment-bar__badge">
-          {isMock ? "数据待同步" : "数据已更新"} {viewModel.headerStatus.dataUpdatedAt}
-        </span>
-      </div>
+      <p className="dashboard-cockpit-judgment-hero__conclusion">{judgment.conclusion}</p>
     </section>
   );
 }

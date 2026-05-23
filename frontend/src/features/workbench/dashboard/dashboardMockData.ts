@@ -150,7 +150,7 @@ export const DASHBOARD_PORTFOLIO_STATS_MOCK = [
   { id: "books", label: "组合数", value: "38 个" },
   { id: "positions", label: "持仓债券", value: "1,256 只" },
   { id: "coupon", label: "平均票面利率", value: "2.85%" },
-  { id: "rating", label: "平均主体评级", value: "AAA" },
+  { id: "rating", label: "主导评级（Top1）", value: "AAA" },
 ] as const;
 
 export const DASHBOARD_ASSET_BARS_MOCK = [

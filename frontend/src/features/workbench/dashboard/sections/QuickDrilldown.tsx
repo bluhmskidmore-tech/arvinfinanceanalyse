@@ -4,9 +4,10 @@ import type { DashboardQuickDrilldownMock } from "../dashboardMockData";
 
 type QuickDrilldownProps = {
   items: readonly DashboardQuickDrilldownMock[];
+  showStaticNavigationNote?: boolean;
 };
 
-export function QuickDrilldown({ items }: QuickDrilldownProps) {
+export function QuickDrilldown({ items, showStaticNavigationNote = true }: QuickDrilldownProps) {
   return (
     <section
       data-testid="dashboard-quick-drilldown"
@@ -50,6 +51,9 @@ export function QuickDrilldown({ items }: QuickDrilldownProps) {
           );
         })}
       </div>
+      {showStaticNavigationNote ? (
+        <p className="dashboard-cockpit-panel__disclaimer">固定导航入口；同日摘要数字请进入专题页查看</p>
+      ) : null}
     </section>
   );
 }

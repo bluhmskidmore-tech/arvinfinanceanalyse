@@ -172,12 +172,16 @@ const MARKET_TICKER_PRIORITY: ReadonlyArray<{
   label: string;
 }> = [
   { ids: ["CA.CN_GOV_10Y", "E1000180", "EMM00166466"], label: "10年国债" },
-  { ids: ["EMM00166502"], label: "10年国开" },
-  { ids: ["CA.CN_US_SPREAD", "EM1"], label: "中美10年利差" },
+  { ids: ["EMM00166458"], label: "1年国债" },
   { ids: ["CA.DR007", "M002", "EMM00167613"], label: "DR007" },
+  { ids: ["CA.US_GOV_10Y", "EMG00001310", "E1003238"], label: "美债10Y" },
   { ids: ["CA.USDCNY", "EMM00058124"], label: "美元/人民币" },
   { ids: ["CA.BRENT"], label: "原油(Brent)" },
   { ids: ["CA.CSI300"], label: "沪深300" },
+  { ids: ["CA.CSI300_PCT_CHG"], label: "沪深300涨跌幅" },
+  { ids: ["CN_CREDIT_AAA_1Y", "S0059650", "EMM00166655"], label: "中短票AAA 1Y" },
+  { ids: ["CN_CREDIT_AAA_3Y", "S0059651", "EMM00166657"], label: "中短票AAA 3Y" },
+  { ids: ["CN_CREDIT_AAA_5Y", "S0059652", "EMM00166659"], label: "中短票AAA 5Y" },
 ];
 
 const EMPTY_DISPLAY = "--";
@@ -534,7 +538,9 @@ function pickMarketPoints(points: readonly ChoiceMacroLatestPoint[]): ChoiceMacr
   const seen = new Set<string>();
 
   for (const item of MARKET_TICKER_PRIORITY) {
-    const match = candidates.find((point) => item.ids.includes(point.series_id));
+    const match = item.ids
+      .map((id) => candidates.find((point) => point.series_id === id))
+      .find((point): point is ChoiceMacroLatestPoint => Boolean(point));
     if (match && !seen.has(match.series_id)) {
       selected.push(match);
       seen.add(match.series_id);
