@@ -228,9 +228,10 @@ function expectTestIdsInOrder(container: HTMLElement, testIds: string[]) {
 }
 
 function openDepthDrawer(root: HTMLElement) {
-  const drawer = within(root).getByTestId("dashboard-depth-drawer");
-  if (!drawer.hasAttribute("open")) {
-    fireEvent.click(within(drawer).getByText(/深钻读面/));
+  const drawer = within(root).getByTestId("dashboard-depth-drawer") as HTMLDetailsElement;
+  if (!drawer.open) {
+    drawer.open = true;
+    fireEvent(drawer, new Event("toggle", { bubbles: true }));
   }
   return drawer;
 }
@@ -395,14 +396,11 @@ describe("DashboardPage", () => {
     const toolbar = await screen.findByTestId("dashboard-home-toolbar");
     const judgmentStrip = await screen.findByTestId("dashboard-judgment-strip");
     const kpiBand = await screen.findByTestId("dashboard-kpi-band");
-    const coreKpiGroup = await screen.findByTestId("dashboard-kpi-core-group");
-    const riskKpiGroup = await screen.findByTestId("dashboard-kpi-risk-group");
     const marketPulse = await screen.findByTestId("dashboard-cockpit-market-ticker");
     const operatingLayout = await screen.findByTestId("dashboard-operating-layout");
     const operatingMain = await screen.findByTestId("dashboard-operating-main");
     const decisionRail = await screen.findByTestId("dashboard-decision-rail");
     const triptych = within(operatingMain).getByTestId("dashboard-main-triptych");
-    const depthZone = screen.getByTestId("dashboard-depth-zone");
     const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
     const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
 
@@ -410,10 +408,8 @@ describe("DashboardPage", () => {
     expect(page).toHaveClass("dashboard-cockpit-page--shell-nav");
     expect(screen.queryByTestId("dashboard-cockpit-sidebar")).not.toBeInTheDocument();
     expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(6);
-    expect(within(coreKpiGroup).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(3);
-    expect(within(riskKpiGroup).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(3);
-    expect(coreKpiGroup).toHaveTextContent("经营核心指标");
-    expect(riskKpiGroup).toHaveTextContent("风险约束指标");
+    expect(screen.queryByTestId("dashboard-kpi-core-group")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-kpi-risk-group")).not.toBeInTheDocument();
     expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(6);
     expect(operatingLayout).toContainElement(operatingMain);
     expect(operatingLayout).toContainElement(decisionRail);
@@ -422,7 +418,8 @@ describe("DashboardPage", () => {
     expect(operatingMain).toContainElement(screen.getByTestId("dashboard-attribution-panel"));
     expect(triptych).toContainElement(screen.getByTestId("dashboard-portfolio-overview"));
     expect(triptych).toContainElement(screen.getByTestId("dashboard-risk-alert-panel"));
-    expect(depthZone).not.toHaveAttribute("hidden");
+    expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
     expect(screen.getByTestId("dashboard-depth-drawer")).not.toHaveAttribute("open");
     expect(screen.getByTestId("dashboard-command-deck")).toHaveAttribute("hidden");
     expect(judgmentStrip).toHaveTextContent("经营快照");
@@ -432,12 +429,6 @@ describe("DashboardPage", () => {
     expect(judgmentStrip).not.toHaveTextContent("估值待同步");
     expect(judgmentStrip).not.toHaveTextContent("风险待复核");
     expect(kpiBand.querySelectorAll(".dashboard-cockpit-kpi__spark")).toHaveLength(6);
-    expect(coreKpiGroup).toHaveClass("dashboard-cockpit-kpi-band__group");
-    expect(riskKpiGroup).toHaveClass("dashboard-cockpit-kpi-band__group");
-    expect(within(depthZone).getByTestId("dashboard-exposure-table")).toBeInTheDocument();
-    expect(within(depthZone).getByTestId("dashboard-balance-summary")).toBeInTheDocument();
-    expect(within(depthZone).getByTestId("dashboard-product-pnl-trend")).toBeInTheDocument();
-    expect(within(depthZone).getByTestId("dashboard-quick-drilldown")).toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-improvement-notes")).not.toBeInTheDocument();
     expect(within(kpiBand).getByText("债券资产规模")).toBeInTheDocument();
     expect(within(kpiBand).getByText("3,708.10 亿")).toBeInTheDocument();
@@ -452,8 +443,6 @@ describe("DashboardPage", () => {
     expect(within(triptych).getByText("1,256 只")).toBeInTheDocument();
     expect(within(operatingMain).getByText("利率上行导致组合估值回落，对损益形成主要拖累。")).toBeInTheDocument();
     expect(within(triptych).getByText("高风险预警")).toBeInTheDocument();
-    expect(within(depthZone).getByText("账户与暴露摘要")).toBeInTheDocument();
-    expect(screen.getByText("四类债券月度损益趋势")).toBeInTheDocument();
 
     expectTestIdsInOrder(page, [
       "dashboard-home-toolbar",
@@ -572,8 +561,10 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
+    expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
     const depthDrawer = openDepthDrawer(page);
-    const depthZone = screen.getByTestId("dashboard-depth-zone");
+    const depthZone = await screen.findByTestId("dashboard-depth-zone");
     expect(depthZone).not.toHaveAttribute("hidden");
     expect(depthDrawer).toHaveAttribute("open");
     expect(within(depthZone).getByTestId("dashboard-balance-summary")).toBeInTheDocument();
@@ -605,7 +596,7 @@ describe("DashboardPage", () => {
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     const depthDrawer = openDepthDrawer(page);
-    const actionQueue = screen.getByTestId("dashboard-action-queue");
+    const actionQueue = await screen.findByTestId("dashboard-action-queue");
     const notes = await screen.findByTestId("dashboard-improvement-notes");
     const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
 
@@ -740,6 +731,9 @@ describe("DashboardPage", () => {
     expect(within(page).getByTestId("dashboard-attribution-panel")).toHaveTextContent("收益拆解");
     expect(within(triptych).getByTestId("dashboard-risk-alert-panel")).toHaveTextContent("预警 11 项");
 
+    expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
+    openDepthDrawer(page);
     const depthZone = await screen.findByTestId("dashboard-depth-zone");
     expect(within(depthZone).getByText("账户")).toBeInTheDocument();
     expect(within(depthZone).getByText("资产规模（亿）")).toBeInTheDocument();
@@ -751,7 +745,6 @@ describe("DashboardPage", () => {
       within(depthZone).getByRole("link", { name: /持仓明细/ }),
     ).toHaveAttribute("href", "/positions");
     expect(await screen.findByTestId("dashboard-action-queue")).toBeInTheDocument();
-    openDepthDrawer(page);
     expect(await screen.findByTestId("dashboard-improvement-notes")).toHaveTextContent("待决策事项");
     expect(await screen.findByTestId("dashboard-decision-sidebar")).not.toHaveTextContent("Pro");
     expect(screen.queryByTestId("dashboard-governed-meta")).not.toBeInTheDocument();
@@ -1703,6 +1696,8 @@ describe("DashboardPage", () => {
     const panel = await screen.findByTestId("dashboard-risk-alert-panel");
     expect(within(panel).getByText(/示意数据，非正式风控口径/)).toBeInTheDocument();
 
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    openDepthDrawer(page);
     const drilldown = await screen.findByTestId("dashboard-quick-drilldown");
     expect(within(drilldown).getByText(/固定导航入口/)).toBeInTheDocument();
     expect(within(drilldown).queryByText("示意数据，非正式风控口径")).not.toBeInTheDocument();
@@ -1769,6 +1764,9 @@ describe("DashboardPage", () => {
     };
 
     renderDashboard(client);
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    openDepthDrawer(page);
 
     await waitFor(() => {
       expect(getPnlByBusinessAnalysis).toHaveBeenCalledWith(

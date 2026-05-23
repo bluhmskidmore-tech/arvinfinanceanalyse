@@ -545,13 +545,13 @@
 
 .dashboard-cockpit-judgment-hero {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 14px 16px;
-  border: 1px solid rgba(115, 132, 153, 0.28);
-  border-left: 3px solid var(--cockpit-primary);
+  padding: 12px 14px;
+  border: 1px solid rgba(24, 80, 161, 0.2);
+  border-left: 4px solid var(--cockpit-primary);
   border-radius: var(--cockpit-radius-sm);
-  background: linear-gradient(180deg, #ffffff 0%, var(--cockpit-bg-accent) 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   box-shadow: var(--cockpit-shadow-xs);
 }
 
@@ -597,7 +597,7 @@
 
 .dashboard-cockpit-judgment-hero__title {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: var(--cockpit-fw-title);
   line-height: 1.12;
   color: var(--cockpit-text);
@@ -625,14 +625,14 @@
 
 .dashboard-cockpit-judgment-hero__conclusion {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 11px;
   border: 1px solid var(--cockpit-border);
   border-left: 3px solid var(--cockpit-success);
   border-radius: var(--cockpit-radius-sm);
   background: rgba(255, 255, 255, 0.82);
   color: var(--cockpit-text-body);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.45;
 }
 
@@ -777,9 +777,14 @@
 
 .dashboard-cockpit-kpi-band {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
   min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius-sm);
+  background: var(--cockpit-card);
+  box-shadow: var(--cockpit-shadow-xs);
 }
 
 .dashboard-cockpit-kpi-band__group {
@@ -895,15 +900,20 @@
 
 .dashboard-cockpit-kpi {
   background: var(--cockpit-card);
-  border: 1px solid var(--cockpit-border);
-  border-radius: var(--cockpit-radius-sm);
-  padding: 8px 10px 6px;
+  border: 0;
+  border-right: 1px solid var(--cockpit-divider);
+  border-radius: 0;
+  padding: 8px 9px 6px;
   display: grid;
   grid-template-rows: auto auto auto 26px;
   gap: 3px;
   min-width: 0;
-  min-height: 96px;
+  min-height: 88px;
   box-shadow: none;
+}
+
+.dashboard-cockpit-kpi:last-child {
+  border-right: 0;
 }
 
 .dashboard-cockpit-panel--kpi-band {
@@ -956,6 +966,12 @@
   box-shadow: var(--cockpit-shadow-sm);
 }
 
+.dashboard-cockpit-kpi:hover {
+  border-color: var(--cockpit-divider);
+  box-shadow: none;
+  background: rgba(24, 80, 161, 0.025);
+}
+
 .dashboard-cockpit-panel--kpi-band .dashboard-cockpit-kpi:hover,
 .dashboard-cockpit-panel--market .dashboard-cockpit-pulse:hover {
   border-color: transparent;
@@ -980,7 +996,7 @@
   min-width: 0;
   overflow: visible;
   font-family: var(--cockpit-font-tabular);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: var(--cockpit-fw-kpi);
   line-height: 1.12;
   letter-spacing: 0;
@@ -990,7 +1006,7 @@
 .dashboard-cockpit-kpi__spark {
   display: block;
   width: 100%;
-  height: 26px;
+  height: 24px;
   margin-top: 2px;
 }
 
@@ -2560,7 +2576,15 @@
   }
 
   .dashboard-cockpit-kpi-band {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-cockpit-kpi:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .dashboard-cockpit-kpi:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--cockpit-divider);
   }
 
   .dashboard-cockpit-panel--kpi-band .dashboard-cockpit-kpi {
@@ -2612,6 +2636,15 @@
 }
 
 @media (max-width: 1023px) {
+  .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) .workbench-main-column {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
   .dashboard-cockpit-page__frame {
     grid-template-columns: 1fr;
   }
@@ -2626,14 +2659,36 @@
     padding-inline: 14px;
   }
 
+  .dashboard-cockpit-page--shell-nav,
+  [data-testid="fixed-income-dashboard-page"].dashboard-cockpit-page {
+    width: 100%;
+    min-width: 0;
+  }
+
   .dashboard-cockpit-pulse-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-cockpit-kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-cockpit-kpi:nth-child(3n) {
+    border-right: 1px solid var(--cockpit-divider);
+  }
+
+  .dashboard-cockpit-kpi:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .dashboard-cockpit-kpi:nth-child(-n + 4) {
+    border-bottom: 1px solid var(--cockpit-divider);
   }
 
   .dashboard-cockpit-triptych,
   .dashboard-cockpit-balance-grid,
   .dashboard-cockpit-drill-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dashboard-cockpit-asset-mix,
