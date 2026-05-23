@@ -36,12 +36,14 @@ _SNAPSHOT_COLUMNS = (
     "account_category",
     "asset_class",
     "bond_type",
+    "business_type_primary",
     "issuer_name",
     "industry_name",
     "rating",
     "currency_code",
     "face_value_native",
     "market_value_native",
+    "market_value_cny",
     "amortized_cost_native",
     "accrued_interest_native",
     "coupon_rate",
@@ -55,6 +57,8 @@ _SNAPSHOT_COLUMNS = (
     "rule_version",
     "ingest_batch_id",
     "trace_id",
+    "sub_type",
+    "accounting_basis",
 )
 
 _ANALYTICS_COLUMNS = (
@@ -102,6 +106,10 @@ _RISK_OVERVIEW_COLUMNS = (
     "report_date",
     "portfolio_modified_duration",
     "portfolio_dv01",
+    "ac_dv01",
+    "oci_dv01",
+    "tpl_dv01",
+    "other_dv01",
     "credit_market_value_ratio_pct",
     "weighted_years_to_maturity",
 )
@@ -146,17 +154,50 @@ class BondAnalyticsRepository:
         try:
             if not _table_exists(conn, SNAPSHOT_TABLE):
                 return []
+            snapshot_market_value_cny_expr = (
+                "s.market_value_cny"
+                if _column_exists(conn, SNAPSHOT_TABLE, "market_value_cny")
+                else "null"
+            )
+            balance_join = ""
+            accounting_basis_expr = "null"
+            market_value_cny_expr = snapshot_market_value_cny_expr
+            if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+                balance_join = f"""
+                left join {BALANCE_ZQTZ_FACT_TABLE} b
+                  on cast(s.report_date as varchar) = b.report_date
+                 and b.currency_basis = 'CNY'
+                 and b.position_scope = 'asset'
+                 and trim(coalesce(s.instrument_code, '')) = trim(coalesce(b.instrument_code, ''))
+                 and trim(coalesce(s.portfolio_name, '')) = trim(coalesce(b.portfolio_name, ''))
+                 and trim(coalesce(s.cost_center, '')) = trim(coalesce(b.cost_center, ''))
+                 and trim(coalesce(s.account_category, '')) = trim(coalesce(b.account_category, ''))
+                 and trim(coalesce(s.asset_class, '')) = trim(coalesce(b.asset_class, ''))
+                 and trim(coalesce(s.bond_type, '')) = trim(coalesce(b.bond_type, ''))
+                 and trim(coalesce(s.sub_type, '')) = trim(coalesce(b.sub_type, ''))
+                 and trim(coalesce(s.business_type_primary, '')) = trim(coalesce(b.business_type_primary, ''))
+                 and trim(coalesce(s.issuer_name, '')) = trim(coalesce(b.issuer_name, ''))
+                 and trim(coalesce(s.industry_name, '')) = trim(coalesce(b.industry_name, ''))
+                 and trim(coalesce(s.rating, '')) = trim(coalesce(b.rating, ''))
+                 and coalesce(s.is_issuance_like, false) = coalesce(b.is_issuance_like, false)
+                 and upper(trim(coalesce(s.currency_code, ''))) = upper(trim(coalesce(b.currency_code, '')))
+                """
+                accounting_basis_expr = "b.accounting_basis"
+                market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
             rows = conn.execute(
                 f"""
-                select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                       account_category, asset_class, bond_type, issuer_name, industry_name, rating,
-                       currency_code, face_value_native, market_value_native, amortized_cost_native,
-                       accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
-                       overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-                       ingest_batch_id, trace_id
-                from {SNAPSHOT_TABLE}
-                where report_date = ?
-                order by instrument_code, portfolio_name, cost_center, currency_code
+                select s.report_date, s.instrument_code, s.instrument_name, s.portfolio_name, s.cost_center,
+                       s.account_category, s.asset_class, s.bond_type, s.business_type_primary,
+                       s.issuer_name, s.industry_name, s.rating,
+                       s.currency_code, s.face_value_native, s.market_value_native,
+                       {market_value_cny_expr} as market_value_cny, s.amortized_cost_native,
+                       s.accrued_interest_native, s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
+                       s.overdue_days, s.is_issuance_like, s.interest_mode, s.source_version, s.rule_version,
+                       s.ingest_batch_id, s.trace_id, s.sub_type, {accounting_basis_expr} as accounting_basis
+                from {SNAPSHOT_TABLE} s
+                {balance_join}
+                where s.report_date = ?
+                order by s.instrument_code, s.portfolio_name, s.cost_center, s.currency_code
                 """,
                 [report_date],
             ).fetchall()
@@ -355,6 +396,10 @@ class BondAnalyticsRepository:
                   cast(report_date as varchar) as report_date,
                   sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
                   sum(dv01) as portfolio_dv01,
+                  sum(case when accounting_class = 'AC' then dv01 else 0 end) as ac_dv01,
+                  sum(case when accounting_class = 'OCI' then dv01 else 0 end) as oci_dv01,
+                  sum(case when accounting_class = 'TPL' then dv01 else 0 end) as tpl_dv01,
+                  sum(case when accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null then dv01 else 0 end) as other_dv01,
                   sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
                   sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
                 from {FACT_TABLE}
@@ -390,6 +435,10 @@ class BondAnalyticsRepository:
                   cast(report_date as varchar) as report_date,
                   sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
                   sum(dv01) as portfolio_dv01,
+                  sum(case when accounting_class = 'AC' then dv01 else 0 end) as ac_dv01,
+                  sum(case when accounting_class = 'OCI' then dv01 else 0 end) as oci_dv01,
+                  sum(case when accounting_class = 'TPL' then dv01 else 0 end) as tpl_dv01,
+                  sum(case when accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null then dv01 else 0 end) as other_dv01,
                   sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
                   sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
                 from {FACT_TABLE}

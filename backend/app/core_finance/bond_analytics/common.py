@@ -11,6 +11,7 @@ from backend.app.core_finance.config.classification_rules import infer_invest_ty
 from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_AC,
     ACCOUNTING_BASIS_FVOCI,
+    ACCOUNTING_BASIS_FVTPL,
     derive_accounting_basis_value,
 )
 
@@ -87,6 +88,23 @@ ACCOUNTING_RULES = [
     {"rule_id": "R021", "pattern": "FVTPL", "result": "TPL"},
     {"rule_id": "R022", "pattern": "TPL", "result": "TPL"},
 ]
+
+ACCOUNTING_BASIS_RISK_CLASS_RULE_IDS = {
+    "AC": "R001",
+    "OCI": "R010",
+    "TPL": "R020",
+}
+
+
+def map_accounting_basis_to_risk_class(accounting_basis: str | None) -> str | None:
+    normalized = str(accounting_basis or "").strip().upper()
+    if normalized == ACCOUNTING_BASIS_AC:
+        return "AC"
+    if normalized in {ACCOUNTING_BASIS_FVOCI, "OCI"}:
+        return "OCI"
+    if normalized in {ACCOUNTING_BASIS_FVTPL, "TPL"}:
+        return "TPL"
+    return None
 
 
 def map_accounting_class(asset_class: str) -> str:

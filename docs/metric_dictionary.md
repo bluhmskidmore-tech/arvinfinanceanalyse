@@ -234,7 +234,7 @@
 
 | metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `MTR-RSK-001` | 组合 DV01 | business | `formal` | `RiskTensorPayload.portfolio_dv01` | `/risk-tensor` | 数值字符串；signed tone | `report_date` 绑定 | `tests/test_risk_tensor_api.py` |
+| `MTR-RSK-001` | 组合 DV01 | business | `formal` | `RiskTensorPayload.portfolio_dv01`；上游 `fact_formal_bond_analytics_daily.dv01` | `/risk-tensor` | 数值字符串；signed tone | `report_date` 绑定；DV01 明细按 formal CNY 市值计算，非 CNY 原币不直接入总 | `tests/test_risk_tensor_api.py`; `tests/test_bond_analytics_engine.py` |
 | `MTR-RSK-001R` | 监管口径 DV01 | business | `formal` | `RiskTensorPayload.regulatory_dv01` | `/risk-tensor` | Numeric；单位 `dv01`；为空时前端显示待接入 | 首版规则 `reg_dv01_include_all_formal_bond_analytics_v1`：正式债券分析行全纳入，直接净额 `sum(dv01)`；不从 `portfolio_dv01` 读时回填 | `tests/test_risk_tensor_core.py`; `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-002` | KRD 1Y | business | `formal` | `krd_1y` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-003` | KRD 3Y | business | `formal` | `krd_3y` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
@@ -277,7 +277,10 @@
 | `MTR-EXEC-001` | 资产规模 | business | `analytical` | `backend/app/services/executive_service.py -> ExecutiveMetric(id=\"aum\")`；上游来自 formal balance overview | `/ui/home/overview` | 亿元字符串 | consumer overlay；当前是 analytical，不可冒充 formal result | `tests/test_executive_dashboard_endpoints.py` |
 | `MTR-EXEC-002` | 年度损益（不扣FTP） | business | `analytical` | `ExecutiveMetric(id=\"yield\")`；上游来自 `fact_formal_pnl_fi + fact_nonstd_pnl_bridge` 聚合 | `/ui/home/overview` | 亿元 signed string；`caliber_label=FI + 非标桥接` | consumer overlay；report_date 未显式传入时可能取 latest | `tests/test_executive_dashboard_endpoints.py`; `tests/test_executive_service_contract.py` |
 | `MTR-EXEC-003` | 净息差 | business | `analytical` | `ExecutiveMetric(id=\"nim\")`；上游来自 `compute_liability_yield_metrics` | `/ui/home/overview` | 百分比 signed string | 当前依赖 liability analytics 读面；不属于 formal 主链真值页 | `tests/test_executive_dashboard_endpoints.py` |
-| `MTR-EXEC-004` | 组合 DV01（管理视图） | business | `analytical` | `ExecutiveMetric(id=\"dv01\")`；上游来自 bond analytics risk snapshot | `/ui/home/overview` | 整数字符串 | 是 `MTR-RSK-001` 的管理层 overlay，不是新的 formal 指标 | `tests/test_executive_dashboard_endpoints.py` |
+| `MTR-EXEC-004` | 组合 DV01（管理视图） | business | `analytical` | `ExecutiveMetric(id=\"dv01\")`；上游来自 bond analytics risk snapshot | `/ui/home/overview` | 整数字符串 | 是 `MTR-RSK-001` 的管理层 overlay；全量含 AC/OCI/TPL，不剔除 OCI；拆分见 `MTR-EXEC-004A/B/C` | `tests/test_executive_dashboard_endpoints.py`; `tests/test_executive_service_contract.py` |
+| `MTR-EXEC-004A` | AC DV01（管理拆分） | business | `analytical` | `RiskSignal(id=\"dv01_ac\")`；`sum(dv01 where accounting_class='AC')` | executive risk overview service | 整数字符串 | 含在 `MTR-EXEC-004` 全量中 | `tests/test_executive_service_contract.py` |
+| `MTR-EXEC-004B` | OCI DV01（管理拆分） | business | `analytical` | `RiskSignal(id=\"dv01_oci\")`；`sum(dv01 where accounting_class='OCI')` | executive risk overview service | 整数字符串 | 含在 `MTR-EXEC-004` 全量中，单列观察 | `tests/test_executive_service_contract.py` |
+| `MTR-EXEC-004C` | TPL DV01（管理拆分） | business | `analytical` | `RiskSignal(id=\"dv01_tpl\")`；`sum(dv01 where accounting_class='TPL')` | executive risk overview service | 整数字符串 | 含在 `MTR-EXEC-004` 全量中 | `tests/test_executive_service_contract.py` |
 
 ### 10.2 收益归因段指标
 
