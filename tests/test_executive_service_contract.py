@@ -1192,6 +1192,10 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
         "report_date": "2026-04-01",
         "portfolio_modified_duration": 4.567,
         "portfolio_dv01": 1234567.8,
+        "ac_dv01": 700000.0,
+        "oci_dv01": 300000.0,
+        "tpl_dv01": 200000.0,
+        "other_dv01": 34567.8,
         "credit_market_value_ratio_pct": 12.34,
         "weighted_years_to_maturity": 3.21,
     }
@@ -1228,6 +1232,16 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
     assert "12.3" in cred["display"]
     liq = _assert_numeric_json_shape(by_label["流动性风险"]["value"])
     assert "3.21" in liq["display"]
+    by_id = {s["id"]: s for s in out["result"]["signals"]}
+    ac = _assert_numeric_json_shape(by_id["dv01_ac"]["value"])
+    oci = _assert_numeric_json_shape(by_id["dv01_oci"]["value"])
+    tpl = _assert_numeric_json_shape(by_id["dv01_tpl"]["value"])
+    other = _assert_numeric_json_shape(by_id["dv01_other"]["value"])
+    assert "700,000" in ac["display"] or "700000" in ac["display"]
+    assert "300,000" in oci["display"] or "300000" in oci["display"]
+    assert "200,000" in tpl["display"] or "200000" in tpl["display"]
+    assert "34,568" in other["display"] or "34568" in other["display"]
+    assert by_id["dv01_other"]["status"] == "warning"
     for sig in out["result"]["signals"]:
         assert "最新日期" in sig["detail"]
 

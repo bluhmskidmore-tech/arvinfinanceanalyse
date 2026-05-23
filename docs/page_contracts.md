@@ -230,6 +230,9 @@
 | 年度损益（不扣FTP） | `MTR-EXEC-002` | `overview.metrics[id=yield]` |
 | 净息差 | `MTR-EXEC-003` | `overview.metrics[id=nim]` |
 | 组合 DV01（管理视图） | `MTR-EXEC-004` | `overview.metrics[id=dv01]` |
+| AC DV01（管理拆分） | `MTR-EXEC-004A` | `risk_overview.signals[id=dv01_ac]` |
+| OCI DV01（管理拆分） | `MTR-EXEC-004B` | `risk_overview.signals[id=dv01_oci]` |
+| TPL DV01（管理拆分） | `MTR-EXEC-004C` | `risk_overview.signals[id=dv01_tpl]` |
 | 收益归因总额 | `MTR-EXEC-101` | `pnl_attribution.total` |
 | Carry 归因 | `MTR-EXEC-102` | `pnl_attribution.segments[id=carry]` |
 | Roll-down 归因 | `MTR-EXEC-103` | `pnl_attribution.segments[id=roll]` |
@@ -801,6 +804,7 @@
 - `MTR-EXEC-002`
 - `MTR-EXEC-003`
 - `MTR-EXEC-004`
+- `MTR-EXEC-004A/B/C` 为管理风险总览拆分项；`MTR-EXEC-004` 总量保持全量含 AC/OCI/TPL
 
 ### 状态合同
 

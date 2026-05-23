@@ -111,6 +111,68 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.trace_id == "trace_1"
 
 
+def test_compute_bond_analytics_rows_uses_cny_market_value_and_formal_accounting_basis() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "USD-OCI-001",
+            "instrument_name": "USD credit bond",
+            "portfolio_name": "Portfolio",
+            "cost_center": "CC-USD",
+            "account_category": "bank book",
+            "accounting_basis": "FVOCI",
+            "asset_class": "credit bond",
+            "bond_type": "corporate bond",
+            "issuer_name": "Issuer",
+            "industry_name": "Industry",
+            "rating": "A",
+            "currency_code": "USD",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("100"),
+            "market_value_cny": Decimal("700"),
+            "amortized_cost_native": Decimal("98"),
+            "accrued_interest_native": Decimal("1"),
+            "coupon_rate": Decimal("0.03"),
+            "ytm_value": Decimal("0.04"),
+            "maturity_date": date(2031, 3, 31),
+            "interest_mode": "annual",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_usd",
+            "rule_version": "rv_snapshot_usd",
+            "ingest_batch_id": "ib_usd",
+            "trace_id": "trace_usd",
+        }
+    ]
+
+    rows = module.compute_bond_analytics_rows(snapshot_rows, report_date)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.accounting_class == "OCI"
+    assert row.accounting_rule_id == "R010"
+    assert row.market_value_native == Decimal("100")
+    assert row.market_value == Decimal("700")
+    assert row.dv01 == Decimal("700") * row.modified_duration / Decimal("10000")
+
+
+@pytest.mark.parametrize(
+    ("basis", "expected"),
+    [
+        ("AC", "AC"),
+        ("FVOCI", "OCI"),
+        ("OCI", "OCI"),
+        ("FVTPL", "TPL"),
+        ("TPL", "TPL"),
+        ("unknown", None),
+        ("", None),
+    ],
+)
+def test_map_accounting_basis_to_risk_class(basis: str, expected: str | None) -> None:
+    assert common.map_accounting_basis_to_risk_class(basis) == expected
+
+
 def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv01() -> None:
     module = _module()
     report_date = date(2026, 3, 31)

@@ -1560,9 +1560,9 @@ def executive_overview(
                 delta=dv01_delta,
                 tone="warning",
                 detail=(
-                    f"来自 bond analytics 风险快照，在 {normalized_report_date} 的组合 DV01。"
+                    f"来自 bond analytics 风险快照，在 {normalized_report_date} 的全量组合 DV01；含 AC/OCI/TPL，拆分见风险全景。"
                     if normalized_report_date is not None
-                    else f"来自 bond analytics 风险快照，在 {current_bond_report_date} 的组合 DV01。"
+                    else f"来自 bond analytics 风险快照，在 {current_bond_report_date} 的全量组合 DV01；含 AC/OCI/TPL，拆分见风险全景。"
                 ),
                 history=dv01_history,
             )
@@ -1763,6 +1763,34 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                         ),
                     ],
                 )
+                for split_field, split_id, split_label in (
+                    ("ac_dv01", "dv01_ac", "AC DV01"),
+                    ("oci_dv01", "dv01_oci", "OCI DV01"),
+                    ("tpl_dv01", "dv01_tpl", "TPL DV01"),
+                    ("other_dv01", "dv01_other", "未分类 DV01"),
+                ):
+                    split_value = snapshot.get(split_field)
+                    if split_value is None:
+                        continue
+                    split_raw = float(split_value)
+                    if split_field == "other_dv01" and split_raw == 0:
+                        continue
+                    split_status = "warning" if split_field == "other_dv01" else "stable"
+                    payload.signals.append(
+                        RiskSignal(
+                            id=split_id,
+                            label=split_label,
+                            value=Numeric(
+                                raw=split_raw,
+                                unit="dv01",
+                                display=f"{split_raw:,.0f}",
+                                precision=0,
+                                sign_aware=False,
+                            ),
+                            status=split_status,
+                            detail=f"{asof_label}; management DV01 accounting split included in total portfolio DV01.",
+                        )
+                    )
                 risk_source_version = _DEFAULT_SOURCE
                 risk_rule_version = _DEFAULT_RULE
                 if governance_dir:
