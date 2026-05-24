@@ -268,6 +268,7 @@ describe("BondDashboardPage", () => {
             market_value: "343822795478.69",
             weighted_avg_ytm_pct: "2.565621",
             weighted_avg_duration: "4.13678311",
+            duration_source: "position_duration",
           },
         ],
       },

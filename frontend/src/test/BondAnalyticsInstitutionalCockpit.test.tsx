@@ -81,7 +81,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       }
       return base.getBondDashboardMaturityStructure(reportDate);
     });
-    const getBondAnalyticsTopHoldings = vi.fn(async (reportDate: string, limit: number) => {
+    const getBondAnalyticsTopHoldings = vi.fn(async (reportDate: string, limit?: number) => {
       if (reportDate !== "2026-02-28") {
         throw new Error(`unsupported holdings date ${reportDate}`);
       }
