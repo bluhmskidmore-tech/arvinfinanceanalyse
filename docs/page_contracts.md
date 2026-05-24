@@ -683,6 +683,7 @@
   1. 当前报告日组合的 DV01/KRD/CS01/凸性是什么。
   2. 当前发行人集中度和流动性缺口是否异常。
   3. 当前风险质量标记是否正常。
+  4. 当前组合久期覆盖了哪些利率风险适用资产，哪些市值被排除在久期分母外。
 - 页面不负责回答的问题：
   - 不负责替代 excluded 的 `/ui/risk/overview`
   - 不负责补算任何风险衍生指标
@@ -695,6 +696,7 @@
 | --- | --- | --- | --- |
 | `dates` | 报告日选择 | 确定 report_date | `/api/risk/tensor/dates` |
 | `summary_kpis` | 风险摘要 | 展示 DV01、CS01、凸性、集中度、流动性缺口 | `/api/risk/tensor` |
+| `duration_scope` | 久期口径披露 | 展示利率风险适用市值、DV01、久期，以及被排除的市值/行数 | `/api/risk/tensor` |
 | `krd_chart` | KRD 图 | 展示期限桶风险 | `/api/risk/tensor` |
 | `radar` | 风险雷达 | 展示强弱对比 | `/api/risk/tensor` |
 | `result_meta` | provenance / evidence | 展示 dates/tensor meta | meta panel |
@@ -702,6 +704,7 @@
 #### 禁止 section
 
 - 前端重算 KRD / DV01 / CS01 / convexity
+- 前端为无到期日资产合成到期日或久期
 - 用 `portfolio_dv01` 回填或伪装 `regulatory_dv01`
 - 把 excluded 的 `risk-overview` 内容移花接木进来
 
@@ -747,8 +750,13 @@
 | 30 天流动性缺口 | `MTR-RSK-017` | `liquidity_gap_30d` |
 | 90 天流动性缺口 | `MTR-RSK-018` | `liquidity_gap_90d` |
 | 30 天流动性缺口比例 | `MTR-RSK-019` | `liquidity_gap_30d_ratio` |
+| 利率风险市值 | `MTR-RSK-021` | `rate_risk_market_value` |
+| 利率风险 DV01 | `MTR-RSK-022` | `rate_risk_dv01` |
+| 利率风险久期 | `MTR-RSK-023` | `rate_risk_modified_duration` |
 | 债券数量 | `MTR-RSK-101` | `bond_count` |
 | 风险质量标记 | `MTR-RSK-102` | `quality_flag` |
+| 久期排除行数 | `MTR-RSK-103` | `duration_excluded_count` |
+| 久期排除市值 | `MTR-RSK-104` | `duration_excluded_market_value` |
 
 ### G. 状态合同
 
@@ -1278,6 +1286,58 @@
 - **NCD 读面**：`ncd-funding-proxy` 为 **Shibor/资金利率类 proxy**（默认文案与 `payload.proxy_label` 对齐，如 Tushare Shibor funding proxy），**不是**「实际同业存单期限 × 评级」全矩阵真值；页内 `NcdMatrix` 已声明 proxy 语义。
 - **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。
 - **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。
+
+## 14.0 PAGE-LEDGER-PNL-001 Ledger PnL
+
+### A. Page identity
+
+- Page ID: `PAGE-LEDGER-PNL-001`
+- Primary front-end route: `/ledger-pnl`
+- Status: `active` ledger read surface
+- Primary APIs:
+  - `GET /api/ledger-pnl/dates`
+  - `GET /api/ledger-pnl/data`
+  - `GET /api/ledger-pnl/summary`
+  - `GET /api/ledger-pnl/formal-financial-indicators`
+
+### B. Primary business question
+
+- The page answers: what does the ledger/QDB analytical read chain show for the selected report date, and which formal financial indicators are still pending source confirmation?
+- The page must keep ledger/QDB analytics separate from formal financial indicator truth.
+- It must not present Excel sample values, QDB candidate values, or reconciliation probes as formal values unless a future contract explicitly returns `formal_use_allowed=true`.
+
+### C. Data chain
+
+- Frontend route `/ledger-pnl` consumes ledger PnL read APIs under `/api/ledger-pnl/*`.
+- `GET /api/ledger-pnl/formal-financial-indicators?report_month=202603` returns the frozen formal financial indicator source contract.
+- Backend route `backend/app/api/routes/ledger_pnl.py` delegates to `backend/app/services/ledger_pnl_service.py`.
+- The formal financial indicator source contract is built by `backend/app/core_finance/formal_financial_indicators.py`.
+
+### D. Formal indicator source-contract boundary
+
+| Source status | Page meaning | Display rule |
+| --- | --- | --- |
+| `formal_pending` | Excel sample has a formal indicator value, but governed production source is not connected | Show as pending; `value` must remain null |
+| `candidate_qdb_aligned` | QDB analytical value aligns to the Excel sample within display precision | Show as candidate only; `value` must remain null |
+| `needs_reconciliation` | QDB analytical value and Excel sample differ | Show reconciliation gap; `value` must remain null |
+
+- Contract envelope: `result_meta.basis=ledger`, `result_meta.formal_use_allowed=false`.
+- Contract values: every source-contract metric uses `value=null`; `system_value` is evidence only, not a formal displayed value.
+- Page copy must distinguish `excel_value`, `system_value`, and `value`.
+
+### E. Units, dates, and status
+
+- `report_date` controls ledger data/detail/summary endpoints.
+- `report_month` controls the formal financial indicator source contract.
+- `as_of_date` for the source contract is the month-end `report_date` returned by the envelope.
+- Stale/fallback/vendor degradation must remain visible through `result_meta`.
+- No-data and missing-source states must be explicit; pending formal indicators must not be rendered as zero.
+
+### F. Tests
+
+- API/source contract: `tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`.
+- Ledger summary/detail: `tests/test_ledger_pnl_service.py`.
+- Route/page-contract completeness: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 

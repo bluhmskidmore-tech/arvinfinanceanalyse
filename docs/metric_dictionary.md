@@ -255,6 +255,9 @@
 | `MTR-RSK-018` | 90 天流动性缺口 | business | `formal` | `liquidity_gap_90d` | `/risk-tensor` | 金额；signed tone | 同上 | `tests/test_risk_tensor_liquidity.py` |
 | `MTR-RSK-019` | 30 天流动性缺口比例 | quality | `formal` | `liquidity_gap_30d_ratio` | `/risk-tensor` 雷达/摘要 | 比率型字符串 | 当前页面作为风险强度参考 | `tests/test_risk_tensor_liquidity.py` |
 | `MTR-RSK-020` | 风险组合总市值 | business | `formal` | `total_market_value` | outward contract | 金额 | `report_date` 绑定 | `tests/test_risk_tensor_api.py` |
+| `MTR-RSK-021` | 利率风险市值 | business | `formal` | `RiskTensorPayload.rate_risk_market_value` | `/risk-tensor` | 金额 | 进入 `portfolio_modified_duration` 分母的市值；不含无到期日或非正久期资产 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
+| `MTR-RSK-022` | 利率风险 DV01 | business | `formal` | `RiskTensorPayload.rate_risk_dv01` | `/risk-tensor` | Numeric；单位 `dv01` | 与利率风险久期分母一致的 DV01 披露，不替代 `portfolio_dv01` 全量口径 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
+| `MTR-RSK-023` | 利率风险久期 | business | `formal` | `RiskTensorPayload.rate_risk_modified_duration` | `/risk-tensor` | 数值字符串 | 应与 `portfolio_modified_duration` 对账一致；用于说明久期分母口径 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
 
 ### 9.2 控制 / 质量指标
 
@@ -262,6 +265,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `MTR-RSK-101` | 债券数量 | control | `formal` | `bond_count` | `/risk-tensor` | 整数 | `report_date` 绑定 | `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-102` | 风险质量标记 | quality | `formal` | `quality_flag` | `/risk-tensor` | 枚举字符串 | 当前页面直接展示 | `tests/test_risk_tensor_api.py` |
+| `MTR-RSK-103` | 久期排除行数 | quality | `formal` | `RiskTensorPayload.duration_excluded_count` | `/risk-tensor` | 整数 | 有市值但不进入久期分母的行数；DV01 总量仍按行 DV01 汇总 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
+| `MTR-RSK-104` | 久期排除市值 | quality | `formal` | `RiskTensorPayload.duration_excluded_market_value` | `/risk-tensor` | 金额 | 无到期日或非正久期资产不合成期限，单独披露排除市值 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
 
 ## 10. Executive Consumer V1
 

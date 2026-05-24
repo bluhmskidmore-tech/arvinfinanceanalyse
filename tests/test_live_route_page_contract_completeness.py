@@ -57,9 +57,6 @@ TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
     "/average-balance": (
         "temporary-exception analytical/compat route; formal truth remains on balance analysis."
     ),
-    "/ledger-pnl": (
-        "temporary-exception ledger route; no standalone `PAGE-*` contract yet."
-    ),
     "/bank-ledger-dashboard": (
         "temporary-exception ledger cockpit route; contract still pending."
     ),

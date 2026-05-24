@@ -42,6 +42,10 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-POS-001": (
         "positions DTO remains page/schema truth only; no approved `MTR-*` page bindings yet."
     ),
+    "PAGE-LEDGER-PNL-001": (
+        "ledger PnL page contract is source-drilldown only; no approved table-bound "
+        "`MTR-*` page bindings yet."
+    ),
 }
 
 PAGE_HEADING_RE = re.compile(r"^##\s+[\d.]+\s+(PAGE-[A-Z0-9-]+)\b", re.MULTILINE)
