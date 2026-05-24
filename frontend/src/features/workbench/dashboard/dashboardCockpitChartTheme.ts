@@ -1,4 +1,13 @@
-import type { EChartsOption } from "../../../lib/echarts";
+import type {
+  GridComponentOption,
+  TooltipComponentOption,
+  XAXisComponentOption,
+  YAXisComponentOption,
+} from "echarts";
+import type {
+  CategoryAxisBaseOption,
+  ValueAxisBaseOption,
+} from "echarts/types/src/coord/axisCommonTypes.js";
 import { COCKPIT_TYPOGRAPHY, COCKPIT_VISUAL } from "./dashboardCockpitVisualTokens";
 
 type CockpitChartTone = "positive" | "negative" | "neutral" | "warning" | string;
@@ -10,11 +19,19 @@ export function cockpitChartToneColor(tone: CockpitChartTone): string {
   return COCKPIT_VISUAL.chart.gray;
 }
 
-export function buildCockpitChartTooltip(): NonNullable<EChartsOption["tooltip"]> {
+type CockpitCategoryAxisOption = XAXisComponentOption &
+  CategoryAxisBaseOption & { type: "category" };
+type CockpitValueAxisOption = YAXisComponentOption &
+  ValueAxisBaseOption & { type: "value" };
+
+export function buildCockpitChartTooltip(): TooltipComponentOption {
   return {
     trigger: "axis",
     backgroundColor: COCKPIT_VISUAL.surface.card,
     borderColor: COCKPIT_VISUAL.surface.border,
+    borderWidth: 1,
+    padding: [8, 10],
+    extraCssText: "box-shadow: none; border-radius: 6px; font-variant-numeric: tabular-nums;",
     textStyle: {
       color: COCKPIT_VISUAL.text.body,
       fontFamily: COCKPIT_TYPOGRAPHY.fontSans,
@@ -24,8 +41,8 @@ export function buildCockpitChartTooltip(): NonNullable<EChartsOption["tooltip"]
 }
 
 export function buildCockpitChartGrid(
-  overrides: Partial<NonNullable<EChartsOption["grid"]>> = {},
-): NonNullable<EChartsOption["grid"]> {
+  overrides: Partial<GridComponentOption> = {},
+): GridComponentOption {
   return {
     left: 8,
     right: 8,
@@ -38,7 +55,7 @@ export function buildCockpitChartGrid(
 
 export function buildCockpitCategoryAxis(
   data: readonly string[],
-): NonNullable<EChartsOption["xAxis"]> {
+): CockpitCategoryAxisOption {
   return {
     type: "category",
     data: [...data],
@@ -55,8 +72,8 @@ export function buildCockpitCategoryAxis(
 }
 
 export function buildCockpitValueAxis(
-  overrides: Partial<Extract<EChartsOption["yAxis"], object>> = {},
-): EChartsOption["yAxis"] {
+  overrides: Partial<Omit<CockpitValueAxisOption, "type">> = {},
+): CockpitValueAxisOption {
   return {
     type: "value",
     splitLine: { lineStyle: { color: COCKPIT_VISUAL.surface.divider, type: "dashed" } },

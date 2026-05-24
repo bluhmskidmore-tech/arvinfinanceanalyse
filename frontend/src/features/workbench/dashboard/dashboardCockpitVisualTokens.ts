@@ -1,10 +1,8 @@
-import { designTokens } from "../../../theme/designSystem";
-
 /** 经营驾驶舱 · 投行级视觉 token（仅展示色，不参与金融计算） */
 
-const PRIMARY = designTokens.color.primary[600];
-const PRIMARY_AUX = designTokens.color.primary[500];
-const PRIMARY_SOFT = designTokens.color.primary[50];
+const PRIMARY = "#123E73";
+const PRIMARY_AUX = "#1D5FA7";
+const PRIMARY_SOFT = "#EAF2FB";
 
 export const COCKPIT_VISUAL = {
   surface: {
@@ -21,7 +19,7 @@ export const COCKPIT_VISUAL = {
     primary: PRIMARY,
     primaryAux: PRIMARY_AUX,
     primarySoft: PRIMARY_SOFT,
-    hover: "#F0F6FF",
+    hover: "#F3F8FE",
   },
   sidebar: {
     bg: "#06182D",
@@ -66,7 +64,7 @@ export const COCKPIT_VISUAL = {
 /** 经营驾驶舱 typography（展示层，对齐 ref-fidelity 目标稿） */
 export const COCKPIT_TYPOGRAPHY = {
   fontSans:
-    '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
+    '"Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif',
   fontTabular:
     '"IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
   size: {

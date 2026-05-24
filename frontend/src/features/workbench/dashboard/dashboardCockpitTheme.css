@@ -1,6 +1,5 @@
 /**
- * 经营驾驶舱 · 投行级配色覆盖层（仅视觉，加载于 DashboardCockpitPage.css 之后）
- */
+ * 经营驾驶�?· 投行级配色覆盖层（仅视觉，加载于 DashboardCockpitPage.css 之后�? */
 
 [data-testid="fixed-income-dashboard-page"].dashboard-cockpit-page {
   --cockpit-bg: #f3f5f8;
@@ -10,10 +9,10 @@
   --cockpit-border: #dde4ec;
   --cockpit-border-strong: #c8d3df;
   --cockpit-divider: #e7ecf2;
-  --cockpit-primary: #1850a1;
-  --cockpit-primary-aux: #2f68b8;
-  --cockpit-primary-soft: #e8f1fb;
-  --cockpit-primary-line: rgba(24, 80, 161, 0.18);
+  --cockpit-primary: #123e73;
+  --cockpit-primary-aux: #1d5fa7;
+  --cockpit-primary-soft: #eaf2fb;
+  --cockpit-primary-line: rgba(18, 62, 115, 0.18);
   --cockpit-gold: #b88746;
   --cockpit-gold-soft: #f8f1e8;
   --cockpit-text: #0b1f3a;
@@ -28,11 +27,11 @@
   --cockpit-shadow-xs: 0 1px 2px rgba(11, 31, 58, 0.04);
   --cockpit-shadow-sm: 0 1px 3px rgba(11, 31, 58, 0.06);
   --cockpit-shadow-md: 0 2px 6px rgba(11, 31, 58, 0.07);
-  --cockpit-radius-lg: 10px;
-  --cockpit-radius-md: 10px;
+  --cockpit-radius-lg: 8px;
+  --cockpit-radius-md: 8px;
   --cockpit-radius-sm: 6px;
 
-  --dashboard-terminal-blue: #1850a1;
+  --dashboard-terminal-blue: #123e73;
   --dashboard-terminal-blue-strong: #0b1f3a;
   --dashboard-terminal-ink: #0b1f3a;
   --dashboard-terminal-ink-soft: #475467;
@@ -46,7 +45,7 @@
   --dashboard-terminal-amber: #b76e00;
 }
 
-/* —— 左侧导航（仅驾驶舱页） —— */
+/* —�?左侧导航（仅驾驶舱页�?—�?*/
 .workbench-shell-grid--cockpit:has([data-testid="fixed-income-dashboard-page"]) .workbench-shell-aside {
   background: #06182d !important;
   border-right-color: #0a2038 !important;
@@ -80,7 +79,7 @@
   color: #1850a1 !important;
   border-color: transparent !important;
   background: #eaf2fb !important;
-  box-shadow: inset 3px 0 0 #b88746 !important;
+  box-shadow: none !important;
   border-radius: 0 6px 6px 0 !important;
 }
 
@@ -89,7 +88,7 @@
   color: #1850a1 !important;
 }
 
-/* —— 卡片统一 —— */
+/* —�?卡片统一 —�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi,
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse,
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel,
@@ -98,7 +97,7 @@
   border-radius: var(--cockpit-radius-sm);
   border-color: var(--cockpit-border);
   background: var(--cockpit-card);
-  box-shadow: var(--cockpit-shadow-xs);
+  box-shadow: var(--moss-shadow-card);
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi:hover,
@@ -107,10 +106,10 @@
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-notes:hover {
   border-color: #c7daf4;
   background: var(--cockpit-card);
-  box-shadow: var(--cockpit-shadow-sm);
+  box-shadow: var(--moss-shadow-card);
 }
 
-/* —— KPI —— */
+/* —�?KPI —�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
   color: var(--cockpit-text);
 }
@@ -155,11 +154,11 @@
   background: #f1f5f9;
 }
 
-/* —— 行情 pulse —— */
+/* —�?行情 pulse —�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse[data-tone="up"],
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse[data-tone="down"],
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse[data-tone="warn"] {
-  box-shadow: var(--cockpit-shadow-xs);
+  box-shadow: var(--moss-shadow-card);
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__status {
@@ -225,7 +224,7 @@
   fill: var(--cockpit-primary-soft);
 }
 
-/* —— 右侧决策/说明栏 —— */
+/* —�?右侧决策/说明�?—�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-notes {
   background: var(--cockpit-card);
   border-color: var(--cockpit-border);
@@ -234,7 +233,7 @@
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar {
   background: var(--cockpit-card);
   border-color: var(--cockpit-border);
-  box-shadow: var(--cockpit-shadow-xs);
+  box-shadow: var(--moss-shadow-card);
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-notes__item {
@@ -259,7 +258,7 @@
   color: var(--cockpit-text-soft);
 }
 
-/* —— 去掉米黄 warm 面板 —— */
+/* —�?去掉米黄 warm 面板 —�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-action-queue,
 [data-testid="fixed-income-dashboard-page"] .dashboard-governed-surface,
 [data-testid="fixed-income-dashboard-page"] .dashboard-warm-kpi-ledger,
@@ -268,7 +267,7 @@
 [data-testid="fixed-income-dashboard-page"] .dashboard-home-panel {
   border-color: var(--cockpit-border) !important;
   background: var(--cockpit-card) !important;
-  box-shadow: var(--cockpit-shadow-xs) !important;
+  box-shadow: var(--moss-shadow-card) !important;
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-home-warning {
@@ -277,7 +276,7 @@
   color: var(--cockpit-text-soft);
 }
 
-/* —— 表格 —— */
+/* —�?表格 —�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-exposure-table th,
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table th {
   background: #f8fafc;
@@ -309,7 +308,7 @@
   color: var(--cockpit-success);
 }
 
-/* —— 顶栏 —— */
+/* —�?顶栏 —�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header {
   border-bottom-color: var(--cockpit-border);
 }
@@ -318,7 +317,7 @@
   color: var(--cockpit-text);
 }
 
-/* —— 瀑布图 / 归因柱 —— */
+/* —�?瀑布�?/ 归因�?—�?*/
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-tone-positive,
 [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-waterfall__bar.dashboard-cockpit-tone-positive {
   background: var(--cockpit-success) !important;
@@ -366,7 +365,7 @@
   background: var(--cockpit-bg-accent);
 }
 
-/* —— 机构级重置：去掉米黄渐变与刺眼装饰（仅驾驶舱页） —— */
+/* —�?机构级重置：去掉米黄渐变与刺眼装饰（仅驾驶舱页） —�?*/
 [data-testid="fixed-income-dashboard-page"] :is(
     .dashboard-cockpit-panel,
     .dashboard-cockpit-card,
@@ -476,7 +475,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* —— 最终覆盖：压过 Sections.css 末尾 warm / refined _pass —— */
+/* —�?最终覆盖：压过 Sections.css 末尾 warm / refined _pass —�?*/
 [data-testid="fixed-income-dashboard-page"] {
   --dashboard-refined-ink: #0b1f3a;
   --dashboard-refined-muted: #667085;
@@ -510,12 +509,12 @@
   border-color: var(--cockpit-border) !important;
   background: var(--cockpit-card) !important;
   background-image: none !important;
-  box-shadow: var(--cockpit-shadow-xs) !important;
+  box-shadow: var(--moss-shadow-card) !important;
   color: inherit;
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-command-deck__judgment.dashboard-home-panel {
-  box-shadow: inset 3px 0 0 var(--cockpit-primary), var(--cockpit-shadow-xs) !important;
+  box-shadow: var(--moss-shadow-card) !important;
 }
 
 [data-testid="fixed-income-dashboard-page"] :is(
@@ -590,4 +589,4250 @@
 .dashboard-cockpit-pulse[data-tone="muted"] .dashboard-cockpit-pulse__spark-dot,
 .dashboard-cockpit-pulse[data-tone="warn"] .dashboard-cockpit-pulse__spark-dot {
   color: var(--cockpit-primary);
+}
+
+/* —�?terminal-final：本轮首页债务止血后的唯一最终视觉覆盖层 —�?*/
+[data-testid="fixed-income-dashboard-page"].dashboard-cockpit-page {
+  --cockpit-primary: #123e73;
+  --cockpit-primary-aux: #1d5fa7;
+  --cockpit-primary-soft: #eaf2fb;
+  --cockpit-primary-line: rgba(18, 62, 115, 0.18);
+  --cockpit-shadow-xs: 0 1px 2px rgba(11, 31, 58, 0.035);
+  --cockpit-shadow-sm: 0 2px 5px rgba(11, 31, 58, 0.055);
+  --cockpit-shadow-md: 0 4px 12px rgba(11, 31, 58, 0.065);
+  --cockpit-radius-lg: 8px;
+  --cockpit-radius-md: 8px;
+  --cockpit-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
+  --cockpit-font: "Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  background: var(--cockpit-bg);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-page__main {
+  background: var(--cockpit-bg-accent);
+  gap: 10px;
+  padding: 0 14px 16px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-tabular {
+  font-family: var(--cockpit-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-testid="fixed-income-dashboard-page"] :is(
+  .dashboard-cockpit-header,
+  .dashboard-cockpit-judgment-hero,
+  .dashboard-cockpit-kpi-band,
+  .dashboard-cockpit-market-strip,
+  .dashboard-cockpit-panel,
+  .dashboard-cockpit-depth-drawer,
+  .dashboard-cockpit-supplement,
+  .dashboard-detail-drilldown
+) {
+  border: 1px solid var(--cockpit-border) !important;
+  border-radius: var(--cockpit-radius-md) !important;
+  background: var(--cockpit-card) !important;
+  background-image: none !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] :is(
+  .dashboard-cockpit-header,
+  .dashboard-cockpit-market-strip,
+  .dashboard-cockpit-panel,
+  .dashboard-cockpit-kpi,
+  .dashboard-cockpit-pulse,
+  .dashboard-cockpit-drill-card,
+  .dashboard-cockpit-decision-card
+):hover {
+  transform: translateY(-1px);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__search {
+  max-width: 330px;
+  min-height: 34px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__pill,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__delta,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__status,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__values span:last-child {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 20px;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.08fr) minmax(420px, 0.92fr);
+  align-items: stretch;
+  gap: 16px;
+  overflow: hidden;
+  padding: 18px 18px 16px 20px;
+  border: 1px solid rgba(18, 62, 115, 0.18);
+  border-left: 5px solid var(--cockpit-primary);
+  background:
+    linear-gradient(135deg, rgba(24, 80, 161, 0.08), rgba(255, 255, 255, 0) 38%),
+    radial-gradient(circle at 98% 8%, rgba(184, 135, 70, 0.16), transparent 28%),
+    #ffffff;
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__copy {
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__eyebrow {
+  color: var(--cockpit-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__conclusion {
+  margin: 0;
+  max-width: 780px;
+  color: var(--cockpit-text);
+  font-size: 24px;
+  font-weight: 750;
+  line-height: 1.28;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-content: center;
+  justify-content: flex-start;
+  gap: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-self: stretch;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: var(--cockpit-radius-sm);
+  background: rgba(255, 255, 255, 0.86);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item span {
+  color: var(--cockpit-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item strong {
+  overflow: hidden;
+  color: var(--cockpit-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item[data-tone="warning"] {
+  border-color: rgba(183, 110, 0, 0.18);
+  background: var(--cockpit-warning-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge--ok {
+  color: var(--cockpit-success);
+  background: var(--cockpit-success-soft);
+  border-color: rgba(25, 122, 90, 0.14);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge--muted {
+  color: var(--cockpit-muted);
+  background: var(--cockpit-card);
+  border-color: var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge--warn {
+  color: var(--cockpit-warning);
+  background: var(--cockpit-warning-soft);
+  border-color: rgba(183, 110, 0, 0.16);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge--info {
+  color: var(--cockpit-primary);
+  background: var(--cockpit-primary-soft);
+  border-color: rgba(18, 62, 115, 0.14);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group {
+  display: contents;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group + .dashboard-cockpit-kpi-group {
+  border-left: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__head {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards {
+  display: contents;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi {
+  min-height: 92px;
+  grid-template-rows: auto auto auto 1fr 22px;
+  padding: 8px 10px 7px;
+  border-right: 1px solid var(--cockpit-divider);
+  background: var(--cockpit-card);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group:last-child .dashboard-cockpit-kpi:last-child {
+  border-right: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__group-label {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid rgba(18, 62, 115, 0.14);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--cockpit-primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi[data-kpi-group="risk"] .dashboard-cockpit-kpi__group-label {
+  border-color: rgba(184, 135, 70, 0.18);
+  background: #fffaf2;
+  color: var(--cockpit-gold);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-text-soft);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--cockpit-text);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__relation {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 999px;
+  color: var(--cockpit-muted);
+  background: var(--cockpit-card-soft);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__spark {
+  height: 22px;
+  align-self: end;
+  margin-top: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--cockpit-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse {
+  min-height: 78px;
+  padding: 7px 8px;
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius-sm);
+  background: var(--cockpit-card-soft);
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__impact {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--cockpit-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__spark {
+  height: 18px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(252px, 268px);
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr) minmax(0, 0.96fr);
+  gap: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__head {
+  min-height: 42px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__eyebrow {
+  color: var(--cockpit-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__title {
+  color: var(--cockpit-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-counts article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-portfolio-stat,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-interbank article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-balance-card,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+  border: 1px solid var(--cockpit-divider);
+  border-radius: var(--cockpit-radius-sm);
+  background: var(--cockpit-card-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar {
+  position: sticky;
+  top: 70px;
+  align-self: start;
+  overflow: hidden;
+  border-color: rgba(18, 62, 115, 0.18) !important;
+  background:
+    linear-gradient(180deg, rgba(250, 251, 253, 0.92), #ffffff 38%) !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__head {
+  display: grid;
+  gap: 2px;
+  background: linear-gradient(180deg, #ffffff, var(--cockpit-card-soft)) !important;
+  border-bottom: 1px solid var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__body {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+  display: grid;
+  gap: 6px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__content {
+  display: grid;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 7px;
+  min-height: 54px;
+  padding: 7px 8px;
+  background: var(--cockpit-card-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__index {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid rgba(18, 62, 115, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--cockpit-primary);
+  font-family: var(--cockpit-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__title-row strong {
+  color: var(--cockpit-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 3px;
+  color: var(--cockpit-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__meta span {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 5px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 999px;
+  background: #ffffff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__meta em {
+  min-width: 0;
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card p {
+  margin: 3px 0 0;
+  color: var(--cockpit-text-soft);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.48;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__badge {
+  min-height: 18px;
+  padding: 1px 6px;
+  border: 1px solid rgba(183, 110, 0, 0.14);
+  border-radius: 999px;
+  background: var(--cockpit-warning-soft);
+  color: var(--cockpit-warning);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="positive"] .dashboard-cockpit-decision-card__index {
+  border-color: rgba(25, 122, 90, 0.18);
+  color: var(--cockpit-success);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="negative"] .dashboard-cockpit-decision-card__index {
+  border-color: rgba(185, 71, 67, 0.2);
+  color: var(--cockpit-danger);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="warning"] .dashboard-cockpit-decision-card__index {
+  border-color: rgba(183, 110, 0, 0.2);
+  color: var(--cockpit-warning);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: var(--cockpit-radius-sm);
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo summary,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo p {
+  margin: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo summary {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  color: var(--cockpit-text);
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo summary::-webkit-details-marker {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo summary::after {
+  content: "展开";
+  flex: 0 0 auto;
+  color: var(--cockpit-primary);
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo[open] summary::after {
+  content: "收起";
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo summary em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo-body {
+  display: grid;
+  gap: 5px;
+  padding: 0 9px 8px;
+  border-top: 1px solid var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo p {
+  color: var(--cockpit-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(184, 135, 70, 0.24);
+  border-radius: var(--cockpit-radius-sm);
+  background: var(--cockpit-gold-soft);
+  color: var(--cockpit-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cta:hover {
+  border-color: var(--cockpit-gold);
+  color: #8f6329;
+  transform: translateX(1px);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure {
+  overflow: hidden;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid transparent;
+  background: linear-gradient(180deg, #ffffff, var(--cockpit-card-soft));
+  cursor: pointer;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure[open] > .dashboard-progressive-disclosure__summary {
+  border-bottom-color: var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__title {
+  color: var(--cockpit-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__preview {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__preview span {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--cockpit-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table thead th {
+  background: var(--cockpit-primary-soft);
+  color: var(--cockpit-text-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table td,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table th {
+  border-bottom: 1px solid var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table td:nth-child(n + 3),
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-table th:nth-child(n + 3) {
+  text-align: right;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-balance-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-drill-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-drill-card {
+  flex: 1 0 150px;
+  min-height: 50px;
+  border-radius: var(--cockpit-radius-sm);
+}
+
+@media (max-width: 1180px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__actions {
+    justify-content: flex-start;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout__rail {
+    width: 100%;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar {
+    position: static;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1320px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group + .dashboard-cockpit-kpi-group {
+    border-left: 0;
+    border-top: 1px solid var(--cockpit-divider);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-balance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__actions {
+    justify-content: flex-start;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__summary {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__summary {
+    display: grid;
+    align-items: start;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-progressive-disclosure__preview {
+    justify-content: flex-start;
+  }
+}
+
+/* Reference-aligned cockpit pass: compact command bar, grouped KPIs, denser first screen. */
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-page__main {
+  gap: 10px;
+  padding: 0 10px 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header {
+  grid-template-columns: minmax(240px, max-content) minmax(260px, 420px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 54px;
+  padding: 8px 12px;
+  border: 0 !important;
+  border-bottom: 1px solid var(--cockpit-divider) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header:hover {
+  transform: none;
+  box-shadow: none !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__left {
+  flex-wrap: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__title {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__date {
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__partial {
+  display: none !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__search {
+  display: flex !important;
+  width: 100%;
+  max-width: none;
+  min-height: 34px;
+  border-color: #cfd9e6;
+  border-radius: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__right {
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__status-group {
+  overflow: visible;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__links {
+  display: flex !important;
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__pill {
+  flex: 0 1 auto;
+  max-width: 168px;
+  overflow: hidden;
+  min-height: 22px;
+  padding: 1px 8px;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__mode {
+  min-height: 22px;
+  padding: 0 2px;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__icon-btn,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__refresh {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__refresh {
+  overflow: hidden;
+  padding: 0 8px;
+  width: auto;
+  max-width: 84px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero {
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-rows: auto;
+  align-items: center;
+  gap: 6px 12px;
+  min-height: 64px;
+  padding: 9px 14px 9px 18px;
+  overflow: visible;
+  border-left-width: 4px;
+  background: #ffffff !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__copy {
+  gap: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__eyebrow {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__conclusion {
+  max-width: none;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence {
+  display: none;
+  grid-column: 1;
+  grid-row: 2;
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  max-width: 210px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__evidence-item strong {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__actions {
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  overflow: visible;
+  padding-top: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group + .dashboard-cockpit-kpi-group {
+  border-left: 1px solid var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__head {
+  position: absolute;
+  top: -12px;
+  left: 12px;
+  z-index: 2;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip: auto;
+  overflow: visible;
+  padding: 2px 9px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 6px 6px 0 0;
+  background: #ffffff;
+  color: var(--cockpit-primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group--risk .dashboard-cockpit-kpi-group__head {
+  color: #0f4a8a;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi {
+  min-height: 116px;
+  padding: 10px 11px 8px;
+  grid-template-rows: auto auto auto 1fr 22px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards .dashboard-cockpit-kpi:last-child {
+  border-right: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 1px 8px;
+  align-items: center;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__icon {
+  display: inline-grid;
+  grid-row: 1 / 3;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(24, 80, 161, 0.16);
+  border-radius: 999px;
+  background: #eef5ff;
+  color: var(--cockpit-primary);
+  font-size: 14px;
+  line-height: 1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi[data-kpi-group="risk"] .dashboard-cockpit-kpi__icon {
+  border-color: rgba(184, 135, 70, 0.2);
+  background: #fff7e6;
+  color: var(--cockpit-warning);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__group-label {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__label {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--cockpit-text);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
+  margin-top: 4px;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal-row {
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__relation {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__spark {
+  width: 100%;
+  height: 24px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip {
+  gap: 7px;
+  padding: 8px 10px 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse {
+  min-height: 72px;
+  padding: 7px 8px 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__head {
+  gap: 5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__label,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__impact {
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__body {
+  align-items: end;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__values strong {
+  font-size: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__spark {
+  height: 20px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.92fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__head {
+  min-height: 40px;
+  padding: 9px 11px 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__body {
+  gap: 7px;
+  padding: 9px 10px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-portfolio-stats,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-summary,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-counts {
+  gap: 5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-portfolio-stat,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-summary article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-counts article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-interbank article {
+  padding: 6px 7px;
+  border-radius: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-asset-mix {
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-donut-chart {
+  width: 118px;
+  min-width: 118px;
+  height: 118px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-donut-chart > div {
+  height: 118px !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-tabs {
+  flex-wrap: nowrap;
+  margin: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-tabs .dashboard-cockpit-tabs__btn {
+  flex: 1 1 0;
+  min-height: 24px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  text-align: center;
+  cursor: default;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-total {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-rows {
+  gap: 5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-row {
+  grid-template-columns: 66px minmax(0, 1fr) minmax(58px, auto);
+  min-height: 22px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-body {
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar {
+  min-height: 116px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar > div,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar canvas {
+  max-height: 112px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar__legend {
+  padding-bottom: 5px;
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar {
+  top: 66px;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__body {
+  gap: 8px;
+  padding: 9px 10px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+  grid-template-columns: 1fr;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  min-height: 70px;
+  padding: 9px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__index {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__title-row strong {
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card p {
+  -webkit-line-clamp: 2;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data {
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: var(--cockpit-radius-sm);
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data p {
+  line-height: 1.45;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+}
+
+@media (max-width: 1320px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header {
+    grid-template-columns: minmax(220px, max-content) minmax(220px, 340px) minmax(0, 1fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group + .dashboard-cockpit-kpi-group {
+    border-left: 1px solid var(--cockpit-divider);
+    border-top: 0;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+    grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.92fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1180px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header {
+    grid-template-columns: 1fr;
+    position: static;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__right {
+    grid-template-columns: 1fr max-content;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__links {
+    display: none !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group + .dashboard-cockpit-kpi-group {
+    border-left: 0;
+    border-top: 1px solid var(--cockpit-divider);
+  }
+}
+
+@media (max-width: 900px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-balance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+    padding-top: 0;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__head {
+    position: static;
+    width: fit-content;
+    margin: 8px 0 0 10px;
+    border-radius: 6px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi {
+    min-height: 116px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-asset-mix {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-donut-chart {
+    justify-self: center;
+  }
+}
+
+@media (max-width: 640px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dashboard typography tuning: Chinese-first text with stable financial numerals. */
+[data-testid="fixed-income-dashboard-page"].dashboard-cockpit-page {
+  --cockpit-font: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --cockpit-number-font: var(--cockpit-font);
+  font-family: var(--cockpit-font);
+  font-kerning: normal;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-testid="fixed-income-dashboard-page"] :is(
+  .dashboard-cockpit-header__title,
+  .dashboard-cockpit-panel__title,
+  .dashboard-cockpit-panel__eyebrow,
+  .dashboard-cockpit-kpi-group__head,
+  .dashboard-cockpit-kpi__label,
+  .dashboard-cockpit-market-strip__head,
+  .dashboard-cockpit-decision-card__title-row strong
+) {
+  letter-spacing: 0 !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-tabular,
+[data-testid="fixed-income-dashboard-page"] :is(
+  .dashboard-cockpit-kpi__value,
+  .dashboard-cockpit-pulse__values strong,
+  .dashboard-cockpit-portfolio-stat strong,
+  .dashboard-cockpit-attrib-summary strong,
+  .dashboard-cockpit-risk-counts__value,
+  .dashboard-cockpit-decision-card__index,
+  .dashboard-cockpit-donut-chart__center span
+) {
+  font-family: var(--cockpit-number-font);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0 !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__title {
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__date,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__pill,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__mode,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__status {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-header__pill,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__badge,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__delta,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__status {
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__eyebrow,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__head,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__head {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__conclusion {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__label,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__label,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-portfolio-stat span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-summary span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-counts span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-asset-bar-row__label {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
+  font-size: 22px;
+  font-weight: 760;
+  line-height: 1.08;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__delta,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__relation,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__impact,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__values span:last-child {
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__values strong {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__title {
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__index {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__title-row strong {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card p,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__meta,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data p,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__todo p {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1.04fr) minmax(330px, 0.96fr);
+  align-items: stretch;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-panel__head {
+  min-height: 0;
+  align-content: center;
+  padding: 8px 10px;
+  border-right: 1px solid var(--cockpit-divider);
+  border-bottom: 0;
+  background: linear-gradient(180deg, #ffffff, var(--cockpit-card-soft)) !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview {
+  display: grid;
+  grid-column: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics article {
+  min-height: 58px;
+  padding: 7px 8px;
+  border-width: 0 1px 0 0;
+  border-color: var(--cockpit-divider);
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="positive"],
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="warning"],
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="negative"],
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="neutral"] {
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="warning"] {
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="negative"] {
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview__item[data-tone="positive"] {
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics article {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics article:last-child {
+  border-right: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-muted);
+  font-size: 10.5px;
+  font-style: normal;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-text);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band > * {
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-front-signal-strip,
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-lane {
+  width: 100%;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-supplement-preview__trigger {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-lane {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.62fr) minmax(0, 1.38fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-lane {
+  grid-template-columns: minmax(230px, 0.48fr) minmax(0, 1.52fr);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-panel {
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-panel--balance {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-panel--exposure {
+  grid-column: auto;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics article {
+  display: grid;
+  min-width: 0;
+  min-height: 58px;
+  align-content: center;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 6px;
+  background: var(--cockpit-card-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-text);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-trends {
+  gap: 5px;
+  padding: 8px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends article {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.7fr) minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-text-soft);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends i {
+  display: block;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends b {
+  display: block;
+  min-width: 4px;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cockpit-primary);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends b[data-tone="up"] {
+  background: var(--cockpit-success);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends b[data-tone="down"] {
+  background: var(--cockpit-danger);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-trends strong {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table-wrap {
+  overflow-x: auto;
+  padding: 0 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table th,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--cockpit-divider);
+  color: var(--cockpit-text-soft);
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-table th,
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-table td {
+  padding: 6px 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table th {
+  background: var(--cockpit-primary-soft);
+  color: var(--cockpit-text);
+  font-weight: 750;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table td:nth-child(n + 3),
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table th:nth-child(n + 3) {
+  text-align: right;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-table tr:last-child td {
+  border-bottom: 0;
+  background: rgba(24, 80, 161, 0.035);
+  color: var(--cockpit-text);
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--cockpit-divider);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-links {
+  gap: 5px;
+  padding: 6px 8px 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-links a {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--cockpit-primary);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+  align-items: start;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych > .dashboard-cockpit-panel {
+  height: auto;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--chart-compact .dashboard-cockpit-panel__head,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-panel__head {
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--chart-compact .dashboard-cockpit-panel__title,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-panel__title {
+  font-size: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--chart-compact .dashboard-cockpit-panel__empty {
+  min-height: 132px;
+  padding: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-drill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  overflow: visible;
+  padding: 8px 10px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-drill-card {
+  min-height: 42px;
+  padding: 7px 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-drill-card span {
+  display: none;
+}
+
+@media (min-width: 1181px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+    grid-template-rows: auto auto;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--attribution {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: stretch;
+    height: 100%;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--chart-compact {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk .dashboard-cockpit-panel__body {
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-counts article {
+  padding: 5px 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-body {
+  gap: 5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar {
+  min-height: 96px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar > div,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar canvas {
+  max-height: 92px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar__legend {
+  padding-bottom: 0;
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-lists-drawer > summary {
+  min-height: 24px;
+  padding: 5px 8px;
+  font-size: 10.5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-lists-drawer__body {
+  gap: 5px;
+  padding: 0 8px 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-todos h3,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-watchlist h3 {
+  margin: 0 0 3px;
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-todos ul,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-watchlist ul {
+  gap: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-todos a,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-watchlist a {
+  min-height: 22px;
+  padding: 3px 5px;
+  border-radius: 5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:nth-child(-n + 4) {
+  grid-column: 1 / -1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:nth-child(n + 5) {
+  grid-template-columns: 22px minmax(0, 1fr);
+  min-height: 52px;
+  gap: 6px;
+  padding: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:nth-child(n + 5) p,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:nth-child(n + 5) .dashboard-cockpit-decision-card__meta {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data {
+  gap: 4px;
+  padding: 7px 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data h3,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data p:nth-of-type(1),
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data p:nth-of-type(3) {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi {
+  min-height: 108px;
+  padding: 8px 10px 7px;
+  grid-template-rows: auto auto auto auto 18px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__head {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 0 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__icon {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
+  margin-top: 2px;
+  font-size: 20px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__delta,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal {
+  min-height: 18px;
+  padding: 0 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__relation {
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__spark {
+  height: 18px;
+}
+
+/* Layout alignment pass: keep section headers and tablet grids on the same rails. */
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-band {
+  padding-top: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group {
+  grid-template-rows: 26px 1fr;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__head {
+  position: static;
+  z-index: auto;
+  display: flex;
+  align-items: center;
+  width: auto;
+  height: 26px;
+  margin: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid var(--cockpit-divider);
+  border-radius: 0;
+  background: linear-gradient(180deg, #ffffff, var(--cockpit-card-soft));
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 1181px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout {
+    display: block;
+    position: relative;
+    min-height: 0;
+    padding-right: 280px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout__main {
+    width: 100%;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout__rail {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 268px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-lane,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-depth-drawer,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-supplement,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-detail-drilldown {
+    width: calc(100% - 280px);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-lane {
+    width: 100%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+    min-height: 82px;
+  }
+}
+
+@media (max-width: 760px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-lane {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-lane {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final readability and closure pass: stronger first-screen scan, lighter rail. */
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__conclusion {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.28;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
+  font-size: 22px;
+  font-weight: 780;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-metrics strong,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-front-evidence-metrics strong {
+  font-size: 16px;
+  font-weight: 780;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar {
+  border-color: var(--cockpit-border) !important;
+  background: #ffffff !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__head {
+  background: #ffffff !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+  border-color: #e4e9f0;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__index {
+  width: 22px;
+  height: 22px;
+  border-color: #d8e0ea;
+  background: #f8fafc;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card__badge {
+  background: #fffaf2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__cta {
+  min-height: 34px;
+  border-color: #eadcc8;
+  background: #fff8ed;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__copy {
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__directive {
+  margin: 0;
+  max-width: 880px;
+  overflow: hidden;
+  color: var(--cockpit-text-soft);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="negative"],
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="positive"],
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="warning"] {
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="positive"] .dashboard-cockpit-decision-card__index,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="negative"] .dashboard-cockpit-decision-card__index,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card[data-tone="warning"] .dashboard-cockpit-decision-card__index {
+  border-color: #d8e0ea;
+  color: var(--cockpit-muted);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:first-child {
+  border-left: 2px solid var(--cockpit-primary);
+  background: #f8fafc;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__index {
+  border-color: rgba(18, 62, 115, 0.2);
+  color: var(--cockpit-primary);
+}
+
+@media (min-width: 1181px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band {
+    grid-template-columns: minmax(230px, 0.29fr) minmax(0, 0.71fr);
+    align-items: stretch;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-front-signal-strip {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-front-signal-strip .dashboard-cockpit-panel__head {
+    min-height: 40px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-front-signal-strip .dashboard-cockpit-supplement-preview,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-front-evidence-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-lane {
+    grid-template-columns: minmax(190px, 0.42fr) minmax(0, 1.58fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-same-day-evidence-band .dashboard-cockpit-evidence-table {
+    min-width: 520px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+    align-items: start;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: start;
+    height: auto;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--chart-compact {
+    grid-column: 1 / span 2;
+    grid-row: 2;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk .dashboard-cockpit-risk-lists-drawer__body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk .dashboard-cockpit-todos a,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk .dashboard-cockpit-watchlist a {
+    min-height: 20px;
+    padding: 3px 5px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk .dashboard-cockpit-todos em,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--risk .dashboard-cockpit-watchlist em {
+    display: none;
+  }
+
+}
+
+@media (max-width: 760px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__conclusion {
+    font-size: 17px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__directive {
+    white-space: normal;
+  }
+}
+
+/* P2 visual closure: top-align the decision rail and make the first screen denser. */
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-page__main {
+  gap: 8px;
+  padding: 0 8px 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout__main {
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero {
+  min-height: 76px;
+  padding: 8px 12px 8px 16px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__conclusion {
+  padding: 4px 8px;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-judgment-hero__directive {
+  max-width: none;
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group {
+  grid-template-rows: 24px 1fr;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi-group__head {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi {
+  min-height: 94px;
+  padding: 7px 9px 6px;
+  grid-template-rows: auto auto auto auto 16px;
+  row-gap: 1px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__head {
+  grid-template-columns: 25px minmax(0, 1fr);
+  gap: 0 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__icon {
+  width: 21px;
+  height: 21px;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__value {
+  margin-top: 1px;
+  font-size: 19px;
+  line-height: 1.08;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal-row {
+  gap: 3px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__delta,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__signal {
+  min-width: 0;
+  overflow: hidden;
+  min-height: 17px;
+  padding: 0 5px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__relation {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-kpi__spark {
+  height: 13px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip {
+  gap: 6px;
+  padding: 7px 8px 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__head {
+  min-height: 20px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-market-strip__items {
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse {
+  min-height: 64px;
+  padding: 6px 7px 5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__head {
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__label,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__impact {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__values strong {
+  font-size: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-pulse__spark {
+  height: 18px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__head {
+  min-height: 36px;
+  padding: 7px 10px 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__body {
+  gap: 6px;
+  padding: 8px 9px 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__title {
+  font-size: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-portfolio-stat,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-attrib-summary article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-risk-counts article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-interbank article {
+  padding: 5px 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-asset-mix {
+  grid-template-columns: minmax(0, 1fr) 102px;
+  gap: 6px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-donut-chart {
+  width: 108px;
+  min-width: 108px;
+  height: 108px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-donut-chart > div {
+  height: 108px !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar {
+  min-height: 86px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar > div,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-radar canvas {
+  max-height: 84px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-drill-grid {
+  padding: 7px 9px 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--drill-compact .dashboard-cockpit-drill-card {
+  min-height: 38px;
+  padding: 6px 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--chart-compact {
+  min-height: 0;
+}
+
+@media (min-width: 1181px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 10px;
+    align-items: start;
+    padding-right: 0 !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout__main {
+    width: 100% !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-home-layout__rail {
+    position: sticky !important;
+    top: 62px !important;
+    right: auto !important;
+    width: auto !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-evidence-lane,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-depth-drawer,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-supplement,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-detail-drilldown {
+    width: 100% !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-triptych {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 0.98fr);
+    gap: 8px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar {
+    max-height: calc(100vh - 72px);
+    overflow: auto;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__body {
+    gap: 7px;
+    padding: 8px 9px 9px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card {
+    min-height: 62px;
+    padding: 8px 9px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-card:nth-child(n + 5) {
+    min-height: 46px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-decision-sidebar__data {
+    padding: 7px 8px;
+  }
+}
+
+/* AI-assisted bond decision terminal upgrade */
+[data-testid="fixed-income-dashboard-page"].dashboard-cockpit-page {
+  --terminal-bg: #f6f8fb;
+  --terminal-card: #ffffff;
+  --terminal-soft: #fafbfd;
+  --terminal-border: #e6ebf1;
+  --terminal-text: #0f172a;
+  --terminal-muted: #475569;
+  --terminal-faint: #94a3b8;
+  --terminal-blue: #123e73;
+  --terminal-navy: #06182d;
+  --terminal-blue-soft: #eaf2fb;
+  --terminal-green: #197a5a;
+  --terminal-red: #b94743;
+  --terminal-amber: #b76e00;
+  --terminal-amber-soft: #fff7e6;
+  background: var(--terminal-bg);
+  color: var(--terminal-text);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-page__main {
+  gap: 12px;
+  background: var(--terminal-bg);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-toolbar {
+  min-height: 52px;
+  border: 0;
+  border-bottom: 1px solid var(--terminal-border);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-status-pill,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-toolbar__status span {
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--terminal-border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-layout {
+  display: block !important;
+  padding-right: 0 !important;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-main {
+  display: grid;
+  width: 100% !important;
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview-shell {
+  display: block;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 65fr) minmax(300px, 35fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__inner,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar {
+  border: 1px solid var(--terminal-border);
+  border-radius: 8px;
+  background: var(--terminal-card);
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main {
+  display: grid;
+  min-height: 214px;
+  padding: 20px 22px 16px;
+  background: var(--terminal-blue-soft);
+  gap: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header {
+  display: grid;
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-eyebrow,
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel__eyebrow {
+  color: var(--terminal-blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header h2,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack h3,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__head h2,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar h2 {
+  margin: 0;
+  color: var(--terminal-text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__summary {
+  max-width: 880px;
+  margin: 0;
+  color: var(--terminal-muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics__title {
+  grid-column: 1 / -1;
+  margin-bottom: -4px;
+  color: var(--terminal-blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 12px 13px 10px;
+  border: 1px solid rgba(230, 235, 241, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric__label,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint__head span {
+  overflow: hidden;
+  color: var(--terminal-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric strong {
+  color: var(--terminal-navy);
+  font-size: 26px;
+  line-height: 1.08;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric > span:last-of-type,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 42px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(18, 62, 115, 0.12);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row div {
+  display: grid;
+  gap: 2px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row span {
+  color: var(--terminal-faint);
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row strong {
+  color: var(--terminal-blue);
+  font-size: 13px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-sparkline {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row .dashboard-terminal-sparkline {
+  flex: 0 0 184px;
+  width: 184px;
+  height: 32px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-sparkline__baseline {
+  stroke: rgba(148, 163, 184, 0.24);
+  stroke-width: 1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-sparkline__line {
+  fill: none;
+  stroke: var(--terminal-blue);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+  min-height: 214px;
+  padding: 16px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack__items {
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--terminal-border);
+  border-radius: 7px;
+  background: var(--terminal-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint__head em {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--terminal-amber-soft);
+  color: var(--terminal-amber);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint strong {
+  color: var(--terminal-navy);
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape-shell {
+  display: block;
+  min-height: 68px;
+  padding: 0;
+  border: 1px solid var(--terminal-border);
+  border-radius: 8px;
+  background: var(--terminal-card);
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+  display: grid !important;
+  grid-template-columns: repeat(8, minmax(96px, 1fr)) minmax(126px, auto);
+  width: 100%;
+  gap: 0 !important;
+  align-items: stretch;
+  min-height: 68px;
+  overflow: hidden;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse {
+  min-height: 68px;
+  padding: 8px 10px;
+  border: 0;
+  border-right: 1px solid var(--terminal-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse:hover {
+  background: var(--terminal-soft);
+  transform: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__impact,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__hover-hint,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__status {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: end;
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values strong {
+  color: var(--terminal-navy);
+  font-size: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values span:last-child {
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__spark {
+  width: 42px;
+  height: 20px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--terminal-blue);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 40fr) minmax(0, 35fr) minmax(268px, 25fr);
+  gap: 12px;
+  align-items: start;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace > .dashboard-cockpit-panel,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace__ai > .dashboard-cockpit-panel {
+  min-height: 0;
+  align-self: start;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-panel__head .dashboard-cockpit-panel__eyebrow {
+  visibility: hidden;
+  position: relative;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-panel__head .dashboard-cockpit-panel__eyebrow::after {
+  position: absolute;
+  left: 0;
+  visibility: visible;
+  content: "资产与收�?;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-panel__title {
+  font-size: 16px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-asset-mix {
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 16px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-panel-head-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-attribution-trend .dashboard-cockpit-panel__body {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 13px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-attrib-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-waterfall {
+  padding-top: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend {
+  display: grid;
+  gap: 7px;
+  min-height: 166px;
+  padding-top: 10px;
+  border-top: 1px solid var(--terminal-border);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__head,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__head span {
+  color: var(--terminal-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__head em,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__legend {
+  color: var(--terminal-faint);
+  font-size: 11px;
+  font-style: normal;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__chart {
+  width: 100%;
+  min-height: 118px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__empty {
+  display: flex;
+  align-items: center;
+  min-height: 82px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(100, 116, 139, 0.22);
+  border-radius: 6px;
+  background: rgba(248, 250, 252, 0.72);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__grid {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.2);
+  stroke-width: 1;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__legend {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-mini-trend__legend i {
+  width: 8px;
+  height: 2px;
+  border-radius: 999px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin {
+  overflow: hidden;
+  background: #f8fbff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin__inner {
+  display: grid;
+  min-height: 100%;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head {
+  border-bottom: 1px solid rgba(18, 62, 115, 0.12);
+  background: var(--terminal-blue-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card {
+  min-height: 58px;
+  border: 1px solid rgba(230, 235, 241, 0.9);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__index {
+  border-color: rgba(18, 62, 115, 0.18);
+  background: #fff;
+  color: var(--terminal-blue);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__content p {
+  color: var(--terminal-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__data {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__cta {
+  background: var(--terminal-amber-soft);
+  color: #6f4400;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__inner {
+  display: grid;
+  grid-template-columns: 150px 178px minmax(260px, 1fr) minmax(210px, 0.8fr) 170px;
+  align-items: center;
+  min-height: 142px;
+  padding: 12px 14px;
+  gap: 14px;
+  background: var(--terminal-soft);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__head {
+  display: grid;
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__radar {
+  min-height: 118px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__counts,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__counts article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work article {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--terminal-border);
+  border-radius: 7px;
+  background: #fff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__counts span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work span {
+  color: var(--terminal-muted);
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__counts strong,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work strong {
+  color: var(--terminal-navy);
+  font-size: 20px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work em {
+  color: var(--terminal-faint);
+  font-size: 11px;
+  font-style: normal;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 7px;
+  background: var(--terminal-blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-secondary-analysis {
+  display: grid;
+  grid-template-columns: minmax(0, 1.22fr) minmax(280px, 0.78fr);
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-secondary-analysis > .dashboard-cockpit-panel--table {
+  min-height: 250px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-secondary-analysis > .dashboard-cockpit-panel--balance {
+  min-height: 250px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 14px 16px;
+  background: #fff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar header {
+  display: grid;
+  gap: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar__items {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--terminal-border);
+  border-radius: 7px;
+  background: var(--terminal-soft);
+  color: var(--terminal-text);
+  text-decoration: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar p {
+  color: var(--terminal-faint);
+  font-size: 11px;
+}
+
+/* Terminal correction pass: denser, calmer, less "generic dashboard". */
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-main {
+  gap: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview {
+  grid-template-columns: minmax(0, 1.82fr) minmax(280px, 1fr);
+  gap: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main {
+  position: relative;
+  min-height: 236px;
+  padding: 16px 18px 12px;
+  gap: 10px;
+  overflow: hidden;
+  background: #eaf2fb;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--terminal-blue);
+  content: "";
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header {
+  gap: 2px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header h2 {
+  font-size: 21px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__summary {
+  max-width: 76ch;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics {
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics__title {
+  margin-bottom: -2px;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric {
+  min-height: 94px;
+  padding: 10px 11px 8px;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric strong {
+  font-size: 24px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric .dashboard-terminal-sparkline {
+  height: 22px;
+  align-self: end;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row {
+  min-height: 34px;
+  padding-top: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row strong {
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row .dashboard-terminal-sparkline {
+  flex-basis: 150px;
+  width: 150px;
+  height: 26px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack {
+  min-height: 236px;
+  padding: 14px;
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack h3 {
+  font-size: 18px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack__items {
+  gap: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint {
+  min-height: 57px;
+  padding: 9px 10px;
+  gap: 3px;
+  background: #fff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint strong {
+  font-size: 22px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint > span {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape-shell {
+  min-height: 66px;
+  border-radius: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+  min-height: 66px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse {
+  min-height: 66px;
+  padding: 7px 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__head {
+  min-height: 15px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__label {
+  display: block;
+  color: #475569;
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__body {
+  margin-top: 3px;
+  grid-template-columns: minmax(0, 1fr) 36px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values {
+  display: grid;
+  gap: 2px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__spark {
+  width: 36px;
+  height: 18px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape__more {
+  padding: 0 10px;
+  background: #fafbfd;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace {
+  gap: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace > .dashboard-cockpit-panel,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace__ai > .dashboard-cockpit-panel {
+  border-radius: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-panel__body,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-attribution-trend .dashboard-cockpit-panel__body {
+  padding: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin {
+  border-color: #d8e3ef;
+  background: #eef5fc;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin__inner {
+  display: flex;
+  flex-direction: column;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head {
+  padding: 12px 14px;
+  background: #eaf2fb;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card {
+  min-height: 0;
+  padding: 9px;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__index {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__title-row strong {
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__meta {
+  gap: 4px;
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__content p {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__cta {
+  margin-top: auto;
+  min-height: 34px;
+  border: 1px solid rgba(183, 110, 0, 0.22);
+}
+
+/* Terminal correction pass 2: restore a stronger financial terminal hierarchy. */
+[data-testid="fixed-income-dashboard-page"] {
+  font-variant-numeric: tabular-nums;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-main {
+  gap: 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview {
+  grid-template-columns: minmax(0, 2.18fr) minmax(286px, 0.82fr);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main {
+  min-height: 244px;
+  padding: 18px 20px 14px;
+  gap: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header h2 {
+  color: #06182d;
+  font-size: 27px;
+  font-weight: 850;
+  line-height: 1.08;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__summary {
+  max-width: 68ch;
+  font-size: 13.5px;
+  line-height: 1.48;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics {
+  gap: 0;
+  margin-top: auto;
+  padding: 10px 12px 8px;
+  border: 1px solid rgba(18, 62, 115, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics__title {
+  margin-bottom: 7px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(18, 62, 115, 0.1);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric {
+  min-height: 82px;
+  padding: 4px 12px 0 0;
+  border: 0;
+  border-right: 1px solid rgba(18, 62, 115, 0.1);
+  border-radius: 0;
+  gap: 2px;
+  background: transparent;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric + .dashboard-terminal-core-metric {
+  padding-left: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric:nth-of-type(3) {
+  padding-left: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric:last-child {
+  border-right: 0;
+  padding-right: 0;
+  padding-left: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric strong {
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric .dashboard-terminal-sparkline {
+  height: 19px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row {
+  min-height: 30px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack {
+  min-height: 244px;
+  background: #fff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack h3 {
+  color: #06182d;
+  font-size: 19px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint {
+  min-height: 58px;
+  background: #fafbfd;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape-shell {
+  min-height: 64px;
+  border-color: #102b49;
+  background: #06182d;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+  display: flex !important;
+  min-height: 64px;
+  background: #06182d;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape::-webkit-scrollbar {
+  display: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse {
+  flex: 1 1 116px;
+  min-width: 104px;
+  min-height: 64px;
+  border-right-color: rgba(226, 232, 240, 0.12);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__label {
+  color: #9eb0c4;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values strong {
+  color: #f8fafc;
+  font-size: 13.5px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-delta--up {
+  color: #e58a83;
+  background: rgba(185, 71, 67, 0.18);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-delta--down {
+  color: #58bf98;
+  background: rgba(25, 122, 90, 0.2);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape__more {
+  flex: 0 0 128px;
+  border-left: 1px solid rgba(226, 232, 240, 0.12);
+  background: #09223e;
+  color: #eaf2fb;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.08fr) minmax(270px, 0.82fr);
+  align-items: stretch;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace > .dashboard-cockpit-panel,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace__ai,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace__ai > .dashboard-cockpit-panel {
+  align-self: stretch;
+  height: 100%;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-panel__body {
+  grid-template-rows: auto minmax(190px, 1fr) auto;
+  align-content: stretch;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-asset-mix {
+  align-self: center;
+  padding: 10px 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-attribution-trend .dashboard-cockpit-panel__body {
+  align-content: stretch;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin {
+  border-color: #17375d;
+  background: #06182d;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head {
+  position: relative;
+  padding: 13px 14px 12px;
+  border-bottom-color: rgba(226, 232, 240, 0.12);
+  background: #06182d;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head::after {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #58bf98;
+  box-shadow: none;
+  content: "";
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head h2 {
+  color: #f8fafc;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head .dashboard-cockpit-panel__eyebrow {
+  color: #9eb0c4;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__body {
+  gap: 8px;
+  background: #eef5fc;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card {
+  padding: 8px 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child {
+  border-color: rgba(18, 62, 115, 0.45);
+  background: #08213f;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child strong,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child p {
+  color: #f8fafc;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__meta span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__meta em {
+  color: #b7c6d8;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__index {
+  border-color: rgba(183, 110, 0, 0.34);
+  background: rgba(183, 110, 0, 0.18);
+  color: #ffd890;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card__content p {
+  line-height: 1.38;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__inner {
+  grid-template-columns: 152px 160px minmax(240px, 1fr) minmax(190px, 0.72fr) 164px;
+  min-height: 122px;
+  padding: 10px 12px;
+  gap: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__radar {
+  min-height: 102px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__counts article,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__work article {
+  padding: 8px 9px;
+}
+
+@media (min-width: 1181px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-layout {
+    display: block !important;
+    grid-template-columns: none !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-layout .dashboard-cockpit-home-layout__rail {
+    position: static !important;
+    width: auto !important;
+  }
+}
+
+@media (max-width: 1420px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+    grid-template-columns: repeat(8, minmax(88px, 1fr)) minmax(118px, auto);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.98fr) minmax(248px, 0.74fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__inner {
+    grid-template-columns: 126px 142px minmax(230px, 1fr) minmax(186px, 0.8fr) 150px;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 1180px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-secondary-analysis {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape__more {
+    grid-column: 1 / -1;
+    min-height: 36px;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-action-strip__inner {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar {
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar__items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Reference alignment pass: right AI rail, light financial workbench, compact first screen. */
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(238px, 252px) !important;
+  gap: 10px;
+  align-items: start;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail {
+  position: sticky;
+  top: 64px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview {
+  grid-template-columns: minmax(0, 1fr) minmax(272px, 0.32fr);
+  gap: 9px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main {
+  display: grid;
+  grid-template-areas:
+    "head metrics"
+    "summary metrics"
+    "health metrics";
+  grid-template-columns: minmax(270px, 0.82fr) minmax(350px, 1.18fr);
+  min-height: 180px;
+  padding: 14px 16px 12px;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main::before {
+  width: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header {
+  grid-area: head;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__header h2 {
+  font-size: 20px;
+  line-height: 1.18;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__summary {
+  grid-area: summary;
+  max-width: 48ch;
+  color: #0f2544;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics {
+  position: relative;
+  grid-area: metrics;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 12px 0;
+  border: 1px solid var(--terminal-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metrics__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric:last-child {
+  min-height: 120px;
+  padding: 0 14px;
+  border: 0;
+  border-right: 1px solid var(--terminal-border);
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric:last-child {
+  border-right: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric + .dashboard-terminal-core-metric {
+  padding-left: 14px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric__label {
+  color: #475569;
+  font-size: 11px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric strong {
+  font-size: 21px;
+  line-height: 1.12;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-core-metric .dashboard-terminal-sparkline {
+  height: 27px;
+  margin-top: auto;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row {
+  grid-area: health;
+  position: relative;
+  align-self: end;
+  min-height: 44px;
+  padding-top: 8px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row::before {
+  position: absolute;
+  left: 0;
+  bottom: 2px;
+  width: min(54%, 230px);
+  height: 6px;
+  border-radius: 999px;
+  background: #0f58ba;
+  content: "";
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row strong {
+  color: #123e73;
+  font-size: 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-health-row .dashboard-terminal-sparkline {
+  flex-basis: 156px;
+  width: 156px;
+  height: 30px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack {
+  min-height: 180px;
+  padding: 0;
+  overflow: hidden;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack header {
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--terminal-border);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack h3 {
+  font-size: 16px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-stack__items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: 1fr;
+  gap: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint {
+  min-height: 116px;
+  padding: 11px 9px 9px;
+  border: 0;
+  border-right: 1px solid var(--terminal-border);
+  border-radius: 0;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint:last-child {
+  border-right: 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint__head {
+  display: grid;
+  gap: 4px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint__head span {
+  white-space: normal;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-risk-constraint > span {
+  white-space: normal;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape-shell {
+  min-height: 70px;
+  border-color: var(--terminal-border);
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+  display: grid !important;
+  grid-template-columns: repeat(8, minmax(86px, 1fr)) minmax(116px, auto);
+  min-height: 70px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse {
+  min-width: 0;
+  min-height: 70px;
+  border-right-color: var(--terminal-border);
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse:hover {
+  background: #fafbfd;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__label {
+  color: #334155;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-delta--up {
+  color: var(--terminal-red);
+  background: #fff1f0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-delta--down {
+  color: var(--terminal-green);
+  background: #eaf8f2;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape__more {
+  flex: initial;
+  border-left: 0;
+  background: #ffffff;
+  color: var(--terminal-blue);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace {
+  grid-template-columns: minmax(310px, 1.04fr) minmax(318px, 1.09fr) minmax(260px, 0.87fr);
+  align-items: stretch;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-panel__body {
+  grid-template-rows: auto auto auto;
+  align-content: start;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-asset-mix {
+  grid-template-columns: minmax(0, 1fr) 124px;
+  align-self: start;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-asset-bar-row {
+  grid-template-columns: 44px minmax(54px, 1fr) minmax(54px, auto) 31px;
+  gap: 4px;
+  font-size: 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-donut-chart {
+  width: 124px;
+  min-width: 124px;
+  height: 124px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-cockpit-panel--portfolio .dashboard-cockpit-donut-chart__center span {
+  font-size: 13px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip {
+  min-width: 0;
+  height: 100%;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__inner {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(154px, auto) auto auto auto;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__head {
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--terminal-border);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__radar {
+  min-height: 150px;
+  padding: 4px 10px 0;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__counts,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__work {
+  padding: 0 12px 10px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__counts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__work {
+  grid-template-columns: 1fr;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace .dashboard-terminal-risk-action-strip__cta {
+  margin: 0 12px 12px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin {
+  border-color: var(--terminal-border);
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head {
+  padding: 16px 16px 12px;
+  border-bottom: 0;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head::after {
+  top: 20px;
+  right: 18px;
+  width: 7px;
+  height: 7px;
+  background: #123e73;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head h2 {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__head .dashboard-cockpit-panel__eyebrow {
+  color: #123e73;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-sidebar__body {
+  padding: 0 12px 12px;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card {
+  border-color: var(--terminal-border);
+  background: #fafbfd;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child {
+  border-color: #dce8f5;
+  background: #f8fbff;
+  box-shadow: none;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child strong,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child p {
+  color: #0f172a;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__meta span,
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__meta em {
+  color: #64748b;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail .dashboard-terminal-ai-cabin .dashboard-cockpit-decision-card:first-child .dashboard-cockpit-decision-card__index {
+  border-color: #dce8f5;
+  background: #ffffff;
+  color: #123e73;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-data-note {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--terminal-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-data-note header {
+  display: grid;
+  gap: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-data-note h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-data-note p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-data-note > span {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #197a5a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar {
+  grid-template-columns: 150px minmax(0, 1fr);
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-action-bar__items {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1420px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(232px, 248px) !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview {
+    grid-template-columns: minmax(0, 1fr) minmax(252px, 0.3fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main {
+    grid-template-columns: minmax(236px, 0.8fr) minmax(330px, 1.2fr);
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace {
+    grid-template-columns: minmax(302px, 1.03fr) minmax(310px, 1.07fr) minmax(252px, 0.86fr);
+  }
+}
+
+@media (max-width: 1180px) {
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-operating-layout,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-workspace,
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-secondary-analysis {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-reference-rail {
+    position: static;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-overview__main {
+    grid-template-areas:
+      "head"
+      "summary"
+      "metrics"
+      "health";
+    grid-template-columns: 1fr;
+  }
+
+  [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
