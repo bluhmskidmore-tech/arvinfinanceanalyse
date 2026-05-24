@@ -162,6 +162,51 @@ def test_explicit_context_intent_routes_without_keyword_guessing(tmp_path):
     assert "Total PnL=9" in envelope.answer
 
 
+def test_real_chinese_business_keywords_route_to_governed_intents(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    def handler(intent: str):
+        return lambda request: {
+            "answer": f"{intent} ok",
+            "basis": "formal",
+            "result_kind": f"agent.{intent}",
+            "formal_use_allowed": True,
+            "source_version": "sv_test",
+            "quality_flag": "ok",
+            "row_count": 1,
+            "cards": [{"type": "metric", "title": intent, "value": "1"}],
+        }
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": handler("portfolio_overview"),
+            "pnl_summary": handler("pnl_summary"),
+            "credit_exposure": handler("credit_exposure"),
+            "market_data": handler("market_data"),
+        },
+    )
+
+    cases = [
+        ("\u8bf7\u770b\u7ec4\u5408\u6982\u89c8", "agent.portfolio_overview"),
+        ("\u8bf7\u6c47\u603b\u4eca\u65e5\u635f\u76ca", "agent.pnl_summary"),
+        ("\u4fe1\u7528\u98ce\u9669\u548c\u96c6\u4e2d\u5ea6\u600e\u4e48\u6837", "agent.credit_exposure"),
+        ("\u6700\u65b0\u5b8f\u89c2\u5e02\u573a\u6570\u636e", "agent.market_data"),
+    ]
+
+    for question, expected_kind in cases:
+        envelope = tool.execute(request_module.AgentQueryRequest(question=question))
+        assert envelope.result_meta.result_kind == expected_kind
+
+
 def test_generic_dashboard_page_question_routes_to_page_default_intent(tmp_path):
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",
@@ -1243,6 +1288,82 @@ def test_unknown_intent_returns_help_message(tmp_path):
     assert envelope.result_meta.result_kind == "agent.unknown"
     assert envelope.evidence.evidence_rows == 0
     assert any(card.title == "Supported Queries" for card in envelope.cards)
+
+
+def test_ordinary_analysis_question_returns_local_conversation_envelope(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="please analyze the main risk and explain what it means",
+            page_context={
+                "page_id": "dashboard",
+                "current_filters": {"report_date": "2026-03-31"},
+                "selected_rows": [{"portfolio_id": "core"}],
+                "context_note": "dashboard first screen",
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.analysis_chat"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.tables_used == []
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.filters_applied == {
+        "page_id": "dashboard",
+        "report_date": "2026-03-31",
+        "selected_rows": 1,
+    }
+    assert "did not run a formal metric query" in envelope.answer
+    assert any(card.title == "Local Analysis Conversation" for card in envelope.cards)
+    assert any(card.title == "Available Governed Paths" for card in envelope.cards)
+
+
+def test_chinese_ordinary_analysis_question_gets_chinese_local_answer(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="\u5e2e\u6211\u5224\u65ad\u4eca\u5929\u7684\u4e3b\u8981\u98ce\u9669",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "question": "\u5148\u524d\u7684\u98ce\u9669\u7ed3\u8bba",
+                            "answer": "\u4e0a\u4e00\u8f6e\u56de\u7b54",
+                            "result_kind": "agent.analysis_chat",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.analysis_chat"
+    assert "\u672c\u5730\u5206\u6790\u5bf9\u8bdd" in envelope.answer
+    assert "\u672a\u8fd0\u884c\u6b63\u5f0f\u6307\u6807\u67e5\u8be2" in envelope.answer
+    assert envelope.evidence.filters_applied["conversation_turns"] == 1
+    assert envelope.evidence.filters_applied["latest_result_kind"] == "agent.analysis_chat"
+    assert any(card.title == "\u672c\u5730\u5206\u6790\u5bf9\u8bdd" for card in envelope.cards)
+    assert any(card.title == "\u53ef\u7ee7\u7eed\u67e5\u8be2\u7684\u6cbb\u7406\u8def\u5f84" for card in envelope.cards)
+    assert any(action.label == "\u7ec4\u5408\u6982\u89c8" for action in envelope.suggested_actions)
 
 
 def test_financial_workflow_context_returns_plan_envelope(tmp_path):

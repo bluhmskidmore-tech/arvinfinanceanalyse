@@ -5,9 +5,10 @@ Set-Location $root
 
 $env:MOSS_AGENT_ENABLED = "true"
 $env:MOSS_AGENT_PROVIDER = "hermes"
-$env:MOSS_AGENT_HERMES_HOME = "/home/hermes/.hermes-moss"
-$env:MOSS_AGENT_HERMES_TRANSPORT = "bridge"
+$env:MOSS_AGENT_HERMES_HOME = "/home/hermes/.hermes"
+$env:MOSS_AGENT_HERMES_TRANSPORT = "cli"
 $env:MOSS_AGENT_HERMES_BRIDGE_URL = "http://127.0.0.1:7891"
+$env:MOSS_AGENT_HERMES_MODEL = "gpt-5.4-mini"
 $env:MOSS_AGENT_HERMES_TOOLSETS = "file"
 $env:MOSS_DEV_API_SCRIPT = "dev-agent-api.ps1"
 $env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS = "1"

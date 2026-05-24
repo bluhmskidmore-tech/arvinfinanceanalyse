@@ -1,4 +1,4 @@
-import type { Query, RefetchOptions } from "@tanstack/react-query";
+import type { Query, QueryKey, RefetchOptions } from "@tanstack/react-query";
 
 import type { ApiEnvelope, ResultMeta } from "../api/contracts";
 
@@ -47,8 +47,12 @@ export function readFreshnessMeta(value: unknown): FreshnessMeta | undefined {
   return undefined;
 }
 
-export function externalDataRefetchInterval(
-  query: Query<unknown, Error, unknown, readonly unknown[]>,
+export function externalDataRefetchInterval<
+  TQueryFnData,
+  TData,
+  TQueryKey extends QueryKey,
+>(
+  query: Query<TQueryFnData, Error, TData, TQueryKey>,
   sectionSignal?: ExternalRefreshSignal | null,
 ): number | false {
   const meta = readFreshnessMeta(query.state.data);
@@ -71,7 +75,9 @@ export function externalDataRefetchInterval(
   return false;
 }
 
-export function externalDataQueryOptions(sectionSignal?: ExternalRefreshSignal | null) {
+export function externalDataQueryOptions(
+  sectionSignal?: ExternalRefreshSignal | null,
+) {
   const stableDateSlice =
     (sectionSignal?.refresh_tier ?? "stable") === "stable" &&
     (sectionSignal?.fetch_mode ?? "date_slice") === "date_slice";
@@ -80,16 +86,22 @@ export function externalDataQueryOptions(sectionSignal?: ExternalRefreshSignal |
     staleTime: stableDateSlice
       ? EXTERNAL_REFRESH_INTERVALS_MS.stableStaleTime
       : EXTERNAL_REFRESH_INTERVALS_MS.defaultStaleTime,
-    refetchInterval: (query: Query<unknown, Error, unknown, readonly unknown[]>) =>
+    refetchInterval: <TQueryFnData, TData, TQueryKey extends QueryKey>(
+      query: Query<TQueryFnData, Error, TData, TQueryKey>,
+    ) =>
       externalDataRefetchInterval(query, sectionSignal),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   };
 }
 
-function applyFailureBackoff(
+function applyFailureBackoff<
+  TQueryFnData,
+  TData,
+  TQueryKey extends QueryKey,
+>(
   baseIntervalMs: number,
-  query: Query<unknown, Error, unknown, readonly unknown[]>,
+  query: Query<TQueryFnData, Error, TData, TQueryKey>,
 ) {
   const failureCount = Math.max(0, query.state.fetchFailureCount);
   if (failureCount === 0) {

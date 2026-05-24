@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 REFERENCE_SOURCE = "anthropic_financial_services_reference"
 
 _SLASH_COMMANDS = {

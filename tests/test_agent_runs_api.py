@@ -142,6 +142,36 @@ def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_p
     ]
 
 
+def test_agent_run_create_returns_sync_envelope_for_cli_transport(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    settings = _settings(tmp_path)
+    settings.agent_hermes_transport = "cli"
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+
+    calls = []
+
+    def fake_execute(request, governance_dir, settings):
+        calls.append((request.question, governance_dir, settings.agent_hermes_transport))
+        return _sample_envelope()
+
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/runs", json={"question": "ping"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Hermes managed answer."
+    assert payload["result_meta"]["result_kind"] == "agent.hermes"
+    assert calls == [("ping", str(tmp_path / "governance"), "cli")]
+    assert not (tmp_path / "governance" / "agent_run.jsonl").exists()
+
+
 def test_agent_run_status_returns_404_for_unknown_run(monkeypatch, tmp_path):
     client, _ = _client(monkeypatch, tmp_path, lambda *args, **kwargs: _sample_envelope())
 

@@ -90,9 +90,16 @@ type AgentWorkbenchPageProps = {
   pageContext?: AgentPageContext;
 };
 
-type AgentPanelProps = AgentWorkbenchPageProps & {
+type AgentCopilotVariant = "embedded" | "workbench";
+
+export type EmbeddedAgentCopilotProps = AgentWorkbenchPageProps & {
+  variant?: AgentCopilotVariant;
   showHeader?: boolean;
+  readOnly?: true;
+  defaultQuestion?: string;
 };
+
+type AgentPanelProps = EmbeddedAgentCopilotProps;
 
 type AgentOrdinaryConversationMode = "unknown" | "managed" | "local_sync";
 
@@ -152,6 +159,73 @@ const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
 const latestAgentRunStatusRequests = new Map<string, Promise<AgentRunPayload>>();
+const ANALYSIS_CHAT_PATTERNS = [
+  "analysis",
+  "analyze",
+  "explain",
+  "summarize",
+  "summary",
+  "judge",
+  "risk",
+  "what does this mean",
+  "continue",
+  "follow up",
+  "分析",
+  "解释",
+  "总结",
+  "判断",
+  "风险",
+  "结论",
+  "说明",
+  "继续",
+  "追问",
+];
+const GOVERNED_AGENT_PATTERNS = [
+  "gitnexus",
+  "repo graph",
+  "code graph",
+  "processes",
+  "产品损益",
+  "ftp",
+  "桥接",
+  "归因",
+  "拆解",
+  "bridge",
+  "attribution",
+  "风险张量",
+  "krd",
+  "久期",
+  "dv01",
+  "duration",
+  "信用",
+  "利差",
+  "集中度",
+  "credit",
+  "spread",
+  "concentration",
+  "组合概览",
+  "资产规模",
+  "总览",
+  "portfolio overview",
+  "market value",
+  "portfolio value",
+  "asset size",
+  "损益",
+  "收益",
+  "pnl",
+  "宏观",
+  "利率",
+  "市场数据",
+  "macro",
+  "market data",
+  "macro data",
+  "rates data",
+  "新闻",
+  "事件",
+  "news",
+  "headline",
+  "latest news",
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -215,6 +289,40 @@ function isAgentSuggestedAction(value: unknown): value is AgentSuggestedAction {
     isRecord(value.payload) &&
     typeof value.requires_confirmation === "boolean"
   );
+}
+
+function getExecutableSuggestedIntent(action: AgentSuggestedAction): string | null {
+  if (action.type !== "execute_intent") {
+    return null;
+  }
+  const intent = action.payload.intent;
+  return typeof intent === "string" && intent.trim().length > 0 ? intent.trim() : null;
+}
+
+function isPlainAnalysisConversationQuestion(question: string) {
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    ANALYSIS_CHAT_PATTERNS.some((pattern) => normalized.includes(pattern)) &&
+    !GOVERNED_AGENT_PATTERNS.some((pattern) => normalized.includes(pattern))
+  );
+}
+
+function shouldUseLocalAnalysisConversation(
+  question: string,
+  conversationContext?: AgentConversationContext,
+) {
+  if (!isPlainAnalysisConversationQuestion(question)) {
+    return false;
+  }
+  const recentTurns = conversationContext?.recent_turns ?? [];
+  if (recentTurns.length === 0) {
+    return true;
+  }
+  const latestTurn = recentTurns[recentTurns.length - 1];
+  return latestTurn?.result_kind === "agent.analysis_chat";
 }
 
 function isAgentConversationContext(value: unknown): value is AgentConversationContext {
@@ -681,6 +789,16 @@ function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: numb
   return "可以离开或刷新，回来后会继续显示这次结果。";
 }
 
+function shouldDisplayAgentRunId(agentRun: AgentRunPayload | null) {
+  if (!agentRun?.run_id) {
+    return false;
+  }
+  if (agentRun.run_kind === "sync") {
+    return false;
+  }
+  return agentRun.run_id !== "agent_run:sync_compat";
+}
+
 function getAgentRunPollIntervalMs(_payload: AgentRunPayload, attempt: number) {
   if (attempt < 5) {
     return 120;
@@ -795,6 +913,7 @@ function buildAgentRequestBody(
   processName: string,
   conversationContext?: AgentConversationContext,
   pageContext?: AgentPageContext,
+  contextPatch?: Record<string, unknown>,
 ): AgentQueryRequest {
   return {
     question,
@@ -805,6 +924,7 @@ function buildAgentRequestBody(
     context: {
       user_id: "web-user",
       ...(conversationContext ? { conversation: conversationContext } : {}),
+      ...(contextPatch ?? {}),
     },
     ...(pageContext ? { page_context: pageContext } : {}),
   };
@@ -1102,12 +1222,21 @@ function movePinnedRepoPathValue(
   return nextPaths;
 }
 
-export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps = {}) {
+export function EmbeddedAgentCopilot({
+  pageContext,
+  variant = "workbench",
+  showHeader,
+  readOnly = true,
+  defaultQuestion = "",
+}: EmbeddedAgentCopilotProps = {}) {
+  const isEmbedded = variant === "embedded";
+  const shouldPersistConversation = variant === "workbench";
+  const resolvedShowHeader = showHeader ?? !isEmbedded;
   const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(defaultQuestion);
   const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>(() =>
-    loadStoredConversationTurns(),
+    shouldPersistConversation ? loadStoredConversationTurns() : [],
   );
   const [ordinaryConversationMode, setOrdinaryConversationMode] =
     useState<AgentOrdinaryConversationMode>("unknown");
@@ -1207,8 +1336,11 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   }
 
   useEffect(() => {
+    if (!shouldPersistConversation) {
+      return;
+    }
     persistStoredConversationTurns(conversationTurns);
-  }, [conversationTurns]);
+  }, [conversationTurns, shouldPersistConversation]);
 
   useEffect(() => {
     if (!filteredProcesses.length) {
@@ -1261,6 +1393,9 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
   ]);
 
   useEffect(() => {
+    if (!shouldPersistConversation) {
+      return;
+    }
     const latestRunId = loadLatestAgentRunId();
     if (!latestRunId) {
       return;
@@ -1300,7 +1435,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shouldPersistConversation]);
 
   async function fetchAgentRunStatus(runId: string): Promise<AgentRunPayload> {
     const response = await fetch(`/api/agent/runs/${encodeURIComponent(runId)}`, {
@@ -1344,6 +1479,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       return {
         run_id: "agent_run:sync_compat",
         status: "completed",
+        run_kind: "sync",
         provider: formatRuntimeLabel(result.evidence.filters_applied.provider, "managed"),
         model: formatRuntimeLabel(result.evidence.filters_applied.model, "default"),
         transport: formatRuntimeLabel(result.evidence.filters_applied.transport, "bridge"),
@@ -1386,10 +1522,14 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
           setAgentRun(payload);
           setConversationTurns((currentTurns) => {
             const nextTurns = currentTurns.map((turn) => (turn.id === turnId ? { ...turn, agentRun: payload } : turn));
-            persistStoredConversationTurns(nextTurns);
+            if (shouldPersistConversation) {
+              persistStoredConversationTurns(nextTurns);
+            }
             return nextTurns;
           });
-          persistLatestAgentRunId(payload.run_id);
+          if (shouldPersistConversation) {
+            persistLatestAgentRunId(payload.run_id);
+          }
           return payload;
         },
         getStatus: fetchAgentRunStatus,
@@ -1468,6 +1608,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     mode: "query" | "processes" = "query",
     turnId?: string,
     conversationContext?: AgentConversationContext,
+    contextPatch?: Record<string, unknown>,
   ) {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
@@ -1478,6 +1619,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         selectedProcess,
         conversationContext,
         pageContext,
+        contextPatch,
       );
 
       const response = await fetch("/api/agent/query", {
@@ -1550,6 +1692,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     question: string,
     turnId: string,
     conversationContext?: AgentConversationContext,
+    contextPatch?: Record<string, unknown>,
   ) {
     const syncRunId = `agent_run:sync:${turnId}`;
     const runningSyncRun = buildLocalSyncAgentRun(syncRunId, question, "running");
@@ -1562,7 +1705,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       error: null,
     }));
 
-    const payload = await executeAgentQuery(question, "query", turnId, conversationContext);
+    const payload = await executeAgentQuery(question, "query", turnId, conversationContext, contextPatch);
     if (!payload) {
       const failedSyncRun = buildLocalSyncAgentRun(
         syncRunId,
@@ -1590,11 +1733,38 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     }));
   }
 
+  async function executeSuggestedIntentAction(action: AgentSuggestedAction, intent: string) {
+    if (loading) {
+      return;
+    }
+
+    const actionLabel = action.label.trim() || intent;
+    const displayQuestion = `执行建议动作：${actionLabel}`;
+    const context = buildConversationContext(conversationTurns);
+    const turn = createAgentConversationTurn(displayQuestion, context);
+
+    setAgentWaitSeconds(0);
+    setConversationTurns((currentTurns) => [...currentTurns, turn]);
+    shouldFocusComposerRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    try {
+      await executeLocalSyncConversation(actionLabel, turn.id, context, { intent });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function executeOrdinaryConversation(
     question: string,
     turnId: string,
     conversationContext?: AgentConversationContext,
   ) {
+    if (shouldUseLocalAnalysisConversation(question, conversationContext)) {
+      await executeLocalSyncConversation(question, turnId, conversationContext);
+      return;
+    }
     if (ordinaryConversationMode === "local_sync") {
       await executeLocalSyncConversation(question, turnId, conversationContext);
       return;
@@ -2021,6 +2191,11 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       focusComposerInput();
       return;
     }
+    const intent = getExecutableSuggestedIntent(action);
+    if (intent) {
+      void executeSuggestedIntentAction(action, intent);
+      return;
+    }
     updateConversationTurn(turnId, (turn) => ({
       ...turn,
       activeSuggestedActionPayload: action.payload,
@@ -2096,7 +2271,10 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         {hasRenderableResult(turnResult) ? (
           <div className="agent-result-grid">
             <div className="agent-result-main">
-              <AgentAnswerPanel answer={turnResult.answer} />
+              <AgentAnswerPanel
+                answer={turnResult.answer}
+                testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
+              />
 
               {turnResult.cards.length > 0 ? (
                 (() => {
@@ -2222,9 +2400,23 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     });
   }
 
+  const shellClassName = isEmbedded
+    ? "agent-workbench-shell agent-workbench-shell--embedded dashboard-home-panel agent-panel"
+    : "agent-workbench-shell";
+
   return (
-    <section className="agent-workbench-shell">
-      {showHeader ? (
+    <section className={shellClassName} data-testid={isEmbedded ? "agent-panel" : undefined}>
+      {isEmbedded && resolvedShowHeader ? (
+        <header className="agent-embedded-header">
+          <div>
+            <div className="agent-embedded-header__eyebrow">Hermes Copilot</div>
+            <h2>页面 Copilot</h2>
+          </div>
+          {readOnly ? <span>只读</span> : null}
+        </header>
+      ) : null}
+
+      {!isEmbedded && resolvedShowHeader ? (
         <header className="agent-workbench-header">
           <div>
             <div className="agent-workbench-header__eyebrow">Agent Workbench</div>
@@ -2284,12 +2476,14 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         </div>
       ) : null}
 
-      {renderResearchShortcutPanel()}
+      {!isEmbedded ? renderResearchShortcutPanel() : null}
 
-      {renderFinancialWorkflowPanel()}
+      {!isEmbedded ? renderFinancialWorkflowPanel() : null}
 
       {!hasConversation ? (
         <AgentQueryForm
+          compact={isEmbedded}
+          showAdvancedTools={!isEmbedded}
           pageContext={pageContext}
           repoPath={repoPath}
           onRepoPathChange={setRepoPath}
@@ -2332,7 +2526,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
                       <div className="agent-wait-status__detail">
                         <span>{formatAgentWaitPhase(turn.agentRun)}</span>
                         <span>已等待 {formatAgentRunElapsed(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)} 秒</span>
-                        {turn.agentRun?.run_id ? <span>run_id: {turn.agentRun.run_id}</span> : null}
+                        {shouldDisplayAgentRunId(turn.agentRun) ? <span>run_id: {turn.agentRun?.run_id}</span> : null}
                         <span>{formatAgentWaitHint(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)}</span>
                       </div>
                     </div>
@@ -2367,6 +2561,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         <div className="agent-composer-dock">
           <AgentQueryForm
             compact
+            showAdvancedTools={!isEmbedded}
             pageContext={pageContext}
             repoPath={repoPath}
             onRepoPathChange={setRepoPath}
@@ -2392,18 +2587,24 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         </div>
       ) : null}
 
-      <AgentRepoMemoryPanel
-        pinnedRepoPaths={pinnedRepoPaths}
-        recentUnpinnedRepoPaths={recentUnpinnedRepoPaths}
-        onApplyRecentRepoPath={applyRecentRepoPath}
-        onMovePinnedRepoPath={movePinnedRepoPath}
-        onUnpinRepo={unpinRepo}
-        onPinRepoPath={pinRepoPath}
-      />
+      {!isEmbedded ? (
+        <AgentRepoMemoryPanel
+          pinnedRepoPaths={pinnedRepoPaths}
+          recentUnpinnedRepoPaths={recentUnpinnedRepoPaths}
+          onApplyRecentRepoPath={applyRecentRepoPath}
+          onMovePinnedRepoPath={movePinnedRepoPath}
+          onUnpinRepo={unpinRepo}
+          onPinRepoPath={pinRepoPath}
+        />
+      ) : null}
     </section>
   );
 }
 
 export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPageProps = {}) {
-  return <AgentPanel pageContext={pageContext} showHeader />;
+  return <EmbeddedAgentCopilot pageContext={pageContext} showHeader variant="workbench" />;
+}
+
+export function AgentPanel({ showHeader = false, ...props }: AgentPanelProps = {}) {
+  return <EmbeddedAgentCopilot {...props} showHeader={showHeader} />;
 }

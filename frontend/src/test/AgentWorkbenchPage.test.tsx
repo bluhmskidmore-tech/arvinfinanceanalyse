@@ -140,6 +140,80 @@ function buildLocalOrdinaryTextResult(answer = "本地普通问题回答。") {
   };
 }
 
+function buildLocalAnalysisChatResult() {
+  return {
+    answer: "本地分析对话已接住这轮问题，但未运行正式指标查询。",
+    cards: [
+      {
+        type: "status",
+        title: "本地分析对话",
+        value: "未匹配受治理指标 intent，本地 Agent 未运行正式指标查询。",
+      },
+      {
+        type: "context",
+        title: "已捕获上下文",
+        data: {
+          page_id: "dashboard",
+          report_date: "2026-03-31",
+        },
+      },
+    ],
+    evidence: {
+      tables_used: [],
+      filters_applied: {
+        page_id: "dashboard",
+        report_date: "2026-03-31",
+      },
+      evidence_rows: 0,
+      quality_flag: "warning",
+    },
+    result_meta: {
+      trace_id: "tr_agent_analysis_chat",
+      basis: "formal",
+      result_kind: "agent.analysis_chat",
+      formal_use_allowed: false,
+    },
+    next_drill: [],
+    suggested_actions: [
+      {
+        type: "execute_intent",
+        label: "组合概览",
+        payload: { intent: "portfolio_overview" },
+        requires_confirmation: true,
+      },
+    ],
+  };
+}
+
+function buildGovernedPortfolioOverviewResult() {
+  return {
+    answer: "正式组合概览结果：资产规模和风险摘要已返回。",
+    cards: [
+      {
+        type: "metric",
+        title: "Total Market Value",
+        value: "1000",
+      },
+    ],
+    evidence: {
+      tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+      filters_applied: {
+        report_date: "2026-03-31",
+      },
+      evidence_rows: 3,
+      quality_flag: "ok",
+    },
+    result_meta: {
+      trace_id: "tr_agent_portfolio_overview",
+      basis: "formal",
+      result_kind: "agent.portfolio_overview",
+      formal_use_allowed: true,
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
+}
+
 function buildDexterResearchResult(domain: "stock" | "macro", answer: string) {
   const tableName = domain === "stock" ? "choice_stock_daily_observation" : "fact_choice_macro_daily";
   return {
@@ -399,6 +473,83 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("本地查询完成");
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("sync");
+  });
+
+  it("renders the local analysis-chat fallback with evidence and suggested actions", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()));
+
+    render(
+      <AgentWorkbenchPage
+        pageContext={{
+          page_id: "dashboard",
+          current_filters: { report_date: "2026-03-31" },
+          selected_rows: [{ portfolio_id: "core" }],
+        }}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("agent-question-input"), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+    expect(screen.getByText("本地分析对话")).toBeInTheDocument();
+    expect(screen.getByText("已捕获上下文")).toBeInTheDocument();
+    expect(screen.getByText("组合概览")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
+    expect(screen.getByRole("status")).toHaveTextContent("本地查询完成");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/agent/query");
+  });
+
+  it("executes an analysis-chat suggested governed intent in the same conversation", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()))
+      .mockResolvedValueOnce(buildJsonResponse(buildGovernedPortfolioOverviewResult()));
+
+    render(
+      <AgentWorkbenchPage
+        pageContext={{
+          page_id: "dashboard",
+          current_filters: { report_date: "2026-03-31" },
+          selected_rows: [{ portfolio_id: "core" }],
+        }}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("agent-question-input"), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "组合概览" }));
+
+    expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("执行建议动作：组合概览");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, options] = fetchMock.mock.calls[1] ?? [];
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/agent/query");
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "组合概览",
+      context: {
+        user_id: "web-user",
+        intent: "portfolio_overview",
+        conversation: {
+          recent_turns: [
+            {
+              question: "帮我判断今天的主要风险",
+              result_kind: "agent.analysis_chat",
+              trace_id: "tr_agent_analysis_chat",
+            },
+          ],
+        },
+      },
+      page_context: {
+        page_id: "dashboard",
+        current_filters: { report_date: "2026-03-31" },
+        selected_rows: [{ portfolio_id: "core" }],
+      },
+    });
   });
 
   it("falls back to local agent query when managed runs return the generic provider gate", async () => {
@@ -815,7 +966,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText(/selected from risk table/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(PAGE_CONTEXT_PLACEHOLDER)).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText(PAGE_CONTEXT_PLACEHOLDER), "解释当前选择");
+    await user.type(screen.getByPlaceholderText(PAGE_CONTEXT_PLACEHOLDER), "managed page context check");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
@@ -1727,11 +1878,11 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "帮我判断今天的主要风险");
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed conversation check");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     const conversation = await screen.findByLabelText("agent-conversation");
-    expect(conversation).toHaveTextContent("帮我判断今天的主要风险");
+    expect(conversation).toHaveTextContent("managed conversation check");
     expect(conversation).toHaveTextContent("这是更像对话的一次回答。");
     expect(conversation).toHaveTextContent("已完成");
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
@@ -1795,11 +1946,11 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "帮我判断今天的主要风险");
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed first turn");
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("第一轮回答：主要风险来自久期。")).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("agent-question-input"), "那这说明什么？");
+    await user.type(screen.getByLabelText("agent-question-input"), "managed second turn");
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("第二轮回答：继续解释上一轮结论。")).toBeInTheDocument();
 
@@ -1807,12 +1958,12 @@ describe("AgentWorkbenchPage", () => {
     expect(runPostCalls).toHaveLength(2);
     const [, secondOptions] = runPostCalls[1] ?? [];
     expect(JSON.parse(String(secondOptions?.body))).toMatchObject({
-      question: "那这说明什么？",
+      question: "managed second turn",
       context: {
         conversation: {
           recent_turns: [
             {
-              question: "帮我判断今天的主要风险",
+              question: "managed first turn",
               answer: "第一轮回答：主要风险来自久期。",
               run_id: "agent_run:first",
               trace_id: "tr_first_turn",

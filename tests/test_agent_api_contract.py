@@ -90,8 +90,22 @@ def _client_with_stubbed_agent(monkeypatch):
     return TestClient(app)
 
 
-def test_default_app_agent_query_is_disabled_503():
+def test_default_app_agent_query_is_disabled_503(monkeypatch, tmp_path):
     """Unmocked app: Agent is disabled unless the feature flag is explicitly enabled."""
+    def disabled_settings():
+        return type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": False,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )()
+    for route in default_app.routes:
+        if getattr(route, "path", None) == "/api/agent/query":
+            monkeypatch.setitem(route.endpoint.__globals__, "get_settings", disabled_settings)
     client = TestClient(default_app)
     response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
@@ -386,7 +400,7 @@ def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_
     app.include_router(route_module.router)
     client = TestClient(app)
 
-    response = client.post("/api/agent/query", json={"question": "请分析当前组合"})
+    response = client.post("/api/agent/query", json={"question": "external provider health check"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -395,6 +409,178 @@ def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_
     assert payload["result_meta"]["vendor_version"] == "vv_hermes"
     assert calls
     assert calls[0][2] == "gpt-test"
+
+
+def test_agent_query_keeps_plain_analysis_chat_local_when_hermes_configured(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_wsl_distro": "",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    local_calls = []
+    hermes_calls = []
+    local_envelope = _sample_agent_envelope().model_copy(
+        update={
+            "answer": "Local analysis chat answered.",
+            "result_meta": _sample_agent_envelope().result_meta.model_copy(
+                update={
+                    "result_kind": "agent.analysis_chat",
+                    "formal_use_allowed": False,
+                }
+            ),
+        }
+    )
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        local_calls.append((request, duckdb_path, governance_dir))
+        return local_envelope
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        hermes_calls.append((request, governance_dir, settings))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "帮我判断今天的主要风险"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Local analysis chat answered."
+    assert payload["result_meta"]["result_kind"] == "agent.analysis_chat"
+    assert local_calls
+    assert not hermes_calls
+
+
+def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_wsl_distro": "",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    local_calls = []
+    hermes_calls = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        local_calls.append((request, duckdb_path, governance_dir))
+        return _sample_agent_envelope()
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        hermes_calls.append((request, governance_dir, settings))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent/query",
+        json={"question": "组合概览", "context": {"intent": "portfolio_overview"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result_meta"]["result_kind"] == "agent.pnl_summary"
+    assert local_calls
+    assert local_calls[0][0].context["intent"] == "portfolio_overview"
+    assert not hermes_calls
+
+
+def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_transport": "bridge",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        calls.append(("local", request, duckdb_path, governance_dir))
+        return _sample_agent_envelope()
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        calls.append(("hermes", request, governance_dir, settings))
+        return _sample_agent_envelope()
+
+    def fake_create_agent_run(**kwargs):
+        calls.append(("run", kwargs))
+        return {"run_id": "agent_run:blocked", "status": "queued"}
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    monkeypatch.setattr(route_module, "create_agent_run", fake_create_agent_run)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    payload = {
+        "question": "refresh dashboard data",
+        "context": {"action_type": "refresh"},
+    }
+
+    query_response = client.post("/api/agent/query", json=payload)
+    run_response = client.post("/api/agent/runs", json=payload)
+
+    assert query_response.status_code == 403
+    assert run_response.status_code == 403
+    assert "read-only" in query_response.json()["detail"]
+    assert "read-only" in run_response.json()["detail"]
+    assert not calls
 
 
 def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_path):
@@ -462,7 +648,7 @@ def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_
     app.include_router(route_module.router)
     client = TestClient(app)
 
-    response = client.post("/api/agent/query", json={"question": "请分析当前组合"})
+    response = client.post("/api/agent/query", json={"question": "external provider health check"})
 
     assert response.status_code == 200
     payload = response.json()

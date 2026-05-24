@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from backend.app.agent.runtime.financial_workflow_catalog import (
@@ -59,6 +59,71 @@ _PAGE_DEFAULT_INTENTS = {
     "stock-analysis": "market_data",
 }
 
+_ANALYSIS_CHAT_PATTERNS = (
+    "analysis",
+    "analyze",
+    "explain",
+    "summarize",
+    "summary",
+    "judge",
+    "risk",
+    "what does this mean",
+    "continue",
+    "follow up",
+    "\u5206\u6790",
+    "\u89e3\u91ca",
+    "\u603b\u7ed3",
+    "\u5224\u65ad",
+    "\u98ce\u9669",
+    "\u7ed3\u8bba",
+    "\u8bf4\u660e",
+    "\u7ee7\u7eed",
+    "\u8ffd\u95ee",
+)
+
+_GOVERNED_PATHS = (
+    ("portfolio_overview", "Portfolio overview"),
+    ("pnl_summary", "PnL summary"),
+    ("duration_risk", "Duration / DV01"),
+    ("credit_exposure", "Credit exposure"),
+    ("product_pnl", "Product PnL"),
+    ("pnl_bridge", "PnL bridge"),
+    ("risk_tensor", "Risk tensor"),
+    ("market_data", "Market data"),
+    ("news", "News events"),
+)
+
+_GOVERNED_PATHS_ZH = (
+    ("portfolio_overview", "\u7ec4\u5408\u6982\u89c8"),
+    ("pnl_summary", "PnL \u6c47\u603b"),
+    ("duration_risk", "\u4e45\u671f / DV01"),
+    ("credit_exposure", "\u4fe1\u7528\u66b4\u9732"),
+    ("product_pnl", "\u4ea7\u54c1\u635f\u76ca"),
+    ("pnl_bridge", "PnL \u6865\u63a5"),
+    ("risk_tensor", "\u98ce\u9669\u5f20\u91cf"),
+    ("market_data", "\u5e02\u573a\u6570\u636e"),
+    ("news", "\u65b0\u95fb\u4e8b\u4ef6"),
+)
+
+_LOCAL_GOVERNED_INTENTS = frozenset(intent for intent, _label in _GOVERNED_PATHS)
+
+
+def is_explicit_local_agent_intent(intent: str) -> bool:
+    return intent.strip().lower() in _LOCAL_GOVERNED_INTENTS
+
+
+def is_plain_analysis_chat_question(question: str) -> bool:
+    normalized = str(question or "").strip().lower()
+    if not normalized:
+        return False
+    if not any(pattern in normalized for pattern in _ANALYSIS_CHAT_PATTERNS):
+        return False
+    return not any(
+        keyword.lower() in normalized
+        for _intent, keywords in _INTENT_PATTERNS
+        for keyword in keywords
+    )
+
 
 class AnalysisViewTool:
     """Intent router + AgentEnvelope assembler."""
@@ -87,6 +152,8 @@ class AnalysisViewTool:
         try:
             if intent == "cube_query":
                 return self._cube_query(request)
+            if intent == "analysis_chat":
+                return self._analysis_chat_envelope(request)
             if intent == "unknown":
                 return self._unsupported_envelope(request)
             handler = self._intent_handlers.get(intent)
@@ -118,6 +185,8 @@ class AnalysisViewTool:
             page_intent = self._page_default_intent(request)
             if page_intent is not None:
                 return page_intent
+        if self._is_analysis_chat_question(normalized):
+            return "analysis_chat"
         return "unknown"
 
     def _conversation_intent(self, request: AgentQueryRequest) -> str | None:
@@ -169,6 +238,9 @@ class AnalysisViewTool:
                 "this page",
             )
         )
+
+    def _is_analysis_chat_question(self, normalized_question: str) -> bool:
+        return is_plain_analysis_chat_question(normalized_question)
 
     def _workflow_envelope(
         self,
@@ -354,7 +426,7 @@ class AnalysisViewTool:
             if envelope.result_meta.quality_flag != "ok":
                 failed_intents.append(intent)
 
-        quality_flag = "warning" if failed_intents else "ok"
+        quality_flag: Literal["ok", "warning", "error", "stale"] = "warning" if failed_intents else "ok"
         evidence = self._evidence.build_evidence(
             tables_used=tables_used,
             filters_applied=filters_applied,
@@ -500,6 +572,155 @@ class AnalysisViewTool:
             )
         )
 
+    def _analysis_chat_envelope(self, request: AgentQueryRequest) -> AgentEnvelope:
+        filters_applied = self._analysis_chat_filters(request)
+        is_chinese = self._is_chinese_text(request.question)
+        evidence = self._evidence.build_evidence(
+            tables_used=[],
+            filters_applied=filters_applied,
+            row_count=0,
+            quality_flag="warning",
+        )
+        result_meta = AgentResultMeta(
+            trace_id=self._trace_id("agent.analysis_chat"),
+            basis=request.basis,
+            result_kind="agent.analysis_chat",
+            formal_use_allowed=False,
+            source_version="sv_agent_local_analysis_chat",
+            vendor_version="vv_none",
+            rule_version="rv_agent_local_analysis_chat_v1",
+            cache_version="cv_agent_local_analysis_chat_v1",
+            quality_flag="warning",
+            vendor_status="ok",
+            fallback_mode="none",
+            scenario_flag=request.basis == "scenario",
+            tables_used=evidence.tables_used,
+            filters_applied=evidence.filters_applied,
+            sql_executed=evidence.sql_executed,
+            evidence_rows=evidence.evidence_rows,
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="status",
+                title="\u672c\u5730\u5206\u6790\u5bf9\u8bdd" if is_chinese else "Local Analysis Conversation",
+                value=(
+                    "\u672a\u5339\u914d\u53d7\u6cbb\u7406\u6307\u6807 intent\uff0c\u672c\u5730 Agent "
+                    "\u672a\u8fd0\u884c\u6b63\u5f0f\u6307\u6807\u67e5\u8be2\uff0c\u4e5f\u4e0d\u4f1a\u7f16\u9020\u6570\u5b57\u3002"
+                    if is_chinese
+                    else (
+                        "No governed metric intent matched this turn, so the local agent did not run a formal "
+                        "metric query or invent figures."
+                    )
+                ),
+            ),
+            AgentCard(
+                type="help",
+                title="\u53ef\u7ee7\u7eed\u67e5\u8be2\u7684\u6cbb\u7406\u8def\u5f84" if is_chinese else "Available Governed Paths",
+                data=[
+                    {"intent": intent, "label": label}
+                    for intent, label in self._governed_paths(is_chinese=is_chinese)
+                    if not self._intent_handlers or intent in self._intent_handlers
+                ],
+            ),
+        ]
+        if filters_applied:
+            cards.append(
+                AgentCard(
+                    type="context",
+                    title="\u5df2\u6355\u83b7\u4e0a\u4e0b\u6587" if is_chinese else "Captured Context",
+                    data=filters_applied,
+                )
+            )
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=self._analysis_chat_answer(request, filters_applied),
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=self._analysis_chat_suggested_actions(is_chinese=is_chinese),
+            )
+        )
+
+    def _analysis_chat_filters(self, request: AgentQueryRequest) -> dict[str, Any]:
+        filters: dict[str, Any] = {}
+        page_context = self._page_context_payload(request.page_context)
+        if page_context:
+            page_id = str(page_context.get("page_id") or "").strip()
+            if page_id:
+                filters["page_id"] = page_id
+            current_filters = page_context.get("current_filters")
+            if isinstance(current_filters, dict):
+                for key in ("report_date", "as_of_date", "date"):
+                    value = current_filters.get(key)
+                    if value not in (None, ""):
+                        filters["report_date"] = value
+                        break
+            selected_rows = page_context.get("selected_rows")
+            if isinstance(selected_rows, list) and selected_rows:
+                filters["selected_rows"] = len(selected_rows)
+
+        conversation = request.context.get("conversation")
+        if isinstance(conversation, dict):
+            recent_turns = conversation.get("recent_turns")
+            if isinstance(recent_turns, list) and recent_turns:
+                filters["conversation_turns"] = len(recent_turns)
+                latest = recent_turns[-1]
+                if isinstance(latest, dict) and latest.get("result_kind"):
+                    filters["latest_result_kind"] = latest["result_kind"]
+        return filters
+
+    def _analysis_chat_answer(
+        self,
+        request: AgentQueryRequest,
+        filters_applied: dict[str, Any],
+    ) -> str:
+        context_bits: list[str] = []
+        if "page_id" in filters_applied:
+            context_bits.append(f"page={filters_applied['page_id']}")
+        if "report_date" in filters_applied:
+            context_bits.append(f"report_date={filters_applied['report_date']}")
+        if "conversation_turns" in filters_applied:
+            context_bits.append(f"recent_turns={filters_applied['conversation_turns']}")
+        context_text = ", ".join(context_bits) if context_bits else "no page or prior-turn context"
+        if self._is_chinese_text(request.question):
+            chinese_context_text = context_text if context_bits else "\u672a\u6355\u83b7\u5230\u9875\u9762\u6216\u4e0a\u4e00\u8f6e\u4e0a\u4e0b\u6587"
+            return (
+                "\u672c\u5730\u5206\u6790\u5bf9\u8bdd\u5df2\u63a5\u4f4f\u8fd9\u4e00\u8f6e\u95ee\u9898\uff0c"
+                "\u4f46\u672a\u8fd0\u884c\u6b63\u5f0f\u6307\u6807\u67e5\u8be2\uff0c\u4e5f\u4e0d\u4f1a\u7f16\u9020\u6570\u5b57\u3002"
+                "\u8fd9\u4e00\u8f6e\u53ea\u80fd\u4f5c\u4e3a\u5206\u6790\u5f15\u5bfc\uff0c\u4e0d\u80fd\u4f5c\u4e3a\u6b63\u5f0f\u91d1\u878d\u7ed3\u8bba\u3002"
+                f"\u5df2\u6355\u83b7\u4e0a\u4e0b\u6587\uff1a{chinese_context_text}\u3002"
+                "\u5982\u679c\u9700\u8981\u6570\u5b57\u548c\u8bc1\u636e\uff0c\u8bf7\u7ee7\u7eed\u6307\u5b9a\u4e00\u6761\u53d7\u6cbb\u7406\u8def\u5f84\uff1a"
+                "\u7ec4\u5408\u6982\u89c8\u3001PnL \u6c47\u603b\u3001\u4e45\u671f/DV01\u3001\u4fe1\u7528\u66b4\u9732\u3001"
+                "\u4ea7\u54c1\u635f\u76ca\u3001PnL \u6865\u63a5\u3001\u98ce\u9669\u5f20\u91cf\u3001\u5e02\u573a\u6570\u636e\u6216\u65b0\u95fb\u4e8b\u4ef6\u3002"
+            )
+        return (
+            "I can keep this as a local analysis conversation, but I did not run a formal metric query. "
+            "The current turn matched analysis intent rather than a governed metric path, so this response "
+            "cannot be used as a formal financial conclusion. "
+            f"Captured context: {context_text}. "
+            "For numbers or evidence, ask for one governed path such as portfolio overview, PnL summary, "
+            "duration/DV01, credit exposure, product PnL, PnL bridge, risk tensor, market data, or news."
+        )
+
+    def _is_chinese_text(self, value: str) -> bool:
+        return any("\u4e00" <= char <= "\u9fff" for char in value)
+
+    def _governed_paths(self, *, is_chinese: bool) -> tuple[tuple[str, str], ...]:
+        return _GOVERNED_PATHS_ZH if is_chinese else _GOVERNED_PATHS
+
+    def _analysis_chat_suggested_actions(self, *, is_chinese: bool) -> list[AgentSuggestedAction]:
+        return [
+            AgentSuggestedAction(
+                type="execute_intent",
+                label=label,
+                payload={"intent": intent},
+                requires_confirmation=True,
+            )
+            for intent, label in self._governed_paths(is_chinese=is_chinese)[:3]
+        ]
+
     def _payload_envelope(
         self,
         *,
@@ -522,16 +743,19 @@ class AnalysisViewTool:
         )
         result_meta = AgentResultMeta(
             trace_id=str(payload.get("trace_id") or self._trace_id(f"agent.{intent}")),
-            basis=str(payload.get("basis") or request.basis),
+            basis=cast(Literal["formal", "scenario", "analytical", "ledger"], payload.get("basis") or request.basis),
             result_kind=str(payload.get("result_kind") or f"agent.{intent}"),
             formal_use_allowed=bool(payload.get("formal_use_allowed", False)),
             source_version=str(payload.get("source_version") or "sv_agent_unknown"),
             vendor_version=str(payload.get("vendor_version") or "vv_none"),
             rule_version=str(payload.get("rule_version") or "rv_agent_mvp_v1"),
             cache_version=str(payload.get("cache_version") or f"cv_agent_{intent}_v1"),
-            quality_flag=str(payload.get("quality_flag") or "warning"),
-            vendor_status=str(payload.get("vendor_status") or "ok"),
-            fallback_mode=str(payload.get("fallback_mode") or "none"),
+            quality_flag=cast(Literal["ok", "warning", "error", "stale"], payload.get("quality_flag") or "warning"),
+            vendor_status=cast(
+                Literal["ok", "vendor_stale", "vendor_unavailable"],
+                payload.get("vendor_status") or "ok",
+            ),
+            fallback_mode=cast(Literal["none", "latest_snapshot"], payload.get("fallback_mode") or "none"),
             scenario_flag=bool(payload.get("scenario_flag", False)),
             tables_used=evidence.tables_used,
             filters_applied=evidence.filters_applied,

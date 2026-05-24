@@ -4,6 +4,7 @@ import { shellTokens as t } from "../../../theme/tokens";
 
 type AgentQueryFormProps = {
   compact?: boolean;
+  showAdvancedTools?: boolean;
   pageContext?: { page_id: string };
   repoPath: string;
   onRepoPathChange: (value: string) => void;
@@ -49,6 +50,7 @@ const primaryQuickExampleCount = 2;
 
 export function AgentQueryForm({
   compact = false,
+  showAdvancedTools = true,
   pageContext,
   repoPath,
   onRepoPathChange,
@@ -103,6 +105,7 @@ export function AgentQueryForm({
       <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
         <textarea
           aria-label="agent-question-input"
+          data-testid="agent-panel-question"
           className="agent-chat-composer__input"
           ref={inputRef}
           rows={compact ? 2 : 3}
@@ -118,6 +121,7 @@ export function AgentQueryForm({
         />
         <button
           type="submit"
+          data-testid="agent-panel-submit"
           disabled={loading}
           className="agent-chat-composer__send"
           style={{ background: t.colorAccent }}
@@ -126,85 +130,87 @@ export function AgentQueryForm({
         </button>
       </form>
 
-      <details className="agent-chat-composer__advanced">
-        <summary>高级工具：GitNexus / 流程图谱</summary>
-        <div className="agent-chat-composer__advanced-body">
-          <label className="agent-chat-composer__field">
-            <span>GitNexus 仓库路径</span>
-            <input
-              aria-label="repo-path-input"
-              type="text"
-              placeholder="例如：F:\\MOSS-SYSTEM-V1"
-              value={repoPath}
-              onChange={(event) => onRepoPathChange(event.target.value)}
-            />
-          </label>
-
-          <div className="agent-chat-composer__tool-row">
-            {advancedQuickExamples.map((example) => (
-              <button
-                key={example}
-                type="button"
-                className="agent-chat-composer__tool-button"
-                onClick={() => onQuickExample(example)}
-              >
-                {formatQuickExampleLabel(example)}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="agent-chat-composer__tool-button"
-              onClick={isCurrentRepoPinned ? onUnpinCurrentRepo : onPinCurrentRepo}
-            >
-              {isCurrentRepoPinned ? "取消固定当前仓库" : "固定当前仓库"}
-            </button>
-            <button
-              type="button"
-              className="agent-chat-composer__tool-button"
-              onClick={onLoadProcesses}
-              disabled={processLoading}
-            >
-              {processLoading ? "读取中..." : "读取流程"}
-            </button>
-          </div>
-
-          <div className="agent-chat-composer__process-grid">
+      {showAdvancedTools ? (
+        <details className="agent-chat-composer__advanced">
+          <summary>高级工具：GitNexus / 流程图谱</summary>
+          <div className="agent-chat-composer__advanced-body">
             <label className="agent-chat-composer__field">
-              <span>流程搜索</span>
+              <span>GitNexus 仓库路径</span>
               <input
-                aria-label="process-search-input"
+                aria-label="repo-path-input"
                 type="text"
-                placeholder="按流程名过滤"
-                value={processSearch}
-                onChange={(event) => onProcessSearchChange(event.target.value)}
+                placeholder="例如：F:\\MOSS-SYSTEM-V1"
+                value={repoPath}
+                onChange={(event) => onRepoPathChange(event.target.value)}
               />
             </label>
-            <label className="agent-chat-composer__field">
-              <span>流程名称</span>
-              <select
-                aria-label="process-name-select"
-                value={selectedProcess}
-                onChange={(event) => onSelectedProcessChange(event.target.value)}
+
+            <div className="agent-chat-composer__tool-row">
+              {advancedQuickExamples.map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  className="agent-chat-composer__tool-button"
+                  onClick={() => onQuickExample(example)}
+                >
+                  {formatQuickExampleLabel(example)}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="agent-chat-composer__tool-button"
+                onClick={isCurrentRepoPinned ? onUnpinCurrentRepo : onPinCurrentRepo}
               >
-                <option value="">请选择流程</option>
-                {filteredProcesses.map((processName) => (
-                  <option key={processName} value={processName}>
-                    {processName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="agent-chat-composer__secondary-action"
-              onClick={onViewSelectedProcess}
-              disabled={!selectedProcess || loading}
-            >
-              查看所选流程
-            </button>
+                {isCurrentRepoPinned ? "取消固定当前仓库" : "固定当前仓库"}
+              </button>
+              <button
+                type="button"
+                className="agent-chat-composer__tool-button"
+                onClick={onLoadProcesses}
+                disabled={processLoading}
+              >
+                {processLoading ? "读取中..." : "读取流程"}
+              </button>
+            </div>
+
+            <div className="agent-chat-composer__process-grid">
+              <label className="agent-chat-composer__field">
+                <span>流程搜索</span>
+                <input
+                  aria-label="process-search-input"
+                  type="text"
+                  placeholder="按流程名过滤"
+                  value={processSearch}
+                  onChange={(event) => onProcessSearchChange(event.target.value)}
+                />
+              </label>
+              <label className="agent-chat-composer__field">
+                <span>流程名称</span>
+                <select
+                  aria-label="process-name-select"
+                  value={selectedProcess}
+                  onChange={(event) => onSelectedProcessChange(event.target.value)}
+                >
+                  <option value="">请选择流程</option>
+                  {filteredProcesses.map((processName) => (
+                    <option key={processName} value={processName}>
+                      {processName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="agent-chat-composer__secondary-action"
+                onClick={onViewSelectedProcess}
+                disabled={!selectedProcess || loading}
+              >
+                查看所选流程
+              </button>
+            </div>
           </div>
-        </div>
-      </details>
+        </details>
+      ) : null}
     </div>
   );
 }

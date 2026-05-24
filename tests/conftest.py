@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 os.environ.setdefault("MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS", "1")
 os.environ.setdefault("MOSS_SKIP_POSTGRES_MIGRATIONS", "1")
@@ -29,3 +30,16 @@ def seed_wildcard_scope(tmp_path, monkeypatch):
     repo.grant_scope(user_id="*", role=None, resource="pnl_by_business.adjustment", action="write")
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_choice_runtime_cache():
+    yield
+
+    runtime_module = sys.modules.get("backend.app.config.choice_runtime")
+    if runtime_module is not None and hasattr(runtime_module, "_EM_C"):
+        runtime_module._EM_C = None
+
+    for module_name in list(sys.modules):
+        if module_name == "EmQuantAPI" or module_name.startswith("EmQuantAPI."):
+            sys.modules.pop(module_name, None)
