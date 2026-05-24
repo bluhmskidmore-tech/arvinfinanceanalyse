@@ -696,6 +696,11 @@ export type RiskTensorPayload = {
   liquidity_gap_90d: RiskTensorScalar;
   liquidity_gap_30d_ratio: RiskTensorScalar;
   total_market_value: RiskTensorScalar;
+  rate_risk_market_value?: RiskTensorScalar | null;
+  rate_risk_dv01?: RiskTensorScalar | null;
+  rate_risk_modified_duration?: RiskTensorScalar | null;
+  duration_excluded_market_value?: RiskTensorScalar | null;
+  duration_excluded_count?: number | null;
   bond_count: number;
   quality_flag: string;
   warnings: string[];

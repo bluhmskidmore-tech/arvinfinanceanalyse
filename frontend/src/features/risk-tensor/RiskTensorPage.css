@@ -140,6 +140,45 @@
   overflow-wrap: anywhere;
 }
 
+.risk-tensor-duration-scope {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.risk-tensor-duration-scope__header {
+  display: grid;
+  gap: 5px;
+  max-width: 980px;
+}
+
+.risk-tensor-duration-scope__header span {
+  color: var(--moss-color-warm-taupe);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-duration-scope__header h2 {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.risk-tensor-duration-scope__header p {
+  margin: 0;
+  color: var(--moss-color-warm-taupe);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.risk-tensor-duration-scope__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
 .risk-tensor-prior-change {
   display: grid;
   gap: 12px;

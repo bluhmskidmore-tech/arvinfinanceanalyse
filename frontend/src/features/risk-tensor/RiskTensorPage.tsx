@@ -9,7 +9,7 @@ import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
-import type { Numeric, ResultMeta, RiskTensorPayload } from "../../api/contracts";
+import type { Numeric, ResultMeta, RiskTensorChangeMetric, RiskTensorPayload } from "../../api/contracts";
 import {
   parseDisplayNumber,
   toneFromSignedDisplayString,
@@ -178,7 +178,7 @@ function isWanAmountMetric(key: string) {
   return key === "portfolio_dv01" || key === "regulatory_dv01" || key === "cs01" || key.startsWith("krd_");
 }
 
-function priorMetricDisplay(metric: RiskTensorPayload["prior_period_change"]["metrics"][number], key: PriorMetricValueKey) {
+function priorMetricDisplay(metric: RiskTensorChangeMetric, key: PriorMetricValueKey) {
   if (!isWanAmountMetric(metric.key)) {
     const displayKey = `${key}_display` as const;
     return metric[displayKey];
@@ -211,6 +211,35 @@ function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) 
 
 function ratioTone(value: Parameters<typeof bondNumericRawOrNull>[0]) {
   return toneFromSignedDisplayString(ratioPercentDisplay(value));
+}
+
+function hasRiskTensorValue(value: RiskTensorDisplayValue | null | undefined) {
+  return value !== null && value !== undefined;
+}
+
+function countDisplay(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "--";
+  }
+  return value.toLocaleString("zh-CN");
+}
+
+function hasDurationScopeDisclosure(result: RiskTensorPayload) {
+  return (
+    hasRiskTensorValue(result.rate_risk_market_value) ||
+    hasRiskTensorValue(result.rate_risk_dv01) ||
+    hasRiskTensorValue(result.rate_risk_modified_duration) ||
+    hasRiskTensorValue(result.duration_excluded_market_value) ||
+    (result.duration_excluded_count !== null && result.duration_excluded_count !== undefined)
+  );
+}
+
+function durationExclusionTone(result: RiskTensorPayload) {
+  const excludedMarketValue = riskTensorRawOrNull(result.duration_excluded_market_value);
+  if ((result.duration_excluded_count ?? 0) > 0 || (excludedMarketValue ?? 0) > 0) {
+    return "warning";
+  }
+  return "default";
 }
 
 function priorMetricTone(tone: string) {
@@ -249,7 +278,7 @@ function qualityTone(flag: string | undefined) {
   return "neutral";
 }
 
-function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | undefined) {
+function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | string | undefined) {
   if (mode === "none") {
     return "未降级";
   }
@@ -521,6 +550,7 @@ export default function RiskTensorPage() {
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
   const firstRequiredAction = requiredActions[0];
   const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 ? "warning" : "ok";
+  const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
@@ -769,7 +799,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="修正久期"
                 value={displayStr(result.portfolio_modified_duration)}
-                detail="portfolio_modified_duration。"
+                detail="portfolio_modified_duration；按利率风险适用资产加权。"
                 unit="年"
               />
               <KpiCard
@@ -799,6 +829,47 @@ export default function RiskTensorPage() {
                 tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.total_market_value))}
               />
             </div>
+
+            {showDurationScope ? (
+              <section className="risk-tensor-duration-scope" data-testid="risk-tensor-duration-scope">
+                <div className="risk-tensor-duration-scope__header">
+                  <span>久期口径</span>
+                  <h2>利率风险适用资产覆盖</h2>
+                  <p>
+                    组合久期只按有到期日且正久期的资产加权；无到期日或零久期资产不造期限，DV01 仍保留在总量。
+                  </p>
+                </div>
+                <div className="risk-tensor-duration-scope__grid">
+                  <KpiCard
+                    title="利率风险市值"
+                    value={yuanAsYiDisplay(result.rate_risk_market_value)}
+                    detail="rate_risk_market_value；进入久期分母的市值。"
+                    unit={YI_YUAN_UNIT}
+                    tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.rate_risk_market_value))}
+                  />
+                  <KpiCard
+                    title="利率风险 DV01"
+                    value={yuanAsWanDisplay(result.rate_risk_dv01)}
+                    detail="rate_risk_dv01；进入久期分母的 DV01。"
+                    unit={amountUnit(result.rate_risk_dv01, WAN_YUAN_UNIT)}
+                    tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.rate_risk_dv01))}
+                  />
+                  <KpiCard
+                    title="利率风险久期"
+                    value={displayStr(result.rate_risk_modified_duration)}
+                    detail="rate_risk_modified_duration；应与修正久期一致。"
+                    unit={amountUnit(result.rate_risk_modified_duration, "年")}
+                  />
+                  <KpiCard
+                    title="久期排除市值"
+                    value={yuanAsYiDisplay(result.duration_excluded_market_value)}
+                    detail={`duration_excluded_market_value；排除行数 ${countDisplay(result.duration_excluded_count)}。`}
+                    unit={amountUnit(result.duration_excluded_market_value, YI_YUAN_UNIT)}
+                    tone={durationExclusionTone(result)}
+                  />
+                </div>
+              </section>
+            ) : null}
 
             {result.prior_period_change ? (
               <section className="risk-tensor-prior-change" data-testid="risk-tensor-prior-period-change">

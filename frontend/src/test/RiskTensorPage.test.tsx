@@ -201,6 +201,41 @@ describe("RiskTensorPage", () => {
     );
   });
 
+  it("surfaces the backend rate-risk duration denominator scope", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_duration_scope_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_duration_scope_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        total_market_value: "500000000",
+        rate_risk_market_value: "400000000",
+        rate_risk_dv01: "120000",
+        rate_risk_modified_duration: "4.2",
+        duration_excluded_market_value: "100000000",
+        duration_excluded_count: 2,
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+    expect(durationScope).toHaveTextContent("利率风险适用资产覆盖");
+    expect(durationScope).toHaveTextContent("无到期日或零久期资产不造期限");
+    expect(durationScope).toHaveTextContent(new RegExp(`4\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent(new RegExp(`4\\.2\\s*年`));
+    expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent("排除行数 2");
+  });
+
   it("uses latest available report date when querystring is absent", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
