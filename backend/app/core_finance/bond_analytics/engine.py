@@ -121,11 +121,16 @@ def compute_bond_analytics_rows(
             report_date=report_date,
             maturity_date=maturity_date,
         )
+        currency_code = _as_text(snapshot_row.get("currency_code"))
         market_value_native = safe_decimal(snapshot_row.get("market_value_native"))
         market_value_cny = snapshot_row.get("market_value_cny")
         market_value = (
             safe_decimal(market_value_cny)
-            if market_value_cny is not None and str(market_value_cny).strip() != ""
+            if (
+                not _is_cny_currency(currency_code)
+                and market_value_cny is not None
+                and str(market_value_cny).strip() != ""
+            )
             else market_value_native
         )
         if years_to_maturity == Decimal("0"):
@@ -167,7 +172,7 @@ def compute_bond_analytics_rows(
                 rating=_as_text(snapshot_row.get("rating")),
                 accounting_class=accounting_class,
                 accounting_rule_id=accounting_rule_id,
-                currency_code=_as_text(snapshot_row.get("currency_code")),
+                currency_code=currency_code,
                 face_value=safe_decimal(snapshot_row.get("face_value_native")),
                 market_value_native=market_value_native,
                 market_value=market_value,
@@ -243,6 +248,10 @@ def _first_non_blank(*values: Any) -> str:
         if text:
             return text
     return ""
+
+
+def _is_cny_currency(value: str) -> bool:
+    return value.upper() in {"CNY", "RMB", "CNH"}
 
 
 def _optional_decimal(value: Any) -> Decimal | None:

@@ -247,6 +247,11 @@ def _seed_formal_zqtz_balance_for_cb001(duckdb_path: str, *, market_value_amount
         conn.close()
 
 
+def _seed_duplicate_formal_zqtz_balance_for_cb001(duckdb_path: str) -> None:
+    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("1900"))
+    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("-1900"))
+
+
 BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
 
 
@@ -580,7 +585,7 @@ def test_bond_analytics_materialize_credit_filters_return_expected_fact_subset(t
     ) == []
 
 
-def test_bond_analytics_materialize_uses_formal_cny_market_value_for_dv01(tmp_path):
+def test_bond_analytics_materialize_uses_formal_basis_but_keeps_cny_native_market_value(tmp_path):
     repo_mod, task_mod = _load_modules()
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -602,11 +607,33 @@ def test_bond_analytics_materialize_uses_formal_cny_market_value_for_dv01(tmp_pa
     )
     assert row["accounting_class"] == "OCI"
     assert row["market_value_native"] == Decimal("190.00000000")
-    assert row["market_value"] == Decimal("1900.00000000")
+    assert row["market_value"] == Decimal("190.00000000")
     expected_dv01 = (row["market_value"] * row["modified_duration"] / Decimal("10000")).quantize(
         Decimal("0.00000001")
     )
     assert row["dv01"] == expected_dv01
+
+
+def test_bond_analytics_materialize_does_not_duplicate_snapshot_rows_when_formal_balance_has_duplicate_keys(tmp_path):
+    repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    _seed_duplicate_formal_zqtz_balance_for_cb001(str(duckdb_path))
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
+    rows = repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)
+    cb001_rows = [row for row in rows if row["instrument_code"] == "CB-001"]
+    assert payload["row_count"] == 3
+    assert len(cb001_rows) == 1
+    assert cb001_rows[0]["accounting_class"] == "OCI"
 
 
 def test_bond_analytics_materialize_accounting_audit_exposes_rule_trace_by_asset_class(tmp_path):

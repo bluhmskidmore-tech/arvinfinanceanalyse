@@ -157,6 +157,51 @@ def test_compute_bond_analytics_rows_uses_cny_market_value_and_formal_accounting
     assert row.dv01 == Decimal("700") * row.modified_duration / Decimal("10000")
 
 
+def test_compute_bond_analytics_rows_keeps_cny_market_value_native_when_cny_backfill_is_stale() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "CNY-OCI-001",
+            "instrument_name": "CNY credit bond",
+            "portfolio_name": "Portfolio",
+            "cost_center": "CC-CNY",
+            "account_category": "bank book",
+            "accounting_basis": "FVOCI",
+            "asset_class": "credit bond",
+            "bond_type": "corporate bond",
+            "issuer_name": "Issuer",
+            "industry_name": "Industry",
+            "rating": "A",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("100"),
+            "market_value_cny": Decimal("-100"),
+            "amortized_cost_native": Decimal("98"),
+            "accrued_interest_native": Decimal("1"),
+            "coupon_rate": Decimal("0.03"),
+            "ytm_value": Decimal("0.04"),
+            "maturity_date": date(2031, 3, 31),
+            "interest_mode": "annual",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_cny",
+            "rule_version": "rv_snapshot_cny",
+            "ingest_batch_id": "ib_cny",
+            "trace_id": "trace_cny",
+        }
+    ]
+
+    rows = module.compute_bond_analytics_rows(snapshot_rows, report_date)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.accounting_class == "OCI"
+    assert row.market_value_native == Decimal("100")
+    assert row.market_value == Decimal("100")
+    assert row.dv01 == Decimal("100") * row.modified_duration / Decimal("10000")
+
+
 @pytest.mark.parametrize(
     ("basis", "expected"),
     [

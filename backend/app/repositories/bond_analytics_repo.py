@@ -164,23 +164,76 @@ class BondAnalyticsRepository:
             market_value_cny_expr = snapshot_market_value_cny_expr
             if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
                 balance_join = f"""
-                left join {BALANCE_ZQTZ_FACT_TABLE} b
+                left join (
+                  select
+                    report_date,
+                    instrument_code_key,
+                    portfolio_name_key,
+                    cost_center_key,
+                    account_category_key,
+                    asset_class_key,
+                    bond_type_key,
+                    sub_type_key,
+                    business_type_primary_key,
+                    issuer_name_key,
+                    industry_name_key,
+                    rating_key,
+                    is_issuance_like_key,
+                    currency_code_key,
+                    max(accounting_basis) as accounting_basis,
+                    sum(market_value_amount) as market_value_amount
+                  from (
+                    select
+                      cast(report_date as varchar) as report_date,
+                      trim(coalesce(instrument_code, '')) as instrument_code_key,
+                      trim(coalesce(portfolio_name, '')) as portfolio_name_key,
+                      trim(coalesce(cost_center, '')) as cost_center_key,
+                      trim(coalesce(account_category, '')) as account_category_key,
+                      trim(coalesce(asset_class, '')) as asset_class_key,
+                      trim(coalesce(bond_type, '')) as bond_type_key,
+                      trim(coalesce(sub_type, '')) as sub_type_key,
+                      trim(coalesce(business_type_primary, '')) as business_type_primary_key,
+                      trim(coalesce(issuer_name, '')) as issuer_name_key,
+                      trim(coalesce(industry_name, '')) as industry_name_key,
+                      trim(coalesce(rating, '')) as rating_key,
+                      coalesce(is_issuance_like, false) as is_issuance_like_key,
+                      upper(trim(coalesce(currency_code, ''))) as currency_code_key,
+                      nullif(trim(accounting_basis), '') as accounting_basis,
+                      market_value_amount
+                    from {BALANCE_ZQTZ_FACT_TABLE}
+                    where upper(trim(coalesce(currency_basis, ''))) = 'CNY'
+                      and lower(trim(coalesce(position_scope, ''))) = 'asset'
+                  ) balance_rows
+                  group by
+                    report_date,
+                    instrument_code_key,
+                    portfolio_name_key,
+                    cost_center_key,
+                    account_category_key,
+                    asset_class_key,
+                    bond_type_key,
+                    sub_type_key,
+                    business_type_primary_key,
+                    issuer_name_key,
+                    industry_name_key,
+                    rating_key,
+                    is_issuance_like_key,
+                    currency_code_key
+                ) b
                   on cast(s.report_date as varchar) = b.report_date
-                 and b.currency_basis = 'CNY'
-                 and b.position_scope = 'asset'
-                 and trim(coalesce(s.instrument_code, '')) = trim(coalesce(b.instrument_code, ''))
-                 and trim(coalesce(s.portfolio_name, '')) = trim(coalesce(b.portfolio_name, ''))
-                 and trim(coalesce(s.cost_center, '')) = trim(coalesce(b.cost_center, ''))
-                 and trim(coalesce(s.account_category, '')) = trim(coalesce(b.account_category, ''))
-                 and trim(coalesce(s.asset_class, '')) = trim(coalesce(b.asset_class, ''))
-                 and trim(coalesce(s.bond_type, '')) = trim(coalesce(b.bond_type, ''))
-                 and trim(coalesce(s.sub_type, '')) = trim(coalesce(b.sub_type, ''))
-                 and trim(coalesce(s.business_type_primary, '')) = trim(coalesce(b.business_type_primary, ''))
-                 and trim(coalesce(s.issuer_name, '')) = trim(coalesce(b.issuer_name, ''))
-                 and trim(coalesce(s.industry_name, '')) = trim(coalesce(b.industry_name, ''))
-                 and trim(coalesce(s.rating, '')) = trim(coalesce(b.rating, ''))
-                 and coalesce(s.is_issuance_like, false) = coalesce(b.is_issuance_like, false)
-                 and upper(trim(coalesce(s.currency_code, ''))) = upper(trim(coalesce(b.currency_code, '')))
+                 and trim(coalesce(s.instrument_code, '')) = b.instrument_code_key
+                 and trim(coalesce(s.portfolio_name, '')) = b.portfolio_name_key
+                 and trim(coalesce(s.cost_center, '')) = b.cost_center_key
+                 and trim(coalesce(s.account_category, '')) = b.account_category_key
+                 and trim(coalesce(s.asset_class, '')) = b.asset_class_key
+                 and trim(coalesce(s.bond_type, '')) = b.bond_type_key
+                 and trim(coalesce(s.sub_type, '')) = b.sub_type_key
+                 and trim(coalesce(s.business_type_primary, '')) = b.business_type_primary_key
+                 and trim(coalesce(s.issuer_name, '')) = b.issuer_name_key
+                 and trim(coalesce(s.industry_name, '')) = b.industry_name_key
+                 and trim(coalesce(s.rating, '')) = b.rating_key
+                 and coalesce(s.is_issuance_like, false) = b.is_issuance_like_key
+                 and upper(trim(coalesce(s.currency_code, ''))) = b.currency_code_key
                 """
                 accounting_basis_expr = "b.accounting_basis"
                 market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
