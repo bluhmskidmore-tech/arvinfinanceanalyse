@@ -918,7 +918,7 @@ def _fetch_nim_history(
         slice_dates = _history_date_slice(report_dates, current_report_date, n)
         if not slice_dates:
             return None
-        fetch_zqtz_history = getattr(liability_repo, "fetch_zqtz_rows_for_dates", None)
+        fetch_zqtz_history = getattr(liability_repo, "fetch_zqtz_yield_rows_for_dates", None)
         fetch_tyw_history = getattr(liability_repo, "fetch_tyw_rows_for_dates", None)
         if callable(fetch_zqtz_history) and callable(fetch_tyw_history):
             try:
@@ -943,7 +943,12 @@ def _fetch_nim_history(
         values: list[float] = []
         for d in slice_dates:
             try:
-                zqtz_rows = liability_repo.fetch_zqtz_rows(d)
+                fetch_zqtz_yield = getattr(liability_repo, "fetch_zqtz_yield_rows", None)
+                zqtz_rows = (
+                    fetch_zqtz_yield(d)
+                    if callable(fetch_zqtz_yield)
+                    else liability_repo.fetch_zqtz_rows(d)
+                )
                 tyw_rows = liability_repo.fetch_tyw_rows(d)
                 payload = compute_liability_yield_metrics(d, zqtz_rows, tyw_rows)
                 kpi = payload.get("kpi") if isinstance(payload, dict) else None

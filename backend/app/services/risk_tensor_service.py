@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 
 from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
+from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.risk_tensor_repo import (
     RiskTensorRepository,
     load_current_tyw_liability_lineage_by_report_date,
@@ -138,6 +139,11 @@ def risk_tensor_envelope(
         governance_dir=governance_dir,
         report_date_text=report_date_text,
     )
+    duration_scope = _fetch_rate_risk_duration_scope(
+        duckdb_path=str(duckdb_path),
+        report_date_text=report_date_text,
+        row=row,
+    )
     payload = RiskTensorPayload.model_validate(
         promote_flat_payload(
             {
@@ -163,6 +169,11 @@ def risk_tensor_envelope(
                 "liquidity_gap_90d": row["liquidity_gap_90d"],
                 "liquidity_gap_30d_ratio": row["liquidity_gap_30d_ratio"],
                 "total_market_value": row["total_market_value"],
+                "rate_risk_market_value": duration_scope["rate_risk_market_value"],
+                "rate_risk_dv01": duration_scope["rate_risk_dv01"],
+                "rate_risk_modified_duration": duration_scope["rate_risk_modified_duration"],
+                "duration_excluded_market_value": duration_scope["duration_excluded_market_value"],
+                "duration_excluded_count": duration_scope["duration_excluded_count"],
                 "bond_count": int(row["bond_count"]),
                 "quality_flag": str(row["quality_flag"]),
                 "warnings": list(row["warnings"]),
@@ -189,6 +200,24 @@ def risk_tensor_envelope(
         fallback_date=None,
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def _fetch_rate_risk_duration_scope(
+    *,
+    duckdb_path: str,
+    report_date_text: str,
+    row: dict[str, object],
+) -> dict[str, object]:
+    metrics = BondAnalyticsRepository(str(duckdb_path)).fetch_rate_risk_duration_scope(report_date_text)
+    if metrics is not None:
+        return metrics
+    return {
+        "rate_risk_market_value": row["total_market_value"],
+        "rate_risk_dv01": row["portfolio_dv01"],
+        "rate_risk_modified_duration": row["portfolio_modified_duration"],
+        "duration_excluded_market_value": 0,
+        "duration_excluded_count": 0,
+    }
 
 
 def _fetch_previous_comparable_risk_tensor_row(

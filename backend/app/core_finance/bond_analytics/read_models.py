@@ -297,14 +297,30 @@ def compute_benchmark_excess(
 
 def summarize_portfolio_risk(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total_market_value = _sum(rows, "market_value")
+    duration_rows = _duration_denominator_rows(rows)
     return {
         "bond_count": len(rows),
         "total_market_value": total_market_value,
-        "portfolio_duration": _weighted(rows, "macaulay_duration"),
-        "portfolio_modified_duration": _weighted(rows, "modified_duration"),
-        "portfolio_convexity": _weighted(rows, "convexity"),
+        "portfolio_duration": _weighted(duration_rows, "macaulay_duration"),
+        "portfolio_modified_duration": _weighted(duration_rows, "modified_duration"),
+        "portfolio_convexity": _weighted(duration_rows, "convexity"),
         "portfolio_dv01": _sum(rows, "dv01"),
     }
+
+
+def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    eligible: list[dict[str, Any]] = []
+    for row in rows:
+        has_maturity = row.get("maturity_date") is not None
+        if "maturity_date" not in row:
+            has_maturity = safe_decimal(row.get("years_to_maturity")) > ZERO
+        if (
+            has_maturity
+            and safe_decimal(row.get("modified_duration")) > ZERO
+            and safe_decimal(row.get("market_value")) != ZERO
+        ):
+            eligible.append(row)
+    return eligible
 
 
 def build_krd_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

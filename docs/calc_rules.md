@@ -184,6 +184,12 @@ PnL Bridge 结构：
 - `issuer_concentration`
 - `liquidity_gap`
 
+Duration denominator rules:
+- `total_market_value` remains the full bond analytics market value.
+- `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.
+- Fund-like or other no-maturity rows must not receive a synthetic maturity date. They are excluded from the duration denominator and disclosed through `duration_excluded_market_value` / `duration_excluded_count` in the risk tensor API.
+- `rate_risk_market_value`, `rate_risk_dv01`, and `rate_risk_modified_duration` expose the denominator used for the rate-risk duration view; `rate_risk_modified_duration` must reconcile to `portfolio_modified_duration`.
+
 流动性缺口规则：
 - `liquidity_gap_30d` / `liquidity_gap_90d` 必须按未来 30 / 90 天现金流口径计算，不得再按 `maturity_date` 对 `market_value` 做简单过滤。
 - 到期本金现金流：`maturity_date` 落入窗口时计入 `face_value`。
@@ -250,6 +256,13 @@ PnL Bridge 结构：
 - 本节是当前 `zqtz / tyw` formal balance-analysis 的规则来源之一。
 - 当前仓库已落地 governed formal compute / materialize、service / API 与首个 workbench consumer；已落地面以 `backend/app/core_finance/balance_analysis.py`、`backend/app/tasks/balance_analysis_materialize.py`、`backend/app/services/balance_analysis_service.py`、`backend/app/api/routes/balance_analysis.py` 与 `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx` 为准。
 - 本节不宣称超出上述已落地面的更多分析能力；后续扩展仍必须遵守 `backend/app/core_finance/` 唯一正式计算入口原则。
+
+### 12.6 Liability Yield / NIM CNY Weighting
+
+- `/api/analysis/yield_metrics` and executive NIM keep the existing formula: `nim = asset_yield - market_liability_cost`.
+- ZQTZ yield rows must prefer `fact_formal_zqtz_balance_daily` with `currency_basis='CNY'` and `position_scope in ('asset', 'liability')` so foreign-currency bond assets are weighted on the same CNY basis as formal balance analytics.
+- If formal CNY rows are unavailable for a requested date, the service may fall back to `zqtz_bond_daily_snapshot` for backward compatibility.
+- Direct `invest_type_std` from formal balance rows must be used for H/A/T weighting decisions; portfolio names such as `FIOA` must not drive H/A/T inference.
 
 ## 13. Livermore 股票输入（观测层）
 

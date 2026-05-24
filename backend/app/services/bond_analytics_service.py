@@ -1791,9 +1791,7 @@ def _build_portfolio_headlines_empty_response(report_date: date) -> dict:
 def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[str, object]:
     """Compute all metrics for portfolio headlines."""
     risk = summarize_portfolio_risk(rows)
-    rate_duration_rows = [
-        row for row in rows if str(row.get("asset_class_std")) in {"rate", "credit"}
-    ]
+    rate_duration_rows = _rate_duration_rows(rows)
     rate_duration_risk = summarize_portfolio_risk(rate_duration_rows)
     credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
     credit_summary = summarize_credit(
@@ -1815,6 +1813,17 @@ def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[
         "cpn_dec": cpn_dec,
         "by_ac": by_ac,
     }
+
+
+def _rate_duration_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        row
+        for row in rows
+        if str(row.get("asset_class_std")) in {"rate", "credit"}
+        and row.get("maturity_date") is not None
+        and safe_decimal(row.get("modified_duration")) > ZERO
+        and safe_decimal(row.get("market_value")) != ZERO
+    ]
 
 
 def get_portfolio_headlines(report_date: date) -> dict:

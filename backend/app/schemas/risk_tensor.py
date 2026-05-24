@@ -125,6 +125,11 @@ class RiskTensorPayload(BaseModel):
     liquidity_gap_90d: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=True))
     liquidity_gap_30d_ratio: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
+    rate_risk_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
+    rate_risk_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
+    rate_risk_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
+    duration_excluded_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
+    duration_excluded_count: int = 0
     bond_count: int = 0
     quality_flag: str = "ok"
     warnings: list[str] = Field(default_factory=list)
@@ -153,6 +158,10 @@ class RiskTensorPayload(BaseModel):
         "liquidity_gap_90d": ("yuan", True),
         "liquidity_gap_30d_ratio": ("ratio", True),
         "total_market_value": ("yuan", False),
+        "rate_risk_market_value": ("yuan", False),
+        "rate_risk_dv01": ("dv01", False),
+        "rate_risk_modified_duration": ("ratio", False),
+        "duration_excluded_market_value": ("yuan", False),
     }
 
     @model_validator(mode="before")

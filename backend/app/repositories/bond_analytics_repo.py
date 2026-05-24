@@ -20,7 +20,19 @@ SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
 BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
 
 _DASHBOARD_ASSET_GROUP_COLUMNS = frozenset({"bond_type", "rating", "portfolio_name", "tenor_bucket"})
-_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL = "asset_class_std in ('rate', 'credit')"
+_DURATION_DENOMINATOR_SQL = (
+    "maturity_date is not null "
+    "and coalesce(modified_duration, 0) > 0 "
+    "and coalesce(market_value, 0) <> 0"
+)
+_MATURITY_DENOMINATOR_SQL = (
+    "maturity_date is not null "
+    "and coalesce(years_to_maturity, 0) > 0 "
+    "and coalesce(market_value, 0) <> 0"
+)
+_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL = (
+    f"asset_class_std in ('rate', 'credit') and {_DURATION_DENOMINATOR_SQL}"
+)
 _DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL = (
     f"case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then market_value else 0 end"
 )
@@ -123,6 +135,15 @@ _RISK_INDICATORS_KEYS = (
     "total_spread_dv01",
     "reinvestment_ratio_1y",
 )
+
+_DURATION_SCOPE_KEYS = (
+    "rate_risk_market_value",
+    "rate_risk_dv01",
+    "rate_risk_modified_duration",
+    "duration_excluded_market_value",
+    "duration_excluded_count",
+)
+_Q8 = Decimal("0.00000001")
 
 
 @dataclass
@@ -447,14 +468,24 @@ class BondAnalyticsRepository:
                 f"""
                 select
                   cast(report_date as varchar) as report_date,
-                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
+                  case
+                    when coalesce(sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_DURATION_DENOMINATOR_SQL} then modified_duration * market_value else 0 end)
+                       / sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as portfolio_modified_duration,
                   sum(dv01) as portfolio_dv01,
                   sum(case when accounting_class = 'AC' then dv01 else 0 end) as ac_dv01,
                   sum(case when accounting_class = 'OCI' then dv01 else 0 end) as oci_dv01,
                   sum(case when accounting_class = 'TPL' then dv01 else 0 end) as tpl_dv01,
                   sum(case when accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null then dv01 else 0 end) as other_dv01,
                   sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
-                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
+                  case
+                    when coalesce(sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_MATURITY_DENOMINATOR_SQL} then years_to_maturity * market_value else 0 end)
+                       / sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as weighted_years_to_maturity
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 group by report_date
@@ -486,14 +517,24 @@ class BondAnalyticsRepository:
                 f"""
                 select
                   cast(report_date as varchar) as report_date,
-                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
+                  case
+                    when coalesce(sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_DURATION_DENOMINATOR_SQL} then modified_duration * market_value else 0 end)
+                       / sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as portfolio_modified_duration,
                   sum(dv01) as portfolio_dv01,
                   sum(case when accounting_class = 'AC' then dv01 else 0 end) as ac_dv01,
                   sum(case when accounting_class = 'OCI' then dv01 else 0 end) as oci_dv01,
                   sum(case when accounting_class = 'TPL' then dv01 else 0 end) as tpl_dv01,
                   sum(case when accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null then dv01 else 0 end) as other_dv01,
                   sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
-                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
+                  case
+                    when coalesce(sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_MATURITY_DENOMINATOR_SQL} then years_to_maturity * market_value else 0 end)
+                       / sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as weighted_years_to_maturity
                 from {FACT_TABLE}
                 where cast(report_date as varchar) in ({placeholders})
                 group by report_date
@@ -513,6 +554,61 @@ class BondAnalyticsRepository:
         if not report_dates:
             return None
         return self.fetch_risk_overview_snapshot(report_date=report_dates[0])
+
+    def fetch_rate_risk_duration_scope(self, report_date: str) -> dict[str, object] | None:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return None
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return None
+            required_columns = ("market_value", "dv01", "modified_duration", "maturity_date")
+            if not all(_column_exists(conn, FACT_TABLE, column) for column in required_columns):
+                return None
+            row = conn.execute(
+                f"""
+                with scoped as (
+                  select
+                    coalesce(market_value, 0) as market_value,
+                    coalesce(dv01, 0) as dv01,
+                    coalesce(modified_duration, 0) as modified_duration,
+                    case
+                      when {_DURATION_DENOMINATOR_SQL}
+                      then 1 else 0
+                    end as in_duration_scope
+                  from {FACT_TABLE}
+                  where cast(report_date as varchar) = ?
+                )
+                select
+                  coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0)
+                    as rate_risk_market_value,
+                  coalesce(sum(case when in_duration_scope = 1 then dv01 else 0 end), 0)
+                    as rate_risk_dv01,
+                  case
+                    when coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0) > 0
+                    then sum(case when in_duration_scope = 1 then modified_duration * market_value else 0 end)
+                       / sum(case when in_duration_scope = 1 then market_value else 0 end)
+                    else 0
+                  end as rate_risk_modified_duration,
+                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then market_value else 0 end), 0)
+                    as duration_excluded_market_value,
+                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then 1 else 0 end), 0)
+                    as duration_excluded_count
+                from scoped
+                """,
+                [report_date],
+            ).fetchone()
+            if row is None:
+                return None
+            out = dict(zip(_DURATION_SCOPE_KEYS, row, strict=True))
+            out["duration_excluded_count"] = int(out["duration_excluded_count"] or 0)
+            for key in _DURATION_SCOPE_KEYS:
+                if key != "duration_excluded_count":
+                    out[key] = _decimal(out[key])
+            out["rate_risk_modified_duration"] = out["rate_risk_modified_duration"].quantize(_Q8)
+            return out
+        finally:
+            conn.close()
 
     def resolve_prior_curve_anchor_report_date(self, *, report_date: str) -> str | None:
         conn = _connect_read_only(self.path)
