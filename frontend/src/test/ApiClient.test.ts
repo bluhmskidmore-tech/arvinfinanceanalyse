@@ -3,6 +3,68 @@
 import { createApiClient } from "../api/client";
 
 describe("createApiClient", () => {
+  it("keeps mock health endpoints available", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getHealth()).resolves.toEqual({ status: "ok" });
+    await expect(client.getHealthLive()).resolves.toEqual({ status: "ok" });
+    await expect(client.getHealthSummary()).resolves.toEqual({ status: "ok" });
+  });
+
+  it("uses real mode to fetch health endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ status: "ok" }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getHealth();
+    await client.getHealthLive();
+    await client.getHealthSummary();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/health/ready",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/health/live",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/health",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps real health failures actionable", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.getHealthLive()).rejects.toThrow(
+      "Request failed: /health/live (503)",
+    );
+  });
+
   it("uses mock mode by default", async () => {
     const client = createApiClient({ mode: "mock" });
 

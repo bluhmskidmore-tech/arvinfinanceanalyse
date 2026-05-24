@@ -6,7 +6,7 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 5248,
+  apiClientLines: 5177,
   // Phase 2 dashboard signals + fixture imports; demos split to workbenchDashboardApi / bondDashboardWorkbenchEndpoints.
   apiClientMockOccurrences: 401,
   totalTsxStyleProps: 3308,

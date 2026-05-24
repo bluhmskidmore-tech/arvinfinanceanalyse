@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,10 @@ const dataModeRibbonSource = readFileSync(resolve(process.cwd(), "src/components
 const marketDataSource = readFileSync(resolve(process.cwd(), "src/api/marketDataClient.ts"), "utf8");
 const kpiSource = readFileSync(resolve(process.cwd(), "src/api/kpiClient.ts"), "utf8");
 const cubeSource = readFileSync(resolve(process.cwd(), "src/api/cubeClient.ts"), "utf8");
+const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
+const healthClientSource = existsSync(healthClientPath)
+  ? readFileSync(healthClientPath, "utf8")
+  : "";
 
 describe("ApiClient composition boundary", () => {
   it("keeps the public market-data source preview surface available from createApiClient", () => {
@@ -74,6 +78,15 @@ describe("ApiClient composition boundary", () => {
     expect(kpiSource).toMatch(/async fetchAndRecalcKpi\(/);
     expect(cubeSource).toMatch(/async getCubeDimensions\(/);
     expect(cubeSource).toMatch(/async executeCubeQuery\(/);
+  });
+
+  it("requires healthClient.ts to own health endpoint implementations", () => {
+    expect(clientSource).not.toContain("/health/ready");
+    expect(clientSource).not.toContain("/health/live");
+    expect(clientSource).not.toMatch(/async getHealthLive\(/);
+    expect(healthClientSource).toContain("/health/ready");
+    expect(healthClientSource).toContain("/health/live");
+    expect(healthClientSource).toContain("/health");
   });
 
   it("keeps first-screen providers and shell on the lightweight API context boundary", () => {

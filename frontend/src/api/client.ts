@@ -64,8 +64,6 @@ import type {
   FxFormalStatusPayload,
   FormalPnlRefreshPayload,
   GetHomeSnapshotOptions,
-  HealthResponse,
-  HealthStatusResponse,
   IndustryDistPayload,
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,
@@ -120,6 +118,11 @@ import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 import type { ExecutiveClientMethods } from "./executiveClient";
 import { fetchHomeSnapshotEnvelope } from "./executiveHomeSnapshotFetch";
+import {
+  createDemoHealthClient,
+  createRealHealthClient,
+  type HealthClientMethods,
+} from "./healthClient";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
 import {
@@ -188,10 +191,12 @@ export type { LedgerClientMethods } from "./ledgerClient";
 export type { KpiClientMethods } from "./kpiClient";
 export type { CubeClientMethods } from "./cubeClient";
 export type { AgentClientMethods } from "./agentClient";
+export type { HealthClientMethods } from "./healthClient";
 
 export type ApiClient = {
   mode: DataSourceMode;
-} & ExecutiveClientMethods
+} & HealthClientMethods
+  & ExecutiveClientMethods
   & DashboardClientMethods
   & PnlClientMethods
   & BalanceMovementClientMethods
@@ -203,11 +208,7 @@ export type ApiClient = {
   & LedgerClientMethods
   & KpiClientMethods
   & CubeClientMethods
-  & AgentClientMethods
-  & {
-  getHealthLive: () => Promise<HealthStatusResponse>;
-  getHealthSummary: () => Promise<HealthStatusResponse>;
-};
+  & AgentClientMethods;
 
 export type ApiClientOptions = {
   mode?: DataSourceMode;
@@ -2215,6 +2216,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
   const mockClient: ApiClient = {
     mode: "mock",
+    ...createDemoHealthClient(delay),
     ...createMockBalanceMovementClient(),
     ...createMockLedgerClient(),
     ...createMockMarketDataClient(),
@@ -2224,18 +2226,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createMockPnlBusinessClient(),
     ...dashboardWorkbenchDemoEndpoints(delay, ensureMockClientBundle),
     ...bondDashboardDemoEndpoints(delay, ensureMockClientBundle),
-    async getHealth() {
-      await delay();
-      return { status: "ok" };
-    },
-    async getHealthLive() {
-      await delay();
-      return { status: "ok" };
-    },
-    async getHealthSummary() {
-      await delay();
-      return { status: "ok" };
-    },
     async queryAgent(_request) {
       await delay();
       return buildStableDemoAgentEnvelope();
@@ -4022,6 +4012,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
   return {
     mode,
+    ...createRealHealthClient({ fetchImpl, baseUrl }),
     ...createRealBalanceMovementClient({ fetchImpl, baseUrl }),
     ...createRealLedgerClient({ fetchImpl, baseUrl }),
     ...createRealMarketDataClient({ fetchImpl, baseUrl }),
@@ -4032,39 +4023,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealAgentClient({ fetchImpl, baseUrl }),
     ...dashboardWorkbenchLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     ...bondDashboardLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
-    async getHealth() {
-      const response = await fetchImpl(`${baseUrl}/health/ready`, {
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Request failed: /health/ready (${response.status})`);
-      }
-
-      return (await response.json()) as HealthResponse;
-    },
-    async getHealthLive() {
-      const response = await fetchImpl(`${baseUrl}/health/live`, {
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Request failed: /health/live (${response.status})`);
-      }
-
-      return (await response.json()) as HealthStatusResponse;
-    },
-    async getHealthSummary() {
-      const response = await fetchImpl(`${baseUrl}/health`, {
-        headers: { Accept: "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Request failed: /health (${response.status})`);
-      }
-
-      return (await response.json()) as HealthStatusResponse;
-    },
     getOverview: (reportDate?: string) =>
       requestJson<OverviewPayload>(
         fetchImpl,

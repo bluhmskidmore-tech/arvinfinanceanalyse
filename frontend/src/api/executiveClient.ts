@@ -7,7 +7,6 @@ import type {
   AlertsPayload,
   ContributionPayload,
   GetHomeSnapshotOptions,
-  HealthResponse,
   HomeSnapshotPayload,
   OverviewPayload,
   PlaceholderSnapshot,
@@ -18,7 +17,6 @@ import type {
 } from "./contracts";
 
 export type ExecutiveClientMethods = {
-  getHealth: () => Promise<HealthResponse>;
   getOverview: (reportDate?: string) => Promise<ApiEnvelope<OverviewPayload>>;
   getHomeSnapshot: (
     options?: GetHomeSnapshotOptions,
