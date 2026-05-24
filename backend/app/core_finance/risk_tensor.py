@@ -119,8 +119,15 @@ def compute_portfolio_risk_tensor(
         (_safe_decimal(row.get("spread_dv01")) for row in rows if _is_credit(row.get("is_credit"))),
         ZERO,
     )
-    portfolio_convexity = _weighted_average(rows, "convexity", total_market_value)
-    portfolio_modified_duration = _weighted_average(rows, "modified_duration", total_market_value)
+    _warn_duration_exclusion_inputs(rows, warnings)
+    duration_rows = _duration_denominator_rows(rows)
+    duration_market_value = _sum_field(duration_rows, "market_value")
+    portfolio_convexity = _weighted_average(duration_rows, "convexity", duration_market_value)
+    portfolio_modified_duration = _weighted_average(
+        duration_rows,
+        "modified_duration",
+        duration_market_value,
+    )
     issuer_hhi, issuer_top5 = _issuer_concentration_metrics(rows, total_market_value)
     (
         liquidity_gap_30d,
@@ -215,6 +222,53 @@ def _aggregate_krd_values(
         )
 
     return krd_values
+
+
+def _warn_duration_exclusion_inputs(rows: list[dict[str, Any]], warnings: list[str]) -> None:
+    excluded_rows = _duration_excluded_rows(rows)
+    if not excluded_rows:
+        return
+    excluded_market_value = sum(
+        (_safe_decimal(row.get("market_value")) for row in excluded_rows),
+        ZERO,
+    )
+    missing_maturity_count = sum(
+        1 for row in excluded_rows if row.get("maturity_date") is None
+    )
+    non_positive_duration_count = sum(
+        1
+        for row in excluded_rows
+        if row.get("maturity_date") is not None
+        and _safe_decimal(row.get("modified_duration")) <= ZERO
+    )
+    warnings.append(
+        f"{len(excluded_rows)} rows carry market_value={excluded_market_value} and are "
+        "excluded from portfolio duration denominator: "
+        f"{missing_maturity_count} without maturity_date; "
+        f"{non_positive_duration_count} with non-positive modified_duration. "
+        "DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated."
+    )
+
+
+def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if _is_duration_denominator_row(row)]
+
+
+def _duration_excluded_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if _safe_decimal(row.get("market_value")) != ZERO
+        and not _is_duration_denominator_row(row)
+    ]
+
+
+def _is_duration_denominator_row(row: dict[str, Any]) -> bool:
+    return (
+        row.get("maturity_date") is not None
+        and _safe_decimal(row.get("modified_duration")) > ZERO
+        and _safe_decimal(row.get("market_value")) != ZERO
+    )
 
 
 def _resolve_face_value(row: dict[str, Any]) -> Decimal:

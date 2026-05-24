@@ -46,6 +46,7 @@ def _make_bond_analytics_row(
     ytm: Decimal,
     modified_duration: Decimal,
     bond_type_label: str | None = None,
+    maturity_date: date | None = date(2030, 1, 1),
 ) -> Any:
     from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 
@@ -75,7 +76,7 @@ def _make_bond_analytics_row(
         interest_payment_frequency="annual",
         interest_rate_style="fixed",
         ytm=ytm,
-        maturity_date=date(2030, 1, 1),
+        maturity_date=maturity_date,
         next_call_date=None,
         years_to_maturity=Decimal("2.5"),
         tenor_bucket="1-3Y",
@@ -490,7 +491,7 @@ def test_bond_dashboard_main_endpoints_return_numeric_payloads_with_seeded_facts
     get_settings.cache_clear()
 
 
-def test_bond_dashboard_weighted_yield_and_duration_exclude_other_asset_class(tmp_path, monkeypatch) -> None:
+def test_bond_dashboard_weighted_yield_and_duration_exclude_other_or_no_maturity_assets(tmp_path, monkeypatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 
     duckdb_path = tmp_path / "dash-eligible.duckdb"
@@ -527,6 +528,16 @@ def test_bond_dashboard_weighted_yield_and_duration_exclude_other_asset_class(tm
             ytm=Decimal("0"),
             modified_duration=Decimal("0"),
         ),
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="NO-MATURITY",
+            portfolio_name="P1",
+            asset_class_std="rate",
+            market_value=Decimal("1000"),
+            ytm=Decimal("0.99"),
+            modified_duration=Decimal("0"),
+            maturity_date=None,
+        ),
     ]
     repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
 
@@ -535,7 +546,7 @@ def test_bond_dashboard_weighted_yield_and_duration_exclude_other_asset_class(tm
     headline = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": REPORT_DATE})
     assert headline.status_code == 200, headline.text
     headline_result = headline.json()["result"]
-    assert headline_result["kpis"]["bond_count"] == 3
+    assert headline_result["kpis"]["bond_count"] == 4
     assert _metric_raw(headline_result["kpis"]["weighted_ytm"]) == Decimal("0.035")
     assert _metric_raw(headline_result["kpis"]["weighted_duration"]) == Decimal("5")
 

@@ -21,6 +21,7 @@ def _make_bond_analytics_row(
     market_value: Decimal,
     ytm: Decimal,
     modified_duration: Decimal,
+    maturity_date: date | None = date(2030, 1, 1),
 ) -> Any:
     from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 
@@ -50,7 +51,7 @@ def _make_bond_analytics_row(
         interest_payment_frequency="annual",
         interest_rate_style="fixed",
         ytm=ytm,
-        maturity_date=date(2030, 1, 1),
+        maturity_date=maturity_date,
         next_call_date=None,
         years_to_maturity=Decimal("2.5"),
         tenor_bucket="1-3Y",
@@ -108,7 +109,7 @@ def test_portfolio_headlines_empty_duckdb(tmp_path, monkeypatch) -> None:
         get_settings.cache_clear()
 
 
-def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_asset_class(tmp_path, monkeypatch) -> None:
+def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_or_no_maturity_assets(tmp_path, monkeypatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 
     duckdb_path = tmp_path / "portfolio-headlines.duckdb"
@@ -144,6 +145,15 @@ def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_asset_cla
                     ytm=Decimal("0"),
                     modified_duration=Decimal("0"),
                 ),
+                _make_bond_analytics_row(
+                    report_date=REPORT_DATE,
+                    instrument_code="NO-MATURITY",
+                    asset_class_std="rate",
+                    market_value=Decimal("1000"),
+                    ytm=Decimal("0.99"),
+                    modified_duration=Decimal("0"),
+                    maturity_date=None,
+                ),
             ],
         )
 
@@ -155,7 +165,7 @@ def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_asset_cla
 
         assert response.status_code == 200, response.text
         result = response.json()["result"]
-        assert result["bond_count"] == 3
+        assert result["bond_count"] == 4
         assert _metric_raw(result["weighted_ytm"]) == Decimal("0.035")
         assert _metric_raw(result["weighted_duration"]) == Decimal("5")
     finally:

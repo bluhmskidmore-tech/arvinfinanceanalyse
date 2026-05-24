@@ -278,3 +278,92 @@ def test_warning_paths_flag_degraded_tensor_inputs():
     assert any("Non-standard tenor buckets remapped" in warning for warning in tensor.warnings)
     assert any("without maturity_date" in warning for warning in tensor.warnings)
     assert any("Total market value is zero" in warning for warning in tensor.warnings)
+
+
+def test_missing_maturity_market_value_warns_that_duration_and_dv01_are_zeroed():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 3, 31)
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(
+                dv01="0",
+                market_value="100000000",
+                maturity_date=None,
+            ),
+        ],
+        report_date=report_date,
+    )
+
+    assert tensor.quality_flag == "warning"
+    assert any(
+        "excluded from portfolio duration denominator" in warning
+        and "market_value=100000000" in warning
+        for warning in tensor.warnings
+    )
+
+
+def test_missing_maturity_assets_do_not_dilute_portfolio_duration_denominator():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 3, 31)
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(
+                dv01="40000",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=365 * 4),
+            )
+            | {"modified_duration": Decimal("4")},
+            _row(
+                dv01="0",
+                market_value="300000000",
+                maturity_date=None,
+            )
+            | {"modified_duration": Decimal("0")},
+        ],
+        report_date=report_date,
+    )
+
+    assert tensor.total_market_value == Decimal("400000000")
+    assert tensor.portfolio_dv01 == Decimal("40000")
+    assert tensor.portfolio_modified_duration == Decimal("4")
+
+
+def test_duration_exclusion_warning_counts_all_rows_outside_duration_denominator():
+    mod = _risk_tensor_module()
+    report_date = date(2026, 3, 31)
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(
+                dv01="40000",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=365 * 4),
+            )
+            | {"modified_duration": Decimal("4")},
+            _row(
+                dv01="0",
+                market_value="300000000",
+                maturity_date=None,
+            )
+            | {"modified_duration": Decimal("0")},
+            _row(
+                dv01="0",
+                market_value="100000000",
+                maturity_date=report_date + timedelta(days=365),
+            )
+            | {"modified_duration": Decimal("0")},
+        ],
+        report_date=report_date,
+    )
+
+    warning = next(
+        warning
+        for warning in tensor.warnings
+        if "excluded from portfolio duration denominator" in warning
+    )
+    assert "2 rows" in warning
+    assert "market_value=400000000" in warning
+    assert "1 without maturity_date" in warning
+    assert "1 with non-positive modified_duration" in warning

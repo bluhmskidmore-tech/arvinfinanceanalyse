@@ -745,6 +745,10 @@ def test_risk_tensor_service_returns_non_empty_degraded_tensor_when_materialized
     assert result["bond_count"] == 3
     assert result["quality_flag"] == "warning"
     assert Decimal(str(result["portfolio_dv01"]["raw"])) > Decimal("0")
+    assert result["duration_excluded_count"] >= 1
+    assert result["duration_excluded_market_value"]["raw"] > 0
+    assert result["rate_risk_market_value"]["raw"] < result["total_market_value"]["raw"]
+    assert result["rate_risk_modified_duration"]["raw"] == result["portfolio_modified_duration"]["raw"]
     assert any("Non-standard tenor buckets remapped" in warning for warning in result["warnings"])
     assert any("without maturity_date" in warning for warning in result["warnings"])
 

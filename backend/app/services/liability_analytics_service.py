@@ -190,7 +190,7 @@ def _build_yield_history_series(
     slice_asc = list(reversed(slice_desc))
     history: list[dict[str, object]] = []
     for d in slice_asc:
-        zq = repo.fetch_zqtz_rows(d)
+        zq = repo.fetch_zqtz_yield_rows(d)
         ty = repo.fetch_tyw_rows(d)
         try:
             m = compute_liability_yield_metrics(d, zq, ty)
@@ -281,7 +281,7 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
 def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
     repo = LiabilityAnalyticsRepository(duckdb_path)
     resolved_date = _resolve_report_date(repo, report_date)
-    zqtz_rows = repo.fetch_zqtz_rows(resolved_date) if resolved_date else []
+    zqtz_rows = repo.fetch_zqtz_yield_rows(resolved_date) if resolved_date else []
     tyw_rows = repo.fetch_tyw_rows(resolved_date) if resolved_date else []
     if not resolved_date:
         return _envelope(

@@ -609,6 +609,202 @@ def test_liability_analytics_yield_batch_rows_preserve_nim_calculation(tmp_path)
     assert combined_payload["kpi"] == full_payload["kpi"]
 
 
+def test_liability_analytics_yield_rows_prefer_formal_cny_zqtz_weights(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.liability_analytics_repo_formal_cny_yield_contract",
+        "backend/app/repositories/liability_analytics_repo.py",
+    )
+    compute_module = load_module(
+        "backend.app.core_finance.liability_analytics_compat_formal_cny_yield_contract",
+        "backend/app/core_finance/liability_analytics_compat.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table zqtz_bond_daily_snapshot (
+              report_date date,
+              instrument_code varchar,
+              instrument_name varchar,
+              asset_class varchar,
+              bond_type varchar,
+              is_issuance_like boolean,
+              face_value_native decimal(24, 8),
+              market_value_native decimal(24, 8),
+              amortized_cost_native decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              instrument_name varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              account_category varchar,
+              asset_class varchar,
+              bond_type varchar,
+              issuer_name varchar,
+              industry_name varchar,
+              rating varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              face_value_amount decimal(24, 8),
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table tyw_interbank_daily_snapshot (
+              report_date date,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              core_customer_type varchar,
+              principal_native decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+            ('2026-04-30', 'CNY1', 'cny bond', 'AFS', 'gov', false, 100, 100, 100, 1.0, 1.0, '2030-01-01', 'sv_snapshot', 'rv_snapshot'),
+            ('2026-04-30', 'USD1', 'usd bond', 'AFS', 'gov', false, 100, 100, 100, 3.0, 3.0, '2030-01-01', 'sv_snapshot', 'rv_snapshot')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'CNY1', 'cny bond', 'FIOA', 'CC', 'bank', 'AFS', 'gov', '', '', '', 'A', 'FVOCI', 'asset', 'CNY', 'CNY', 100, 100, 100, 0, 1.0, 1.0, '2030-01-01', 'sv_formal_cny', 'rv_formal'),
+            ('2026-04-30', 'USD1', 'usd bond', 'FIOA', 'CC', 'bank', 'AFS', 'gov', '', '', '', 'A', 'FVOCI', 'asset', 'CNY', 'USD', 700, 700, 700, 0, 3.0, 3.0, '2030-01-01', 'sv_formal_cny', 'rv_formal')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+            ('2026-04-30', 'T1', 'repo', 'liability side', 'cp b', 'non-core', 100, 1.0, '2026-06-01', 'sv_tyw', 'rv_tyw')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
+    zqtz_rows, tyw_rows = repo.fetch_yield_rows_for_dates(["2026-04-30"])
+    payload = compute_module.compute_liability_yield_metrics(
+        "2026-04-30",
+        zqtz_rows["2026-04-30"],
+        tyw_rows["2026-04-30"],
+    )
+
+    assert {row["source_version"] for row in zqtz_rows["2026-04-30"]} == {"sv_formal_cny"}
+    assert payload["kpi"]["asset_yield"] == 0.0275
+    assert payload["kpi"]["nim"] == 0.0175
+
+
+def test_liability_analytics_yield_rows_fall_back_when_formal_cny_lacks_invest_type(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.liability_analytics_repo_missing_invest_type_contract",
+        "backend/app/repositories/liability_analytics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table zqtz_bond_daily_snapshot (
+              report_date date,
+              instrument_code varchar,
+              instrument_name varchar,
+              asset_class varchar,
+              bond_type varchar,
+              is_issuance_like boolean,
+              face_value_native decimal(24, 8),
+              market_value_native decimal(24, 8),
+              amortized_cost_native decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              instrument_name varchar,
+              portfolio_name varchar,
+              asset_class varchar,
+              bond_type varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              face_value_amount decimal(24, 8),
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+            ('2026-04-30', 'SNAP1', 'snapshot bond', 'AFS', 'gov', false,
+             100, 100, 100, 1.0, 1.0, '2030-01-01', 'sv_snapshot', 'rv_snapshot')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'FORMAL1', 'formal bond', 'FIOA', 'AFS', 'gov',
+             'FVOCI', 'asset', 'CNY', 'CNY', 700, 700, 700, 3.0, 3.0,
+             '2030-01-01', 'sv_formal_without_invest_type', 'rv_formal')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
+    rows_by_date = repo.fetch_zqtz_yield_rows_for_dates(["2026-04-30"])
+
+    assert [row["source_version"] for row in rows_by_date["2026-04-30"]] == ["sv_snapshot"]
+
+
 def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_path):
     repo_module = load_module(
         "backend.app.repositories.formal_zqtz_balance_metrics_repo_combined_contract",
@@ -856,17 +1052,20 @@ def test_bond_analytics_batch_risk_snapshots_match_single_date_snapshots(tmp_pat
               modified_duration decimal(18, 8),
               market_value decimal(24, 8),
               dv01 decimal(24, 8),
+              accounting_class varchar,
               is_credit boolean,
-              years_to_maturity decimal(18, 8)
+              years_to_maturity decimal(18, 8),
+              maturity_date varchar
             )
             """
         )
         conn.execute(
             """
             insert into fact_formal_bond_analytics_daily values
-            ('2025-12-31', 2, 100, 1, false, 3),
-            ('2025-12-31', 4, 300, 3, true, 5),
-            ('2025-11-30', 1, 200, 2, false, 2)
+            ('2025-12-31', 2, 100, 1, 'AC', false, 3, '2028-12-31'),
+            ('2025-12-31', 4, 300, 3, 'OCI', true, 5, '2030-12-31'),
+            ('2025-12-31', 0, 600, 0, 'AC', false, 0, null),
+            ('2025-11-30', 1, 200, 2, 'TPL', false, 2, '2027-11-30')
             """
         )
     finally:
@@ -877,6 +1076,8 @@ def test_bond_analytics_batch_risk_snapshots_match_single_date_snapshots(tmp_pat
     snapshots = repo.fetch_risk_overview_snapshots(report_dates=dates)
 
     assert snapshots == {d: repo.fetch_risk_overview_snapshot(report_date=d) for d in dates}
+    assert snapshots["2025-12-31"]["portfolio_modified_duration"] == Decimal("3.500000000000000")
+    assert snapshots["2025-12-31"]["weighted_years_to_maturity"] == Decimal("4.500000000000000")
 
 
 def test_dashboard_repository_batch_core_metrics_match_single_date_metrics(tmp_path):
