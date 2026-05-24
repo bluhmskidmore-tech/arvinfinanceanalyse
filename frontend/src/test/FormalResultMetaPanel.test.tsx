@@ -38,6 +38,10 @@ describe("FormalResultMetaPanel", () => {
             meta: buildMeta({
               tables_used: ["fact_formal_pnl_fi"],
               filters_applied: { report_date: "2025-12-31", basis: "formal" },
+              requested_report_date: "2026-04-16",
+              resolved_report_date: "2026-04-17",
+              date_basis: "formal_snapshot",
+              fallback_date: "2026-04-15",
               evidence_rows: 42,
               next_drill: ["portfolio", { dimension: "issuer", label: "Issuer" }],
             }),
@@ -53,7 +57,10 @@ describe("FormalResultMetaPanel", () => {
     expect(panel).toHaveTextContent("vv_none");
     expect(panel).toHaveTextContent("rv_formal_meta");
     expect(panel).toHaveTextContent("cv_formal_meta");
+    expect(panel).toHaveTextContent("2026-04-16");
     expect(panel).toHaveTextContent("2026-04-17");
+    expect(panel).toHaveTextContent("formal_snapshot");
+    expect(panel).toHaveTextContent("2026-04-15");
     expect(panel).toHaveTextContent("fact_formal_pnl_fi");
     expect(panel).toHaveTextContent('"report_date":"2025-12-31"');
     expect(panel).toHaveTextContent("42");
