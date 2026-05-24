@@ -1103,11 +1103,15 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByRole("heading", { name: "正式状态判断" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
-    const pageText = screen.getByTestId("balance-analysis-page").textContent ?? "";
-    expect(pageText.indexOf("资产负债分析")).toBeLessThan(pageText.indexOf("正式状态判断"));
-    expect(pageText.indexOf("正式状态判断")).toBeLessThan(pageText.indexOf("资产市值合计"));
-    expect(pageText.indexOf("资产市值合计")).toBeLessThan(pageText.indexOf("资产负债结构"));
-    expect(pageText.indexOf("正式汇总驾驶舱")).toBeLessThan(pageText.indexOf("辅助分析口径"));
+    const pageTitle = screen.getByTestId("balance-analysis-page-title");
+    const contractKpis = screen.getByTestId("balance-analysis-contract-kpis");
+    const commandDeck = screen.getByTestId("balance-analysis-command-deck");
+    const workbenchGrid = screen.getByTestId("balance-analysis-workbench-grid");
+    const summaryDetails = screen.getByTestId("balance-analysis-formal-summary-details");
+    expect(Boolean(pageTitle.compareDocumentPosition(contractKpis) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(contractKpis.compareDocumentPosition(commandDeck) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(commandDeck.compareDocumentPosition(workbenchGrid) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(summaryDetails.compareDocumentPosition(screen.getByTestId("balance-analysis-supplemental-panels")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(screen.getByTestId("balance-analysis-supplemental-panels")).not.toHaveAttribute("open");
 
     await waitFor(() => {

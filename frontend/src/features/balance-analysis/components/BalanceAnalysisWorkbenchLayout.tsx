@@ -24,7 +24,7 @@ import {
 import { NavLink } from "react-router-dom";
 
 import type {
-  BalanceAnalysisDecisionItemsPayload,
+  BalanceAnalysisDecisionItemStatusRow,
   BalanceAnalysisEventCalendarRow,
   BalanceAnalysisOverviewPayload,
   BalanceAnalysisPayload,
@@ -85,7 +85,7 @@ type BalanceAnalysisWorkbenchLayoutProps = {
   workbook: BalanceAnalysisWorkbookPayload | undefined;
   detail: BalanceAnalysisPayload | undefined;
   formalStatus: ResultMeta | undefined;
-  decisionItems: BalanceAnalysisDecisionItemsPayload | undefined;
+  decisionRows: BalanceAnalysisDecisionItemStatusRow[];
   riskAlerts: BalanceAnalysisRiskAlertRow[];
   calendarEvents: BalanceAnalysisEventCalendarRow[];
   tableRows: BalanceAnalysisTableRow[];
@@ -264,7 +264,7 @@ function buildCards({
   workbook,
   detail,
   formalStatus,
-  decisionItems,
+  decisionRows,
   riskAlerts,
   calendarEvents,
   tableRows,
@@ -275,14 +275,13 @@ function buildCards({
   | "workbook"
   | "detail"
   | "formalStatus"
-  | "decisionItems"
+  | "decisionRows"
   | "riskAlerts"
   | "calendarEvents"
   | "tableRows"
 >): BalanceWorkbenchCard[] {
   const workbookTables = workbook?.tables ?? [];
   const workbookCards = workbook?.cards ?? [];
-  const decisionRows = decisionItems?.rows ?? [];
 
   const orderedCards: BalanceWorkbenchCard[] = [
     {
@@ -496,7 +495,7 @@ export default function BalanceAnalysisWorkbenchLayout({
   workbook,
   detail,
   formalStatus,
-  decisionItems,
+  decisionRows,
   riskAlerts,
   calendarEvents,
   tableRows,
@@ -510,12 +509,12 @@ export default function BalanceAnalysisWorkbenchLayout({
     workbook,
     detail,
     formalStatus,
-    decisionItems,
+    decisionRows,
     riskAlerts,
     calendarEvents,
     tableRows,
   });
-  const topDecision = decisionItems?.rows[0];
+  const topDecision = decisionRows[0];
   const topRisk = riskAlerts[0];
   const topEvent = calendarEvents[0];
   const metricDefinitions = overview?.metric_definitions ?? [];
@@ -616,11 +615,12 @@ export default function BalanceAnalysisWorkbenchLayout({
           className="balance-workbench__status-rail"
         >
           <div className="balance-workbench__status-head">
-            <span className="balance-workbench__eyebrow">链路 / 治理状态</span>
+            <span className="balance-workbench__eyebrow">首页焦点 / 数据说明</span>
             <strong id="balance-analysis-status-rail-title">
               <SafetyCertificateOutlined aria-hidden />{" "}
               {formalStatus?.result_kind ?? "result_meta 未返回"}
             </strong>
+            <small>先确认正式读链路、数据质量与降级状态，再阅读规模和治理行动。</small>
           </div>
           <dl className="balance-workbench__status-pills">
             <div className="balance-workbench__status-pill">

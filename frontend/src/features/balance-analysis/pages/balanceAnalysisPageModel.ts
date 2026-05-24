@@ -2,16 +2,19 @@ import type {
   BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemRow,
   BalanceAnalysisDecisionItemStatusRow,
+  BalanceAnalysisDecisionItemsPayload,
   BalanceAnalysisEventCalendarRow,
   BalanceAnalysisOverviewPayload,
   BalanceAnalysisRiskAlertRow,
   BalanceAnalysisSummaryRow,
+  BalanceAnalysisSummaryTablePayload,
   BalanceAnalysisWorkbookPayload,
   BalanceAnalysisWorkbookTable,
   BalanceCurrencyBasis,
   BalancePositionScope,
   BalanceMovementBucket,
   BalanceMovementPayload,
+  ResultMeta,
 } from "../../../api/contracts";
 
 /** Minimum bar width (%) used by workbook distribution / gap panels (matches BalanceAnalysisPage). */
@@ -520,6 +523,378 @@ export function buildBalanceHeadlineCards({
       detail: "正式总览 · 明细行数",
     }),
   ];
+}
+
+export type BalanceAnalysisPageSourceMode = "real" | "mock";
+
+export type BalanceAnalysisPageReadModelMetaInput = {
+  key: string;
+  title: string;
+  meta?: ResultMeta | null;
+};
+
+export type BalanceAnalysisPageReadModelInput = {
+  clientMode: BalanceAnalysisPageSourceMode;
+  requestedReportDate: string;
+  selectedPositionScope: BalancePositionScope;
+  selectedCurrencyBasis: BalanceCurrencyBasis;
+  overview?: BalanceAnalysisOverviewPayload | null;
+  summary?: Pick<BalanceAnalysisSummaryTablePayload, "total_rows"> | null;
+  decisionItems?: Pick<BalanceAnalysisDecisionItemsPayload, "rows"> | null;
+  metaSections: BalanceAnalysisPageReadModelMetaInput[];
+};
+
+export type BalanceAnalysisPageStatusBadge = {
+  key: string;
+  label: string;
+  tone: "success" | "warning" | "danger" | "info" | "neutral" | "mock";
+};
+
+export type BalanceAnalysisPageStateSurface = {
+  key: string;
+  variant: "neutral" | "loading" | "empty" | "error" | "stale" | "fallback-date" | "mock";
+  title: string;
+  description: string;
+};
+
+export type BalanceAnalysisPageEvidenceCard = {
+  key: string;
+  title: string;
+  resultKind: string;
+  basisLabel: string;
+  qualityLabel: string;
+  fallbackLabel: string;
+  asOfDate: string;
+  traceId: string;
+};
+
+export type BalanceAnalysisPageReadModel = {
+  requestedReportDate: string;
+  resolvedReportDate: string;
+  dateStatus: "pending" | "matched" | "mismatch";
+  filterLine: string;
+  sourceBadge: BalanceAnalysisPageStatusBadge;
+  statusBadges: BalanceAnalysisPageStatusBadge[];
+  stateSurfaces: BalanceAnalysisPageStateSurface[];
+  conclusionTitle: string;
+  conclusionDetail: string;
+  kpis: BalanceHeadlineCard[];
+  evidenceCards: BalanceAnalysisPageEvidenceCard[];
+};
+
+export type BalanceAnalysisPageModelInput = {
+  clientMode: BalanceAnalysisPageSourceMode;
+  selectedReportDate: string;
+  positionScope: BalancePositionScope;
+  currencyBasis: BalanceCurrencyBasis;
+  overview?: BalanceAnalysisOverviewPayload | null;
+  summary?: Pick<BalanceAnalysisSummaryTablePayload, "total_rows"> | null;
+  decisionItems?: Pick<BalanceAnalysisDecisionItemsPayload, "rows"> | null;
+  workbook?: BalanceAnalysisWorkbookPayload | null;
+  summaryRows?: readonly BalanceAnalysisSummaryRow[];
+  decisionRows?: readonly BalanceAnalysisDecisionItemStatusRow[];
+  workbookDecisionRows?: readonly BalanceAnalysisDecisionItemRow[];
+  eventCalendarRows?: readonly BalanceAnalysisEventCalendarRow[];
+  riskAlertRows?: readonly BalanceAnalysisRiskAlertRow[];
+  metaSections: BalanceAnalysisPageReadModelMetaInput[];
+};
+
+export type BalanceAnalysisPageModel = {
+  readModel: BalanceAnalysisPageReadModel;
+  headlineAmountCards: BalanceHeadlineCard[];
+  balanceWorkbenchMetrics: BalanceAnalysisWorkbenchMetric[];
+  stageModel: BalanceStageRealDataModel;
+};
+
+export type BalanceAnalysisWorkbenchMetric = {
+  key: string;
+  label: string;
+  value: string;
+  unit?: string;
+  detail?: string;
+};
+
+function balancePositionScopeLabel(value: BalancePositionScope): string {
+  if (value === "asset") return "资产端";
+  if (value === "liability") return "负债端";
+  return "全头寸";
+}
+
+function balanceCurrencyBasisLabel(value: BalanceCurrencyBasis): string {
+  return value === "native" ? "原币" : "CNY";
+}
+
+function metaBasisLabel(value: ResultMeta["basis"] | undefined): string {
+  if (value === "formal") return "正式口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "mock") return "模拟口径";
+  return "未提供";
+}
+
+function metaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  if (value === "missing") return "缺失";
+  return "未提供";
+}
+
+function metaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return "未提供";
+}
+
+function countDisplay(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return Number.isFinite(value) ? value.toLocaleString("zh-CN") : String(value);
+}
+
+function buildReadModelAmountKpi(
+  key: string,
+  label: string,
+  raw: unknown,
+  detail: string,
+): BalanceHeadlineCard {
+  return buildBalanceHeadlineAmountCard({ key, label, raw, detail });
+}
+
+function buildReadModelCountKpi(
+  key: string,
+  label: string,
+  raw: number | null | undefined,
+  detail: string,
+): BalanceHeadlineCard {
+  return {
+    key,
+    label,
+    value: countDisplay(raw),
+    unit: key === "decision-item-count" ? "项" : "行",
+    detail,
+    valueVariant: "text",
+    state: raw === null || raw === undefined ? "missing" : raw === 0 ? "zero" : "value",
+  };
+}
+
+function buildBalancePageKpis(input: BalanceAnalysisPageReadModelInput): BalanceHeadlineCard[] {
+  const overview = input.overview;
+  return [
+    buildReadModelAmountKpi(
+      "total-market-value",
+      "总市值",
+      overview?.total_market_value_amount,
+      "MTR-BAL-001 · overview.total_market_value_amount",
+    ),
+    buildReadModelAmountKpi(
+      "total-amortized-cost",
+      "总摊余成本",
+      overview?.total_amortized_cost_amount,
+      "MTR-BAL-002 · overview.total_amortized_cost_amount",
+    ),
+    buildReadModelAmountKpi(
+      "total-accrued-interest",
+      "总应计利息",
+      overview?.total_accrued_interest_amount,
+      "MTR-BAL-003 · overview.total_accrued_interest_amount",
+    ),
+    buildReadModelCountKpi(
+      "detail-row-count",
+      "明细行数",
+      overview?.detail_row_count,
+      "MTR-BAL-101 · overview.detail_row_count",
+    ),
+    buildReadModelCountKpi(
+      "summary-row-count",
+      "汇总行数",
+      overview?.summary_row_count ?? input.summary?.total_rows,
+      "MTR-BAL-102/103 · overview.summary_row_count / summary.total_rows",
+    ),
+    buildReadModelCountKpi(
+      "decision-item-count",
+      "治理动作",
+      input.decisionItems?.rows.length,
+      "decision-items.rows.length · 运营治理",
+    ),
+  ];
+}
+
+function buildBalanceEvidenceCards(
+  sections: BalanceAnalysisPageReadModelMetaInput[],
+): BalanceAnalysisPageEvidenceCard[] {
+  return sections.flatMap((section) => {
+    if (!section.meta) return [];
+    return [
+      {
+        key: section.key,
+        title: section.title,
+        resultKind: section.meta.result_kind,
+        basisLabel: metaBasisLabel(section.meta.basis),
+        qualityLabel: metaQualityLabel(section.meta.quality_flag),
+        fallbackLabel: metaFallbackLabel(section.meta.fallback_mode),
+        asOfDate: section.meta.as_of_date || "未提供",
+        traceId: section.meta.trace_id || "未提供",
+      },
+    ];
+  });
+}
+
+export function buildBalanceAnalysisPageReadModel(
+  input: BalanceAnalysisPageReadModelInput,
+): BalanceAnalysisPageReadModel {
+  const requestedReportDate = input.requestedReportDate || "—";
+  const resolvedReportDate = input.overview?.report_date || requestedReportDate;
+  const dateStatus =
+    requestedReportDate === "—" || resolvedReportDate === "—"
+      ? "pending"
+      : requestedReportDate === resolvedReportDate
+        ? "matched"
+        : "mismatch";
+  const positionScope = input.overview?.position_scope ?? input.selectedPositionScope;
+  const currencyBasis = input.overview?.currency_basis ?? input.selectedCurrencyBasis;
+  const filterLine = `头寸范围 ${balancePositionScopeLabel(positionScope)} · 币种口径 ${balanceCurrencyBasisLabel(currencyBasis)}`;
+  const metas = input.metaSections.map((section) => section.meta).filter(Boolean) as ResultMeta[];
+  const hasFallback = metas.some((meta) => meta.fallback_mode === "latest_snapshot");
+  const hasStale = metas.some((meta) => meta.quality_flag === "stale");
+  const hasQualityError = metas.some((meta) => meta.quality_flag === "error" || meta.quality_flag === "missing");
+  const sourceBadge: BalanceAnalysisPageStatusBadge =
+    input.clientMode === "real"
+      ? { key: "source-real", label: "正式只读链路", tone: "success" }
+      : { key: "source-mock", label: "本地演示数据", tone: "mock" };
+
+  const statusBadges: BalanceAnalysisPageStatusBadge[] = [
+    sourceBadge,
+    {
+      key: "date",
+      label:
+        dateStatus === "matched"
+          ? `报告日 ${resolvedReportDate}`
+          : dateStatus === "mismatch"
+            ? `请求 ${requestedReportDate} / 返回 ${resolvedReportDate}`
+            : "报告日待定",
+      tone: dateStatus === "matched" ? "neutral" : "warning",
+    },
+    {
+      key: "basis",
+      label: "formal",
+      tone: "info",
+    },
+  ];
+
+  if (hasFallback) {
+    statusBadges.push({ key: "fallback", label: "fallback date", tone: "warning" });
+  }
+  if (hasStale) {
+    statusBadges.push({ key: "stale", label: "stale", tone: "warning" });
+  }
+  if (hasQualityError) {
+    statusBadges.push({ key: "quality-error", label: "quality error", tone: "danger" });
+  }
+
+  const stateSurfaces: BalanceAnalysisPageStateSurface[] = [];
+  if (input.clientMode === "mock") {
+    stateSurfaces.push({
+      key: "mock",
+      variant: "mock",
+      title: "当前为演示数据",
+      description: "页面可验证交互与布局，但不得把 mock 数值当成正式口径。",
+    });
+  }
+  if (dateStatus === "matched") {
+    stateSurfaces.push({
+      key: "date-matched",
+      variant: "neutral",
+      title: "报告日已匹配",
+      description: `请求报告日与后端返回报告日一致：${resolvedReportDate}。`,
+    });
+  } else if (dateStatus === "mismatch") {
+    stateSurfaces.push({
+      key: "date-mismatch",
+      variant: "fallback-date",
+      title: "报告日不一致",
+      description: `请求 ${requestedReportDate}，后端返回 ${resolvedReportDate}，不得静默当作同一报告日。`,
+    });
+  }
+  if (hasStale) {
+    stateSurfaces.push({
+      key: "stale",
+      variant: "stale",
+      title: "存在陈旧数据标记",
+      description: "至少一个正式读面返回 stale，需要在结论旁显式提醒。",
+    });
+  }
+  if (hasFallback) {
+    stateSurfaces.push({
+      key: "fallback",
+      variant: "fallback-date",
+      title: "存在 fallback 日期",
+      description: "至少一个正式读面使用 latest_snapshot 降级，需查看证据账本确认 as-of。",
+    });
+  }
+  if (hasQualityError) {
+    stateSurfaces.push({
+      key: "quality-error",
+      variant: "error",
+      title: "存在质量错误",
+      description: "至少一个正式读面返回 error/missing，不应渲染为正常结论。",
+    });
+  }
+
+  return {
+    requestedReportDate,
+    resolvedReportDate,
+    dateStatus,
+    filterLine,
+    sourceBadge,
+    statusBadges,
+    stateSurfaces,
+    conclusionTitle: "正式状态判断",
+    conclusionDetail:
+      "先看正式资产、负债和治理动作；净头寸、期限缺口与解释项进入 governed workbook 与证据账本下钻，不在前端补算正式口径。",
+    kpis: buildBalancePageKpis(input),
+    evidenceCards: buildBalanceEvidenceCards(input.metaSections),
+  };
+}
+
+export function buildBalanceAnalysisPageModel(
+  input: BalanceAnalysisPageModelInput,
+): BalanceAnalysisPageModel {
+  const overviewCards = buildBalanceHeadlineCards({
+    overview: input.overview ?? undefined,
+    positionScope: input.positionScope,
+  });
+  const stageDecisionRows =
+    (input.decisionRows ?? []).length > 0 ? input.decisionRows ?? [] : input.workbookDecisionRows ?? [];
+
+  return {
+    readModel: buildBalanceAnalysisPageReadModel({
+      clientMode: input.clientMode,
+      requestedReportDate: input.selectedReportDate,
+      selectedPositionScope: input.positionScope,
+      selectedCurrencyBasis: input.currencyBasis,
+      overview: input.overview,
+      summary: input.summary,
+      decisionItems: input.decisionItems,
+      metaSections: input.metaSections,
+    }),
+    headlineAmountCards: overviewCards.filter((card) => card.unit === "亿元"),
+    balanceWorkbenchMetrics: overviewCards.map(({ key, label, value, unit, detail }) => ({
+      key,
+      label,
+      value,
+      unit,
+      detail,
+    })),
+    stageModel: buildBalanceStageRealDataModel({
+      overview: input.overview ?? undefined,
+      summaryRows: input.summaryRows ?? [],
+      workbook: input.workbook ?? undefined,
+      decisionRows: stageDecisionRows,
+      eventCalendarRows: input.eventCalendarRows ?? [],
+      riskAlertRows: input.riskAlertRows ?? [],
+    }),
+  };
 }
 
 export type BalanceStageAlertLevel = "danger" | "warning" | "caution" | "info";
