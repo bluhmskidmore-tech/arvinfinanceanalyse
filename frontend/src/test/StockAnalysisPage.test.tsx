@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
@@ -22,6 +22,41 @@ vi.mock("../components/charts/BaseChart", () => ({
     return <div data-testid="stock-detail-chart-canvas-stub" />;
   },
 }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function buildJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function buildStockAgentResult() {
+  return {
+    answer: "Stock embedded Agent answered.",
+    cards: [],
+    evidence: {
+      tables_used: [],
+      filters_applied: {
+        provider: "local",
+        transport: "sync",
+      },
+      evidence_rows: 0,
+      quality_flag: "warning",
+    },
+    result_meta: {
+      trace_id: "tr_stock_analysis_agent",
+      basis: "formal",
+      result_kind: "agent.analysis_chat",
+      formal_use_allowed: false,
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
+}
 
 function buildStrategyPayload(
   overrides: Partial<LivermoreStrategyPayload> = {},
@@ -1862,7 +1897,8 @@ describe("StockAnalysisPage", () => {
   it("opens Agent drawer and submits page_context.page_id stock-analysis + filters", async () => {
     const user = userEvent.setup();
     const client = stockClient();
-    const queryAgentSpy = vi.spyOn(client, "queryAgent");
+    const fetchMock = vi.fn().mockResolvedValueOnce(buildJsonResponse(buildStockAgentResult()));
+    vi.stubGlobal("fetch", fetchMock);
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
@@ -1873,13 +1909,15 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByText("Agent 复核当前观察")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel")).toBeInTheDocument();
 
-    await user.type(screen.getByTestId("agent-panel-question"), "请简述当前快照门控摘要");
+    await user.type(screen.getByTestId("agent-panel-question"), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
-    await waitFor(() => expect(queryAgentSpy).toHaveBeenCalled());
-    const submitted = queryAgentSpy.mock.calls[0]?.[0];
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    const submitted = JSON.parse(String((options as RequestInit | undefined)?.body));
     expect(submitted?.page_context?.page_id).toBe("stock-analysis");
     expect(submitted?.page_context?.current_filters).toMatchObject({
+      research_domain: "stock",
       as_of_date: "2026-04-29",
       sector_filter: null,
       sector_filter_label: null,
@@ -1888,13 +1926,13 @@ describe("StockAnalysisPage", () => {
     });
     expect(Array.isArray(submitted?.page_context?.selected_rows)).toBe(true);
     expect(submitted?.page_context?.selected_rows ?? []).toEqual([]);
-    queryAgentSpy.mockRestore();
   });
 
   it("reflects sector filter and drawer selection in Agent page_context", async () => {
     const user = userEvent.setup();
     const client = stockClient();
-    const queryAgentSpy = vi.spyOn(client, "queryAgent");
+    const fetchMock = vi.fn().mockResolvedValueOnce(buildJsonResponse(buildStockAgentResult()));
+    vi.stubGlobal("fetch", fetchMock);
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
@@ -1907,15 +1945,17 @@ describe("StockAnalysisPage", () => {
     await screen.findByTestId("stock-detail-drawer");
 
     await user.click(screen.getByTestId("stock-analysis-agent-open"));
-    await user.type(screen.getByTestId("agent-panel-question"), "复核当前截面数据质量");
+    await user.type(screen.getByTestId("agent-panel-question"), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
-    await waitFor(() => expect(queryAgentSpy).toHaveBeenCalled());
-    const submitted = queryAgentSpy.mock.calls[0]?.[0];
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    const submitted = JSON.parse(String((options as RequestInit | undefined)?.body));
     expect(submitted?.page_context?.current_filters?.sector_filter).toBe("801002");
     expect(submitted?.page_context?.current_filters?.sector_filter_label).toBe("新能源车");
     expect(submitted?.page_context?.current_filters?.sector_view).toBe("score");
     expect(submitted?.page_context?.current_filters?.current_view).toBe("stock_detail");
+    expect(submitted?.page_context?.current_filters?.research_domain).toBe("stock");
     expect(submitted?.page_context?.selected_rows).toEqual([
       {
         stock_code: "000002.SZ",
@@ -1927,8 +1967,6 @@ describe("StockAnalysisPage", () => {
         source: "review_queue",
       },
     ]);
-    expect(submitted?.filters).toEqual({ research_domain: "stock" });
-    queryAgentSpy.mockRestore();
   });
 
   it("renders strategy replay rows from legacy per-strategy horizon stats", async () => {

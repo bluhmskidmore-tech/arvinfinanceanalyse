@@ -9,6 +9,7 @@ import type {
   LivermoreCandidateHistoryHorizonStats,
   LivermoreCandidateHistoryPayload,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
+  LivermoreCycleProxyBacktestPayload,
   LivermoreSectorRankSeriesPoint,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyOptimizationPayload,
@@ -835,7 +836,8 @@ export default function StockAnalysisPage() {
       }),
     enabled: Boolean(effectiveAsOf && cycleRotationFramework),
   });
-  const cycleProxyBacktestPayload = cycleProxyBacktestQuery.data?.result ?? null;
+  const cycleProxyBacktestPayload: LivermoreCycleProxyBacktestPayload | null =
+    cycleProxyBacktestQuery.data?.result ?? null;
   const candidateHistoryPortfolioBacktestQuery = useQuery({
     queryKey: [
       "stock-analysis",
@@ -2469,10 +2471,10 @@ export default function StockAnalysisPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {[
+                            {([
                               ["最强", strategyOptimizationSlices.strongest],
                               ["最弱", strategyOptimizationSlices.weakest],
-                            ].map(([label, slice]) =>
+                            ] as Array<[string, StrategyOptimizationSlice | null]>).map(([label, slice]) =>
                               slice ? (
                                 <tr key={`${label}:${slice.slice_key}`}>
                                   <td>
