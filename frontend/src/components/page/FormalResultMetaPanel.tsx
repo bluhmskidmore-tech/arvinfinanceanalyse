@@ -166,12 +166,16 @@ const metaLabelMap: Record<string, string> = {
   quality_flag: "质量标记",
   vendor_status: "供应商状态",
   fallback_mode: "降级模式",
+  requested_report_date: "请求报告日",
+  resolved_report_date: "解析报告日",
   trace_id: "追踪编号",
   source_version: "来源版本",
   vendor_version: "供应商版本",
   rule_version: "规则版本",
   cache_version: "缓存版本",
   as_of_date: "数据截至日",
+  date_basis: "日期基准",
+  fallback_date: "降级日期",
   generated_at: "生成时间",
   tables_used: "使用表",
   filters_applied: "应用筛选",
@@ -322,8 +326,16 @@ export function FormalResultMetaPanel({
                   <dd style={{ margin: 0 }}>{formatValue(meta.rule_version)}</dd>
                   <dt>{metaLabelMap.cache_version}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.cache_version)}</dd>
+                  <dt>{metaLabelMap.requested_report_date}</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.requested_report_date)}</dd>
+                  <dt>{metaLabelMap.resolved_report_date}</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.resolved_report_date)}</dd>
                   <dt>{metaLabelMap.as_of_date}</dt>
                   <dd style={{ margin: 0 }}>{formatAsOfDate(meta.as_of_date)}</dd>
+                  <dt>{metaLabelMap.date_basis}</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.date_basis)}</dd>
+                  <dt>{metaLabelMap.fallback_date}</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.fallback_date)}</dd>
                   <dt>{metaLabelMap.generated_at}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.generated_at)}</dd>
                   {hasEvidence(meta) ? (

@@ -48,7 +48,11 @@ export type ResultMeta = {
   vendor_status: "ok" | "vendor_stale" | "vendor_unavailable";
   fallback_mode: "none" | "latest_snapshot";
   scenario_flag: boolean;
+  requested_report_date?: string | null;
+  resolved_report_date?: string | null;
   as_of_date?: string | null;
+  date_basis?: string | null;
+  fallback_date?: string | null;
   generated_at: string;
   tables_used?: string[];
   filters_applied?: Record<string, unknown>;
