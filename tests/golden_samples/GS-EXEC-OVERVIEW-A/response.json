@@ -11,7 +11,12 @@
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
+    "requested_report_date": "2026-02-28",
+    "resolved_report_date": "2026-02-28",
     "scenario_flag": false,
+    "as_of_date": "2026-02-28",
+    "date_basis": "multi_domain_snapshot",
+    "fallback_date": null,
     "generated_at": "2026-04-22T04:30:46.719730Z",
     "filters_applied": {
       "requested_report_date": "2026-02-28",
@@ -130,7 +135,7 @@
           "sign_aware": true
         },
         "tone": "warning",
-        "detail": "来自 bond analytics 风险快照，在 2026-02-28 的组合 DV01。",
+        "detail": "来自 bond analytics 风险快照，在 2026-02-28 的全量组合 DV01；含 AC/OCI/TPL，拆分见风险全景。",
         "history": [
           13855000.0,
           13826218.0

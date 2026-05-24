@@ -11,7 +11,12 @@
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
+    "requested_report_date": "2026-03-31",
+    "resolved_report_date": "2026-03-31",
     "scenario_flag": false,
+    "as_of_date": "2026-03-31",
+    "date_basis": "formal_snapshot",
+    "fallback_date": null,
     "generated_at": "2026-04-22T04:30:48.192645Z",
     "filters_applied": {},
     "tables_used": [],
@@ -168,8 +173,133 @@
       "precision": 2,
       "sign_aware": false
     },
+    "rate_risk_market_value": {
+      "raw": 429.0,
+      "unit": "yuan",
+      "display": "429.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "rate_risk_dv01": {
+      "raw": 0.20904876,
+      "unit": "dv01",
+      "display": "0.21",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "rate_risk_modified_duration": {
+      "raw": 4.87293147,
+      "unit": "ratio",
+      "display": "4.87",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "duration_excluded_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "duration_excluded_count": 0,
     "bond_count": 3,
     "quality_flag": "ok",
-    "warnings": []
+    "warnings": [],
+    "prior_period_change": {
+      "status": "no_prior",
+      "comparison_report_date": null,
+      "summary": "暂无可比较的上一报告日；当前仅展示截面风险。",
+      "dominant_krd_bucket": "10Y",
+      "previous_dominant_krd_bucket": null,
+      "dominant_krd_shifted": false,
+      "metrics": []
+    },
+    "dv01_controls": {
+      "basis": "regulatory_dv01",
+      "limit_status": "pending_configuration",
+      "approved_limit_dv01": null,
+      "limit_usage_ratio": null,
+      "volatility_status": "pending_market_volatility",
+      "daily_rate_volatility_bp": null,
+      "dominant_krd_bucket": "10Y",
+      "dominant_krd": {
+        "raw": 0.11250583,
+        "unit": "ratio",
+        "display": "+0.11",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "stress_scenarios": [
+        {
+          "scenario_key": "parallel_up_10bp",
+          "label": "+10bp",
+          "shock_bp": {
+            "raw": 10.0,
+            "unit": "bp",
+            "display": "+10 bp",
+            "precision": 0,
+            "sign_aware": true
+          },
+          "estimated_pnl_impact": {
+            "raw": -2.0904876,
+            "unit": "yuan",
+            "display": "-2.09",
+            "precision": 2,
+            "sign_aware": true
+          }
+        },
+        {
+          "scenario_key": "parallel_up_25bp",
+          "label": "+25bp",
+          "shock_bp": {
+            "raw": 25.0,
+            "unit": "bp",
+            "display": "+25 bp",
+            "precision": 0,
+            "sign_aware": true
+          },
+          "estimated_pnl_impact": {
+            "raw": -5.226219,
+            "unit": "yuan",
+            "display": "-5.23",
+            "precision": 2,
+            "sign_aware": true
+          }
+        }
+      ],
+      "operating_judgement": "当前监管口径 DV01 0.21；+10bp 平行上行估算影响 -2.09；主风险桶 10Y。审批限额与利率波动源未接入前，暂不判定超限。",
+      "control_actions": [
+        {
+          "key": "approved_dv01_limit",
+          "title": "配置审批限额",
+          "status": "required",
+          "evidence": "审批 DV01 限额未接入。",
+          "action": "接入投委会或风控审批后的总 DV01 限额，再计算使用率与预警带。"
+        },
+        {
+          "key": "rate_volatility_input",
+          "title": "接入利率波动",
+          "status": "required",
+          "evidence": "日度利率波动率未接入。",
+          "action": "接入曲线波动率后，把 DV01 敞口转换成日度波动损益观察。"
+        },
+        {
+          "key": "bucket_sub_limits",
+          "title": "拆分期限桶限额",
+          "status": "required",
+          "evidence": "当前主风险桶为 10Y。",
+          "action": "为 1Y/3Y/5Y/7Y/10Y/30Y 设置桶位限额，避免总 DV01 合规但期限错配。"
+        },
+        {
+          "key": "stress_escalation",
+          "title": "固化冲击升级",
+          "status": "required",
+          "evidence": "+10bp 估算影响 -2.09；+25bp 估算影响 -5.23。",
+          "action": "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。"
+        }
+      ],
+      "control_message": "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
+      "action_hint": "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。"
+    }
   }
 }

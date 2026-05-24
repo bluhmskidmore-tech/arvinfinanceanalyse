@@ -25,6 +25,7 @@
 - `result.metrics[id=yield].detail` references `fact_formal_pnl_fi + fact_nonstd_pnl_bridge` and states the value does not deduct FTP.
 - `result.metrics[id=nim].caliber_label == null`.
 - `result.metrics[id=dv01].caliber_label == null`.
+- `result.metrics[id=dv01].detail` states the full portfolio DV01 basis and says AC/OCI/TPL splits are available in the risk view.
 - `MTR-EXEC-001 == "3,572.76 亿"`.
 - `MTR-EXEC-002 == "+4.69 亿"`.
 - `MTR-EXEC-003 == "+1.00%"`.
