@@ -238,6 +238,15 @@ export type MacroToolkitAShareRiskPayload = {
   tables_used: string[];
 };
 
+export type MacroToolkitRuntimeStatusPayload = {
+  analysis_scope: "core" | "full" | string;
+  deferred_sections: Array<{
+    key: string;
+    label: string;
+    status: "deferred" | "loading" | "complete" | "failed" | string;
+  }>;
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -264,7 +273,13 @@ export type MacroToolkitAnalysisPayload = {
   capabilities: MacroToolkitCapability[];
   cffex_member_rank?: MacroToolkitPayload["cffex_member_rank"];
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
+  runtime_status?: MacroToolkitRuntimeStatusPayload;
   warnings: string[];
+};
+
+export type MacroToolkitStrategySummariesPayload = {
+  strategy_summaries: MacroToolkitStrategySummary[];
+  choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
 };
 
 export type MacroToolkitRunResponse = {
@@ -284,6 +299,7 @@ export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
 
 export type MacroToolkitClientMethods = {
   getMacroToolkitAnalysis: () => Promise<ApiEnvelope<MacroToolkitAnalysisPayload>>;
+  getMacroToolkitStrategySummaries: () => Promise<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
   getMacroToolkitScripts: () => Promise<ApiEnvelope<MacroToolkitPayload>>;
   runMacroToolkitScript: (
     name: string,
@@ -747,6 +763,10 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
     stale_days: 0,
   },
   choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
+  runtime_status: {
+    analysis_scope: "full",
+    deferred_sections: [],
+  },
   warnings: [],
 };
 
@@ -888,6 +908,23 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         cache_version: "none",
       });
     },
+    async getMacroToolkitStrategySummaries() {
+      return buildMockApiEnvelope(
+        "macro_toolkit.analysis.strategy_summaries",
+        {
+          strategy_summaries: MOCK_STRATEGY_SUMMARIES,
+          choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
     async getMacroToolkitScripts() {
       return buildMockApiEnvelope("macro_toolkit.scripts", MOCK_PAYLOAD, {
         basis: "analytical",
@@ -981,7 +1018,13 @@ export function createRealMacroToolkitClient({
 }: MacroToolkitClientFactoryOptions): MacroToolkitClientMethods {
   return {
     getMacroToolkitAnalysis: () =>
-      requestJson<MacroToolkitAnalysisPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/analysis"),
+      requestJson<MacroToolkitAnalysisPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/analysis?detail=core"),
+    getMacroToolkitStrategySummaries: () =>
+      requestJson<MacroToolkitStrategySummariesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+      ),
     getMacroToolkitScripts: () =>
       requestJson<MacroToolkitPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/scripts"),
     runMacroToolkitScript: (name, options) =>

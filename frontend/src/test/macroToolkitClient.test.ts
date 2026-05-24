@@ -111,4 +111,36 @@ describe("macroToolkitClient", () => {
       expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
     );
   });
+
+  it("requests core analysis first and reads deferred strategy summaries separately", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: String(url).includes("strategy-summaries")
+            ? { strategy_summaries: [], choice_stock_refresh: { status: "ready" } }
+            : { runtime_status: { analysis_scope: "core" } },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    await client.getMacroToolkitAnalysis();
+    await client.getMacroToolkitStrategySummaries();
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/macro/toolkit/analysis?detail=core",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/macro/toolkit/analysis/strategy-summaries",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
 });

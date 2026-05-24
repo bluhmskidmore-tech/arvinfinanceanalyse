@@ -254,17 +254,30 @@ def macro_toolkit_scripts() -> dict[str, object]:
 
 
 @router.get("/analysis")
-def macro_toolkit_analysis() -> dict[str, object]:
+def macro_toolkit_analysis(
+    detail: Annotated[str, Query(pattern="^(full|core)$")] = "full",
+) -> dict[str, object]:
     settings = get_settings()
     indicators = _analysis_indicators(settings.duckdb_path)
     indicator_by_key = {str(item["key"]): item for item in indicators}
     output_files = _output_files()
     analysis_date = _latest_indicator_date(indicators)
-    capability_results = _macro_capability_results(
-        settings.duckdb_path,
-        report_date=analysis_date,
-    )
     a_share_risk = _a_share_stampede_risk(settings.duckdb_path)
+    if detail == "core":
+        capability_results: list[dict[str, object]] = []
+        strategy_summaries: list[dict[str, object]] = []
+        source_checks: list[dict[str, object]] = []
+        capabilities: list[dict[str, object]] = []
+        runtime_status = _analysis_runtime_status("core")
+    else:
+        capability_results = _macro_capability_results(
+            settings.duckdb_path,
+            report_date=analysis_date,
+        )
+        strategy_summaries = _equity_strategy_summaries(settings.duckdb_path)
+        source_checks = _source_checks(settings.duckdb_path)
+        capabilities = _capability_plan(settings.duckdb_path)
+        runtime_status = _analysis_runtime_status("full")
     signal_cards = _analysis_signal_cards(
         indicator_by_key,
         output_files,
@@ -291,10 +304,10 @@ def macro_toolkit_analysis() -> dict[str, object]:
             "signal_cards": signal_cards,
             "a_share_risk": a_share_risk,
             "capability_results": capability_results,
-            "strategy_summaries": _equity_strategy_summaries(settings.duckdb_path),
+            "strategy_summaries": strategy_summaries,
             "output_files": output_files,
-            "source_checks": _source_checks(settings.duckdb_path),
-            "capabilities": _capability_plan(settings.duckdb_path),
+            "source_checks": source_checks,
+            "capabilities": capabilities,
             "cffex_member_rank": _cffex_member_rank_status(
                 settings.duckdb_path,
                 reference_date=_latest_indicator_date(indicators),
@@ -303,7 +316,24 @@ def macro_toolkit_analysis() -> dict[str, object]:
                 settings.duckdb_path,
                 settings.governance_path,
             ),
+            "runtime_status": runtime_status,
             "warnings": _analysis_warnings(coverage),
+        },
+    )
+
+
+@router.get("/analysis/strategy-summaries")
+def macro_toolkit_strategy_summaries() -> dict[str, object]:
+    settings = get_settings()
+    strategies = _equity_strategy_summaries(settings.duckdb_path)
+    return _envelope(
+        "macro_toolkit.analysis.strategy_summaries",
+        {
+            "strategy_summaries": strategies,
+            "choice_stock_refresh": _choice_stock_refresh_overview(
+                settings.duckdb_path,
+                settings.governance_path,
+            ),
         },
     )
 
@@ -2926,6 +2956,37 @@ def _analysis_warnings(coverage: dict[str, object]) -> list[str]:
     if float(coverage["hit_rate"]) < 0.6:
         return ["核心宏观指标命中不足，当前结论只展示可用证据，不形成完整方向判断。"]
     return []
+
+
+def _analysis_runtime_status(scope: str) -> dict[str, object]:
+    deferred_sections = []
+    if scope == "core":
+        deferred_sections = [
+            {
+                "key": "capability_results",
+                "label": "M7-M16 功能结果",
+                "status": "deferred",
+            },
+            {
+                "key": "strategy_summaries",
+                "label": "策略展示",
+                "status": "deferred",
+            },
+            {
+                "key": "source_checks",
+                "label": "系统数据源命中",
+                "status": "deferred",
+            },
+            {
+                "key": "capabilities",
+                "label": "功能补齐方案",
+                "status": "deferred",
+            },
+        ]
+    return {
+        "analysis_scope": scope,
+        "deferred_sections": deferred_sections,
+    }
 
 
 def _latest_indicator_date(indicators: list[dict[str, object]]) -> str | None:

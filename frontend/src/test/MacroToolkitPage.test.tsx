@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { createApiClient, type ApiClient } from "../api/client";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 describe("MacroToolkitPage", () => {
@@ -90,5 +91,39 @@ describe("MacroToolkitPage", () => {
     expect(m14Card).toHaveTextContent("PPI_YOY_MISSING");
     expect(m14Card).toHaveTextContent("M2_YOY_MISSING");
     expect(m14Card).toHaveTextContent("2026-03-01");
+  });
+
+  it("keeps core risk analysis visible while deferred strategy summaries are still loading", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          runtime_status: {
+            analysis_scope: "core",
+            deferred_sections: [
+              {
+                key: "strategy_summaries",
+                label: "策略展示",
+                status: "loading",
+              },
+            ],
+          },
+          strategy_summaries: [],
+        },
+      }),
+      getMacroToolkitStrategySummaries: () => new Promise(() => {}),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "市场踩踏风险" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("策略展示正在生成")).toBeInTheDocument();
+    expect(screen.getByText("核心判断和市场踩踏风险已先返回。")).toBeInTheDocument();
   });
 });

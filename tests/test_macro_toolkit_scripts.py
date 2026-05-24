@@ -427,6 +427,73 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
 
 
+def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    def fail_if_called(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        raise AssertionError("core analysis should not compute deferred macro toolkit sections")
+
+    monkeypatch.setattr(macro_toolkit_route, "_macro_capability_results", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_route, "_equity_strategy_summaries", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_route, "_source_checks", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_route, "_capability_plan", fail_if_called)
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis?detail=core")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["runtime_status"]["analysis_scope"] == "core"
+    assert {
+        item["key"] for item in result["runtime_status"]["deferred_sections"]
+    } == {"capability_results", "strategy_summaries", "source_checks", "capabilities"}
+    assert result["capability_results"] == []
+    assert result["strategy_summaries"] == []
+    assert result["source_checks"] == []
+    assert result["capabilities"] == []
+    assert {item["key"] for item in result["signal_cards"]} == {
+        "crisis_score_cn",
+        "a_share_stampede_risk",
+        "liquidity",
+        "risk_appetite",
+        "credit",
+        "outputs",
+    }
+
+
+def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_payload(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_choice_stock_strategy_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis/strategy-summaries")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    assert strategies["moving_average"]["status"] == "complete"
+    assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
+    assert payload["result"]["choice_stock_refresh"]["daily_observation"]["latest_trade_date"] == "2026-04-30"
+    assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
+
+
 def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)

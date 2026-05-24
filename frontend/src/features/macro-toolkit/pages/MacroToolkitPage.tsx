@@ -205,11 +205,18 @@ export default function MacroToolkitPage() {
     staleTime: 60_000,
   });
 
+  const strategyQuery = useQuery({
+    queryKey: ["macro-toolkit", "strategy-summaries"],
+    queryFn: () => client.getMacroToolkitStrategySummaries(),
+    staleTime: 60_000,
+  });
+
   const payload = scriptsQuery.data?.result;
   const analysis = analysisQuery.data?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
   const capabilityResults = analysis?.capability_results ?? [];
-  const strategySummaries = analysis?.strategy_summaries ?? [];
+  const strategyPayload = strategyQuery.data?.result;
+  const strategySummaries = strategyPayload?.strategy_summaries ?? analysis?.strategy_summaries ?? [];
   const hasRealStrategyData = strategySummaries.some(
     (strategy) =>
       strategy.status === "complete" &&
@@ -252,7 +259,8 @@ export default function MacroToolkitPage() {
     ? `${payload.output_files[0]!.name} · ${formatSize(payload.output_files[0]!.size_bytes)}`
     : payload?.output_dir ?? "data/macro_toolkit/output";
   const cffexStatus = payload?.cffex_member_rank ?? analysis?.cffex_member_rank ?? null;
-  const choiceStockRefresh = payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
+  const choiceStockRefresh =
+    strategyPayload?.choice_stock_refresh ?? payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
   const sourceChecks = payload?.source_checks ?? analysis?.source_checks ?? [];
   const capabilityItems = payload?.capabilities ?? analysis?.capabilities ?? [];
@@ -268,7 +276,7 @@ export default function MacroToolkitPage() {
     analysis?.signal_cards
       .filter((card) => card.score != null)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null;
-  const queryErrorText = [analysisQuery.error, scriptsQuery.error]
+  const queryErrorText = [analysisQuery.error, scriptsQuery.error, strategyQuery.error]
     .filter(Boolean)
     .map(formatQueryError)
     .join("；");
@@ -283,13 +291,13 @@ export default function MacroToolkitPage() {
     try {
       const result = await client.runMacroToolkitScript(selectedScript.name);
       setRunResult(result);
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "运行失败");
     } finally {
       setIsRunning(false);
     }
-  }, [analysisQuery, client, scriptsQuery, selectedScript]);
+  }, [analysisQuery, client, scriptsQuery, selectedScript, strategyQuery]);
 
   const refreshCffexMemberRank = useCallback(async () => {
     setIsRefreshingCffex(true);
@@ -301,13 +309,13 @@ export default function MacroToolkitPage() {
       });
       const rank = response.result.cffex_member_rank;
       setRefreshResult(`刷新完成：${rank.row_count} 行，最新交易日 ${rank.latest_trade_date ?? "缺失"}`);
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新席位失败");
     } finally {
       setIsRefreshingCffex(false);
     }
-  }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery]);
+  }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery, strategyQuery]);
 
   const refreshChoiceStock = useCallback(async () => {
     setIsRefreshingChoiceStock(true);
@@ -344,14 +352,14 @@ export default function MacroToolkitPage() {
       setStockRefreshResult(
         `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,
       );
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setStockRefreshError(error instanceof Error ? error.message : "刷新股票数据失败");
       setStockRefreshResult(null);
     } finally {
       setIsRefreshingChoiceStock(false);
     }
-  }, [analysis?.as_of_date, analysisQuery, client, scriptsQuery]);
+  }, [analysis?.as_of_date, analysisQuery, client, scriptsQuery, strategyQuery]);
 
   const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     {
@@ -530,8 +538,7 @@ export default function MacroToolkitPage() {
     },
   ];
 
-  const isInitialLoading =
-    (scriptsQuery.isLoading && !payload) || (analysisQuery.isLoading && !analysis);
+  const isInitialLoading = analysisQuery.isLoading && !analysis;
 
   if (isInitialLoading && !scriptsQuery.isError && !analysisQuery.isError) {
     return (
@@ -555,8 +562,9 @@ export default function MacroToolkitPage() {
             onClick={() => {
               void analysisQuery.refetch();
               void scriptsQuery.refetch();
+              void strategyQuery.refetch();
             }}
-            loading={analysisQuery.isFetching || scriptsQuery.isFetching}
+            loading={analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching}
           >
             重试读取
           </Button>
@@ -577,8 +585,9 @@ export default function MacroToolkitPage() {
             onClick={() => {
               void analysisQuery.refetch();
               void scriptsQuery.refetch();
+              void strategyQuery.refetch();
             }}
-            loading={analysisQuery.isFetching || scriptsQuery.isFetching}
+            loading={analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching}
           >
             刷新结果
           </Button>
@@ -727,6 +736,13 @@ export default function MacroToolkitPage() {
                   <CapabilityResultCard result={result} key={result.key} />
                 ))}
               </div>
+            ) : analysis?.runtime_status?.analysis_scope === "core" ? (
+              <Alert
+                type="info"
+                showIcon
+                message="M7-M16 功能结果正在生成"
+                description="核心判断和市场踩踏风险已先返回。"
+              />
             ) : (
               <div className="macro-toolkit-empty-output">暂无 M7-M16 功能结果。</div>
             )}
@@ -774,6 +790,20 @@ export default function MacroToolkitPage() {
                   <StrategySummaryCard strategy={strategy} key={strategy.key} />
                 ))}
               </div>
+            ) : strategyQuery.isFetching ? (
+              <Alert
+                type="info"
+                showIcon
+                message="策略展示正在生成"
+                description="核心判断和市场踩踏风险已先返回。"
+              />
+            ) : strategyQuery.isError ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="策略展示暂不可用"
+                description={formatQueryError(strategyQuery.error)}
+              />
             ) : (
               <div className="macro-toolkit-empty-output">暂无策略摘要。</div>
             )}
@@ -787,15 +817,26 @@ export default function MacroToolkitPage() {
           title="功能补齐方案"
           description="按 V1 宏观分析 M7-M16 对齐，区分代码迁入、API/页面接线和数据命中。"
         />
-        <Table
-          rowKey="key"
-          size="small"
-          columns={capabilityColumns}
-          dataSource={capabilityItems}
-          pagination={false}
-          tableLayout="fixed"
-          scroll={{ x: 920 }}
-        />
+        {capabilityItems.length ? (
+          <Table
+            rowKey="key"
+            size="small"
+            columns={capabilityColumns}
+            dataSource={capabilityItems}
+            pagination={false}
+            tableLayout="fixed"
+            scroll={{ x: 920 }}
+          />
+        ) : scriptsQuery.isFetching ? (
+          <Alert
+            type="info"
+            showIcon
+            message="功能补齐方案正在读取"
+            description="不会阻塞核心信号和市场踩踏风险。"
+          />
+        ) : (
+          <div className="macro-toolkit-empty-output">暂无功能补齐方案。</div>
+        )}
       </section>
 
       <section className="macro-toolkit-section macro-toolkit-operations-section">
@@ -814,6 +855,14 @@ export default function MacroToolkitPage() {
             刷新
           </Button>
         </div>
+        {scriptsQuery.isFetching && !payload ? (
+          <Alert
+            type="info"
+            showIcon
+            message="脚本注册表正在读取"
+            description="脚本状态会稍后补上，核心分析已可先查看。"
+          />
+        ) : null}
         <div className="macro-toolkit-operations-brief">
           <MetricTile
             label="脚本就绪"
