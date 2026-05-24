@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Col, Row, Select, Skeleton, Space, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Card, Select, Skeleton, Space, Tabs, Tag, Typography } from "antd";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import { KpiCard } from "../../../components/KpiCard";
+import {
+  AnalysisGrid,
+  DataStatusStrip,
+  EvidencePanel,
+  KpiBand,
+  KpiBandMetric,
+  PageDecisionHero,
+  PageFilterTray,
+  PageStateSurface,
+} from "../../../components/page/PagePrimitives";
 import type { LiabilityYieldKpi, CockpitWatchItem, CockpitAlertEvent, ContributionSplitRow } from "../../../api/contracts";
 import { adaptLiabilityCounterparty, getLiabilitySyntheticSectionStates } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
@@ -22,20 +33,14 @@ import {
   shareOfTotalNumeric,
 } from "../utils/money";
 import { designTokens } from "../../../theme/designSystem";
+import { buildLiabilityAnalyticsPageReadModel } from "./liabilityAnalyticsPageModel";
+import "./LiabilityAnalyticsPage.css";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const numericTabularStyle = { fontVariantNumeric: "tabular-nums" as const };
 
 type TabKey = "daily" | "monthly";
-
-const cockpitKpiGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: designTokens.space[4],
-  marginBottom: designTokens.space[5],
-  ...numericTabularStyle,
-} as const;
 
 const threeColumnGridStyle = {
   display: "grid",
@@ -435,24 +440,15 @@ export default function LiabilityAnalyticsPage() {
     const fromBuckets = sumNumericRaw(dailyStructure.map((item) => item.amountYi?.raw));
     return (fromCp ?? fromBuckets) ?? 0;
   }, [cpQuery.data?.total_value, dailyStructure]);
-  const nimRaw = numericPctRaw(yieldKpi?.nim ?? null);
-  const staticSpreadBp = useMemo(() => {
-    if (nimRaw === null) return null;
-    return nimRaw * 10000;
-  }, [nimRaw]);
   const firstYearPressureYi = useMemo((): number => {
     return sumNumericRaw(
       dailyTerm.filter((item) => bucketFallsWithinOneYear(item.bucket)).map((item) => item.amountYi?.raw),
     );
   }, [dailyTerm]);
-  const floatingGapYi = useMemo(() => {
-    if (assetTotalYi === null) return null;
-    return assetTotalYi - liabilityTotalYi;
-  }, [assetTotalYi, liabilityTotalYi]);
   const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? "—";
   const watchItems: CockpitWatchItem[] = cockpitWarningsQuery.data?.result?.watch_items ?? [];
   const alertEvents: CockpitAlertEvent[] = cockpitWarningsQuery.data?.result?.alert_events ?? [];
-  const syntheticSections = getLiabilitySyntheticSectionStates();
+  const syntheticSections = useMemo(() => getLiabilitySyntheticSectionStates(), []);
   /** 风险全景：维度来自真实桶/对手方衍生；展示列为前端聚合文案 */
   const riskOverviewRows = useMemo(
     () => [
@@ -467,76 +463,176 @@ export default function LiabilityAnalyticsPage() {
   const contributionRows: ContributionSplitRow[] = contributionQuery.data?.result?.contributions ?? [];
   const riskIndicators = [] as const;
   const calendarItems = [] as const;
-  const liabilityHeadlineCards = useMemo(
-    () => [
-      {
-        label: "市场资产",
-        value: assetTotalYi !== null ? assetTotalYi.toFixed(2) : "—",
-        unit: "亿",
-        detail: "正式总览·资产口径（不含发行类债券）",
-      },
-      { label: "市场负债", value: liabilityTotalYi.toFixed(2), unit: "亿", detail: "funding total" },
-      { label: "静态资产收益率", value: yieldKpi?.asset_yield?.display ?? "—", detail: "当前加权" },
-      { label: "静态负债成本", value: yieldKpi?.liability_cost?.display ?? "—", detail: "当前加权" },
-      {
-        label: "静态利差",
-        value: staticSpreadBp !== null ? `${staticSpreadBp.toFixed(1)}bp` : "—",
-        detail: "NIM（资产收益率−金融市场负债成本）",
-      },
-      { label: "1年内到期负债", value: firstYearPressureYi.toFixed(2), unit: "亿", detail: "短端承压" },
-      { label: "净估值差额", value: floatingGapYi !== null ? `${floatingGapYi >= 0 ? "+" : ""}${floatingGapYi.toFixed(2)}` : "—", unit: "亿", detail: "资产-负债" },
-      {
-        label: "异常预警",
-        value: watchItems.length + alertEvents.length > 0 ? `${watchItems.length + alertEvents.length} 条` : "无",
-        detail: watchItems.length + alertEvents.length > 0
-          ? `${alertEvents.length} 条预警，${watchItems.length} 条关注`
-          : "所有指标均在正常范围内",
-        valueVariant: "text" as const,
-      },
+  const pageReadModel = useMemo(
+    () =>
+      buildLiabilityAnalyticsPageReadModel({
+        mode: client.mode,
+        activeTab,
+        requestedReportDate: explicitReportDate || selectedReportDate || reportDate,
+        resolvedReportDate:
+          activeTab === "daily"
+            ? riskQuery.data?.report_date || reportDate
+            : selectedMonthData?.month_label ?? "",
+        selectedYear,
+        selectedMonthLabel: selectedMonthData?.month_label ?? null,
+        yieldKpi,
+        liabilityTotalYi,
+        firstYearPressureYi,
+        topCounterpartyShare,
+        warningCount: watchItems.length,
+        alertCount: alertEvents.length,
+        resultMetas: [
+          { key: "dates", title: "报告日目录", meta: datesQuery.data?.result_meta },
+          { key: "asset-overview", title: "资产端正式总览", meta: balanceOverviewQuery.data?.result_meta },
+          { key: "knowledge", title: "业务资料", meta: knowledgeQuery.data?.result_meta },
+          { key: "warnings", title: "关注/预警", meta: cockpitWarningsQuery.data?.result_meta },
+          { key: "contribution", title: "贡献拆分", meta: contributionQuery.data?.result_meta },
+        ],
+        unwrappedEvidenceLabels:
+          activeTab === "daily"
+            ? ["risk-buckets", "yield-metrics", "counterparty"]
+            : ["liabilities monthly", "ADB monthly"],
+        syntheticSections: [
+          syntheticSections.riskIndicators,
+          syntheticSections.calendarItems,
+        ].map((section) => ({
+          key: section.kind,
+          title: section.title,
+          detail: section.detail,
+        })),
+      }),
+    [
+      activeTab,
+      alertEvents.length,
+      balanceOverviewQuery.data?.result_meta,
+      client.mode,
+      cockpitWarningsQuery.data?.result_meta,
+      contributionQuery.data?.result_meta,
+      datesQuery.data?.result_meta,
+      explicitReportDate,
+      firstYearPressureYi,
+      knowledgeQuery.data?.result_meta,
+      liabilityTotalYi,
+      reportDate,
+      riskQuery.data?.report_date,
+      selectedMonthData?.month_label,
+      selectedReportDate,
+      selectedYear,
+      syntheticSections.calendarItems,
+      syntheticSections.riskIndicators,
+      topCounterpartyShare,
+      watchItems.length,
+      yieldKpi,
     ],
-    [assetTotalYi, floatingGapYi, firstYearPressureYi, liabilityTotalYi, staticSpreadBp, watchItems.length, alertEvents.length, yieldKpi?.asset_yield?.display, yieldKpi?.liability_cost?.display],
   );
+  const showDailyConclusion =
+    activeTab === "daily" &&
+    !datesBlockingError &&
+    !datesEmpty &&
+    !riskQuery.isLoading &&
+    !dailyPrimaryError &&
+    !dailyPrimaryEmpty;
   return (
-    <section data-testid="liability-analytics-page">
-      <Row
-        justify="space-between"
-        align="top"
-        gutter={[designTokens.space[4], designTokens.space[4]]}
-        style={{ marginBottom: designTokens.space[4] }}
+    <section data-testid="liability-analytics-page" className="liability-analytics-page">
+      <PageDecisionHero
+        testId="liability-analytics-decision-hero"
+        title="负债结构分析"
+        eyebrow="兼容/分析读面"
+        businessQuestion="先判断资金来源是否集中、负债成本是否压缩 NIM，再看短端到期与预警证据。"
+        reportDateSlot={<span>{pageReadModel.reportLine}</span>}
+        actions={
+          <span className="liability-analytics-page__mode-badge" data-tone={pageReadModel.modeBadge.tone}>
+            {pageReadModel.modeBadge.label}
+          </span>
+        }
+        conclusion={
+          showDailyConclusion ? (
+            <div data-testid="liability-conclusion" className="liability-analytics-page__hero-conclusion">
+              <strong>{dailyConclusion.body}</strong>
+              <small>{dailyConclusion.detail}</small>
+            </div>
+          ) : (
+            <span>等待当前页状态、报告日与核心负债数据完成后展示首屏判断。</span>
+          )
+        }
       >
-        <Col xs={24} lg={16}>
-          <Title
-            level={2}
-            style={{
-              margin: 0,
-              fontSize: designTokens.fontSize[24],
-              color: designTokens.color.neutral[900],
-            }}
-          >
-            负债结构分析
-          </Title>
-          <Text
-            type="secondary"
-            style={{
-              display: "block",
-              marginTop: designTokens.space[2],
-              fontSize: designTokens.fontSize[13],
-            }}
-          >
-            数据日期：
-            {activeTab === "daily"
-              ? riskQuery.data?.report_date || reportDate || "—"
-              : selectedMonthData
-                ? `${selectedMonthData.month_label}（月日均）`
-                : `${selectedYear} 年度月度统计`}
-          </Text>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card size="small" styles={{ body: { textAlign: "right" } }}>
-            <Text type="secondary">负债分析（资金来源）</Text>
-          </Card>
-        </Col>
-      </Row>
+        <KpiBand testId="liability-analytics-kpi-band">
+          {pageReadModel.kpis.map((kpi) => (
+            <KpiBandMetric
+              key={kpi.key}
+              label={kpi.label}
+              value={
+                <>
+                  {kpi.value}
+                  {kpi.unit ? <span className="liability-analytics-page__kpi-unit">{kpi.unit}</span> : null}
+                </>
+              }
+              footer={kpi.detail}
+            />
+          ))}
+        </KpiBand>
+      </PageDecisionHero>
+
+      <DataStatusStrip testId="liability-analytics-data-status">
+        {pageReadModel.statusBadges.map((badge) => (
+          <span key={badge.key} className="liability-analytics-page__status-badge" data-tone={badge.tone}>
+            {badge.label}
+          </span>
+        ))}
+      </DataStatusStrip>
+
+      <AnalysisGrid columns={2} className="liability-analytics-page__evidence-grid">
+        <EvidencePanel heading="状态证据">
+          <div className="liability-analytics-page__state-stack">
+            {pageReadModel.stateSurfaces.map((surface) => (
+              <PageStateSurface
+                key={surface.key}
+                variant={surface.variant}
+                title={surface.title}
+                description={surface.description}
+              />
+            ))}
+          </div>
+        </EvidencePanel>
+        <EvidencePanel heading="证据账本">
+          <div className="liability-analytics-page__evidence-ledger">
+            {pageReadModel.evidenceCards.map((card) => (
+              <article key={card.key} className="liability-analytics-page__evidence-card" data-tone={card.tone}>
+                <div className="liability-analytics-page__evidence-card-top">
+                  <strong>{card.title}</strong>
+                  <span>{card.basisLabel}</span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>kind</dt>
+                    <dd>{card.resultKind}</dd>
+                  </div>
+                  <div>
+                    <dt>quality</dt>
+                    <dd>{card.qualityLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>fallback</dt>
+                    <dd>{card.fallbackLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>as-of</dt>
+                    <dd>{card.asOfDate}</dd>
+                  </div>
+                  <div>
+                    <dt>trace</dt>
+                    <dd>{card.traceId}</dd>
+                  </div>
+                  <div>
+                    <dt>rule</dt>
+                    <dd>{card.ruleVersion}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        </EvidencePanel>
+      </AnalysisGrid>
 
       <Tabs
         activeKey={activeTab}
@@ -545,32 +641,34 @@ export default function LiabilityAnalyticsPage() {
           { key: "daily", label: "日常分析" },
           { key: "monthly", label: "月度统计" },
         ]}
-        style={{ marginBottom: designTokens.space[4] }}
+        className="liability-analytics-page__tabs"
       />
 
       {activeTab === "daily" ? (
         <>
-          <Space wrap style={{ marginBottom: designTokens.space[4] }} align="start">
-            <div>
-              <Text type="secondary">报告日</Text>
-              <div>
-                <Select
-                  aria-label="liability-report-date"
-                  style={{ minWidth: 160 }}
-                  value={reportDate || undefined}
-                  placeholder="选择报告日"
-                  disabled={reportDateSelectDisabled}
-                  options={dateOptions.map((d) => ({ value: d, label: d }))}
-                  onChange={(v) => setSelectedReportDate(v)}
-                />
+          <PageFilterTray testId="liability-analytics-filter-tray">
+            <FilterBar>
+              <div className="liability-analytics-page__filter-field">
+                <Text type="secondary">报告日</Text>
+                <div>
+                  <Select
+                    aria-label="liability-report-date"
+                    className="liability-analytics-page__report-date-select"
+                    value={reportDate || undefined}
+                    placeholder="选择报告日"
+                    disabled={reportDateSelectDisabled}
+                    options={dateOptions.map((d) => ({ value: d, label: d }))}
+                    onChange={(v) => setSelectedReportDate(v)}
+                  />
+                </div>
               </div>
-            </div>
-            {explicitReportDate ? (
-              <Text type="secondary" style={{ alignSelf: "flex-end" }}>
-                已由地址栏报告日参数固定
-              </Text>
-            ) : null}
-          </Space>
+              {explicitReportDate ? (
+                <Text type="secondary" className="liability-analytics-page__fixed-date-note">
+                  已由地址栏报告日参数固定
+                </Text>
+              ) : null}
+            </FilterBar>
+          </PageFilterTray>
 
           {balanceOverviewQuery.isError && !datesBlockingError && !datesEmpty ? (
             <Alert
@@ -663,63 +761,6 @@ export default function LiabilityAnalyticsPage() {
                 />
               ) : null}
               <Space direction="vertical" size={designTokens.space[4]} style={{ width: "100%" }}>
-                <Card
-                  data-testid="liability-conclusion"
-                  title="本期资产负债摘要"
-                  style={sectionCardStyle}
-                >
-                  <Space direction="vertical" size={designTokens.space[2]} style={{ width: "100%" }}>
-                    <span
-                      style={{
-                        fontSize: designTokens.fontSize[11],
-                        fontWeight: 700,
-                        letterSpacing: "0.06em",
-                        textTransform: "uppercase",
-                        color: designTokens.color.neutral[600],
-                      }}
-                    >
-                      {dailyConclusion.title}
-                    </span>
-                    <div
-                      style={{
-                        fontSize: designTokens.fontSize[20],
-                        fontWeight: 600,
-                        color: designTokens.color.neutral[900],
-                        lineHeight: designTokens.lineHeight.snug,
-                      }}
-                    >
-                      {dailyConclusion.body}
-                    </div>
-                    <div
-                      style={{
-                        color: designTokens.color.neutral[700],
-                        fontSize: designTokens.fontSize[13],
-                        lineHeight: designTokens.lineHeight.relaxed,
-                      }}
-                    >
-                      {dailyConclusion.detail}
-                    </div>
-                    <Space wrap>
-                      <Tag color="green">资产特征</Tag>
-                      <Tag color="gold">负债特征</Tag>
-                      <Tag color="blue">关注要点</Tag>
-                    </Space>
-                  </Space>
-                </Card>
-                <div style={cockpitKpiGridStyle}>
-                  {liabilityHeadlineCards.map((card) => (
-                    <KpiCard
-                      key={card.label}
-                      label={card.label}
-                      value={card.value}
-                      unit={card.unit}
-                      detail={card.detail}
-                      valueVariant={card.valueVariant ?? "metric"}
-                      status={card.label === "异常预警" ? "warning" : "normal"}
-                    />
-                  ))}
-                </div>
-
                 <div style={threeColumnGridStyle}>
                   <Card title="收益成本分解（静态口径）" style={sectionCardStyle}>
                     <div style={{ display: "grid", gap: designTokens.space[3] }}>
