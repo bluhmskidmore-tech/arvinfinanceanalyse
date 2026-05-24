@@ -115,6 +115,38 @@ def test_build_formal_result_envelope_preserves_explicit_as_of_date():
     assert envelope["result_meta"]["as_of_date"] == "2026-05-01"
 
 
+def test_build_result_meta_preserves_explicit_date_caliber_fields():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+
+    meta = runtime_mod.build_formal_result_meta(
+        trace_id="tr_risk_tensor_date_caliber",
+        result_kind="risk.tensor",
+        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+        source_version="sv_risk_tensor__sv_bond_snap_1",
+        rule_version="rv_risk_tensor_formal_materialize_v2",
+        vendor_version="vv_none",
+        requested_report_date="2026-02-28",
+        resolved_report_date="2026-02-28",
+        as_of_date="2026-02-28",
+        date_basis="formal_snapshot",
+        fallback_date=None,
+    )
+
+    envelope = runtime_mod.build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={"report_date": "2026-02-28"},
+    )
+
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["resolved_report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["as_of_date"] == "2026-02-28"
+    assert envelope["result_meta"]["date_basis"] == "formal_snapshot"
+    assert envelope["result_meta"]["fallback_date"] is None
+
+
 def test_build_formal_result_meta_from_lineage_uses_lineage_and_defaults():
     runtime_mod = load_module(
         "backend.app.services.formal_result_runtime",

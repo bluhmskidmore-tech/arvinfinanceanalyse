@@ -85,6 +85,14 @@ def _safe_report_year(report_date: str | None) -> int | None:
         return None
 
 
+def _single_effective_report_date(*report_dates: str | None) -> str | None:
+    resolved = [str(value or "").strip() for value in report_dates]
+    if not resolved or any(not value for value in resolved):
+        return None
+    first = resolved[0]
+    return first if all(value == first for value in resolved) else None
+
+
 def _envelope(
     result_kind: str,
     result: object,
@@ -95,6 +103,11 @@ def _envelope(
     source_version: str = _DEFAULT_SOURCE,
     rule_version: str = _DEFAULT_RULE,
     filters_applied: dict[str, object] | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
 ) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
@@ -107,6 +120,11 @@ def _envelope(
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
         filters_applied=filters_applied,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
         result_payload=result.model_dump(mode="json"),
         source_surface="executive_analytical",
     )
@@ -1607,6 +1625,16 @@ def executive_overview(
         or nim_raw is None
         or dv01_raw is None
     )
+    effective_balance_report_date = current_balance_report_date if aum_raw is not None else None
+    effective_pnl_report_date = current_pnl_report_date if ytd_raw is not None else None
+    effective_liability_report_date = liability_report_date if nim_raw is not None else None
+    effective_risk_report_date = current_bond_report_date if dv01_raw is not None else None
+    overview_report_date = _single_effective_report_date(
+        effective_balance_report_date,
+        effective_pnl_report_date,
+        effective_liability_report_date,
+        effective_risk_report_date,
+    )
     return _envelope(
         "executive.overview",
         payload,
@@ -1625,13 +1653,18 @@ def executive_overview(
         filters_applied={
             "requested_report_date": normalized_report_date,
             "effective_report_dates": {
-                "balance": current_balance_report_date,
-                "pnl": current_pnl_report_date,
-                "liability": liability_report_date,
-                "risk": current_bond_report_date,
+                "balance": effective_balance_report_date,
+                "pnl": effective_pnl_report_date,
+                "liability": effective_liability_report_date,
+                "risk": effective_risk_report_date,
             },
             "kpi_gate": kpi_gate,
         },
+        requested_report_date=normalized_report_date,
+        resolved_report_date=overview_report_date,
+        as_of_date=overview_report_date,
+        date_basis="multi_domain_snapshot",
+        fallback_date=None,
     )
 
 

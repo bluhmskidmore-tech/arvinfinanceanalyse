@@ -54,8 +54,12 @@ class ResultMeta(BaseModel):
     quality_flag: Literal["ok", "warning", "error", "stale"] = "ok"
     vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok"
     fallback_mode: Literal["none", "latest_snapshot"] = "none"
+    requested_report_date: str | None = None
+    resolved_report_date: str | None = None
     scenario_flag: bool = False
     as_of_date: str | None = None
+    date_basis: str | None = None
+    fallback_date: str | None = None
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     filters_applied: dict[str, Any] = Field(default_factory=dict)
     tables_used: list[str] = Field(default_factory=list)

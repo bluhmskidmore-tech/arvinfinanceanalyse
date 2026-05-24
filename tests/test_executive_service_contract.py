@@ -1691,6 +1691,141 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
         "owner_count": 0,
         "year": 2026,
     }
+    assert out["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert out["result_meta"]["resolved_report_date"] == "2026-02-28"
+    assert out["result_meta"]["as_of_date"] == "2026-02-28"
+    assert out["result_meta"]["date_basis"] == "multi_domain_snapshot"
+    assert out["result_meta"]["fallback_date"] is None
+
+
+def test_executive_overview_unified_report_date_requires_all_domains(exec_mod):
+    assert (
+        exec_mod._single_effective_report_date(
+            "2026-02-28",
+            "2026-02-28",
+            "2026-02-28",
+            "2026-02-28",
+        )
+        == "2026-02-28"
+    )
+    assert (
+        exec_mod._single_effective_report_date(
+            "2026-02-28",
+            "2026-02-28",
+            None,
+            "2026-02-28",
+        )
+        is None
+    )
+    assert (
+        exec_mod._single_effective_report_date(
+            "2026-02-28",
+            "2026-02-27",
+            "2026-02-28",
+            "2026-02-28",
+        )
+        is None
+    )
+
+
+def test_executive_overview_date_meta_is_null_when_one_domain_missing(monkeypatch, exec_mod):
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_formal_overview(self, **kwargs):
+            values = {
+                "2026-02-28": 3572.76e8,
+                "2026-02-27": 3712.29e8,
+            }
+            return {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 10,
+                "summary_row_count": 10,
+                "total_market_value_amount": values[kwargs["report_date"]],
+                "total_amortized_cost_amount": values[kwargs["report_date"]],
+                "total_accrued_interest_amount": 0.0,
+                "source_version": "sv_balance_union",
+                "rule_version": "rv_balance_union",
+            }
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_formal_fi_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            return 4.69e8 if report_date == "2026-02-28" else 4.60e8
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-02-28"
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            return []
+
+    class EmptyBondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return []
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return None
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", EmptyBondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {"nim": 0.01},
+        },
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
+    monkeypatch.setattr(exec_mod, "resolve_executive_kpi_metrics", lambda **_kwargs: [])
+
+    out = exec_mod.executive_overview(report_date="2026-02-28")
+
+    assert out["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert out["result_meta"]["resolved_report_date"] is None
+    assert out["result_meta"]["as_of_date"] is None
+    assert out["result_meta"]["date_basis"] == "multi_domain_snapshot"
+    assert out["result_meta"]["filters_applied"]["effective_report_dates"] == {
+        "balance": "2026-02-28",
+        "pnl": "2026-02-28",
+        "liability": "2026-02-28",
+        "risk": None,
+    }
 
 
 def test_executive_overview_nim_uses_ratio_input_without_extra_divide(monkeypatch, exec_mod):

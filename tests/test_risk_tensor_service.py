@@ -225,6 +225,11 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v2"
     assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2"
     assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "formal_snapshot"
+    assert payload["result_meta"]["fallback_date"] is None
 
     result = payload["result"]
     assert result["report_date"] == REPORT_DATE
