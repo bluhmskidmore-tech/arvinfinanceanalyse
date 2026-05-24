@@ -34,6 +34,19 @@ describe("shared display components style governance", () => {
     );
 
     expect(document.querySelector("#data-mode-ribbon")).toHaveClass("moss-data-mode-ribbon");
+    expect(document.querySelector("#data-mode-ribbon")).toHaveAttribute("data-variant", "default");
+  });
+
+  it("marks the cockpit mock ribbon with a compact governance variant", () => {
+    render(
+      <ApiClientProvider client={createApiClient({ mode: "mock" })}>
+        <DataModeRibbon variant="cockpit" />
+      </ApiClientProvider>,
+    );
+
+    expect(document.querySelector("#data-mode-ribbon")).toHaveClass("moss-data-mode-ribbon");
+    expect(document.querySelector("#data-mode-ribbon")).toHaveClass("moss-data-mode-ribbon--cockpit");
+    expect(document.querySelector("#data-mode-ribbon")).toHaveAttribute("data-variant", "cockpit");
   });
 
   it("hides the data mode ribbon when the client is in real mode", () => {

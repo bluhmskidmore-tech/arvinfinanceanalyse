@@ -444,7 +444,7 @@ export function WorkbenchShell() {
 
   return (
     <>
-    <DataModeRibbon />
+    <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
     <div
       className={`workbench-shell-grid${
         useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"

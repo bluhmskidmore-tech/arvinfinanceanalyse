@@ -196,6 +196,25 @@ body {
   letter-spacing: 0.05em;
 }
 
+.moss-data-mode-ribbon--cockpit {
+  top: 12px;
+  right: 18px;
+  left: auto;
+  width: fit-content;
+  max-width: min(420px, calc(100vw - 36px));
+  height: 26px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--moss-color-warning-600) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--moss-color-warning-50) 92%, transparent);
+  box-shadow: none;
+  color: var(--moss-color-warning-900);
+  font-size: 11px;
+  letter-spacing: 0;
+  backdrop-filter: blur(8px);
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -5127,5 +5146,33 @@ select {
   .workbench-shell-grid--cockpit .workbench-main-column > main {
     padding: var(--moss-space-3) !important;
     border-radius: var(--moss-radius-md) !important;
+  }
+}
+
+.moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit {
+  min-height: 100vh !important;
+  padding-top: 14px !important;
+}
+
+.moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit .workbench-shell-aside {
+  top: 0 !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+}
+
+@media (max-width: 760px) {
+  .moss-data-mode-ribbon--cockpit {
+    position: static;
+    width: auto;
+    max-width: none;
+    height: auto;
+    min-height: 24px;
+    margin: 6px 8px 0;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit {
+    padding-top: 8px !important;
   }
 }
