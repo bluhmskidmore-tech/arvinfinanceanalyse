@@ -58,6 +58,9 @@ function makeModel(): LivermoreStrategyModel {
         },
       ],
     },
+    meanReversionCandidates: null,
+    factorScreenCandidates: null,
+    themeBreakout: null,
     riskExit: null,
     unsupportedOutputs: [
       {

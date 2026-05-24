@@ -23,6 +23,8 @@ from backend.app.tasks.livermore_candidate_history_materialize import (
 )
 from tests.helpers import load_module
 
+_LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE = sys.modules[materialize_livermore_candidate_history.__module__]
+
 
 def _ensure_livermore_candidate_history_test_schema(conn: duckdb.DuckDBPyConnection) -> None:
     """Test schema bootstrap: production registry omits universe_history on fresh DBs."""
@@ -74,8 +76,22 @@ def _ensure_livermore_candidate_history_test_schema(conn: duckdb.DuckDBPyConnect
 
 @pytest.fixture(autouse=True)
 def _patch_livermore_candidate_history_schema(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "backend.app.tasks.livermore_candidate_history_materialize.ensure_livermore_candidate_history_schema",
+    monkeypatch.setitem(
+        sys.modules,
+        "backend.app.tasks.livermore_candidate_history_materialize",
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+    )
+    tasks_package = sys.modules.get("backend.app.tasks")
+    if tasks_package is not None:
+        monkeypatch.setattr(
+            tasks_package,
+            "livermore_candidate_history_materialize",
+            _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE,
+            raising=False,
+        )
+    monkeypatch.setitem(
+        _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE.__dict__,
+        "ensure_livermore_candidate_history_schema",
         _ensure_livermore_candidate_history_test_schema,
     )
 
@@ -3433,19 +3449,44 @@ def test_strategy_optimization_api_happy_path_and_query_validation(monkeypatch, 
     assert envelope["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
 
     client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/strategy-optimization",
+        params={
+            "snapshot_from": "2026-05-01",
+            "snapshot_to": "2026-05-01",
+            "current_market_state": "HOT",
+            "min_sample": 2,
+            "primary_horizon": "return_5d",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["basis"] == "analytical"
+    assert body["result_meta"]["rule_version"] == "rv_livermore_strategy_optimization_v1"
+    assert "livermore_candidate_history" in body["result_meta"]["tables_used"]
+    assert body["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
+
+    response_10d = client.get(
+        "/ui/market-data/livermore/strategy-optimization",
+        params={
+            "snapshot_from": "2026-05-01",
+            "snapshot_to": "2026-05-01",
+            "current_market_state": "HOT",
+            "min_sample": 2,
+            "primary_horizon": "return_10d",
+        },
+    )
+    assert response_10d.status_code == 422
+    assert response_10d.json()["detail"] == "Invalid primary_horizon. Expected return_1d, return_5d, or return_20d."
+
     assert (
         client.get(
             "/ui/market-data/livermore/strategy-optimization",
-            params={
-                "snapshot_from": "2026-05-01",
-                "snapshot_to": "2026-05-01",
-                "current_market_state": "HOT",
-                "min_sample": 2,
-                "primary_horizon": "return_5d",
-            },
+            params={"snapshot_from": "not-a-date"},
         ).status_code
-        == 404
+        == 422
     )
+    assert client.get("/ui/market-data/livermore/strategy-optimization", params={"min_sample": 0}).status_code == 422
     get_settings.cache_clear()
 
 
@@ -3598,6 +3639,48 @@ def test_cycle_proxy_backtest_marks_unsupported_when_no_completed_proxy_rows(tmp
     assert body["nav_series"] == []
 
 
+def test_cycle_proxy_backtest_api_happy_path_and_query_validation(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Proxy A", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08'
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/cycle-proxy-backtest",
+        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-01"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
+    assert body["result"]["status"] == "proxy"
+    assert body["result"]["summary"]["cumulative_return"] == 0.12
+    assert (
+        client.get(
+            "/ui/market-data/livermore/cycle-proxy-backtest",
+            params={"snapshot_from": "not-a-date"},
+        ).status_code
+        == 422
+    )
+    get_settings.cache_clear()
+
+
 def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_gate_and_costs(tmp_path) -> None:
     db_path = tmp_path / "candidate-history-portfolio.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
@@ -3684,3 +3767,46 @@ def test_candidate_history_portfolio_backtest_marks_unsupported_without_replay_r
     assert body["status"] == "unsupported"
     assert body["summary"] is None
     assert body["nav_series"] == []
+
+
+def test_candidate_history_portfolio_backtest_api_happy_path_and_query_validation(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-02", "000001.SZ", 112.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Alpha", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-02"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["rule_version"] == "rv_livermore_candidate_history_portfolio_backtest_v1"
+    assert body["result"]["status"] == "portfolio_proxy"
+    assert body["result"]["summary"]["sample_days"] == 1
+    assert (
+        client.get(
+            "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+            params={"snapshot_to": "not-a-date"},
+        ).status_code
+        == 422
+    )
+    get_settings.cache_clear()

@@ -7,11 +7,14 @@ import type {
   ChoiceNewsEventsPayload,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
+  LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreManualPositionInput,
   LivermoreCandidateHistoryPayload,
+  LivermoreCycleProxyBacktestPayload,
   LivermorePositionSnapshotPayload,
   LivermoreSectorRankSeriesPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
   LivermoreStockDetailPayload,
   LivermoreStrategyPayload,
@@ -94,6 +97,21 @@ export type MarketDataClientMethods = {
     minSample?: number;
     primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
   }) => Promise<ApiEnvelope<LivermoreStrategyScorePayload>>;
+  getLivermoreStrategyOptimization: (options?: {
+    snapshotFrom?: string;
+    snapshotTo?: string;
+    currentMarketState?: string;
+    minSample?: number;
+    primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+  }) => Promise<ApiEnvelope<LivermoreStrategyOptimizationPayload>>;
+  getLivermoreCycleProxyBacktest: (options?: {
+    snapshotFrom?: string;
+    snapshotTo?: string;
+  }) => Promise<ApiEnvelope<LivermoreCycleProxyBacktestPayload>>;
+  getLivermoreCandidateHistoryPortfolioBacktest: (options?: {
+    snapshotFrom?: string;
+    snapshotTo?: string;
+  }) => Promise<ApiEnvelope<LivermoreCandidateHistoryPortfolioBacktestPayload>>;
   getLivermoreSectorRankSeries: (options?: {
     asOfDate?: string;
     windowDays?: number;
@@ -1242,6 +1260,23 @@ function buildStrategyScoreQuery(options?: {
   return q ? `?${q}` : "";
 }
 
+function buildSnapshotWindowQuery(options?: {
+  snapshotFrom?: string;
+  snapshotTo?: string;
+}) {
+  const params = new URLSearchParams();
+  const sf = options?.snapshotFrom?.trim();
+  if (sf) {
+    params.set("snapshot_from", sf);
+  }
+  const st = options?.snapshotTo?.trim();
+  if (st) {
+    params.set("snapshot_to", st);
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
 class ActionRequestError extends Error {
   readonly status: number;
   readonly runId?: string;
@@ -1838,6 +1873,116 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getLivermoreStrategyOptimization(options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+      currentMarketState?: string;
+      minSample?: number;
+      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    }) {
+      await delay();
+      const state = options?.currentMarketState?.trim() || "WARM";
+      const primaryHorizon = options?.primaryHorizon ?? "return_5d";
+      return buildMockApiEnvelope(
+        "market_data.livermore.strategy_optimization",
+        {
+          as_of_date: options?.snapshotTo?.trim() ?? "2026-04-29",
+          snapshot_from: options?.snapshotFrom?.trim() ?? null,
+          snapshot_to: options?.snapshotTo?.trim() ?? "2026-04-29",
+          primary_horizon: primaryHorizon,
+          min_sample: options?.minSample ?? 20,
+          current_market_state: state,
+          strategy_summaries: [],
+          slices: [],
+          recommendations: [],
+          pending_summary: {
+            primary_horizon: primaryHorizon,
+            pending_rows: 0,
+            pending_dates: [],
+            latest_pending_date: null,
+            message: "mock",
+          },
+          sample_maturity: null,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_strategy_optimization_mock",
+          vendor_version: "vv_livermore_strategy_optimization_mock",
+          rule_version: "rv_livermore_strategy_optimization_v1",
+          cache_version: "cv_livermore_strategy_optimization_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
+    async getLivermoreCycleProxyBacktest(options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+    }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.livermore.cycle_proxy_backtest",
+        {
+          status: "proxy",
+          full_strategy_status: "blocked_missing_inputs",
+          proxy_signal_kind: "stock_candidate",
+          proxy_rule: "mock",
+          snapshot_from: options?.snapshotFrom?.trim() ?? null,
+          snapshot_to: options?.snapshotTo?.trim() ?? "2026-04-29",
+          missing_full_strategy_inputs: [],
+          warnings: [],
+          summary: null,
+          nav_series: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_cycle_proxy_backtest_mock",
+          vendor_version: "vv_livermore_cycle_proxy_backtest_mock",
+          rule_version: "rv_livermore_cycle_proxy_backtest_v1",
+          cache_version: "cv_livermore_cycle_proxy_backtest_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
+    async getLivermoreCandidateHistoryPortfolioBacktest(options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+    }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.livermore.candidate_history_portfolio_backtest",
+        {
+          status: "portfolio_proxy",
+          full_strategy_status: "blocked_missing_inputs",
+          signal_kind: "stock_candidate",
+          rebalance_rule: "mock",
+          weighting_rule: "mock",
+          snapshot_from: options?.snapshotFrom?.trim() ?? null,
+          snapshot_to: options?.snapshotTo?.trim() ?? "2026-04-29",
+          missing_full_strategy_inputs: [],
+          warnings: [],
+          summary: null,
+          nav_series: [],
+          rebalance_log: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_candidate_history_portfolio_backtest_mock",
+          vendor_version: "vv_livermore_candidate_history_portfolio_backtest_mock",
+          rule_version: "rv_livermore_candidate_history_portfolio_backtest_v1",
+          cache_version: "cv_livermore_candidate_history_portfolio_backtest_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getLivermoreSignalConfluence(options?: { asOfDate?: string }) {
       await delay();
       return buildMockApiEnvelope(
@@ -2080,6 +2225,36 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore/strategy-score${buildStrategyScoreQuery(options)}`,
+      ),
+    getLivermoreStrategyOptimization: (options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+      currentMarketState?: string;
+      minSample?: number;
+      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    }) =>
+      requestJson<LivermoreStrategyOptimizationPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/strategy-optimization${buildStrategyScoreQuery(options)}`,
+      ),
+    getLivermoreCycleProxyBacktest: (options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+    }) =>
+      requestJson<LivermoreCycleProxyBacktestPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/cycle-proxy-backtest${buildSnapshotWindowQuery(options)}`,
+      ),
+    getLivermoreCandidateHistoryPortfolioBacktest: (options?: {
+      snapshotFrom?: string;
+      snapshotTo?: string;
+    }) =>
+      requestJson<LivermoreCandidateHistoryPortfolioBacktestPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/candidate-history-portfolio-backtest${buildSnapshotWindowQuery(options)}`,
       ),
     getLivermoreSectorRankSeries: (options?: {
       asOfDate?: string;

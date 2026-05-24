@@ -453,6 +453,7 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
 
     monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
     monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
 
     payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
 

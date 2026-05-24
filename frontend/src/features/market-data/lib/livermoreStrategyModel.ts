@@ -145,6 +145,7 @@ export type LivermoreStrategyModel = {
 };
 
 const outputLabels: Record<LivermoreOutputKey, string> = {
+  hybrid_fusion: "hybrid fusion",
   market_gate: "市场门控",
   sector_rank: "板块排序",
   stock_candidates: "个股候选",

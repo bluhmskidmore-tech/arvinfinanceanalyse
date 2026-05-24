@@ -240,7 +240,7 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     latestSeries,
     fxAnalyticalGroups,
   });
-  const macroBondLinkage = input.macroBondLinkageEnvelope?.result ?? {};
+  const macroBondLinkage: Partial<MacroBondLinkagePayload> = input.macroBondLinkageEnvelope?.result ?? {};
   const spreadSlots = buildSpreadSlots(macroBondLinkage.top_correlations);
   const formalRatesMeta = input.formalRatesEnvelope?.result_meta;
   const macroMeta =
