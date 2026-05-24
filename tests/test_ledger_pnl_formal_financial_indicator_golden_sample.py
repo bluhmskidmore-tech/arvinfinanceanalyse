@@ -5,6 +5,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from fastapi.testclient import TestClient
+
 from tests.helpers import ROOT, load_module
 from tests.test_qdb_gl_monthly_analysis_core import (
     _real_month_source,
@@ -122,6 +124,29 @@ def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_env
     assert metrics["group.operating_revenue"]["missing_reason"].startswith("正式财务指标来源未接入")
     assert metrics["parent.deposit_balance"]["source_status"] == "needs_reconciliation"
     assert metrics["parent.deposit_balance"]["value"] is None
+
+
+def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract():
+    app_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(app_module.app)
+
+    response = client.get(
+        "/api/ledger-pnl/formal-financial-indicators",
+        params={"report_month": "202603"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "ledger"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["result_kind"] == "ledger_pnl.formal_financial_indicator_source_contract"
+    assert payload["result"]["report_month"] == "202603"
+
+    metrics = _metrics_by_key(payload["result"])
+    assert metrics["group.operating_revenue"]["value"] is None
+    assert metrics["group.operating_revenue"]["source_status"] == "formal_pending"
+    assert metrics["parent.loan_balance"]["source_status"] == "candidate_qdb_aligned"
+    assert metrics["parent.loan_balance"]["value"] is None
 
 
 def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():
