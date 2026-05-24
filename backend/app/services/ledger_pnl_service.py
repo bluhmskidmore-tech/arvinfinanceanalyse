@@ -20,6 +20,9 @@ from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
 from backend.app.core_finance.decimal_utils import fmt_money, to_decimal
+from backend.app.core_finance.formal_financial_indicators import (
+    build_formal_financial_indicator_contract,
+)
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.product_category_source_service import (
     build_canonical_facts,
@@ -28,6 +31,7 @@ from backend.app.services.product_category_source_service import (
 
 CACHE_VERSION = "cv_ledger_pnl_v1"
 RULE_VERSION = "rv_ledger_pnl_v1"
+FINANCIAL_INDICATOR_CONTRACT_CACHE_VERSION = "cv_ledger_pnl_financial_indicator_contract_v1"
 SUPPORTED_CURRENCIES = {"CNX", "CNY"}
 
 
@@ -279,4 +283,27 @@ def ledger_pnl_summary_envelope(
         quality_flag="ok",
         vendor_version="vv_none",
         result_payload=payload,
+    )
+
+
+def ledger_pnl_formal_financial_indicator_contract_envelope(
+    *,
+    report_month: str,
+) -> dict[str, Any]:
+    payload = build_formal_financial_indicator_contract(report_month=report_month)
+    return build_result_envelope(
+        basis="ledger",
+        trace_id=f"tr_ledger_pnl_financial_indicator_contract_{report_month}",
+        result_kind="ledger_pnl.formal_financial_indicator_source_contract",
+        cache_version=FINANCIAL_INDICATOR_CONTRACT_CACHE_VERSION,
+        source_version=str(payload["source_version"]),
+        rule_version=str(payload["rule_version"]),
+        quality_flag="warning",
+        vendor_version="vv_none",
+        result_payload=payload,
+        requested_report_date=report_month,
+        resolved_report_date=str(payload["report_date"]),
+        as_of_date=str(payload["report_date"]),
+        date_basis="report_month_end",
+        evidence_rows=len(payload["metrics"]),
     )

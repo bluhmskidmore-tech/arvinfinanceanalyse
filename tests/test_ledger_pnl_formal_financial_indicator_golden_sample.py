@@ -68,6 +68,62 @@ def test_ledger_pnl_202603_golden_sample_freezes_excel_values_units_and_source_s
     assert all(metric["system_value"] is None for metric in formal_pending)
 
 
+def test_formal_financial_indicator_registry_exposes_202603_contract_without_promoting_values():
+    sample = _load_sample()
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    contract = registry.build_formal_financial_indicator_contract(report_month="202603")
+
+    assert contract["sample_id"] == sample["sample_id"]
+    assert contract["report_month"] == "202603"
+    assert contract["source_version"] == "sv_formal_financial_indicators_excel_202603_contract"
+    assert contract["rule_version"] == "rv_formal_financial_indicators_source_status_v1"
+    assert contract["formal_use_allowed"] is False
+
+    contract_metrics = _metrics_by_key(contract)
+    sample_metrics = _metrics_by_key(sample)
+    assert contract_metrics.keys() == sample_metrics.keys()
+
+    pending = [
+        metric
+        for metric in contract_metrics.values()
+        if metric["source_status"] == "formal_pending"
+    ]
+    assert pending
+    assert all(metric["value"] is None for metric in pending)
+    assert all(metric["system_value"] is None for metric in pending)
+    assert all(metric["formal_use_allowed"] is False for metric in contract_metrics.values())
+    assert contract_metrics["parent.loan_balance"]["source_status"] == "candidate_qdb_aligned"
+    assert contract_metrics["parent.loan_balance"]["value"] is None
+    assert contract_metrics["parent.loan_balance"]["consolidation_scope"] == "parent_company"
+    assert contract_metrics["parent.loan_balance"]["cell_ref"] == "财务指标-汇总!K39 -> 财务指标-计算表!K76"
+    assert contract_metrics["parent.loan_balance"]["golden_sample_ref"].endswith("#parent.loan_balance")
+
+
+def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_envelope():
+    service = load_module(
+        "backend.app.services.ledger_pnl_service",
+        "backend/app/services/ledger_pnl_service.py",
+    )
+
+    envelope = service.ledger_pnl_formal_financial_indicator_contract_envelope(
+        report_month="202603",
+    )
+
+    assert envelope["result_meta"]["basis"] == "ledger"
+    assert envelope["result_meta"]["formal_use_allowed"] is False
+    assert envelope["result_meta"]["source_version"] == "sv_formal_financial_indicators_excel_202603_contract"
+    assert envelope["result"]["sample_id"] == "GS-LEDGER-PNL-FIN-IND-202603-B"
+    metrics = _metrics_by_key(envelope["result"])
+    assert metrics["group.operating_revenue"]["value"] is None
+    assert metrics["group.operating_revenue"]["missing_reason"].startswith("正式财务指标来源未接入")
+    assert metrics["parent.deposit_balance"]["source_status"] == "needs_reconciliation"
+    assert metrics["parent.deposit_balance"]["value"] is None
+
+
 def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():
     sample = _load_sample()
     service = load_module(
