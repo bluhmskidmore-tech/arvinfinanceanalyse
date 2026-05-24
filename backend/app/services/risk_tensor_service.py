@@ -182,6 +182,11 @@ def risk_tensor_envelope(
         vendor_version="vv_none",
         quality_flag=payload.quality_flag,
         source_surface="risk_tensor",
+        requested_report_date=report_date_text,
+        resolved_report_date=report_date_text,
+        as_of_date=report_date_text,
+        date_basis="formal_snapshot",
+        fallback_date=None,
         result_payload=payload.model_dump(mode="json"),
     )
 
