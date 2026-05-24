@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
@@ -10,9 +11,14 @@ vi.mock("../lib/echarts", () => ({
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { formatRawAsNumeric } from "../utils/format";
+import { sampleCoreMetricsResult, sampleDailyChangesResult } from "../fixtures/dashboardCoreWorkbenchSamples";
 
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function renderDashboard(client?: ApiClient) {
   if (!client) {
@@ -55,6 +61,47 @@ function numericWithRawYuanDisplay(raw: number) {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }),
+  };
+}
+
+function resultMeta(resultKind: string, asOfDate = "2026-04-30") {
+  return {
+    trace_id: `tr_${resultKind.replace(/\W+/g, "_")}`,
+    basis: "formal" as const,
+    result_kind: resultKind,
+    formal_use_allowed: true,
+    source_version: "sv_test",
+    vendor_version: "vv_test",
+    rule_version: "rv_test",
+    cache_version: "cv_test",
+    quality_flag: "ok" as const,
+    vendor_status: "ok" as const,
+    fallback_mode: "none" as const,
+    scenario_flag: false,
+    as_of_date: asOfDate,
+    generated_at: `${asOfDate}T10:45:00+08:00`,
+  };
+}
+
+function marketPoint(
+  series_id: string,
+  value_numeric: number,
+  latest_change: number | null,
+  unit = "%",
+) {
+  return {
+    series_id,
+    series_name: series_id,
+    trade_date: "2026-04-30",
+    value_numeric,
+    frequency: "D",
+    unit,
+    source_version: "sv_test",
+    vendor_version: "vv_test",
+    quality_flag: "ok" as const,
+    latest_change,
+    recent_points: [],
+    refresh_tier: "stable" as const,
   };
 }
 
@@ -250,6 +297,103 @@ function localTodayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+function buildJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function buildEmbeddedLocalAnalysisResult() {
+  return {
+    answer: "Local analysis fallback answered from dashboard context.",
+    cards: [
+      {
+        type: "status",
+        title: "Local analysis fallback",
+        value: "No governed metric intent was selected yet.",
+      },
+    ],
+    evidence: {
+      tables_used: [],
+      filters_applied: {
+        provider: "local",
+        transport: "sync",
+        page_id: "dashboard",
+        report_date: "2026-03-31",
+      },
+      evidence_rows: 0,
+      quality_flag: "warning",
+    },
+    result_meta: {
+      trace_id: "tr_dashboard_analysis_chat",
+      basis: "formal",
+      result_kind: "agent.analysis_chat",
+      formal_use_allowed: false,
+    },
+    next_drill: [],
+    suggested_actions: [
+      {
+        type: "execute_intent",
+        label: "\u7ec4\u5408\u6982\u89c8",
+        payload: { intent: "portfolio_overview" },
+        requires_confirmation: true,
+      },
+    ],
+  };
+}
+
+function buildEmbeddedPortfolioOverviewResult() {
+  return {
+    answer: "Formal portfolio overview result appended in the embedded conversation.",
+    cards: [{ type: "metric", title: "Total Market Value", value: "1000" }],
+    evidence: {
+      tables_used: ["fact_formal_zqtz_balance_daily"],
+      filters_applied: {
+        provider: "local",
+        transport: "sync",
+        report_date: "2026-03-31",
+      },
+      evidence_rows: 3,
+      quality_flag: "ok",
+    },
+    result_meta: {
+      trace_id: "tr_dashboard_portfolio_overview",
+      basis: "formal",
+      result_kind: "agent.portfolio_overview",
+      formal_use_allowed: true,
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
+}
+
+function buildEmbeddedHermesResult() {
+  return {
+    answer: "Hermes managed dashboard answer.",
+    cards: [],
+    evidence: {
+      tables_used: ["hermes_cli"],
+      filters_applied: {
+        provider: "hermes",
+        model: "gpt-5.5",
+        transport: "bridge",
+        toolsets: "file",
+      },
+      evidence_rows: 1,
+      quality_flag: "ok",
+    },
+    result_meta: {
+      trace_id: "tr_dashboard_hermes",
+      basis: "formal",
+      result_kind: "agent.hermes",
+      formal_use_allowed: false,
+    },
+    next_drill: [],
+    suggested_actions: [],
+  };
+}
+
 async function openDetailDrilldown() {
   const detail = await screen.findByTestId("dashboard-detail-drilldown");
   const summary = detail.querySelector("summary");
@@ -394,61 +538,126 @@ describe("DashboardPage", () => {
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     const toolbar = await screen.findByTestId("dashboard-home-toolbar");
-    const judgmentStrip = await screen.findByTestId("dashboard-judgment-strip");
     const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    const executiveOverview = await screen.findByTestId("dashboard-executive-overview");
     const marketPulse = await screen.findByTestId("dashboard-cockpit-market-ticker");
+    const marketTape = await screen.findByTestId("dashboard-market-tape");
     const operatingLayout = await screen.findByTestId("dashboard-operating-layout");
     const operatingMain = await screen.findByTestId("dashboard-operating-main");
+    const workspace = await screen.findByTestId("dashboard-primary-analysis");
     const decisionRail = await screen.findByTestId("dashboard-decision-rail");
-    const triptych = within(operatingMain).getByTestId("dashboard-main-triptych");
+    const aiCabin = await screen.findByTestId("dashboard-ai-decision-cabin");
+    const riskActionStrip = await screen.findByTestId("dashboard-risk-action-strip");
+    const secondaryAnalysis = await screen.findByTestId("dashboard-secondary-analysis");
     const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
     const detailDrilldown = await screen.findByTestId("dashboard-detail-drilldown");
+    const dataModeRibbon = document.querySelector("#data-mode-ribbon");
 
     expect(page).toHaveClass("dashboard-cockpit-page");
     expect(page).toHaveClass("dashboard-cockpit-page--shell-nav");
+    expect(dataModeRibbon).toHaveClass("moss-data-mode-ribbon--cockpit");
+    expect(dataModeRibbon).toHaveAttribute("data-variant", "cockpit");
+    expect(dataModeRibbon).toHaveTextContent("MOCK");
     expect(screen.queryByTestId("dashboard-cockpit-sidebar")).not.toBeInTheDocument();
-    expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(6);
-    expect(screen.queryByTestId("dashboard-kpi-core-group")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-kpi-risk-group")).not.toBeInTheDocument();
-    expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(6);
+    expect(screen.queryByTestId("dashboard-judgment-strip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-main-triptych")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-same-day-evidence-band")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-command-deck")).not.toBeInTheDocument();
+
     expect(operatingLayout).toContainElement(operatingMain);
     expect(operatingLayout).toContainElement(decisionRail);
-    expect(decisionRail).toHaveTextContent("今日决策侧舱");
-    expect(decisionRail).toHaveTextContent("进入决策工作台");
-    expect(operatingMain).toContainElement(screen.getByTestId("dashboard-attribution-panel"));
-    expect(triptych).toContainElement(screen.getByTestId("dashboard-portfolio-overview"));
-    expect(triptych).toContainElement(screen.getByTestId("dashboard-risk-alert-panel"));
+    expect(operatingMain).toContainElement(kpiBand);
+    expect(kpiBand).toContainElement(executiveOverview);
+    expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/).length).toBe(6);
+    expect(screen.getByTestId("dashboard-kpi-core-group")).toHaveTextContent("经营核心指标");
+    expect(screen.getByTestId("dashboard-kpi-risk-group")).toHaveTextContent("风险约束指标");
+    expect(within(executiveOverview).getByText("今日经营判断")).toBeInTheDocument();
+    expect(within(executiveOverview).getByText(/本地模拟数据|待同步或复核|正式经营判断/)).toBeInTheDocument();
+    expect(within(kpiBand).getByText("债券资产规模")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("3,708.10 亿")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("年度损益（不扣FTP）")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("净息差（年化）")).toBeInTheDocument();
+    expect(within(kpiBand).getByText("风险集中度（Top5）")).toBeInTheDocument();
+
+    expect(operatingMain).toContainElement(marketPulse);
+    expect(marketPulse).toContainElement(marketTape);
+    expect(marketPulse).toHaveAttribute("id", "dashboard-home-market-section");
+    expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(8);
+    expect(within(marketPulse).getByText("10年国债")).toBeInTheDocument();
+    expect(within(marketPulse).getByText("DR007")).toBeInTheDocument();
+    expect(within(marketPulse).getByText("更多市场数据 →")).toBeInTheDocument();
+    expect(marketPulse.querySelectorAll(".dashboard-cockpit-pulse__spark")).toHaveLength(8);
+
+    expect(operatingMain).toContainElement(workspace);
+    expect(workspace).toContainElement(screen.getByTestId("dashboard-portfolio-overview"));
+    expect(workspace).toContainElement(screen.getByTestId("dashboard-attribution-trend-panel"));
+    expect(workspace).toContainElement(riskActionStrip);
+    expect(workspace).not.toContainElement(decisionRail);
+    expect(decisionRail).toContainElement(aiCabin);
+    expect(aiCabin).toHaveTextContent("AI 决策舱");
+    expect(aiCabin).toHaveTextContent("今日结论");
+    expect(aiCabin).toHaveTextContent("生成完整经营报告");
+    expect(screen.getByTestId("dashboard-portfolio-overview")).toHaveAttribute(
+      "id",
+      "dashboard-home-portfolio-section",
+    );
+    const donut = within(screen.getByTestId("dashboard-portfolio-overview")).getByTestId(
+      "dashboard-cockpit-portfolio-donut",
+    );
+    expect(donut).toHaveTextContent("3,708.10 亿");
+    expect(donut).toHaveAttribute("aria-label", "债券资产规模 3,708.10 亿");
+    expect(within(workspace).getByText("组合数")).toBeInTheDocument();
+    expect(within(workspace).getByText("1,256 只")).toBeInTheDocument();
+    expect(within(workspace).getByText("产品分类损益趋势")).toBeInTheDocument();
+
+    expect(operatingMain).toContainElement(riskActionStrip);
+    expect(screen.getByTestId("dashboard-risk-alert-panel")).toHaveAttribute(
+      "id",
+      "dashboard-home-risk-section",
+    );
+    expect(riskActionStrip).toHaveTextContent("风险与预警");
+    expect(riskActionStrip).toHaveTextContent("待办清单");
+    expect(riskActionStrip).toHaveTextContent("观察清单");
+    expect(riskActionStrip).toHaveTextContent("进入风险处置台");
+
+    expect(operatingMain).toContainElement(secondaryAnalysis);
+    expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-exposure-table"));
+    expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-balance-summary"));
+    expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-terminal-action-bar"));
+    expect(screen.getByTestId("dashboard-terminal-action-bar")).toHaveTextContent("快速钻取");
+
     expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
     expect(screen.getByTestId("dashboard-depth-drawer")).not.toHaveAttribute("open");
-    expect(screen.getByTestId("dashboard-command-deck")).toHaveAttribute("hidden");
-    expect(judgmentStrip).toHaveTextContent("经营快照");
-    expect(judgmentStrip).toHaveTextContent("本日判断");
-    expect(judgmentStrip).toHaveTextContent("数据状态需先复核，再做方向性判断");
-    expect(judgmentStrip).not.toHaveTextContent("利率上行拖累估值");
-    expect(judgmentStrip).not.toHaveTextContent("估值待同步");
-    expect(judgmentStrip).not.toHaveTextContent("风险待复核");
-    expect(kpiBand.querySelectorAll(".dashboard-cockpit-kpi__spark")).toHaveLength(6);
+    expect(screen.getByTestId("dashboard-depth-drawer")).toHaveTextContent("复核队列");
+    expect(screen.getByTestId("dashboard-depth-drawer")).toHaveTextContent("待决策事项");
+    expect(supplement).toHaveTextContent("指标轨道");
+    expect(supplement).toHaveTextContent("同日事实校验");
     expect(screen.queryByTestId("dashboard-improvement-notes")).not.toBeInTheDocument();
-    expect(within(kpiBand).getByText("债券资产规模")).toBeInTheDocument();
-    expect(within(kpiBand).getByText("3,708.10 亿")).toBeInTheDocument();
-    const portfolioOverview = within(triptych).getByTestId("dashboard-portfolio-overview");
-    const donut = within(portfolioOverview).getByTestId("dashboard-cockpit-portfolio-donut");
-    expect(donut).toHaveTextContent("3,708.10 亿");
-    expect(donut).toHaveAttribute("aria-label", "债券资产规模 3,708.10 亿");
-    expect(within(kpiBand).getByText("风险集中度（Top5）")).toBeInTheDocument();
-    expect(within(marketPulse).getByText("10年国债")).toBeInTheDocument();
-    expect(within(marketPulse).getByText("DR007")).toBeInTheDocument();
-    expect(within(triptych).getByText("组合数")).toBeInTheDocument();
-    expect(within(triptych).getByText("1,256 只")).toBeInTheDocument();
     expect(within(operatingMain).getByText("利率上行导致组合估值回落，对损益形成主要拖累。")).toBeInTheDocument();
-    expect(within(triptych).getByText("高风险预警")).toBeInTheDocument();
+    expect(
+      within(decisionRail).getByRole("link", { name: /今日结论.*定位到市场数据区/i }),
+    ).toHaveAttribute("href", "#dashboard-home-market-section");
+    expect(
+      within(decisionRail).getByRole("link", { name: /关键风险.*定位到风险与预警处理区/i }),
+    ).toHaveAttribute("href", "#dashboard-home-risk-section");
+    expect(
+      within(decisionRail).getByRole("link", { name: /待处理事项.*定位到风险与预警处理区/i }),
+    ).toHaveAttribute("href", "#dashboard-home-risk-section");
 
-    expectTestIdsInOrder(page, [
-      "dashboard-home-toolbar",
-      "dashboard-judgment-strip",
+    expectTestIdsInOrder(operatingMain, [
       "dashboard-kpi-band",
       "dashboard-cockpit-market-ticker",
+      "dashboard-primary-analysis",
+      "dashboard-secondary-analysis",
+    ]);
+    expectTestIdsInOrder(workspace, [
+      "dashboard-portfolio-overview",
+      "dashboard-attribution-trend-panel",
+      "dashboard-risk-action-strip",
+    ]);
+    expectTestIdsInOrder(page, [
+      "dashboard-home-toolbar",
       "dashboard-operating-layout",
       "dashboard-depth-drawer",
       "dashboard-cockpit-supplement",
@@ -460,12 +669,11 @@ describe("DashboardPage", () => {
     expect(toolbar.querySelector(".dashboard-cockpit-header__search")).toBeInTheDocument();
     const statusGroup = toolbar.querySelector(".dashboard-cockpit-header__status-group");
     expect(statusGroup).not.toBeNull();
-    expect(within(statusGroup as HTMLElement).getByText(/数据待同步 09:15/)).toBeInTheDocument();
+    expect(within(statusGroup as HTMLElement).getByText(/数据使用本地模拟数据 09:15/)).toBeInTheDocument();
+    expect(within(statusGroup as HTMLElement).getByText("市场已收盘")).toBeInTheDocument();
     expect(within(statusGroup as HTMLElement).getByText("估值待同步")).toBeInTheDocument();
     expect(within(statusGroup as HTMLElement).getByText(/风险待复核/)).toHaveTextContent("11");
-    expect(within(toolbar).queryByText("风险待复核 3")).not.toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: "刷新" })).toBeInTheDocument();
-    expect(marketPulse.querySelector(".dashboard-cockpit-pulse__spark")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-market-strip")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-product-pnl-empty")).not.toBeInTheDocument();
   });
@@ -557,20 +765,25 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("keeps business income and asset-liability summary cards in the deferred depth zone", async () => {
+  it("keeps first-screen secondary analysis out of the deferred depth zone", async () => {
     renderDashboard();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
+    const secondaryAnalysis = await screen.findByTestId("dashboard-secondary-analysis");
+    expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-balance-summary"));
+    expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-exposure-table"));
+    expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-terminal-action-bar"));
     expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
     const depthDrawer = openDepthDrawer(page);
     const depthZone = await screen.findByTestId("dashboard-depth-zone");
     expect(depthZone).not.toHaveAttribute("hidden");
     expect(depthDrawer).toHaveAttribute("open");
-    expect(within(depthZone).getByTestId("dashboard-balance-summary")).toBeInTheDocument();
-    expect(within(depthZone).getByTestId("dashboard-exposure-table")).toBeInTheDocument();
+    expect(within(depthZone).queryByTestId("dashboard-balance-summary")).not.toBeInTheDocument();
+    expect(within(depthZone).queryByTestId("dashboard-exposure-table")).not.toBeInTheDocument();
+    expect(within(depthZone).queryByTestId("dashboard-quick-drilldown")).not.toBeInTheDocument();
     expect(within(depthZone).getByTestId("dashboard-product-pnl-trend")).toBeInTheDocument();
-    expect(within(depthZone).getByTestId("dashboard-quick-drilldown")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-action-queue")).toBeInTheDocument();
 
     const supplement = await screen.findByTestId("dashboard-cockpit-supplement");
     fireEvent.click(within(supplement).getByText("同报告日补充读面（展开）"));
@@ -659,6 +872,175 @@ describe("DashboardPage", () => {
     expect(await within(detail).findByTestId("agent-panel")).toBeInTheDocument();
   });
 
+  it("submits embedded Copilot questions with dashboard page_context", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(buildJsonResponse(buildEmbeddedLocalAnalysisResult()));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-03-31",
+          },
+        };
+      },
+    };
+
+    renderDashboard(client);
+
+    const detail = await openDetailDrilldown();
+    const panel = await within(detail).findByTestId("agent-panel");
+    await user.type(within(panel).getByLabelText("agent-question-input"), "please judge current risk");
+    await user.click(within(panel).getByRole("button", { name: /发送/ }));
+
+    expect(
+      await within(panel).findByText("Local analysis fallback answered from dashboard context."),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/agent/query");
+    expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
+      question: "please judge current risk",
+      page_context: {
+        page_id: "dashboard",
+        current_filters: {
+          allow_partial: false,
+          requested_report_date: null,
+          report_date: "2026-03-31",
+        },
+        selected_rows: [],
+        context_note: null,
+      },
+    });
+  });
+
+  it("keeps local analysis fallback and suggested intent actions inside the embedded conversation", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(buildJsonResponse(buildEmbeddedLocalAnalysisResult()))
+      .mockResolvedValueOnce(buildJsonResponse(buildEmbeddedPortfolioOverviewResult()));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-03-31",
+          },
+        };
+      },
+    };
+
+    renderDashboard(client);
+
+    const detail = await openDetailDrilldown();
+    const panel = await within(detail).findByTestId("agent-panel");
+    await user.type(within(panel).getByLabelText("agent-question-input"), "please judge current risk");
+    await user.click(within(panel).getByRole("button", { name: /发送/ }));
+    expect(
+      await within(panel).findByText("Local analysis fallback answered from dashboard context."),
+    ).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" }));
+
+    expect(
+      await within(panel).findByText(
+        "Formal portfolio overview result appended in the embedded conversation.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(panel).getByLabelText("agent-conversation")).toHaveTextContent(
+      "\u6267\u884c\u5efa\u8bae\u52a8\u4f5c\uff1a\u7ec4\u5408\u6982\u89c8",
+    );
+    const [, options] = fetchMock.mock.calls[1] ?? [];
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/agent/query");
+    expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
+      question: "\u7ec4\u5408\u6982\u89c8",
+      context: {
+        intent: "portfolio_overview",
+        conversation: {
+          recent_turns: [
+            {
+              question: "please judge current risk",
+              trace_id: "tr_dashboard_analysis_chat",
+              result_kind: "agent.analysis_chat",
+            },
+          ],
+        },
+      },
+      page_context: {
+        page_id: "dashboard",
+        current_filters: {
+          report_date: "2026-03-31",
+        },
+      },
+    });
+  });
+
+  it("shows Hermes managed run status and answer in the embedded Copilot", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:dashboard",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:dashboard",
+          status: "completed",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          elapsed_seconds: 2,
+          result: buildEmbeddedHermesResult(),
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderDashboard();
+
+    const detail = await openDetailDrilldown();
+    const panel = await within(detail).findByTestId("agent-panel");
+    await user.type(within(panel).getByLabelText("agent-question-input"), "managed dashboard check");
+    await user.click(within(panel).getByRole("button", { name: /发送/ }));
+
+    expect(await within(panel).findByText("Hermes managed dashboard answer.")).toBeInTheDocument();
+    expect(within(panel).getByRole("status")).toHaveTextContent("agent_run:dashboard");
+    expect(within(panel).getByRole("status")).toHaveTextContent("\u5df2\u5b8c\u6210");
+    expect(within(panel).getByLabelText("agent-runtime-status")).toHaveTextContent("Hermes");
+    expect(within(panel).getByLabelText("agent-runtime-status")).toHaveTextContent("gpt-5.5");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/agent/runs",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/agent/runs/agent_run%3Adashboard",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("fills drilldown review cards with status, evidence, and valid actions", async () => {
     renderDashboard();
 
@@ -701,7 +1083,7 @@ describe("DashboardPage", () => {
     renderDashboard(client);
 
     const strip = await screen.findByTestId("dashboard-cockpit-market-ticker");
-    expect(within(strip).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(6);
+    expect(within(strip).getAllByTestId(/^dashboard-market-pulse-/).length).toBe(8);
     expect(within(strip).queryByTestId("dashboard-cockpit-market-ticker-unavailable")).not.toBeInTheDocument();
     expect(within(strip).queryByText("Failed to fetch")).not.toBeInTheDocument();
     expect(within(strip).queryByText("数据加载失败")).not.toBeInTheDocument();
@@ -711,8 +1093,9 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-command-deck")).toHaveAttribute("hidden");
+    expect(screen.queryByTestId("dashboard-command-deck")).not.toBeInTheDocument();
     const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    expect(await screen.findByTestId("dashboard-executive-overview")).toBeInTheDocument();
     expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/)).toHaveLength(6);
     expect(within(kpiBand).getByText("年度损益（不扣FTP）")).toBeInTheDocument();
     expect(within(kpiBand).getByText("+29.71 亿")).toBeInTheDocument();
@@ -720,29 +1103,32 @@ describe("DashboardPage", () => {
     expect(screen.queryByTestId("dashboard-data-status-strip")).not.toBeInTheDocument();
 
     const marketPulse = await screen.findByTestId("dashboard-cockpit-market-ticker");
-    expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/)).toHaveLength(6);
+    expect(within(marketPulse).getAllByTestId(/^dashboard-market-pulse-/)).toHaveLength(8);
     expect(within(marketPulse).getByText("人民币汇率")).toBeInTheDocument();
     expect(within(marketPulse).getByText("7.2431")).toBeInTheDocument();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     const operatingMain = await screen.findByTestId("dashboard-operating-main");
-    const triptych = within(operatingMain).getByTestId("dashboard-primary-analysis");
-    expect(within(triptych).getByTestId("dashboard-portfolio-overview")).toHaveTextContent("同业资产");
-    expect(within(page).getByTestId("dashboard-attribution-panel")).toHaveTextContent("收益拆解");
-    expect(within(triptych).getByTestId("dashboard-risk-alert-panel")).toHaveTextContent("预警 11 项");
+    const workspace = within(operatingMain).getByTestId("dashboard-primary-analysis");
+    expect(within(workspace).getByTestId("dashboard-portfolio-overview")).toHaveTextContent("同业资产");
+    expect(within(page).getByTestId("dashboard-attribution-trend-panel")).toHaveTextContent("今日归因");
+    expect(within(page).getByTestId("dashboard-ai-decision-cabin")).toHaveTextContent("AI 决策舱");
+    expect(within(page).getByTestId("dashboard-risk-action-strip")).toHaveTextContent("风险与预警");
+    expect(within(page).getByTestId("dashboard-secondary-analysis")).toHaveTextContent("快速钻取");
 
     expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
     openDepthDrawer(page);
     const depthZone = await screen.findByTestId("dashboard-depth-zone");
-    expect(within(depthZone).getByText("账户")).toBeInTheDocument();
-    expect(within(depthZone).getByText("资产规模（亿）")).toBeInTheDocument();
-    expect(within(depthZone).getByText("风险总计")).toBeInTheDocument();
+    expect(within(depthZone).getByTestId("dashboard-product-pnl-trend")).toBeInTheDocument();
+    expect(within(depthZone).queryByText("账户")).not.toBeInTheDocument();
+    expect(within(depthZone).queryByText("资产规模（亿）")).not.toBeInTheDocument();
+    expect(within(depthZone).queryByTestId("dashboard-quick-drilldown")).not.toBeInTheDocument();
     expect(
-      within(depthZone).getByRole("link", { name: /收益归因分析/ }),
+      within(screen.getByTestId("dashboard-terminal-action-bar")).getByRole("link", { name: /收益归因分析/ }),
     ).toHaveAttribute("href", "/pnl-attribution");
     expect(
-      within(depthZone).getByRole("link", { name: /持仓明细/ }),
+      within(screen.getByTestId("dashboard-terminal-action-bar")).getByRole("link", { name: /持仓明细/ }),
     ).toHaveAttribute("href", "/positions");
     expect(await screen.findByTestId("dashboard-action-queue")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-improvement-notes")).toHaveTextContent("待决策事项");
@@ -983,7 +1369,7 @@ describe("DashboardPage", () => {
                   unit: "yuan",
                   sign_aware: true,
                 }),
-                tone: "positive",
+                tone: "positive" as const,
                 detail: "测试真实接口返回值。",
               },
             ],
@@ -1043,9 +1429,8 @@ describe("DashboardPage", () => {
     expect(within(kpiBand).getByText("年度损益（不扣FTP）")).toBeInTheDocument();
     expect(within(kpiBand).queryByText("3,708.10 亿")).not.toBeInTheDocument();
     const page = await screen.findByTestId("fixed-income-dashboard-page");
-    openDepthDrawer(page);
-    const triptych = within(page).getByTestId("dashboard-main-triptych");
-    const portfolioOverview = within(triptych).getByTestId("dashboard-portfolio-overview");
+    const workspace = within(page).getByTestId("dashboard-primary-analysis");
+    const portfolioOverview = within(workspace).getByTestId("dashboard-portfolio-overview");
     const donut = within(portfolioOverview).getByTestId("dashboard-cockpit-portfolio-donut");
     expect(donut).toHaveTextContent("45678.90 亿");
     expect(donut).toHaveAttribute("aria-label", "债券资产规模 45678.90 亿");
@@ -1056,10 +1441,231 @@ describe("DashboardPage", () => {
       expect(within(marketPulse).getByText("2.31%")).toBeInTheDocument();
     });
     expect(within(marketPulse).queryByText("1.76%")).not.toBeInTheDocument();
+    const decisionRail = await screen.findByTestId("dashboard-decision-rail");
+    expect(screen.queryByTestId("dashboard-judgment-strip")).not.toBeInTheDocument();
+    expect(decisionRail).not.toHaveTextContent("本地模拟数据");
+    expect(decisionRail).not.toHaveTextContent("演示回落");
     expect(await screen.findByText("管理视角")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByText(/数据已更新/).length).toBeGreaterThan(0);
     });
+  });
+
+  it("keeps governed first-screen judgment and real attribution extremes when secondary slots are pending", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const reportDate = "2026-04-30";
+    const getHomeSnapshot = vi.fn(async (options) => {
+      const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+      return {
+        ...envelope,
+        result_meta: resultMeta("home.snapshot", reportDate),
+        result: {
+          ...envelope.result,
+          report_date: reportDate,
+          mode: "complete" as const,
+          domains_missing: [],
+          verdict: {
+            conclusion: "正式经营判断来自首屏核心指标。",
+            tone: "neutral" as const,
+            reasons: [],
+            suggestions: [],
+          },
+          overview: {
+            ...envelope.result.overview,
+            metrics: [
+              {
+                id: "aum",
+                label: "债券资产规模",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({ raw: 3708.1, unit: "yi", sign_aware: false }),
+                delta: formatRawAsNumeric({ raw: -0.058, unit: "pct", sign_aware: true }),
+                tone: "negative" as const,
+                detail: "债券资产规模同日报告日。",
+              },
+              {
+                id: "yield",
+                label: "年度损益",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({ raw: 29.71, unit: "yi", sign_aware: true }),
+                delta: formatRawAsNumeric({ raw: 0.4018, unit: "pct", sign_aware: true }),
+                tone: "positive" as const,
+                detail: "年度损益同日报告日。",
+              },
+              {
+                id: "nim",
+                label: "净息差",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({ raw: 0.0094, unit: "pct", sign_aware: true }),
+                delta: { raw: 0.0012, unit: "pct" as const, display: "+0.12pp", precision: 2, sign_aware: true },
+                tone: "positive" as const,
+                detail: "净息差同日报告日。",
+              },
+              {
+                id: "dv01",
+                label: "组合DV01",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({ raw: 10667.27, unit: "dv01", sign_aware: false }),
+                delta: { raw: null, unit: "dv01" as const, display: "关联利率风险", precision: 2, sign_aware: false },
+                tone: "neutral" as const,
+                detail: "DV01 同日报告日。",
+              },
+              {
+                id: "duration",
+                label: "久期",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({ raw: 4.11, unit: "ratio", sign_aware: false }),
+                delta: { raw: null, unit: "ratio" as const, display: "较 2026-04-29", precision: 2, sign_aware: false },
+                tone: "neutral" as const,
+                detail: "久期同日报告日。",
+              },
+              {
+                id: "concentration",
+                label: "风险集中度",
+                caliber_label: "真实接口口径",
+                value: formatRawAsNumeric({ raw: 0.4076, unit: "pct", sign_aware: false }),
+                delta: { raw: null, unit: "pct" as const, display: "关联主体敞口", precision: 2, sign_aware: false },
+                tone: "warning" as const,
+                detail: "Top5 集中度同日报告日。",
+              },
+            ],
+          },
+          attribution: {
+            title: "真实归因",
+            total: formatRawAsNumeric({ raw: 200_000_000, unit: "yuan", sign_aware: true }),
+            segments: [
+              {
+                id: "rate",
+                label: "利率变动",
+                amount: formatRawAsNumeric({ raw: -30_000_000, unit: "yuan", sign_aware: true }),
+                tone: "negative" as const,
+              },
+              {
+                id: "credit",
+                label: "信用利差",
+                amount: formatRawAsNumeric({ raw: 50_000_000, unit: "yuan", sign_aware: true }),
+                tone: "positive" as const,
+              },
+            ],
+          },
+        },
+      };
+    });
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot,
+      getCoreMetrics: vi.fn(async () => ({
+        result_meta: resultMeta("dashboard.core_metrics", reportDate),
+        result: sampleCoreMetricsResult({ report_date: reportDate }),
+      })),
+      getDailyChanges: vi.fn(async () => ({
+        result_meta: resultMeta("dashboard.daily_changes", reportDate),
+        result: sampleDailyChangesResult({ report_date: reportDate }),
+      })),
+      getMarketDataRates: vi.fn(async () => ({
+        result_meta: resultMeta("market_data.rates", reportDate),
+        result: {
+          read_target: "duckdb" as const,
+          series: [
+            marketPoint("EMM00166458", 1.2057, 0.0112),
+            marketPoint("EMM00166466", 1.7514, -0.0078),
+            marketPoint("CA.DR007", 1.29, -0.01),
+            marketPoint("EMG00001310", 4.38, -0.03),
+            marketPoint("EMM00058124", 6.8502, 0.0015, "CNY/USD"),
+            marketPoint("CA.BRENT", 118.26, -5.98, "USD/bbl"),
+            marketPoint("CA.CSI300", 4998.3417, 50.2952, "index"),
+            marketPoint("EMM00166655", 1.5417, null, "unknown"),
+          ],
+        },
+      })),
+      getResearchCalendarEvents: vi.fn(async () => []),
+    };
+
+    renderDashboard(client);
+
+    const executiveOverview = await screen.findByTestId("dashboard-executive-overview");
+    await waitFor(() => {
+      expect(getHomeSnapshot).toHaveBeenCalled();
+      expect(executiveOverview).toHaveTextContent("正式经营判断来自首屏核心指标。");
+    });
+    expect(executiveOverview).toHaveTextContent("首屏核心指标已进入可复核区间");
+    expect(executiveOverview).not.toHaveTextContent("待同步或复核");
+    expect(executiveOverview).not.toHaveTextContent("核心指标不生成正式结论");
+
+    const aiCabin = await screen.findByTestId("dashboard-ai-decision-cabin");
+    expect(aiCabin).toHaveTextContent("最大拖累");
+    expect(aiCabin).toHaveTextContent("利率变动 -0.30 亿");
+    expect(aiCabin).toHaveTextContent("最大贡献");
+    expect(aiCabin).toHaveTextContent("信用利差 +0.50 亿");
+    expect(aiCabin).not.toHaveTextContent("信息分层重构");
+    expect(aiCabin).not.toHaveTextContent("Pro");
+
+    const warning = await screen.findByTestId("dashboard-sidebar-data-warning");
+    expect(warning).toHaveTextContent("资产分布缺少 portfolio-comparison.items 字段");
+    expect(warning).toHaveTextContent(
+      "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
+    );
+    expect(warning).not.toHaveTextContent("部分指标待同步");
+  });
+
+  it("keeps the real first-screen structure visible for partial snapshots", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const getHomeSnapshot = vi.fn(async (options) => {
+      const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+      return {
+        ...envelope,
+        result_meta: {
+          ...envelope.result_meta,
+          basis: "formal" as const,
+          formal_use_allowed: true,
+          quality_flag: "warning" as const,
+          fallback_mode: "none" as const,
+          vendor_status: "ok" as const,
+          generated_at: "2026-04-30T10:45:00+08:00",
+        },
+        result: {
+          ...envelope.result,
+          report_date: "2026-04-30",
+          mode: "partial" as const,
+          domains_missing: ["pnl"],
+        },
+      };
+    });
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    };
+
+    renderDashboard(client);
+
+    const kpiBand = await screen.findByTestId("dashboard-kpi-band");
+    const executiveOverview = await screen.findByTestId("dashboard-executive-overview");
+    const decisionRail = await screen.findByTestId("dashboard-decision-rail");
+    const warning = await screen.findByTestId("dashboard-sidebar-data-warning");
+
+    expect(getHomeSnapshot).toHaveBeenCalled();
+    expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/)).toHaveLength(6);
+    expect(executiveOverview).toHaveTextContent("今日经营判断");
+    expect(executiveOverview).toHaveTextContent("待同步或复核");
+    expect(executiveOverview).not.toHaveTextContent("利率上行拖累估值");
+    await waitFor(() => {
+      expect(warning).toHaveTextContent("该日部分业务域不可用: pnl");
+    });
+    expect(within(decisionRail).getByTestId("dashboard-decision-card-link-mainline")).toHaveTextContent(
+      "该日部分业务域不可用: pnl",
+    );
+    expect(within(decisionRail).getByTestId("dashboard-decision-card-link-mainline")).toHaveTextContent(
+      "待复核",
+    );
+    expect(within(decisionRail).getByTestId("dashboard-decision-card-link-mainline")).not.toHaveTextContent(
+      "正式链路",
+    );
+    expect(decisionRail).toHaveTextContent("AI 决策舱");
+    expect(screen.queryByTestId("dashboard-judgment-strip")).not.toBeInTheDocument();
+    expect(decisionRail).not.toHaveTextContent("本地模拟数据");
+    expect(decisionRail).not.toHaveTextContent("演示回落");
   });
 
   it("uses current report date for home snapshot and YTD bond counterparty range", async () => {
@@ -1121,9 +1727,8 @@ describe("DashboardPage", () => {
       expect(snapshotOpts.some((o) => o?.reportDate === "2026-03-31")).toBe(true);
     });
 
-    const reportDatePill = await screen.findByTestId("governance-pill-report-date");
     await waitFor(() => {
-      expect(reportDatePill).toHaveTextContent("2026-03-31");
+      expect(screen.getByLabelText("报告日")).toHaveValue("2026-03-31");
     });
 
     await openDetailDrilldown();
@@ -1170,9 +1775,8 @@ describe("DashboardPage", () => {
 
     renderDashboard(governedClient);
 
-    const reportDatePill = await screen.findByTestId("governance-pill-report-date");
     await waitFor(() => {
-      expect(reportDatePill).toHaveTextContent("2026-02-28");
+      expect(screen.getByLabelText("报告日")).toHaveValue("2026-02-28");
     });
   });
 
@@ -1695,12 +2299,14 @@ describe("DashboardPage", () => {
 
     const panel = await screen.findByTestId("dashboard-risk-alert-panel");
     expect(within(panel).getByText(/示意数据，非正式风控口径/)).toBeInTheDocument();
+    const actionBar = await screen.findByTestId("dashboard-terminal-action-bar");
+    expect(within(actionBar).getByText(/固定导航入口/)).toBeInTheDocument();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     openDepthDrawer(page);
-    const drilldown = await screen.findByTestId("dashboard-quick-drilldown");
-    expect(within(drilldown).getByText(/固定导航入口/)).toBeInTheDocument();
-    expect(within(drilldown).queryByText("示意数据，非正式风控口径")).not.toBeInTheDocument();
+    const depthZone = await screen.findByTestId("dashboard-depth-zone");
+    expect(within(depthZone).queryByTestId("dashboard-quick-drilldown")).not.toBeInTheDocument();
+    expect(within(actionBar).queryByText("示意数据，非正式风控口径")).not.toBeInTheDocument();
   });
 
   it("requests bond_bucket_monthly in real mode and shows trend chart when rows exist", async () => {

@@ -2069,6 +2069,11 @@
   line-height: 1.6;
 }
 
+.dashboard-cockpit-panel__empty--compact {
+  min-height: 96px;
+  padding: 12px;
+}
+
 .dashboard-cockpit-panel__empty a {
   color: var(--cockpit-primary);
   font-weight: 700;

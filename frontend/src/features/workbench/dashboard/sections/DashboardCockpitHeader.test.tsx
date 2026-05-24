@@ -2,15 +2,25 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
-import { DashboardCockpitHeader } from "./DashboardCockpitHeader";
+import {
+  DashboardCockpitHeader,
+  type DashboardCockpitHeaderProps,
+} from "./DashboardCockpitHeader";
+import { buildDashboardCockpitHeaderStatus } from "../dashboardCockpitHomeModel";
 
-const baseProps = {
+const baseProps: DashboardCockpitHeaderProps = {
   viewModel: {
     reportDate: "2026-04-30",
     headerStatus: {
       dataUpdatedAt: "09:15",
+      dataSyncPrefix: "数据已更新",
       marketStatus: "市场已收盘",
+      valuationLabel: "估值已完成",
+      valuationTone: "ok" as const,
+      dataFreshnessState: "fresh" as const,
       notificationCount: 2,
+      riskReviewCount: 3,
+      showRiskReview: true,
     },
   },
   toolbarSearch: "",
@@ -55,5 +65,23 @@ describe("DashboardCockpitHeader", () => {
     });
 
     expect(screen.getByLabelText("报告日")).toHaveValue("2026-04-30");
+  });
+
+  it("surfaces missing snapshot time as pending valuation status", () => {
+    const headerStatus = buildDashboardCockpitHeaderStatus({
+      reportDate: "2026-04-30",
+      alertCount: 0,
+      useMockFallback: false,
+    });
+
+    renderHeader({
+      viewModel: {
+        ...baseProps.viewModel,
+        headerStatus,
+      },
+    });
+
+    expect(screen.getByText("数据时间待同步 待同步")).toBeInTheDocument();
+    expect(screen.getByText("估值待同步")).toBeInTheDocument();
   });
 });

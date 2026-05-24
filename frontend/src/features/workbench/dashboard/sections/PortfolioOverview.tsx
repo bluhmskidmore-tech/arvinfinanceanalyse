@@ -69,6 +69,7 @@ export function PortfolioOverview({
   return (
     <section
       data-testid="dashboard-portfolio-overview"
+      id="dashboard-home-portfolio-section"
       className="dashboard-cockpit-panel dashboard-cockpit-panel--portfolio"
     >
       <header className="dashboard-cockpit-panel__head">
@@ -102,7 +103,7 @@ export function PortfolioOverview({
             className="dashboard-cockpit-donut-chart"
             aria-label={`${centerAum.label} ${centerAum.value}`}
           >
-            <ReactECharts option={donutOption} style={{ height: 148, width: "100%" }} opts={{ renderer: "canvas" }} />
+            <ReactECharts option={donutOption} style={{ height: 124, width: "100%" }} opts={{ renderer: "canvas" }} />
             <div className="dashboard-cockpit-donut-chart__center" aria-hidden="true">
               <span style={tabularNumsStyle}>{centerAum.value}</span>
               <em>{centerAum.label}</em>

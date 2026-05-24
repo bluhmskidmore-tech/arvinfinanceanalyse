@@ -16,9 +16,16 @@ import {
 
 type ProductPnlTrendChartProps = {
   data: DashboardCockpitHomeViewModel["productPnl"];
+  testId?: string;
+  variant?: "default" | "compact";
 };
 
-export function ProductPnlTrendChart({ data }: ProductPnlTrendChartProps) {
+export function ProductPnlTrendChart({
+  data,
+  testId = "dashboard-product-pnl-trend",
+  variant = "default",
+}: ProductPnlTrendChartProps) {
+  const isCompact = variant === "compact";
   const hasChartData =
     !data.pending &&
     data.series.length > 0 &&
@@ -69,8 +76,8 @@ export function ProductPnlTrendChart({ data }: ProductPnlTrendChartProps) {
 
   return (
     <section
-      data-testid="dashboard-product-pnl-trend"
-      className="dashboard-cockpit-panel dashboard-cockpit-panel--chart"
+      data-testid={testId}
+      className={`dashboard-cockpit-panel dashboard-cockpit-panel--chart${isCompact ? " dashboard-cockpit-panel--chart-compact" : ""}`}
     >
       <header className="dashboard-cockpit-panel__head">
         <span className="dashboard-cockpit-panel__eyebrow">债券损益</span>
@@ -82,13 +89,13 @@ export function ProductPnlTrendChart({ data }: ProductPnlTrendChartProps) {
         ) : null}
       </header>
       {hasChartData ? (
-        <ReactECharts option={option} style={{ height: 240 }} opts={{ renderer: "canvas" }} />
+        <ReactECharts option={option} style={{ height: isCompact ? 132 : 240 }} opts={{ renderer: "canvas" }} />
       ) : (
         <div
           data-testid="dashboard-product-pnl-empty"
-          className="dashboard-cockpit-panel__empty dashboard-home-muted"
+          className="dashboard-cockpit-panel__empty dashboard-cockpit-panel__empty--compact dashboard-home-muted"
         >
-          四类债券月度趋势待同步；请前往
+          缺 bond_bucket_monthly；请前往
           {" "}
           <Link to="/pnl-by-business">业务损益</Link>
           {" "}

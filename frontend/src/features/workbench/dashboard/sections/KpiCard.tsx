@@ -1,4 +1,3 @@
-import { tabularNumsStyle } from "../../../../theme/designSystem";
 import type { DashboardKpiCardVM } from "../dashboardCockpitHomeModel";
 import { resolveKpiDeltaClass } from "../dashboardCockpitHomeModel";
 import { buildSparkPath } from "../sparklinePath";
@@ -20,19 +19,31 @@ export function KpiCard({ card }: KpiCardProps) {
       data-testid={`dashboard-kpi-card-${card.id}`}
       className={`dashboard-cockpit-kpi${card.pending ? " dashboard-cockpit-kpi--pending" : ""}`}
       data-sparkline-muted={card.sparklineMuted ? "true" : "false"}
+      data-kpi-group={card.group}
     >
       <div className="dashboard-cockpit-kpi__head">
+        <span className="dashboard-cockpit-kpi__icon" aria-hidden="true">
+          {card.iconLabel}
+        </span>
+        <span className="dashboard-cockpit-kpi__group-label">{card.groupLabel}</span>
         <span className="dashboard-cockpit-kpi__label">{card.label}</span>
       </div>
-      <strong className="dashboard-cockpit-kpi__value" style={tabularNumsStyle}>
+      <strong className="dashboard-cockpit-kpi__value dashboard-cockpit-tabular">
         {card.value}
       </strong>
-      <span
-        className={`dashboard-cockpit-kpi__delta ${resolveKpiDeltaClass(card.deltaTone)}`}
-        style={tabularNumsStyle}
-      >
-        {card.delta}
-      </span>
+      <div className="dashboard-cockpit-kpi__signal-row">
+        <span className={`dashboard-cockpit-kpi__delta dashboard-cockpit-tabular ${resolveKpiDeltaClass(card.deltaTone)}`}>
+          {card.delta}
+        </span>
+        {card.signalLabel ? (
+          <span className={`dashboard-cockpit-kpi__signal ${resolveKpiDeltaClass(card.deltaTone)}`}>
+            {card.signalLabel}
+          </span>
+        ) : null}
+      </div>
+      {card.relationLabel ? (
+        <span className="dashboard-cockpit-kpi__relation">{card.relationLabel}</span>
+      ) : null}
       <svg
         className="dashboard-cockpit-kpi__spark"
         viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}

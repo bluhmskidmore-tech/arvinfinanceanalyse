@@ -5,13 +5,20 @@ import type { DashboardQuickDrilldownMock } from "../dashboardMockData";
 type QuickDrilldownProps = {
   items: readonly DashboardQuickDrilldownMock[];
   showStaticNavigationNote?: boolean;
+  testId?: string;
+  variant?: "default" | "compact";
 };
 
-export function QuickDrilldown({ items, showStaticNavigationNote = true }: QuickDrilldownProps) {
+export function QuickDrilldown({
+  items,
+  showStaticNavigationNote = true,
+  testId = "dashboard-quick-drilldown",
+  variant = "default",
+}: QuickDrilldownProps) {
   return (
     <section
-      data-testid="dashboard-quick-drilldown"
-      className="dashboard-cockpit-panel dashboard-cockpit-panel--drill"
+      data-testid={testId}
+      className={`dashboard-cockpit-panel dashboard-cockpit-panel--drill${variant === "compact" ? " dashboard-cockpit-panel--drill-compact" : ""}`}
     >
       <header className="dashboard-cockpit-panel__head">
         <span className="dashboard-cockpit-panel__eyebrow">下钻</span>

@@ -51,6 +51,41 @@ export function AttributionPanel({ tabs, waterfall, note }: AttributionPanelProp
         <h2 className="dashboard-cockpit-panel__title">收益拆解</h2>
       </header>
       <div className="dashboard-cockpit-panel__body">
+        <div className="dashboard-cockpit-tabs dashboard-cockpit-attrib-tabs" aria-label="归因周期">
+          {tabs.map((tab) => (
+            <span
+              key={tab.id}
+              className={`dashboard-cockpit-tabs__btn${tab.id === active.id ? " dashboard-cockpit-tabs__btn--active" : ""}`}
+              data-active={tab.id === active.id ? "true" : "false"}
+            >
+              {tab.label}
+            </span>
+          ))}
+        </div>
+        <div className="dashboard-cockpit-attrib-summary">
+          <article>
+            <span>{active.label}损益</span>
+            <strong
+              className={resolveKpiDeltaClass(active.changeTone)}
+              style={tabularNumsStyle}
+            >
+              {active.pnl}
+            </strong>
+          </article>
+          <article>
+            <span>较昨日变化</span>
+            <strong
+              className={resolveKpiDeltaClass(active.changeTone)}
+              style={tabularNumsStyle}
+            >
+              {active.change}
+            </strong>
+          </article>
+          <article>
+            <span>收益率</span>
+            <strong style={tabularNumsStyle}>{active.yield}</strong>
+          </article>
+        </div>
         <p
           className={`dashboard-cockpit-attrib-total ${resolveKpiDeltaClass(active.changeTone)}`}
           style={tabularNumsStyle}

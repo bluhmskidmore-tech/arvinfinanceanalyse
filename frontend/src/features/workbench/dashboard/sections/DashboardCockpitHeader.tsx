@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 
-import { tabularNumsStyle } from "../../../../theme/designSystem";
 import type { DashboardCockpitHomeViewModel } from "../dashboardCockpitHomeModel";
 
 export type DashboardCockpitHeaderProps = {
@@ -66,7 +65,7 @@ export function DashboardCockpitHeader({
             placeholder="2026-04-30"
             value={dateInputValue}
             onChange={(event) => onReportDateChange(event.target.value)}
-            style={tabularNumsStyle}
+            className="dashboard-cockpit-tabular"
           />
         </label>
         <label className="dashboard-cockpit-header__partial">
@@ -92,7 +91,7 @@ export function DashboardCockpitHeader({
 
       <div className="dashboard-cockpit-header__right dashboard-home-toolbar__actions">
         <div className="dashboard-cockpit-header__status-group">
-          <span className="dashboard-cockpit-header__pill dashboard-cockpit-header__pill--info" style={tabularNumsStyle}>
+          <span className="dashboard-cockpit-header__pill dashboard-cockpit-header__pill--info dashboard-cockpit-tabular">
             {headerStatus.dataSyncPrefix} {headerStatus.dataUpdatedAt}
           </span>
           <span className="dashboard-cockpit-header__pill">{headerStatus.marketStatus}</span>
@@ -104,7 +103,7 @@ export function DashboardCockpitHeader({
               to="/decision-items"
               className="dashboard-cockpit-header__pill dashboard-cockpit-header__pill--warn"
             >
-              风险待复核 <strong style={tabularNumsStyle}>{headerStatus.riskReviewCount}</strong>
+              风险待复核 <strong className="dashboard-cockpit-tabular">{headerStatus.riskReviewCount}</strong>
             </Link>
           ) : null}
           <span className="dashboard-cockpit-header__mode">{modeLabel}</span>

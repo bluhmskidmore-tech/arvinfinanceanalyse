@@ -60,6 +60,10 @@ export type DashboardKpiCardVM = {
   deltaTone: DashboardDeltaTone;
   iconLabel: string;
   sparkline: readonly number[];
+  group: "core" | "risk";
+  groupLabel: string;
+  signalLabel?: string;
+  relationLabel?: string;
   sparklineMuted?: boolean;
   pending?: boolean;
 };
@@ -72,6 +76,7 @@ export type DashboardMarketPulseVM = {
   deltaTone: DashboardDeltaTone;
   sparkline: readonly number[];
   statusLabel: string;
+  impactLabel: string;
   isEstimated?: boolean;
 };
 
@@ -130,6 +135,7 @@ export type DashboardCockpitHeaderStatus = {
   dataSyncPrefix: string;
   valuationLabel: string | null;
   valuationTone: "ok" | "muted";
+  dataFreshnessState: "mock-fallback" | "missing-snapshot-time" | "fresh";
   riskReviewCount: number;
   showRiskReview: boolean;
 };
@@ -157,12 +163,141 @@ export type DashboardPortfolioCenterAumVM = {
 
 export type DashboardDecisionSidebarTone = "neutral" | "positive" | "negative" | "warning";
 
+export type DashboardDecisionSourceType =
+  | "governed"
+  | "derived"
+  | "pending"
+  | "mock-fallback"
+  | "static-ui";
+
+type DashboardDecisionSource = {
+  sourceType: DashboardDecisionSourceType;
+  sourceLabel: string;
+};
+
 export type DashboardDecisionSidebarSectionVM = {
   id: string;
   title: string;
   body: string;
   tone?: DashboardDecisionSidebarTone;
   badge?: string;
+  evidenceLabel?: string;
+  statusLabel?: string;
+  href?: string;
+  targetId?: string;
+  sourceType: DashboardDecisionSourceType;
+  sourceLabel: string;
+};
+
+export type DashboardDecisionSpineTone = DashboardDecisionSidebarTone | "info" | "muted";
+
+export type DashboardDecisionSpineItemVM = {
+  id: "market-focus" | "portfolio-impact" | "risk-focus";
+  label: string;
+  value: string;
+  tone: DashboardDecisionSpineTone;
+  href: string;
+  targetId: string;
+  sourceType: DashboardDecisionSourceType;
+  sourceLabel: string;
+};
+
+export type DashboardExecutiveOverviewVM = {
+  summary: string;
+  coreMetrics: readonly DashboardKpiCardVM[];
+  riskConstraints: readonly DashboardKpiCardVM[];
+  healthLabel: string;
+  healthText: string;
+  healthSparkline: readonly number[];
+};
+
+export type DashboardAiDecisionSummaryItemVM = {
+  id:
+    | "mainline"
+    | "max-drag"
+    | "max-contribution"
+    | "key-risk"
+    | "suggested-actions"
+    | "pending-todos";
+  title: string;
+  body: string;
+  tone?: DashboardDecisionSidebarTone;
+  badge?: string;
+  evidenceLabel?: string;
+  statusLabel?: string;
+  href?: string;
+  targetId?: string;
+  sourceType: DashboardDecisionSourceType;
+  sourceLabel: string;
+};
+
+export type DashboardRiskActionStripVM = {
+  radar: DashboardRiskRadarVM;
+  alertCounts: readonly DashboardRiskAlertCountVM[];
+  totalAlerts: number;
+  todoCount: number;
+  highPriorityTodoCount: number;
+  watchCount: number;
+  riskReviewOnly: boolean;
+  usesMockRiskRadar: boolean;
+  entryHref: string;
+};
+
+const DASHBOARD_HOME_MARKET_TARGET = "dashboard-home-market-section";
+const DASHBOARD_HOME_PORTFOLIO_TARGET = "dashboard-home-portfolio-section";
+const DASHBOARD_HOME_RISK_TARGET = "dashboard-home-risk-section";
+
+const DASHBOARD_DECISION_SOURCE_LABELS: Record<DashboardDecisionSourceType, string> = {
+  governed: "正式链路",
+  derived: "前端衍生",
+  pending: "口径待确认",
+  "mock-fallback": "本地模拟",
+  "static-ui": "固定导航",
+};
+
+function decisionSource(sourceType: DashboardDecisionSourceType): DashboardDecisionSource {
+  return { sourceType, sourceLabel: DASHBOARD_DECISION_SOURCE_LABELS[sourceType] };
+}
+
+function decisionSourceWithLabel(
+  sourceType: DashboardDecisionSourceType,
+  sourceLabel: string,
+): DashboardDecisionSource {
+  return { sourceType, sourceLabel };
+}
+
+function realDecisionSource(
+  useMockFallback: boolean,
+  sourceType: Exclude<DashboardDecisionSourceType, "mock-fallback">,
+): DashboardDecisionSource {
+  return decisionSource(useMockFallback ? "mock-fallback" : sourceType);
+}
+
+function resolveMainlineDecisionSource(input: {
+  useMockFallback: boolean;
+  snapshotPartialNote?: string | null;
+  dataWarningMessages?: readonly string[];
+}): DashboardDecisionSource {
+  if (input.useMockFallback) {
+    return decisionSource("mock-fallback");
+  }
+  if (
+    input.snapshotPartialNote ||
+    input.dataWarningMessages?.some(isFirstScreenBlockingWarning)
+  ) {
+    return decisionSourceWithLabel("pending", "待复核");
+  }
+  return decisionSourceWithLabel("derived", "衍生判断");
+}
+
+export type DashboardDecisionSpineVM = {
+  marketFocus: string;
+  portfolioImpact: string;
+  pnlDriver: string;
+  riskConstraint: string;
+  nextAction: string;
+  evidenceState: string;
+  rail: readonly DashboardDecisionSpineItemVM[];
 };
 
 export type DashboardCockpitHomeViewModel = {
@@ -170,6 +305,7 @@ export type DashboardCockpitHomeViewModel = {
   headerStatus: DashboardCockpitHeaderStatus;
   navGroups: typeof DASHBOARD_COCKPIT_NAV_GROUPS;
   kpiCards: DashboardKpiCardVM[];
+  executiveOverview: DashboardExecutiveOverviewVM;
   portfolioCenterAum: DashboardPortfolioCenterAumVM;
   marketPulse: DashboardMarketPulseVM[];
   portfolioStats: DashboardPortfolioStatVM[];
@@ -193,6 +329,12 @@ export type DashboardCockpitHomeViewModel = {
   quickDrilldowns: typeof DASHBOARD_QUICK_DRILLDOWN_MOCK;
   /** P1：今日决策侧舱业务卡片（由 judgment / 归因 / 预警 / 待办等现有字段组装）。 */
   decisionSidebarSections: DashboardDecisionSidebarSectionVM[];
+  /** AI 决策舱六条结论，复用现有业务数据与 provenance。 */
+  aiDecisionSummary: readonly DashboardAiDecisionSummaryItemVM[];
+  /** 主工作区下方横向风险处置条。 */
+  riskActionStrip: DashboardRiskActionStripVM;
+  /** 首屏信息脊柱：仅由现有首页字段派生，用于串联市场、组合、归因、风险和处置状态。 */
+  decisionSpine: DashboardDecisionSpineVM;
   /** 真实模式下预警仅有 review 桶、无分级明细时为 true。 */
   riskReviewOnly: boolean;
   /** riskRadar 仍来自 dashboardMockData 演示常量时为 true。 */
@@ -214,6 +356,8 @@ const KPI_SPECS: ReadonlyArray<{
   mockTone: DashboardDeltaTone;
   mockSparkline: readonly number[];
   iconLabel: string;
+  group: "core" | "risk";
+  relationLabel: string;
 }> = [
   {
     id: "aum",
@@ -224,6 +368,8 @@ const KPI_SPECS: ReadonlyArray<{
     mockTone: "warn",
     mockSparkline: [3650, 3668, 3680, 3695, 3700, 3705, 3706, 3707, 3708, 3707.5, 3708, 3708.1],
     iconLabel: "规",
+    group: "core",
+    relationLabel: "关联资产结构",
   },
   {
     id: "yield",
@@ -234,6 +380,8 @@ const KPI_SPECS: ReadonlyArray<{
     mockTone: "up",
     mockSparkline: [18, 20, 22, 24, 26, 27, 28, 28.5, 29, 29.3, 29.5, 29.71],
     iconLabel: "益",
+    group: "core",
+    relationLabel: "关联今日归因",
   },
   {
     id: "nim",
@@ -244,6 +392,8 @@ const KPI_SPECS: ReadonlyArray<{
     mockTone: "up",
     mockSparkline: [1.68, 1.69, 1.7, 1.71, 1.72, 1.73, 1.735, 1.74, 1.745, 1.75, 1.755, 1.76],
     iconLabel: "息",
+    group: "core",
+    relationLabel: "关联资金成本",
   },
   {
     id: "dv01",
@@ -254,6 +404,8 @@ const KPI_SPECS: ReadonlyArray<{
     mockTone: "down",
     mockSparkline: [10820, 10780, 10740, 10710, 10690, 10670, 10655, 10640, 10630, 10625, 10620, 10615.59],
     iconLabel: "久",
+    group: "risk",
+    relationLabel: "关联利率风险",
   },
   {
     id: "duration",
@@ -264,6 +416,8 @@ const KPI_SPECS: ReadonlyArray<{
     mockTone: "up",
     mockSparkline: [4.08, 4.09, 4.1, 4.105, 4.11, 4.115, 4.12, 4.125, 4.13, 4.132, 4.135, 4.14],
     iconLabel: "期",
+    group: "risk",
+    relationLabel: "关联久期约束",
   },
   {
     id: "concentration",
@@ -274,6 +428,8 @@ const KPI_SPECS: ReadonlyArray<{
     mockTone: "warn",
     mockSparkline: [40.4, 40.55, 40.7, 40.82, 40.9, 41, 41.05, 41.1, 41.18, 41.24, 41.3, 41.35],
     iconLabel: "险",
+    group: "risk",
+    relationLabel: "关联主体敞口",
   },
 ];
 
@@ -282,15 +438,16 @@ const MARKET_PULSE_LABELS: ReadonlyArray<{
   label: string;
   matchLabels: readonly string[];
   matchIds: readonly string[];
+  impactLabel: string;
 }> = [
-  { id: "cgb10y", label: "10年国债", matchLabels: ["10年国债", "10年期国债"], matchIds: ["CA.CN_GOV_10Y", "E1000180"] },
-  { id: "dr007", label: "DR007", matchLabels: ["DR007"], matchIds: ["CA.DR007", "M002"] },
-  { id: "slope", label: "1Y-10Y利差", matchLabels: ["1Y-10Y", "期限利差"], matchIds: ["CA.CN_SLOPE_1Y10Y"] },
-  { id: "us10y", label: "美债10Y", matchLabels: ["美债", "美国10年"], matchIds: ["CA.US_GOV_10Y", "EMG00001310", "E1003238"] },
-  { id: "usdcny", label: "人民币汇率", matchLabels: ["人民币", "美元兑人民币"], matchIds: ["CA.USDCNY", "EMM00058124"] },
-  { id: "brent", label: "原油 Brent", matchLabels: ["Brent", "原油"], matchIds: ["CA.BRENT"] },
-  { id: "csi300", label: "A股指数 沪深300", matchLabels: ["沪深300"], matchIds: ["CA.CSI300"] },
-  { id: "credit-spread", label: "信用利差 中短票AAA", matchLabels: ["信用利差"], matchIds: ["CA.CREDIT_SPREAD"] },
+  { id: "cgb10y", label: "10年国债", matchLabels: ["10年国债", "10年期国债"], matchIds: ["CA.CN_GOV_10Y", "E1000180"], impactLabel: "估值敏感" },
+  { id: "dr007", label: "DR007", matchLabels: ["DR007"], matchIds: ["CA.DR007", "M002"], impactLabel: "资金成本" },
+  { id: "slope", label: "1Y-10Y利差", matchLabels: ["1Y-10Y", "期限利差"], matchIds: ["CA.CN_SLOPE_1Y10Y"], impactLabel: "期限结构" },
+  { id: "us10y", label: "美债10Y", matchLabels: ["美债", "美国10年"], matchIds: ["CA.US_GOV_10Y", "EMG00001310", "E1003238"], impactLabel: "外部利率" },
+  { id: "usdcny", label: "人民币汇率", matchLabels: ["人民币", "美元兑人民币"], matchIds: ["CA.USDCNY", "EMM00058124"], impactLabel: "汇率扰动" },
+  { id: "brent", label: "原油 Brent", matchLabels: ["Brent", "原油"], matchIds: ["CA.BRENT"], impactLabel: "通胀预期" },
+  { id: "csi300", label: "A股指数 沪深300", matchLabels: ["沪深300"], matchIds: ["CA.CSI300"], impactLabel: "风险偏好" },
+  { id: "credit-spread", label: "信用利差 中短票AAA", matchLabels: ["信用利差"], matchIds: ["CA.CREDIT_SPREAD"], impactLabel: "信用定价" },
 ];
 
 const ASSET_BAR_COLORS = COCKPIT_CHART_PALETTE;
@@ -375,6 +532,10 @@ function numericDisplay(value: Numeric | null | undefined, fallback = GAP_VALUE)
   });
 }
 
+function unsignedDisplay(value: string): string {
+  return value.startsWith("+") ? value.slice(1) : value;
+}
+
 function formatYiSigned(rawYuan: number): string {
   const yi = rawYuan / 100_000_000;
   const formatted = yi.toLocaleString("en-US", {
@@ -437,6 +598,9 @@ const ATTRIBUTION_TAB_SPECS: ReadonlyArray<{ id: DashboardAttributionTab; label:
   { id: "ytd", label: "YTD" },
 ];
 
+const ATTRIBUTION_YIELD_MISSING = "缺 daily_yield";
+const ATTRIBUTION_YIELD_MISSING_WARNING = "归因收益率缺少 pnl-attribution.daily_yield 字段";
+
 function pendingAttributionTabs(): DashboardAttributionTabVM[] {
   return ATTRIBUTION_TAB_SPECS.map((spec) => ({
     id: spec.id,
@@ -446,6 +610,15 @@ function pendingAttributionTabs(): DashboardAttributionTabVM[] {
     yield: GAP_VALUE,
     changeTone: "muted" as const,
   }));
+}
+
+function hasUsableAttributionWaterfall(
+  waterfall: readonly DashboardCockpitWaterfallItem[],
+): boolean {
+  return waterfall.some((item) => {
+    const n = parseFloat(item.value.replace(/[^\d.-]/g, ""));
+    return item.status !== "blocked" && Number.isFinite(n);
+  });
 }
 
 function parseMetricNumber(value: string): number | null {
@@ -474,7 +647,7 @@ function buildKpiSparkline(
   const start = parsed * (1 + drift);
   const amplitude = Math.max(Math.abs(parsed) * 0.012, 0.0001);
   const sparkline = Array.from({ length }, (_, index) => {
-    const t = length === 1 ? 1 : index / (length - 1);
+    const t = index / (length - 1);
     const wave = Math.sin(index * 0.85) * amplitude;
     return start + (parsed - start) * t + wave;
   });
@@ -483,7 +656,7 @@ function buildKpiSparkline(
 }
 
 function withKpiSparkline(
-  card: Omit<DashboardKpiCardVM, "sparkline" | "sparklineMuted">,
+  card: Omit<DashboardKpiCardVM, "sparkline" | "sparklineMuted" | "group" | "groupLabel" | "signalLabel">,
   spec: (typeof KPI_SPECS)[number],
 ): DashboardKpiCardVM {
   const { sparkline, sparklineMuted } = buildKpiSparkline(
@@ -492,7 +665,34 @@ function withKpiSparkline(
     spec.mockSparkline,
     card.pending,
   );
-  return { ...card, sparkline, sparklineMuted };
+  return {
+    ...card,
+    sparkline,
+    sparklineMuted,
+    group: spec.group,
+    groupLabel: spec.group === "core" ? "经营核心" : "风险约束",
+    signalLabel: resolveKpiSignalLabel(spec.id, card.deltaTone),
+    relationLabel: spec.relationLabel,
+  };
+}
+
+function resolveKpiSignalLabel(id: string, tone: DashboardDeltaTone): string | undefined {
+  if (tone === "muted" || tone === "flat") {
+    return undefined;
+  }
+  if (id === "dv01") {
+    if (tone === "down") return "敞口下降";
+    if (tone === "up" || tone === "warn") return "敞口上升";
+  }
+  if (id === "duration") {
+    if (tone === "down") return "久期下降";
+    if (tone === "up" || tone === "warn") return "久期上升";
+  }
+  if (id === "concentration") {
+    if (tone === "down") return "集中度下降";
+    if (tone === "up" || tone === "warn") return "集中度上升";
+  }
+  return undefined;
 }
 
 function pendingKpiCard(spec: (typeof KPI_SPECS)[number]): DashboardKpiCardVM {
@@ -655,6 +855,7 @@ function buildDerivedMarketPulse(
       deltaTone: deltaBp == null ? "flat" : deltaBp > 0 ? "up" : deltaBp < 0 ? "down" : "flat",
       sparkline: flatSparkline(spreadBp, 7),
       statusLabel: oneYear?.status === "landed" && tenYear?.status === "landed" ? "同日" : "最近交易日",
+      impactLabel: spec.impactLabel,
       isEstimated: true,
     };
   }
@@ -676,6 +877,7 @@ function buildDerivedMarketPulse(
       deltaTone: "flat",
       sparkline: flatSparkline(spreadBp, 7),
       statusLabel: credit?.status === "landed" && treasury?.status === "landed" ? "同日" : "最近交易日",
+      impactLabel: spec.impactLabel,
       isEstimated: true,
     };
   }
@@ -688,7 +890,11 @@ function buildMarketPulse(
   useMockFallback: boolean,
 ): DashboardMarketPulseVM[] {
   if (useMockFallback) {
-    return DASHBOARD_MARKET_PULSE_MOCK.map((mock) => ({ ...mock }));
+    return DASHBOARD_MARKET_PULSE_MOCK.map((mock) => ({
+      ...mock,
+      impactLabel:
+        MARKET_PULSE_LABELS.find((spec) => spec.id === mock.id)?.impactLabel ?? "市场观测",
+    }));
   }
 
   return MARKET_PULSE_LABELS.map((spec) => {
@@ -709,6 +915,7 @@ function buildMarketPulse(
         deltaTone: "muted" as const,
         sparkline: flatSparkline(0),
         statusLabel: PENDING_SYNC,
+        impactLabel: spec.impactLabel,
       };
     }
     return {
@@ -719,6 +926,7 @@ function buildMarketPulse(
       deltaTone: cockpitToneToDelta(item!.tone),
       sparkline: sparklineFromTicker(item),
       statusLabel: item!.status === "stale" ? "最近交易日" : "同日",
+      impactLabel: spec.impactLabel,
     };
   });
 }
@@ -773,9 +981,9 @@ function buildPortfolioStats(
     (portfolioAllowed ? input.portfolio?.bond_count : null);
   const couponValue =
     headlineAllowed && input.bondHeadline?.kpis.weighted_coupon
-      ? numericDisplay(input.bondHeadline.kpis.weighted_coupon)
+      ? unsignedDisplay(numericDisplay(input.bondHeadline.kpis.weighted_coupon))
       : portfolioAllowed && input.portfolio?.weighted_coupon
-        ? numericDisplay(input.portfolio.weighted_coupon)
+        ? unsignedDisplay(numericDisplay(input.portfolio.weighted_coupon))
         : null;
   const couponRail = cockpit.metricRail.find((item) => item.id === "coupon");
   const bookCount = resolvePortfolioBookCount(input.portfolioComparison, input.reportDate);
@@ -881,7 +1089,7 @@ function buildAttributionTabs(
           label: spec.label,
           pnl: totalDisplay,
           change: firstSegment?.amount.display ?? GAP_VALUE,
-          yield: GAP_DELTA,
+          yield: ATTRIBUTION_YIELD_MISSING,
           changeTone: firstSegment ? cockpitToneToDelta(firstSegment.tone) : ("muted" as const),
         };
       }
@@ -896,10 +1104,7 @@ function buildAttributionTabs(
     });
   }
 
-  const hasUsableWaterfall = waterfall.some((item) => {
-    const n = parseFloat(item.value.replace(/[^\d.-]/g, ""));
-    return item.status !== "blocked" && Number.isFinite(n);
-  });
+  const hasUsableWaterfall = hasUsableAttributionWaterfall(waterfall);
   if (useMockFallback) {
     return DASHBOARD_ATTRIBUTION_TABS_MOCK.map((tab) => ({
       id: tab.id as DashboardAttributionTab,
@@ -936,7 +1141,7 @@ function buildAttributionTabs(
         label: spec.label,
         pnl: totalDisplay,
         change: dayChange,
-        yield: GAP_DELTA,
+        yield: ATTRIBUTION_YIELD_MISSING,
         changeTone: cockpitToneToDelta(firstDriver?.tone ?? "neutral"),
       };
     }
@@ -1398,6 +1603,161 @@ function buildSuggestedActionsBody(input: {
   return PENDING_SYNC;
 }
 
+function firstAvailableText(values: readonly (string | null | undefined)[]): string {
+  return values.find((value) => {
+    const text = value?.trim() ?? "";
+    return text.length > 0 && text !== GAP_VALUE && text !== GAP_DELTA && text !== PENDING_SYNC;
+  }) ?? PENDING_SYNC;
+}
+
+function marketFocusScore(item: DashboardMarketPulseVM): number {
+  const toneScore =
+    item.deltaTone === "warn"
+      ? 1_000
+      : item.deltaTone === "up" || item.deltaTone === "down"
+        ? 500
+        : 0;
+  const deltaMagnitude = Math.min(Math.abs(parseMarketNumber(item.delta) ?? 0), 100);
+  return toneScore + deltaMagnitude;
+}
+
+function buildMarketFocus(marketPulse: readonly DashboardMarketPulseVM[]): {
+  body: string;
+  tone: DashboardDecisionSpineTone;
+} {
+  const candidates = marketPulse.filter(
+    (item) =>
+      !item.isEstimated &&
+      item.value !== GAP_VALUE &&
+      item.statusLabel !== PENDING_SYNC &&
+      item.deltaTone !== "muted",
+  );
+  const focus =
+    candidates
+      .filter((item) => item.deltaTone !== "flat")
+      .sort((a, b) => marketFocusScore(b) - marketFocusScore(a))[0] ??
+    candidates.sort((a, b) => marketFocusScore(b) - marketFocusScore(a))[0];
+  if (!focus) {
+    return { body: PENDING_SYNC, tone: "muted" };
+  }
+  const qualifiers = [
+    focus.statusLabel && focus.statusLabel !== "同日" ? focus.statusLabel : null,
+    focus.isEstimated ? "估算" : null,
+  ].filter(Boolean);
+  const qualifierText = qualifiers.length > 0 ? `（${qualifiers.join("·")}）` : "";
+  return {
+    body: `${focus.label} ${focus.value}，${focus.delta}${qualifierText}`,
+    tone: focus.deltaTone === "warn" ? "warning" : focus.deltaTone === "muted" ? "muted" : "info",
+  };
+}
+
+function buildPnlDriver(waterfall: readonly DashboardCockpitWaterfallItem[]): string {
+  const { maxDrag, maxContribution } = findAttributionExtremes(waterfall);
+  const drag = maxDrag ? `拖累 ${maxDrag.label} ${formatWaterfallValueDisplay(maxDrag.value)}` : null;
+  const contribution = maxContribution
+    ? `贡献 ${maxContribution.label} ${formatWaterfallValueDisplay(maxContribution.value)}`
+    : null;
+  return firstAvailableText([drag && contribution ? `${drag}；${contribution}` : drag ?? contribution]);
+}
+
+export function buildDecisionSpine(input: {
+  headerStatus: DashboardCockpitHeaderStatus;
+  judgment: VerdictPayload;
+  kpiCards: DashboardKpiCardVM[];
+  marketPulse: readonly DashboardMarketPulseVM[];
+  attributionWaterfall: readonly DashboardCockpitWaterfallItem[];
+  alertCount: number;
+  riskAlertCounts: DashboardRiskAlertCountVM[];
+  todos: readonly DashboardRiskTodoVM[];
+  dataSource: "real" | "mock";
+  dataWarningMessages: readonly string[];
+  snapshotPartialNote?: string | null;
+  useMockFallback: boolean;
+}): DashboardDecisionSpineVM {
+  const aum = input.kpiCards.find((card) => card.id === "aum");
+  const duration = input.kpiCards.find((card) => card.id === "duration");
+  const concentration = input.kpiCards.find((card) => card.id === "concentration");
+  const marketFocus = buildMarketFocus(input.marketPulse);
+  const portfolioImpact = firstAvailableText([
+    aum && !aum.pending ? `${aum.label} ${aum.value}` : null,
+    duration && !duration.pending ? `${duration.label} ${duration.value}` : null,
+  ]);
+  const pnlDriver = buildPnlDriver(input.attributionWaterfall);
+  const riskConstraint = buildKeyRiskBody({
+    concentration,
+    alertCount: input.alertCount,
+    riskAlertCounts: input.riskAlertCounts,
+    useMockFallback: input.useMockFallback,
+  });
+  const topTodo = input.todos[0];
+  const nextAction = topTodo
+    ? `${topTodo.title}（${topTodo.priority}·${topTodo.status}）`
+    : buildSuggestedActionsBody({ judgment: input.judgment, attributionNote: [] });
+  const firstBlockingWarning = input.dataWarningMessages.find(isFirstScreenBlockingWarning);
+  const evidenceState =
+    input.dataSource === "mock"
+      ? "数据使用本地模拟数据"
+      : (input.snapshotPartialNote?.trim() || firstBlockingWarning)
+        ?? `${input.headerStatus.dataSyncPrefix} ${input.headerStatus.dataUpdatedAt}`;
+  const useMockSource = input.useMockFallback || input.dataSource === "mock";
+  const marketSource = useMockSource
+    ? decisionSource("mock-fallback")
+    : marketFocus.body === PENDING_SYNC
+      ? decisionSource("pending")
+      : decisionSourceWithLabel("derived", "市场上下文");
+  const portfolioSource = realDecisionSource(
+    useMockSource,
+    portfolioImpact === PENDING_SYNC ? "pending" : "derived",
+  );
+  const riskSource =
+    input.snapshotPartialNote || firstBlockingWarning
+      ? resolveMainlineDecisionSource(input)
+      : realDecisionSource(
+          useMockSource,
+          firstAvailableText([riskConstraint, nextAction]) === PENDING_SYNC
+            ? "pending"
+            : "derived",
+        );
+
+  return {
+    marketFocus: marketFocus.body,
+    portfolioImpact,
+    pnlDriver,
+    riskConstraint,
+    nextAction,
+    evidenceState,
+    rail: [
+      {
+        id: "market-focus",
+        label: "市场关注",
+        value: marketFocus.body,
+        tone: marketFocus.tone,
+        href: `#${DASHBOARD_HOME_MARKET_TARGET}`,
+        targetId: DASHBOARD_HOME_MARKET_TARGET,
+        ...marketSource,
+      },
+      {
+        id: "portfolio-impact",
+        label: "组合影响",
+        value: portfolioImpact,
+        tone: portfolioImpact === PENDING_SYNC ? "muted" : "info",
+        href: `#${DASHBOARD_HOME_PORTFOLIO_TARGET}`,
+        targetId: DASHBOARD_HOME_PORTFOLIO_TARGET,
+        ...portfolioSource,
+      },
+      {
+        id: "risk-focus",
+        label: "需处置项",
+        value: firstAvailableText([riskConstraint, nextAction]),
+        tone: input.alertCount > 0 ? "warning" : "neutral",
+        href: `#${DASHBOARD_HOME_RISK_TARGET}`,
+        targetId: DASHBOARD_HOME_RISK_TARGET,
+        ...riskSource,
+      },
+    ],
+  };
+}
+
 /** 侧舱六段：仅格式化/拼接 viewModel 已有字段，不做正式金融计算。riskRadar / quickDrilldown 仍为 mock，见 build 处注释。 */
 export function buildDecisionSidebarSections(input: {
   judgment: VerdictPayload;
@@ -1408,11 +1768,24 @@ export function buildDecisionSidebarSections(input: {
   riskAlertCounts: DashboardRiskAlertCountVM[];
   todos: readonly DashboardRiskTodoVM[];
   useMockFallback: boolean;
+  decisionSpine?: DashboardDecisionSpineVM;
+  riskReviewOnly?: boolean;
+  snapshotPartialNote?: string | null;
+  dataWarningMessages?: readonly string[];
 }): DashboardDecisionSidebarSectionVM[] {
   const conclusion = input.judgment.conclusion.trim();
   const concentration = input.kpiCards.find((card) => card.id === "concentration");
   const { maxDrag, maxContribution } = findAttributionExtremes(input.attributionWaterfall);
+  const attributionExtremeEvidenceLabel =
+    maxDrag || maxContribution ? "归因瀑布" : "归因极值待确认";
+  const attributionExtremeSource = realDecisionSource(
+    input.useMockFallback,
+    maxDrag || maxContribution ? "derived" : "pending",
+  );
   const todosSection = buildTodosSectionBody(input.todos, input.alertCount);
+  const hasRiskTierBreakdown = input.useMockFallback
+    || input.riskAlertCounts.some((item) => item.id !== "high" && item.count > 0);
+  const riskReviewOnly = input.riskReviewOnly ?? (!hasRiskTierBreakdown && input.alertCount > 0);
 
   return [
     {
@@ -1420,6 +1793,15 @@ export function buildDecisionSidebarSections(input: {
       title: "今日主线",
       body: conclusion || PENDING_SYNC,
       tone: verdictToneToSidebarTone(input.judgment.tone),
+      evidenceLabel: input.decisionSpine?.evidenceState,
+      statusLabel: input.decisionSpine?.marketFocus,
+      href: `#${DASHBOARD_HOME_MARKET_TARGET}`,
+      targetId: DASHBOARD_HOME_MARKET_TARGET,
+      ...resolveMainlineDecisionSource({
+        useMockFallback: input.useMockFallback,
+        snapshotPartialNote: input.snapshotPartialNote,
+        dataWarningMessages: input.dataWarningMessages,
+      }),
     },
     {
       id: "key-risk",
@@ -1432,6 +1814,10 @@ export function buildDecisionSidebarSections(input: {
       }),
       tone:
         input.alertCount > 0 || concentration?.deltaTone === "warn" ? "warning" : "neutral",
+      evidenceLabel: riskReviewOnly ? "待复核口径" : "风险计数",
+      href: `#${DASHBOARD_HOME_RISK_TARGET}`,
+      targetId: DASHBOARD_HOME_RISK_TARGET,
+      ...realDecisionSource(input.useMockFallback, riskReviewOnly ? "pending" : "governed"),
     },
     {
       id: "max-drag",
@@ -1440,6 +1826,10 @@ export function buildDecisionSidebarSections(input: {
         ? `${maxDrag.label} ${formatWaterfallValueDisplay(maxDrag.value)}`
         : PENDING_SYNC,
       tone: maxDrag ? "negative" : "neutral",
+      evidenceLabel: attributionExtremeEvidenceLabel,
+      href: `#${DASHBOARD_HOME_PORTFOLIO_TARGET}`,
+      targetId: DASHBOARD_HOME_PORTFOLIO_TARGET,
+      ...attributionExtremeSource,
     },
     {
       id: "max-contribution",
@@ -1448,6 +1838,10 @@ export function buildDecisionSidebarSections(input: {
         ? `${maxContribution.label} ${formatWaterfallValueDisplay(maxContribution.value)}`
         : PENDING_SYNC,
       tone: maxContribution ? "positive" : "neutral",
+      evidenceLabel: attributionExtremeEvidenceLabel,
+      href: `#${DASHBOARD_HOME_PORTFOLIO_TARGET}`,
+      targetId: DASHBOARD_HOME_PORTFOLIO_TARGET,
+      ...attributionExtremeSource,
     },
     {
       id: "pending-todos",
@@ -1455,6 +1849,10 @@ export function buildDecisionSidebarSections(input: {
       body: todosSection.body,
       tone: input.todos.some((todo) => todo.priority === "高") ? "warning" : "neutral",
       badge: todosSection.badge,
+      evidenceLabel: "待办队列",
+      href: `#${DASHBOARD_HOME_RISK_TARGET}`,
+      targetId: DASHBOARD_HOME_RISK_TARGET,
+      ...realDecisionSource(input.useMockFallback, input.todos.length > 0 ? "governed" : "static-ui"),
     },
     {
       id: "suggested-actions",
@@ -1464,8 +1862,123 @@ export function buildDecisionSidebarSections(input: {
         attributionNote: input.attributionNote,
       }),
       tone: "neutral",
+      statusLabel: input.decisionSpine?.nextAction,
+      evidenceLabel: "经营判断",
+      href: `#${DASHBOARD_HOME_RISK_TARGET}`,
+      targetId: DASHBOARD_HOME_RISK_TARGET,
+      ...realDecisionSource(input.useMockFallback, "derived"),
     },
   ];
+}
+
+function buildExecutiveOverview(input: {
+  kpiCards: readonly DashboardKpiCardVM[];
+  judgment: VerdictPayload;
+  dataWarningMessages: readonly string[];
+  useMockFallback: boolean;
+}): DashboardExecutiveOverviewVM {
+  const { kpiCards } = input;
+  const coreMetrics = kpiCards.filter((card) => card.group === "core");
+  const riskConstraints = kpiCards.filter((card) => card.group === "risk");
+  const healthSource =
+    coreMetrics.find((card) => card.id === "aum" && !card.pending) ??
+    coreMetrics.find((card) => !card.pending) ??
+    coreMetrics[0];
+  const hasPendingMetric = kpiCards.some((card) => card.pending);
+  const hasBlockingWarnings =
+    input.dataWarningMessages.some(isFirstScreenBlockingWarning) || hasPendingMetric;
+  const judgmentConclusion = input.judgment.conclusion.trim();
+  const summary = input.useMockFallback
+    ? "当前为本地模拟数据，经营指标仅用于版式和流程演示，正式判断需等待真实快照。"
+    : hasBlockingWarnings
+      ? "部分指标仍待同步或复核，经营判断暂按当前可用数据展示，需先确认口径后再做方向性动作。"
+      : judgmentConclusion.length > 0 && !isGenericJudgmentConclusion(judgmentConclusion)
+        ? judgmentConclusion
+        : "同日报告日数据已落地，核心经营指标可用于当日复核，方向性结论待正式判断补充。";
+
+  return {
+    summary,
+    coreMetrics,
+    riskConstraints,
+    healthLabel: "经营健康度",
+    healthText: hasBlockingWarnings || input.useMockFallback
+      ? "数据链路待复核，核心指标不生成正式结论。"
+      : input.dataWarningMessages.length > 0
+        ? "首屏核心指标已进入可复核区间；下方缺口保留局部空态。"
+      : "核心指标已进入可复核区间。",
+    healthSparkline: healthSource?.sparkline ?? flatSparkline(0, 12),
+  };
+}
+
+function isFirstScreenBlockingWarning(message: string): boolean {
+  return (
+    !message.startsWith("资产分布缺少 ") &&
+    message !== ATTRIBUTION_YIELD_MISSING_WARNING
+  );
+}
+
+const AI_DECISION_SUMMARY_ORDER: readonly DashboardAiDecisionSummaryItemVM["id"][] = [
+  "mainline",
+  "max-drag",
+  "max-contribution",
+  "key-risk",
+  "suggested-actions",
+  "pending-todos",
+];
+
+const AI_DECISION_TITLE_OVERRIDES: Partial<
+  Record<DashboardAiDecisionSummaryItemVM["id"], string>
+> = {
+  mainline: "今日结论",
+};
+
+function buildAiDecisionSummary(
+  sections: readonly DashboardDecisionSidebarSectionVM[],
+): DashboardAiDecisionSummaryItemVM[] {
+  const sectionById = new Map(sections.map((section) => [section.id, section]));
+  return AI_DECISION_SUMMARY_ORDER.flatMap((id) => {
+    const section = sectionById.get(id);
+    if (!section) {
+      return [];
+    }
+    return [
+      {
+        id,
+        title: AI_DECISION_TITLE_OVERRIDES[id] ?? section.title,
+        body: section.body,
+        tone: section.tone,
+        badge: section.badge,
+        evidenceLabel: section.evidenceLabel,
+        statusLabel: section.statusLabel,
+        href: section.href,
+        targetId: section.targetId,
+        sourceType: section.sourceType,
+        sourceLabel: section.sourceLabel,
+      },
+    ];
+  });
+}
+
+function buildRiskActionStrip(input: {
+  radar: DashboardRiskRadarVM;
+  alertCounts: readonly DashboardRiskAlertCountVM[];
+  totalAlerts: number;
+  todos: readonly DashboardRiskTodoVM[];
+  watchlist: readonly DashboardWatchItemVM[];
+  riskReviewOnly: boolean;
+  usesMockRiskRadar: boolean;
+}): DashboardRiskActionStripVM {
+  return {
+    radar: input.radar,
+    alertCounts: input.alertCounts,
+    totalAlerts: input.totalAlerts,
+    todoCount: input.todos.length,
+    highPriorityTodoCount: input.todos.filter((todo) => todo.priority === "高").length,
+    watchCount: input.watchlist.length,
+    riskReviewOnly: input.riskReviewOnly,
+    usesMockRiskRadar: input.usesMockRiskRadar,
+    entryHref: "/risk-tensor",
+  };
 }
 
 function buildRiskAlertCounts(
@@ -1625,23 +2138,39 @@ export function buildDashboardCockpitHeaderStatus(input: {
   const useMockFallback = input.useMockFallback === true;
   const alertCount = input.alertCount ?? DASHBOARD_COCKPIT_HEADER_STATUS.notificationCount;
   const hasSnapshotTime = Boolean(input.snapshotMeta?.generated_at?.trim());
+  const dataFreshnessState = useMockFallback
+    ? "mock-fallback"
+    : hasSnapshotTime
+      ? "fresh"
+      : "missing-snapshot-time";
   const valuation =
-    useMockFallback || !hasSnapshotTime
+    dataFreshnessState !== "fresh"
       ? { label: "估值待同步" as const, tone: "muted" as const }
       : { label: "估值已完成" as const, tone: "ok" as const };
 
+  const dataUpdatedAt =
+    formatMetaGeneratedAtTime(input.snapshotMeta?.generated_at) ??
+    (dataFreshnessState === "mock-fallback"
+      ? DASHBOARD_COCKPIT_HEADER_STATUS.dataUpdatedAt
+      : PENDING_SYNC);
+  const dataSyncPrefix =
+    dataFreshnessState === "mock-fallback"
+      ? "数据使用本地模拟数据"
+      : dataFreshnessState === "fresh"
+        ? "数据已更新"
+        : "数据时间待同步";
+
   return {
-    dataUpdatedAt:
-      formatMetaGeneratedAtTime(input.snapshotMeta?.generated_at) ??
-      DASHBOARD_COCKPIT_HEADER_STATUS.dataUpdatedAt,
+    dataUpdatedAt,
     marketStatus: resolveMarketStatusLabel({
       marketMeta: input.marketMeta,
       reportDate: input.reportDate,
     }),
     notificationCount: alertCount,
-    dataSyncPrefix: useMockFallback ? "数据待同步" : "数据已更新",
+    dataSyncPrefix,
     valuationLabel: valuation.label,
     valuationTone: valuation.tone,
+    dataFreshnessState,
     riskReviewCount: alertCount,
     showRiskReview: alertCount > 0,
   };
@@ -1671,6 +2200,7 @@ function buildDataWarningMessages(input: {
   kpiCards: DashboardKpiCardVM[];
   marketPulse: DashboardMarketPulseVM[];
   portfolioStats: DashboardPortfolioStatVM[];
+  attributionYieldMissing: boolean;
 }): string[] {
   if (input.useMockFallback) {
     return ["数据使用本地模拟数据，待真实接口同步。"];
@@ -1683,11 +2213,17 @@ function buildDataWarningMessages(input: {
   );
   const hasPendingPortfolio = input.portfolioStats.some((stat) => stat.value === PENDING_SYNC);
 
-  if (hasPendingKpi || hasPendingMarket || hasPendingPortfolio) {
+  if (hasPendingKpi || hasPendingMarket) {
     warnings.push("部分指标待同步");
+  }
+  if (hasPendingPortfolio) {
+    warnings.push(...buildPortfolioStatsWarningMessages(input.portfolioStats));
   }
   if (input.kpiCards.some((card) => card.delta.includes("口径"))) {
     warnings.push("部分指标口径待确认");
+  }
+  if (input.attributionYieldMissing) {
+    warnings.push(ATTRIBUTION_YIELD_MISSING_WARNING);
   }
   if (input.home.attentionItems.length > 0) {
     warnings.push(...input.home.attentionItems);
@@ -1696,6 +2232,27 @@ function buildDataWarningMessages(input: {
     warnings.push(input.home.snapshotPartialNote);
   }
   return warnings;
+}
+
+function buildPortfolioStatsWarningMessages(
+  portfolioStats: readonly DashboardPortfolioStatVM[],
+): string[] {
+  const messages: string[] = [];
+  for (const stat of portfolioStats) {
+    if (stat.value !== PENDING_SYNC) {
+      continue;
+    }
+    if (stat.id === "books") {
+      messages.push("资产分布缺少 portfolio-comparison.items 字段");
+    } else if (stat.id === "positions") {
+      messages.push("资产分布缺少 bond-dashboard.headline.kpis.bond_count / portfolio-headlines.bond_count 字段");
+    } else if (stat.id === "coupon") {
+      messages.push("资产分布缺少 bond-dashboard.headline.kpis.weighted_coupon / portfolio-headlines.weighted_coupon 字段");
+    } else if (stat.id === "rating") {
+      messages.push("资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段");
+    }
+  }
+  return messages;
 }
 
 export function buildDashboardCockpitHomeViewModel(
@@ -1734,6 +2291,7 @@ export function buildDashboardCockpitHomeViewModel(
     kpiCards,
     marketPulse,
     portfolioStats,
+    attributionYieldMissing: Boolean(input.attribution?.total.display),
   });
   const alertCount = useMockFallback
     ? DASHBOARD_RISK_ALERT_COUNTS_MOCK.reduce((sum, item) => sum + item.count, 0)
@@ -1751,18 +2309,54 @@ export function buildDashboardCockpitHomeViewModel(
     useMockFallback,
   });
   const todos = buildTodos(home.alerts, input.decisionItems, useMockFallback);
+  const headerStatus = buildDashboardCockpitHeaderStatus({
+    snapshotMeta: useMockFallback ? null : input.snapshotMeta,
+    marketMeta: useMockFallback ? null : input.marketMeta,
+    reportDate,
+    alertCount,
+    useMockFallback,
+  });
+  const decisionSpine = buildDecisionSpine({
+    headerStatus,
+    judgment: home.judgment,
+    kpiCards,
+    marketPulse,
+    attributionWaterfall,
+    alertCount,
+    riskAlertCounts,
+    todos,
+    dataSource,
+    dataWarningMessages: warnings,
+    snapshotPartialNote: home.snapshotPartialNote,
+    useMockFallback,
+  });
+  const watchlist = buildWatchlist(cockpit.watchRows, useMockFallback);
+  const decisionSidebarSections = buildDecisionSidebarSections({
+    judgment: home.judgment,
+    kpiCards,
+    attributionWaterfall,
+    attributionNote,
+    alertCount,
+    riskAlertCounts,
+    todos,
+    useMockFallback,
+    decisionSpine,
+    riskReviewOnly,
+    snapshotPartialNote: home.snapshotPartialNote,
+    dataWarningMessages: warnings,
+  });
 
   return {
     reportDate,
-    headerStatus: buildDashboardCockpitHeaderStatus({
-      snapshotMeta: useMockFallback ? null : input.snapshotMeta,
-      marketMeta: useMockFallback ? null : input.marketMeta,
-      reportDate,
-      alertCount,
-      useMockFallback,
-    }),
+    headerStatus,
     navGroups: DASHBOARD_COCKPIT_NAV_GROUPS,
     kpiCards,
+    executiveOverview: buildExecutiveOverview({
+      kpiCards,
+      judgment: home.judgment,
+      dataWarningMessages: warnings,
+      useMockFallback,
+    }),
     portfolioCenterAum,
     marketPulse,
     portfolioStats,
@@ -1783,7 +2377,7 @@ export function buildDashboardCockpitHomeViewModel(
     alertCount,
     riskAlertCounts,
     todos,
-    watchlist: buildWatchlist(cockpit.watchRows, useMockFallback),
+    watchlist,
     exposureRows: buildExposureRows(cockpit, useMockFallback),
     balanceMetrics: buildBalanceMetrics(metrics ?? undefined, useMockFallback),
     productPnl: buildProductPnlTrend({
@@ -1795,16 +2389,18 @@ export function buildDashboardCockpitHomeViewModel(
     riskReviewOnly,
     usesMockRiskRadar: riskRadarBundle.usesMock,
     usesStaticQuickDrilldown: true,
-    decisionSidebarSections: buildDecisionSidebarSections({
-      judgment: home.judgment,
-      kpiCards,
-      attributionWaterfall,
-      attributionNote,
-      alertCount,
-      riskAlertCounts,
+    decisionSidebarSections,
+    aiDecisionSummary: buildAiDecisionSummary(decisionSidebarSections),
+    riskActionStrip: buildRiskActionStrip({
+      radar: riskRadarBundle.radar,
+      alertCounts: riskAlertCounts,
+      totalAlerts: alertCount,
       todos,
-      useMockFallback,
+      watchlist,
+      riskReviewOnly,
+      usesMockRiskRadar: riskRadarBundle.usesMock,
     }),
+    decisionSpine,
     judgment: home.judgment,
     showDataWarning: warnings.length > 0,
     dataWarningMessages: warnings,

@@ -75,6 +75,7 @@ export function RiskAlertPanel({
   return (
     <section
       data-testid="dashboard-risk-alert-panel"
+      id="dashboard-home-risk-section"
       className="dashboard-cockpit-panel dashboard-cockpit-panel--risk"
     >
       <header className="dashboard-cockpit-panel__head">
@@ -122,6 +123,7 @@ export function RiskAlertPanel({
             <details
               data-testid="dashboard-risk-lists-drawer"
               className="dashboard-cockpit-risk-lists-drawer"
+              open
             >
               <summary>
                 待办与观察（{todos.length + watchlist.length}）

@@ -26,9 +26,6 @@ import {
   type DashboardReviewAlert,
 } from "../dashboard/DashboardOverviewSections";
 import {
-  DashboardJudgmentBand,
-} from "../dashboard/DashboardHomeSections";
-import {
   DashboardCockpitAccountTable,
   DashboardCockpitLowerGrid,
   DashboardCockpitMainGrid,
@@ -36,27 +33,25 @@ import {
 } from "../dashboard/DashboardCockpitSections";
 import { DashboardCoreMetricsSection } from "../dashboard/DashboardCoreMetricsSection";
 import { DashboardDailyChangesSection } from "../dashboard/DashboardDailyChangesSection";
-import { GovernancePills } from "../dashboard/GovernancePills";
 import {
   buildDashboardCockpitModel,
 } from "../dashboard/dashboardCockpitModel";
 import { buildDashboardHomeModel } from "../dashboard/dashboardHomeModel";
-import { buildDashboardCockpitHomeViewModel } from "../dashboard/dashboardCockpitHomeModel";
+import {
+  buildDashboardCockpitHomeViewModel,
+} from "../dashboard/dashboardCockpitHomeModel";
 import "../dashboard/DashboardCockpitPage.css";
 import "../dashboard/dashboardCockpitTheme.css";
 import { DashboardCockpitHeader } from "../dashboard/sections/DashboardCockpitHeader";
-import { KpiCard } from "../dashboard/sections/KpiCard";
+import { ExecutiveOverviewPanel } from "../dashboard/sections/ExecutiveOverviewPanel";
 import { MarketPulseStrip } from "../dashboard/sections/MarketPulseStrip";
 import { PortfolioOverview } from "../dashboard/sections/PortfolioOverview";
-import { AttributionPanel } from "../dashboard/sections/AttributionPanel";
-import { RiskAlertPanel } from "../dashboard/sections/RiskAlertPanel";
-import { ExposureTable } from "../dashboard/sections/ExposureTable";
-import { BalanceSummary } from "../dashboard/sections/BalanceSummary";
+import { AttributionTrendPanel } from "../dashboard/sections/AttributionTrendPanel";
+import { RiskActionStrip } from "../dashboard/sections/RiskActionStrip";
 import { ProductPnlTrendChart } from "../dashboard/sections/ProductPnlTrendChart";
-import { QuickDrilldown } from "../dashboard/sections/QuickDrilldown";
-import { DashboardJudgmentStrip } from "../dashboard/sections/DashboardJudgmentStrip";
 import { DecisionSidebar } from "../dashboard/sections/DecisionSidebar";
 import { DashboardDecisionQueuePanel } from "../dashboard/sections/DashboardDecisionQueuePanel";
+import { SecondaryAnalysisSection } from "../dashboard/sections/SecondaryAnalysisSection";
 import { workbenchNavigation } from "../../../mocks/navigation";
 import { AgentPanel } from "../../agent/AgentPanel";
 import {
@@ -692,79 +687,64 @@ export default function DashboardPage() {
             refreshLabel={isLiveDataFallback ? "重试实时数据" : "刷新"}
           />
 
-          <DashboardJudgmentStrip viewModel={cockpitHome} />
-
           <section
-            data-testid="dashboard-kpi-band"
-            className="dashboard-cockpit-kpi-band"
-            aria-label="经营与风险关键指标"
+            data-testid="dashboard-operating-layout"
+            className="dashboard-cockpit-home-layout dashboard-terminal-operating-layout"
           >
-            {cockpitHome.kpiCards.map((card) => (
-              <KpiCard key={card.id} card={card} />
-            ))}
-          </section>
-
-          <MarketPulseStrip items={cockpitHome.marketPulse} />
-
-          <section
-            data-testid="dashboard-command-deck"
-            className="dashboard-command-deck dashboard-cockpit-judgment-strip dashboard-cockpit-deferred"
-            hidden
-          >
-            <div data-testid="dashboard-executive-hero" className="dashboard-command-deck__hero">
-              <DashboardJudgmentBand
-                verdict={cockpitHome.judgment}
-                className="dashboard-executive-hero dashboard-command-deck__judgment"
-              />
-            </div>
-            <aside
-              data-testid="dashboard-command-status-stack"
-              className="dashboard-home-panel dashboard-command-status"
-            >
-              <GovernancePills pills={dashboardHome.kpiRibbon} />
-            </aside>
-          </section>
-
-          <section data-testid="dashboard-operating-layout" className="dashboard-cockpit-home-layout">
             <div
               data-testid="dashboard-operating-main"
-              className="dashboard-cockpit-home-layout__main"
+              className="dashboard-cockpit-home-layout__main dashboard-terminal-operating-main"
             >
-              <section data-testid="dashboard-primary-analysis" className="dashboard-cockpit-page__bottom">
-                <section data-testid="dashboard-main-triptych" className="dashboard-cockpit-triptych">
-                  <PortfolioOverview
-                    stats={cockpitHome.portfolioStats}
-                    assetBars={cockpitHome.assetBars}
-                    centerAum={cockpitHome.portfolioCenterAum}
-                    interbankAssets={cockpitHome.interbankAssets}
-                    interbankLiabilities={cockpitHome.interbankLiabilities}
-                    interbankNetPosition={cockpitHome.interbankNetPosition}
-                    interbankNetPositionTone={cockpitHome.interbankNetPositionTone}
-                  />
-                  <AttributionPanel
-                    tabs={cockpitHome.attributionTabs}
-                    waterfall={cockpitHome.attributionWaterfall}
-                    note={cockpitHome.attributionNote}
-                  />
-                  <RiskAlertPanel
-                    radar={cockpitHome.riskRadar}
-                    alertCount={cockpitHome.alertCount}
-                    alertCounts={cockpitHome.riskAlertCounts}
-                    todos={cockpitHome.todos}
-                    watchlist={cockpitHome.watchlist}
-                    riskReviewOnly={cockpitHome.riskReviewOnly}
-                    usesMockRiskRadar={cockpitHome.usesMockRiskRadar}
-                  />
-                </section>
-
+              <section
+                data-testid="dashboard-kpi-band"
+                className="dashboard-terminal-overview-shell"
+                aria-label="经营决策总览"
+              >
+                <ExecutiveOverviewPanel overview={cockpitHome.executiveOverview} />
               </section>
-            </div>
 
+              <MarketPulseStrip items={cockpitHome.marketPulse} />
+
+              <section
+                data-testid="dashboard-primary-analysis"
+                className="dashboard-terminal-workspace"
+                aria-label="主工作区"
+              >
+                <PortfolioOverview
+                  stats={cockpitHome.portfolioStats}
+                  assetBars={cockpitHome.assetBars}
+                  centerAum={cockpitHome.portfolioCenterAum}
+                  interbankAssets={cockpitHome.interbankAssets}
+                  interbankLiabilities={cockpitHome.interbankLiabilities}
+                  interbankNetPosition={cockpitHome.interbankNetPosition}
+                  interbankNetPositionTone={cockpitHome.interbankNetPositionTone}
+                />
+                <AttributionTrendPanel
+                  tabs={cockpitHome.attributionTabs}
+                  waterfall={cockpitHome.attributionWaterfall}
+                  note={cockpitHome.attributionNote}
+                  productPnl={cockpitHome.productPnl}
+                />
+                <RiskActionStrip viewModel={cockpitHome} />
+              </section>
+
+              <SecondaryAnalysisSection viewModel={cockpitHome} />
+            </div>
             <aside
               data-testid="dashboard-decision-rail"
-              className="dashboard-cockpit-home-layout__rail"
+              className="dashboard-cockpit-home-layout__rail dashboard-terminal-reference-rail"
+              aria-label="AI 决策与数据说明"
             >
               <DecisionSidebar viewModel={cockpitHome} isLiveDataFallback={isLiveDataFallback} />
+              <section data-testid="dashboard-rail-data-note" className="dashboard-terminal-data-note">
+                <header>
+                  <span className="dashboard-terminal-eyebrow">数据说明</span>
+                  <h2>数据说明</h2>
+                </header>
+                <p>数据来源：交易系统、估值系统、风险系统等</p>
+                <p>更新时间：{cockpitHome.reportDate} {cockpitHome.headerStatus.dataUpdatedAt}</p>
+                <span>{cockpitHome.headerStatus.dataSyncPrefix}</span>
+              </section>
             </aside>
           </section>
 
@@ -775,7 +755,13 @@ export default function DashboardPage() {
             onToggle={(event) => setIsDepthDrawerOpen(event.currentTarget.open)}
           >
             <summary className="dashboard-progressive-disclosure__summary">
-              深钻读面（次级补充）
+              <span className="dashboard-progressive-disclosure__title">深钻读面（次级补充）</span>
+              <span className="dashboard-progressive-disclosure__preview" aria-label="深钻读面预览">
+                <span>损益趋势</span>
+                <span>复核队列</span>
+                <span>待决策事项</span>
+                <span>专题补充</span>
+              </span>
             </summary>
             <div className="dashboard-cockpit-page__bottom">
               <p className="dashboard-home-muted">
@@ -785,15 +771,9 @@ export default function DashboardPage() {
                 <>
                   <section data-testid="dashboard-depth-zone" className="dashboard-cockpit-depth">
                     <div className="dashboard-cockpit-depth__charts">
-                      <ExposureTable rows={cockpitHome.exposureRows} />
                       <ProductPnlTrendChart data={cockpitHome.productPnl} />
                     </div>
                     <div className="dashboard-cockpit-depth__side">
-                      <BalanceSummary metrics={cockpitHome.balanceMetrics} />
-                      <QuickDrilldown
-                        items={cockpitHome.quickDrilldowns}
-                        showStaticNavigationNote={cockpitHome.usesStaticQuickDrilldown}
-                      />
                       <DashboardActionQueue
                         alerts={reviewAlerts}
                         effectiveReportDate={effectiveReportDate}
@@ -818,7 +798,13 @@ export default function DashboardPage() {
             onToggle={(event) => setIsCockpitSupplementOpen(event.currentTarget.open)}
           >
             <summary className="dashboard-progressive-disclosure__summary">
-              同报告日补充读面（展开）
+              <span className="dashboard-progressive-disclosure__title">同报告日补充读面（展开）</span>
+              <span className="dashboard-progressive-disclosure__preview" aria-label="同报告日补充读面预览">
+                <span>指标轨道</span>
+                <span>行情联动</span>
+                <span>组合风险</span>
+                <span>同日事实校验</span>
+              </span>
             </summary>
             <DashboardCockpitSupplementPreview signals={dashboardCockpit.previewSignals} />
             <DashboardCockpitMetricRail
@@ -884,20 +870,20 @@ export default function DashboardPage() {
 
           <details
             data-testid="dashboard-detail-drilldown"
-        className="dashboard-detail-drilldown dashboard-progressive-disclosure"
-        open={isDetailDrilldownOpen}
-        onToggle={(event) => setIsDetailDrilldownOpen(event.currentTarget.open)}
-      >
-        <summary className="dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary">
-          <div className="dashboard-home-section-heading">
-            <span className="dashboard-home-section-eyebrow">明细穿透</span>
-            <h2 className="dashboard-detail-drilldown__title">下钻复核区</h2>
-          </div>
-          <span className="dashboard-progressive-disclosure__description">
-            解释首屏结论、定位数据证据、进入专题页复核
-          </span>
-          <span className="dashboard-progressive-disclosure__cue">展开</span>
-        </summary>
+            className="dashboard-detail-drilldown dashboard-progressive-disclosure"
+            open={isDetailDrilldownOpen}
+            onToggle={(event) => setIsDetailDrilldownOpen(event.currentTarget.open)}
+          >
+            <summary className="dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary">
+              <div className="dashboard-home-section-heading">
+                <span className="dashboard-home-section-eyebrow">明细穿透</span>
+                <h2 className="dashboard-detail-drilldown__title">下钻复核区</h2>
+              </div>
+              <span className="dashboard-progressive-disclosure__description">
+                解释首屏结论、定位数据证据、进入专题页复核
+              </span>
+              <span className="dashboard-progressive-disclosure__cue">展开</span>
+            </summary>
 
         {shouldRenderDetailDrilldown ? (
           <>

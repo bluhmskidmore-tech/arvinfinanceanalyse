@@ -5,7 +5,14 @@ import type { DashboardOverviewMetricVM } from "../../executive-dashboard/adapte
 import { formatRawAsNumeric } from "../../../utils/format";
 import { buildDashboardCockpitModel } from "./dashboardCockpitModel";
 import { buildDashboardHomeModel } from "./dashboardHomeModel";
-import { buildDashboardCockpitHomeViewModel, buildDashboardCockpitHeaderStatus, buildDecisionSidebarSections, formatWaterfallValueDisplay, buildRiskRadarFromRiskItems } from "./dashboardCockpitHomeModel";
+import {
+  buildDashboardCockpitHeaderStatus,
+  buildDashboardCockpitHomeViewModel,
+  buildDecisionSidebarSections,
+  buildDecisionSpine,
+  buildRiskRadarFromRiskItems,
+  formatWaterfallValueDisplay,
+} from "./dashboardCockpitHomeModel";
 
 function overviewMetric(partial: Partial<DashboardOverviewMetricVM>): DashboardOverviewMetricVM {
   return {
@@ -35,10 +42,13 @@ function buildRealModeView(input?: {
   metrics?: DashboardOverviewMetricVM[];
   coreMetrics?: CoreMetricsResult | null;
   reportDate?: string;
+  bondHeadline?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["bondHeadline"];
+  portfolio?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["portfolio"];
   portfolioComparison?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["portfolioComparison"];
   creditSpreadMigration?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["creditSpreadMigration"];
   bondBucketMonthly?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["bondBucketMonthly"];
   decisionItems?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["decisionItems"];
+  attribution?: Parameters<typeof buildDashboardCockpitHomeViewModel>[0]["attribution"];
 }) {
   const reportDate = input?.reportDate ?? "2026-04-30";
   const home = buildDashboardHomeModel({
@@ -58,9 +68,12 @@ function buildRealModeView(input?: {
     cockpit,
     metrics: input?.metrics ?? [],
     coreMetrics: input?.coreMetrics ?? null,
+    bondHeadline: input?.bondHeadline ?? null,
+    portfolio: input?.portfolio ?? null,
     portfolioComparison: input?.portfolioComparison ?? null,
     creditSpreadMigration: input?.creditSpreadMigration ?? null,
     decisionItems: input?.decisionItems ?? null,
+    attribution: input?.attribution ?? null,
     bondBucketMonthly: input?.bondBucketMonthly ?? null,
   });
 }
@@ -115,6 +128,28 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(view.kpiCards[0]?.label).toContain("债券资产规模");
     expect(view.decisionSidebarSections).toHaveLength(6);
     expect(view.decisionSidebarSections[0]?.title).toBe("今日主线");
+    expect(view.executiveOverview.coreMetrics.map((card) => card.id)).toEqual([
+      "aum",
+      "yield",
+      "nim",
+    ]);
+    expect(view.executiveOverview.riskConstraints.map((card) => card.id)).toEqual([
+      "dv01",
+      "duration",
+      "concentration",
+    ]);
+    expect(view.executiveOverview.summary).toContain("待同步或复核");
+    expect(view.executiveOverview.healthText).toBe("数据链路待复核，核心指标不生成正式结论。");
+    expect(view.aiDecisionSummary.map((item) => item.id)).toEqual([
+      "mainline",
+      "max-drag",
+      "max-contribution",
+      "key-risk",
+      "suggested-actions",
+      "pending-todos",
+    ]);
+    expect(view.riskActionStrip.todoCount).toBe(view.todos.length);
+    expect(view.riskActionStrip.watchCount).toBe(view.watchlist.length);
   });
 
   it("prefers real KPI and market pulse values over local mock fillers", () => {
@@ -163,7 +198,13 @@ describe("buildDashboardCockpitHomeViewModel", () => {
       metrics: [
         overviewMetric({
           id: "aum",
-          value: { raw: 4_567_890_000_000, unit: "yuan", display: "45678.90 亿", precision: 2, sign_aware: false },
+          value: {
+            raw: 4_567_890_000_000,
+            unit: "yuan",
+            display: "45678.90 亿",
+            precision: 2,
+            sign_aware: false,
+          },
         }),
         overviewMetric({
           id: "nim",
@@ -198,7 +239,7 @@ describe("buildDashboardCockpitHomeViewModel", () => {
       unit,
       source_version: "sv",
       vendor_version: "vv",
-      quality_flag: "ok",
+      quality_flag: "ok" as const,
       latest_change,
       recent_points: [],
       refresh_tier: "stable" as const,
@@ -234,6 +275,227 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     ]);
     expect(view.marketPulse.every((item) => item.value !== "—")).toBe(true);
     expect(view.dataWarningMessages.join(" ")).not.toContain("本地模拟数据");
+  });
+
+  it("ranks market focus by live move magnitude instead of tape display order", () => {
+    const reportDate = "2026-04-30";
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: reportDate,
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const marketPoint = (series_id: string, value_numeric: number, latest_change: number | null, unit = "%") => ({
+      series_id,
+      series_name: series_id,
+      trade_date: reportDate,
+      value_numeric,
+      unit,
+      source_version: "sv",
+      vendor_version: "vv",
+      quality_flag: "ok" as const,
+      latest_change,
+      recent_points: [],
+      refresh_tier: "stable" as const,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate,
+      isMockMode: false,
+      marketPoints: [
+        marketPoint("CA.CN_GOV_10Y", 1.76, 0.02),
+        marketPoint("CA.BRENT", 118.26, -5.98, "USD/bbl"),
+      ],
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+
+    expect(view.marketPulse[0]?.id).toBe("cgb10y");
+    expect(view.decisionSpine.marketFocus).toContain("原油 Brent");
+    expect(view.decisionSpine.marketFocus).not.toContain("10年国债 1.76%");
+  });
+
+  it("uses governed judgment in the executive overview when real data is complete", () => {
+    const reportDate = "2026-04-30";
+    const metrics = [
+      overviewMetric({ id: "aum", value: { raw: 3_708.1, unit: "yi", display: "3,708.10 亿", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "yield", value: { raw: 29.71, unit: "yi", display: "+29.71 亿", precision: 2, sign_aware: true } }),
+      overviewMetric({ id: "nim", value: { raw: 1.76, unit: "pct", display: "1.76%", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "dv01", value: { raw: 10615.59, unit: "dv01", display: "10,615.59 万", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "duration", value: { raw: 4.14, unit: "ratio", display: "4.14", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "concentration", value: { raw: 41.35, unit: "pct", display: "41.35%", precision: 2, sign_aware: false } }),
+    ];
+    const home = buildDashboardHomeModel({
+      metrics,
+      baseVerdict: {
+        conclusion: "正式经营判断来自受治理快照。",
+        tone: "neutral",
+        reasons: [],
+        suggestions: [],
+      },
+      snapshotReportDate: reportDate,
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const marketPoint = (series_id: string, value_numeric: number, latest_change: number | null, unit = "%") => ({
+      series_id,
+      series_name: series_id,
+      trade_date: reportDate,
+      value_numeric,
+      unit,
+      source_version: "sv",
+      vendor_version: "vv",
+      quality_flag: "ok" as const,
+      latest_change,
+      recent_points: [],
+      refresh_tier: "stable" as const,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate,
+      isMockMode: false,
+      marketPoints: [
+        marketPoint("EMM00166458", 1.2057, 0.0112),
+        marketPoint("EMM00166466", 1.7514, -0.0078),
+        marketPoint("CA.DR007", 1.29, -0.01),
+        marketPoint("EMG00001310", 4.38, -0.03),
+        marketPoint("EMM00058124", 6.8502, 0.0015, "CNY/USD"),
+        marketPoint("CA.BRENT", 118.26, -5.98, "USD/bbl"),
+        marketPoint("CA.CSI300", 4998.3417, 50.2952, "index"),
+        marketPoint("EMM00166655", 1.5417, null, "unknown"),
+      ],
+    });
+    const numeric = (raw: number, unit: Parameters<typeof formatRawAsNumeric>[0]["unit"] = "yuan") =>
+      formatRawAsNumeric({ raw, unit, sign_aware: false });
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics,
+      bondHeadline: {
+        report_date: reportDate,
+        prev_report_date: null,
+        kpis: {
+          total_market_value: numeric(3708.1, "yi"),
+          unrealized_pnl: numeric(29.71, "yi"),
+          weighted_ytm: numeric(2.85, "pct"),
+          weighted_duration: numeric(4.14, "ratio"),
+          weighted_coupon: numeric(2.85, "pct"),
+          credit_spread_median: numeric(69.8, "bp"),
+          total_dv01: numeric(10615.59, "dv01"),
+          bond_count: 1256,
+        },
+        prev_kpis: null,
+      },
+      portfolioComparison: {
+        report_date: reportDate,
+        items: [
+          {
+            portfolio_name: "组合A",
+            total_market_value: numeric(3708.1, "yi"),
+            weighted_ytm: numeric(2.85, "pct"),
+            weighted_duration: numeric(4.14, "ratio"),
+            total_dv01: numeric(10615.59, "dv01"),
+            bond_count: 1256,
+          },
+        ],
+      },
+      creditSpreadMigration: {
+        report_date: reportDate,
+        credit_bond_count: 1,
+        credit_market_value: numeric(1, "yi"),
+        credit_weight: numeric(1, "pct"),
+        spread_dv01: numeric(1, "dv01"),
+        weighted_avg_spread: numeric(69.8, "bp"),
+        weighted_avg_spread_duration: numeric(1, "ratio"),
+        spread_scenarios: [],
+        migration_scenarios: [],
+        concentration_by_rating: {
+          dimension: "rating",
+          hhi: numeric(1, "pct"),
+          top5_concentration: numeric(1, "pct"),
+          top_items: [{ name: "AAA", weight: numeric(1, "pct"), market_value: numeric(1, "yi") }],
+        },
+        oci_credit_exposure: numeric(1, "yi"),
+        oci_spread_dv01: numeric(1, "dv01"),
+        oci_sensitivity_25bp: numeric(1, "yuan"),
+        warnings: [],
+        computed_at: "2026-04-30T09:15:00+08:00",
+      },
+    });
+
+    expect(view.dataWarningMessages).toEqual([]);
+    expect(view.executiveOverview.summary).toBe("正式经营判断来自受治理快照。");
+    expect(view.executiveOverview.healthText).toBe("核心指标已进入可复核区间。");
+  });
+
+  it("keeps the first-screen judgment usable when only secondary portfolio fields are pending", () => {
+    const reportDate = "2026-04-30";
+    const metrics = [
+      overviewMetric({ id: "aum", value: { raw: 3_708.1, unit: "yi", display: "3,708.10 亿", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "yield", value: { raw: 29.71, unit: "yi", display: "+29.71 亿", precision: 2, sign_aware: true } }),
+      overviewMetric({ id: "nim", value: { raw: 1.76, unit: "pct", display: "1.76%", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "dv01", value: { raw: 10615.59, unit: "dv01", display: "10,615.59 万", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "duration", value: { raw: 4.14, unit: "ratio", display: "4.14", precision: 2, sign_aware: false } }),
+      overviewMetric({ id: "concentration", value: { raw: 41.35, unit: "pct", display: "41.35%", precision: 2, sign_aware: false } }),
+    ];
+    const home = buildDashboardHomeModel({
+      metrics,
+      baseVerdict: {
+        conclusion: "正式经营判断来自首屏核心指标。",
+        tone: "neutral",
+        reasons: [],
+        suggestions: [],
+      },
+      snapshotReportDate: reportDate,
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const marketPoint = (series_id: string, value_numeric: number, latest_change: number | null, unit = "%") => ({
+      series_id,
+      series_name: series_id,
+      trade_date: reportDate,
+      value_numeric,
+      unit,
+      source_version: "sv",
+      vendor_version: "vv",
+      quality_flag: "ok" as const,
+      latest_change,
+      recent_points: [],
+      refresh_tier: "stable" as const,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate,
+      isMockMode: false,
+      marketPoints: [
+        marketPoint("EMM00166458", 1.2057, 0.0112),
+        marketPoint("EMM00166466", 1.7514, -0.0078),
+        marketPoint("CA.DR007", 1.29, -0.01),
+        marketPoint("EMG00001310", 4.38, -0.03),
+        marketPoint("EMM00058124", 6.8502, 0.0015, "CNY/USD"),
+        marketPoint("CA.BRENT", 118.26, -5.98, "USD/bbl"),
+        marketPoint("CA.CSI300", 4998.3417, 50.2952, "index"),
+        marketPoint("EMM00166655", 1.5417, null, "unknown"),
+      ],
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics,
+    });
+
+    expect(view.portfolioStats.some((stat) => stat.value === "待同步")).toBe(true);
+    expect(view.dataWarningMessages).toContain("资产分布缺少 portfolio-comparison.items 字段");
+    expect(view.dataWarningMessages).toContain(
+      "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
+    );
+    expect(view.executiveOverview.summary).toBe("正式经营判断来自首屏核心指标。");
+    expect(view.executiveOverview.healthText).toBe("首屏核心指标已进入可复核区间；下方缺口保留局部空态。");
+    expect(view.executiveOverview.summary).not.toContain("待同步或复核");
   });
 
   it("marks missing KPI slots as pending in real mode instead of injecting mock numbers", () => {
@@ -372,21 +634,39 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(status.dataSyncPrefix).toBe("数据已更新");
     expect(status.valuationLabel).toBe("估值已完成");
     expect(status.valuationTone).toBe("ok");
+    expect(status.dataFreshnessState).toBe("fresh");
     expect(status.riskReviewCount).toBe(3);
     expect(status.showRiskReview).toBe(true);
   });
 
-  it("marks mock header status as pending sync instead of completed valuation", () => {
+  it("keeps mock header status explicit while sidebar still explains local data", () => {
     const status = buildDashboardCockpitHeaderStatus({
       useMockFallback: true,
       alertCount: 11,
     });
 
-    expect(status.dataSyncPrefix).toBe("数据待同步");
+    expect(status.dataUpdatedAt).toBe("09:15");
+    expect(status.dataSyncPrefix).toBe("数据使用本地模拟数据");
     expect(status.valuationLabel).toBe("估值待同步");
     expect(status.valuationTone).toBe("muted");
+    expect(status.dataFreshnessState).toBe("mock-fallback");
     expect(status.riskReviewCount).toBe(11);
     expect(status.showRiskReview).toBe(true);
+  });
+
+  it("marks real header status as pending when snapshot time is missing", () => {
+    const status = buildDashboardCockpitHeaderStatus({
+      reportDate: "2026-04-30",
+      alertCount: 0,
+      useMockFallback: false,
+    });
+
+    expect(status.dataUpdatedAt).toBe("待同步");
+    expect(status.dataSyncPrefix).toBe("数据时间待同步");
+    expect(status.valuationLabel).toBe("估值待同步");
+    expect(status.valuationTone).toBe("muted");
+    expect(status.dataFreshnessState).toBe("missing-snapshot-time");
+    expect(status.showRiskReview).toBe(false);
   });
 
   it("does not mark live market pulse slots as estimated", () => {
@@ -483,6 +763,200 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(gapSlots.every((item) => item.statusLabel === "待同步")).toBe(true);
   });
 
+  it("uses partial snapshot missing domains as first-screen decision evidence", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: "2026-04-30",
+      snapshotMode: "partial",
+      snapshotDomainsMissing: ["pnl"],
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+    const mainline = view.decisionSidebarSections.find((section) => section.id === "mainline");
+
+    expect(view.dataWarningMessages).toContain("部分指标待同步");
+    expect(view.dataWarningMessages).toContain("该日部分业务域不可用: pnl");
+    expect(view.decisionSpine.evidenceState).toBe("该日部分业务域不可用: pnl");
+    expect(view.executiveOverview.summary).toContain("待同步或复核");
+    expect(view.executiveOverview.summary).not.toContain("利率上行拖累估值");
+    expect(view.executiveOverview.healthText).toBe("数据链路待复核，核心指标不生成正式结论。");
+    expect(mainline?.sourceType).toBe("pending");
+    expect(mainline?.sourceLabel).toBe("待复核");
+    expect(mainline?.evidenceLabel).toBe("该日部分业务域不可用: pnl");
+    expect(view.aiDecisionSummary.find((item) => item.id === "mainline")?.sourceType).toBe(
+      "pending",
+    );
+    expect(view.decisionSpine.rail.every((item) => item.sourceType !== "governed")).toBe(true);
+  });
+
+  it("adds decision spine relationship hints without changing the first-screen card counts", () => {
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      isMockMode: false,
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics: [],
+      useMockFallback: true,
+    });
+
+    expect(view.kpiCards).toHaveLength(6);
+    expect(view.marketPulse).toHaveLength(8);
+    expect(view.kpiCards.every((card) => Boolean(card.relationLabel))).toBe(true);
+    expect(view.marketPulse.every((item) => Boolean(item.impactLabel))).toBe(true);
+    expect(view.decisionSpine.rail.map((item) => item.label)).toEqual([
+      "市场关注",
+      "组合影响",
+      "需处置项",
+    ]);
+    expect(
+      view.decisionSpine.rail.map((item) => ({
+        id: item.id,
+        href: item.href,
+        targetId: item.targetId,
+        sourceType: item.sourceType,
+        sourceLabel: item.sourceLabel,
+      })),
+    ).toEqual([
+      {
+        id: "market-focus",
+        href: "#dashboard-home-market-section",
+        targetId: "dashboard-home-market-section",
+        sourceType: "mock-fallback",
+        sourceLabel: "本地模拟",
+      },
+      {
+        id: "portfolio-impact",
+        href: "#dashboard-home-portfolio-section",
+        targetId: "dashboard-home-portfolio-section",
+        sourceType: "mock-fallback",
+        sourceLabel: "本地模拟",
+      },
+      {
+        id: "risk-focus",
+        href: "#dashboard-home-risk-section",
+        targetId: "dashboard-home-risk-section",
+        sourceType: "mock-fallback",
+        sourceLabel: "本地模拟",
+      },
+    ]);
+    expect(view.decisionSpine.marketFocus).toContain("1Y-10Y利差");
+    expect(view.decisionSpine.marketFocus).toContain("演示");
+    expect(view.decisionSpine.evidenceState).toContain("本地模拟数据");
+    expect(view.executiveOverview.summary).toContain("本地模拟数据");
+    expect(view.executiveOverview.summary).not.toContain("利率上行拖累估值");
+  });
+
+  it("keeps estimated market focus out of the real-mode decision spine", () => {
+    const reportDate = "2026-04-30";
+    const home = buildDashboardHomeModel({
+      metrics: [],
+      snapshotReportDate: reportDate,
+      isSnapshotLoading: false,
+      calendarIsLoading: false,
+      calendarIsError: false,
+      isMockMode: false,
+    });
+    const marketPoint = (series_id: string, value_numeric: number, latest_change: number | null) => ({
+      series_id,
+      series_name: series_id,
+      trade_date: reportDate,
+      value_numeric,
+      unit: "%",
+      source_version: "sv",
+      vendor_version: "vv",
+      quality_flag: "ok" as const,
+      latest_change,
+      recent_points: [],
+      refresh_tier: "stable" as const,
+    });
+    const cockpit = buildDashboardCockpitModel({
+      reportDate,
+      isMockMode: false,
+      marketPoints: [
+        marketPoint("EMM00166458", 1.2057, 0.02),
+        marketPoint("EMM00166466", 1.7514, -0.01),
+      ],
+    });
+
+    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: [] });
+    const spine = buildDecisionSpine({
+      headerStatus: view.headerStatus,
+      judgment: view.judgment,
+      kpiCards: [
+        {
+          id: "dv01",
+          label: "组合DV01",
+          value: "10,615.59 万",
+          delta: "较昨日 +4.97 万",
+          deltaTone: "up",
+          iconLabel: "久",
+          sparkline: [1, 2],
+          group: "risk",
+          groupLabel: "风险约束",
+          signalLabel: "敞口上升",
+          relationLabel: "关联利率风险",
+        },
+        {
+          id: "duration",
+          label: "久期（年）",
+          value: "4.14",
+          delta: "较昨日 -0.01",
+          deltaTone: "down",
+          iconLabel: "期",
+          sparkline: [2, 1],
+          group: "risk",
+          groupLabel: "风险约束",
+          signalLabel: "久期下降",
+          relationLabel: "关联久期约束",
+        },
+      ],
+      marketPulse: [
+        {
+          id: "slope",
+          label: "1Y-10Y利差",
+          value: "-54bp",
+          delta: "+3bp",
+          deltaTone: "up",
+          sparkline: [-54, -54],
+          statusLabel: "最近交易日",
+          impactLabel: "期限结构",
+          isEstimated: true,
+        },
+      ],
+      attributionWaterfall: view.attributionWaterfall,
+      alertCount: view.alertCount,
+      riskAlertCounts: view.riskAlertCounts,
+      todos: view.todos,
+      dataSource: view.dataSource,
+      dataWarningMessages: view.dataWarningMessages,
+      useMockFallback: false,
+    });
+
+    expect(spine.marketFocus).toBe("待同步");
+    expect(spine.rail.find((item) => item.id === "market-focus")?.value).toBe("待同步");
+    expect(spine.marketFocus).not.toContain("-54bp");
+    expect(spine.marketFocus).not.toContain("估算");
+    expect(spine.portfolioImpact).toBe("久期（年） 4.14");
+  });
+
   it("uses softer review wording in real-mode key risk sidebar when tier breakdown is unavailable", () => {
     const sections = buildDecisionSidebarSections({
       judgment: { conclusion: "测试", tone: "neutral", reasons: [], suggestions: [] },
@@ -501,6 +975,9 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     const keyRisk = sections.find((section) => section.id === "key-risk");
 
     expect(keyRisk?.body).toBe("待复核 5 项");
+    expect(keyRisk?.evidenceLabel).toBe("待复核口径");
+    expect(keyRisk?.href).toBe("#dashboard-home-risk-section");
+    expect(keyRisk?.targetId).toBe("dashboard-home-risk-section");
     expect(keyRisk?.body).not.toContain("高风险 5");
   });
 
@@ -537,6 +1014,28 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(view.attributionTabs.every((tab) => tab.change === "待同步")).toBe(true);
     expect(view.attributionTabs.some((tab) => tab.pnl === "-368.09 万")).toBe(false);
     expect(view.attributionWaterfall).toEqual([]);
+  });
+
+  it("shows the exact missing attribution yield field instead of a generic caliber gap", () => {
+    const view = buildRealModeView({
+      attribution: {
+        title: "真实归因",
+        total: formatRawAsNumeric({ raw: -368_0900, unit: "yuan", sign_aware: true }),
+        segments: [
+          {
+            id: "rate",
+            label: "利率变动",
+            amount: formatRawAsNumeric({ raw: -512_3400, unit: "yuan", sign_aware: true }),
+            tone: "negative",
+          },
+        ],
+      },
+    });
+
+    const dayTab = view.attributionTabs.find((tab) => tab.id === "day");
+    expect(dayTab?.yield).toBe("缺 daily_yield");
+    expect(dayTab?.yield).not.toBe("口径待确认");
+    expect(view.dataWarningMessages).toContain("归因收益率缺少 pnl-attribution.daily_yield 字段");
   });
 
   it("derives interbank net position from coreMetrics yuan raw, not display-only values", () => {
@@ -620,6 +1119,14 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     expect(view.decisionSidebarSections.find((section) => section.id === "suggested-actions")?.body).toContain(
       "利率上行",
     );
+    expect(view.aiDecisionSummary.map((item) => item.title)).toEqual([
+      "今日结论",
+      "最大拖累",
+      "最大贡献",
+      "关键风险",
+      "建议动作",
+      "待处理事项",
+    ]);
   });
 
   it("shows pending sync for attribution extremes in real mode without waterfall", () => {
@@ -629,6 +1136,50 @@ describe("buildDashboardCockpitHomeViewModel", () => {
 
     expect(drag?.body).toBe("待同步");
     expect(contribution?.body).toBe("待同步");
+  });
+
+  it("uses real attribution extremes in the AI decision rail when waterfall data is available", () => {
+    const view = buildRealModeView({
+      metrics: [
+        overviewMetric({
+          id: "aum",
+          value: { raw: 4_567_890_000_000, unit: "yuan", display: "45678.90 亿", precision: 2, sign_aware: false },
+        }),
+      ],
+      attribution: {
+        title: "真实归因",
+        total: formatRawAsNumeric({ raw: 200_000_000, unit: "yuan", sign_aware: true }),
+        segments: [
+          {
+            id: "rate",
+            label: "利率变动",
+            amount: formatRawAsNumeric({ raw: -30_000_000, unit: "yuan", sign_aware: true }),
+            tone: "negative",
+          },
+          {
+            id: "credit",
+            label: "信用利差",
+            amount: formatRawAsNumeric({ raw: 50_000_000, unit: "yuan", sign_aware: true }),
+            tone: "positive",
+          },
+        ],
+      },
+    });
+    const drag = view.decisionSidebarSections.find((section) => section.id === "max-drag");
+    const contribution = view.decisionSidebarSections.find((section) => section.id === "max-contribution");
+
+    expect(view.attributionWaterfall.some((item) => item.label === "利率变动")).toBe(true);
+    expect(view.attributionWaterfall.some((item) => item.label === "信用利差")).toBe(true);
+    expect(view.decisionSpine.pnlDriver).toContain("拖累 利率变动");
+    expect(view.decisionSpine.pnlDriver).toContain("贡献 信用利差");
+    expect(drag?.body).toBe("利率变动 -0.30 亿");
+    expect(drag?.evidenceLabel).toBe("归因瀑布");
+    expect(drag?.sourceType).toBe("derived");
+    expect(drag?.sourceLabel).toBe("前端衍生");
+    expect(contribution?.body).toBe("信用利差 +0.50 亿");
+    expect(contribution?.evidenceLabel).toBe("归因瀑布");
+    expect(contribution?.sourceType).toBe("derived");
+    expect(contribution?.sourceLabel).toBe("前端衍生");
   });
 
   it("formats waterfall values with known units as-is and avoids blind 万 suffix", () => {
@@ -662,7 +1213,14 @@ describe("buildDashboardCockpitHomeViewModel", () => {
       isMockMode: false,
     });
     const cockpit = buildDashboardCockpitModel({ reportDate, isMockMode: false });
-    const view = buildDashboardCockpitHomeViewModel({ home, cockpit, metrics: home.heroMetrics });
+    const view = buildDashboardCockpitHomeViewModel({
+      home,
+      cockpit,
+      metrics: [
+        overviewMetric({ id: "aum", tone: "negative" }),
+        overviewMetric({ id: "yield", tone: "warning" }),
+      ],
+    });
 
     expect(view.riskReviewOnly).toBe(false);
     expect(view.riskAlertCounts.find((item) => item.id === "high")?.count).toBeGreaterThan(0);
@@ -804,6 +1362,92 @@ describe("buildDashboardCockpitHomeViewModel", () => {
 
     expect(view.productPnl.pending).toBe(false);
     expect(view.productPnl.series.find((item) => item.id === "rate")?.values).toEqual([1]);
+  });
+
+  it("uses same-day bond payloads to close portfolio stats without mock fallback", () => {
+    const numeric = (raw: number, unit: Parameters<typeof formatRawAsNumeric>[0]["unit"] = "yuan") =>
+      formatRawAsNumeric({ raw, unit, sign_aware: false });
+    const view = buildRealModeView({
+      reportDate: "2026-04-30",
+      bondHeadline: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: numeric(3708.1, "yi"),
+          unrealized_pnl: numeric(29.71, "yi"),
+          weighted_ytm: numeric(2.85, "pct"),
+          weighted_duration: numeric(4.14, "ratio"),
+          weighted_coupon: numeric(0.0285, "pct"),
+          credit_spread_median: numeric(69.8, "bp"),
+          total_dv01: numeric(10615.59, "dv01"),
+          bond_count: 1256,
+        },
+        prev_kpis: null,
+      },
+      portfolioComparison: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            portfolio_name: "组合A",
+            total_market_value: numeric(100, "yi"),
+            weighted_ytm: numeric(0.025, "pct"),
+            weighted_duration: numeric(4, "ratio"),
+            total_dv01: numeric(1, "dv01"),
+            bond_count: 2,
+          },
+          {
+            portfolio_name: "组合B",
+            total_market_value: numeric(200, "yi"),
+            weighted_ytm: numeric(0.026, "pct"),
+            weighted_duration: numeric(4.2, "ratio"),
+            total_dv01: numeric(2, "dv01"),
+            bond_count: 3,
+          },
+        ],
+      },
+      creditSpreadMigration: {
+        report_date: "2026-04-30",
+        credit_bond_count: 1,
+        credit_market_value: numeric(1, "yi"),
+        credit_weight: numeric(0.3, "pct"),
+        spread_dv01: numeric(1, "dv01"),
+        weighted_avg_spread: numeric(69.8, "bp"),
+        weighted_avg_spread_duration: numeric(3, "ratio"),
+        spread_scenarios: [],
+        migration_scenarios: [],
+        concentration_by_rating: {
+          dimension: "rating",
+          hhi: numeric(0.1, "pct"),
+          top5_concentration: numeric(0.5, "pct"),
+          top_items: [{ name: "AAA", weight: numeric(0.4, "pct"), market_value: numeric(1, "yi") }],
+        },
+        oci_credit_exposure: numeric(0, "yuan"),
+        oci_spread_dv01: numeric(0, "dv01"),
+        oci_sensitivity_25bp: numeric(0, "yuan"),
+        warnings: [],
+        computed_at: "2026-04-30T08:00:00Z",
+      },
+    });
+
+    expect(view.portfolioStats).toEqual([
+      { id: "books", label: "组合数", value: "2 个" },
+      { id: "positions", label: "持仓债券", value: "1,256 只" },
+      { id: "coupon", label: "平均票面利率", value: "2.85%" },
+      { id: "rating", label: "主导评级（Top1）", value: "AAA" },
+    ]);
+    expect(view.dataWarningMessages.join(" ")).not.toContain("资产分布缺少");
+  });
+
+  it("reports exact secondary portfolio fields when only those stats are pending", () => {
+    const view = buildRealModeView({ metrics: [] });
+
+    expect(view.dataWarningMessages).toContain("资产分布缺少 portfolio-comparison.items 字段");
+    expect(view.dataWarningMessages).toContain(
+      "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
+    );
+    expect(view.dataWarningMessages.join(" ")).not.toContain(
+      "资产分布缺少 portfolio-comparison/credit-spread-migration 字段",
+    );
   });
 
   it("labels dominant portfolio rating as Top1 instead of average", () => {

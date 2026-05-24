@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 
-import { tabularNumsStyle } from "../../../../theme/designSystem";
 import type { DashboardMarketPulseVM } from "../dashboardCockpitHomeModel";
 import { resolveKpiDeltaClass } from "../dashboardCockpitHomeModel";
 import { buildSparkPath } from "../sparklinePath";
@@ -74,10 +73,11 @@ export function MarketPulseCard({ item }: MarketPulseCardProps) {
         </span>
         <span className="dashboard-cockpit-pulse__status">{directionLabel}</span>
       </div>
+      <span className="dashboard-cockpit-pulse__impact">{item.impactLabel}</span>
       <div className="dashboard-cockpit-pulse__body">
         <div className="dashboard-cockpit-pulse__values">
-          <strong style={tabularNumsStyle}>{item.value}</strong>
-          <span className={resolveKpiDeltaClass(item.deltaTone)} style={tabularNumsStyle}>
+          <strong className="dashboard-cockpit-tabular">{item.value}</strong>
+          <span className={`dashboard-cockpit-tabular ${resolveKpiDeltaClass(item.deltaTone)}`}>
             {item.delta}
           </span>
         </div>
