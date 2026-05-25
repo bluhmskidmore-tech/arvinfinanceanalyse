@@ -17,6 +17,7 @@ const agentClientSource = readFileSync(resolve(process.cwd(), "src/api/agentClie
 const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/executiveClient.ts"), "utf8");
 const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
+const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
   ? readFileSync(healthClientPath, "utf8")
@@ -92,6 +93,21 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getBalanceAnalysisRefreshStatus).toBe("function");
   });
 
+  it("keeps the public Positions surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getPositionsBondSubTypes).toBe("function");
+    expect(typeof client.getPositionsBondsList).toBe("function");
+    expect(typeof client.getPositionsCounterpartyBonds).toBe("function");
+    expect(typeof client.getPositionsInterbankProductTypes).toBe("function");
+    expect(typeof client.getPositionsInterbankList).toBe("function");
+    expect(typeof client.getPositionsCounterpartyInterbankSplit).toBe("function");
+    expect(typeof client.getPositionsStatsRating).toBe("function");
+    expect(typeof client.getPositionsStatsIndustry).toBe("function");
+    expect(typeof client.getPositionsCustomerDetails).toBe("function");
+    expect(typeof client.getPositionsCustomerTrend).toBe("function");
+  });
+
   it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
@@ -142,6 +158,17 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("balance-analysis.summary");
     expect(clientSource).not.toContain("balance-analysis.workbook");
     expect(clientSource).not.toContain("balance-analysis.decision-items");
+    expect(clientSource).not.toContain("/api/positions/");
+    expect(clientSource).not.toContain("positions.bonds.sub_types");
+    expect(clientSource).not.toContain("positions.bonds.list");
+    expect(clientSource).not.toContain("positions.counterparty.bonds");
+    expect(clientSource).not.toContain("positions.interbank.product_types");
+    expect(clientSource).not.toContain("positions.interbank.list");
+    expect(clientSource).not.toContain("positions.counterparty.interbank.split");
+    expect(clientSource).not.toContain("positions.stats.rating");
+    expect(clientSource).not.toContain("positions.stats.industry");
+    expect(clientSource).not.toContain("positions.customer.details");
+    expect(clientSource).not.toContain("positions.customer.trend");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -201,6 +228,16 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async exportBalanceAnalysisWorkbookXlsx\(/);
     expect(clientSource).not.toMatch(/async refreshBalanceAnalysis\(/);
     expect(clientSource).not.toMatch(/async getBalanceAnalysisRefreshStatus\(/);
+    expect(clientSource).not.toMatch(/async getPositionsBondSubTypes\(/);
+    expect(clientSource).not.toMatch(/async getPositionsBondsList\(/);
+    expect(clientSource).not.toMatch(/async getPositionsCounterpartyBonds\(/);
+    expect(clientSource).not.toMatch(/async getPositionsInterbankProductTypes\(/);
+    expect(clientSource).not.toMatch(/async getPositionsInterbankList\(/);
+    expect(clientSource).not.toMatch(/async getPositionsCounterpartyInterbankSplit\(/);
+    expect(clientSource).not.toMatch(/async getPositionsStatsRating\(/);
+    expect(clientSource).not.toMatch(/async getPositionsStatsIndustry\(/);
+    expect(clientSource).not.toMatch(/async getPositionsCustomerDetails\(/);
+    expect(clientSource).not.toMatch(/async getPositionsCustomerTrend\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -343,6 +380,33 @@ describe("ApiClient composition boundary", () => {
     expect(balanceAnalysisClientSource).toMatch(/async exportBalanceAnalysisWorkbookXlsx\(/);
     expect(balanceAnalysisClientSource).toMatch(/async refreshBalanceAnalysis\(/);
     expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisRefreshStatus\(/);
+  });
+
+  it("requires positionsClient.ts to own Positions API implementations", () => {
+    expect(positionsClientSource).toContain("createDemoPositionsClient");
+    expect(positionsClientSource).toContain("createRealPositionsClient");
+    expect(positionsClientSource).toContain("/api/positions/bonds/sub_types");
+    expect(positionsClientSource).toContain("/api/positions/bonds");
+    expect(positionsClientSource).toContain("/api/positions/counterparty/bonds");
+    expect(positionsClientSource).toContain("/api/positions/interbank/product_types");
+    expect(positionsClientSource).toContain("/api/positions/interbank");
+    expect(positionsClientSource).toContain("/api/positions/counterparty/interbank/split");
+    expect(positionsClientSource).toContain("/api/positions/stats/rating");
+    expect(positionsClientSource).toContain("/api/positions/stats/industry");
+    expect(positionsClientSource).toContain("/api/positions/customer/details");
+    expect(positionsClientSource).toContain("/api/positions/customer/trend");
+    expect(positionsClientSource).toContain("positions.bonds.sub_types");
+    expect(positionsClientSource).toContain("positions.counterparty.interbank.split");
+    expect(positionsClientSource).toMatch(/async getPositionsBondSubTypes\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsBondsList\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsCounterpartyBonds\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsInterbankProductTypes\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsInterbankList\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsCounterpartyInterbankSplit\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsStatsRating\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsStatsIndustry\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsCustomerDetails\(/);
+    expect(positionsClientSource).toMatch(/async getPositionsCustomerTrend\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {
