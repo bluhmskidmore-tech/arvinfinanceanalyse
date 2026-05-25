@@ -18,6 +18,7 @@ const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/execu
 const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
 const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
+const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
   ? readFileSync(healthClientPath, "utf8")
@@ -108,6 +109,83 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getPositionsCustomerTrend).toBe("function");
   });
 
+  it("keeps the public Liability and ADB surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getLiabilityRiskBuckets).toBe("function");
+    expect(typeof client.getLiabilityYieldMetrics).toBe("function");
+    expect(typeof client.getYieldByPeriod).toBe("function");
+    expect(typeof client.getLiabilityCounterparty).toBe("function");
+    expect(typeof client.getLiabilityKnowledgeBrief).toBe("function");
+    expect(typeof client.getCockpitWarnings).toBe("function");
+    expect(typeof client.getContributionSplit).toBe("function");
+    expect(typeof client.getLiabilitiesMonthly).toBe("function");
+    expect(typeof client.getLiabilityAdbMonthly).toBe("function");
+    expect(typeof client.getAdb).toBe("function");
+    expect(typeof client.getAdbComparison).toBe("function");
+    expect(typeof client.getAdbMonthly).toBe("function");
+    expect(typeof client.getAdbCoverage).toBe("function");
+  });
+
+  it("routes real Positions list requests to exact backend endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_positions",
+          basis: "formal",
+          result_kind: "positions.list",
+          formal_use_allowed: true,
+          source_version: "sv_positions",
+          vendor_version: "vv_none",
+          rule_version: "rv_positions",
+          cache_version: "cv_positions",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: { items: [], total: 0, page: 1, page_size: 20 },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getPositionsBondsList({
+      reportDate: " 2026-01-31 ",
+      subType: " 信用债 ",
+      page: 1,
+      pageSize: 20,
+      includeIssued: true,
+    });
+    await client.getPositionsInterbankList({
+      reportDate: " 2026-01-31 ",
+      productType: " 存放 ",
+      direction: "Asset",
+      page: 2,
+      pageSize: 50,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/positions/bonds?report_date=2026-01-31&sub_type=%E4%BF%A1%E7%94%A8%E5%80%BA&page=1&page_size=20&include_issued=true",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/positions/interbank?report_date=2026-01-31&product_type=%E5%AD%98%E6%94%BE&direction=Asset&page=2&page_size=50",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
   it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
@@ -169,6 +247,24 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("positions.stats.industry");
     expect(clientSource).not.toContain("positions.customer.details");
     expect(clientSource).not.toContain("positions.customer.trend");
+    expect(clientSource).not.toContain("/api/risk/buckets");
+    expect(clientSource).not.toContain("/api/analysis/yield_metrics");
+    expect(clientSource).not.toContain("/api/analysis/yield-by-period");
+    expect(clientSource).not.toContain("/api/analysis/liabilities/counterparty");
+    expect(clientSource).not.toContain("/ui/liability/business-context");
+    expect(clientSource).not.toContain("/api/analysis/liabilities/cockpit-warnings");
+    expect(clientSource).not.toContain("/api/analysis/liabilities/contribution-split");
+    expect(clientSource).not.toContain("/api/liabilities/monthly");
+    expect(clientSource).not.toContain("/api/analysis/adb");
+    expect(clientSource).not.toContain("liability.cockpit_warnings");
+    expect(clientSource).not.toContain("liability.contribution_split");
+    expect(clientSource).not.toContain("liability.page_knowledge");
+    expect(clientSource).not.toContain("requestPlainJson");
+    expect(clientSource).not.toContain("requestEnvelopeOrPlainJson");
+    expect(clientSource).not.toContain("requestEnvelopeOrPlainJsonWithMeta");
+    expect(clientSource).not.toContain("normalizeAccountingBasisTrendItem");
+    expect(clientSource).not.toContain("normalizeAdbComparisonResponse");
+    expect(clientSource).not.toContain("normalizeAdbMonthlyResponse");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -238,6 +334,19 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getPositionsStatsIndustry\(/);
     expect(clientSource).not.toMatch(/async getPositionsCustomerDetails\(/);
     expect(clientSource).not.toMatch(/async getPositionsCustomerTrend\(/);
+    expect(clientSource).not.toMatch(/async getLiabilityRiskBuckets\(/);
+    expect(clientSource).not.toMatch(/async getLiabilityYieldMetrics\(/);
+    expect(clientSource).not.toMatch(/async getYieldByPeriod\(/);
+    expect(clientSource).not.toMatch(/async getLiabilityCounterparty\(/);
+    expect(clientSource).not.toMatch(/async getLiabilityKnowledgeBrief\(/);
+    expect(clientSource).not.toMatch(/async getCockpitWarnings\(/);
+    expect(clientSource).not.toMatch(/async getContributionSplit\(/);
+    expect(clientSource).not.toMatch(/async getLiabilitiesMonthly\(/);
+    expect(clientSource).not.toMatch(/async getLiabilityAdbMonthly\(/);
+    expect(clientSource).not.toMatch(/async getAdb\(/);
+    expect(clientSource).not.toMatch(/async getAdbComparison\(/);
+    expect(clientSource).not.toMatch(/async getAdbMonthly\(/);
+    expect(clientSource).not.toMatch(/async getAdbCoverage\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -385,6 +494,8 @@ describe("ApiClient composition boundary", () => {
   it("requires positionsClient.ts to own Positions API implementations", () => {
     expect(positionsClientSource).toContain("createDemoPositionsClient");
     expect(positionsClientSource).toContain("createRealPositionsClient");
+    expect(positionsClientSource).not.toContain("getLiabilityRiskBuckets");
+    expect(positionsClientSource).not.toContain("getAdbComparison");
     expect(positionsClientSource).toContain("/api/positions/bonds/sub_types");
     expect(positionsClientSource).toContain("/api/positions/bonds");
     expect(positionsClientSource).toContain("/api/positions/counterparty/bonds");
@@ -407,6 +518,42 @@ describe("ApiClient composition boundary", () => {
     expect(positionsClientSource).toMatch(/async getPositionsStatsIndustry\(/);
     expect(positionsClientSource).toMatch(/async getPositionsCustomerDetails\(/);
     expect(positionsClientSource).toMatch(/async getPositionsCustomerTrend\(/);
+  });
+
+  it("requires liabilityAdbClient.ts to own Liability and ADB API implementations", () => {
+    expect(liabilityAdbClientSource).toContain("createDemoLiabilityAdbClient");
+    expect(liabilityAdbClientSource).toContain("createRealLiabilityAdbClient");
+    expect(liabilityAdbClientSource).toContain("/api/risk/buckets");
+    expect(liabilityAdbClientSource).toContain("/api/analysis/yield_metrics");
+    expect(liabilityAdbClientSource).toContain("/api/analysis/yield-by-period");
+    expect(liabilityAdbClientSource).toContain("/api/analysis/liabilities/counterparty");
+    expect(liabilityAdbClientSource).toContain("/ui/liability/business-context");
+    expect(liabilityAdbClientSource).toContain("/api/analysis/liabilities/cockpit-warnings");
+    expect(liabilityAdbClientSource).toContain("/api/analysis/liabilities/contribution-split");
+    expect(liabilityAdbClientSource).toContain("/api/liabilities/monthly");
+    expect(liabilityAdbClientSource).toContain("/api/analysis/adb");
+    expect(liabilityAdbClientSource).toContain("liability.cockpit_warnings");
+    expect(liabilityAdbClientSource).toContain("liability.contribution_split");
+    expect(liabilityAdbClientSource).toContain("liability.page_knowledge");
+    expect(liabilityAdbClientSource).toContain("requestPlainJson");
+    expect(liabilityAdbClientSource).toContain("requestEnvelopeOrPlainJson");
+    expect(liabilityAdbClientSource).toContain("requestEnvelopeOrPlainJsonWithMeta");
+    expect(liabilityAdbClientSource).toContain("normalizeAccountingBasisTrendItem");
+    expect(liabilityAdbClientSource).toContain("normalizeAdbComparisonResponse");
+    expect(liabilityAdbClientSource).toContain("normalizeAdbMonthlyResponse");
+    expect(liabilityAdbClientSource).toMatch(/async getLiabilityRiskBuckets\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getLiabilityYieldMetrics\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getYieldByPeriod\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getLiabilityCounterparty\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getLiabilityKnowledgeBrief\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getCockpitWarnings\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getContributionSplit\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getLiabilitiesMonthly\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getLiabilityAdbMonthly\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getAdb\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getAdbComparison\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getAdbMonthly\(/);
+    expect(liabilityAdbClientSource).toMatch(/async getAdbCoverage\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {

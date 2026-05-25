@@ -6,9 +6,9 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 2995,
-  // Phase 4B moves pure Positions endpoint implementations into positionsClient.ts.
-  apiClientMockOccurrences: 281,
+  apiClientLines: 2365,
+  // Phase 4C moves Liability and ADB endpoint implementations into liabilityAdbClient.ts.
+  apiClientMockOccurrences: 275,
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,
