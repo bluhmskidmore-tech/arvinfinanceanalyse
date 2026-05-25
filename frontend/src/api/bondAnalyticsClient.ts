@@ -28,6 +28,7 @@ import type {
   YieldDistributionPayload,
 } from "./contracts";
 import { formatRawAsNumeric } from "../utils/format";
+import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 
 export type BondAnalyticsClientMethods = {
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
@@ -107,6 +108,23 @@ export type BondAnalyticsClientMethods = {
 type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;
 
+type BondAnalyticsCoreClientMethods = Pick<
+  BondAnalyticsClientMethods,
+  | "refreshBondAnalytics"
+  | "getBondAnalyticsRefreshStatus"
+  | "getBondAnalyticsDates"
+  | "getBondAnalyticsReturnDecomposition"
+  | "getBondAnalyticsBenchmarkExcess"
+  | "getBondAnalyticsKrdCurveRisk"
+  | "getBondAnalyticsActionAttribution"
+  | "getBondAnalyticsAccountingClassAudit"
+  | "getBondAnalyticsCreditSpreadMigration"
+  | "getBondAnalyticsPortfolioHeadlines"
+  | "getBondAnalyticsTopHoldings"
+  | "getBondAnalyticsYieldCurveTermStructure"
+  | "getCreditSpreadAnalysisDetail"
+>;
+
 type BondDashboardClientMethods = Pick<
   BondAnalyticsClientMethods,
   | "getBondDashboardDates"
@@ -133,11 +151,309 @@ type RequestJson = <T>(
   path: string,
 ) => Promise<ApiEnvelope<T>>;
 
+type RequestActionJson = <T>(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+  init?: RequestInit,
+) => Promise<T>;
+
 export type BondDashboardClientFactoryOptions = {
   fetchImpl: FetchLike;
   baseUrl: string;
   requestJson: RequestJson;
 };
+
+export type BondAnalyticsClientFactoryOptions = BondDashboardClientFactoryOptions & {
+  requestActionJson: RequestActionJson;
+};
+
+export function createDemoBondAnalyticsClient(
+  delay: Delay,
+  ensureMockClientBundle: EnsureBondDashboardMockBundle,
+): BondAnalyticsCoreClientMethods {
+  return {
+    async refreshBondAnalytics(reportDate: string) {
+      await delay();
+      return {
+        status: "queued",
+        run_id: "bond_analytics_refresh:mock-run",
+        job_name: "bond_analytics_refresh",
+        cache_key: "bond_analytics:materialize",
+        report_date: reportDate,
+      };
+    },
+    async getBondAnalyticsRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+        job_name: "bond_analytics_refresh",
+        cache_key: "bond_analytics:materialize",
+        report_date: "2025-12-31",
+      };
+    },
+    async getBondAnalyticsDates() {
+      await delay();
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.dates",
+        {
+          report_dates: ["2026-03-31", "2026-02-28", "2025-12-31"],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsReturnDecomposition(
+      reportDate: string,
+      periodType: string,
+      _options?: { assetClass?: string; accountingClass?: string },
+    ) {
+      await delay();
+      void _options;
+      const zy = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware });
+      const zp = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.return_decomposition",
+        {
+          report_date: reportDate,
+          period_type: periodType,
+          period_start: reportDate,
+          period_end: reportDate,
+          carry: zy(true),
+          roll_down: zy(true),
+          rate_effect: zy(true),
+          spread_effect: zy(true),
+          trading: zy(true),
+          fx_effect: zy(true),
+          convexity_effect: zy(true),
+          explained_pnl: zy(true),
+          explained_pnl_accounting: zy(true),
+          explained_pnl_economic: zy(true),
+          oci_reserve_impact: zy(true),
+          actual_pnl: zy(true),
+          recon_error: zy(true),
+          recon_error_pct: zp(true),
+          by_asset_class: [],
+          by_accounting_class: [],
+          bond_details: [],
+          bond_count: 0,
+          total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsBenchmarkExcess(
+      reportDate: string,
+      periodType: string,
+      benchmarkId: string,
+    ) {
+      await delay();
+      const zPct = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: s });
+      const zBp = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "bp", sign_aware: s });
+      const zRatio = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.benchmark_excess",
+        {
+          report_date: reportDate,
+          period_type: periodType,
+          period_start: reportDate,
+          period_end: reportDate,
+          portfolio_return: zPct(true),
+          benchmark_return: zPct(true),
+          excess_return: zBp(true),
+          tracking_error: null,
+          information_ratio: null,
+          duration_effect: zBp(true),
+          curve_effect: zBp(true),
+          spread_effect: zBp(true),
+          selection_effect: zBp(true),
+          allocation_effect: zBp(true),
+          explained_excess: zBp(true),
+          recon_error: zBp(true),
+          portfolio_duration: zRatio(false),
+          benchmark_duration: zRatio(false),
+          duration_diff: zRatio(true),
+          excess_sources: [],
+          benchmark_id: benchmarkId,
+          benchmark_name: benchmarkId,
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsKrdCurveRisk(
+      reportDate: string,
+      _options?: { scenarioSet?: string },
+    ) {
+      await delay();
+      void _options;
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.krd_curve_risk",
+        {
+          report_date: reportDate,
+          portfolio_duration: formatRawAsNumeric({ raw: 3.8, unit: "ratio", sign_aware: false }),
+          portfolio_modified_duration: formatRawAsNumeric({ raw: 3.6, unit: "ratio", sign_aware: false }),
+          portfolio_dv01: formatRawAsNumeric({ raw: 120, unit: "dv01", sign_aware: false }),
+          portfolio_convexity: formatRawAsNumeric({ raw: 0.8, unit: "ratio", sign_aware: false }),
+          krd_buckets: [],
+          scenarios: [],
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsActionAttribution(reportDate: string, periodType: string) {
+      await delay();
+      const zy = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: s });
+      const zr = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
+      const zd = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: s });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.action_attribution",
+        {
+          report_date: reportDate,
+          period_type: periodType,
+          period_start: reportDate,
+          period_end: reportDate,
+          total_actions: 0,
+          total_pnl_from_actions: zy(true),
+          by_action_type: [],
+          action_details: [],
+          period_start_duration: zr(false),
+          period_end_duration: zr(false),
+          duration_change_from_actions: zr(true),
+          period_start_dv01: zd(false),
+          period_end_dv01: zd(false),
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsAccountingClassAudit(reportDate: string) {
+      await delay();
+      const zm = () => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.accounting_class_audit",
+        {
+          report_date: reportDate,
+          total_positions: 0,
+          total_market_value: zm(),
+          distinct_asset_classes: 0,
+          divergent_asset_classes: 0,
+          divergent_position_count: 0,
+          divergent_market_value: zm(),
+          map_unclassified_asset_classes: 0,
+          map_unclassified_position_count: 0,
+          map_unclassified_market_value: zm(),
+          rows: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsCreditSpreadMigration(
+      reportDate: string,
+      _options?: { spreadScenarios?: string },
+    ) {
+      await delay();
+      void _options;
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.credit_spread_migration",
+        {
+          report_date: reportDate,
+          credit_bond_count: 12,
+          credit_market_value: formatRawAsNumeric({ raw: 1_500_000_000, unit: "yuan", sign_aware: false }),
+          credit_weight: formatRawAsNumeric({ raw: 0.25, unit: "ratio", sign_aware: false }),
+          spread_dv01: formatRawAsNumeric({ raw: 25_000, unit: "dv01", sign_aware: false }),
+          weighted_avg_spread: formatRawAsNumeric({ raw: 80, unit: "bp", sign_aware: false }),
+          weighted_avg_spread_duration: formatRawAsNumeric({ raw: 4.2, unit: "ratio", sign_aware: false }),
+          spread_scenarios: [],
+          migration_scenarios: [],
+          oci_credit_exposure: formatRawAsNumeric({ raw: 800_000_000, unit: "yuan", sign_aware: false }),
+          oci_spread_dv01: formatRawAsNumeric({ raw: 12_000, unit: "dv01", sign_aware: false }),
+          oci_sensitivity_25bp: formatRawAsNumeric({ raw: -300_000, unit: "yuan", sign_aware: true }),
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsPortfolioHeadlines(reportDate: string) {
+      await delay();
+      const zy = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: s });
+      const zPct = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: s });
+      const zRatio = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
+      const zDv = () => formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.portfolio_headlines",
+        {
+          report_date: reportDate,
+          total_market_value: zy(false),
+          weighted_ytm: zPct(true),
+          weighted_duration: zRatio(false),
+          weighted_coupon: zPct(true),
+          total_dv01: zDv(),
+          bond_count: 0,
+          credit_weight: zRatio(false),
+          issuer_hhi: zRatio(false),
+          issuer_top5_weight: zRatio(false),
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsTopHoldings(reportDate: string, topN = 20) {
+      await delay();
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.top_holdings",
+        {
+          report_date: reportDate,
+          top_n: topN,
+          items: [],
+          total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsYieldCurveTermStructure(
+      reportDate: string,
+      _options?: { curveTypes?: string },
+    ) {
+      await delay();
+      void _options;
+      return mockBondAnalyticsYieldCurveTermStructure(reportDate);
+    },
+    async getCreditSpreadAnalysisDetail(reportDate: string) {
+      await delay();
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "credit_spread_analysis.detail",
+        {
+          report_date: reportDate,
+          credit_bond_count: 12,
+          total_credit_market_value: "1500000000",
+          weighted_avg_spread_bps: "80.00000000",
+          spread_term_structure: [],
+          top_spread_bonds: [],
+          bottom_spread_bonds: [],
+          historical_context: null,
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+  };
+}
 
 export function createDemoBondDashboardClient(
   delay: Delay,
@@ -421,6 +737,133 @@ export function createDemoBondDashboardClient(
         data_source: "bond_analytics_facts",
       };
     },
+  };
+}
+
+export function createRealBondAnalyticsClient(
+  options: BondAnalyticsClientFactoryOptions,
+): BondAnalyticsCoreClientMethods {
+  const { fetchImpl, baseUrl, requestJson, requestActionJson } = options;
+
+  return {
+    refreshBondAnalytics: (reportDate: string) =>
+      requestActionJson<BondAnalyticsRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/refresh?report_date=${encodeURIComponent(reportDate)}`,
+        {
+          method: "POST",
+        },
+      ),
+    getBondAnalyticsRefreshStatus: (runId: string) =>
+      requestActionJson<BondAnalyticsRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
+    getBondAnalyticsDates: () =>
+      requestJson<BondAnalyticsDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/api/bond-analytics/dates",
+      ),
+    getBondAnalyticsReturnDecomposition: (
+      reportDate: string,
+      periodType: string,
+      options?: { assetClass?: string; accountingClass?: string },
+    ) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        period_type: periodType,
+      });
+      if (options?.assetClass) params.set("asset_class", options.assetClass);
+      if (options?.accountingClass) params.set("accounting_class", options.accountingClass);
+      return requestJson<ReturnDecompositionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/return-decomposition?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsBenchmarkExcess: (
+      reportDate: string,
+      periodType: string,
+      benchmarkId: string,
+    ) =>
+      requestJson<BenchmarkExcessPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/benchmark-excess?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}&benchmark_id=${encodeURIComponent(benchmarkId)}`,
+      ),
+    getBondAnalyticsKrdCurveRisk: (reportDate: string, options?: { scenarioSet?: string }) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.scenarioSet) params.set("scenario_set", options.scenarioSet);
+      return requestJson<KRDCurveRiskPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/krd-curve-risk?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>
+      requestJson<ActionAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/action-attribution?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}`,
+      ),
+    getBondAnalyticsAccountingClassAudit: (reportDate: string) =>
+      requestJson<AccountingClassAuditPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/accounting-class-audit?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondAnalyticsCreditSpreadMigration: (
+      reportDate: string,
+      options?: { spreadScenarios?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.spreadScenarios) params.set("spread_scenarios", options.spreadScenarios);
+      return requestJson<CreditSpreadMigrationPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/credit-spread-migration?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsPortfolioHeadlines: (reportDate: string) =>
+      requestJson<BondPortfolioHeadlinesPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/portfolio-headlines?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondAnalyticsTopHoldings: (reportDate: string, topN = 20) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        top_n: String(topN),
+      });
+      return requestJson<BondTopHoldingsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/top-holdings?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsYieldCurveTermStructure: (
+      reportDate: string,
+      options?: { curveTypes?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.curveTypes?.trim()) {
+        params.set("curve_types", options.curveTypes.trim());
+      }
+      return requestJson<YieldCurveTermStructurePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/yield-curve-term-structure?${params.toString()}`,
+      );
+    },
+    getCreditSpreadAnalysisDetail: (reportDate: string) =>
+      requestJson<CreditSpreadAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/credit-spread-analysis/detail?report_date=${encodeURIComponent(reportDate)}`,
+      ),
   };
 }
 

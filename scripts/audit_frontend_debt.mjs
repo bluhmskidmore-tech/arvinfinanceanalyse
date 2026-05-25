@@ -6,9 +6,9 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 4726,
-  // Phase 3A moves Bond Dashboard endpoint implementations into bondAnalyticsClient.ts.
-  apiClientMockOccurrences: 360,
+  apiClientLines: 4318,
+  // Phase 3B moves Bond Analytics core endpoint implementations into bondAnalyticsClient.ts.
+  apiClientMockOccurrences: 337,
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

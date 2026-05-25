@@ -54,6 +54,24 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getBondDashboardRiskIndicators).toBe("function");
   });
 
+  it("keeps the public Bond Analytics surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.refreshBondAnalytics).toBe("function");
+    expect(typeof client.getBondAnalyticsRefreshStatus).toBe("function");
+    expect(typeof client.getBondAnalyticsDates).toBe("function");
+    expect(typeof client.getBondAnalyticsReturnDecomposition).toBe("function");
+    expect(typeof client.getBondAnalyticsBenchmarkExcess).toBe("function");
+    expect(typeof client.getBondAnalyticsKrdCurveRisk).toBe("function");
+    expect(typeof client.getBondAnalyticsActionAttribution).toBe("function");
+    expect(typeof client.getBondAnalyticsAccountingClassAudit).toBe("function");
+    expect(typeof client.getBondAnalyticsCreditSpreadMigration).toBe("function");
+    expect(typeof client.getBondAnalyticsPortfolioHeadlines).toBe("function");
+    expect(typeof client.getBondAnalyticsTopHoldings).toBe("function");
+    expect(typeof client.getBondAnalyticsYieldCurveTermStructure).toBe("function");
+    expect(typeof client.getCreditSpreadAnalysisDetail).toBe("function");
+  });
+
   it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
@@ -81,6 +99,18 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("bond_dashboard.maturity_structure");
     expect(clientSource).not.toContain("bond_dashboard.industry_distribution");
     expect(clientSource).not.toContain("bond_dashboard.risk_indicators");
+    expect(clientSource).not.toContain("/api/bond-analytics/");
+    expect(clientSource).not.toContain("/api/credit-spread-analysis/detail");
+    expect(clientSource).not.toContain("bond_analytics.dates");
+    expect(clientSource).not.toContain("bond_analytics.return_decomposition");
+    expect(clientSource).not.toContain("bond_analytics.benchmark_excess");
+    expect(clientSource).not.toContain("bond_analytics.krd_curve_risk");
+    expect(clientSource).not.toContain("bond_analytics.action_attribution");
+    expect(clientSource).not.toContain("bond_analytics.accounting_class_audit");
+    expect(clientSource).not.toContain("bond_analytics.credit_spread_migration");
+    expect(clientSource).not.toContain("bond_analytics.portfolio_headlines");
+    expect(clientSource).not.toContain("bond_analytics.top_holdings");
+    expect(clientSource).not.toContain("credit_spread_analysis.detail");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -113,6 +143,19 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getBondDashboardMaturityStructure\(/);
     expect(clientSource).not.toMatch(/async getBondDashboardIndustryDistribution\(/);
     expect(clientSource).not.toMatch(/async getBondDashboardRiskIndicators\(/);
+    expect(clientSource).not.toMatch(/async refreshBondAnalytics\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsRefreshStatus\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsDates\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsReturnDecomposition\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsBenchmarkExcess\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsKrdCurveRisk\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsActionAttribution\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsAccountingClassAudit\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsCreditSpreadMigration\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsPortfolioHeadlines\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsTopHoldings\(/);
+    expect(clientSource).not.toMatch(/async getBondAnalyticsYieldCurveTermStructure\(/);
+    expect(clientSource).not.toMatch(/async getCreditSpreadAnalysisDetail\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -186,6 +229,39 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardMaturityStructure\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardIndustryDistribution\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardRiskIndicators\(/);
+  });
+
+  it("requires bondAnalyticsClient.ts to own Bond Analytics API implementations", () => {
+    expect(bondAnalyticsClientSource).toContain("createDemoBondAnalyticsClient");
+    expect(bondAnalyticsClientSource).toContain("createRealBondAnalyticsClient");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/dates");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/refresh");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/refresh-status");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/return-decomposition");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/benchmark-excess");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/krd-curve-risk");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/action-attribution");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/accounting-class-audit");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/credit-spread-migration");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/portfolio-headlines");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/top-holdings");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/yield-curve-term-structure");
+    expect(bondAnalyticsClientSource).toContain("/api/credit-spread-analysis/detail");
+    expect(bondAnalyticsClientSource).toContain("bond_analytics.return_decomposition");
+    expect(bondAnalyticsClientSource).toContain("bond_analytics.credit_spread_migration");
+    expect(bondAnalyticsClientSource).toMatch(/async refreshBondAnalytics\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsRefreshStatus\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsDates\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsReturnDecomposition\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsBenchmarkExcess\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsKrdCurveRisk\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsActionAttribution\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsAccountingClassAudit\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsCreditSpreadMigration\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsPortfolioHeadlines\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsTopHoldings\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsYieldCurveTermStructure\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getCreditSpreadAnalysisDetail\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {
