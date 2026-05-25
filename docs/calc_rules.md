@@ -184,6 +184,10 @@ PnL Bridge 结构：
 - `issuer_concentration`
 - `liquidity_gap`
 
+DV01 口径：
+- 全局正式 DV01 使用面值口径：`face_value * modified_duration / 10000`。信用债 `spread_dv01` 与明细 `dv01` 同口径，按信用债明细行的面值与利差久期计算。
+- 正式事实表优先使用 CNY 面值字段；仅在旧的内存计算路径缺少面值字段时允许临时回退 `market_value`，不得把该回退解释为正式口径。
+
 Duration denominator rules:
 - `total_market_value` remains the full bond analytics market value.
 - `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.

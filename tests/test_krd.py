@@ -41,10 +41,12 @@ def _make_bond(
     sub_type: str = "国债",
     asset_class: str = "交易性金融资产",
     coupon_frequency: int = 2,
+    face_value: str | None = None,
 ) -> dict:
     return {
         "bond_code": bond_code,
         "market_value": Decimal(market_value),
+        "face_value": Decimal(face_value) if face_value is not None else Decimal(market_value),
         "coupon_rate": Decimal(coupon_rate),
         "yield_to_maturity": Decimal(ytm),
         "maturity_date": maturity_date,
@@ -112,7 +114,7 @@ class TestBuildKrdPositionMetrics:
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
         m = metrics[0]
         for field in ("bond_code", "market_value", "duration", "modified_duration",
-                      "convexity", "dv01", "weight", "tenor_bucket",
+                      "convexity", "dv01", "face_value", "weight", "tenor_bucket",
                       "asset_class", "accounting_class"):
             assert field in m, f"Missing field: {field}"
 
@@ -151,11 +153,29 @@ class TestBuildKrdPositionMetrics:
         assert bucket not in long_buckets, f"Short bond landed in long bucket: {bucket}"
 
     def test_dv01_formula(self):
-        """DV01 = market_value * modified_duration / 10000"""
+        """DV01 = face_value * modified_duration / 10000"""
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
         m = metrics[0]
-        expected_dv01 = m["market_value"] * m["modified_duration"] / Decimal("10000")
+        expected_dv01 = m["face_value"] * m["modified_duration"] / Decimal("10000")
         assert abs(m["dv01"] - expected_dv01) < Decimal("0.01")
+
+    def test_dv01_uses_face_value_when_it_differs_from_market_value(self):
+        bond = _make_bond(
+            "FACE",
+            "500000",
+            "0.0300",
+            "0.0300",
+            date(2031, 1, 1),
+            REPORT_DATE,
+            face_value="1000000",
+        )
+        metrics = build_krd_position_metrics([bond], report_date=REPORT_DATE)
+        m = metrics[0]
+
+        face_basis_dv01 = m["face_value"] * m["modified_duration"] / Decimal("10000")
+        market_basis_dv01 = m["market_value"] * m["modified_duration"] / Decimal("10000")
+        assert abs(m["dv01"] - face_basis_dv01) < Decimal("0.01")
+        assert abs(m["dv01"] - market_basis_dv01) > Decimal("0.01")
 
     def test_zero_wind_modified_duration_is_preserved(self):
         metrics = build_krd_position_metrics(

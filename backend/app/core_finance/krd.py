@@ -215,6 +215,22 @@ def _get_market_value(position: Any) -> Decimal:
     )
 
 
+def _get_face_value(position: Any, *, fallback_market_value: Decimal) -> Decimal:
+    face_value = safe_decimal(
+        _get_value(
+            position,
+            "face_value_cny",
+            "face_value",
+            "face_value_amount",
+            "face_value_end",
+            "face_value_start",
+            "face_value_native",
+            default=Decimal("0"),
+        )
+    )
+    return face_value if face_value > Decimal("0") else fallback_market_value
+
+
 def _get_coupon_frequency(position: Any) -> int:
     explicit = _get_value(position, "coupon_frequency")
     if explicit is not None:
@@ -266,6 +282,7 @@ def build_krd_position_metrics(
         market_value = _get_market_value(position)
         if market_value <= Decimal("0"):
             continue
+        face_value = _get_face_value(position, fallback_market_value=market_value)
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
@@ -312,10 +329,11 @@ def build_krd_position_metrics(
             {
                 "bond_code": bond_code,
                 "market_value": market_value,
+                "face_value": face_value,
                 "duration": duration,
                 "modified_duration": modified_duration,
                 "convexity": convexity,
-                "dv01": market_value * modified_duration / Decimal("10000"),
+                "dv01": face_value * modified_duration / Decimal("10000"),
                 "weight": weight,
                 "tenor_bucket": _get_tenor_from_position(
                     position,

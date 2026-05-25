@@ -84,6 +84,22 @@ def _get_market_value(position: Any) -> Decimal:
     )
 
 
+def _get_face_value(position: Any, *, fallback_market_value: Decimal) -> Decimal:
+    face_value = safe_decimal(
+        _get_value(
+            position,
+            "face_value_cny",
+            "face_value",
+            "face_value_amount",
+            "face_value_end",
+            "face_value_start",
+            "face_value_native",
+            default=Decimal("0"),
+        )
+    )
+    return face_value if face_value > Decimal("0") else fallback_market_value
+
+
 def interpolate_curve_rate(
     curve: Mapping[str, Any],
     tenor: str,
@@ -190,6 +206,7 @@ def _build_credit_position_metrics(
         market_value = _get_market_value(position)
         if market_value <= Decimal("0"):
             continue
+        face_value = _get_face_value(position, fallback_market_value=market_value)
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
@@ -220,6 +237,7 @@ def _build_credit_position_metrics(
             {
                 "bond_code": bond_code,
                 "market_value": market_value,
+                "face_value": face_value,
                 "duration": duration,
                 "spread_duration": spread_duration,
                 "spread": get_credit_spread(
@@ -227,7 +245,7 @@ def _build_credit_position_metrics(
                     spread_curves=spread_curves,
                     report_date=report_date,
                 ),
-                "dv01": market_value * spread_duration / Decimal("10000"),
+                "dv01": face_value * spread_duration / Decimal("10000"),
                 "rating": str(_get_value(position, "agency_rating", default="AA") or "AA"),
                 "issuer": str(
                     _get_value(position, "credit_name", "counterparty", "issuer_name", default="UNKNOWN")
