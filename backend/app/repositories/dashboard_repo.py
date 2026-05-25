@@ -71,6 +71,88 @@ def _table_exists_conn(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool
 class DashboardRepository(DuckDBRepository):
     guard_path_exists: bool = True
 
+    def list_domain_date_context(self) -> dict[str, list[str]]:
+        empty_context: dict[str, list[str]] = {
+            "balance": [],
+            "pnl": [],
+            "liability": [],
+            "bond": [],
+        }
+        if self.guard_path_exists and not Path(self.path).exists():
+            return empty_context
+
+        conn = duckdb.connect(self.path, read_only=True)
+        try:
+            context = {key: list(value) for key, value in empty_context.items()}
+            if _table_exists_conn(conn, ZQTZ_FACT):
+                balance_parts = [
+                    f"""
+                    select distinct cast(report_date as varchar) as d
+                    from {ZQTZ_FACT}
+                    where position_scope = 'asset'
+                      and currency_basis = 'CNY'
+                    """
+                ]
+                if _table_exists_conn(conn, TYW_FACT):
+                    balance_parts.append(
+                        f"""
+                        select distinct cast(report_date as varchar) as d
+                        from {TYW_FACT}
+                        where position_scope = 'asset'
+                          and currency_basis = 'CNY'
+                        """
+                    )
+                rows = conn.execute(
+                    f"""
+                    select distinct d
+                    from ({" union ".join(balance_parts)}) t
+                    order by d desc
+                    """
+                ).fetchall()
+                context["balance"] = [str(row[0]) for row in rows if row[0] is not None]
+
+            if _table_exists_conn(conn, "fact_formal_pnl_fi"):
+                rows = conn.execute(
+                    """
+                    select distinct cast(report_date as varchar) as d
+                    from fact_formal_pnl_fi
+                    order by d desc
+                    """
+                ).fetchall()
+                context["pnl"] = [str(row[0]) for row in rows if row[0] is not None]
+
+            liability_parts: list[str] = []
+            if _table_exists_conn(conn, "zqtz_bond_daily_snapshot"):
+                liability_parts.append(
+                    "select distinct cast(report_date as varchar) as d from zqtz_bond_daily_snapshot"
+                )
+            if _table_exists_conn(conn, "tyw_interbank_daily_snapshot"):
+                liability_parts.append(
+                    "select distinct cast(report_date as varchar) as d from tyw_interbank_daily_snapshot"
+                )
+            if liability_parts:
+                rows = conn.execute(
+                    f"""
+                    select distinct d
+                    from ({" union ".join(liability_parts)}) t
+                    order by d desc
+                    """
+                ).fetchall()
+                context["liability"] = [str(row[0]) for row in rows if row[0] is not None]
+
+            if _table_exists_conn(conn, FACT_TABLE):
+                rows = conn.execute(
+                    f"""
+                    select distinct cast(report_date as varchar) as d
+                    from {FACT_TABLE}
+                    order by d desc
+                    """
+                ).fetchall()
+                context["bond"] = [str(row[0]) for row in rows if row[0] is not None]
+            return context
+        finally:
+            conn.close()
+
     def list_merged_report_dates(self) -> list[str]:
         if self.guard_path_exists and not Path(self.path).exists():
             return []

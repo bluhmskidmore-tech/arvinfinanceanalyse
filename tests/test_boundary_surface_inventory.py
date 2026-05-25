@@ -71,6 +71,8 @@ def _build_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "false")
+    monkeypatch.setenv("MOSS_AGENT_PROVIDER", "local")
     get_settings.cache_clear()
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)

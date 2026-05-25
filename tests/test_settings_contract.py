@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import os
 from pathlib import Path
 
 from backend.app.governance.settings import (
@@ -16,8 +17,15 @@ from backend.app.governance.settings import (
 )
 
 
-def test_settings_defaults():
-    s = Settings()
+def _clear_moss_env(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("MOSS_") or key == "RAW_FILES_DIR":
+            monkeypatch.delenv(key, raising=False)
+
+
+def test_settings_defaults(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    s = Settings(_env_file=None)
     assert s.environment == "development"
     assert s.agent_enabled is False
     assert s.agent_provider == "local"
@@ -69,7 +77,7 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", "custom/in")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", "custom/archive")
 
-    s = Settings()
+    s = Settings(_env_file=None)
     assert s.environment == "staging"
     assert s.agent_enabled is True
     assert s.agent_provider == "hermes"
@@ -95,7 +103,8 @@ def test_settings_env_overrides(monkeypatch):
     assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
 
 
-def test_settings_core_storage_paths_resolve_relative_to_repo_root():
+def test_settings_core_storage_paths_resolve_relative_to_repo_root(monkeypatch):
+    _clear_moss_env(monkeypatch)
     repo_root = Path(__file__).resolve().parents[1]
 
     s = Settings()

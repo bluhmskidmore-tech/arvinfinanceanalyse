@@ -9,13 +9,13 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-import duckdb
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.dashboard_repo import DashboardRepository
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
     FormalZqtzBalanceMetricsRepository,
 )
@@ -919,7 +919,11 @@ def _fetch_nim_history(
         if not slice_dates:
             return None
         fetch_zqtz_history = getattr(liability_repo, "fetch_zqtz_yield_rows_for_dates", None)
-        fetch_tyw_history = getattr(liability_repo, "fetch_tyw_rows_for_dates", None)
+        if not callable(fetch_zqtz_history):
+            fetch_zqtz_history = getattr(liability_repo, "fetch_zqtz_rows_for_dates", None)
+        fetch_tyw_history = getattr(liability_repo, "fetch_tyw_yield_rows_for_dates", None)
+        if not callable(fetch_tyw_history):
+            fetch_tyw_history = getattr(liability_repo, "fetch_tyw_rows_for_dates", None)
         if callable(fetch_zqtz_history) and callable(fetch_tyw_history):
             try:
                 zqtz_rows_by_date = fetch_zqtz_history(slice_dates)
@@ -2033,93 +2037,9 @@ def _list_domain_date_context() -> dict[str, list[str]]:
         "bond": [],
     }
     try:
-        conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
-    except (RuntimeError, OSError, TypeError, ValueError, duckdb.Error):
+        return DashboardRepository(str(settings.duckdb_path)).list_domain_date_context()
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
         return empty_context
-    try:
-        def table_exists(table_name: str) -> bool:
-            row = conn.execute(
-                """
-                select 1
-                from information_schema.tables
-                where table_name = ?
-                limit 1
-                """,
-                [table_name],
-            ).fetchone()
-            return row is not None
-
-        context = {key: list(value) for key, value in empty_context.items()}
-        if table_exists("fact_formal_zqtz_balance_daily"):
-            balance_parts = [
-                """
-                select distinct cast(report_date as varchar) as d
-                from fact_formal_zqtz_balance_daily
-                where position_scope = 'asset'
-                  and currency_basis = 'CNY'
-                """
-            ]
-            if table_exists("fact_formal_tyw_balance_daily"):
-                balance_parts.append(
-                    """
-                    select distinct cast(report_date as varchar) as d
-                    from fact_formal_tyw_balance_daily
-                    where position_scope = 'asset'
-                      and currency_basis = 'CNY'
-                    """
-                )
-            rows = conn.execute(
-                f"""
-                select distinct d
-                from ({" union ".join(balance_parts)}) t
-                order by d desc
-                """
-            ).fetchall()
-            context["balance"] = [str(row[0]) for row in rows if row[0] is not None]
-
-        if table_exists("fact_formal_pnl_fi"):
-            rows = conn.execute(
-                """
-                select distinct cast(report_date as varchar) as d
-                from fact_formal_pnl_fi
-                order by d desc
-                """
-            ).fetchall()
-            context["pnl"] = [str(row[0]) for row in rows if row[0] is not None]
-
-        liability_parts: list[str] = []
-        if table_exists("zqtz_bond_daily_snapshot"):
-            liability_parts.append(
-                "select distinct cast(report_date as varchar) as d from zqtz_bond_daily_snapshot"
-            )
-        if table_exists("tyw_interbank_daily_snapshot"):
-            liability_parts.append(
-                "select distinct cast(report_date as varchar) as d from tyw_interbank_daily_snapshot"
-            )
-        if liability_parts:
-            rows = conn.execute(
-                f"""
-                select distinct d
-                from ({" union ".join(liability_parts)}) t
-                order by d desc
-                """
-            ).fetchall()
-            context["liability"] = [str(row[0]) for row in rows if row[0] is not None]
-
-        if table_exists("fact_formal_bond_analytics_daily"):
-            rows = conn.execute(
-                """
-                select distinct cast(report_date as varchar) as d
-                from fact_formal_bond_analytics_daily
-                order by d desc
-                """
-            ).fetchall()
-            context["bond"] = [str(row[0]) for row in rows if row[0] is not None]
-        return context
-    except (RuntimeError, OSError, TypeError, ValueError, duckdb.Error):
-        return empty_context
-    finally:
-        conn.close()
 
 
 def _domain_dates_from_context(context: dict[str, list[str]]) -> dict[str, set[str]]:

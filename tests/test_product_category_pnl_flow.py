@@ -15,7 +15,6 @@ from openpyxl import Workbook
 
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlStorageError
 from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
@@ -118,11 +117,22 @@ def test_product_category_detail_returns_404_when_read_model_is_missing(tmp_path
 
 def test_product_category_dates_returns_503_when_read_model_is_locked(tmp_path, monkeypatch):
     client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+    dates_envelope = route_module.product_category_dates_envelope
+    storage_error = dates_envelope.__globals__["ProductCategoryPnlStorageError"]
 
-    def raise_storage_error(self):
-        raise ProductCategoryPnlStorageError("locked")
+    class LockedProductCategoryPnlRepository:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
 
-    monkeypatch.setattr(ProductCategoryPnlRepository, "list_report_dates", raise_storage_error)
+        def list_report_dates(self):
+            raise storage_error("locked")
+
+    monkeypatch.setitem(
+        dates_envelope.__globals__,
+        "ProductCategoryPnlRepository",
+        LockedProductCategoryPnlRepository,
+    )
 
     response = client.get("/ui/pnl/product-category/dates")
 
@@ -133,11 +143,19 @@ def test_product_category_dates_returns_503_when_read_model_is_locked(tmp_path, 
 
 def test_product_category_detail_returns_503_when_read_model_is_locked(tmp_path, monkeypatch):
     client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+    pnl_envelope = route_module.product_category_pnl_envelope
+    storage_error = pnl_envelope.__globals__["ProductCategoryPnlStorageError"]
 
-    def raise_storage_error(self, report_date, view):
-        raise ProductCategoryPnlStorageError("locked")
+    class LockedAnalysisService:
+        def execute(self, _query):
+            raise storage_error("locked")
 
-    monkeypatch.setattr(ProductCategoryPnlRepository, "fetch_rows", raise_storage_error)
+    monkeypatch.setitem(
+        pnl_envelope.__globals__,
+        "build_analysis_service",
+        lambda _duckdb_path: LockedAnalysisService(),
+    )
 
     response = client.get(
         "/ui/pnl/product-category",

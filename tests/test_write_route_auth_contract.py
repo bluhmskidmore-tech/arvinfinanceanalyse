@@ -261,14 +261,22 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
 def test_product_category_refresh_returns_503_when_scope_store_unavailable(tmp_path, monkeypatch):
     _setup_scope_store(tmp_path, monkeypatch, grant=False)
 
-    from backend.app.repositories.user_scope_repo import UserScopeRepository
+    import backend.app.api.routes.product_category_pnl as route_module
 
     calls: list[str] = []
     _patch_product_category_refresh(monkeypatch, calls)
-    monkeypatch.setattr(
-        UserScopeRepository,
-        "has_permission",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("scope store down")),
+
+    class BrokenScopeRepository:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def has_permission(self, *_args, **_kwargs):
+            raise RuntimeError("scope store down")
+
+    monkeypatch.setitem(
+        route_module.ensure_user_allowed.__globals__,
+        "UserScopeRepository",
+        BrokenScopeRepository,
     )
     client = TestClient(_load_app(), raise_server_exceptions=False)
 

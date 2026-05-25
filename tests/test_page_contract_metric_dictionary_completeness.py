@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Contract source:
 - `docs/page_contracts.md` `PAGE-*` sections and their markdown metric tables
@@ -17,6 +15,8 @@ Follow-up plan:
 - Keep the failure list focused on missing or stale bindings instead of broad
   document rewrites.
 """
+
+from __future__ import annotations
 
 import re
 

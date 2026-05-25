@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.tasks.research_calendar_ingest import run_research_calendar_ingest_once
 
 
@@ -44,8 +45,12 @@ def test_run_research_calendar_ingest_once_e2e(tmp_path: Path, monkeypatch: pyte
     def _get_settings() -> _StubSettings:
         return _StubSettings(duckdb_path=str(db), governance_path=str(gov))
 
-    monkeypatch.setattr("backend.app.tasks.research_calendar_ingest.get_settings", _get_settings)
-    monkeypatch.setattr("backend.app.tasks.research_calendar_ingest.RawZoneRepository", lambda: __import__("backend.app.repositories.raw_zone_repo", fromlist=["RawZoneRepository"]).RawZoneRepository(local_raw_path=str(tmp_path / "raw")))
+    monkeypatch.setitem(run_research_calendar_ingest_once.__globals__, "get_settings", _get_settings)
+    monkeypatch.setitem(
+        run_research_calendar_ingest_once.__globals__,
+        "RawZoneRepository",
+        lambda: RawZoneRepository(local_raw_path=str(tmp_path / "raw")),
+    )
 
     out = run_research_calendar_ingest_once(batch)
 

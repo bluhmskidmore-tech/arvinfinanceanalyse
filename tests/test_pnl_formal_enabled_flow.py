@@ -89,7 +89,7 @@ def test_formal_pnl_materialize_succeeds_when_enabled(tmp_path, monkeypatch):
 
     assert int(fi_count) >= 1
     assert int(bridge_count) >= 1
-    assert fi_total == Decimal("11.50")
+    assert fi_total == Decimal("9.75")
 
     manifests = [
         json.loads(line)

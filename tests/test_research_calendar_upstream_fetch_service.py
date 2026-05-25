@@ -61,10 +61,7 @@ def test_fetch_mof_treasury_supply_auction_rows_parses_listing_and_detail(monkey
             return _FakeResponse(detail_result)
         raise AssertionError(url)
 
-    monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.requests.get",
-        _fake_get,
-    )
+    monkeypatch.setattr(fetch_mof_treasury_supply_auction_rows.__globals__["requests"], "get", _fake_get)
 
     rows = fetch_mof_treasury_supply_auction_rows(page_count=1, max_items=10)
 
@@ -77,8 +74,9 @@ def test_fetch_mof_treasury_supply_auction_rows_parses_listing_and_detail(monkey
 
 
 def test_archive_mof_treasury_supply_auction_raw_writes_raw_zone(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.fetch_mof_treasury_supply_auction_rows",
+    monkeypatch.setitem(
+        archive_mof_treasury_supply_auction_raw.__globals__,
+        "fetch_mof_treasury_supply_auction_rows",
         lambda page_count=2, max_items=20: [
             {
                 "event_id": "evt-1",
@@ -127,10 +125,7 @@ def test_fetch_adbc_policy_bank_supply_auction_rows_parses_listing_and_detail(mo
             return _FakeResponse(detail_html)
         raise AssertionError(url)
 
-    monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.requests.get",
-        _fake_get,
-    )
+    monkeypatch.setattr(fetch_adbc_policy_bank_supply_auction_rows.__globals__["requests"], "get", _fake_get)
 
     rows = fetch_adbc_policy_bank_supply_auction_rows(page_count=1, max_items=10)
 
@@ -181,7 +176,8 @@ def test_fetch_chinabond_policy_bank_supply_auction_rows_parses_homepage_and_det
         raise AssertionError(url)
 
     monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.requests.get",
+        fetch_chinabond_policy_bank_supply_auction_rows.__globals__["requests"],
+        "get",
         _fake_get,
     )
 
@@ -201,8 +197,9 @@ def test_archive_research_calendar_supply_auction_raw_merges_multiple_sources(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.fetch_mof_treasury_supply_auction_rows",
+    monkeypatch.setitem(
+        archive_research_calendar_supply_auction_raw.__globals__,
+        "fetch_mof_treasury_supply_auction_rows",
         lambda page_count=2, max_items=20: [
             {
                 "event_id": "mof-evt-1",
@@ -214,8 +211,9 @@ def test_archive_research_calendar_supply_auction_raw_merges_multiple_sources(
             }
         ],
     )
-    monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.fetch_adbc_policy_bank_supply_auction_rows",
+    monkeypatch.setitem(
+        archive_research_calendar_supply_auction_raw.__globals__,
+        "fetch_adbc_policy_bank_supply_auction_rows",
         lambda page_count=1, max_items=20: [
             {
                 "event_id": "adbc-evt-1",
@@ -227,8 +225,9 @@ def test_archive_research_calendar_supply_auction_raw_merges_multiple_sources(
             }
         ],
     )
-    monkeypatch.setattr(
-        "backend.app.services.research_calendar_upstream_fetch_service.fetch_chinabond_policy_bank_supply_auction_rows",
+    monkeypatch.setitem(
+        archive_research_calendar_supply_auction_raw.__globals__,
+        "fetch_chinabond_policy_bank_supply_auction_rows",
         lambda max_items=20: [
             {
                 "event_id": "chinabond-evt-1",

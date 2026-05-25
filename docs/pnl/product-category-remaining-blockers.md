@@ -92,3 +92,10 @@ Current active product-category metric ids remain `MTR-PCP-001`, `MTR-PCP-002`, 
 ## Next cursor-safe tasks
 
 1. **Unit 2 decision 3C implementation matrix:** draft the detail metric field matrix for scale, FTP, net income, and yield fields before adding any new `MTR-PCP-*` rows.
+2. **fallback-date semantics:** document the user-facing behavior for fallback dates before widening stale-state copy.
+3. **outward `as_of_date`:** decide whether the page should expose `as_of_date` separately from the selected `report_date`.
+4. **detail `metric_id` expansion:** define the approved detail metric rows before any new dictionary promotion.
+5. **refresh timeout/stale copy:** specify the copy shown when refresh exceeds the current UI polling window.
+6. **Unit 4 extended validation copy:** freeze any additional backend validation wording beyond the two covered empty-payload cases.
+7. **dual-sort rationale:** record the product intent for keeping current and event sort controls independent.
+8. **revoke confirmation policy:** decide whether revoke needs a confirmation modal before implementation.

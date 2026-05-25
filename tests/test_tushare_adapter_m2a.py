@@ -57,7 +57,11 @@ def test_fetch_macro_snapshot_normalizes_cpi_dataframe(monkeypatch):
 
 def test_fetch_macro_snapshot_no_token_raises(monkeypatch):
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
-    monkeypatch.setattr("backend.app.repositories.tushare_adapter._load_settings_for_token_fallback", lambda: _Cfg())
+    monkeypatch.setitem(
+        VendorAdapter.fetch_macro_snapshot.__globals__,
+        "_load_settings_for_token_fallback",
+        lambda: _Cfg(),
+    )
     adapter = VendorAdapter()
     with pytest.raises(RuntimeError) as exc:
         adapter.fetch_macro_snapshot(_SERIES)
@@ -66,8 +70,9 @@ def test_fetch_macro_snapshot_no_token_raises(monkeypatch):
 
 def test_fetch_macro_snapshot_uses_settings_token_fallback(monkeypatch):
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
-    monkeypatch.setattr(
-        "backend.app.repositories.tushare_adapter._load_settings_for_token_fallback",
+    monkeypatch.setitem(
+        VendorAdapter.fetch_macro_snapshot.__globals__,
+        "_load_settings_for_token_fallback",
         lambda: _Cfg("settings-token"),
     )
     frame = pd.DataFrame([{"month": "202401", "nt_yoy": 1.2}])

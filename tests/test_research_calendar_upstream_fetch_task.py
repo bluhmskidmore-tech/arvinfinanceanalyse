@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 
 import pytest
+from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.tasks.research_calendar_upstream_fetch import _fetch_research_calendar_upstream_once
 
 
@@ -25,9 +26,10 @@ def test_fetch_research_calendar_upstream_once_fetches_archives_and_materializes
     def _get_settings() -> _StubSettings:
         return _StubSettings(duckdb_path=str(db), governance_path=str(gov))
 
-    monkeypatch.setattr("backend.app.tasks.research_calendar_upstream_fetch.get_settings", _get_settings)
-    monkeypatch.setattr(
-        "backend.app.tasks.research_calendar_upstream_fetch.archive_research_calendar_supply_auction_raw",
+    monkeypatch.setitem(_fetch_research_calendar_upstream_once.__globals__, "get_settings", _get_settings)
+    monkeypatch.setitem(
+        _fetch_research_calendar_upstream_once.__globals__,
+        "archive_research_calendar_supply_auction_raw",
         lambda raw_zone_repo, ingest_batch_id, page_count=2, max_items=20: {
             "raw_zone_path": str(
                 Path(raw_zone_repo.local_raw_path)
@@ -70,12 +72,10 @@ def test_fetch_research_calendar_upstream_once_fetches_archives_and_materializes
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        "backend.app.tasks.research_calendar_upstream_fetch.RawZoneRepository",
-        lambda: __import__(
-            "backend.app.repositories.raw_zone_repo",
-            fromlist=["RawZoneRepository"],
-        ).RawZoneRepository(local_raw_path=str(tmp_path / "raw")),
+    monkeypatch.setitem(
+        _fetch_research_calendar_upstream_once.__globals__,
+        "RawZoneRepository",
+        lambda: RawZoneRepository(local_raw_path=str(tmp_path / "raw")),
     )
 
     out = _fetch_research_calendar_upstream_once("batch-upstream")
