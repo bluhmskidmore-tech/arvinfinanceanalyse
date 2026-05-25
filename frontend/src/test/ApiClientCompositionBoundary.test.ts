@@ -15,6 +15,7 @@ const kpiSource = readFileSync(resolve(process.cwd(), "src/api/kpiClient.ts"), "
 const cubeSource = readFileSync(resolve(process.cwd(), "src/api/cubeClient.ts"), "utf8");
 const agentClientSource = readFileSync(resolve(process.cwd(), "src/api/agentClient.ts"), "utf8");
 const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/executiveClient.ts"), "utf8");
+const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
@@ -72,6 +73,25 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getCreditSpreadAnalysisDetail).toBe("function");
   });
 
+  it("keeps the public Balance Analysis surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getBalanceAnalysisDates).toBe("function");
+    expect(typeof client.getBalanceAnalysisOverview).toBe("function");
+    expect(typeof client.getBalanceAnalysisSummary).toBe("function");
+    expect(typeof client.getBalanceAnalysisWorkbook).toBe("function");
+    expect(typeof client.getBalanceAnalysisCurrentUser).toBe("function");
+    expect(typeof client.getBalanceAnalysisDecisionItems).toBe("function");
+    expect(typeof client.updateBalanceAnalysisDecisionStatus).toBe("function");
+    expect(typeof client.getBalanceAnalysisDetail).toBe("function");
+    expect(typeof client.getBalanceAnalysisSummaryByBasis).toBe("function");
+    expect(typeof client.getBalanceAnalysisAdvancedAttribution).toBe("function");
+    expect(typeof client.exportBalanceAnalysisSummaryCsv).toBe("function");
+    expect(typeof client.exportBalanceAnalysisWorkbookXlsx).toBe("function");
+    expect(typeof client.refreshBalanceAnalysis).toBe("function");
+    expect(typeof client.getBalanceAnalysisRefreshStatus).toBe("function");
+  });
+
   it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
@@ -111,6 +131,17 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("bond_analytics.portfolio_headlines");
     expect(clientSource).not.toContain("bond_analytics.top_holdings");
     expect(clientSource).not.toContain("credit_spread_analysis.detail");
+    expect(clientSource).not.toContain("buildBalanceAnalysisTableRows");
+    expect(clientSource).not.toContain("BalanceAnalysisAmountField");
+    expect(clientSource).not.toContain("/ui/balance-analysis/");
+    expect(clientSource).not.toContain("balance-analysis.dates");
+    expect(clientSource).not.toContain("balance-analysis.overview");
+    expect(clientSource).not.toContain("balance-analysis.detail");
+    expect(clientSource).not.toContain("balance-analysis.basis_breakdown");
+    expect(clientSource).not.toContain("balance-analysis.advanced_attribution_bundle");
+    expect(clientSource).not.toContain("balance-analysis.summary");
+    expect(clientSource).not.toContain("balance-analysis.workbook");
+    expect(clientSource).not.toContain("balance-analysis.decision-items");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -156,6 +187,20 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getBondAnalyticsTopHoldings\(/);
     expect(clientSource).not.toMatch(/async getBondAnalyticsYieldCurveTermStructure\(/);
     expect(clientSource).not.toMatch(/async getCreditSpreadAnalysisDetail\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisDates\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisOverview\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisDetail\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisSummaryByBasis\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisAdvancedAttribution\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisSummary\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisWorkbook\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisCurrentUser\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisDecisionItems\(/);
+    expect(clientSource).not.toMatch(/async updateBalanceAnalysisDecisionStatus\(/);
+    expect(clientSource).not.toMatch(/async exportBalanceAnalysisSummaryCsv\(/);
+    expect(clientSource).not.toMatch(/async exportBalanceAnalysisWorkbookXlsx\(/);
+    expect(clientSource).not.toMatch(/async refreshBalanceAnalysis\(/);
+    expect(clientSource).not.toMatch(/async getBalanceAnalysisRefreshStatus\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -262,6 +307,42 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsTopHoldings\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsYieldCurveTermStructure\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getCreditSpreadAnalysisDetail\(/);
+  });
+
+  it("requires balanceAnalysisClient.ts to own Balance Analysis API implementations", () => {
+    expect(balanceAnalysisClientSource).toContain("createDemoBalanceAnalysisClient");
+    expect(balanceAnalysisClientSource).toContain("createRealBalanceAnalysisClient");
+    expect(balanceAnalysisClientSource).toContain("buildBalanceAnalysisTableRows");
+    expect(balanceAnalysisClientSource).toContain("BalanceAnalysisAmountField");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/dates");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/overview");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/summary");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/workbook");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/current-user");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/decision-items");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/decision-items/status");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/summary-by-basis");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/advanced-attribution");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/summary/export");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/workbook/export");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/refresh");
+    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/refresh-status");
+    expect(balanceAnalysisClientSource).toContain("balance-analysis.overview");
+    expect(balanceAnalysisClientSource).toContain("balance-analysis.advanced_attribution_bundle");
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisDates\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisOverview\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisDetail\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisSummaryByBasis\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisAdvancedAttribution\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisSummary\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisWorkbook\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisCurrentUser\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisDecisionItems\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async updateBalanceAnalysisDecisionStatus\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async exportBalanceAnalysisSummaryCsv\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async exportBalanceAnalysisWorkbookXlsx\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async refreshBalanceAnalysis\(/);
+    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisRefreshStatus\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {
