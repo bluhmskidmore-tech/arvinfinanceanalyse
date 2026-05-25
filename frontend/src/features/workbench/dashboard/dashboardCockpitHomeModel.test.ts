@@ -1033,7 +1033,7 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     });
 
     const dayTab = view.attributionTabs.find((tab) => tab.id === "day");
-    expect(dayTab?.yield).toBe("缺 daily_yield");
+    expect(dayTab?.yield).toBe("—");
     expect(dayTab?.yield).not.toBe("口径待确认");
     expect(view.dataWarningMessages).toContain("归因收益率缺少 pnl-attribution.daily_yield 字段");
   });

@@ -145,6 +145,20 @@ describe("PnlAttributionPage", () => {
   it("mounts with explicit product-category and formal FI lenses", async () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+        formal_fi_report_dates: ["2026-03-31", "2026-02-28"],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+    client.getProductCategoryDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("product_category_pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+      },
+    }));
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -201,6 +215,20 @@ describe("PnlAttributionPage", () => {
     client.getPnlCampisiDecisionGrade = vi.fn(async () => {
       throw new Error("decision-grade 404");
     });
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+        formal_fi_report_dates: ["2026-03-31", "2026-02-28"],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+    client.getProductCategoryDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("product_category_pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+      },
+    }));
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });

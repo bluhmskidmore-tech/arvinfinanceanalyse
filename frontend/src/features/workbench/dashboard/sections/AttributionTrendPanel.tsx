@@ -113,7 +113,13 @@ export function AttributionTrendPanel({
             </article>
             <article>
               <span>日度收益率</span>
-              <strong style={tabularNumsStyle}>{active.yield}</strong>
+              <strong
+                className={active.yield === "—" ? "dashboard-home-muted" : undefined}
+                style={tabularNumsStyle}
+                title={active.yield === "—" ? "日度收益率暂未返回" : undefined}
+              >
+                {active.yield}
+              </strong>
             </article>
           </div>
           <div
@@ -144,25 +150,29 @@ export function AttributionTrendPanel({
         <div
           data-testid="dashboard-attribution-product-trend"
           className="dashboard-terminal-mini-trend"
-          aria-label="产品分类损益趋势"
+          aria-label="月度产品分类损益"
         >
           <div className="dashboard-terminal-mini-trend__head">
-            <span>产品分类损益趋势</span>
-            <em>单位：万</em>
+            <span>
+              月度产品分类损益
+              <b>补充读面</b>
+            </span>
+            <em>单位：亿</em>
           </div>
           {productPnl.pending ? (
-            <p
+            <div
               data-testid="dashboard-product-pnl-pending"
               className="dashboard-terminal-mini-trend__empty dashboard-home-muted"
             >
-              缺 bond_bucket_monthly
-            </p>
+              <strong>月度读面待展开</strong>
+              <small>展开深钻读面查看正式月度趋势</small>
+            </div>
           ) : (
             <svg
               className="dashboard-terminal-mini-trend__chart"
               viewBox="0 0 360 118"
               role="img"
-              aria-label="产品分类损益趋势图"
+              aria-label="月度产品分类损益图"
             >
               <path d="M 8 90 L 352 90" className="dashboard-terminal-mini-trend__grid" />
               <path d="M 8 58 L 352 58" className="dashboard-terminal-mini-trend__grid" />

@@ -17,15 +17,16 @@ from backend.app.core_finance.macro.toolkit import get_toolkit_script, run_toolk
 
 def test_equity_strategies_are_exported_from_macro_package() -> None:
     from backend.app.core_finance import macro
+    from backend.app.core_finance.macro import equity_strategies
 
-    assert macro.generate_random_prices is generate_random_prices
-    assert macro.moving_average_strategy is moving_average_strategy
-    assert macro.mean_reversion_momentum_strategy is mean_reversion_momentum_strategy
-    assert macro.compute_factors is compute_factors
-    assert macro.multi_factor_selection is multi_factor_selection
-    assert macro.compute_low_crowding_scores is compute_low_crowding_scores
-    assert macro.classify_low_crowding_market_regime is classify_low_crowding_market_regime
-    assert macro.low_crowding_multifactor_selection is low_crowding_multifactor_selection
+    assert macro.generate_random_prices is equity_strategies.generate_random_prices
+    assert macro.moving_average_strategy is equity_strategies.moving_average_strategy
+    assert macro.mean_reversion_momentum_strategy is equity_strategies.mean_reversion_momentum_strategy
+    assert macro.compute_factors is equity_strategies.compute_factors
+    assert macro.multi_factor_selection is equity_strategies.multi_factor_selection
+    assert macro.compute_low_crowding_scores is equity_strategies.compute_low_crowding_scores
+    assert macro.classify_low_crowding_market_regime is equity_strategies.classify_low_crowding_market_regime
+    assert macro.low_crowding_multifactor_selection is equity_strategies.low_crowding_multifactor_selection
 
 
 def test_generate_random_prices_is_seeded_and_named() -> None:

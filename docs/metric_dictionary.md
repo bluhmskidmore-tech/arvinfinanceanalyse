@@ -234,7 +234,7 @@
 
 | metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `MTR-RSK-001` | 组合 DV01 | business | `formal` | `RiskTensorPayload.portfolio_dv01`；上游 `fact_formal_bond_analytics_daily.dv01` | `/risk-tensor` | 数值字符串；signed tone | `report_date` 绑定；DV01 明细按 formal CNY 市值计算，非 CNY 原币不直接入总 | `tests/test_risk_tensor_api.py`; `tests/test_bond_analytics_engine.py` |
+| `MTR-RSK-001` | 组合 DV01 | business | `formal` | `RiskTensorPayload.portfolio_dv01`；上游 `fact_formal_bond_analytics_daily.dv01` | `/risk-tensor` | 数值字符串；signed tone | `report_date` 绑定；DV01 明细按 formal CNY 面值 × 修正久期 × 1bp 计算，非 CNY 原币不直接入总 | `tests/test_risk_tensor_api.py`; `tests/test_bond_analytics_engine.py` |
 | `MTR-RSK-001R` | 监管口径 DV01 | business | `formal` | `RiskTensorPayload.regulatory_dv01` | `/risk-tensor` | Numeric；单位 `dv01`；为空时前端显示待接入 | 首版规则 `reg_dv01_include_all_formal_bond_analytics_v1`：正式债券分析行全纳入，直接净额 `sum(dv01)`；不从 `portfolio_dv01` 读时回填 | `tests/test_risk_tensor_core.py`; `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-002` | KRD 1Y | business | `formal` | `krd_1y` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-003` | KRD 3Y | business | `formal` | `krd_3y` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |

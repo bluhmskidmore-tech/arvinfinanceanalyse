@@ -102,7 +102,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.macaulay_duration == expected_macaulay
     assert row.modified_duration == expected_modified
     assert row.convexity == expected_convexity
-    assert row.dv01 == Decimal("95") * expected_modified / Decimal("10000")
+    assert row.dv01 == Decimal("100") * expected_modified / Decimal("10000")
     assert row.is_credit is True
     assert row.spread_dv01 == row.dv01
     assert row.source_version == "sv_snapshot_1"
@@ -111,7 +111,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.trace_id == "trace_1"
 
 
-def test_compute_bond_analytics_rows_uses_cny_market_value_and_formal_accounting_basis() -> None:
+def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis() -> None:
     module = _module()
     report_date = date(2026, 3, 31)
     snapshot_rows = [
@@ -130,8 +130,9 @@ def test_compute_bond_analytics_rows_uses_cny_market_value_and_formal_accounting
             "rating": "A",
             "currency_code": "USD",
             "face_value_native": Decimal("100"),
+            "face_value_cny": Decimal("700"),
             "market_value_native": Decimal("100"),
-            "market_value_cny": Decimal("700"),
+            "market_value_cny": Decimal("720"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
             "coupon_rate": Decimal("0.03"),
@@ -152,9 +153,52 @@ def test_compute_bond_analytics_rows_uses_cny_market_value_and_formal_accounting
     row = rows[0]
     assert row.accounting_class == "OCI"
     assert row.accounting_rule_id == "R010"
+    assert row.face_value == Decimal("700")
     assert row.market_value_native == Decimal("100")
-    assert row.market_value == Decimal("700")
+    assert row.market_value == Decimal("720")
     assert row.dv01 == Decimal("700") * row.modified_duration / Decimal("10000")
+
+
+def test_compute_bond_analytics_rows_uses_face_value_basis_for_dv01() -> None:
+    module = _module()
+    report_date = date(2026, 4, 30)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "FACE-DV01-001",
+            "instrument_name": "Face value DV01 bond",
+            "portfolio_name": "Portfolio",
+            "cost_center": "CC-FACE",
+            "account_category": "bank book",
+            "accounting_basis": "FVOCI",
+            "asset_class": "credit bond",
+            "bond_type": "corporate bond",
+            "issuer_name": "Issuer",
+            "industry_name": "Industry",
+            "rating": "A",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("500"),
+            "amortized_cost_native": Decimal("98"),
+            "accrued_interest_native": Decimal("1"),
+            "coupon_rate": Decimal("0.0147"),
+            "ytm_value": Decimal("0.016359"),
+            "maturity_date": date(2028, 2, 14),
+            "interest_mode": "annual",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_face",
+            "rule_version": "rv_snapshot_face",
+            "ingest_batch_id": "ib_face",
+            "trace_id": "trace_face",
+        }
+    ]
+
+    rows = module.compute_bond_analytics_rows(snapshot_rows, report_date)
+
+    row = rows[0]
+    assert row.modified_duration.quantize(Decimal("0.0001")) == Decimal("1.7514")
+    assert row.dv01 == row.face_value * row.modified_duration / Decimal("10000")
+    assert row.dv01 != row.market_value * row.modified_duration / Decimal("10000")
 
 
 def test_compute_bond_analytics_rows_keeps_cny_market_value_native_when_cny_backfill_is_stale() -> None:

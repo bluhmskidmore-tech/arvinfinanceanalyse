@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 import json
 import sys
@@ -19,6 +20,14 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import ROOT, load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def _force_pnl_ytd_refresh_bundle_contract(monkeypatch) -> None:
@@ -56,6 +65,45 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/pnl/yearly-summary" in paths
     assert "/api/data/refresh_pnl" in paths
     assert "/api/data/import_status/pnl" in paths
+
+
+def test_pnl_by_business_analysis_logs_api_perf(monkeypatch, caplog):
+    from fastapi import FastAPI
+
+    route_module = load_module(
+        f"tests._pnl_routes.pnl_{id(monkeypatch)}",
+        "backend/app/api/routes/pnl.py",
+    )
+
+    class FakePnlService:
+        @staticmethod
+        def pnl_by_business_analysis_envelope(**_kwargs):
+            return {
+                "result_meta": {
+                    "trace_id": "tr_pnl_analysis_perf",
+                    "result_kind": "pnl.by_business_analysis",
+                },
+                "result": {"rows": []},
+            }
+
+    monkeypatch.setattr(route_module, "_pnl_service", lambda: FakePnlService)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get(
+            "/api/pnl/by-business-analysis",
+            params={"year": 2026, "dimension": "bond_bucket"},
+        )
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/api/pnl/by-business-analysis")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "pnl.by_business_analysis"
 
 
 def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch):

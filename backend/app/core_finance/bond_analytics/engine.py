@@ -122,6 +122,17 @@ def compute_bond_analytics_rows(
             maturity_date=maturity_date,
         )
         currency_code = _as_text(snapshot_row.get("currency_code"))
+        face_value_native = safe_decimal(snapshot_row.get("face_value_native"))
+        face_value_cny = snapshot_row.get("face_value_cny")
+        face_value = (
+            safe_decimal(face_value_cny)
+            if (
+                not _is_cny_currency(currency_code)
+                and face_value_cny is not None
+                and str(face_value_cny).strip() != ""
+            )
+            else face_value_native
+        )
         market_value_native = safe_decimal(snapshot_row.get("market_value_native"))
         market_value_cny = snapshot_row.get("market_value_cny")
         market_value = (
@@ -154,7 +165,7 @@ def compute_bond_analytics_rows(
                 macaulay_duration,
                 ytm or Decimal("0"),
             )
-            dv01 = market_value * modified_duration / Decimal("10000")
+            dv01 = face_value * modified_duration / Decimal("10000")
         is_credit = asset_class_std == "credit"
 
         analytics_rows.append(
@@ -173,7 +184,7 @@ def compute_bond_analytics_rows(
                 accounting_class=accounting_class,
                 accounting_rule_id=accounting_rule_id,
                 currency_code=currency_code,
-                face_value=safe_decimal(snapshot_row.get("face_value_native")),
+                face_value=face_value,
                 market_value_native=market_value_native,
                 market_value=market_value,
                 amortized_cost=safe_decimal(snapshot_row.get("amortized_cost_native")),

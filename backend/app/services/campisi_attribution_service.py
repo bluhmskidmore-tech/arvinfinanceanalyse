@@ -19,6 +19,11 @@ from decimal import Decimal
 from typing import Any
 
 import duckdb
+from backend.app.core_finance.accounting_basis_constants import (
+    ACCOUNTING_BASIS_AC,
+    ACCOUNTING_BASIS_FVOCI,
+    ACCOUNTING_BASIS_FVTPL,
+)
 from backend.app.core_finance.campisi import (
     CampisiResult,
     campisi_attribution,
@@ -28,9 +33,11 @@ from backend.app.core_finance.campisi import (
 )
 from backend.app.core_finance.campisi_decision_grade import (
     compute_decision_grade_row,
-    decimal_value as campisi_decision_decimal,
     normalize_accounting_basis,
     primary_driver,
+)
+from backend.app.core_finance.campisi_decision_grade import (
+    decimal_value as campisi_decision_decimal,
 )
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 from backend.app.governance.settings import get_settings
@@ -1546,11 +1553,11 @@ def _decision_effect_rows(components: dict[str, Decimal]) -> list[dict[str, Any]
 
 
 def _accounting_interpretation(accounting_basis: str) -> str:
-    if accounting_basis == "AC":
+    if accounting_basis == ACCOUNTING_BASIS_AC:
         return "主要看票息/摊余成本收益；公允价值变动不作为本视图核心解释项。"
-    if accounting_basis == "FVOCI":
+    if accounting_basis == ACCOUNTING_BASIS_FVOCI:
         return "516 不进入正式 PnL，但进入估值/OCI 解释视图。"
-    if accounting_basis == "FVTPL":
+    if accounting_basis == ACCOUNTING_BASIS_FVTPL:
         return "516 进入正式 PnL，也进入估值解释视图。"
     return "会计分类未标准化，需结合源数据确认。"
 
@@ -1739,7 +1746,7 @@ def campisi_decision_grade_envelope(
                 "duplicate_position_key": duplicate_key,
                 "duplicate_position_key_is_ambiguous": False,
                 "missing_analytics": analytics is None,
-                "include_market_effects_in_formal_pnl": accounting_basis == "FVTPL",
+                "include_market_effects_in_formal_pnl": accounting_basis == ACCOUNTING_BASIS_FVTPL,
             }
             computed = compute_decision_grade_row(
                 row_input,
@@ -1776,9 +1783,9 @@ def campisi_decision_grade_envelope(
             explained_pnl += row["explained_pnl"]
             valuation = row["fair_value_change_516"]
             valuation_total += valuation
-            if row["accounting_basis"] == "FVOCI":
+            if row["accounting_basis"] == ACCOUNTING_BASIS_FVOCI:
                 fvoci_valuation += valuation
-            if row["accounting_basis"] == "FVTPL":
+            if row["accounting_basis"] == ACCOUNTING_BASIS_FVTPL:
                 fvtpl_valuation += valuation
             for key in totals:
                 totals[key] += row["components"][key]

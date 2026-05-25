@@ -19,6 +19,7 @@ const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
 const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
+const productCategoryClientSource = readFileSync(resolve(process.cwd(), "src/api/productCategoryClient.ts"), "utf8");
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
   ? readFileSync(healthClientPath, "utf8")
@@ -127,6 +128,22 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getAdbCoverage).toBe("function");
   });
 
+  it("keeps the public Product Category surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getProductCategoryDates).toBe("function");
+    expect(typeof client.refreshProductCategoryPnl).toBe("function");
+    expect(typeof client.getProductCategoryRefreshStatus).toBe("function");
+    expect(typeof client.createProductCategoryManualAdjustment).toBe("function");
+    expect(typeof client.getProductCategoryManualAdjustments).toBe("function");
+    expect(typeof client.exportProductCategoryManualAdjustmentsCsv).toBe("function");
+    expect(typeof client.updateProductCategoryManualAdjustment).toBe("function");
+    expect(typeof client.revokeProductCategoryManualAdjustment).toBe("function");
+    expect(typeof client.restoreProductCategoryManualAdjustment).toBe("function");
+    expect(typeof client.getProductCategoryPnl).toBe("function");
+    expect(typeof client.getProductCategoryAttribution).toBe("function");
+  });
+
   it("routes real Positions list requests to exact backend endpoints", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -180,6 +197,73 @@ describe("ApiClient composition boundary", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "http://localhost:8000/api/positions/interbank?report_date=2026-01-31&product_type=%E5%AD%98%E6%94%BE&direction=Asset&page=2&page_size=50",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes real Product Category requests to exact backend endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_product_category",
+          basis: "formal",
+          result_kind: "product_category_pnl",
+          formal_use_allowed: true,
+          source_version: "sv_product_category",
+          vendor_version: "vv_none",
+          rule_version: "rv_product_category",
+          cache_version: "cv_product_category",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: { rows: [] },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getProductCategoryPnl({
+      reportDate: "2026-02-28",
+      view: "business",
+      scenarioRatePct: "1.25",
+    });
+    await client.getProductCategoryManualAdjustments("2026-02-28", {
+      adjustmentId: "pca-001",
+      adjustmentIdExact: true,
+      accountCode: "1101",
+      approvalStatus: "approved",
+      eventType: "edited",
+      currentSortField: "account_code",
+      currentSortDir: "asc",
+      eventSortField: "created_at",
+      eventSortDir: "desc",
+      createdAtFrom: "2026-04-01T00:00:00Z",
+      createdAtTo: "2026-04-30T23:59:59Z",
+      adjustmentLimit: 10,
+      adjustmentOffset: 20,
+      limit: 30,
+      offset: 40,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/pnl/product-category?report_date=2026-02-28&view=business&scenario_rate_pct=1.25",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/pnl/product-category/manual-adjustments?report_date=2026-02-28&adjustment_id=pca-001&adjustment_id_exact=true&account_code=1101&approval_status=approved&event_type=edited&current_sort_field=account_code&current_sort_dir=asc&event_sort_field=created_at&event_sort_dir=desc&created_at_from=2026-04-01T00%3A00%3A00Z&created_at_to=2026-04-30T23%3A59%3A59Z&adjustment_limit=10&adjustment_offset=20&limit=30&offset=40",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -265,6 +349,18 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("normalizeAccountingBasisTrendItem");
     expect(clientSource).not.toContain("normalizeAdbComparisonResponse");
     expect(clientSource).not.toContain("normalizeAdbMonthlyResponse");
+    expect(clientSource).not.toContain("/ui/pnl/product-category");
+    expect(clientSource).not.toContain("product_category_pnl.dates");
+    expect(clientSource).not.toContain("product_category_pnl:mock-run");
+    expect(clientSource).not.toContain("product_category_pnl_adjustments");
+    expect(clientSource).not.toContain("buildMockProductCategoryPnlEnvelope");
+    expect(clientSource).not.toContain("buildMockProductCategoryAttributionEnvelope");
+    expect(clientSource).not.toContain("mockManualAdjustments");
+    expect(clientSource).not.toContain("mockManualAdjustmentSeq");
+    expect(clientSource).not.toContain("reduceLatestManualAdjustments");
+    expect(clientSource).not.toContain("filterManualAdjustments");
+    expect(clientSource).not.toContain("sortManualAdjustments");
+    expect(clientSource).not.toContain("buildManualAdjustmentSearchParams");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -347,6 +443,17 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getAdbComparison\(/);
     expect(clientSource).not.toMatch(/async getAdbMonthly\(/);
     expect(clientSource).not.toMatch(/async getAdbCoverage\(/);
+    expect(clientSource).not.toMatch(/async getProductCategoryDates\(/);
+    expect(clientSource).not.toMatch(/async refreshProductCategoryPnl\(/);
+    expect(clientSource).not.toMatch(/async getProductCategoryRefreshStatus\(/);
+    expect(clientSource).not.toMatch(/async createProductCategoryManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async getProductCategoryManualAdjustments\(/);
+    expect(clientSource).not.toMatch(/async exportProductCategoryManualAdjustmentsCsv\(/);
+    expect(clientSource).not.toMatch(/async updateProductCategoryManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async revokeProductCategoryManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async restoreProductCategoryManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async getProductCategoryPnl\(/);
+    expect(clientSource).not.toMatch(/async getProductCategoryAttribution\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -554,6 +661,41 @@ describe("ApiClient composition boundary", () => {
     expect(liabilityAdbClientSource).toMatch(/async getAdbComparison\(/);
     expect(liabilityAdbClientSource).toMatch(/async getAdbMonthly\(/);
     expect(liabilityAdbClientSource).toMatch(/async getAdbCoverage\(/);
+  });
+
+  it("requires productCategoryClient.ts to own Product Category API implementations", () => {
+    expect(productCategoryClientSource).toContain("createDemoProductCategoryClient");
+    expect(productCategoryClientSource).toContain("createRealProductCategoryClient");
+    expect(productCategoryClientSource).toContain("/ui/pnl/product-category/dates");
+    expect(productCategoryClientSource).toContain("/ui/pnl/product-category/refresh");
+    expect(productCategoryClientSource).toContain("/ui/pnl/product-category/refresh-status");
+    expect(productCategoryClientSource).toContain("/ui/pnl/product-category/manual-adjustments");
+    expect(productCategoryClientSource).toContain("/ui/pnl/product-category/manual-adjustments/export");
+    expect(productCategoryClientSource).toContain("/ui/pnl/product-category/attribution");
+    expect(productCategoryClientSource).toContain("product_category_pnl.dates");
+    expect(productCategoryClientSource).toContain("product_category_pnl:mock-run");
+    expect(productCategoryClientSource).toContain("product_category_pnl_adjustments");
+    expect(productCategoryClientSource).toContain("buildMockProductCategoryPnlEnvelope");
+    expect(productCategoryClientSource).toContain("buildMockProductCategoryAttributionEnvelope");
+    expect(productCategoryClientSource).toContain("mockManualAdjustments");
+    expect(productCategoryClientSource).toContain("mockManualAdjustmentSeq");
+    expect(productCategoryClientSource).toContain("reduceLatestManualAdjustments");
+    expect(productCategoryClientSource).toContain("filterManualAdjustments");
+    expect(productCategoryClientSource).toContain("sortManualAdjustments");
+    expect(productCategoryClientSource).toContain("buildManualAdjustmentSearchParams");
+    expect(productCategoryClientSource).not.toContain("getQdbGlMonthlyAnalysisDates");
+    expect(productCategoryClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+    expect(productCategoryClientSource).toMatch(/async getProductCategoryDates\(/);
+    expect(productCategoryClientSource).toMatch(/async refreshProductCategoryPnl\(/);
+    expect(productCategoryClientSource).toMatch(/async getProductCategoryRefreshStatus\(/);
+    expect(productCategoryClientSource).toMatch(/async createProductCategoryManualAdjustment\(/);
+    expect(productCategoryClientSource).toMatch(/async getProductCategoryManualAdjustments\(/);
+    expect(productCategoryClientSource).toMatch(/async exportProductCategoryManualAdjustmentsCsv\(/);
+    expect(productCategoryClientSource).toMatch(/async updateProductCategoryManualAdjustment\(/);
+    expect(productCategoryClientSource).toMatch(/async revokeProductCategoryManualAdjustment\(/);
+    expect(productCategoryClientSource).toMatch(/async restoreProductCategoryManualAdjustment\(/);
+    expect(productCategoryClientSource).toMatch(/async getProductCategoryPnl\(/);
+    expect(productCategoryClientSource).toMatch(/async getProductCategoryAttribution\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {

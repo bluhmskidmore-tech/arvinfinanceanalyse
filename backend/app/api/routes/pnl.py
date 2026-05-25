@@ -1,12 +1,11 @@
 from importlib import import_module
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusinessManualAdjustmentRequest
-
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/api")
 
@@ -180,13 +179,16 @@ def by_business_analysis(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return _pnl_service().pnl_by_business_analysis_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            year=year,
-            as_of_date=as_of_date,
-            business_key=business_key,
-            dimension=dimension,
+        return timed_api_call(
+            "/api/pnl/by-business-analysis",
+            lambda: _pnl_service().pnl_by_business_analysis_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                year=year,
+                as_of_date=as_of_date,
+                business_key=business_key,
+                dimension=dimension,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -585,7 +585,7 @@ def test_default_choice_stock_client_keeps_sector_call_local(monkeypatch) -> Non
             calls.append(("sector", tuple(pos), str(merged)))
             return SimpleNamespace(ErrorCode=0)
 
-    monkeypatch.setattr("backend.app.tasks.choice_stock_materialize._get_em_c", lambda: FakeEmC())
+    monkeypatch.setitem(_DefaultChoiceStockClient.sector.__globals__, "_get_em_c", lambda: FakeEmC())
     client = _DefaultChoiceStockClient(choice_client=FakeChoiceClient())
 
     result = cast(SimpleNamespace, client.sector("001004", "2026-04-28", options="fmt=1"))
@@ -617,6 +617,7 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v26: PnL by-business page precompute read model",
         "v27: Choice stock factor snapshot for equity strategies",
         "v28: Livermore candidate history analytical replay",
+        "v29: Commodity futures main-contract daily ingest",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
@@ -824,7 +825,7 @@ def test_choice_stock_materialize_batches_csd_history_requests(tmp_path: Path, m
     duckdb_path = tmp_path / "moss.duckdb"
     _write_confirmed_catalog(catalog_path)
     client = FakeChoiceStockClient()
-    monkeypatch.setattr("backend.app.tasks.choice_stock_materialize.CHOICE_STOCK_CSD_CODE_CHUNK_SIZE", 1)
+    monkeypatch.setitem(materialize_choice_stock_inputs.__globals__, "CHOICE_STOCK_CSD_CODE_CHUNK_SIZE", 1)
 
     result = materialize_choice_stock_inputs(
         as_of_date="2026-04-28",

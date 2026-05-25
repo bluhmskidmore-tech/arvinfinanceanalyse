@@ -1,16 +1,16 @@
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
-
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.services.executive_service import (
-    executive_alerts,
-    executive_contribution,
+    executive_alerts,  # noqa: F401 - reserved route contract monkeypatch target
+    executive_contribution,  # noqa: F401 - reserved route contract monkeypatch target
     executive_overview,
     executive_pnl_attribution,
-    executive_risk_overview,
+    executive_risk_overview,  # noqa: F401 - reserved route contract monkeypatch target
     executive_summary,
     home_snapshot_envelope,
 )
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/ui")
 
@@ -87,7 +87,11 @@ def home_snapshot(
     report_date: str | None = None,
     allow_partial: bool = False,
 ) -> dict[str, object]:
-    return home_snapshot_envelope(
-        report_date=_normalize_report_date(report_date),
-        allow_partial=allow_partial,
+    normalized_report_date = _normalize_report_date(report_date)
+    return timed_api_call(
+        "/ui/home/snapshot",
+        lambda: home_snapshot_envelope(
+            report_date=normalized_report_date,
+            allow_partial=allow_partial,
+        ),
     )

@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import type { VerdictPayload } from "../../../api/contracts";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -236,6 +237,12 @@ export default function DashboardPage() {
     reportDate,
     allowPartial,
   });
+  const deferSecondaryData = dataClient.mode === "real" && !isLiveDataFallback;
+  const loadCalendarData = !deferSecondaryData || isDepthDrawerOpen || isCockpitSupplementOpen;
+  const loadBondBucketYieldData = !deferSecondaryData || isCockpitSupplementOpen;
+  const loadBondBucketMonthlyData = !deferSecondaryData || isDepthDrawerOpen;
+  const loadPortfolioSupplementData = !deferSecondaryData || isCockpitSupplementOpen;
+  const loadDecisionItemsData = !deferSecondaryData || isDepthDrawerOpen;
 
   const coreMetricsQuery = useQuery({
     queryKey: ["dashboard", "core-metrics", dataClient.mode, supplementalReportDate ?? "pending-snapshot"],
@@ -254,7 +261,7 @@ export default function DashboardPage() {
   });
 
   const marketRatesQuery = useQuery({
-    queryKey: ["dashboard", "cockpit-market-rates", dataClient.mode],
+    queryKey: apiQueryKeys.marketRates(dataClient.mode),
     queryFn: () => dataClient.getMarketDataRates(),
     retry: false,
     staleTime: 60_000,
@@ -272,12 +279,7 @@ export default function DashboardPage() {
   });
 
   const portfolioHeadlinesQuery = useQuery({
-    queryKey: [
-      "dashboard",
-      "cockpit-portfolio-headlines",
-      dataClient.mode,
-      supplementalReportDate ?? "pending-snapshot",
-    ],
+    queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(dataClient.mode, supplementalReportDate),
     queryFn: () => dataClient.getBondAnalyticsPortfolioHeadlines(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
@@ -285,38 +287,29 @@ export default function DashboardPage() {
   });
 
   const portfolioComparisonQuery = useQuery({
-    queryKey: [
-      "dashboard",
-      "cockpit-portfolio-comparison",
-      dataClient.mode,
-      supplementalReportDate ?? "pending-snapshot",
-    ],
+    queryKey: apiQueryKeys.bondDashboardPortfolioComparison(dataClient.mode, supplementalReportDate),
     queryFn: () => dataClient.getBondDashboardPortfolioComparison(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: Boolean(supplementalReportDate),
+    enabled: loadPortfolioSupplementData && Boolean(supplementalReportDate),
   });
 
   const creditSpreadMigrationQuery = useQuery({
-    queryKey: [
-      "dashboard",
-      "cockpit-credit-spread-migration",
-      dataClient.mode,
-      supplementalReportDate ?? "pending-snapshot",
-    ],
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(dataClient.mode, supplementalReportDate),
     queryFn: () => dataClient.getBondAnalyticsCreditSpreadMigration(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: Boolean(supplementalReportDate),
+    enabled: loadPortfolioSupplementData && Boolean(supplementalReportDate),
   });
   const bondBucketAnalysisYear = Number.parseInt((supplementalReportDate ?? "").slice(0, 4), 10);
   const bondBucketYieldQuery = useQuery({
     queryKey: [
-      "dashboard",
-      "bond-bucket-yield",
-      dataClient.mode,
-      supplementalReportDate ?? "pending-snapshot",
-      Number.isFinite(bondBucketAnalysisYear) ? bondBucketAnalysisYear : "pending-year",
+      ...apiQueryKeys.pnlByBusinessAnalysis(
+        dataClient.mode,
+        Number.isFinite(bondBucketAnalysisYear) ? bondBucketAnalysisYear : "pending-year",
+        supplementalReportDate,
+        "bond_bucket",
+      ),
     ],
     queryFn: () =>
       dataClient.getPnlByBusinessAnalysis({
@@ -326,16 +319,20 @@ export default function DashboardPage() {
       }),
     retry: false,
     staleTime: 60_000,
-    enabled: Boolean(supplementalReportDate) && Number.isFinite(bondBucketAnalysisYear),
+    enabled:
+      loadBondBucketYieldData &&
+      Boolean(supplementalReportDate) &&
+      Number.isFinite(bondBucketAnalysisYear),
   });
 
   const bondBucketMonthlyTrendQuery = useQuery({
     queryKey: [
-      "dashboard",
-      "bond-bucket-monthly-trend",
-      dataClient.mode,
-      supplementalReportDate ?? "pending-snapshot",
-      Number.isFinite(bondBucketAnalysisYear) ? bondBucketAnalysisYear : "pending-year",
+      ...apiQueryKeys.pnlByBusinessAnalysis(
+        dataClient.mode,
+        Number.isFinite(bondBucketAnalysisYear) ? bondBucketAnalysisYear : "pending-year",
+        supplementalReportDate,
+        "bond_bucket_monthly",
+      ),
     ],
     queryFn: () =>
       dataClient.getPnlByBusinessAnalysis({
@@ -348,6 +345,7 @@ export default function DashboardPage() {
     enabled:
       Boolean(supplementalReportDate) &&
       Number.isFinite(bondBucketAnalysisYear) &&
+      loadBondBucketMonthlyData &&
       !isLiveDataFallback &&
       dataClient.mode === "real",
   });
@@ -361,7 +359,10 @@ export default function DashboardPage() {
     dailyChangesQuery.data?.result.report_date,
   );
 
-  const { researchCalendarQuery } = useDashboardResearchCalendarQuery({ dataClient });
+  const { researchCalendarQuery } = useDashboardResearchCalendarQuery({
+    dataClient,
+    enabled: loadCalendarData,
+  });
 
   const sanitizedOverviewMetrics = useMemo(
     () =>
@@ -419,21 +420,21 @@ export default function DashboardPage() {
   const attentionItems = dashboardHome.attentionItems;
 
   const decisionItemsQuery = useQuery({
-    queryKey: [
-      "dashboard",
-      "cockpit-decision-items",
+    queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
       dataClient.mode,
-      effectiveReportDate || "pending-snapshot",
-    ],
+      effectiveReportDate,
+      "all",
+      "CNY",
+    ),
     queryFn: () =>
       dataClient.getBalanceAnalysisDecisionItems({
         reportDate: effectiveReportDate,
         positionScope: "all",
         currencyBasis: "CNY",
-      }),
+    }),
     retry: false,
     staleTime: 60_000,
-    enabled: Boolean(effectiveReportDate) && !isLiveDataFallback,
+    enabled: loadDecisionItemsData && Boolean(effectiveReportDate) && !isLiveDataFallback,
   });
 
   const dashboardCockpit = useMemo(

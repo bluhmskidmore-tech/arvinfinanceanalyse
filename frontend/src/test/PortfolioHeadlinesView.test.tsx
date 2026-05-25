@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -55,6 +56,17 @@ function payload(): BondPortfolioHeadlinesPayload {
   };
 }
 
+function renderWithProviders(client: ReturnType<typeof createApiClient>, ui: React.ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ApiClientProvider client={client}>{ui}</ApiClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe("PortfolioHeadlinesView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -69,11 +81,7 @@ describe("PortfolioHeadlinesView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <PortfolioHeadlinesView reportDate="2026-03-31" />
-      </ApiClientProvider>,
-    );
+    renderWithProviders(client, <PortfolioHeadlinesView reportDate="2026-03-31" />);
 
     await waitFor(() =>
       expect(client.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith("2026-03-31"),

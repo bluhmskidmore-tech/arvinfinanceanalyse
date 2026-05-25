@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Select, Input, Button } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type {
   BalanceAnalysisDecisionItemStatusRow,
   BalanceAnalysisDecisionStatus,
@@ -174,12 +175,12 @@ export default function DecisionItemsPage() {
   });
 
   const itemsQuery = useQuery({
-    queryKey: [
-      "balance-analysis-decision-items",
+    queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
+      client.mode,
       reportDate,
       positionScope,
       currencyBasis,
-    ],
+    ),
     queryFn: () =>
       client.getBalanceAnalysisDecisionItems({
         reportDate: reportDate!,
@@ -261,7 +262,7 @@ export default function DecisionItemsPage() {
           status,
           comment,
         });
-        await queryClient.invalidateQueries({ queryKey: ["balance-analysis-decision-items"] });
+        await queryClient.invalidateQueries({ queryKey: ["balance-analysis", "decision-items"] });
         await queryClient.invalidateQueries({ queryKey: ["balance-analysis", "current-user"] });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);

@@ -598,7 +598,6 @@ const ATTRIBUTION_TAB_SPECS: ReadonlyArray<{ id: DashboardAttributionTab; label:
   { id: "ytd", label: "YTD" },
 ];
 
-const ATTRIBUTION_YIELD_MISSING = "缺 daily_yield";
 const ATTRIBUTION_YIELD_MISSING_WARNING = "归因收益率缺少 pnl-attribution.daily_yield 字段";
 
 function pendingAttributionTabs(): DashboardAttributionTabVM[] {
@@ -1089,7 +1088,7 @@ function buildAttributionTabs(
           label: spec.label,
           pnl: totalDisplay,
           change: firstSegment?.amount.display ?? GAP_VALUE,
-          yield: ATTRIBUTION_YIELD_MISSING,
+          yield: GAP_VALUE,
           changeTone: firstSegment ? cockpitToneToDelta(firstSegment.tone) : ("muted" as const),
         };
       }
@@ -1141,7 +1140,7 @@ function buildAttributionTabs(
         label: spec.label,
         pnl: totalDisplay,
         change: dayChange,
-        yield: ATTRIBUTION_YIELD_MISSING,
+        yield: GAP_VALUE,
         changeTone: cockpitToneToDelta(firstDriver?.tone ?? "neutral"),
       };
     }

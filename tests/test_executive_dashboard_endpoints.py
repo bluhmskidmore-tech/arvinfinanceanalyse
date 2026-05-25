@@ -1,11 +1,20 @@
 import uuid
 
+import logging
 import pytest
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def _load_executive_routes_module():
@@ -38,9 +47,25 @@ def _client_with_stubbed_executive_services(monkeypatch):
         "executive_pnl_attribution",
         lambda report_date=None: _ok_payload("executive.pnl-attribution"),
     )
+    monkeypatch.setattr(module, "home_snapshot_envelope", lambda **_kwargs: _ok_payload("home.snapshot"))
     app = FastAPI()
     app.include_router(module.router)
     return module, TestClient(app)
+
+
+def test_home_snapshot_route_logs_api_perf(monkeypatch, caplog):
+    _module, client = _client_with_stubbed_executive_services(monkeypatch)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get("/ui/home/snapshot", params={"report_date": "2025-11-20"})
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/home/snapshot")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "home.snapshot"
 
 
 def test_fastapi_application_exposes_executive_dashboard_routes():

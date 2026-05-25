@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type {
   BalanceAnalysisSeverity,
   BalanceAnalysisWorkbookOperationalSection,
@@ -215,14 +216,12 @@ export function useBalanceAnalysisData({
   });
 
   const decisionItemsQuery = useQuery({
-    queryKey: [
-      "balance-analysis",
-      "decision-items",
+    queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
       client.mode,
       selectedReportDate,
       positionScope,
       currencyBasis,
-    ],
+    ),
     enabled: Boolean(selectedReportDate),
     queryFn: () =>
       client.getBalanceAnalysisDecisionItems({

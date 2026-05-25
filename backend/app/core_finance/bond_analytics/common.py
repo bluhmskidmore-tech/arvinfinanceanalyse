@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from decimal import Decimal
-
-logger = logging.getLogger(__name__)
+from decimal import ROUND_CEILING, Decimal
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -14,6 +12,8 @@ from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_FVTPL,
     derive_accounting_basis_value,
 )
+
+logger = logging.getLogger(__name__)
 
 # --- Decimal helpers ---
 
@@ -24,7 +24,7 @@ def safe_decimal(value) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except (TypeError, ValueError, ArithmeticError) as exc:
+    except (TypeError, ValueError, ArithmeticError):
         logger.exception("safe_decimal: failed to convert %r", type(value).__name__)
         return Decimal("0")
 
@@ -169,7 +169,15 @@ def compute_macaulay_duration(
     if ytm <= 0:
         return years_to_maturity
 
-    n_periods = int(years_to_maturity * coupon_frequency)
+    raw_periods = years_to_maturity * Decimal(str(coupon_frequency))
+    full_periods = int(raw_periods)
+    fractional_period = raw_periods - Decimal(str(full_periods))
+    if full_periods > 0 and Decimal("0") < fractional_period <= Decimal("0.01"):
+        n_periods = full_periods
+        cashflow_years = Decimal(str(full_periods)) / Decimal(str(coupon_frequency))
+    else:
+        n_periods = int(raw_periods.to_integral_value(rounding=ROUND_CEILING))
+        cashflow_years = years_to_maturity
     if n_periods <= 0:
         return years_to_maturity
 
@@ -182,11 +190,21 @@ def compute_macaulay_duration(
     pv_sum = Decimal("0")
     price = Decimal("0")
 
+    first_period_years = (
+        cashflow_years
+        - (Decimal(str(n_periods - 1)) / Decimal(str(coupon_frequency)))
+    )
+    first_period_number = first_period_years * Decimal(str(coupon_frequency))
+
     for t in range(1, n_periods + 1):
-        discount = (Decimal("1") + y) ** t
+        payment_time_years = first_period_years + (
+            Decimal(str(t - 1)) / Decimal(str(coupon_frequency))
+        )
+        period_number = first_period_number + Decimal(str(t - 1))
+        discount = (Decimal("1") + y) ** period_number
         cf = c if t < n_periods else c + Decimal("1")
         pv = cf / discount
-        pv_sum += Decimal(str(t)) / Decimal(str(coupon_frequency)) * pv
+        pv_sum += payment_time_years * pv
         price += pv
 
     if price <= 0:
@@ -285,14 +303,16 @@ def interpolate_rate(points: list[tuple[float, Decimal]], target_years: float) -
     Delegates to ``curve_engine`` cubic spline when ≥ 3 points are available;
     falls back to piecewise linear otherwise.  Signature unchanged.
     """
-    from backend.app.core_finance.curve_engine.interpolation import (
-        interpolate as _engine_interpolate,
-        build_cubic_spline as _build_spline,
-    )
     from backend.app.core_finance.curve_engine.curve_types import (
         CurvePoint,
         FittedCurve,
         InterpolationMethod,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
     )
 
     if not points:

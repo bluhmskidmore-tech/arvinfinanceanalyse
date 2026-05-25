@@ -1,3 +1,4 @@
+import logging
 
 import duckdb
 from fastapi import FastAPI
@@ -5,6 +6,14 @@ from backend.app.governance.settings import get_settings
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_path, monkeypatch):
@@ -24,6 +33,25 @@ def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_p
     assert payload["result_meta"]["fallback_mode"] == "none"
     assert payload["result"]["read_target"] == "duckdb"
     assert payload["result"]["series"] == []
+    get_settings.cache_clear()
+
+
+def test_market_data_rates_logs_api_perf(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "empty-rates-perf.duckdb"))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get("/ui/market-data/rates")
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/market-data/rates")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind")
     get_settings.cache_clear()
 
 

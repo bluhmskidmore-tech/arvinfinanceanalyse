@@ -84,7 +84,7 @@ export function ProductPnlTrendChart({
         <h2 className="dashboard-cockpit-panel__title">四类债券月度损益趋势</h2>
         {data.pending ? (
           <p className="dashboard-cockpit-panel__pending" data-testid="dashboard-product-pnl-pending">
-            四类债券月度趋势待同步
+            月度正式读面待加载
           </p>
         ) : null}
       </header>
@@ -95,7 +95,7 @@ export function ProductPnlTrendChart({
           data-testid="dashboard-product-pnl-empty"
           className="dashboard-cockpit-panel__empty dashboard-cockpit-panel__empty--compact dashboard-home-muted"
         >
-          缺 bond_bucket_monthly；请前往
+          当前未取得月度债券桶趋势；请前往
           {" "}
           <Link to="/pnl-by-business">业务损益</Link>
           {" "}

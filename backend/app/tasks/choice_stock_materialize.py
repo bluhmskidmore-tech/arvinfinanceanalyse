@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-from backend.app.config.choice_runtime import _get_em_c
+from backend.app.config import choice_runtime
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_stock_adapter import (
@@ -59,6 +59,10 @@ CHOICE_CSD_PERMISSION_DENIED_ERROR_CODE = 10001012
 TUSHARE_FALLBACK_AUDIT_STATUS = "completed_tushare_fallback"
 TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS = "completed_tushare_ths_fallback"
 TUSHARE_THS_CONCEPT_FIELD_KEY = "tushare_ths_concept_membership"
+
+
+def _get_em_c() -> Any | None:
+    return choice_runtime._get_em_c()
 
 
 @dataclass(frozen=True)

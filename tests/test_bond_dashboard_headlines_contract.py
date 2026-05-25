@@ -26,6 +26,7 @@ def _make_bond_analytics_row(
     from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 
     macaulay_duration = modified_duration * Decimal("1.02")
+    face_value = Decimal("1000")
     return BondAnalyticsRow(
         report_date=date.fromisoformat(report_date),
         instrument_code=instrument_code,
@@ -41,7 +42,7 @@ def _make_bond_analytics_row(
         accounting_class="AC",
         accounting_rule_id="r1",
         currency_code="CNY",
-        face_value=market_value,
+        face_value=face_value,
         market_value_native=market_value,
         market_value=market_value,
         amortized_cost=market_value,
@@ -58,9 +59,9 @@ def _make_bond_analytics_row(
         macaulay_duration=macaulay_duration,
         modified_duration=modified_duration,
         convexity=Decimal("0.01"),
-        dv01=market_value * modified_duration / Decimal("10000"),
+        dv01=face_value * modified_duration / Decimal("10000"),
         is_credit=asset_class_std == "credit",
-        spread_dv01=market_value * modified_duration / Decimal("10000") if asset_class_std == "credit" else Decimal("0"),
+        spread_dv01=face_value * modified_duration / Decimal("10000") if asset_class_std == "credit" else Decimal("0"),
         source_version="sv",
         rule_version="rv",
         ingest_batch_id="ib",

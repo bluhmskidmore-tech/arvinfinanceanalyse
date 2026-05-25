@@ -283,6 +283,15 @@ function openDepthDrawer(root: HTMLElement) {
   return drawer;
 }
 
+function openSupplementPanel(root: HTMLElement = document.body) {
+  const supplement = within(root).getByTestId("dashboard-cockpit-supplement") as HTMLDetailsElement;
+  if (!supplement.open) {
+    supplement.open = true;
+    fireEvent(supplement, new Event("toggle", { bubbles: true }));
+  }
+  return supplement;
+}
+
 function addDaysToIsoDate(date: string, days: number): string {
   const parsed = new Date(`${date}T00:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() + days);
@@ -533,6 +542,114 @@ describe("DashboardPage", () => {
     expect(alertsCalls).toBe(0);
   });
 
+  it("defers secondary dashboard data until the collapsed panels are opened", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const reportDate = "2026-04-30";
+    const getHomeSnapshot = vi.fn(async (options) => {
+      const envelope = await base.getHomeSnapshot(options);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          report_date: reportDate,
+        },
+      };
+    });
+    const getCoreMetrics = vi.fn(async () => ({
+      result_meta: resultMeta("dashboard.core_metrics", reportDate),
+      result: sampleCoreMetricsResult({ report_date: reportDate }),
+    }));
+    const getDailyChanges = vi.fn(async () => ({
+      result_meta: resultMeta("dashboard.daily_changes", reportDate),
+      result: sampleDailyChangesResult({ report_date: reportDate }),
+    }));
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: resultMeta("market_data.rates", reportDate),
+      result: {
+        read_target: "duckdb" as const,
+        series: [marketPoint("CA.CN_GOV_10Y", 2.31, -0.04)],
+      },
+    }));
+    const getBondDashboardHeadlineKpis = vi.fn((date) =>
+      base.getBondDashboardHeadlineKpis(date),
+    );
+    const getBondAnalyticsPortfolioHeadlines = vi.fn((date) =>
+      base.getBondAnalyticsPortfolioHeadlines(date),
+    );
+    const getBondDashboardPortfolioComparison = vi.fn((date) =>
+      base.getBondDashboardPortfolioComparison(date),
+    );
+    const getBondAnalyticsCreditSpreadMigration = vi.fn((date) =>
+      base.getBondAnalyticsCreditSpreadMigration(date),
+    );
+    const getBalanceAnalysisDecisionItems = vi.fn(base.getBalanceAnalysisDecisionItems);
+    const getPnlByBusinessAnalysis = vi.fn(base.getPnlByBusinessAnalysis);
+    const getResearchCalendarEvents = vi.fn(base.getResearchCalendarEvents);
+    const client: ApiClient = {
+      ...base,
+      mode: "real",
+      getHomeSnapshot,
+      getCoreMetrics,
+      getDailyChanges,
+      getMarketDataRates,
+      getBondDashboardHeadlineKpis,
+      getBondAnalyticsPortfolioHeadlines,
+      getBondDashboardPortfolioComparison,
+      getBondAnalyticsCreditSpreadMigration,
+      getBalanceAnalysisDecisionItems,
+      getPnlByBusinessAnalysis,
+      getResearchCalendarEvents,
+    };
+
+    renderDashboard(client);
+
+    expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getHomeSnapshot).toHaveBeenCalled();
+      expect(getCoreMetrics).toHaveBeenCalledWith({ reportDate });
+      expect(getDailyChanges).toHaveBeenCalledWith({ reportDate });
+      expect(getMarketDataRates).toHaveBeenCalled();
+      expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith(reportDate);
+      expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith(reportDate);
+    });
+
+    expect(getResearchCalendarEvents).not.toHaveBeenCalled();
+    expect(getBondDashboardPortfolioComparison).not.toHaveBeenCalled();
+    expect(getBondAnalyticsCreditSpreadMigration).not.toHaveBeenCalled();
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+    expect(getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
+    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dimension: "bond_bucket" }),
+    );
+    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dimension: "bond_bucket_monthly" }),
+    );
+    expect(await screen.findByTestId("dashboard-attribution-product-trend")).toHaveTextContent(
+      "月度读面待展开",
+    );
+    expect(screen.getByTestId("dashboard-attribution-product-trend")).toHaveTextContent(
+      "展开深钻读面查看正式月度趋势",
+    );
+
+    openSupplementPanel();
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+      expect(getPnlByBusinessAnalysis).toHaveBeenCalledWith(
+        expect.objectContaining({ dimension: "bond_bucket" }),
+      );
+      expect(getBondDashboardPortfolioComparison).toHaveBeenCalledWith(reportDate);
+      expect(getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith(reportDate);
+    });
+
+    const page = await screen.findByTestId("fixed-income-dashboard-page");
+    openDepthDrawer(page);
+    await waitFor(() => {
+      expect(getPnlByBusinessAnalysis).toHaveBeenCalledWith(
+        expect.objectContaining({ dimension: "bond_bucket_monthly" }),
+      );
+    });
+  });
+
   it("renders the redesigned root cockpit structure in order", async () => {
     renderDashboard();
 
@@ -608,7 +725,10 @@ describe("DashboardPage", () => {
     expect(donut).toHaveAttribute("aria-label", "债券资产规模 3,708.10 亿");
     expect(within(workspace).getByText("组合数")).toBeInTheDocument();
     expect(within(workspace).getByText("1,256 只")).toBeInTheDocument();
-    expect(within(workspace).getByText("产品分类损益趋势")).toBeInTheDocument();
+    expect(within(workspace).getByText("月度产品分类损益")).toBeInTheDocument();
+    expect(within(workspace).getByText("补充读面")).toBeInTheDocument();
+    expect(within(workspace).getByText("单位：亿")).toBeInTheDocument();
+    expect(within(workspace).queryByText(/产品分类日频/)).not.toBeInTheDocument();
 
     expect(operatingMain).toContainElement(riskActionStrip);
     expect(screen.getByTestId("dashboard-risk-alert-panel")).toHaveAttribute(
@@ -625,6 +745,8 @@ describe("DashboardPage", () => {
     expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-balance-summary"));
     expect(secondaryAnalysis).toContainElement(screen.getByTestId("dashboard-terminal-action-bar"));
     expect(screen.getByTestId("dashboard-terminal-action-bar")).toHaveTextContent("快速钻取");
+    expect(screen.getByTestId("dashboard-terminal-action-bar")).toHaveTextContent("终端快捷");
+    expect(screen.getByTestId("dashboard-terminal-action-bar")).not.toHaveTextContent("Terminal Actions");
 
     expect(screen.queryByTestId("dashboard-depth-zone")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-action-queue")).not.toBeInTheDocument();
@@ -1463,7 +1585,7 @@ describe("DashboardPage", () => {
         result: {
           ...envelope.result,
           report_date: reportDate,
-          mode: "complete" as const,
+          mode: "strict" as const,
           domains_missing: [],
           verdict: {
             conclusion: "正式经营判断来自首屏核心指标。",
@@ -1601,6 +1723,7 @@ describe("DashboardPage", () => {
     expect(aiCabin).not.toHaveTextContent("Pro");
 
     const warning = await screen.findByTestId("dashboard-sidebar-data-warning");
+    expect(warning).toHaveAttribute("open");
     expect(warning).toHaveTextContent("资产分布缺少 portfolio-comparison.items 字段");
     expect(warning).toHaveTextContent(
       "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
@@ -1644,6 +1767,7 @@ describe("DashboardPage", () => {
     const executiveOverview = await screen.findByTestId("dashboard-executive-overview");
     const decisionRail = await screen.findByTestId("dashboard-decision-rail");
     const warning = await screen.findByTestId("dashboard-sidebar-data-warning");
+    expect(warning).toHaveAttribute("open");
 
     expect(getHomeSnapshot).toHaveBeenCalled();
     expect(within(kpiBand).getAllByTestId(/^dashboard-kpi-card-/)).toHaveLength(6);
@@ -1818,6 +1942,8 @@ describe("DashboardPage", () => {
     renderDashboard(governedClient);
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(researchCalendarCalls).toEqual([]);
+    openSupplementPanel();
     await waitFor(() => {
       expect(researchCalendarCalls).toContainEqual({
         startDate: addDaysToIsoDate(today, -7),
@@ -2385,6 +2511,7 @@ describe("DashboardPage", () => {
 
     const trendPanel = await screen.findByTestId("dashboard-product-pnl-trend");
     expect(within(trendPanel).getByText("四类债券月度损益趋势")).toBeInTheDocument();
+    expect(within(trendPanel).queryByText(/日频/)).not.toBeInTheDocument();
     expect(within(trendPanel).queryByTestId("dashboard-product-pnl-pending")).not.toBeInTheDocument();
     expect(within(trendPanel).queryByTestId("dashboard-product-pnl-empty")).not.toBeInTheDocument();
     expect(within(trendPanel).getByTestId("dashboard-echarts-stub")).toBeInTheDocument();
@@ -2455,6 +2582,8 @@ describe("DashboardPage", () => {
     renderDashboard(client);
 
     expect(await screen.findByText("主导评级（Top1）")).toBeInTheDocument();
+    expect(screen.queryByText("AAA")).not.toBeInTheDocument();
+    openSupplementPanel();
     await waitFor(() => {
       expect(screen.getByText("AAA")).toBeInTheDocument();
     });

@@ -4,6 +4,7 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
+import { apiQueryKeys } from "../../api/queryKeys";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import {
   bondChartMagnitude,
@@ -191,7 +192,7 @@ export default function RiskOverviewPage() {
   });
 
   const creditQuery = useQuery({
-    queryKey: ["risk-overview", "credit-spread-migration", reportDate],
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(client.mode, reportDate),
     queryFn: () => client.getBondAnalyticsCreditSpreadMigration(reportDate),
     enabled: Boolean(reportDate),
     retry: false,

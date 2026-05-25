@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import type { Numeric } from "../../api/contracts";
 import { useApiClient } from "../../api/client";
+import { apiQueryKeys } from "../../api/queryKeys";
 import { KpiCard } from "../../components/KpiCard";
 import {
   controlBarStyle,
@@ -201,16 +202,13 @@ export default function ConcentrationMonitorPage() {
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
 
   const creditQuery = useQuery({
-    queryKey: ["concentration-monitor", "credit-spread-migration", reportDate],
-    queryFn: async (): Promise<CreditSpreadMigrationResponse> => {
-      const envelope = await client.getBondAnalyticsCreditSpreadMigration(reportDate);
-      return envelope.result;
-    },
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(client.mode, reportDate),
+    queryFn: () => client.getBondAnalyticsCreditSpreadMigration(reportDate),
     enabled: Boolean(reportDate),
     retry: false,
   });
 
-  const credit = creditQuery.data;
+  const credit = creditQuery.data?.result;
   const issuer = credit?.concentration_by_issuer;
   const maxSingleWeight = parseRatio(issuer?.top_items?.[0]?.weight);
   const top5 = parseRatio(issuer?.top5_concentration);

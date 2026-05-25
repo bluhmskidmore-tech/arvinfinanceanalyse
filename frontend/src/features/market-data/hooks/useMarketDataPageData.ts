@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import { runPollingTask } from "../../../app/jobs/polling";
 import {
   externalDataQueryOptions,
@@ -56,7 +57,7 @@ export function useMarketDataPageData() {
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
   const formalRatesQuery = useQuery({
-    queryKey: ["market-data", "formal-rates", client.mode],
+    queryKey: apiQueryKeys.marketRates(client.mode),
     queryFn: () => client.getMarketDataRates(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),

@@ -115,6 +115,22 @@
   gap: 4px;
 }
 
+.product-category-trend-diagnostics-gate {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.product-category-trend-diagnostics-gate__button {
+  min-height: 40px;
+  padding: 0 var(--moss-space-4);
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-primary-100);
+  color: var(--moss-color-primary-700);
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .product-category-diagnostics__title {
   margin: 0;
   color: var(--moss-color-neutral-900);

@@ -60,6 +60,16 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "risk: ",
         "source: ",
     ),
+    "features/workbench/dashboard/dashboardCockpitHomeModel.ts": (
+        "label: ",
+        "dv01: ",
+    ),
+    "features/workbench/dashboard/sections/ExposureTable.tsx": (
+        "<th>",
+    ),
+    "features/workbench/dashboard/sections/DashboardEvidenceLane.tsx": (
+        "<th>",
+    ),
 }
 
 DISPLAY_COPY_SNIPPETS = (

@@ -4,8 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_analytics_service import (
@@ -13,7 +12,6 @@ from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshServiceError,
     bond_analytics_dates_envelope,
     bond_analytics_refresh_status,
-    refresh_bond_analytics,
     get_accounting_class_audit,
     get_action_attribution,
     get_benchmark_excess,
@@ -22,11 +20,13 @@ from backend.app.services.bond_analytics_service import (
     get_portfolio_headlines,
     get_return_decomposition,
     get_top_holdings,
+    refresh_bond_analytics,
 )
 from backend.app.services.yield_curve_term_structure_service import (
     get_yield_curve_term_structure,
     parse_curve_types_param,
 )
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
 
@@ -68,7 +68,10 @@ def credit_spread_migration(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     spread_scenarios: str = Query("10,25,50", description="Comma-separated bp values"),
 ):
-    return get_credit_spread_migration(report_date, spread_scenarios)
+    return timed_api_call(
+        "/api/bond-analytics/credit-spread-migration",
+        lambda: get_credit_spread_migration(report_date, spread_scenarios),
+    )
 
 
 @router.get("/yield-curve-term-structure")
@@ -87,7 +90,10 @@ def yield_curve_term_structure(
 def portfolio_headlines(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
 ):
-    return get_portfolio_headlines(report_date)
+    return timed_api_call(
+        "/api/bond-analytics/portfolio-headlines",
+        lambda: get_portfolio_headlines(report_date),
+    )
 
 
 @router.get("/top-holdings")

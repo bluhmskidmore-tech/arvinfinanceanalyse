@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 import sys
 from typing import Any
@@ -22,6 +23,15 @@ from tests.test_bond_analytics_materialize_flow import (
 
 
 REPORT_DATE = "2026-03-31"
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
+
 
 _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
     (
@@ -146,6 +156,34 @@ def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypat
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dates"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_home_supplement_routes_log_api_perf(tmp_path, monkeypatch, caplog):
+    duckdb_path = tmp_path / "empty-bond-analytics-perf.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        credit = client.get(
+            "/api/bond-analytics/credit-spread-migration",
+            params={"report_date": REPORT_DATE},
+        )
+        portfolio = client.get(
+            "/api/bond-analytics/portfolio-headlines",
+            params={"report_date": REPORT_DATE},
+        )
+
+    assert credit.status_code == 200
+    assert portfolio.status_code == 200
+    credit_records = _perf_records(caplog, "/api/bond-analytics/credit-spread-migration")
+    portfolio_records = _perf_records(caplog, "/api/bond-analytics/portfolio-headlines")
+    assert credit_records
+    assert portfolio_records
+    assert getattr(credit_records[-1], "result_kind") == "bond_analytics.credit_spread_migration"
+    assert getattr(portfolio_records[-1], "result_kind") == "bond_analytics.portfolio_headlines"
     get_settings.cache_clear()
 
 

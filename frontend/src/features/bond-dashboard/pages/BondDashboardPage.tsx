@@ -4,6 +4,7 @@ import { InfoCircleOutlined } from "@ant-design/icons";
 import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type { BondDashboardHeadlinePayload, RiskIndicatorsPayload } from "../../../api/contracts";
 import { AssetStructurePie, type AssetGroupBy } from "../components/AssetStructurePie";
 import { CreditRatingBlocks } from "../components/CreditRatingBlocks";
@@ -61,7 +62,7 @@ export default function BondDashboardPage() {
   const rd = reportDate ?? "";
 
   const headlineQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "headline", rd],
+    queryKey: apiQueryKeys.bondDashboardHeadline(client.mode, rd),
     queryFn: () => client.getBondDashboardHeadlineKpis(rd),
     enabled: Boolean(rd),
   });
@@ -122,7 +123,7 @@ export default function BondDashboardPage() {
   });
 
   const portfolioQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "portfolio", rd],
+    queryKey: apiQueryKeys.bondDashboardPortfolioComparison(client.mode, rd),
     queryFn: () => client.getBondDashboardPortfolioComparison(rd),
     enabled: lowerPanelEnabled,
   });

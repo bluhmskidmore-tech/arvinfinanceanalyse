@@ -1,9 +1,9 @@
-# 回归：pnl_bridge._calculate_roll_down 的 roll-down 符号（正常/平坦/反转曲线；零久期/零市值）。
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
-from unittest.mock import patch
+from typing import Iterator
 
 from backend.app.core_finance.pnl_bridge import _calculate_roll_down
 
@@ -23,84 +23,86 @@ def _balance(*, report_d: date) -> dict:
     }
 
 
-@patch("backend.app.core_finance.pnl_bridge._years_to_maturity", return_value=5.0)
-@patch("backend.app.core_finance.pnl_bridge._modified_duration", return_value=Decimal("4.5"))
-@patch("backend.app.core_finance.pnl_bridge._curve_market_value", return_value=Decimal("100000000"))
-def test_roll_down_negative_normal_upward_sloping_curve(
-    _mv, _md, _ytm
-) -> None:
-    # 5Y 2.80% / 4Y 2.70% → rate_delta=+0.001 → -(Δ)×D×MV = -450_000
+@contextmanager
+def _patched_roll_down_inputs(
+    *,
+    years_to_maturity: float = 5.0,
+    modified_duration: Decimal = Decimal("4.5"),
+    market_value: Decimal = Decimal("100000000"),
+) -> Iterator[None]:
+    globals_map = _calculate_roll_down.__globals__
+    original_years = globals_map["_years_to_maturity"]
+    original_duration = globals_map["_modified_duration"]
+    original_market_value = globals_map["_curve_market_value"]
+    globals_map["_years_to_maturity"] = lambda **_kwargs: years_to_maturity
+    globals_map["_modified_duration"] = lambda **_kwargs: modified_duration
+    globals_map["_curve_market_value"] = lambda _row: market_value
+    try:
+        yield
+    finally:
+        globals_map["_years_to_maturity"] = original_years
+        globals_map["_modified_duration"] = original_duration
+        globals_map["_curve_market_value"] = original_market_value
+
+
+def test_roll_down_negative_normal_upward_sloping_curve() -> None:
     curve = {"4Y": Decimal("2.70"), "5Y": Decimal("2.80")}
-    r = _calculate_roll_down(
-        report_date=REPORT,
-        current_balance=_balance(report_d=REPORT),
-        prior_balance=_balance(report_d=PRIOR),
-        curve=curve,
-    )
-    assert r == Decimal("-450000")
+    with _patched_roll_down_inputs():
+        result = _calculate_roll_down(
+            report_date=REPORT,
+            current_balance=_balance(report_d=REPORT),
+            prior_balance=_balance(report_d=PRIOR),
+            curve=curve,
+        )
+    assert result == Decimal("-450000")
 
 
-@patch("backend.app.core_finance.pnl_bridge._years_to_maturity", return_value=5.0)
-@patch("backend.app.core_finance.pnl_bridge._modified_duration", return_value=Decimal("4.5"))
-@patch("backend.app.core_finance.pnl_bridge._curve_market_value", return_value=Decimal("100000000"))
-def test_roll_down_zero_flat_curve(_mv, _md, _ytm) -> None:
+def test_roll_down_zero_flat_curve() -> None:
     curve = {"4Y": Decimal("2.75"), "5Y": Decimal("2.75")}
-    r = _calculate_roll_down(
-        report_date=REPORT,
-        current_balance=_balance(report_d=REPORT),
-        prior_balance=_balance(report_d=PRIOR),
-        curve=curve,
-    )
-    assert r == Decimal("0")
+    with _patched_roll_down_inputs():
+        result = _calculate_roll_down(
+            report_date=REPORT,
+            current_balance=_balance(report_d=REPORT),
+            prior_balance=_balance(report_d=PRIOR),
+            curve=curve,
+        )
+    assert result == Decimal("0")
 
 
-@patch("backend.app.core_finance.pnl_bridge._years_to_maturity", return_value=5.0)
-@patch("backend.app.core_finance.pnl_bridge._modified_duration", return_value=Decimal("4.5"))
-@patch("backend.app.core_finance.pnl_bridge._curve_market_value", return_value=Decimal("100000000"))
-def test_roll_down_positive_inverted_curve(_mv, _md, _ytm) -> None:
-    # 5Y 2.70% < 4Y 2.80% → rate_delta 为负 → 结果为 +450_000
+def test_roll_down_positive_inverted_curve() -> None:
     curve = {"4Y": Decimal("2.80"), "5Y": Decimal("2.70")}
-    r = _calculate_roll_down(
-        report_date=REPORT,
-        current_balance=_balance(report_d=REPORT),
-        prior_balance=_balance(report_d=PRIOR),
-        curve=curve,
-    )
-    assert r == Decimal("450000")
+    with _patched_roll_down_inputs():
+        result = _calculate_roll_down(
+            report_date=REPORT,
+            current_balance=_balance(report_d=REPORT),
+            prior_balance=_balance(report_d=PRIOR),
+            curve=curve,
+        )
+    assert result == Decimal("450000")
 
 
 def test_roll_down_zero_when_duration_zero() -> None:
     curve = {"4Y": Decimal("2.70"), "5Y": Decimal("2.80")}
-    with (
-        patch("backend.app.core_finance.pnl_bridge._years_to_maturity", return_value=5.0),
-        patch("backend.app.core_finance.pnl_bridge._modified_duration", return_value=Decimal("0")),
-        patch(
-            "backend.app.core_finance.pnl_bridge._curve_market_value", return_value=Decimal("100000000")
-        ),
-    ):
-        r = _calculate_roll_down(
+    with _patched_roll_down_inputs(modified_duration=Decimal("0")):
+        result = _calculate_roll_down(
             report_date=REPORT,
             current_balance=_balance(report_d=REPORT),
             prior_balance=_balance(report_d=PRIOR),
             curve=curve,
         )
-    assert r == Decimal("0")
+    assert result == Decimal("0")
 
 
 def test_roll_down_zero_when_market_value_zero() -> None:
     curve = {"4Y": Decimal("2.70"), "5Y": Decimal("2.80")}
-    with (
-        patch("backend.app.core_finance.pnl_bridge._years_to_maturity", return_value=5.0),
-        patch("backend.app.core_finance.pnl_bridge._modified_duration", return_value=Decimal("4.5")),
-        patch("backend.app.core_finance.pnl_bridge._curve_market_value", return_value=Decimal("0")),
-    ):
-        r = _calculate_roll_down(
+    with _patched_roll_down_inputs(market_value=Decimal("0")):
+        result = _calculate_roll_down(
             report_date=REPORT,
             current_balance=_balance(report_d=REPORT),
             prior_balance=_balance(report_d=PRIOR),
             curve=curve,
         )
-    assert r == Decimal("0")
+    assert result == Decimal("0")
 
 
 def test_roll_down_zero_when_any_balance_missing() -> None:

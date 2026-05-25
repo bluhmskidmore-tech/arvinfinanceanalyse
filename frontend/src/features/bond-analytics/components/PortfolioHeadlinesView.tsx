@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Card, Col, Row, Spin, Statistic, Table } from "antd";
 import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import { formatPct, formatYi } from "../utils/formatters";
 
 interface Props {
@@ -39,31 +40,15 @@ function formatHhi(value: import("../../../api/contracts").Numeric | string): st
 
 export function PortfolioHeadlinesView({ reportDate }: Props) {
   const client = useApiClient();
-  const [data, setData] = useState<BondPortfolioHeadlinesPayload | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(client.mode, reportDate),
+    queryFn: () => client.getBondAnalyticsPortfolioHeadlines(reportDate),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
+  const data: BondPortfolioHeadlinesPayload | null = query.data?.result ?? null;
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const envelope = await client.getBondAnalyticsPortfolioHeadlines(reportDate);
-        if (!cancelled) setData(envelope.result);
-      } catch (e: unknown) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    if (reportDate) void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, reportDate]);
-
-  if (loading && !data) {
+  if (query.isLoading && !data) {
     return (
       <div data-testid="portfolio-headlines-loading" style={{ padding: 24 }}>
         <Spin />
@@ -71,8 +56,8 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
     );
   }
 
-  if (error) {
-    return <Alert type="error" message={error} showIcon />;
+  if (query.isError) {
+    return <Alert type="error" message={(query.error as Error).message} showIcon />;
   }
 
   if (!data) {

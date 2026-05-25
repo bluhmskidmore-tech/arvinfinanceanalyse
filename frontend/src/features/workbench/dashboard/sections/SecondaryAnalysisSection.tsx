@@ -23,7 +23,7 @@ export function SecondaryAnalysisSection({ viewModel }: SecondaryAnalysisSection
         aria-label="终端快捷动作"
       >
         <header>
-          <span className="dashboard-terminal-eyebrow">Terminal Actions</span>
+          <span className="dashboard-terminal-eyebrow">终端快捷</span>
           <h2>快速钻取</h2>
         </header>
         <div data-testid="dashboard-terminal-quick-drilldown" className="dashboard-terminal-action-bar__items">
@@ -53,7 +53,7 @@ export function SecondaryAnalysisSection({ viewModel }: SecondaryAnalysisSection
                 className="dashboard-terminal-action"
               >
                 <strong>{item.label}</strong>
-                <span>Enter →</span>
+                <span>进入 →</span>
               </Link>
             );
           })}

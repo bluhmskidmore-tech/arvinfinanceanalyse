@@ -3,6 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Col, Row, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type { Numeric } from "../../../api/contracts";
 import { HeadlineKpis } from "../../bond-dashboard/components/HeadlineKpis";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
@@ -486,7 +487,7 @@ export function BondAnalyticsInstitutionalCockpit({
   const [headlineQ, spreadQ, maturityQ, holdingsQ, portfolioHlQ] = useQueries({
     queries: [
       {
-        queryKey: ["bond-analytics-institutional", "headline", client.mode, dashboardReportDate],
+        queryKey: apiQueryKeys.bondDashboardHeadline(client.mode, dashboardReportDate),
         queryFn: () => client.getBondDashboardHeadlineKpis(dashboardReportDate),
         enabled: Boolean(dashboardReportDate),
       },
@@ -506,7 +507,7 @@ export function BondAnalyticsInstitutionalCockpit({
         enabled: Boolean(dashboardReportDate),
       },
       {
-        queryKey: ["bond-analytics-institutional", "portfolio-hl", client.mode, dashboardReportDate],
+        queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(client.mode, dashboardReportDate),
         queryFn: () => client.getBondAnalyticsPortfolioHeadlines(dashboardReportDate),
         enabled: Boolean(dashboardReportDate),
       },

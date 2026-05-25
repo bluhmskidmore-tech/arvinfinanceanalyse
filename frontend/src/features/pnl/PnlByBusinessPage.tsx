@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
+import { apiQueryKeys } from "../../api/queryKeys";
 import type {
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisRow,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessManualAdjustmentRequest,
+  PnlByBusinessMonthlyBucket,
+  PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
 } from "../../api/contracts";
@@ -29,7 +32,6 @@ import {
   isDetailZqtzBusinessRow,
   isParentZqtzBusinessRow,
   toneFromSigned,
-  type PnlByBusinessViewMode,
 } from "./pnlByBusinessPageModel";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 import "./PnlByBusinessPage.css";
@@ -1391,15 +1393,13 @@ export default function PnlByBusinessPage() {
   });
 
   const analysisQuery = useQuery({
-    queryKey: [
-      "pnl-by-business",
-      "analysis",
+    queryKey: apiQueryKeys.pnlByBusinessAnalysis(
       client.mode,
       selectedYear,
       selectedReportDate,
-      selectedBusinessRow?.row_key,
       analysisDimension,
-    ],
+      selectedBusinessRow?.row_key,
+    ),
     enabled: Boolean(analysisBaseReady && analysisLoadStage >= 4),
     queryFn: () =>
       client.getPnlByBusinessAnalysis({
@@ -1414,7 +1414,12 @@ export default function PnlByBusinessPage() {
   const analysisRows = analysisQuery.data?.result.rows ?? [];
 
   const bondBucketQuery = useQuery({
-    queryKey: ["pnl-by-business", "analysis", "bond-bucket", client.mode, selectedYear, selectedReportDate],
+    queryKey: apiQueryKeys.pnlByBusinessAnalysis(
+      client.mode,
+      selectedYear,
+      selectedReportDate,
+      "bond_bucket",
+    ),
     enabled: Boolean(analysisBaseReady && analysisLoadStage >= 2),
     queryFn: () =>
       client.getPnlByBusinessAnalysis({
@@ -1428,7 +1433,12 @@ export default function PnlByBusinessPage() {
   const bondBucketRows = bondBucketQuery.data?.result.rows ?? [];
 
   const bondBucketMonthlyQuery = useQuery({
-    queryKey: ["pnl-by-business", "analysis", "bond-bucket-monthly", client.mode, selectedYear, selectedReportDate],
+    queryKey: apiQueryKeys.pnlByBusinessAnalysis(
+      client.mode,
+      selectedYear,
+      selectedReportDate,
+      "bond_bucket_monthly",
+    ),
     enabled: Boolean(analysisBaseReady && analysisLoadStage >= 3),
     queryFn: () =>
       client.getPnlByBusinessAnalysis({
@@ -1443,13 +1453,14 @@ export default function PnlByBusinessPage() {
 
   const negativeFtpInstrumentQuery = useQuery({
     queryKey: [
-      "pnl-by-business",
-      "analysis",
-      "negative-ftp-instruments",
-      client.mode,
-      selectedYear,
-      selectedReportDate,
-      selectedBusinessRow?.row_key,
+      ...apiQueryKeys.pnlByBusinessAnalysis(
+        client.mode,
+        selectedYear,
+        selectedReportDate,
+        "instrument",
+        selectedBusinessRow?.row_key,
+      ),
+      "negative-ftp",
     ],
     enabled: Boolean(analysisBaseReady && analysisLoadStage >= 5),
     queryFn: () =>

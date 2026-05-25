@@ -44,6 +44,78 @@ function buildClientWithSnapshotOverride(options: {
 }
 
 describe("useDashboardSnapshotBoundary", () => {
+  it("keeps pure mock mode explicit when the source client is mock", async () => {
+    const getHomeSnapshot = vi.fn<ApiClient["getHomeSnapshot"]>((options) =>
+      createApiClient({ mode: "mock" }).getHomeSnapshot(options),
+    );
+    const mockClient = buildClientWithSnapshotOverride({
+      mode: "mock",
+      getHomeSnapshot,
+    });
+
+    const { result } = renderHook(
+      () =>
+        useDashboardSnapshotBoundary({
+          reportDate: "",
+          allowPartial: false,
+        }),
+      {
+        wrapper: createWrapper(mockClient),
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.snapshotQuery.isSuccess).toBe(true);
+    });
+
+    expect(result.current.displayMode).toBe("mock");
+    expect(result.current.dataClient.mode).toBe("mock");
+    expect(result.current.isLiveDataFallback).toBe(false);
+    expect(getHomeSnapshot).toHaveBeenCalledWith({
+      reportDate: undefined,
+      allowPartial: false,
+    });
+  });
+
+  it("keeps the real client active after a successful real snapshot fetch", async () => {
+    const liveSnapshotReportDate = "2026-04-30";
+    const getHomeSnapshot = vi.fn<ApiClient["getHomeSnapshot"]>(async (options) => {
+      const base = await createApiClient({ mode: "mock" }).getHomeSnapshot(options);
+      return {
+        ...base,
+        result: {
+          ...base.result,
+          report_date: liveSnapshotReportDate,
+        },
+      };
+    });
+    const realClient = buildClientWithSnapshotOverride({
+      mode: "real",
+      getHomeSnapshot,
+    });
+
+    const { result } = renderHook(
+      () =>
+        useDashboardSnapshotBoundary({
+          reportDate: "",
+          allowPartial: false,
+        }),
+      {
+        wrapper: createWrapper(realClient),
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.snapshotQuery.isSuccess).toBe(true);
+    });
+
+    expect(result.current.displayMode).toBe("real");
+    expect(result.current.dataClient.mode).toBe("real");
+    expect(result.current.isLiveDataFallback).toBe(false);
+    expect(result.current.initialEffectiveReportDate).toBe(liveSnapshotReportDate);
+    expect(getHomeSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps displayMode as real and switches to live fallback after a snapshot network failure", async () => {
     const mockSource = createApiClient({ mode: "mock" });
     const realClient = buildClientWithSnapshotOverride({

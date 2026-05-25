@@ -522,7 +522,7 @@ def test_bond_analytics_materialize_computes_expected_duration_for_one_year_rate
         conn.close()
 
     expected_modified_duration = (Decimal("1") / Decimal("1.018")).quantize(Decimal("0.00000001"))
-    expected_dv01 = (Decimal("99") * expected_modified_duration / Decimal("10000")).quantize(Decimal("0.00000001"))
+    expected_dv01 = (Decimal("100") * expected_modified_duration / Decimal("10000")).quantize(Decimal("0.00000001"))
 
     assert tb_001 == (
         Decimal("1.00000000"),
@@ -543,19 +543,19 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
         {
             "tenor_bucket": "10Y",
             "market_value": Decimal("140.00000000"),
-            "dv01": Decimal("0.11250583"),
+            "dv01": Decimal("0.12054196"),
             "krd": Decimal("8.03613072"),
         },
         {
             "tenor_bucket": "1Y",
             "market_value": Decimal("99.00000000"),
-            "dv01": Decimal("0.00972495"),
+            "dv01": Decimal("0.00982318"),
             "krd": Decimal("0.98231827"),
         },
         {
             "tenor_bucket": "5Y",
             "market_value": Decimal("190.00000000"),
-            "dv01": Decimal("0.08681798"),
+            "dv01": Decimal("0.09138735"),
             "krd": Decimal("4.56936732"),
         },
     ]
@@ -608,7 +608,7 @@ def test_bond_analytics_materialize_uses_formal_basis_but_keeps_cny_native_marke
     assert row["accounting_class"] == "OCI"
     assert row["market_value_native"] == Decimal("190.00000000")
     assert row["market_value"] == Decimal("190.00000000")
-    expected_dv01 = (row["market_value"] * row["modified_duration"] / Decimal("10000")).quantize(
+    expected_dv01 = (row["face_value"] * row["modified_duration"] / Decimal("10000")).quantize(
         Decimal("0.00000001")
     )
     assert row["dv01"] == expected_dv01

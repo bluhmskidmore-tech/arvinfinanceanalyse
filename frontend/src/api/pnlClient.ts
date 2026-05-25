@@ -3,6 +3,7 @@
  * Imported and re-exported by client.ts for backward compatibility.
  */
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { mockCampisiDecisionGrade } from "../mocks/campisiMocks";
 import { readHttpJsonDetail } from "./httpResponseError";
 import type {
   ApiEnvelope,
@@ -36,15 +37,6 @@ import type {
   PnlOverviewPayload,
   PnlV1DataPayload,
   PnlYearlyBusinessSummaryPayload,
-  ProductCategoryDatesPayload,
-  ProductCategoryAttributionPayload,
-  ProductCategoryManualAdjustmentExportPayload,
-  ProductCategoryManualAdjustmentListPayload,
-  ProductCategoryManualAdjustmentPayload,
-  ProductCategoryManualAdjustmentQuery,
-  ProductCategoryManualAdjustmentRequest,
-  ProductCategoryPnlPayload,
-  ProductCategoryRefreshPayload,
   QdbGlMonthlyAnalysisDatesPayload,
   QdbGlMonthlyAnalysisManualAdjustmentExportPayload,
   QdbGlMonthlyAnalysisManualAdjustmentListPayload,
@@ -64,6 +56,25 @@ type PnlClientFactoryOptions = {
   fetchImpl: FetchLike;
   baseUrl: string;
 };
+
+function buildCampisiQuery(options?: {
+  startDate?: string;
+  endDate?: string;
+  lookbackDays?: number;
+}) {
+  const params = new URLSearchParams();
+  if (options?.startDate?.trim()) {
+    params.set("start_date", options.startDate.trim());
+  }
+  if (options?.endDate?.trim()) {
+    params.set("end_date", options.endDate.trim());
+  }
+  if (options?.lookbackDays !== undefined) {
+    params.set("lookback_days", String(options.lookbackDays));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
 
 export type PnlClientMethods = {
   getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
@@ -165,39 +176,6 @@ export type PnlClientMethods = {
     endDate?: string;
     lookbackDays?: number;
   }) => Promise<ApiEnvelope<CampisiDecisionGradePayload>>;
-  getProductCategoryDates: () => Promise<ApiEnvelope<ProductCategoryDatesPayload>>;
-  refreshProductCategoryPnl: () => Promise<ProductCategoryRefreshPayload>;
-  getProductCategoryRefreshStatus: (runId: string) => Promise<ProductCategoryRefreshPayload>;
-  createProductCategoryManualAdjustment: (
-    payload: ProductCategoryManualAdjustmentRequest,
-  ) => Promise<ProductCategoryManualAdjustmentPayload>;
-  getProductCategoryManualAdjustments: (
-    reportDate: string,
-    options?: ProductCategoryManualAdjustmentQuery,
-  ) => Promise<ProductCategoryManualAdjustmentListPayload>;
-  exportProductCategoryManualAdjustmentsCsv: (
-    reportDate: string,
-    options?: ProductCategoryManualAdjustmentQuery,
-  ) => Promise<ProductCategoryManualAdjustmentExportPayload>;
-  updateProductCategoryManualAdjustment: (
-    adjustmentId: string,
-    payload: ProductCategoryManualAdjustmentRequest,
-  ) => Promise<ProductCategoryManualAdjustmentPayload>;
-  revokeProductCategoryManualAdjustment: (
-    adjustmentId: string,
-  ) => Promise<ProductCategoryManualAdjustmentPayload>;
-  restoreProductCategoryManualAdjustment: (
-    adjustmentId: string,
-  ) => Promise<ProductCategoryManualAdjustmentPayload>;
-  getProductCategoryPnl: (options: {
-    reportDate: string;
-    view: string;
-    scenarioRatePct?: string;
-  }) => Promise<ApiEnvelope<ProductCategoryPnlPayload>>;
-  getProductCategoryAttribution: (options: {
-    reportDate: string;
-    compare?: "mom" | "yoy";
-  }) => Promise<ApiEnvelope<ProductCategoryAttributionPayload>>;
   getQdbGlMonthlyAnalysisDates: () => Promise<ApiEnvelope<QdbGlMonthlyAnalysisDatesPayload>>;
   getQdbGlMonthlyAnalysisWorkbook: (options: {
     reportMonth: string;
@@ -249,6 +227,7 @@ type PnlBusinessClientMethods = Pick<
   | "revokePnlByBusinessManualAdjustment"
   | "restorePnlByBusinessManualAdjustment"
   | "getPnlByBusinessManualAdjustments"
+  | "getPnlCampisiDecisionGrade"
   | "getPnlYearlyBusinessSummary"
 >;
 
@@ -410,6 +389,17 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getPnlCampisiDecisionGrade(_options?: {
+      startDate?: string;
+      endDate?: string;
+      lookbackDays?: number;
+    }) {
+      await delay();
+      return buildMockApiEnvelope("campisi.decision_grade", mockCampisiDecisionGrade, {
+        basis: "formal",
+        formal_use_allowed: true,
+      });
+    },
     async getPnlYearlyBusinessSummary(year: number) {
       await delay();
       return buildMockApiEnvelope(
@@ -515,6 +505,12 @@ export function createRealPnlBusinessClient({
         `/api/pnl/by-business-analysis?${query.toString()}`,
       );
     },
+    getPnlCampisiDecisionGrade: (options) =>
+      requestJson<CampisiDecisionGradePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/campisi/decision-grade${buildCampisiQuery(options)}`,
+      ),
     getPnlYearlyBusinessSummary: (year: number) =>
       requestJson<PnlYearlyBusinessSummaryPayload>(
         fetchImpl,

@@ -4,16 +4,14 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 from backend.app.core_finance.bond_analytics.read_models import (
     build_krd_distribution,
     summarize_accounting_audit,
     summarize_credit,
     summarize_portfolio_risk,
 )
-from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
-
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
 SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
@@ -54,6 +52,7 @@ _SNAPSHOT_COLUMNS = (
     "rating",
     "currency_code",
     "face_value_native",
+    "face_value_cny",
     "market_value_native",
     "market_value_cny",
     "amortized_cost_native",
@@ -182,6 +181,7 @@ class BondAnalyticsRepository:
             )
             balance_join = ""
             accounting_basis_expr = "null"
+            face_value_cny_expr = "s.face_value_native"
             market_value_cny_expr = snapshot_market_value_cny_expr
             if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
                 balance_join = f"""
@@ -202,6 +202,7 @@ class BondAnalyticsRepository:
                     is_issuance_like_key,
                     currency_code_key,
                     max(accounting_basis) as accounting_basis,
+                    sum(face_value_amount) as face_value_amount,
                     sum(market_value_amount) as market_value_amount
                   from (
                     select
@@ -220,6 +221,7 @@ class BondAnalyticsRepository:
                       coalesce(is_issuance_like, false) as is_issuance_like_key,
                       upper(trim(coalesce(currency_code, ''))) as currency_code_key,
                       nullif(trim(accounting_basis), '') as accounting_basis,
+                      face_value_amount,
                       market_value_amount
                     from {BALANCE_ZQTZ_FACT_TABLE}
                     where upper(trim(coalesce(currency_basis, ''))) = 'CNY'
@@ -257,13 +259,14 @@ class BondAnalyticsRepository:
                  and upper(trim(coalesce(s.currency_code, ''))) = b.currency_code_key
                 """
                 accounting_basis_expr = "b.accounting_basis"
+                face_value_cny_expr = "coalesce(b.face_value_amount, s.face_value_native)"
                 market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
             rows = conn.execute(
                 f"""
                 select s.report_date, s.instrument_code, s.instrument_name, s.portfolio_name, s.cost_center,
                        s.account_category, s.asset_class, s.bond_type, s.business_type_primary,
                        s.issuer_name, s.industry_name, s.rating,
-                       s.currency_code, s.face_value_native, s.market_value_native,
+                       s.currency_code, s.face_value_native, {face_value_cny_expr} as face_value_cny, s.market_value_native,
                        {market_value_cny_expr} as market_value_cny, s.amortized_cost_native,
                        s.accrued_interest_native, s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
                        s.overdue_days, s.is_issuance_like, s.interest_mode, s.source_version, s.rule_version,

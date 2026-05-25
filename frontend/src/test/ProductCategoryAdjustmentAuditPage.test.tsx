@@ -515,6 +515,24 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       filename: "export.csv",
       content: "x",
     }));
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    const createObjectUrl = vi.fn(() => "blob:export-query");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const element = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          value: clickSpy,
+          configurable: true,
+        });
+      }
+      return element as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
     const listSpy = vi.fn(async (_reportDate: string, _options?: ProductCategoryManualAdjustmentQuery) => ({
       report_date: "2026-02-28",
       adjustment_count: 1,
@@ -540,66 +558,73 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       events: [],
     }));
 
-    renderAuditPageWithClient({
-      ...baseClient,
-      getProductCategoryManualAdjustments: listSpy,
-      exportProductCategoryManualAdjustmentsCsv: exportSpy,
-    });
-
-    await screen.findByTestId("audit-current-state");
-    await user.selectOptions(screen.getByTestId("audit-current-sort-field"), "account_code");
-    await user.selectOptions(screen.getByTestId("audit-current-sort-dir"), "asc");
-    await user.selectOptions(screen.getByTestId("audit-event-sort-field"), "event_type");
-    await user.selectOptions(screen.getByTestId("audit-event-sort-dir"), "asc");
-    await user.type(screen.getByTestId("audit-filter-account-code"), "5140");
-    await user.click(screen.getByTestId("audit-apply-filters"));
-
-    await waitFor(() => {
-      expect(listSpy).toHaveBeenCalled();
-    });
-    const listArgs = listSpy.mock.calls.at(-1);
-    expect(listArgs?.[0]).toBe("2026-02-28");
-    expect(exportSpy).not.toHaveBeenCalled();
-
-    await user.click(screen.getByTestId("audit-export-button"));
-
-    await waitFor(() => {
-      expect(exportSpy).toHaveBeenCalledWith("2026-02-28", {
-        adjustmentId: "",
-        adjustmentIdExact: false,
-        accountCode: "5140",
-        approvalStatus: "",
-        eventType: "",
-        currentSortField: "account_code",
-        currentSortDir: "asc",
-        eventSortField: "event_type",
-        eventSortDir: "asc",
-        createdAtFrom: "",
-        createdAtTo: "",
+    try {
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
       });
-    });
-    expect(
-      manualAdjustmentListOptionsWithoutPagination(listArgs![1] as ProductCategoryManualAdjustmentQuery & {
-        adjustmentLimit?: number;
-        adjustmentOffset?: number;
-        limit?: number;
-        offset?: number;
-      }),
-    ).toEqual(
-      buildProductCategoryAuditListExportQuery({
-        adjustmentId: "",
-        adjustmentIdExact: false,
-        accountCode: "5140",
-        approvalStatus: "",
-        eventType: "",
-        currentSortField: "account_code",
-        currentSortDir: "asc",
-        eventSortField: "event_type",
-        eventSortDir: "asc",
-        createdAtFrom: "",
-        createdAtTo: "",
-      }),
-    );
+
+      await screen.findByTestId("audit-current-state");
+      await user.selectOptions(screen.getByTestId("audit-current-sort-field"), "account_code");
+      await user.selectOptions(screen.getByTestId("audit-current-sort-dir"), "asc");
+      await user.selectOptions(screen.getByTestId("audit-event-sort-field"), "event_type");
+      await user.selectOptions(screen.getByTestId("audit-event-sort-dir"), "asc");
+      await user.type(screen.getByTestId("audit-filter-account-code"), "5140");
+      await user.click(screen.getByTestId("audit-apply-filters"));
+
+      await waitFor(() => {
+        expect(listSpy).toHaveBeenCalled();
+      });
+      const listArgs = listSpy.mock.calls.at(-1);
+      expect(listArgs?.[0]).toBe("2026-02-28");
+      expect(exportSpy).not.toHaveBeenCalled();
+
+      await user.click(screen.getByTestId("audit-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalledWith("2026-02-28", {
+          adjustmentId: "",
+          adjustmentIdExact: false,
+          accountCode: "5140",
+          approvalStatus: "",
+          eventType: "",
+          currentSortField: "account_code",
+          currentSortDir: "asc",
+          eventSortField: "event_type",
+          eventSortDir: "asc",
+          createdAtFrom: "",
+          createdAtTo: "",
+        });
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(
+        manualAdjustmentListOptionsWithoutPagination(listArgs![1] as ProductCategoryManualAdjustmentQuery & {
+          adjustmentLimit?: number;
+          adjustmentOffset?: number;
+          limit?: number;
+          offset?: number;
+        }),
+      ).toEqual(
+        buildProductCategoryAuditListExportQuery({
+          adjustmentId: "",
+          adjustmentIdExact: false,
+          accountCode: "5140",
+          approvalStatus: "",
+          eventType: "",
+          currentSortField: "account_code",
+          currentSortDir: "asc",
+          eventSortField: "event_type",
+          eventSortDir: "asc",
+          createdAtFrom: "",
+          createdAtTo: "",
+        }),
+      );
+    } finally {
+      createElementSpy.mockRestore();
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
   });
 
   it("Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM", async () => {

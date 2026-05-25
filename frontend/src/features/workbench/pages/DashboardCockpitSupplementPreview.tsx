@@ -7,8 +7,14 @@ const DASHBOARD_DRILLDOWN_HIGHLIGHT_MS = 1600;
 
 export function DashboardCockpitSupplementPreview({
   signals,
+  containerTestId = "dashboard-cockpit-supplement-preview",
+  itemTestIdPrefix = "dashboard-cockpit-preview",
+  className = "",
 }: {
   signals: readonly DashboardCockpitPreviewSignal[];
+  containerTestId?: string;
+  itemTestIdPrefix?: string;
+  className?: string;
 }) {
   const activeDrilldownTargetRef = useRef<HTMLElement | null>(null);
   const activeDrilldownTimerRef = useRef<number | null>(null);
@@ -53,8 +59,8 @@ export function DashboardCockpitSupplementPreview({
 
   return (
     <div
-      data-testid="dashboard-cockpit-supplement-preview"
-      className="dashboard-cockpit-supplement-preview"
+      data-testid={containerTestId}
+      className={`dashboard-cockpit-supplement-preview${className ? ` ${className}` : ""}`}
     >
       {signals.map((signal) => {
         const action =
@@ -96,7 +102,7 @@ export function DashboardCockpitSupplementPreview({
         return (
           <article
             key={signal.id}
-            data-testid={`dashboard-cockpit-preview-${signal.id}`}
+            data-testid={`${itemTestIdPrefix}-${signal.id}`}
             className="dashboard-cockpit-supplement-preview__item"
             data-status={signal.status}
             data-tone={signal.tone}

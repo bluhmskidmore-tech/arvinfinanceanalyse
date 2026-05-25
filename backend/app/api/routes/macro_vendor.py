@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -33,7 +34,10 @@ CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 def market_data_rates() -> dict[str, object]:
     """Formal-basis rates for the market-data page (stable series only)."""
     settings = get_settings()
-    return choice_macro_formal_envelope(settings.duckdb_path)
+    return timed_api_call(
+        "/ui/market-data/rates",
+        lambda: choice_macro_formal_envelope(settings.duckdb_path),
+    )
 
 
 @router.get("/ui/market-data/catalog")

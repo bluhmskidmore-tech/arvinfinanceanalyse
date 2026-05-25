@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type { Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type {
@@ -544,56 +546,33 @@ const DEFAULT_SPREAD_SCENARIOS = "10,25,50";
 
 export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_SCENARIOS }: Props) {
   const client = useApiClient();
-  const [summaryData, setSummaryData] = useState<CreditSpreadMigrationResponse | null>(null);
-  const [detailData, setDetailData] = useState<CreditSpreadAnalysisResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  const summaryQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(
+      client.mode,
+      reportDate,
+      spreadScenarios,
+    ),
+    queryFn: () =>
+      spreadScenarios === DEFAULT_SPREAD_SCENARIOS
+        ? client.getBondAnalyticsCreditSpreadMigration(reportDate)
+        : client.getBondAnalyticsCreditSpreadMigration(reportDate, { spreadScenarios }),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
+  const detailQuery = useQuery({
+    queryKey: ["credit-spread-analysis", "detail", client.mode, reportDate],
+    queryFn: () => client.getCreditSpreadAnalysisDetail(reportDate),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      setDetailError(null);
-      try {
-        const [summaryResult, detailResult] = await Promise.allSettled([
-          spreadScenarios === DEFAULT_SPREAD_SCENARIOS
-            ? client.getBondAnalyticsCreditSpreadMigration(reportDate)
-            : client.getBondAnalyticsCreditSpreadMigration(reportDate, { spreadScenarios }),
-          client.getCreditSpreadAnalysisDetail(reportDate),
-        ]);
-
-        if (cancelled) {
-          return;
-        }
-
-        if (summaryResult.status === "rejected") {
-          throw summaryResult.reason;
-        }
-
-        setSummaryData(summaryResult.value.result);
-        if (detailResult.status === "fulfilled") {
-          setDetailData(detailResult.value.result);
-        } else {
-          setDetailData(null);
-          setDetailError(
-            detailResult.reason instanceof Error ? detailResult.reason.message : "未知错误",
-          );
-        }
-      } catch (e: unknown) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    if (reportDate) fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, reportDate, spreadScenarios]);
-
-  const data = summaryData;
+  const data = summaryQuery.data?.result ?? null;
+  const detailData = detailQuery.data?.result ?? null;
+  const detailError = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : "未知错误"
+    : null;
 
   const spreadChartOption = useMemo((): EChartsOption | null => {
     if (!data?.spread_scenarios?.length) return null;
@@ -683,8 +662,11 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
     return { kind: "empty" as const };
   }, [data]);
 
-  if (loading) return <Spin style={{ display: "block", margin: `${dt.space[8]}px auto` }} />;
-  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
+  if (summaryQuery.isLoading) return <Spin style={{ display: "block", margin: `${dt.space[8]}px auto` }} />;
+  if (summaryQuery.isError) {
+    const message = summaryQuery.error instanceof Error ? summaryQuery.error.message : String(summaryQuery.error);
+    return <Alert type="error" message={`加载失败：${message}`} />;
+  }
   if (!data) return null;
 
   const mergedWarnings = Array.from(

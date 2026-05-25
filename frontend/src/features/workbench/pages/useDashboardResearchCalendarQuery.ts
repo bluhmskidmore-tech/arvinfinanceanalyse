@@ -9,6 +9,7 @@ const DASHBOARD_KEY_CALENDAR_FORWARD_DAYS = 14;
 
 export type UseDashboardResearchCalendarQueryOptions = {
   dataClient: ApiClient;
+  enabled?: boolean;
   getTodayIsoDate?: () => string;
 };
 
@@ -23,6 +24,7 @@ export type DashboardResearchCalendarQueryResult = {
 
 export function useDashboardResearchCalendarQuery({
   dataClient,
+  enabled = true,
   getTodayIsoDate = todayIsoDate,
 }: UseDashboardResearchCalendarQueryOptions): DashboardResearchCalendarQueryResult {
   const calendarAnchorDate = getTodayIsoDate();
@@ -42,6 +44,7 @@ export function useDashboardResearchCalendarQuery({
         startDate: calendarStartDate,
         endDate: calendarEndDate,
       }),
+    enabled,
     retry: false,
   });
 
