@@ -14,6 +14,8 @@ export type AgentClientMethods = {
   queryAgent: (request: AgentQueryRequest) => Promise<AgentEnvelope>;
 };
 
+export type AgentClientDelay = () => Promise<void>;
+
 export class AgentDisabledError extends Error {
   readonly code = "AGENT_DISABLED" as const;
 
@@ -69,6 +71,15 @@ export function buildStableDemoAgentEnvelope(): AgentEnvelope {
         requires_confirmation: true,
       },
     ],
+  };
+}
+
+export function createDemoAgentClient(delay: AgentClientDelay): AgentClientMethods {
+  return {
+    async queryAgent(_request: AgentQueryRequest): Promise<AgentEnvelope> {
+      await delay();
+      return buildStableDemoAgentEnvelope();
+    },
   };
 }
 

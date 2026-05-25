@@ -1,5 +1,4 @@
 import type {
-  AlertsPayload,
   ApiEnvelope,
   BalanceAnalysisCurrentUserPayload,
   BalanceAnalysisDecisionItemsPayload,
@@ -44,7 +43,6 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
   CockpitWarningsPayload,
-  ContributionPayload,
   ContributionSplitPayload,
   CounterpartyStatsResponse,
   CustomerBalanceTrendResponse,
@@ -63,7 +61,6 @@ import type {
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   FormalPnlRefreshPayload,
-  GetHomeSnapshotOptions,
   IndustryDistPayload,
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,
@@ -75,7 +72,6 @@ import type {
   NumericUnit,
   NcdFundingProxyPayload,
   PageResponse,
-  OverviewPayload,
   PnlBridgePayload,
   PnlBasis,
   PnlDataPayload,
@@ -101,13 +97,9 @@ import type {
   ResultMeta,
   RiskIndicatorsPayload,
   RatingStatsResponse,
-  RiskOverviewPayload,
-  RiskTensorDatesPayload,
-  RiskTensorPayload,
   SpreadAnalysisPayload,
   SpreadAttributionPayload,
   SubTypesResponse,
-  SummaryPayload,
   TPLMarketCorrelationPayload,
   YieldDistributionPayload,
   VolumeRateAttributionPayload,
@@ -116,8 +108,11 @@ import { formatRawAsNumeric } from "../utils/format";
 import type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
-import type { ExecutiveClientMethods } from "./executiveClient";
-import { fetchHomeSnapshotEnvelope } from "./executiveHomeSnapshotFetch";
+import {
+  createDemoExecutiveClient,
+  createRealExecutiveClient,
+  type ExecutiveClientMethods,
+} from "./executiveClient";
 import {
   createDemoHealthClient,
   createRealHealthClient,
@@ -161,7 +156,7 @@ import {
   type CubeClientMethods,
 } from "./cubeClient";
 import {
-  buildStableDemoAgentEnvelope,
+  createDemoAgentClient,
   createRealAgentClient,
   type AgentClientMethods,
 } from "./agentClient";
@@ -2224,24 +2219,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createMockKpiClient(),
     ...createMockCubeClient(),
     ...createMockPnlBusinessClient(),
+    ...createDemoAgentClient(delay),
+    ...createDemoExecutiveClient(delay, ensureMockClientBundle),
     ...dashboardWorkbenchDemoEndpoints(delay, ensureMockClientBundle),
     ...bondDashboardDemoEndpoints(delay, ensureMockClientBundle),
-    async queryAgent(_request) {
-      await delay();
-      return buildStableDemoAgentEnvelope();
-    },
-    async getOverview(_reportDate?: string) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.overview", (await ensureMockClientBundle()).overviewPayload);
-    },
-    async getHomeSnapshot(_options?: GetHomeSnapshotOptions) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("home.snapshot", (await ensureMockClientBundle()).mockHomeSnapshot);
-    },
-    async getSummary() {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.summary", (await ensureMockClientBundle()).summaryPayload);
-    },
     async getFormalPnlDates(basis = "formal") {
       await delay();
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
@@ -2444,78 +2425,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         basis: "formal",
         formal_use_allowed: true,
       });
-    },
-    async getRiskOverview() {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.risk-overview", (await ensureMockClientBundle()).riskOverviewPayload);
-    },
-    async getRiskTensorDates() {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "risk.tensor.dates",
-        {
-          report_dates: ["2026-02-28", "2026-01-31", "2025-12-31"],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getRiskTensor(reportDate: string) {
-      await delay();
-      const zero = "0.00000000";
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "risk.tensor",
-        {
-          report_date: reportDate,
-          portfolio_dv01: "120000.00000000",
-          regulatory_dv01: "120000.00000000",
-          krd_1y: "25000.00000000",
-          krd_3y: "50000.00000000",
-          krd_5y: "30000.00000000",
-          krd_7y: "10000.00000000",
-          krd_10y: "5000.00000000",
-          krd_30y: zero,
-          cs01: "18000.00000000",
-          portfolio_convexity: "24.50000000",
-          portfolio_modified_duration: "4.20000000",
-          issuer_concentration_hhi: "0.12000000",
-          issuer_top5_weight: "0.36000000",
-          asset_cashflow_30d: "300000000.00000000",
-          asset_cashflow_90d: "500000000.00000000",
-          liability_cashflow_30d: "200000000.00000000",
-          liability_cashflow_90d: "250000000.00000000",
-          liquidity_gap_30d: "100000000.00000000",
-          liquidity_gap_90d: "250000000.00000000",
-          liquidity_gap_30d_ratio: "0.05000000",
-          total_market_value: "500000000.00000000",
-          rate_risk_market_value: "400000000.00000000",
-          rate_risk_dv01: "110000.00000000",
-          rate_risk_modified_duration: "4.20000000",
-          duration_excluded_market_value: "100000000.00000000",
-          duration_excluded_count: 2,
-          bond_count: 8,
-          quality_flag: "warning",
-          warnings: [
-            "2 rows carry market_value=100000000.00000000 and are excluded from portfolio duration denominator.",
-          ],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getContribution() {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.contribution", (await ensureMockClientBundle()).contributionPayload);
-    },
-    async getAlerts() {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.alerts", (await ensureMockClientBundle()).alertsPayload);
-    },
-    async getPlaceholderSnapshot(key: string) {
-      await delay();
-      const $m = await ensureMockClientBundle();
-      return $m.buildMockApiEnvelope(
-        `workbench.${key}`,
-        $m.placeholderSnapshots[key] ?? $m.placeholderSnapshots.dashboard,
-      );
     },
     async getProductCategoryDates() {
       await delay();
@@ -4033,18 +3942,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealCubeClient({ fetchImpl, baseUrl }),
     ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
     ...createRealAgentClient({ fetchImpl, baseUrl }),
+    ...createRealExecutiveClient({
+      fetchImpl,
+      baseUrl,
+      requestJson,
+      getPlaceholderSnapshot: mockClient.getPlaceholderSnapshot,
+    }),
     ...dashboardWorkbenchLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     ...bondDashboardLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
-    getOverview: (reportDate?: string) =>
-      requestJson<OverviewPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/home/overview${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
-      ),
-    getHomeSnapshot: (options?: GetHomeSnapshotOptions) =>
-      fetchHomeSnapshotEnvelope(fetchImpl, baseUrl, options),
-    getSummary: () =>
-      requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getFormalPnlDates: (basis = "formal") =>
       requestJson<PnlDatesPayload>(
         fetchImpl,
@@ -4258,24 +4163,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/api/pnl-attribution/campisi/maturity-buckets${buildCampisiQuery(options)}`,
-      ),
-    getRiskOverview: () =>
-      requestJson<RiskOverviewPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/risk/overview",
-      ),
-    getRiskTensorDates: () =>
-      requestJson<RiskTensorDatesPayload>(
-        fetchImpl,
-        baseUrl,
-        "/api/risk/tensor/dates",
-      ),
-    getRiskTensor: (reportDate: string) =>
-      requestJson<RiskTensorPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/risk/tensor?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getBondAnalyticsDates: () =>
       requestJson<BondAnalyticsDatesPayload>(
@@ -4758,15 +4645,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/analysis/adb/coverage?${params.toString()}`,
       );
     },
-    getContribution: () =>
-      requestJson<ContributionPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/home/contribution",
-      ),
-    getAlerts: () =>
-      requestJson<AlertsPayload>(fetchImpl, baseUrl, "/ui/home/alerts"),
-    getPlaceholderSnapshot: mockClient.getPlaceholderSnapshot,
     getProductCategoryDates: () =>
       requestJson<ProductCategoryDatesPayload>(
         fetchImpl,

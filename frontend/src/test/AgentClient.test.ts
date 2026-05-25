@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AgentDisabledError,
   buildStableDemoAgentEnvelope,
+  createDemoAgentClient,
   createRealAgentClient,
 } from "../api/agentClient";
 import { createApiClient } from "../api/client";
@@ -20,6 +21,19 @@ describe("AgentClient", () => {
     const env = buildStableDemoAgentEnvelope();
     expect(env.result_meta.trace_id).toBeTruthy();
     expect(env.cards).toEqual([]);
+  });
+
+  it("returns the stable mock envelope from createDemoAgentClient", async () => {
+    const delay = vi.fn(async () => undefined);
+    const client = createDemoAgentClient(delay);
+
+    const env = await client.queryAgent({ question: "测试问题" });
+
+    expect(delay).toHaveBeenCalledOnce();
+    expect(env.answer).toBe("Agent 当前为演示模式");
+    expect(env.cards).toEqual([]);
+    expect(env.result_meta.result_kind).toBe("agent.frontend_mock");
+    expect(env.result_meta.generated_at).toBeTruthy();
   });
 
   it("throws AgentDisabledError on 503 disabled payload", async () => {
