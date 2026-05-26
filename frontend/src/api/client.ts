@@ -5,7 +5,6 @@ import type {
   CampisiEnhancedPayload,
   CampisiFourEffectsPayload,
   CampisiMaturityBucketsPayload,
-  CashflowProjectionPayload,
   CarryRollDownPayload,
   KRDAttributionPayload,
   LedgerPnlDataPayload,
@@ -45,6 +44,11 @@ import {
   createRealBondDashboardClient,
   type BondAnalyticsClientMethods,
 } from "./bondAnalyticsClient";
+import {
+  createDemoCashflowClient,
+  createRealCashflowClient,
+  type CashflowClientMethods,
+} from "./cashflowClient";
 import {
   createDemoExecutiveClient,
   createRealExecutiveClient,
@@ -131,6 +135,7 @@ export { ApiClientProvider, useApiClient } from "./clientContext";
 // Re-export domain method types for consumers who want fine-grained imports
 export type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 export type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
+export type { CashflowClientMethods } from "./cashflowClient";
 export type { DashboardClientMethods } from "./workbenchDashboardApi";
 export type { ExecutiveClientMethods } from "./executiveClient";
 export type { MarketDataClientMethods } from "./marketDataClient";
@@ -155,6 +160,7 @@ export type ApiClient = {
   & ProductCategoryClientMethods
   & QdbGlMonthlyAnalysisClientMethods
   & BalanceMovementClientMethods
+  & CashflowClientMethods
   & BondAnalyticsClientMethods
   & BalanceAnalysisClientMethods
   & PositionsClientMethods & LiabilityAdbClientMethods
@@ -1379,26 +1385,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createDemoBalanceAnalysisClient(delay, ensureMockClientBundle),
     ...createDemoPositionsClient(delay, ensureMockClientBundle),
     ...createDemoLiabilityAdbClient(delay, ensureMockClientBundle),
-    async getCashflowProjection(reportDate: string) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "cashflow_projection.overview",
-        {
-          report_date: reportDate,
-          duration_gap: formatRawAsNumeric({ raw: 1.25, unit: "ratio", sign_aware: true }),
-          asset_duration: formatRawAsNumeric({ raw: 3.8, unit: "ratio", sign_aware: false }),
-          liability_duration: formatRawAsNumeric({ raw: 2.55, unit: "ratio", sign_aware: false }),
-          equity_duration: formatRawAsNumeric({ raw: 5.2, unit: "ratio", sign_aware: true }),
-          rate_sensitivity_1bp: formatRawAsNumeric({ raw: 125_000, unit: "yuan", sign_aware: true }),
-          reinvestment_risk_12m: formatRawAsNumeric({ raw: 0.185, unit: "pct", sign_aware: false }),
-          monthly_buckets: [],
-          top_maturing_assets_12m: [],
-          warnings: [],
-          computed_at: new Date().toISOString(),
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
+    ...createDemoCashflowClient(delay),
   };
 
   if (mode === "mock") {
@@ -1642,12 +1629,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/pnl-attribution/campisi/maturity-buckets${buildCampisiQuery(options)}`,
       ),
     ...createRealPositionsClient({ fetchImpl, baseUrl, requestJson }),
-    getCashflowProjection: (reportDate: string) =>
-      requestJson<CashflowProjectionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/cashflow-projection?report_date=${encodeURIComponent(reportDate)}`,
-      ),
+    ...createRealCashflowClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealLiabilityAdbClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealProductCategoryClient({
       fetchImpl,

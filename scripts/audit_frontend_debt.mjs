@@ -6,9 +6,9 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 1678,
-  // Phase 4E moves QDB GL Monthly Analysis endpoint implementations into qdbGlMonthlyAnalysisClient.ts.
-  apiClientMockOccurrences: 232,
+  apiClientLines: 1660,
+  // Phase 4F moves Cashflow endpoint implementations into cashflowClient.ts.
+  apiClientMockOccurrences: 230,
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

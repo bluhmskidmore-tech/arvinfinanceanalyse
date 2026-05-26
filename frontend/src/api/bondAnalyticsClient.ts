@@ -17,7 +17,6 @@ import type {
   YieldCurveTermStructurePayload,
   ActionAttributionPayload,
   AccountingClassAuditPayload,
-  CashflowProjectionPayload,
   KRDCurveRiskPayload,
   IndustryDistPayload,
   MaturityStructurePayload,
@@ -29,8 +28,9 @@ import type {
 } from "./contracts";
 import { formatRawAsNumeric } from "../utils/format";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
+import type { CashflowClientMethods } from "./cashflowClient";
 
-export type BondAnalyticsClientMethods = {
+type BondAnalyticsCoreSurfaceMethods = {
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
   getBondAnalyticsRefreshStatus: (runId: string) => Promise<BondAnalyticsRefreshPayload>;
   getBondAnalyticsDates: () => Promise<ApiEnvelope<BondAnalyticsDatesPayload>>;
@@ -102,8 +102,9 @@ export type BondAnalyticsClientMethods = {
     reportDate: string,
     options?: { curveTypes?: string },
   ) => Promise<ApiEnvelope<YieldCurveTermStructurePayload>>;
-  getCashflowProjection: (reportDate: string) => Promise<ApiEnvelope<CashflowProjectionPayload>>;
 };
+
+export type BondAnalyticsClientMethods = BondAnalyticsCoreSurfaceMethods & CashflowClientMethods;
 
 type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
+import type { BondAnalyticsClientMethods } from "../api/bondAnalyticsClient";
 import type { PnlClientMethods } from "../api/pnlClient";
 
 const clientSource = readFileSync(resolve(process.cwd(), "src/api/client.ts"), "utf8");
@@ -18,6 +19,7 @@ const agentClientSource = readFileSync(resolve(process.cwd(), "src/api/agentClie
 const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/executiveClient.ts"), "utf8");
 const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
+const cashflowClientSource = readFileSync(resolve(process.cwd(), "src/api/cashflowClient.ts"), "utf8");
 const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
 const productCategoryClientSource = readFileSync(resolve(process.cwd(), "src/api/productCategoryClient.ts"), "utf8");
@@ -95,6 +97,18 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.exportBalanceAnalysisWorkbookXlsx).toBe("function");
     expect(typeof client.refreshBalanceAnalysis).toBe("function");
     expect(typeof client.getBalanceAnalysisRefreshStatus).toBe("function");
+  });
+
+  it("keeps the public Cashflow surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getCashflowProjection).toBe("function");
+  });
+
+  it("keeps Cashflow methods in the BondAnalyticsClientMethods compatibility type", () => {
+    expectTypeOf<BondAnalyticsClientMethods>().toMatchTypeOf<
+      Pick<ApiClient, "getCashflowProjection">
+    >();
   });
 
   it("keeps the public Positions surface available from createApiClient", () => {
@@ -586,6 +600,81 @@ describe("ApiClient composition boundary", () => {
     });
   });
 
+  it("routes real Cashflow requests to exact backend endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_cashflow_projection",
+          basis: "formal",
+          result_kind: "cashflow_projection.overview",
+          formal_use_allowed: true,
+          source_version: "sv_cashflow",
+          vendor_version: "vv_none",
+          rule_version: "rv_cashflow_projection_v1",
+          cache_version: "cv_cashflow_projection_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: {
+          report_date: "2026 03/31",
+          duration_gap: { raw: 0, display: "0", unit: "ratio" },
+          asset_duration: { raw: 0, display: "0", unit: "ratio" },
+          liability_duration: { raw: 0, display: "0", unit: "ratio" },
+          equity_duration: { raw: 0, display: "0", unit: "ratio" },
+          rate_sensitivity_1bp: { raw: 0, display: "0", unit: "yuan" },
+          reinvestment_risk_12m: { raw: 0, display: "0", unit: "pct" },
+          monthly_buckets: [],
+          top_maturing_assets_12m: [],
+          warnings: [],
+          computed_at: "2026-05-25T09:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getCashflowProjection("2026 03/31");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/cashflow-projection?report_date=2026%2003%2F31",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps Cashflow mock envelope shape after extraction", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getCashflowProjection("2026-03-31")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "cashflow_projection.overview",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+      result: {
+        report_date: "2026-03-31",
+        duration_gap: { raw: 1.25, unit: "ratio", sign_aware: true },
+        asset_duration: { raw: 3.8, unit: "ratio", sign_aware: false },
+        liability_duration: { raw: 2.55, unit: "ratio", sign_aware: false },
+        equity_duration: { raw: 5.2, unit: "ratio", sign_aware: true },
+        rate_sensitivity_1bp: { raw: 125_000, unit: "yuan", sign_aware: true },
+        reinvestment_risk_12m: { raw: 0.185, unit: "pct", sign_aware: false },
+        monthly_buckets: [],
+        top_maturing_assets_12m: [],
+        warnings: [],
+      },
+    });
+  });
+
   it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
@@ -684,6 +773,8 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("qdb_gl_monthly_analysis:");
     expect(clientSource).not.toContain("qdb_gl_monthly_analysis.analytical");
     expect(clientSource).not.toContain("monthly_operating_analysis_adjustments");
+    expect(clientSource).not.toContain("/api/cashflow-projection");
+    expect(clientSource).not.toContain("cashflow_projection.overview");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -789,6 +880,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async restoreQdbGlMonthlyAnalysisManualAdjustment\(/);
     expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
     expect(clientSource).not.toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
+    expect(clientSource).not.toMatch(/async getCashflowProjection\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -1064,6 +1156,16 @@ describe("ApiClient composition boundary", () => {
     expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async restoreQdbGlMonthlyAnalysisManualAdjustment\(/);
     expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
     expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
+  });
+
+  it("requires cashflowClient.ts to own Cashflow API implementations", () => {
+    expect(cashflowClientSource).toContain("createDemoCashflowClient");
+    expect(cashflowClientSource).toContain("createRealCashflowClient");
+    expect(cashflowClientSource).toContain("/api/cashflow-projection");
+    expect(cashflowClientSource).toContain("cashflow_projection.overview");
+    expect(cashflowClientSource).toMatch(/async getCashflowProjection\(/);
+    expect(cashflowClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+    expect(cashflowClientSource).not.toContain("/api/positions/");
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {
