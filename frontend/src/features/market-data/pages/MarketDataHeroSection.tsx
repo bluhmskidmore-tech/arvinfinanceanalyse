@@ -130,7 +130,7 @@ export function MarketDataHeroSection({
       <div className="market-data-hero-inner">
         <DataStatusStrip testId="market-data-data-status-strip">
           <div className="market-data-header-meta">
-            <span>口径 {isFormalBasis ? "正式" : "分析"}</span>
+            <span>利率主表口径：{isFormalBasis ? "正式" : "分析"}</span>
             <span>目录 {catalogCount}</span>
             <span>
               稳定回收 {stableCount} / {stableCatalogCount}

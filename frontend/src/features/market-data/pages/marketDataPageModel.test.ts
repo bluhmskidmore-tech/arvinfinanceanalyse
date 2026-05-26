@@ -82,6 +82,20 @@ function envelope<T>(result: T, partialMeta: Partial<ResultMeta> = {}): ApiEnvel
   };
 }
 
+const NON_FORMAL_OVERVIEW_METRIC_IDS = [
+  "market-data-stable-count",
+  "market-data-fallback-count",
+  "market-data-stable-trade-date",
+  "market-data-missing-stable-count",
+  "market-data-fx-analytical-group-count",
+  "market-data-fx-analytical-series-count",
+  "market-data-linkage-report-date",
+];
+
+function expectNoFormalMetricClaim(detail: string) {
+  expect(detail).not.toMatch(/\bformal\b|MTR-|golden sample|capture-ready|正式指标|黄金样本/i);
+}
+
 describe("marketDataPageModel", () => {
   it("normalizes market-data envelopes into the page read model without inventing business values", () => {
     const catalogEnvelope = envelope<MacroVendorPayload>(
@@ -146,53 +160,69 @@ describe("marketDataPageModel", () => {
         },
       ],
     };
-    const linkageEnvelope = envelope<MacroBondLinkagePayload>({
-      report_date: "2026-04-12",
-      environment_score: { composite_score: 0.2 },
-      portfolio_impact: { total_estimated_impact: 12 },
-      top_correlations: [
-        {
-          series_id: "SPREAD_LOW",
-          series_name: "Spread low",
-          target_family: "credit_spread",
-          target_tenor: "5Y",
-          correlation_3m: 0.1,
-          correlation_6m: 0.2,
-          correlation_1y: 0.3,
-          lead_lag_days: 1,
-          direction: "positive",
-        },
-        {
-          series_id: "SPREAD_HIGH",
-          series_name: "Spread high",
-          target_family: "credit_spread",
-          target_tenor: "5Y",
-          correlation_3m: -0.8,
-          correlation_6m: 0.1,
-          correlation_1y: 0.2,
-          lead_lag_days: 2,
-          direction: "negative",
-        },
-        {
-          series_id: "RATE_10Y",
-          series_name: "Rate 10Y",
-          target_family: "treasury",
-          target_tenor: "10Y",
-          correlation_3m: 0.4,
-          correlation_6m: 0.5,
-          correlation_1y: 0.6,
-          lead_lag_days: 0,
-          direction: "positive",
-        },
-      ],
-      warnings: ["lineage pending"],
-      computed_at: "2026-04-12T09:00:00Z",
-    });
+    const linkageEnvelope = envelope<MacroBondLinkagePayload>(
+      {
+        report_date: "2026-04-12",
+        environment_score: { composite_score: 0.2 },
+        portfolio_impact: { total_estimated_impact: 12 },
+        top_correlations: [
+          {
+            series_id: "SPREAD_LOW",
+            series_name: "Spread low",
+            target_family: "credit_spread",
+            target_tenor: "5Y",
+            correlation_3m: 0.1,
+            correlation_6m: 0.2,
+            correlation_1y: 0.3,
+            lead_lag_days: 1,
+            direction: "positive",
+          },
+          {
+            series_id: "SPREAD_HIGH",
+            series_name: "Spread high",
+            target_family: "credit_spread",
+            target_tenor: "5Y",
+            correlation_3m: -0.8,
+            correlation_6m: 0.1,
+            correlation_1y: 0.2,
+            lead_lag_days: 2,
+            direction: "negative",
+          },
+          {
+            series_id: "RATE_10Y",
+            series_name: "Rate 10Y",
+            target_family: "treasury",
+            target_tenor: "10Y",
+            correlation_3m: 0.4,
+            correlation_6m: 0.5,
+            correlation_1y: 0.6,
+            lead_lag_days: 0,
+            direction: "positive",
+          },
+        ],
+        warnings: ["lineage pending"],
+        computed_at: "2026-04-12T09:00:00Z",
+      },
+      {
+        basis: "analytical",
+        formal_use_allowed: false,
+        result_kind: "market_data.macro_bond_linkage",
+        source_version: "sv_linkage",
+      },
+    );
 
     const model = buildMarketDataPageModel({
       catalogEnvelope,
       latestEnvelope,
-      fxAnalyticalEnvelope: envelope({ read_target: "duckdb", groups: [fxGroup] }),
+      fxAnalyticalEnvelope: envelope(
+        { read_target: "duckdb", groups: [fxGroup] },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          result_kind: "fx.analytical.groups",
+          source_version: "sv_fx_analytical",
+        },
+      ),
       formalRatesEnvelope: envelope<ChoiceMacroLatestPayload>(
         { read_target: "duckdb", series: [latestPoint("EMM00166466", "2026-04-10")] },
         { basis: "formal", formal_use_allowed: true, source_version: "sv_formal_rates" },
@@ -219,6 +249,20 @@ describe("marketDataPageModel", () => {
     expect(model.sourcePendingCount).toBe(3);
     expect(model.hasPortfolioImpact).toBe(true);
     expect(model.macroBondLinkageWarnings).toEqual(["lineage pending"]);
+    expect(model.evidenceLines).toEqual({
+      formalRates:
+        "formal rates: basis=formal formal_use_allowed=true quality=ok fallback=none vendor_status=ok source=sv_formal_rates",
+      macroLatest:
+        "macro latest: basis=analytical formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_market_data_page_model",
+      fxAnalytical:
+        "FX analytical: basis=analytical formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_fx_analytical",
+      ncdProxy:
+        "NCD proxy: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      livermore:
+        "Livermore: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      linkage:
+        "macro-bond linkage: basis=analytical formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_linkage",
+    });
     expect(model.spreadSlots.find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
       "SPREAD_HIGH",
     );
@@ -233,6 +277,14 @@ describe("marketDataPageModel", () => {
       ["market-data-fx-analytical-series-count", "1", undefined],
       ["market-data-linkage-report-date", "2026-04-12", "default"],
     ]);
+    const metricDetails = new Map(
+      model.overviewMetrics.map((metric) => [metric.testId, metric.detail]),
+    );
+    for (const metricId of NON_FORMAL_OVERVIEW_METRIC_IDS) {
+      const detail = metricDetails.get(metricId);
+      expect(detail, `${metricId} should expose display/status context`).toBeTruthy();
+      expectNoFormalMetricClaim(detail ?? "");
+    }
   });
 
   it("keeps empty and pending states explicit when envelopes have not loaded", () => {
@@ -243,6 +295,15 @@ describe("marketDataPageModel", () => {
     expect(model.rateTrendChartOption).toBeNull();
     expect(model.livermoreStrategy).toBeNull();
     expect(model.macroMeta).toBeUndefined();
+    expect(model.isFormalBasis).toBe(false);
+    expect(Object.values(model.evidenceLines)).toEqual([
+      "formal rates: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      "macro latest: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      "FX analytical: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      "NCD proxy: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      "Livermore: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      "macro-bond linkage: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+    ]);
     expect(model.statusBadges.readinessVerdict).toBe("读面就绪");
     expect(model.stableLatestTradeDate).toBe("—");
     expect(model.linkageReportDate).toBe("");
@@ -257,5 +318,42 @@ describe("marketDataPageModel", () => {
       ["market-data-fx-analytical-series-count", "0", undefined],
       ["market-data-linkage-report-date", "—", "warning"],
     ]);
+  });
+
+  it("does not treat analytical rates as formal page basis", () => {
+    const model = buildMarketDataPageModel({
+      formalRatesEnvelope: envelope<ChoiceMacroLatestPayload>(
+        { read_target: "duckdb", series: [latestPoint("EMM00166466", "2026-04-10")] },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          fallback_mode: "latest_snapshot",
+          source_version: "sv_analytical_rates",
+        },
+      ),
+    });
+
+    expect(model.isFormalBasis).toBe(false);
+    expect(model.evidenceLines.formalRates).toBe(
+      "formal rates: basis=analytical formal_use_allowed=false quality=ok fallback=latest_snapshot vendor_status=ok source=sv_analytical_rates",
+    );
+  });
+
+  it("surfaces stale result quality in evidence lines", () => {
+    const model = buildMarketDataPageModel({
+      formalRatesEnvelope: envelope<ChoiceMacroLatestPayload>(
+        { read_target: "duckdb", series: [latestPoint("EMM00166466", "2026-04-10")] },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          quality_flag: "stale",
+          source_version: "sv_stale_rates",
+        },
+      ),
+    });
+
+    expect(model.evidenceLines.formalRates).toBe(
+      "formal rates: basis=formal formal_use_allowed=true quality=stale fallback=none vendor_status=ok source=sv_stale_rates",
+    );
   });
 });

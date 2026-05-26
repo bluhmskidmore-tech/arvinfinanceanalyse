@@ -33,7 +33,6 @@ import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/c
 import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
 import { MarketDataHeroSection } from "./MarketDataHeroSection";
 import { MarketDataMacroDepthTabs } from "./MarketDataMacroDepthTabs";
-import { metaEvidenceLine } from "./marketDataPageModel";
 import "./MarketDataPage.css";
 
 /** 产品默认：不显式铺开 Choice 宏观序列读面大卡与页尾目录/追踪版本证据面板（仍为分析读面保留接口拉取与市场概览 KPI）。 */
@@ -319,11 +318,11 @@ export default function MarketDataPage() {
     macroMeta,
     formalRatesMeta,
     fxAnalyticalMeta,
-    ncdFundingProxyMeta,
     rateQuotesSource,
     sourcePendingCount,
     isFormalBasis,
     statusBadges,
+    evidenceLines,
     overviewMetrics,
   } = pageModel;
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
@@ -452,9 +451,12 @@ export default function MarketDataPage() {
 
       <section className="market-data-macro-evidence-rail" data-testid="market-data-macro-evidence-rail">
         <strong>证据与口径（只读）</strong>
-        <span>{metaEvidenceLine("formal rates", formalRatesMeta)}</span>
-        <span>{metaEvidenceLine("macro latest", latestQuery.data?.result_meta)}</span>
-        <span>{metaEvidenceLine("NCD proxy", ncdFundingProxyMeta)}</span>
+        <span>{evidenceLines.formalRates}</span>
+        <span>{evidenceLines.macroLatest}</span>
+        <span>{evidenceLines.fxAnalytical}</span>
+        <span>{evidenceLines.ncdProxy}</span>
+        <span>{evidenceLines.livermore}</span>
+        <span>{evidenceLines.linkage}</span>
       </section>
 
       {(MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ||

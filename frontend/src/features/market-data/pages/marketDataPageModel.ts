@@ -40,6 +40,15 @@ export type MarketDataStatusBadges = {
   secondaryLabel: string;
 };
 
+export type MarketDataEvidenceLines = {
+  formalRates: string;
+  macroLatest: string;
+  fxAnalytical: string;
+  ncdProxy: string;
+  livermore: string;
+  linkage: string;
+};
+
 export type MarketDataPageModel = MarketDataCategoryStore & {
   catalog: MacroVendorPayload["series"];
   latestSeries: ChoiceMacroLatestPoint[];
@@ -61,6 +70,7 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   sourcePendingCount: number;
   isFormalBasis: boolean;
   statusBadges: MarketDataStatusBadges;
+  evidenceLines: MarketDataEvidenceLines;
   overviewMetrics: MarketOverviewMetric[];
 };
 
@@ -227,6 +237,24 @@ function buildOverviewMetrics(input: {
   ];
 }
 
+function buildEvidenceLines(input: {
+  formalRatesMeta?: ResultMeta;
+  latestMeta?: ResultMeta;
+  fxAnalyticalMeta?: ResultMeta;
+  ncdFundingProxyMeta?: ResultMeta;
+  livermoreMeta?: ResultMeta;
+  macroBondLinkageMeta?: ResultMeta;
+}): MarketDataEvidenceLines {
+  return {
+    formalRates: metaEvidenceLine("formal rates", input.formalRatesMeta),
+    macroLatest: metaEvidenceLine("macro latest", input.latestMeta),
+    fxAnalytical: metaEvidenceLine("FX analytical", input.fxAnalyticalMeta),
+    ncdProxy: metaEvidenceLine("NCD proxy", input.ncdFundingProxyMeta),
+    livermore: metaEvidenceLine("Livermore", input.livermoreMeta),
+    linkage: metaEvidenceLine("macro-bond linkage", input.macroBondLinkageMeta),
+  };
+}
+
 export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): MarketDataPageModel {
   const catalog = input.catalogEnvelope?.result.series ?? [];
   const latestSeries = input.latestEnvelope?.result.series ?? [];
@@ -281,6 +309,14 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
       overviewReadinessLabel: "读面就绪",
       secondaryLabel: "辅助观察",
     },
+    evidenceLines: buildEvidenceLines({
+      formalRatesMeta,
+      latestMeta: input.latestEnvelope?.result_meta,
+      fxAnalyticalMeta: input.fxAnalyticalEnvelope?.result_meta,
+      ncdFundingProxyMeta: input.ncdFundingProxyMeta,
+      livermoreMeta: input.livermoreStrategyEnvelope?.result_meta,
+      macroBondLinkageMeta: input.macroBondLinkageEnvelope?.result_meta,
+    }),
     overviewMetrics: buildOverviewMetrics({
       catalogCount: catalog.length,
       categoryStore,
@@ -291,7 +327,7 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
 
 export function metaEvidenceLine(label: string, meta: ResultMeta | undefined) {
   if (!meta) {
-    return `${label}: basis=pending formal_use_allowed=pending fallback=pending vendor_status=pending source=pending`;
+    return `${label}: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending`;
   }
-  return `${label}: basis=${meta.basis} formal_use_allowed=${meta.formal_use_allowed} fallback=${meta.fallback_mode} vendor_status=${meta.vendor_status} source=${meta.source_version}`;
+  return `${label}: basis=${meta.basis} formal_use_allowed=${meta.formal_use_allowed} quality=${meta.quality_flag} fallback=${meta.fallback_mode} vendor_status=${meta.vendor_status} source=${meta.source_version}`;
 }

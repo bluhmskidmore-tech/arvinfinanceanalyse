@@ -430,12 +430,19 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-overview-secondary-label")).toHaveTextContent("辅助观察");
     expect(screen.getByText(/观察日期/)).toBeInTheDocument();
     expect(screen.getByText("市场概览")).toBeInTheDocument();
+    const statusStrip = screen.getByTestId("market-data-data-status-strip");
+    expect(statusStrip).toHaveTextContent("利率主表口径");
+    expect(statusStrip).not.toHaveTextContent("口径 正式");
+    expect(statusStrip).not.toHaveTextContent("口径 分析");
     expect(screen.getByText("利率、资金、宏观深度与成交观察")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-macro-workbench")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("证据与口径（只读）");
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent(
       "formal_use_allowed",
     );
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("FX analytical");
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("Livermore");
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("macro-bond linkage");
     expect(screen.getByTestId("market-data-source-pending-deck")).toBeInTheDocument();
     expect(screen.getByText("Livermore 趋势门控")).toBeInTheDocument();
     expect(screen.queryByText("宏观序列与分析观察")).not.toBeInTheDocument();
@@ -572,6 +579,9 @@ describe("MarketDataPage", () => {
     expect(evidenceRail).toHaveTextContent("fallback=none");
     expect(evidenceRail).toHaveTextContent("vendor_status=ok");
     expect(evidenceRail).toHaveTextContent("sv_formal_rates_terminal_test");
+    expect(evidenceRail).toHaveTextContent("FX analytical");
+    expect(evidenceRail).toHaveTextContent("Livermore");
+    expect(evidenceRail).toHaveTextContent("macro-bond linkage");
     expect(screen.getByTestId("market-data-source-pending-summary")).toHaveTextContent(
       "source-pending",
     );
