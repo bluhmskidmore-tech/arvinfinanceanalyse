@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { createApiClient } from "../api/client";
+import { createApiClient, type ApiClient } from "../api/client";
+import type { PnlClientMethods } from "../api/pnlClient";
 
 const clientSource = readFileSync(resolve(process.cwd(), "src/api/client.ts"), "utf8");
 const clientContextSource = readFileSync(resolve(process.cwd(), "src/api/clientContext.ts"), "utf8");
@@ -160,6 +161,26 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.restoreQdbGlMonthlyAnalysisManualAdjustment).toBe("function");
     expect(typeof client.getQdbGlMonthlyAnalysisManualAdjustments).toBe("function");
     expect(typeof client.exportQdbGlMonthlyAnalysisManualAdjustmentsCsv).toBe("function");
+  });
+
+  it("keeps QDB GL Monthly Analysis methods in the PnlClientMethods compatibility type", () => {
+    expectTypeOf<PnlClientMethods>().toMatchTypeOf<
+      Pick<
+        ApiClient,
+        | "getQdbGlMonthlyAnalysisDates"
+        | "getQdbGlMonthlyAnalysisWorkbook"
+        | "exportQdbGlMonthlyAnalysisWorkbookXlsx"
+        | "refreshQdbGlMonthlyAnalysis"
+        | "getQdbGlMonthlyAnalysisRefreshStatus"
+        | "getQdbGlMonthlyAnalysisScenario"
+        | "createQdbGlMonthlyAnalysisManualAdjustment"
+        | "updateQdbGlMonthlyAnalysisManualAdjustment"
+        | "revokeQdbGlMonthlyAnalysisManualAdjustment"
+        | "restoreQdbGlMonthlyAnalysisManualAdjustment"
+        | "getQdbGlMonthlyAnalysisManualAdjustments"
+        | "exportQdbGlMonthlyAnalysisManualAdjustmentsCsv"
+      >
+    >();
   });
 
   it("routes real Positions list requests to exact backend endpoints", async () => {
@@ -377,6 +398,192 @@ describe("ApiClient composition boundary", () => {
         headers: expect.objectContaining({ Accept: "text/csv, text/plain;q=0.9, */*;q=0.8" }),
       }),
     );
+  });
+
+  it("routes every real QDB GL Monthly Analysis endpoint after extraction", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({
+        "Content-Disposition": 'attachment; filename="qdb-workbook.xlsx"',
+      }),
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_qdb_gl_monthly_analysis",
+          basis: "analytical",
+          result_kind: "qdb-gl-monthly-analysis.dates",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl",
+          vendor_version: "vv_none",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: { report_months: [] },
+        status: "completed",
+        run_id: "run qdb/1",
+        job_name: "qdb_gl_monthly_analysis",
+        trigger_mode: "sync",
+        cache_key: "qdb_gl_monthly_analysis.analytical",
+        adjustment_id: "adj qdb/1",
+        event_type: "edited",
+        created_at: "2026-04-12T00:10:00Z",
+        stream: "monthly_operating_analysis_adjustments",
+        report_month: "202602",
+        adjustment_class: "analysis_adjustment",
+        target: {},
+        operator: "OVERRIDE",
+        value: "100",
+        approval_status: "approved",
+        adjustment_count: 0,
+        adjustments: [],
+        events: [],
+      }),
+      text: async () => "adjustment_id,event_type\n",
+      blob: async () => new Blob(["workbook"]),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getQdbGlMonthlyAnalysisDates();
+    await client.exportQdbGlMonthlyAnalysisWorkbookXlsx({ reportMonth: "2026 02" });
+    await client.refreshQdbGlMonthlyAnalysis({ reportMonth: "2026 02" });
+    await client.getQdbGlMonthlyAnalysisRefreshStatus("run qdb/1");
+    await client.updateQdbGlMonthlyAnalysisManualAdjustment("adj qdb/1", {
+      report_month: "202602",
+      adjustment_class: "analysis_adjustment",
+      target: { sheet: "income", row: "fee" },
+      operator: "OVERRIDE",
+      value: "200",
+      approval_status: "approved",
+    });
+    await client.revokeQdbGlMonthlyAnalysisManualAdjustment("adj qdb/1");
+    await client.restoreQdbGlMonthlyAnalysisManualAdjustment("adj qdb/1");
+    await client.getQdbGlMonthlyAnalysisManualAdjustments("2026 02");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/workbook/export?report_month=2026%2002",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream;q=0.9, */*;q=0.8",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/refresh?report_month=2026%2002",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/refresh-status?run_id=run%20qdb%2F1",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/manual-adjustments/adj%20qdb%2F1/edit",
+      expect.objectContaining({
+        body: JSON.stringify({
+          report_month: "202602",
+          adjustment_class: "analysis_adjustment",
+          target: { sheet: "income", row: "fee" },
+          operator: "OVERRIDE",
+          value: "200",
+          approval_status: "approved",
+        }),
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/manual-adjustments/adj%20qdb%2F1/revoke",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/manual-adjustments/adj%20qdb%2F1/restore",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/manual-adjustments?report_month=2026%2002",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps QDB GL Monthly Analysis mock envelope shapes after extraction", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getQdbGlMonthlyAnalysisDates()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "qdb-gl-monthly-analysis.dates",
+        basis: "analytical",
+        formal_use_allowed: false,
+        source_version: "sv_qdb_gl_mock",
+        rule_version: "rv_qdb_gl_monthly_analysis_v1",
+        cache_version: "cv_qdb_gl_monthly_analysis_v1",
+      },
+      result: { report_months: [] },
+    });
+    await expect(
+      client.getQdbGlMonthlyAnalysisWorkbook({ reportMonth: "202602" }),
+    ).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "qdb-gl-monthly-analysis.workbook",
+        basis: "analytical",
+      },
+      result: { report_month: "202602", sheets: [] },
+    });
+    await expect(
+      client.getQdbGlMonthlyAnalysisScenario({
+        reportMonth: "202602",
+        scenarioName: "shock",
+        deviationWarn: 0,
+      }),
+    ).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "qdb-gl-monthly-analysis.scenario",
+        basis: "analytical",
+      },
+      result: {
+        report_month: "202602",
+        scenario_name: "shock",
+        applied_overrides: { DEVIATION_WARN: 0 },
+        sheets: [],
+      },
+    });
   });
 
   it("keeps extracted domain implementation out of client.ts", () => {

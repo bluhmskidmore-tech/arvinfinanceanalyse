@@ -41,6 +41,7 @@ import type {
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "./contracts";
+import type { QdbGlMonthlyAnalysisClientMethods } from "./qdbGlMonthlyAnalysisClient";
 
 type FetchLike = typeof fetch;
 
@@ -68,7 +69,7 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-export type PnlClientMethods = {
+type PnlCoreClientMethods = {
   getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
   getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
   getFormalPnlOverview: (
@@ -169,6 +170,8 @@ export type PnlClientMethods = {
     lookbackDays?: number;
   }) => Promise<ApiEnvelope<CampisiDecisionGradePayload>>;
 };
+
+export type PnlClientMethods = PnlCoreClientMethods & QdbGlMonthlyAnalysisClientMethods;
 
 type PnlBusinessClientMethods = Pick<
   PnlClientMethods,
