@@ -3461,9 +3461,16 @@
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-columns: minmax(50px, 1fr) 30px;
   align-items: end;
-  gap: 4px;
+  gap: 3px;
+}
+
+[data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 1px;
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values strong {
@@ -3473,10 +3480,11 @@
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__values span:last-child {
   font-size: 10px;
+  max-width: 100%;
 }
 
 [data-testid="fixed-income-dashboard-page"] .dashboard-terminal-market-tape .dashboard-cockpit-pulse__spark {
-  width: 42px;
+  width: 30px;
   height: 20px;
 }
 

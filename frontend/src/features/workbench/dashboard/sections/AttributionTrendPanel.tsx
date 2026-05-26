@@ -164,7 +164,7 @@ export function AttributionTrendPanel({
               data-testid="dashboard-product-pnl-pending"
               className="dashboard-terminal-mini-trend__empty dashboard-home-muted"
             >
-              <strong>月度读面待展开</strong>
+              <strong>月度趋势入口</strong>
               <small>展开深钻读面查看正式月度趋势</small>
             </div>
           ) : (
