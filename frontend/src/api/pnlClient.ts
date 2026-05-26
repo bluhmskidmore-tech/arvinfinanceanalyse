@@ -14,14 +14,9 @@ import type {
   CampisiFourEffectsPayload,
   CampisiMaturityBucketsPayload,
   CarryRollDownPayload,
-  FormalPnlRefreshPayload,
   KRDAttributionPayload,
-  LedgerPnlDataPayload,
-  LedgerPnlDatesPayload,
-  LedgerPnlSummaryPayload,
   PnlAttributionAnalysisSummary,
   PnlAttributionPayload,
-  PnlBasis,
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisPayload,
   PnlByBusinessManualAdjustmentListPayload,
@@ -30,17 +25,14 @@ import type {
   PnlByBusinessMonthlyPayload,
   PnlByBusinessPayload,
   PnlByBusinessYtdPayload,
-  PnlBridgePayload,
   PnlCompositionPayload,
-  PnlDataPayload,
-  PnlDatesPayload,
-  PnlOverviewPayload,
   PnlV1DataPayload,
   PnlYearlyBusinessSummaryPayload,
   SpreadAttributionPayload,
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "./contracts";
+import type { PnlCoreClientMethods } from "./pnlCoreClient";
 import type { QdbGlMonthlyAnalysisClientMethods } from "./qdbGlMonthlyAnalysisClient";
 
 type FetchLike = typeof fetch;
@@ -69,23 +61,8 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-type PnlCoreClientMethods = {
-  getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
-  getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
-  getFormalPnlOverview: (
-    reportDate: string,
-    basis?: PnlBasis,
-  ) => Promise<ApiEnvelope<PnlOverviewPayload>>;
+type PnlAttributionClientMethods = {
   getPnlV1Data: (date: string) => Promise<ApiEnvelope<PnlV1DataPayload>>;
-  getLedgerPnlDates: () => Promise<ApiEnvelope<LedgerPnlDatesPayload>>;
-  getLedgerPnlData: (
-    reportDate: string,
-    currency?: string,
-  ) => Promise<ApiEnvelope<LedgerPnlDataPayload>>;
-  getLedgerPnlSummary: (
-    reportDate: string,
-    currency?: string,
-  ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
   getPnlByBusiness: (reportDate: string) => Promise<ApiEnvelope<PnlByBusinessPayload>>;
   getPnlByBusinessYtd: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
   getPnlByBusinessMonthly: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessMonthlyPayload>>;
@@ -112,9 +89,6 @@ type PnlCoreClientMethods = {
     reportDate: string,
   ) => Promise<PnlByBusinessManualAdjustmentListPayload>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
-  getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
-  refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
-  getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: (reportDate?: string) => Promise<ApiEnvelope<PnlAttributionPayload>>;
   getVolumeRateAttribution: (options?: {
     reportDate?: string;
@@ -171,7 +145,8 @@ type PnlCoreClientMethods = {
   }) => Promise<ApiEnvelope<CampisiDecisionGradePayload>>;
 };
 
-export type PnlClientMethods = PnlCoreClientMethods & QdbGlMonthlyAnalysisClientMethods;
+export type PnlClientMethods =
+  PnlAttributionClientMethods & PnlCoreClientMethods & QdbGlMonthlyAnalysisClientMethods;
 
 type PnlBusinessClientMethods = Pick<
   PnlClientMethods,

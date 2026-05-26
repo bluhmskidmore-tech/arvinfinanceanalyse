@@ -6,6 +6,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { createApiClient, type ApiClient } from "../api/client";
 import type { BondAnalyticsClientMethods } from "../api/bondAnalyticsClient";
 import type { PnlClientMethods } from "../api/pnlClient";
+import type { PnlCoreClientMethods } from "../api/pnlCoreClient";
 
 const clientSource = readFileSync(resolve(process.cwd(), "src/api/client.ts"), "utf8");
 const clientContextSource = readFileSync(resolve(process.cwd(), "src/api/clientContext.ts"), "utf8");
@@ -20,6 +21,7 @@ const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/execu
 const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
 const cashflowClientSource = readFileSync(resolve(process.cwd(), "src/api/cashflowClient.ts"), "utf8");
+const pnlCoreClientSource = readFileSync(resolve(process.cwd(), "src/api/pnlCoreClient.ts"), "utf8");
 const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
 const productCategoryClientSource = readFileSync(resolve(process.cwd(), "src/api/productCategoryClient.ts"), "utf8");
@@ -103,6 +105,24 @@ describe("ApiClient composition boundary", () => {
     const client = createApiClient({ mode: "mock" });
 
     expect(typeof client.getCashflowProjection).toBe("function");
+  });
+
+  it("keeps the public PnL core surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getFormalPnlDates).toBe("function");
+    expect(typeof client.getFormalPnlData).toBe("function");
+    expect(typeof client.getFormalPnlOverview).toBe("function");
+    expect(typeof client.getLedgerPnlDates).toBe("function");
+    expect(typeof client.getLedgerPnlData).toBe("function");
+    expect(typeof client.getLedgerPnlSummary).toBe("function");
+    expect(typeof client.getPnlBridge).toBe("function");
+    expect(typeof client.refreshFormalPnl).toBe("function");
+    expect(typeof client.getFormalPnlImportStatus).toBe("function");
+  });
+
+  it("keeps PnL core methods in the PnlClientMethods compatibility type", () => {
+    expectTypeOf<PnlClientMethods>().toMatchTypeOf<PnlCoreClientMethods>();
   });
 
   it("keeps Cashflow methods in the BondAnalyticsClientMethods compatibility type", () => {
@@ -651,6 +671,280 @@ describe("ApiClient composition boundary", () => {
     );
   });
 
+  it("routes real PnL core requests to exact backend endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_pnl_core",
+          basis: "formal",
+          result_kind: "pnl.dates",
+          formal_use_allowed: true,
+          source_version: "sv_pnl",
+          vendor_version: "vv_none",
+          rule_version: "rv_pnl_core",
+          cache_version: "cv_pnl_core",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: {},
+        status: "queued",
+        run_id: "pnl_materialize:run 1",
+        job_name: "pnl_materialize",
+        trigger_mode: "async",
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getFormalPnlDates("analytical");
+    await client.getFormalPnlData("2026 02/28", "analytical");
+    await client.getFormalPnlOverview("2026 02/28", "analytical");
+    await client.getLedgerPnlDates();
+    await client.getLedgerPnlData("2026 02/28", " CNX ");
+    await client.getLedgerPnlSummary("2026 02/28", " CNX ");
+    await client.getPnlBridge("2026 02/28");
+    await client.refreshFormalPnl("2026 02/28");
+    await client.getFormalPnlImportStatus("pnl_materialize:run 1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/pnl/dates?basis=analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/pnl/data?date=2026%2002%2F28&basis=analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/pnl/overview?report_date=2026%2002%2F28&basis=analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/ledger-pnl/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/ledger-pnl/data?date=2026+02%2F28&currency=CNX",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/ledger-pnl/summary?date=2026+02%2F28&currency=CNX",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/pnl/bridge?report_date=2026%2002%2F28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      "http://localhost:8000/api/data/refresh_pnl?report_date=2026%2002%2F28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      "http://localhost:8000/api/data/import_status/pnl?run_id=pnl_materialize%3Arun%201",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes real PnL core default requests without optional query parameters", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_pnl_core_defaults",
+          basis: "formal",
+          result_kind: "pnl.dates",
+          formal_use_allowed: true,
+          source_version: "sv_pnl",
+          vendor_version: "vv_none",
+          rule_version: "rv_pnl_core",
+          cache_version: "cv_pnl_core",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: {},
+        status: "idle",
+        run_id: "pnl_materialize:mock-run",
+        job_name: "pnl_materialize",
+        trigger_mode: "idle",
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getFormalPnlDates();
+    await client.getFormalPnlData("2026-02-28");
+    await client.getFormalPnlOverview("2026-02-28");
+    await client.getLedgerPnlData("2026-02-28");
+    await client.getLedgerPnlSummary("2026-02-28");
+    await client.refreshFormalPnl();
+    await client.getFormalPnlImportStatus();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/pnl/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/pnl/data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/pnl/overview?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/ledger-pnl/data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/ledger-pnl/summary?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/data/refresh_pnl",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/data/import_status/pnl",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps PnL core mock envelope shapes after extraction", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getFormalPnlDates("analytical")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl.dates",
+        basis: "analytical",
+        formal_use_allowed: false,
+      },
+      result: {
+        report_dates: [],
+        formal_fi_report_dates: [],
+        nonstd_bridge_report_dates: [],
+      },
+    });
+    await expect(client.getFormalPnlOverview("2026-03-31")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl.overview",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+      result: {
+        report_date: "2026-03-31",
+        formal_fi_row_count: 0,
+        nonstd_bridge_row_count: 0,
+        total_pnl: "0.00",
+      },
+    });
+    await expect(client.getLedgerPnlData("2026-03-31", "CNX")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "ledger_pnl.data",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+      result: {
+        report_date: "2026-03-31",
+      },
+    });
+    await expect(client.getLedgerPnlSummary("2026-03-31", "CNX")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "ledger_pnl.summary",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+      result: {
+        report_date: "2026-03-31",
+      },
+    });
+    await expect(client.getPnlBridge("2026-03-31")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl.bridge",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+      result: {
+        report_date: "2026-03-31",
+        rows: [],
+        warnings: [],
+      },
+    });
+    await expect(client.refreshFormalPnl("2026-03-31")).resolves.toMatchObject({
+      status: "queued",
+      run_id: "pnl_materialize:mock-run",
+      report_date: "2026-03-31",
+    });
+    await expect(client.getFormalPnlImportStatus("run-1")).resolves.toMatchObject({
+      status: "completed",
+      run_id: "run-1",
+      job_name: "pnl_materialize",
+    });
+  });
+
   it("keeps Cashflow mock envelope shape after extraction", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -775,6 +1069,20 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("monthly_operating_analysis_adjustments");
     expect(clientSource).not.toContain("/api/cashflow-projection");
     expect(clientSource).not.toContain("cashflow_projection.overview");
+    expect(clientSource).not.toContain("/api/pnl/dates");
+    expect(clientSource).not.toContain("/api/pnl/data");
+    expect(clientSource).not.toContain("/api/pnl/overview");
+    expect(clientSource).not.toContain("/api/ledger-pnl");
+    expect(clientSource).not.toContain("/api/pnl/bridge");
+    expect(clientSource).not.toContain("/api/data/refresh_pnl");
+    expect(clientSource).not.toContain("/api/data/import_status/pnl");
+    expect(clientSource).not.toContain("pnl.dates");
+    expect(clientSource).not.toContain("pnl.data");
+    expect(clientSource).not.toContain("pnl.overview");
+    expect(clientSource).not.toContain("ledger_pnl.dates");
+    expect(clientSource).not.toContain("ledger_pnl.data");
+    expect(clientSource).not.toContain("ledger_pnl.summary");
+    expect(clientSource).not.toContain("pnl.bridge");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -881,6 +1189,15 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
     expect(clientSource).not.toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
     expect(clientSource).not.toMatch(/async getCashflowProjection\(/);
+    expect(clientSource).not.toMatch(/async getFormalPnlDates\(/);
+    expect(clientSource).not.toMatch(/async getFormalPnlData\(/);
+    expect(clientSource).not.toMatch(/async getFormalPnlOverview\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlDates\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlData\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlSummary\(/);
+    expect(clientSource).not.toMatch(/async getPnlBridge\(/);
+    expect(clientSource).not.toMatch(/async refreshFormalPnl\(/);
+    expect(clientSource).not.toMatch(/async getFormalPnlImportStatus\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -1166,6 +1483,38 @@ describe("ApiClient composition boundary", () => {
     expect(cashflowClientSource).toMatch(/async getCashflowProjection\(/);
     expect(cashflowClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
     expect(cashflowClientSource).not.toContain("/api/positions/");
+  });
+
+  it("requires pnlCoreClient.ts to own PnL core API implementations", () => {
+    expect(pnlCoreClientSource).toContain("createDemoPnlCoreClient");
+    expect(pnlCoreClientSource).toContain("createRealPnlCoreClient");
+    expect(pnlCoreClientSource).toContain("/api/pnl/dates");
+    expect(pnlCoreClientSource).toContain("/api/pnl/data");
+    expect(pnlCoreClientSource).toContain("/api/pnl/overview");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/dates");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/data");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/summary");
+    expect(pnlCoreClientSource).toContain("/api/pnl/bridge");
+    expect(pnlCoreClientSource).toContain("/api/data/refresh_pnl");
+    expect(pnlCoreClientSource).toContain("/api/data/import_status/pnl");
+    expect(pnlCoreClientSource).toContain("pnl.dates");
+    expect(pnlCoreClientSource).toContain("pnl.data");
+    expect(pnlCoreClientSource).toContain("pnl.overview");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.dates");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.data");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.summary");
+    expect(pnlCoreClientSource).toContain("pnl.bridge");
+    expect(pnlCoreClientSource).toMatch(/async getFormalPnlDates\(/);
+    expect(pnlCoreClientSource).toMatch(/async getFormalPnlData\(/);
+    expect(pnlCoreClientSource).toMatch(/async getFormalPnlOverview\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlDates\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlData\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlSummary\(/);
+    expect(pnlCoreClientSource).toMatch(/async getPnlBridge\(/);
+    expect(pnlCoreClientSource).toMatch(/async refreshFormalPnl\(/);
+    expect(pnlCoreClientSource).toMatch(/async getFormalPnlImportStatus\(/);
+    expect(pnlCoreClientSource).not.toContain("/api/pnl-attribution/");
+    expect(pnlCoreClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {

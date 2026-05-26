@@ -6,9 +6,9 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 1660,
-  // Phase 4F moves Cashflow endpoint implementations into cashflowClient.ts.
-  apiClientMockOccurrences: 230,
+  apiClientLines: 1450,
+  // Phase 4G moves PnL core endpoint implementations into pnlCoreClient.ts.
+  apiClientMockOccurrences: 199,
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

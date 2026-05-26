@@ -7,23 +7,13 @@ import type {
   CampisiMaturityBucketsPayload,
   CarryRollDownPayload,
   KRDAttributionPayload,
-  LedgerPnlDataPayload,
-  LedgerPnlDatesPayload,
-  LedgerPnlSummaryPayload,
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
-  FormalPnlRefreshPayload,
   MacroBondLinkagePayload,
   MacroVendorPayload,
-  NumericUnit,
   NcdFundingProxyPayload,
-  PnlBridgePayload,
-  PnlBasis,
-  PnlDataPayload,
-  PnlDatesPayload,
-  PnlOverviewPayload,
   PnlAttributionPayload,
   PnlAttributionAnalysisSummary,
   PnlCompositionPayload,
@@ -31,7 +21,6 @@ import type {
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "./contracts";
-import { formatRawAsNumeric } from "../utils/format";
 import {
   createDemoBalanceAnalysisClient,
   createRealBalanceAnalysisClient,
@@ -71,6 +60,11 @@ import {
   createRealPnlBusinessClient,
   type PnlClientMethods,
 } from "./pnlClient";
+import {
+  createDemoPnlCoreClient,
+  createRealPnlCoreClient,
+  type PnlCoreClientMethods,
+} from "./pnlCoreClient";
 import {
   createDemoProductCategoryClient,
   createRealProductCategoryClient,
@@ -141,6 +135,7 @@ export type { ExecutiveClientMethods } from "./executiveClient";
 export type { MarketDataClientMethods } from "./marketDataClient";
 export type { MacroToolkitClientMethods } from "./macroToolkitClient";
 export type { PnlClientMethods } from "./pnlClient";
+export type { PnlCoreClientMethods } from "./pnlCoreClient";
 export type { ProductCategoryClientMethods } from "./productCategoryClient";
 export type { QdbGlMonthlyAnalysisClientMethods } from "./qdbGlMonthlyAnalysisClient";
 export type { PositionsClientMethods } from "./positionsClient";
@@ -156,6 +151,7 @@ export type ApiClient = {
 } & HealthClientMethods
   & ExecutiveClientMethods
   & DashboardClientMethods
+  & PnlCoreClientMethods
   & PnlClientMethods
   & ProductCategoryClientMethods
   & QdbGlMonthlyAnalysisClientMethods
@@ -205,10 +201,6 @@ async function loadMockClientBundle(): Promise<MockClientBundle> {
 async function ensureMockClientBundle(): Promise<MockClientBundle> {
   mockClientBundleCache ??= await loadMockClientBundle();
   return mockClientBundleCache;
-}
-
-function buildPnlBasisQuerySegment(basis?: PnlBasis) {
-  return basis && basis !== "formal" ? `&basis=${encodeURIComponent(basis)}` : "";
 }
 
 function buildCampisiQuery(options?: {
@@ -1177,139 +1169,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...bondDashboardDemoEndpoints(delay, ensureMockClientBundle),
     ...createDemoBondAnalyticsClient(delay, ensureMockClientBundle),
     ...createDemoBondDashboardClient(delay, ensureMockClientBundle),
-    async getFormalPnlDates(basis = "formal") {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "pnl.dates",
-        {
-          report_dates: [],
-          formal_fi_report_dates: [],
-          nonstd_bridge_report_dates: [],
-        },
-        { basis, formal_use_allowed: basis === "formal" },
-      );
-    },
-    async getFormalPnlData(date: string, basis = "formal") {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "pnl.data",
-        {
-          report_date: date,
-          formal_fi_rows: [],
-          nonstd_bridge_rows: [],
-        },
-        { basis, formal_use_allowed: basis === "formal" },
-      );
-    },
-    async getFormalPnlOverview(reportDate: string, basis = "formal") {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "pnl.overview",
-        {
-          report_date: reportDate,
-          formal_fi_row_count: 0,
-          nonstd_bridge_row_count: 0,
-          interest_income_514: "0.00",
-          fair_value_change_516: "0.00",
-          capital_gain_517: "0.00",
-          manual_adjustment: "0.00",
-          total_pnl: "0.00",
-        },
-        { basis, formal_use_allowed: basis === "formal" },
-      );
-    },
-    async getLedgerPnlDates() {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("ledger_pnl.dates", (await ensureMockClientBundle()).mockLedgerPnlDates, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-    async getLedgerPnlData(reportDate: string, currency) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "ledger_pnl.data",
-        {
-          ...(await ensureMockClientBundle()).mockLedgerPnlData,
-          report_date: reportDate,
-          items: currency
-            ? (await ensureMockClientBundle()).mockLedgerPnlData.items.filter((item: LedgerPnlDataPayload["items"][number]) => item.currency === currency)
-            : (await ensureMockClientBundle()).mockLedgerPnlData.items,
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getLedgerPnlSummary(reportDate: string, currency) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "ledger_pnl.summary",
-        {
-          ...(await ensureMockClientBundle()).mockLedgerPnlSummary,
-          report_date: reportDate,
-          by_currency: currency
-            ? (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency.filter((item: LedgerPnlSummaryPayload["by_currency"][number]) => item.currency === currency)
-            : (await ensureMockClientBundle()).mockLedgerPnlSummary.by_currency,
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getPnlBridge(reportDate: string) {
-      await delay();
-      const z = (unit: NumericUnit, sign_aware: boolean) =>
-        formatRawAsNumeric({ raw: 0, unit, sign_aware });
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "pnl.bridge",
-        {
-          report_date: reportDate,
-          rows: [],
-          summary: {
-            row_count: 0,
-            ok_count: 0,
-            warning_count: 0,
-            error_count: 0,
-            total_beginning_dirty_mv: z("yuan", false),
-            total_ending_dirty_mv: z("yuan", false),
-            total_carry: z("yuan", true),
-            total_roll_down: z("yuan", true),
-            total_treasury_curve: z("yuan", true),
-            total_credit_spread: z("yuan", true),
-            total_fx_translation: z("yuan", true),
-            total_realized_trading: z("yuan", true),
-            total_unrealized_fv: z("yuan", true),
-            total_manual_adjustment: z("yuan", true),
-            total_explained_pnl: z("yuan", true),
-            total_actual_pnl: z("yuan", true),
-            total_residual: z("yuan", true),
-            quality_flag: "ok",
-          },
-          warnings: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async refreshFormalPnl(reportDate?: string) {
-      await delay();
-      return {
-        status: "queued",
-        run_id: "pnl_materialize:mock-run",
-        job_name: "pnl_materialize",
-        trigger_mode: "async",
-        cache_key: "pnl:phase2:materialize:formal",
-        report_date: reportDate ?? "2026-02-28",
-      };
-    },
-    async getFormalPnlImportStatus(runId?: string) {
-      await delay();
-      return {
-        status: runId ? "completed" : "idle",
-        run_id: runId ?? "pnl_materialize:mock-run",
-        job_name: "pnl_materialize",
-        trigger_mode: runId ? "terminal" : "idle",
-        cache_key: "pnl:phase2:materialize:formal",
-        report_date: "2026-02-28",
-        source_version: "sv_mock_dashboard_v2",
-      };
-    },
+    ...createDemoPnlCoreClient(delay),
     async getPnlAttribution(_reportDate?: string) {
       await delay();
       return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.pnl-attribution", (await ensureMockClientBundle()).pnlAttributionPayload);
@@ -1414,77 +1274,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...bondDashboardLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     ...createRealBondAnalyticsClient({ fetchImpl, baseUrl, requestJson, requestActionJson }),
     ...createRealBondDashboardClient({ fetchImpl, baseUrl, requestJson }),
-    getFormalPnlDates: (basis = "formal") =>
-      requestJson<PnlDatesPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl/dates${basis !== "formal" ? `?basis=${encodeURIComponent(basis)}` : ""}`,
-      ),
-    getFormalPnlData: (date: string, basis = "formal") =>
-      requestJson<PnlDataPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl/data?date=${encodeURIComponent(date)}${buildPnlBasisQuerySegment(basis)}`,
-      ),
-    getFormalPnlOverview: (reportDate: string, basis = "formal") =>
-      requestJson<PnlOverviewPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}${buildPnlBasisQuerySegment(basis)}`,
-      ),
-    getLedgerPnlDates: () =>
-      requestJson<LedgerPnlDatesPayload>(fetchImpl, baseUrl, "/api/ledger-pnl/dates"),
-    getLedgerPnlData: (reportDate: string, currency?: string) => {
-      const params = new URLSearchParams({
-        date: reportDate,
-      });
-      if (currency?.trim()) {
-        params.set("currency", currency.trim());
-      }
-      return requestJson<LedgerPnlDataPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/ledger-pnl/data?${params.toString()}`,
-      );
-    },
-    getLedgerPnlSummary: (reportDate: string, currency?: string) => {
-      const params = new URLSearchParams({
-        date: reportDate,
-      });
-      if (currency?.trim()) {
-        params.set("currency", currency.trim());
-      }
-      return requestJson<LedgerPnlSummaryPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/ledger-pnl/summary?${params.toString()}`,
-      );
-    },
-    getPnlBridge: (reportDate: string) =>
-      requestJson<PnlBridgePayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl/bridge?report_date=${encodeURIComponent(reportDate)}`,
-      ),
-    refreshFormalPnl: (reportDate?: string) =>
-      requestActionJson<FormalPnlRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        reportDate
-          ? `/api/data/refresh_pnl?report_date=${encodeURIComponent(reportDate)}`
-          : "/api/data/refresh_pnl",
-        {
-          method: "POST",
-        },
-      ),
-    getFormalPnlImportStatus: (runId?: string) =>
-      requestActionJson<FormalPnlRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        runId
-          ? `/api/data/import_status/pnl?run_id=${encodeURIComponent(runId)}`
-          : "/api/data/import_status/pnl",
-      ),
+    ...createRealPnlCoreClient({ fetchImpl, baseUrl, requestJson, requestActionJson }),
     getPnlAttribution: (reportDate?: string) =>
       requestJson<PnlAttributionPayload>(
         fetchImpl,
