@@ -37,14 +37,6 @@ import type {
   PnlOverviewPayload,
   PnlV1DataPayload,
   PnlYearlyBusinessSummaryPayload,
-  QdbGlMonthlyAnalysisDatesPayload,
-  QdbGlMonthlyAnalysisManualAdjustmentExportPayload,
-  QdbGlMonthlyAnalysisManualAdjustmentListPayload,
-  QdbGlMonthlyAnalysisManualAdjustmentPayload,
-  QdbGlMonthlyAnalysisManualAdjustmentRequest,
-  QdbGlMonthlyAnalysisScenarioPayload,
-  QdbGlMonthlyAnalysisWorkbookExportPayload,
-  QdbGlMonthlyAnalysisWorkbookPayload,
   SpreadAttributionPayload,
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
@@ -176,43 +168,6 @@ export type PnlClientMethods = {
     endDate?: string;
     lookbackDays?: number;
   }) => Promise<ApiEnvelope<CampisiDecisionGradePayload>>;
-  getQdbGlMonthlyAnalysisDates: () => Promise<ApiEnvelope<QdbGlMonthlyAnalysisDatesPayload>>;
-  getQdbGlMonthlyAnalysisWorkbook: (options: {
-    reportMonth: string;
-  }) => Promise<ApiEnvelope<QdbGlMonthlyAnalysisWorkbookPayload>>;
-  exportQdbGlMonthlyAnalysisWorkbookXlsx: (options: {
-    reportMonth: string;
-  }) => Promise<QdbGlMonthlyAnalysisWorkbookExportPayload>;
-  refreshQdbGlMonthlyAnalysis: (options: {
-    reportMonth: string;
-  }) => Promise<{ status: string; run_id: string; job_name: string; trigger_mode: string; cache_key?: string; report_month?: string }>;
-  getQdbGlMonthlyAnalysisRefreshStatus: (runId: string) => Promise<{ status: string; run_id: string; job_name: string; trigger_mode: string; cache_key?: string }>;
-  getQdbGlMonthlyAnalysisScenario: (options: {
-    reportMonth: string;
-    scenarioName: string;
-    deviationWarn?: number;
-    deviationAlert?: number;
-    deviationCritical?: number;
-  }) => Promise<ApiEnvelope<QdbGlMonthlyAnalysisScenarioPayload>>;
-  createQdbGlMonthlyAnalysisManualAdjustment: (
-    payload: QdbGlMonthlyAnalysisManualAdjustmentRequest,
-  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
-  updateQdbGlMonthlyAnalysisManualAdjustment: (
-    adjustmentId: string,
-    payload: QdbGlMonthlyAnalysisManualAdjustmentRequest,
-  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
-  revokeQdbGlMonthlyAnalysisManualAdjustment: (
-    adjustmentId: string,
-  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
-  restoreQdbGlMonthlyAnalysisManualAdjustment: (
-    adjustmentId: string,
-  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
-  getQdbGlMonthlyAnalysisManualAdjustments: (
-    reportMonth: string,
-  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentListPayload>;
-  exportQdbGlMonthlyAnalysisManualAdjustmentsCsv: (
-    reportMonth: string,
-  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentExportPayload>;
 };
 
 type PnlBusinessClientMethods = Pick<

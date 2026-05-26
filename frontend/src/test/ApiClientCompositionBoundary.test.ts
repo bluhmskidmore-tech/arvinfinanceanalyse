@@ -20,6 +20,7 @@ const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/b
 const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
 const productCategoryClientSource = readFileSync(resolve(process.cwd(), "src/api/productCategoryClient.ts"), "utf8");
+const qdbGlMonthlyAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/qdbGlMonthlyAnalysisClient.ts"), "utf8");
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
   ? readFileSync(healthClientPath, "utf8")
@@ -142,6 +143,23 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.restoreProductCategoryManualAdjustment).toBe("function");
     expect(typeof client.getProductCategoryPnl).toBe("function");
     expect(typeof client.getProductCategoryAttribution).toBe("function");
+  });
+
+  it("keeps the public QDB GL Monthly Analysis surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getQdbGlMonthlyAnalysisDates).toBe("function");
+    expect(typeof client.getQdbGlMonthlyAnalysisWorkbook).toBe("function");
+    expect(typeof client.exportQdbGlMonthlyAnalysisWorkbookXlsx).toBe("function");
+    expect(typeof client.refreshQdbGlMonthlyAnalysis).toBe("function");
+    expect(typeof client.getQdbGlMonthlyAnalysisRefreshStatus).toBe("function");
+    expect(typeof client.getQdbGlMonthlyAnalysisScenario).toBe("function");
+    expect(typeof client.createQdbGlMonthlyAnalysisManualAdjustment).toBe("function");
+    expect(typeof client.updateQdbGlMonthlyAnalysisManualAdjustment).toBe("function");
+    expect(typeof client.revokeQdbGlMonthlyAnalysisManualAdjustment).toBe("function");
+    expect(typeof client.restoreQdbGlMonthlyAnalysisManualAdjustment).toBe("function");
+    expect(typeof client.getQdbGlMonthlyAnalysisManualAdjustments).toBe("function");
+    expect(typeof client.exportQdbGlMonthlyAnalysisManualAdjustmentsCsv).toBe("function");
   });
 
   it("routes real Positions list requests to exact backend endpoints", async () => {
@@ -270,6 +288,97 @@ describe("ApiClient composition boundary", () => {
     );
   });
 
+  it("routes real QDB GL Monthly Analysis requests to exact backend endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({ "Content-Disposition": 'attachment; filename="qdb.csv"' }),
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_qdb_gl_monthly_analysis",
+          basis: "analytical",
+          result_kind: "qdb-gl-monthly-analysis.workbook",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl",
+          vendor_version: "vv_none",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: { report_month: "202602", sheets: [] },
+      }),
+      text: async () => "adjustment_id,event_type\n",
+      blob: async () => new Blob(["workbook"]),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getQdbGlMonthlyAnalysisWorkbook({ reportMonth: "202602" });
+    await client.getQdbGlMonthlyAnalysisScenario({
+      reportMonth: "202602",
+      scenarioName: "shock",
+      deviationWarn: 0,
+      deviationAlert: 2.5,
+      deviationCritical: 5,
+    });
+    await client.createQdbGlMonthlyAnalysisManualAdjustment({
+      report_month: "202602",
+      adjustment_class: "analysis_adjustment",
+      target: { sheet: "income", row: "fee" },
+      operator: "OVERRIDE",
+      value: "100",
+      approval_status: "approved",
+    });
+    await client.exportQdbGlMonthlyAnalysisManualAdjustmentsCsv("202602");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/workbook?report_month=202602",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/scenario?report_month=202602&scenario_name=shock&deviation_warn=0&deviation_alert=2.5&deviation_critical=5",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/manual-adjustments",
+      expect.objectContaining({
+        body: JSON.stringify({
+          report_month: "202602",
+          adjustment_class: "analysis_adjustment",
+          target: { sheet: "income", row: "fee" },
+          operator: "OVERRIDE",
+          value: "100",
+          approval_status: "approved",
+        }),
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/manual-adjustments/export?report_month=202602",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "text/csv, text/plain;q=0.9, */*;q=0.8" }),
+      }),
+    );
+  });
+
   it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
@@ -361,6 +470,13 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("filterManualAdjustments");
     expect(clientSource).not.toContain("sortManualAdjustments");
     expect(clientSource).not.toContain("buildManualAdjustmentSearchParams");
+    expect(clientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+    expect(clientSource).not.toContain("qdb-gl-monthly-analysis.dates");
+    expect(clientSource).not.toContain("qdb-gl-monthly-analysis.workbook");
+    expect(clientSource).not.toContain("qdb-gl-monthly-analysis.scenario");
+    expect(clientSource).not.toContain("qdb_gl_monthly_analysis:");
+    expect(clientSource).not.toContain("qdb_gl_monthly_analysis.analytical");
+    expect(clientSource).not.toContain("monthly_operating_analysis_adjustments");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -454,6 +570,18 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async restoreProductCategoryManualAdjustment\(/);
     expect(clientSource).not.toMatch(/async getProductCategoryPnl\(/);
     expect(clientSource).not.toMatch(/async getProductCategoryAttribution\(/);
+    expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisDates\(/);
+    expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisWorkbook\(/);
+    expect(clientSource).not.toMatch(/async exportQdbGlMonthlyAnalysisWorkbookXlsx\(/);
+    expect(clientSource).not.toMatch(/async refreshQdbGlMonthlyAnalysis\(/);
+    expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisRefreshStatus\(/);
+    expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisScenario\(/);
+    expect(clientSource).not.toMatch(/async createQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async updateQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async revokeQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async restoreQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(clientSource).not.toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
+    expect(clientSource).not.toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -696,6 +824,39 @@ describe("ApiClient composition boundary", () => {
     expect(productCategoryClientSource).toMatch(/async restoreProductCategoryManualAdjustment\(/);
     expect(productCategoryClientSource).toMatch(/async getProductCategoryPnl\(/);
     expect(productCategoryClientSource).toMatch(/async getProductCategoryAttribution\(/);
+  });
+
+  it("requires qdbGlMonthlyAnalysisClient.ts to own QDB GL Monthly Analysis API implementations", () => {
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("createDemoQdbGlMonthlyAnalysisClient");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("createRealQdbGlMonthlyAnalysisClient");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/dates");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/workbook");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/workbook/export");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/refresh");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/refresh-status");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/scenario");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/manual-adjustments");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/manual-adjustments/export");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb-gl-monthly-analysis.dates");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb-gl-monthly-analysis.workbook");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb-gl-monthly-analysis.scenario");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb_gl_monthly_analysis:");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb_gl_monthly_analysis.analytical");
+    expect(qdbGlMonthlyAnalysisClientSource).toContain("monthly_operating_analysis_adjustments");
+    expect(qdbGlMonthlyAnalysisClientSource).not.toContain("/ui/pnl/product-category");
+    expect(qdbGlMonthlyAnalysisClientSource).not.toContain("getCashflowProjection");
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisDates\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisWorkbook\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async exportQdbGlMonthlyAnalysisWorkbookXlsx\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async refreshQdbGlMonthlyAnalysis\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisRefreshStatus\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisScenario\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async createQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async updateQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async revokeQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async restoreQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
+    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {
