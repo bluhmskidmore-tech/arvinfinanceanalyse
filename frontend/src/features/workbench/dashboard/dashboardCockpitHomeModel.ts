@@ -586,7 +586,7 @@ function pendingBalanceMetric(spec: { id: string; label: string }): DashboardBal
     id: spec.id,
     label: spec.label,
     value: GAP_VALUE,
-    delta: PENDING_SYNC,
+    delta: "专题补充",
     tone: "neutral",
   };
 }
@@ -598,7 +598,16 @@ const ATTRIBUTION_TAB_SPECS: ReadonlyArray<{ id: DashboardAttributionTab; label:
   { id: "ytd", label: "YTD" },
 ];
 
-const ATTRIBUTION_YIELD_MISSING_WARNING = "归因收益率缺少 pnl-attribution.daily_yield 字段";
+const ATTRIBUTION_YIELD_MISSING_WARNING =
+  "归因收益率待读取，日度收益率口径待复核（来源: pnl-attribution.total.display）";
+const PORTFOLIO_BOOKS_PENDING_WARNING =
+  "资产分布组合数待读取，组合明细口径待复核（来源: portfolio-comparison.items）";
+const PORTFOLIO_POSITIONS_PENDING_WARNING =
+  "资产分布持仓债券待读取，持仓口径待复核（来源: bond-dashboard-headline.kpis.bond_count）";
+const PORTFOLIO_COUPON_PENDING_WARNING =
+  "资产分布票面利率待读取，收益口径待复核（来源: bond-dashboard-headline.kpis.weighted_coupon）";
+const PORTFOLIO_RATING_PENDING_WARNING =
+  "资产分布主体评级待读取，信用集中度口径待复核（来源: credit-spread-migration.concentration_by_rating.top_items[0].name）";
 
 function pendingAttributionTabs(): DashboardAttributionTabVM[] {
   return ATTRIBUTION_TAB_SPECS.map((spec) => ({
@@ -1313,7 +1322,7 @@ function buildExposureRows(
         weight: GAP_VALUE,
         duration: GAP_VALUE,
         dv01: GAP_VALUE,
-        dailyPnl: GAP_DELTA,
+        dailyPnl: GAP_VALUE,
         tone: "warning",
       },
     ];
@@ -1327,7 +1336,7 @@ function buildExposureRows(
     weight: row.weight,
     duration: row.duration,
     dv01: row.risk.replace(/^DV01\s*/, ""),
-    dailyPnl: row.dailyChange !== "--" ? row.dailyChange : GAP_DELTA,
+    dailyPnl: row.dailyChange !== "--" ? row.dailyChange : GAP_VALUE,
     tone: cockpitToneToExposureTone(row.tone),
   }));
 }
@@ -1887,12 +1896,14 @@ function buildExecutiveOverview(input: {
   const hasBlockingWarnings =
     input.dataWarningMessages.some(isFirstScreenBlockingWarning) || hasPendingMetric;
   const judgmentConclusion = input.judgment.conclusion.trim();
+  const sanitizedJudgmentConclusion = sanitizeExecutiveOverviewJudgment(judgmentConclusion);
   const summary = input.useMockFallback
     ? "当前为本地模拟数据，经营指标仅用于版式和流程演示，正式判断需等待真实快照。"
     : hasBlockingWarnings
       ? "部分指标仍待同步或复核，经营判断暂按当前可用数据展示，需先确认口径后再做方向性动作。"
-      : judgmentConclusion.length > 0 && !isGenericJudgmentConclusion(judgmentConclusion)
-        ? judgmentConclusion
+      : sanitizedJudgmentConclusion.length > 0 &&
+          !isGenericJudgmentConclusion(sanitizedJudgmentConclusion)
+        ? sanitizedJudgmentConclusion
         : "同日报告日数据已落地，核心经营指标可用于当日复核，方向性结论待正式判断补充。";
 
   return {
@@ -1909,10 +1920,14 @@ function buildExecutiveOverview(input: {
   };
 }
 
+function sanitizeExecutiveOverviewJudgment(conclusion: string): string {
+  return conclusion.replaceAll("正式经营判断", "首页快照判断");
+}
+
 function isFirstScreenBlockingWarning(message: string): boolean {
   return (
-    !message.startsWith("资产分布缺少 ") &&
-    message !== ATTRIBUTION_YIELD_MISSING_WARNING
+    !message.startsWith("资产分布") &&
+    !message.startsWith("归因收益率待读取")
   );
 }
 
@@ -2242,13 +2257,13 @@ function buildPortfolioStatsWarningMessages(
       continue;
     }
     if (stat.id === "books") {
-      messages.push("资产分布缺少 portfolio-comparison.items 字段");
+      messages.push(PORTFOLIO_BOOKS_PENDING_WARNING);
     } else if (stat.id === "positions") {
-      messages.push("资产分布缺少 bond-dashboard.headline.kpis.bond_count / portfolio-headlines.bond_count 字段");
+      messages.push(PORTFOLIO_POSITIONS_PENDING_WARNING);
     } else if (stat.id === "coupon") {
-      messages.push("资产分布缺少 bond-dashboard.headline.kpis.weighted_coupon / portfolio-headlines.weighted_coupon 字段");
+      messages.push(PORTFOLIO_COUPON_PENDING_WARNING);
     } else if (stat.id === "rating") {
-      messages.push("资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段");
+      messages.push(PORTFOLIO_RATING_PENDING_WARNING);
     }
   }
   return messages;

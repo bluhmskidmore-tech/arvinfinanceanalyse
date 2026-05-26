@@ -31,7 +31,7 @@ export function RiskAlertPanel({
 
   const radarOption: EChartsOption = {
     radar: {
-      indicator: radar.dimensions.map((name) => ({ name, max: 100, min: 0 })),
+      indicator: radar.dimensions.map((name) => ({ name, max: 100 })),
       radius: "62%",
       splitNumber: 5,
       axisName: {

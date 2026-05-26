@@ -18,9 +18,9 @@ export function RiskActionStrip({ viewModel }: RiskActionStripProps) {
     : [];
   const option: EChartsOption = {
     radar: {
-      indicator: strip.radar.dimensions.map((name) => ({ name, max: 100, min: 0 })),
+      indicator: strip.radar.dimensions.map((name) => ({ name, max: 100 })),
       radius: "62%",
-      splitNumber: 4,
+      splitNumber: 5,
       axisName: {
         color: COCKPIT_VISUAL.text.muted,
         fontFamily: COCKPIT_TYPOGRAPHY.fontSans,

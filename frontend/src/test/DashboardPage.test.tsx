@@ -542,7 +542,7 @@ describe("DashboardPage", () => {
     expect(alertsCalls).toBe(0);
   });
 
-  it("defers secondary dashboard data until the collapsed panels are opened", async () => {
+  it("defers real-mode supplemental and deep dashboard data until panels open", async () => {
     const base = createApiClient({ mode: "mock" });
     const reportDate = "2026-04-30";
     const getHomeSnapshot = vi.fn(async (options) => {
@@ -613,33 +613,25 @@ describe("DashboardPage", () => {
       expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith(reportDate);
     });
 
-    expect(getResearchCalendarEvents).not.toHaveBeenCalled();
+    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalled();
     expect(getBondDashboardPortfolioComparison).not.toHaveBeenCalled();
     expect(getBondAnalyticsCreditSpreadMigration).not.toHaveBeenCalled();
-    await new Promise((resolve) => window.setTimeout(resolve, 100));
     expect(getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
-    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalledWith(
-      expect.objectContaining({ dimension: "bond_bucket" }),
-    );
-    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalledWith(
-      expect.objectContaining({ dimension: "bond_bucket_monthly" }),
-    );
-    expect(await screen.findByTestId("dashboard-attribution-product-trend")).toHaveTextContent(
-      "月度读面待展开",
-    );
-    expect(screen.getByTestId("dashboard-attribution-product-trend")).toHaveTextContent(
-      "展开深钻读面查看正式月度趋势",
-    );
+    expect(getResearchCalendarEvents).not.toHaveBeenCalled();
 
     openSupplementPanel();
     await waitFor(() => {
-      expect(getResearchCalendarEvents).toHaveBeenCalled();
       expect(getPnlByBusinessAnalysis).toHaveBeenCalledWith(
         expect.objectContaining({ dimension: "bond_bucket" }),
       );
       expect(getBondDashboardPortfolioComparison).toHaveBeenCalledWith(reportDate);
       expect(getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith(reportDate);
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
     });
+    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dimension: "bond_bucket_monthly" }),
+    );
+    expect(getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     openDepthDrawer(page);
@@ -647,6 +639,7 @@ describe("DashboardPage", () => {
       expect(getPnlByBusinessAnalysis).toHaveBeenCalledWith(
         expect.objectContaining({ dimension: "bond_bucket_monthly" }),
       );
+      expect(getBalanceAnalysisDecisionItems).toHaveBeenCalled();
     });
   });
 
@@ -689,7 +682,8 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("dashboard-kpi-core-group")).toHaveTextContent("经营核心指标");
     expect(screen.getByTestId("dashboard-kpi-risk-group")).toHaveTextContent("风险约束指标");
     expect(within(executiveOverview).getByText("今日经营判断")).toBeInTheDocument();
-    expect(within(executiveOverview).getByText(/本地模拟数据|待同步或复核|正式经营判断/)).toBeInTheDocument();
+    expect(within(executiveOverview).getByText(/本地模拟数据|待同步或复核|首页快照判断/)).toBeInTheDocument();
+    expect(executiveOverview).not.toHaveTextContent("正式经营判断");
     expect(within(kpiBand).getByText("债券资产规模")).toBeInTheDocument();
     expect(within(kpiBand).getByText("3,708.10 亿")).toBeInTheDocument();
     expect(within(kpiBand).getByText("年度损益（不扣FTP）")).toBeInTheDocument();
@@ -1708,8 +1702,9 @@ describe("DashboardPage", () => {
     const executiveOverview = await screen.findByTestId("dashboard-executive-overview");
     await waitFor(() => {
       expect(getHomeSnapshot).toHaveBeenCalled();
-      expect(executiveOverview).toHaveTextContent("正式经营判断来自首屏核心指标。");
+      expect(executiveOverview).toHaveTextContent("首页快照判断来自首屏核心指标。");
     });
+    expect(executiveOverview).not.toHaveTextContent("正式经营判断");
     expect(executiveOverview).toHaveTextContent("首屏核心指标已进入可复核区间");
     expect(executiveOverview).not.toHaveTextContent("待同步或复核");
     expect(executiveOverview).not.toHaveTextContent("核心指标不生成正式结论");
@@ -1724,9 +1719,11 @@ describe("DashboardPage", () => {
 
     const warning = await screen.findByTestId("dashboard-sidebar-data-warning");
     expect(warning).toHaveAttribute("open");
-    expect(warning).toHaveTextContent("资产分布缺少 portfolio-comparison.items 字段");
     expect(warning).toHaveTextContent(
-      "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
+      "资产分布组合数待读取，组合明细口径待复核（来源: portfolio-comparison.items）",
+    );
+    expect(warning).toHaveTextContent(
+      "资产分布主体评级待读取，信用集中度口径待复核（来源: credit-spread-migration.concentration_by_rating.top_items[0].name）",
     );
     expect(warning).not.toHaveTextContent("部分指标待同步");
   });
@@ -2435,7 +2432,7 @@ describe("DashboardPage", () => {
     expect(within(actionBar).queryByText("示意数据，非正式风控口径")).not.toBeInTheDocument();
   });
 
-  it("requests bond_bucket_monthly in real mode and shows trend chart when rows exist", async () => {
+  it("requests bond_bucket_monthly after opening depth drawer in real mode and shows trend chart when rows exist", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const getPnlByBusinessAnalysis = vi.fn(async (options: Parameters<typeof base.getPnlByBusinessAnalysis>[0]) => {
@@ -2496,6 +2493,14 @@ describe("DashboardPage", () => {
     };
 
     renderDashboard(client);
+
+    await screen.findByTestId("fixed-income-dashboard-page");
+
+    expect(getPnlByBusinessAnalysis).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        dimension: "bond_bucket_monthly",
+      }),
+    );
 
     const page = await screen.findByTestId("fixed-income-dashboard-page");
     openDepthDrawer(page);

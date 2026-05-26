@@ -426,7 +426,8 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     });
 
     expect(view.dataWarningMessages).toEqual([]);
-    expect(view.executiveOverview.summary).toBe("正式经营判断来自受治理快照。");
+    expect(view.executiveOverview.summary).toBe("首页快照判断来自受治理快照。");
+    expect(view.executiveOverview.summary).not.toContain("正式经营判断");
     expect(view.executiveOverview.healthText).toBe("核心指标已进入可复核区间。");
   });
 
@@ -489,11 +490,14 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     });
 
     expect(view.portfolioStats.some((stat) => stat.value === "待同步")).toBe(true);
-    expect(view.dataWarningMessages).toContain("资产分布缺少 portfolio-comparison.items 字段");
     expect(view.dataWarningMessages).toContain(
-      "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
+      "资产分布组合数待读取，组合明细口径待复核（来源: portfolio-comparison.items）",
     );
-    expect(view.executiveOverview.summary).toBe("正式经营判断来自首屏核心指标。");
+    expect(view.dataWarningMessages).toContain(
+      "资产分布主体评级待读取，信用集中度口径待复核（来源: credit-spread-migration.concentration_by_rating.top_items[0].name）",
+    );
+    expect(view.executiveOverview.summary).toBe("首页快照判断来自首屏核心指标。");
+    expect(view.executiveOverview.summary).not.toContain("正式经营判断");
     expect(view.executiveOverview.healthText).toBe("首屏核心指标已进入可复核区间；下方缺口保留局部空态。");
     expect(view.executiveOverview.summary).not.toContain("待同步或复核");
   });
@@ -1001,7 +1005,7 @@ describe("buildDashboardCockpitHomeViewModel", () => {
 
     expect(view.dataSource).toBe("real");
     expect(view.balanceMetrics.every((metric) => metric.value === "—")).toBe(true);
-    expect(view.balanceMetrics.every((metric) => metric.delta === "待同步")).toBe(true);
+    expect(view.balanceMetrics.every((metric) => metric.delta === "专题补充")).toBe(true);
     expect(view.balanceMetrics.some((metric) => metric.value === "3,708.10 亿")).toBe(false);
     expect(view.balanceMetrics.some((metric) => metric.value === "+29.71 亿")).toBe(false);
   });
@@ -1035,7 +1039,9 @@ describe("buildDashboardCockpitHomeViewModel", () => {
     const dayTab = view.attributionTabs.find((tab) => tab.id === "day");
     expect(dayTab?.yield).toBe("—");
     expect(dayTab?.yield).not.toBe("口径待确认");
-    expect(view.dataWarningMessages).toContain("归因收益率缺少 pnl-attribution.daily_yield 字段");
+    expect(view.dataWarningMessages).toContain(
+      "归因收益率待读取，日度收益率口径待复核（来源: pnl-attribution.total.display）",
+    );
   });
 
   it("derives interbank net position from coreMetrics yuan raw, not display-only values", () => {
@@ -1441,13 +1447,16 @@ describe("buildDashboardCockpitHomeViewModel", () => {
   it("reports exact secondary portfolio fields when only those stats are pending", () => {
     const view = buildRealModeView({ metrics: [] });
 
-    expect(view.dataWarningMessages).toContain("资产分布缺少 portfolio-comparison.items 字段");
     expect(view.dataWarningMessages).toContain(
-      "资产分布缺少 credit-spread-migration.concentration_by_rating.top_items[0].name 字段",
+      "资产分布组合数待读取，组合明细口径待复核（来源: portfolio-comparison.items）",
     );
-    expect(view.dataWarningMessages.join(" ")).not.toContain(
-      "资产分布缺少 portfolio-comparison/credit-spread-migration 字段",
+    expect(view.dataWarningMessages).toContain(
+      "资产分布主体评级待读取，信用集中度口径待复核（来源: credit-spread-migration.concentration_by_rating.top_items[0].name）",
     );
+    expect(view.dataWarningMessages.join(" ")).toContain(
+      "portfolio-comparison",
+    );
+    expect(view.dataWarningMessages.join(" ")).toContain("credit-spread-migration");
   });
 
   it("labels dominant portfolio rating as Top1 instead of average", () => {
