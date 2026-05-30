@@ -1975,6 +1975,154 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
+  it("starts a fresh conversation without carrying previous turn context", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "old thread answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_old_thread",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:old-thread",
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "fresh thread answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_fresh_thread",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:fresh-thread",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "old thread question");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("old thread answer")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "新对话" }));
+    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
+    expect(window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY)).toBe("[]");
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "fresh thread question");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("fresh thread answer")).toBeInTheDocument();
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(2);
+    const freshBody = JSON.parse(String(runPostCalls[1]?.[1]?.body));
+    expect(freshBody).toMatchObject({
+      question: "fresh thread question",
+      context: {
+        user_id: "web-user",
+      },
+    });
+    expect(freshBody.context.conversation).toBeUndefined();
+  });
+
+  it("does not let a pending restore repopulate a cleared conversation", async () => {
+    const user = userEvent.setup();
+    let resolveRestore!: (value: Response) => void;
+    const restoreResponse = new Promise<Response>((resolve) => {
+      resolveRestore = resolve;
+    });
+    const restoredResult = buildLocalOrdinaryTextResult("late restored answer");
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:late-restore");
+    window.localStorage.setItem(
+      AGENT_CONVERSATION_TURNS_KEY,
+      JSON.stringify([
+        {
+          id: "turn:restored-before-clear",
+          question: "restored before clear",
+          retryMode: "ordinary",
+          agentRun: buildManagedRunPayload(restoredResult, "agent_run:restored-before-clear"),
+          result: restoredResult,
+          error: null,
+        },
+      ]),
+    );
+    fetchMock.mockReturnValueOnce(restoreResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByText("restored before clear")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新对话" }));
+    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveRestore(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "late restored answer",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_late_restore",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:late-restore",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("late restored answer")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+  });
+
   it("restores saved conversation turns and continues with restored context", async () => {
     const user = userEvent.setup();
     const restoredResult = {

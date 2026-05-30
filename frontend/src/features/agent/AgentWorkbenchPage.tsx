@@ -1,5 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
+import { PlusOutlined } from "@ant-design/icons";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
 import type {
   AgentConversationContext,
@@ -1255,6 +1256,7 @@ export function EmbeddedAgentCopilot({
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldFocusComposerRef = useRef(false);
   const processStateRequestVersionRef = useRef(0);
+  const conversationSessionRef = useRef(0);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
@@ -1281,6 +1283,18 @@ export function EmbeddedAgentCopilot({
   function beginProcessStateRequest() {
     processStateRequestVersionRef.current += 1;
     return processStateRequestVersionRef.current;
+  }
+
+  function currentConversationSession() {
+    return conversationSessionRef.current;
+  }
+
+  function isCurrentConversationSession(session: number) {
+    return conversationSessionRef.current === session;
+  }
+
+  function resetConversationSession() {
+    conversationSessionRef.current += 1;
   }
 
   function canCommitProcessState(requestVersion: number, requestRepoPath: string) {
@@ -1402,6 +1416,7 @@ export function EmbeddedAgentCopilot({
     }
 
     let cancelled = false;
+    const restoreSession = currentConversationSession();
     let restoreRequest = latestAgentRunStatusRequests.get(latestRunId);
     if (!restoreRequest) {
       restoreRequest = fetchAgentRunStatus(latestRunId).finally(() => {
@@ -1411,7 +1426,7 @@ export function EmbeddedAgentCopilot({
     }
     void restoreRequest
       .then((payload) => {
-        if (cancelled) {
+        if (cancelled || !isCurrentConversationSession(restoreSession)) {
           return;
         }
         setOrdinaryConversationMode("managed");
@@ -2164,6 +2179,23 @@ export function EmbeddedAgentCopilot({
     focusComposerInput();
   }
 
+  function startFreshConversation() {
+    setConversationTurns([]);
+    resetConversationSession();
+    setOrdinaryConversationMode("unknown");
+    setAgentWaitSeconds(0);
+    setResult(null);
+    setAgentRun(null);
+    setError(null);
+    setQuery("");
+    if (shouldPersistConversation) {
+      clearLatestAgentRunId();
+      persistStoredConversationTurns([]);
+    }
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
+  }
+
   function applyRecentRepoPath(nextRepoPath: string) {
     setRepoPath(nextRepoPath);
   }
@@ -2423,8 +2455,20 @@ export function EmbeddedAgentCopilot({
             <h1>智能体对话</h1>
             <p>像聊天一样提问；智能体只读取已有分析服务和证据，返回结论、依据、页面上下文和下一步建议。</p>
           </div>
-          <div className="agent-workbench-header__cue" aria-hidden="true">
-            MOSS / Agent
+          <div className="agent-workbench-header__actions">
+            <button
+              type="button"
+              className="agent-workbench-header__new-chat"
+              aria-label="新对话"
+              onClick={startFreshConversation}
+              disabled={loading || !hasConversation}
+            >
+              <PlusOutlined aria-hidden="true" />
+              <span>新对话</span>
+            </button>
+            <div className="agent-workbench-header__cue" aria-hidden="true">
+              MOSS / Agent
+            </div>
           </div>
         </header>
       ) : null}
