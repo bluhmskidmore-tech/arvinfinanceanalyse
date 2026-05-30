@@ -1,6 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { CSSProperties } from "react";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
@@ -17,9 +20,35 @@ import type {
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
+const STOCK_ANALYSIS_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/pages/StockAnalysisPage.css",
+);
+
 vi.mock("../components/charts/BaseChart", () => ({
   BaseChart: function MockBaseChart() {
     return <div data-testid="stock-detail-chart-canvas-stub" />;
+  },
+}));
+
+vi.mock("../lib/echarts", () => ({
+  default: function MockReactECharts({
+    className,
+    option,
+    style,
+  }: {
+    className?: string;
+    option?: unknown;
+    style?: CSSProperties;
+  }) {
+    return (
+      <div
+        className={className}
+        data-testid="stock-analysis-echarts-stub"
+        data-option={JSON.stringify(option ?? null)}
+        style={style}
+      />
+    );
   },
 }));
 
@@ -1095,30 +1124,70 @@ function stockClient(options?: {
 }
 
 describe("StockAnalysisPage", () => {
-  it("marks the research desk layout shell without changing the stock data path", async () => {
+  it("marks the backend-supply cockpit without changing the stock data path", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     const page = await screen.findByTestId("stock-analysis-page");
     expect(page.querySelector(".stock-analysis-page")).toHaveAttribute("data-layout-rev", "2026-05-16b");
     expect(page.querySelector(".stock-analysis-page")).toHaveAttribute("data-data-viz-rev", "2026-05-16c");
-    expect(await screen.findByTestId("stock-analysis-first-screen-workbench")).toBeInTheDocument();
+    const cockpit = await screen.findByTestId("stock-analysis-tailwind-cockpit");
+    expect(cockpit.className).toContain("bg-white");
+    expect(cockpit).toHaveTextContent("后端供数");
+    expect(cockpit).toHaveTextContent("门控 WARM");
+    expect(cockpit).toHaveTextContent("条件 2/4");
+    expect(cockpit).toHaveTextContent("缺口 1");
+    expect(cockpit).toHaveTextContent("阻断 0");
+    expect(cockpit).not.toHaveTextContent("TAILWIND");
+
+    const workbench = await screen.findByTestId("stock-analysis-first-screen-workbench");
+    expect(workbench).toHaveTextContent("板块供数");
+    expect(workbench).toHaveTextContent("规则就绪");
+    expect(workbench).toHaveTextContent("输出可用");
+    expect(workbench).toHaveTextContent("风险供数");
+    expect(workbench).not.toHaveTextContent("多策略共振");
+    expect(workbench).not.toHaveTextContent("复核队列");
+    expect(await screen.findByTestId("stock-analysis-sector-mini-chart")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-review-mini-chart")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-event-mini-chart")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-historical-review-section")).toHaveTextContent("历史复核");
   });
 
-  it("puts the decision summary and review queue on the first analysis surface", async () => {
+  it("scopes shell compression to the stock-analysis route", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+
+    expect(css).toContain("@media (min-width: 901px)");
+    expect(css).toContain(
+      '.workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"])',
+    );
+    expect(css).toContain('[data-testid="workbench-section-subnav"]');
+    expect(css).toContain('[data-testid="workbench-governance-banner"]');
+  });
+
+  it("surfaces backend supply status and keeps review work out of the first screen", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
     });
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
-    expect(decisionPanel).toHaveTextContent("今日判断");
-    expect(decisionPanel).toHaveTextContent("今日市场状态：进攻");
-    expect(decisionPanel).toHaveTextContent("门控 2/4");
-    expect(decisionPanel).toHaveTextContent("观察暴露 40%");
-    expect(decisionPanel).toHaveTextContent("最强 AI");
-    expect(decisionPanel).toHaveTextContent("最弱 新能源车");
-    expect(decisionPanel).toHaveTextContent("数据需复核 warning / ok");
-    expect(decisionPanel).toHaveTextContent("先复核 Alpha");
-    expect(decisionPanel).toHaveTextContent("边界");
+    expect(decisionPanel).toHaveTextContent("后端供数");
+    expect(decisionPanel).toHaveTextContent("门控 WARM");
+    expect(decisionPanel).toHaveTextContent("暴露 40%");
+    expect(decisionPanel).toHaveTextContent("就绪 0/1");
+    expect(decisionPanel).toHaveTextContent("可用 4");
+    expect(decisionPanel).toHaveTextContent("阻断 0");
+    expect(decisionPanel).toHaveTextContent("质量 warning");
+
+    const supplyStatus = await screen.findByTestId("stock-analysis-backend-supply-status");
+    expect(supplyStatus).toHaveTextContent("Market gate");
+    expect(supplyStatus).toHaveTextContent("partial");
+    expect(supplyStatus).toHaveTextContent("breadth");
+
+    const workbench = await screen.findByTestId("stock-analysis-first-screen-workbench");
+    expect(workbench).toHaveTextContent("候选 2");
+    expect(workbench).toHaveTextContent("持仓 1");
+    expect(workbench).toHaveTextContent("触发 1");
+    expect(workbench).toHaveTextContent("观察 1");
+    expect(workbench).not.toHaveTextContent("先复核 Alpha");
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
     expect(queue).toHaveTextContent("复核队列");
@@ -1465,7 +1534,8 @@ describe("StockAnalysisPage", () => {
     });
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
-    expect(decisionPanel).toHaveTextContent("数据需复核 ok / ok / fallback latest_snapshot");
+    expect(decisionPanel).toHaveTextContent("质量 ok");
+    expect(decisionPanel).toHaveTextContent("回退 latest_snapshot");
     expect(await screen.findByTestId("stock-analysis-stale-banner")).toHaveTextContent(
       "仅供复核参考",
     );
@@ -1553,10 +1623,10 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("拦截");
     expect(verdict).toHaveTextContent("闭环阻断，先复核约束项");
     expect(verdict).toHaveTextContent("保持仅观察输出");
-    expect(decisionPanel).toHaveTextContent("闭环结论优先");
-    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("闭环阻断，先复核约束项");
+    expect(decisionPanel).toHaveTextContent("供数明细与闭环");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
-    expect(decisionPanel).not.toHaveTextContent("先复核 Alpha");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("闭环阻断，先复核约束项");
     expect(summary).toHaveTextContent("拦截");
     expect(summary).toHaveTextContent("阻断");
     expect(summary).toHaveTextContent("已触发");
@@ -1583,10 +1653,10 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("数据不足");
     expect(verdict).toHaveTextContent("证据不足，不形成有效观察结论");
     expect(verdict).toHaveTextContent("先补齐宏观反拥挤");
-    expect(decisionPanel).toHaveTextContent("闭环结论优先");
-    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("证据不足，不形成有效观察结论");
+    expect(decisionPanel).toHaveTextContent("供数明细与闭环");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
-    expect(decisionPanel).not.toHaveTextContent("先复核 Alpha");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("证据不足，不形成有效观察结论");
     expect(summary).toHaveTextContent("数据不足");
     expect(summary).toHaveTextContent("待补");
     expect(summary).toHaveTextContent("不能视为中性证明");
@@ -1619,7 +1689,8 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("暂缓");
     expect(verdict).toHaveTextContent("暂缓复核，存在降级边界");
     expect(verdict).toHaveTextContent("保留观察队列");
-    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("暂缓复核，存在降级边界");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("暂缓复核，存在降级边界");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(summary).toHaveTextContent("暂缓");
     expect(summary).toHaveTextContent("降级");
