@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
-import { createApiClient, useApiClient, type ApiClient } from "../../../api/client";
+import { useApiClient, type ApiClient } from "../../../api/client";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
-import { isNetworkUnavailableError } from "./dashboardPageHelpers";
 
 type HomeSnapshotEnvelope = Awaited<ReturnType<ApiClient["getHomeSnapshot"]>>;
 
@@ -21,19 +20,22 @@ export type DashboardSnapshotBoundaryResult = {
   snapshotResult: HomeSnapshotEnvelope["result"] | undefined;
   overviewMeta: ReturnType<typeof adaptDashboard>["overview"]["meta"];
   attributionMeta: ReturnType<typeof adaptDashboard>["attribution"]["meta"];
+  snapshotMeta: HomeSnapshotEnvelope["result_meta"] | null;
   initialEffectiveReportDate: string;
   supplementalReportDate: string | undefined;
+  reportDateDataWarning: string | null;
   refreshSnapshot: () => Promise<unknown>;
 };
+
+const REPORT_DATE_STALE_WARNING = "新报告日数据获取失败，当前展示上一版本数据";
+const LIVE_SOURCE_UNAVAILABLE_WARNING = "实时数据源当前不可用，未展示本地模拟数据";
 
 export function useDashboardSnapshotBoundary({
   reportDate,
   allowPartial,
 }: UseDashboardSnapshotBoundaryOptions): DashboardSnapshotBoundaryResult {
   const sourceClient = useApiClient();
-  const fallbackClient = useMemo(() => createApiClient({ mode: "mock" }), []);
-  const [forceMockFallback, setForceMockFallback] = useState(false);
-  const dataClient = forceMockFallback ? fallbackClient : sourceClient;
+  const dataClient = sourceClient;
   const displayMode = sourceClient.mode;
   const requestedDateLabel = reportDate || "latest";
 
@@ -47,31 +49,23 @@ export function useDashboardSnapshotBoundary({
     retry: false,
   });
 
-  const isSnapshotNetworkFallback =
-    sourceClient.mode === "real" &&
-    snapshotQuery.isError &&
-    isNetworkUnavailableError(snapshotQuery.error);
-  const isLiveDataFallback =
-    sourceClient.mode === "real" && (forceMockFallback || isSnapshotNetworkFallback);
+  const isLiveDataFallback = false;
+  const lastSuccessfulSnapshotRef = useRef<HomeSnapshotEnvelope | null>(null);
+  if (snapshotQuery.data) {
+    lastSuccessfulSnapshotRef.current = snapshotQuery.data;
+  }
 
-  useEffect(() => {
-    if (
-      sourceClient.mode === "real" &&
-      !forceMockFallback &&
-      snapshotQuery.isError &&
-      isNetworkUnavailableError(snapshotQuery.error)
-    ) {
-      setForceMockFallback(true);
-    }
-  }, [
-    forceMockFallback,
-    snapshotQuery.error,
-    snapshotQuery.isError,
-    sourceClient.mode,
-  ]);
+  const displayedSnapshot =
+    snapshotQuery.data ?? (snapshotQuery.isError ? lastSuccessfulSnapshotRef.current : null);
+  const reportDateDataWarning =
+    snapshotQuery.isError && lastSuccessfulSnapshotRef.current
+      ? REPORT_DATE_STALE_WARNING
+      : snapshotQuery.isError && dataClient.mode === "real"
+        ? LIVE_SOURCE_UNAVAILABLE_WARNING
+      : null;
 
   const { overviewEnv, attributionEnv } = useMemo(() => {
-    const env = snapshotQuery.data;
+    const env = displayedSnapshot;
     if (!env) {
       return { overviewEnv: undefined, attributionEnv: undefined };
     }
@@ -85,7 +79,7 @@ export function useDashboardSnapshotBoundary({
         result: env.result.attribution,
       },
     };
-  }, [snapshotQuery.data]);
+  }, [displayedSnapshot]);
 
   const adapterOutput = useMemo(
     () =>
@@ -93,15 +87,17 @@ export function useDashboardSnapshotBoundary({
         overviewEnv,
         attributionEnv,
         overviewLoading: snapshotQuery.isLoading,
-        overviewError: snapshotQuery.isError,
+        overviewError: snapshotQuery.isError && !displayedSnapshot,
         attributionLoading: snapshotQuery.isLoading,
-        attributionError: snapshotQuery.isError,
-        verdictPayload: snapshotQuery.data?.result.verdict ?? null,
+        attributionError: snapshotQuery.isError && !displayedSnapshot,
+        verdictPayload: displayedSnapshot?.result.verdict ?? null,
         snapshotFetchErrorDetail:
-          snapshotQuery.error instanceof Error ? snapshotQuery.error.message : undefined,
-        domainsEffectiveDate: snapshotQuery.data?.result.domains_effective_date ?? {},
-        productCategoryYtd: snapshotQuery.data?.result.product_category_ytd ?? null,
-        productCategoryMonthly: snapshotQuery.data?.result.product_category_monthly ?? null,
+          snapshotQuery.isError && !displayedSnapshot && snapshotQuery.error instanceof Error
+            ? snapshotQuery.error.message
+            : undefined,
+        domainsEffectiveDate: displayedSnapshot?.result.domains_effective_date ?? {},
+        productCategoryYtd: displayedSnapshot?.result.product_category_ytd ?? null,
+        productCategoryMonthly: displayedSnapshot?.result.product_category_monthly ?? null,
       }),
     [
       overviewEnv,
@@ -109,24 +105,18 @@ export function useDashboardSnapshotBoundary({
       snapshotQuery.isLoading,
       snapshotQuery.isError,
       snapshotQuery.error,
-      snapshotQuery.data?.result.verdict,
-      snapshotQuery.data?.result.domains_effective_date,
-      snapshotQuery.data?.result.product_category_ytd,
-      snapshotQuery.data?.result.product_category_monthly,
+      displayedSnapshot,
     ],
   );
 
-  const snapshotResult = snapshotQuery.data?.result;
+  const snapshotResult = displayedSnapshot?.result;
   const overviewMeta = adapterOutput.overview.meta;
   const attributionMeta = adapterOutput.attribution.meta;
+  const snapshotMeta = displayedSnapshot?.result_meta ?? null;
   const initialEffectiveReportDate = snapshotResult?.report_date?.trim() || reportDate.trim();
   const supplementalReportDate = initialEffectiveReportDate || undefined;
 
   const refreshSnapshot = async () => {
-    if (isLiveDataFallback) {
-      setForceMockFallback(false);
-      return;
-    }
     return snapshotQuery.refetch();
   };
 
@@ -139,8 +129,10 @@ export function useDashboardSnapshotBoundary({
     snapshotResult,
     overviewMeta,
     attributionMeta,
+    snapshotMeta,
     initialEffectiveReportDate,
     supplementalReportDate,
+    reportDateDataWarning,
     refreshSnapshot,
   };
 }

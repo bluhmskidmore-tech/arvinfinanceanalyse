@@ -168,22 +168,6 @@ export const DASHBOARD_INTERBANK_MOCK = {
 
 export const DASHBOARD_ATTRIBUTION_TABS_MOCK = [
   {
-    id: "day",
-    label: "日度",
-    pnl: "-368.09 万",
-    change: "-223.30 万",
-    yield: "-0.10bp",
-    changeTone: "down",
-  },
-  {
-    id: "week",
-    label: "周度",
-    pnl: "-1,286.42 万",
-    change: "-412.18 万",
-    yield: "-0.35bp",
-    changeTone: "down",
-  },
-  {
     id: "month",
     label: "月度",
     pnl: "+6,428.31 万",
@@ -191,29 +175,20 @@ export const DASHBOARD_ATTRIBUTION_TABS_MOCK = [
     yield: "+1.73bp",
     changeTone: "up",
   },
-  {
-    id: "ytd",
-    label: "YTD",
-    pnl: "+29.71 亿",
-    change: "+1.82 亿",
-    yield: "+0.81%",
-    changeTone: "up",
-  },
 ] as const;
 
 export const DASHBOARD_ATTRIBUTION_WATERFALL_MOCK = [
-  { id: "rate-change", label: "利率变动", value: "-512.34", status: "demo" as const, tone: "negative" as const },
-  { id: "credit-spread", label: "信用利差", value: "+286.21", status: "demo" as const, tone: "positive" as const },
-  { id: "coupon", label: "票息收入", value: "+198.67", status: "demo" as const, tone: "positive" as const },
-  { id: "trading", label: "交易盈亏", value: "-223.46", status: "demo" as const, tone: "negative" as const },
-  { id: "fees", label: "其他费用", value: "-116.14", status: "demo" as const, tone: "negative" as const },
-  { id: "total", label: "综合贡献", value: "-368.09", status: "demo" as const, tone: "negative" as const },
+  { id: "carry", label: "Carry", value: "+198.67", status: "demo" as const, tone: "positive" as const },
+  { id: "roll", label: "Roll-down", value: "+86.21", status: "demo" as const, tone: "positive" as const },
+  { id: "credit", label: "信用利差", value: "+286.21", status: "demo" as const, tone: "positive" as const },
+  { id: "trading", label: "交易损益", value: "-223.46", status: "demo" as const, tone: "negative" as const },
+  { id: "other", label: "其他", value: "-116.14", status: "demo" as const, tone: "negative" as const },
 ] as const;
 
 export const DASHBOARD_ATTRIBUTION_NOTE_MOCK = [
-  "利率上行导致组合估值回落，对损益形成主要拖累。",
+  "利率上行导致组合估值回落，对月度损益形成主要拖累。",
   "信用利差收窄贡献正收益，主要来自中高等级信用债估值修复。",
-  "当日新增买入利率债 32.45 亿，卖出信用债 18.30 亿，久期小幅上升。",
+  "当月新增买入利率债 32.45 亿，卖出信用债 18.30 亿，久期小幅上升。",
 ] as const;
 
 export const DASHBOARD_RISK_ALERT_COUNTS_MOCK = [

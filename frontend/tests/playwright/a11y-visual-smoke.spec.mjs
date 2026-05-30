@@ -5,7 +5,7 @@ const smokePages = [
   {
     slug: "dashboard",
     path: "/",
-    readySelector: '[data-testid="fixed-income-dashboard-page"]',
+    readySelector: '[data-testid="dashboard-home-page"]',
   },
   {
     slug: "balance-analysis",
@@ -27,36 +27,9 @@ const smokePages = [
   },
 ];
 
-async function probeServer(baseURL) {
-  try {
-    const response = await fetch(baseURL, { method: "GET" });
-    if (!response.ok) {
-      return {
-        ok: false,
-        reason: `Skipping smoke: frontend server at ${baseURL} returned HTTP ${response.status}.`,
-      };
-    }
-    return { ok: true, reason: "" };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      reason: `Skipping smoke: frontend server at ${baseURL} is unavailable (${message}).`,
-    };
-  }
-}
-
 test.describe("frontend accessibility + visual smoke", () => {
-  let serverCheck;
-
-  test.beforeAll(async ({ baseURL }) => {
-    serverCheck = await probeServer(baseURL ?? "http://127.0.0.1:5888");
-  });
-
   for (const smokePage of smokePages) {
     test(`${smokePage.slug} has no critical axe violations`, async ({ page }, testInfo) => {
-      test.skip(!serverCheck.ok, serverCheck.reason);
-
       await page.goto(smokePage.path, { waitUntil: "networkidle" });
       const pageRoot = page.locator(smokePage.readySelector);
       await expect(pageRoot).toBeVisible();

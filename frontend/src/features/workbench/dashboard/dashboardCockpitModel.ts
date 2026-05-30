@@ -938,7 +938,7 @@ function buildPortfolioMix(
   return rows;
 }
 
-function buildRiskItems(
+export function buildRiskItems(
   portfolio: BondPortfolioHeadlinesPayload | null | undefined,
   reportDate: string,
 ): DashboardCockpitRiskItem[] {

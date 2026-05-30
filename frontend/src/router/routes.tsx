@@ -10,8 +10,8 @@ import {
 } from "../mocks/navigation";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 
-const DashboardPage = lazy(
-  () => import("../features/workbench/pages/DashboardPage"),
+const DashboardHomePage = lazy(
+  () => import("../features/workbench/dashboard-home/DashboardHomePage"),
 );
 const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
@@ -111,7 +111,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/") {
       return {
         index: true,
-        element: routeElement(<DashboardPage />),
+        element: routeElement(<DashboardHomePage />),
       };
     }
 
@@ -365,7 +365,7 @@ export const workbenchRoutes: RouteObject[] = [
       ...buildWorkbenchChildRoutes(),
       {
         path: "dashboard",
-        element: routeElement(<DashboardPage />),
+        element: routeElement(<DashboardHomePage />),
       },
       {
         path: "product-category-pnl/audit",

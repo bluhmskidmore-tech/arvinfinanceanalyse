@@ -8,13 +8,42 @@ const normalizeReportDate = (reportDate: string | null | undefined) =>
   reportDate?.trim() || "pending-snapshot";
 
 export const apiQueryKeys = {
-  marketRates: (mode: string) => ["market-data", "formal-rates", mode] as const,
+  marketRates: (mode: string, reportDate?: string | null) =>
+    ["market-data", "formal-rates", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardHeadline: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "headline", mode, normalizeReportDate(reportDate)] as const,
   bondAnalyticsPortfolioHeadlines: (mode: string, reportDate: string | null | undefined) =>
     ["bond-analytics", "portfolio-headlines", mode, normalizeReportDate(reportDate)] as const,
+  bondAnalyticsDv01Risk: (
+    mode: string,
+    reportDate: string | null | undefined,
+    accountingClass: string,
+    topN: number,
+    shockBps: string,
+  ) =>
+    [
+      "bond-analytics",
+      "dv01-risk",
+      mode,
+      normalizeReportDate(reportDate),
+      accountingClass,
+      topN,
+      shockBps,
+    ] as const,
   bondDashboardPortfolioComparison: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "portfolio-comparison", mode, normalizeReportDate(reportDate)] as const,
+  bondDashboardAssetStructure: (
+    mode: string,
+    reportDate: string | null | undefined,
+    groupBy: string,
+  ) =>
+    [
+      "bond-dashboard",
+      "asset-structure",
+      mode,
+      normalizeReportDate(reportDate),
+      groupBy,
+    ] as const,
   bondAnalyticsCreditSpreadMigration: (
     mode: string,
     reportDate: string | null | undefined,

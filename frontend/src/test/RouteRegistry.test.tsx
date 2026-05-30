@@ -245,8 +245,8 @@ describe("RouteRegistry", () => {
   it("renders the /dashboard alias", async () => {
     renderWorkbenchApp(["/dashboard"], { client: mockClient });
 
-    expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-governed-surface")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
     expect(
       within(await screen.findByTestId("workbench-group-nav")).getByRole("link", {
         name: /经营驾驶舱/,
