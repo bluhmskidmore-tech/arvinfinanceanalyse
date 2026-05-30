@@ -1,19 +1,46 @@
 import { screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
+const MACRO_TOOLKIT_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/macro-toolkit/pages/MacroToolkitPage.css",
+);
+
 describe("MacroToolkitPage", () => {
+  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+
+    expect(css).not.toMatch(/moss-color-warm-/);
+    expect(css).not.toMatch(/rgba\((255, 253, 248|120, 99, 76|147, 111, 88|111, 139, 106|171, 95, 62|143, 63, 63|55, 42, 30)/);
+    expect(css).not.toMatch(/#(fffdf8|fffaf4|456882|6f8b6a|8f3f3f|2b2520|f0e7dc)/i);
+    expect(css).toContain("var(--moss-color-primary-600)");
+    expect(css).toContain("var(--moss-color-info-600)");
+    expect(css).toContain("var(--moss-color-success-600)");
+    expect(css).toContain("var(--moss-color-danger-600)");
+    expect(css).toContain("var(--moss-color-warning-600)");
+  });
+
   it("renders from the workbench route", async () => {
     renderWorkbenchApp(["/macro-toolkit"]);
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "宏观分析结果" }),
     ).toBeInTheDocument();
+    const cockpit = await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    expect(cockpit.className).toContain("bg-white");
     expect(await screen.findByText("投研观点")).toBeInTheDocument();
     expect(await screen.findByText("证据覆盖")).toBeInTheDocument();
     expect(await screen.findByText("87.5%")).toBeInTheDocument();
+    const boundary = await screen.findByTestId("macro-toolkit-contract-boundary");
+    expect(boundary).toHaveTextContent("分析/工具口径");
+    expect(boundary).toHaveTextContent("非正式口径");
+    expect(boundary).toHaveTextContent("macro_toolkit.analysis");
+    expect(boundary).toHaveTextContent("rv_macro_toolkit_ui_v1");
     expect(
       await screen.findByLabelText("宏观工具投研总览"),
     ).toBeInTheDocument();
@@ -125,5 +152,33 @@ describe("MacroToolkitPage", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("策略展示正在生成")).toBeInTheDocument();
     expect(screen.getByText("核心判断和市场踩踏风险已先返回。")).toBeInTheDocument();
+  });
+
+  it("keeps analytical boundary and failing sources visible when macro toolkit reads fail", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => {
+        throw new Error("Request failed: /ui/macro/toolkit/analysis?detail=core (502)");
+      },
+      getMacroToolkitScripts: async () => {
+        throw new Error("Request failed: /ui/macro/toolkit/scripts (502)");
+      },
+      getMacroToolkitStrategySummaries: async () => {
+        throw new Error("Request failed: /ui/macro/toolkit/analysis/strategy-summaries (502)");
+      },
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const errorState = await screen.findByTestId("macro-toolkit-error-state");
+    expect(errorState).toHaveTextContent("宏观工具暂不可用");
+    expect(errorState).toHaveTextContent("分析/工具口径");
+    expect(errorState).toHaveTextContent("非正式口径");
+    expect(errorState).toHaveTextContent("macro_toolkit.analysis");
+    expect(errorState).toHaveTextContent("/ui/macro/toolkit/analysis?detail=core");
+    expect(errorState).toHaveTextContent("/ui/macro/toolkit/scripts");
+    expect(errorState).toHaveTextContent("/ui/macro/toolkit/analysis/strategy-summaries");
+    expect(await screen.findByRole("button", { name: /重试读取/ })).toBeInTheDocument();
   });
 });

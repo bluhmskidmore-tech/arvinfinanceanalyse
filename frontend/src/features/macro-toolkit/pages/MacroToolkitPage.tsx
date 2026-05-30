@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   CheckCircleOutlined,
+  ClockCircleOutlined,
+  DatabaseOutlined,
   ExclamationCircleOutlined,
+  InfoCircleOutlined,
+  LineChartOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
+  ThunderboltOutlined,
   ToolOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -29,7 +36,6 @@ import type {
 } from "../../../api/macroToolkitClient";
 import {
   DataStatusStrip,
-  PageDecisionHero,
   PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
@@ -49,6 +55,8 @@ const GROUP_LABELS: Record<string, string> = {
 };
 
 const EMPTY_SCRIPTS: MacroToolkitScriptRecord[] = [];
+const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
+const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 
 function groupLabel(group: string) {
   return GROUP_LABELS[group] ?? group;
@@ -128,6 +136,60 @@ function statusColor(status: string) {
   if (["lagging", "partial", "planned", "degraded", "sample_only"].includes(status)) return "gold";
   if (["stale", "missing", "not_wired", "unavailable"].includes(status)) return "red";
   return "default";
+}
+
+function compactText(text: string | null | undefined, maxLength = 34) {
+  if (!text) return "";
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function macroStatusIconTone(tone: MacroToolkitSignalCard["tone"] | "positive" | "neutral") {
+  if (tone === "positive") return "positive";
+  if (tone === "negative") return "negative";
+  if (tone === "missing") return "missing";
+  return "neutral";
+}
+
+function MacroStatusIcon({
+  tone = "neutral",
+  children,
+}: {
+  tone?: MacroToolkitSignalCard["tone"] | "positive" | "neutral";
+  children: ReactNode;
+}) {
+  return (
+    <span className={`macro-toolkit-status-icon macro-toolkit-status-icon--${macroStatusIconTone(tone)}`}>
+      {children}
+    </span>
+  );
+}
+
+function MacroToolkitContractBoundary({
+  formalUseAllowed,
+  resultKind,
+  ruleVersion,
+}: {
+  formalUseAllowed?: boolean;
+  resultKind?: string;
+  ruleVersion?: string;
+}) {
+  return (
+    <div
+      className="macro-toolkit-contract-boundary"
+      data-testid="macro-toolkit-contract-boundary"
+      aria-label="宏观工具口径边界"
+    >
+      <span>
+        <SafetyCertificateOutlined />
+        分析/工具口径
+      </span>
+      <strong>{formalUseAllowed ? "正式可用" : "非正式口径"}</strong>
+      <small>{resultKind ?? MACRO_TOOLKIT_ANALYSIS_KIND}</small>
+      <small>{ruleVersion ?? MACRO_TOOLKIT_UI_RULE_VERSION}</small>
+    </div>
+  );
 }
 
 function formatValue(value: number | null, unit = "") {
@@ -264,6 +326,7 @@ export default function MacroToolkitPage() {
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
   const sourceChecks = payload?.source_checks ?? analysis?.source_checks ?? [];
   const capabilityItems = payload?.capabilities ?? analysis?.capabilities ?? [];
+  const analysisMeta = analysisQuery.data?.result_meta;
   const sourceHitCount = sourceChecks.filter((check) => check.row_count > 0).length;
   const availableScriptCount = scripts.filter((script) => script.available).length;
   const readyCapabilityCount = capabilityItems.filter((item) => isReadyStatus(item.data_status)).length;
@@ -276,10 +339,14 @@ export default function MacroToolkitPage() {
     analysis?.signal_cards
       .filter((card) => card.score != null)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null;
+  const isMacroRefreshing = analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching;
   const queryErrorText = [analysisQuery.error, scriptsQuery.error, strategyQuery.error]
     .filter(Boolean)
     .map(formatQueryError)
     .join("；");
+  const failedReadMessages = [analysisQuery.error, scriptsQuery.error, strategyQuery.error]
+    .filter(Boolean)
+    .map(formatQueryError);
 
   const runSelectedScript = useCallback(async () => {
     if (!selectedScript) {
@@ -554,6 +621,8 @@ export default function MacroToolkitPage() {
     return (
       <PageStateSurface
         variant="error"
+        testId="macro-toolkit-error-state"
+        className="macro-toolkit-error-state"
         title="宏观工具暂不可用"
         description={queryErrorText || "后端宏观模块没有返回可展示数据。"}
         actions={
@@ -569,62 +638,92 @@ export default function MacroToolkitPage() {
             重试读取
           </Button>
         }
-      />
+      >
+        <MacroToolkitContractBoundary />
+        <div className="macro-toolkit-error-sources" aria-label="宏观工具失败来源">
+          <span>失败来源</span>
+          {failedReadMessages.length ? (
+            failedReadMessages.map((message) => <small key={message}>{message}</small>)
+          ) : (
+            <small>后端宏观模块没有返回可展示数据。</small>
+          )}
+        </div>
+      </PageStateSurface>
     );
   }
 
   return (
     <div className="macro-toolkit-page">
-      <PageDecisionHero
-        title="宏观分析结果"
-        eyebrow="宏观模块"
-        businessQuestion="当前 Choice/Tushare 数据给出的宏观环境判断是什么？"
-        actions={
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => {
-              void analysisQuery.refetch();
-              void scriptsQuery.refetch();
-              void strategyQuery.refetch();
-            }}
-            loading={analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching}
-          >
-            刷新结果
-          </Button>
-        }
-        conclusion={
-          <div className="macro-toolkit-command-brief">
-            <div
-              className={`macro-toolkit-decision-slab macro-toolkit-decision-slab--${
-                analysis?.conclusion.tone ?? "missing"
-              }`}
-            >
-              <span>投研观点</span>
-              <strong>{analysis?.conclusion.stance ?? "读取中"}</strong>
-              <p>{analysis?.conclusion.summary ?? "正在从系统数据源生成宏观判断。"}</p>
-              <small>建议：{analysis?.conclusion.recommended_action ?? "等待分析结果返回"}</small>
+      <section
+        data-testid="macro-toolkit-tailwind-cockpit"
+        className="overflow-hidden rounded-xl border border-blue-100 bg-white text-slate-900 shadow-lg shadow-blue-100/70"
+      >
+        <div className="border-b border-blue-100 bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_52%,#eaf3ff_100%)] p-4 lg:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-slate-500">
+                <ClockCircleOutlined className="text-blue-500" />
+                <span className="font-mono">{analysis?.as_of_date ?? "DATE_MISSING"}</span>
+              </div>
+              <h1 className="mt-2 text-2xl font-black leading-tight text-blue-950 lg:text-4xl">宏观分析结果</h1>
             </div>
-            <div className="macro-toolkit-brief-metrics">
-              <MetricTile
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => {
+                void analysisQuery.refetch();
+                void scriptsQuery.refetch();
+                void strategyQuery.refetch();
+              }}
+              loading={isMacroRefreshing}
+            >
+              刷新结果
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            <MacroToolkitContractBoundary
+              formalUseAllowed={analysisMeta?.formal_use_allowed}
+              resultKind={analysisMeta?.result_kind}
+              ruleVersion={analysisMeta?.rule_version}
+            />
+            <div className="min-w-0 rounded-lg border border-blue-100 bg-blue-50/70 p-4 shadow-sm shadow-blue-100/60">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                <MacroStatusIcon tone={analysis?.conclusion.tone ?? "missing"}>
+                  {analysis?.conclusion.tone === "negative" || !analysis ? <WarningOutlined /> : <LineChartOutlined />}
+                </MacroStatusIcon>
+                投研观点
+              </div>
+              <strong className="mt-3 block truncate text-3xl font-black text-blue-950">
+                {analysis?.conclusion.stance ?? "读取中"}
+              </strong>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-700" title={analysis?.conclusion.summary}>
+                {analysis?.conclusion.summary ?? "正在从系统数据源生成宏观判断。"}
+              </p>
+            </div>
+            <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
+              <TailwindMetricTile
+                icon={<SafetyCertificateOutlined />}
                 label="证据覆盖"
                 value={formatPercent(analysis?.coverage.hit_rate)}
                 detail={`${analysis?.coverage.hit_count ?? 0}/${analysis?.coverage.indicator_count ?? 0} 指标命中`}
-                tone={(analysis?.coverage.hit_rate ?? 0) >= 0.8 ? "positive" : "neutral"}
               />
-              <MetricTile
+              <TailwindMetricTile
+                icon={<ClockCircleOutlined />}
                 label="分析日期"
                 value={analysis?.as_of_date ?? "缺失"}
                 detail={(analysis?.default_data_sources ?? []).join(" + ") || "choice + tushare"}
               />
-              <MetricTile
+              <TailwindMetricTile
+                icon={<ThunderboltOutlined />}
                 label="能力闭环"
                 value={`${readyCapabilityCount}/${capabilityItems.length || 0}`}
                 detail={`${wiredCapabilityCount} 项已接到页面/API`}
               />
             </div>
           </div>
-        }
-      />
+        </div>
+
+      </section>
 
       {analysisQuery.isError ? (
         <Alert type="error" showIcon message="宏观分析结果加载失败" />
@@ -633,25 +732,34 @@ export default function MacroToolkitPage() {
       {analysis ? (
         <>
           <DataStatusStrip className="macro-toolkit-status-strip">
-            <span>读取口径：{analysisQuery.data?.result_meta.basis}</span>
-            <span>质量：{analysisQuery.data?.result_meta.quality_flag}</span>
-            <span>建议：{analysis.conclusion.recommended_action}</span>
+            <span title={`读取口径：${analysisQuery.data?.result_meta.basis ?? "-"}`}>
+              <DatabaseOutlined /> {analysisQuery.data?.result_meta.basis ?? "-"}
+            </span>
+            <span title={`质量：${analysisQuery.data?.result_meta.quality_flag ?? "-"}`}>
+              <SafetyCertificateOutlined /> {analysisQuery.data?.result_meta.quality_flag ?? "-"}
+            </span>
+            <span title={`建议：${analysis.conclusion.recommended_action}`}>
+              <ThunderboltOutlined /> {compactText(analysis.conclusion.recommended_action, 24)}
+            </span>
           </DataStatusStrip>
 
           <div className="macro-toolkit-readiness-strip" aria-label="宏观工具投研总览">
             <ReadinessTile
+              icon={<LineChartOutlined />}
               label="主信号"
               value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : "缺失"}
               detail={primarySignal?.evidence.join(" / ") ?? "暂无可排序信号"}
               tone={primarySignal?.tone ?? "missing"}
             />
             <ReadinessTile
+              icon={<ClockCircleOutlined />}
               label="数据新鲜度"
               value={analysis.as_of_date ?? "缺失"}
               detail={`${missingIndicatorCount} 个指标缺失；${sourceHitCount} 个源命中`}
               tone={missingIndicatorCount > 0 ? "neutral" : "positive"}
             />
             <ReadinessTile
+              icon={<ThunderboltOutlined />}
               label="模型结果"
               value={`${capabilityResults.length} 个功能输出`}
               detail={`${degradedResultCount} 个降级或不可用结果`}
@@ -1117,11 +1225,13 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
 }
 
 function ReadinessTile({
+  icon,
   label,
   value,
   detail,
   tone = "neutral",
 }: {
+  icon?: ReactNode;
   label: string;
   value: string;
   detail: string;
@@ -1131,11 +1241,38 @@ function ReadinessTile({
   return (
     <div className={`macro-toolkit-readiness-tile macro-toolkit-readiness-tile--${tone}`}>
       <span>
-        <Icon />
+        <MacroStatusIcon tone={tone}>{icon ?? <Icon />}</MacroStatusIcon>
         {label}
       </span>
       <strong>{value}</strong>
-      <small>{detail}</small>
+      <small title={detail}>{compactText(detail, 28)}</small>
+    </div>
+  );
+}
+
+function TailwindMetricTile({
+  icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | number;
+  detail: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-blue-100 bg-white p-3 shadow-sm shadow-blue-100/60">
+      <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-slate-600">
+        <span className="grid h-6 w-6 place-items-center rounded-md border border-blue-100 bg-blue-50 text-blue-600">
+          {icon}
+        </span>
+        <span className="truncate">{label}</span>
+      </div>
+      <strong className="mt-2 block truncate font-mono text-xl text-blue-950">{value}</strong>
+      <small className="block truncate text-xs text-slate-500" title={detail}>
+        {detail}
+      </small>
     </div>
   );
 }
@@ -1257,7 +1394,12 @@ function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload }) {
     <div className={`macro-toolkit-a-share-risk macro-toolkit-a-share-risk--${tone}`}>
       <div className="macro-toolkit-a-share-risk__summary" style={scoreStyle(risk.risk_score)}>
         <div className="macro-toolkit-capability-result-head">
-          <span>{risk.trade_date ?? "日期缺失"}</span>
+          <span>
+            <MacroStatusIcon tone={tone}>
+              {tone === "negative" ? <WarningOutlined /> : <ClockCircleOutlined />}
+            </MacroStatusIcon>
+            {risk.trade_date ?? "日期缺失"}
+          </span>
           <div className="macro-toolkit-tag-row">
             <Tag color={statusColor(risk.status)}>{statusLabel(risk.status)}</Tag>
             <Tag color={riskLevelColor(risk.risk_level)}>{risk.risk_name}</Tag>
@@ -1267,8 +1409,8 @@ function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload }) {
         <div className="macro-toolkit-score-track" aria-hidden="true">
           <span />
         </div>
-        <p>{risk.summary || "风险摘要缺失。"}</p>
-        <small>{risk.position_rule || "仓位规则缺失，不能据此放大仓位。"}</small>
+        <p title={risk.summary}>{compactText(risk.summary || "风险摘要缺失。", 38)}</p>
+        <small title={risk.position_rule}>{compactText(risk.position_rule || "仓位规则缺失，不能据此放大仓位。", 30)}</small>
       </div>
 
       <div className="macro-toolkit-a-share-risk__metrics">
@@ -1295,7 +1437,9 @@ function RiskList({ title, items, emptyText }: { title: string; items: string[];
     <div className="macro-toolkit-a-share-risk__list">
       <span>{title}</span>
       {visibleItems.slice(0, 4).map((item) => (
-        <small key={item}>{item}</small>
+        <small key={item} title={item}>
+          {compactText(item, 26)}
+        </small>
       ))}
     </div>
   );
@@ -1319,11 +1463,13 @@ function formatMetricDisplay(metric: NonNullable<MacroToolkitCapabilityResult["p
 }
 
 function MetricTile({
+  icon,
   label,
   value,
   detail,
   tone = "neutral",
 }: {
+  icon?: ReactNode;
   label: string;
   value: string | number;
   detail: string;
@@ -1331,9 +1477,12 @@ function MetricTile({
 }) {
   return (
     <div className={`macro-toolkit-metric macro-toolkit-metric--${tone}`}>
-      <span>{label}</span>
+      <span>
+        <MacroStatusIcon tone={tone}>{icon ?? <InfoCircleOutlined />}</MacroStatusIcon>
+        {label}
+      </span>
       <strong>{value}</strong>
-      <small>{detail}</small>
+      <small title={detail}>{compactText(detail, 26)}</small>
     </div>
   );
 }
