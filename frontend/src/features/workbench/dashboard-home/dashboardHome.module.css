@@ -1586,7 +1586,7 @@
 }
 
 .dhTerminalTable td {
-  height: 28px;
+  height: 31px;
   padding: 0 6px;
   border-bottom: 1px solid var(--dh-line-soft);
   text-align: right;
@@ -1598,17 +1598,25 @@
 
 .dhTerminalTable td:first-child {
   display: grid;
-  gap: 2px;
+  align-content: center;
+  gap: 1px;
+  line-height: 1.08;
 }
 
 .dhTerminalTable td:first-child b {
   color: var(--dh-ink);
+  font-size: 10.5px;
+  line-height: 1.08;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dhTerminalTable td:first-child span {
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
+  line-height: 1.08;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1960,6 +1968,85 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dhTerminalStateSurface {
+  min-height: 128px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px dashed var(--dh-line-strong);
+  background: var(--dh-card-soft);
+  color: var(--dh-muted);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.dhTerminalStateSurface[data-state="loading"] {
+  color: var(--dh-blue-deep);
+  border-color: rgba(24, 80, 161, 0.24);
+  background: #f6faff;
+}
+
+.dhTerminalStateSurface[data-state="partial"],
+.dhTerminalStateSurface[data-state="stale"] {
+  color: var(--dh-amber);
+  border-color: #efd8a8;
+  background: var(--dh-amber-soft);
+}
+
+.dhTerminalStateSurface[data-state="error"],
+.dhTerminalStateSurface[data-state="backend-gap"] {
+  color: var(--dh-red);
+  border-color: #efcbc9;
+  background: var(--dh-red-soft);
+}
+
+.dhTerminalStateSurfaceCompact {
+  min-height: 52px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-items: start;
+  text-align: left;
+  padding: 9px 11px;
+}
+
+.dhTerminalStateIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+.dhTerminalStateSurface b {
+  color: var(--dh-ink-2);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.dhTerminalStateSurface small {
+  color: currentColor;
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.dhTerminalStateSurfaceCompact b,
+.dhTerminalStateSurfaceCompact small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalStateSurfaceCompact small {
+  justify-self: end;
 }
 
 .dhTerminalEmpty {

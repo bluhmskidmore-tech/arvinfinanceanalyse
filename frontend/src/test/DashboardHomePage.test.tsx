@@ -1,11 +1,14 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
 }));
 
 import { createApiClient, type ApiClient } from "../api/client";
+import type { DashboardHomeView } from "../features/workbench/dashboard-home/dashboardHomeView";
+import { TerminalHomeContent } from "../features/workbench/dashboard-home/TerminalHomeContent";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 afterEach(() => {
@@ -26,6 +29,100 @@ function renderDashboardHome(client?: ApiClient) {
   return renderWorkbenchApp(["/"], {
     client: client ?? createApiClient({ mode: "mock" }),
   });
+}
+
+function createTerminalStateView(overrides: Partial<DashboardHomeView> = {}): DashboardHomeView {
+  const baseState = { kind: "empty" as const, label: "暂无数据" };
+  return {
+    reportDate: "2026-04-30",
+    useMockFallback: false,
+    headerStatus: {
+      dataStatusKind: "ok",
+      dataUpdatedAt: "09:15",
+      marketStatus: "市场已收盘",
+      valuationLabel: "估值已完成",
+      valuationTone: "ok",
+      riskReviewCount: 0,
+      showRiskReview: false,
+      dataSyncPrefix: "数据已更新",
+    },
+    aiJudge: {
+      conclusion: "测试结论",
+      healthLabel: "中性",
+      healthScore: 70,
+      healthTone: "green",
+      impact: "等待下一组观测",
+      sparkline: [],
+    },
+    coreKpis: [],
+    riskMinis: [],
+    marketTape: [],
+    portfolioStats: [],
+    assetBars: [],
+    assetBarsPlaceholder: true,
+    centerAum: { label: "总资产", value: "—" },
+    interbank: { assets: "—", liabilities: "—", net: "—", netTone: "muted" },
+    attributionTabs: [],
+    attributionWaterfall: [],
+    attributionInsights: {
+      maxDragLabel: "—",
+      maxDragValue: "—",
+      maxContributionLabel: "—",
+      maxContributionValue: "—",
+    },
+    attributionNote: [],
+    riskCards: [],
+    riskCardsPlaceholder: true,
+    riskRadar: { dimensions: [], values: [], placeholder: true },
+    todos: [],
+    watchlist: [],
+    watchlistPlaceholder: true,
+    exposureRows: [],
+    balanceMetrics: [],
+    quickDrilldowns: [],
+    researchCalendar: {
+      items: [],
+      status: "empty",
+      windowLabel: "2026-04-23 至 2026-05-14",
+      message: "当前窗口暂无供给/招标事件。",
+    },
+    liabilityWatchBasisNote: null,
+    decisionRail: {
+      conclusion: "测试结论",
+      maxDragLabel: "—",
+      maxDragValue: "—",
+      maxContributionLabel: "—",
+      maxContributionValue: "—",
+      keyRisk: "—",
+      suggestions: [],
+      pendingSummary: "0 项",
+      reportDate: "2026-04-30",
+      dataUpdatedAt: "09:15",
+      dataSyncPrefix: "数据已更新",
+    },
+    terminalKpis: [],
+    keyRiskStrip: [],
+    holdingRows: [],
+    holdingsState: { kind: "empty", label: "重仓券暂无数据" },
+    assetDistribution: [],
+    assetDistributionState: baseState,
+    ratingDistribution: [],
+    ratingDistributionState: baseState,
+    maturityDistribution: [],
+    maturityDistributionState: { kind: "empty", label: "久期分布暂无数据" },
+    industryDistribution: [],
+    industryDistributionState: { kind: "error", label: "行业分布加载失败" },
+    riskExposureMetrics: [],
+    riskExposureState: { kind: "empty", label: "风险指标暂无数据" },
+    positionChanges: [],
+    positionChangesState: { kind: "error", label: "增减仓加载失败" },
+    researchReports: [],
+    researchReportsState: { kind: "error", label: "研究报告加载失败" },
+    incomeTrend: [],
+    incomeTrendState: { kind: "partial", label: "缺基准/超额" },
+    backendGaps: [],
+    ...overrides,
+  };
 }
 
 describe("DashboardHomePage", () => {
@@ -356,6 +453,22 @@ describe("DashboardHomePage", () => {
     expect(screen.queryByTestId("dashboard-home-backend-gap-research-reports")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-home-backend-gap-position-changes")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-home-backend-gap-income-trend")).not.toBeInTheDocument();
+  });
+
+  it("renders compact explicit states instead of blank terminal cards", () => {
+    render(
+      <MemoryRouter>
+        <TerminalHomeContent view={createTerminalStateView()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("dashboard-home-market")).toHaveTextContent("关键风险暂无数据");
+    expect(screen.getByTestId("dashboard-home-market")).toHaveTextContent("当前口径没有可展示记录");
+    expect(screen.getByTestId("dashboard-home-holdings-table")).toHaveTextContent("重仓券暂无数据");
+    expect(screen.getByTestId("dashboard-home-position-changes")).toHaveTextContent("增减仓加载失败");
+    expect(screen.getByTestId("dashboard-home-research-reports")).toHaveTextContent("研究报告加载失败");
+    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺基准/超额");
+    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺少部分受管字段");
   });
     /*
     expect(screen.getByTestId("dashboard-home-backend-gap-research-reports")).toHaveTextContent(

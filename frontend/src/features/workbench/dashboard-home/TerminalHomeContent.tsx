@@ -4,14 +4,23 @@ import {
   ArrowRightOutlined,
   BarChartOutlined,
   DatabaseOutlined,
+  ExclamationCircleOutlined,
   FundProjectionScreenOutlined,
+  InfoCircleOutlined,
   LineChartOutlined,
+  LoadingOutlined,
   SafetyCertificateOutlined,
   StarFilled,
+  WarningOutlined,
 } from "@ant-design/icons";
 
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import type { DashboardHomeView, HomeDataStateKind, HomeDistributionSlice } from "./dashboardHomeView";
+import type {
+  DashboardHomeView,
+  HomeDataStateKind,
+  HomeDistributionSlice,
+  HomeTerminalListState,
+} from "./dashboardHomeView";
 import { resolveDeltaClass } from "./dashboardHomeView";
 import { HomeSparkline } from "./HomeSparkline";
 import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
@@ -33,6 +42,16 @@ const STATE_COPY: Record<HomeDataStateKind, string> = {
   "backend-gap": "后端待接入",
 };
 
+const STATE_HINT: Record<HomeDataStateKind, string> = {
+  ready: "接口已返回受管数据",
+  partial: "缺少部分受管字段",
+  empty: "当前口径没有可展示记录",
+  loading: "等待后端接口返回",
+  error: "保留空态，不使用前端补数",
+  stale: "数据日期与报告日不一致",
+  "backend-gap": "已列为后端工单",
+};
+
 function stateClass(kind: HomeDataStateKind): string {
   if (kind === "ready") return styles.dhTerminalStateReady ?? "";
   if (kind === "partial") return styles.dhTerminalStateWarn ?? "";
@@ -47,6 +66,37 @@ function DataStateBadge({ kind, label }: { kind: HomeDataStateKind; label?: stri
       {STATE_COPY[kind]}
       {label && kind !== "ready" ? ` · ${label}` : ""}
     </span>
+  );
+}
+
+function StateIcon({ kind }: { kind: HomeDataStateKind }) {
+  if (kind === "loading") return <LoadingOutlined />;
+  if (kind === "error" || kind === "backend-gap") return <ExclamationCircleOutlined />;
+  if (kind === "stale" || kind === "partial") return <WarningOutlined />;
+  return <InfoCircleOutlined />;
+}
+
+function StateSurface({
+  state,
+  compact = false,
+  testId,
+}: {
+  state: HomeTerminalListState;
+  compact?: boolean;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      data-state={state.kind}
+      className={`${styles.dhTerminalStateSurface} ${compact ? styles.dhTerminalStateSurfaceCompact : ""}`}
+    >
+      <span className={styles.dhTerminalStateIcon}>
+        <StateIcon kind={state.kind} />
+      </span>
+      <b>{state.label}</b>
+      <small>{STATE_HINT[state.kind]}</small>
+    </div>
   );
 }
 
@@ -65,9 +115,17 @@ function buildPieOption(slices: readonly HomeDistributionSlice[]): EChartsOption
         type: "pie",
         radius: ["58%", "82%"],
         center: ["50%", "50%"],
+        minAngle: 4,
         avoidLabelOverlap: true,
         label: { show: false },
         labelLine: { show: false },
+        itemStyle: {
+          borderColor: "#fff",
+          borderWidth: 2,
+        },
+        emphasis: {
+          scaleSize: 4,
+        },
         data: slices.map((slice) => ({
           name: slice.label,
           value: Math.max(slice.pctRaw, 0),
@@ -102,6 +160,7 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
         type: "bar",
         data: slices.map((slice) => Number(slice.pctRaw.toFixed(2))),
         barWidth: 14,
+        barMaxWidth: 16,
         itemStyle: { borderRadius: [3, 3, 0, 0] },
       },
     ],
@@ -197,7 +256,7 @@ function DistributionPanel({
           <DistributionList slices={slices} />
         </div>
       ) : (
-        <div className={styles.dhTerminalEmpty}>{state.label}</div>
+        <StateSurface state={state} />
       )}
     </article>
   );
@@ -236,6 +295,7 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeView }) {
 }
 
 function RiskStrip({ items }: { items: DashboardHomeView["keyRiskStrip"] }) {
+  const hasItems = items.length > 0;
   return (
     <section data-testid="dashboard-home-market" className={`${styles.dhCard} ${styles.dhTerminalRiskStrip}`}>
       <div className={styles.dhTerminalPanelHead}>
@@ -244,15 +304,19 @@ function RiskStrip({ items }: { items: DashboardHomeView["keyRiskStrip"] }) {
           更多市场数据 →
         </Link>
       </div>
-      <div className={styles.dhTerminalRiskGrid}>
-        {items.map((item) => (
-          <div key={item.id} className={styles.dhTerminalRiskCell}>
-            <span>{item.label}</span>
-            <b className={styles.dhNum}>{item.value}</b>
-            <em className={resolveDeltaClass(item.deltaTone, styles)}>{item.delta}</em>
-          </div>
-        ))}
-      </div>
+      {hasItems ? (
+        <div className={styles.dhTerminalRiskGrid}>
+          {items.map((item) => (
+            <div key={item.id} className={styles.dhTerminalRiskCell}>
+              <span>{item.label}</span>
+              <b className={styles.dhNum}>{item.value}</b>
+              <em className={resolveDeltaClass(item.deltaTone, styles)}>{item.delta}</em>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <StateSurface state={{ kind: "empty", label: "关键风险暂无数据" }} compact />
+      )}
     </section>
   );
 }
@@ -307,9 +371,7 @@ function HoldingsPanel({ view }: { view: DashboardHomeView }) {
           </tbody>
         </table>
       ) : (
-        <div data-testid="dashboard-home-holdings-table" className={styles.dhTerminalEmpty}>
-          {view.holdingsState.label}
-        </div>
+        <StateSurface state={view.holdingsState} testId="dashboard-home-holdings-table" />
       )}
     </article>
   );
@@ -332,7 +394,7 @@ function RiskExposurePanel({ view }: { view: DashboardHomeView }) {
           ))}
         </div>
       ) : (
-        <div className={styles.dhTerminalEmpty}>{view.riskExposureState.label}</div>
+        <StateSurface state={view.riskExposureState} />
       )}
     </article>
   );
@@ -370,7 +432,7 @@ function PositionChangesPanel({ view }: { view: DashboardHomeView }) {
           ))}
         </div>
       ) : (
-        <div className={styles.dhTerminalEmpty}>{view.positionChangesState.label}</div>
+        <StateSurface state={view.positionChangesState} />
       )}
     </article>
   );
@@ -412,7 +474,7 @@ function ResearchReportsPanel({ view }: { view: DashboardHomeView }) {
           })}
         </div>
       ) : (
-        <div className={styles.dhTerminalEmpty}>{view.researchReportsState.label}</div>
+        <StateSurface state={view.researchReportsState} />
       )}
     </article>
   );
@@ -450,7 +512,7 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
           </div>
         </div>
       ) : (
-        <div className={styles.dhTerminalEmpty}>{view.incomeTrendState.label}</div>
+        <StateSurface state={view.incomeTrendState} />
       )}
     </article>
   );
