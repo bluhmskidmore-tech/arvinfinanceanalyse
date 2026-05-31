@@ -92,7 +92,7 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
       type: "value",
       axisLabel: {
         fontSize: 10,
-        formatter: (value: number) => `${(Number(value) / 100_000_000).toFixed(1)}亿`,
+        formatter: (value: number) => `${Number(value).toFixed(0)}%`,
       },
       splitLine: { lineStyle: { color: "#eef2f7" } },
     },
@@ -122,7 +122,10 @@ function buildIncomeTrendOption(points: DashboardHomeView["incomeTrend"]): EChar
     },
     yAxis: {
       type: "value",
-      axisLabel: { fontSize: 10 },
+      axisLabel: {
+        fontSize: 10,
+        formatter: (value: number) => `${(Number(value) / 100_000_000).toFixed(1)}亿`,
+      },
       splitLine: { lineStyle: { color: "#eef2f7" } },
     },
     series: [
@@ -258,7 +261,7 @@ function HoldingsPanel({ view }: { view: DashboardHomeView }) {
   const hasRows = view.holdingsState.kind === "ready" && view.holdingRows.length > 0;
   return (
     <article
-      className={`${styles.dhCard} ${styles.dhTerminalPanel}${hasRows ? ` ${styles.dhTerminalHoldings}` : ""}`}
+      className={`${styles.dhCard} ${styles.dhTerminalPanel} ${styles.dhTerminalPanelWide}${hasRows ? ` ${styles.dhTerminalHoldings}` : ""}`}
     >
       <div className={styles.dhTerminalPanelHead}>
         <h3>持仓券种分布</h3>
@@ -376,7 +379,10 @@ function PositionChangesPanel({ view }: { view: DashboardHomeView }) {
 function ResearchReportsPanel({ view }: { view: DashboardHomeView }) {
   const hasRows = view.researchReportsState.kind === "ready" && view.researchReports.length > 0;
   return (
-    <article data-testid="dashboard-home-research-reports" className={`${styles.dhCard} ${styles.dhTerminalPanel}`}>
+    <article
+      data-testid="dashboard-home-research-reports"
+      className={`${styles.dhCard} ${styles.dhTerminalPanel} ${styles.dhTerminalReportsPanel}`}
+    >
       <div className={styles.dhTerminalPanelHead}>
         <h3>研究报告</h3>
         <DataStateBadge kind={view.researchReportsState.kind} label={view.researchReportsState.label} />

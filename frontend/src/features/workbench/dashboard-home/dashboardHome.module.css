@@ -1361,8 +1361,8 @@
 }
 
 .dhTerminalKpi {
-  min-height: 112px;
-  padding: 10px 12px 8px;
+  min-height: 104px;
+  padding: 9px 11px 8px;
   display: grid;
   grid-template-rows: auto auto auto 1fr;
   overflow: hidden;
@@ -1387,7 +1387,7 @@
 .dhTerminalKpiValue {
   margin-top: var(--dh-space-1);
   color: var(--dh-ink);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 850;
   line-height: 1.05;
   overflow: hidden;
@@ -1413,7 +1413,7 @@
 
 .dhTerminalKpiSpark {
   width: 100%;
-  height: 32px;
+  height: 28px;
   align-self: end;
   margin-top: 4px;
 }
@@ -1469,8 +1469,20 @@
 .dhTerminalPanelHead h3 {
   margin: 0;
   color: var(--dh-blue-deep);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13px;
   font-weight: 850;
+}
+
+.dhTerminalPanelHead h3::before {
+  content: "";
+  width: 3px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--dh-blue);
+  box-shadow: 0 0 0 3px var(--dh-blue-soft);
 }
 
 .dhTerminalRiskGrid {
@@ -1514,26 +1526,30 @@
 
 .dhTerminalGrid {
   display: grid;
-  grid-template-columns: minmax(500px, 1.6fr) repeat(2, minmax(280px, 1fr));
+  grid-template-columns: minmax(420px, 1.35fr) repeat(2, minmax(270px, 1fr));
   gap: var(--dh-space-2);
   margin-bottom: var(--dh-space-2);
 }
 
 .dhTerminalPanel {
-  min-height: 224px;
-  padding: var(--dh-space-2) var(--dh-space-3);
+  min-height: 214px;
+  padding: 12px 14px;
   overflow: hidden;
 }
 
+.dhTerminalPanelWide {
+  grid-column: span 2;
+}
+
 .dhTerminalHoldings {
-  grid-row: auto;
+  min-height: 258px;
 }
 
 .dhTerminalTable {
   width: 100%;
   border-collapse: collapse;
   color: var(--dh-ink-2);
-  font-size: 10.5px;
+  font-size: 10px;
   table-layout: fixed;
 }
 
@@ -1554,7 +1570,7 @@
 }
 
 .dhTerminalTable th {
-  height: 25px;
+  height: 24px;
   padding: 0 6px;
   color: var(--dh-muted);
   background: var(--dh-card-soft);
@@ -1570,7 +1586,7 @@
 }
 
 .dhTerminalTable td {
-  height: 31px;
+  height: 28px;
   padding: 0 6px;
   border-bottom: 1px solid var(--dh-line-soft);
   text-align: right;
@@ -1600,26 +1616,26 @@
 
 .dhTerminalDistribution {
   display: grid;
-  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1fr);
+  grid-template-columns: 118px minmax(0, 1fr);
   gap: var(--dh-space-2);
   align-items: center;
-  min-height: 168px;
+  min-height: 154px;
 }
 
 .dhTerminalChart {
-  height: 140px;
+  height: 132px;
   min-width: 0;
 }
 
 .dhTerminalDistributionList {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 
 .dhTerminalDistributionRow {
   display: grid;
-  grid-template-columns: 8px minmax(42px, 1fr) minmax(54px, auto) minmax(40px, auto);
+  grid-template-columns: 8px minmax(42px, 1fr) minmax(58px, auto) minmax(42px, auto);
   align-items: center;
   gap: 6px;
   font-size: 10px;
@@ -1689,12 +1705,12 @@
 .dhTerminalExposureGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--dh-space-1);
+  gap: 8px;
 }
 
 .dhTerminalExposureItem {
-  min-height: 58px;
-  padding: var(--dh-space-2);
+  min-height: 54px;
+  padding: 10px 11px;
   border-radius: 8px;
   background: var(--dh-card-soft);
   display: grid;
@@ -1714,16 +1730,16 @@
 
 .dhTerminalChangeList {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .dhTerminalChangeRow {
   display: grid;
-  grid-template-columns: minmax(96px, 1fr) 46px minmax(60px, 0.8fr) minmax(78px, auto) minmax(76px, auto);
+  grid-template-columns: minmax(92px, 1fr) 44px minmax(58px, 0.8fr) minmax(72px, auto) minmax(72px, auto);
   align-items: center;
   gap: 8px;
-  min-height: 30px;
-  padding-bottom: 7px;
+  min-height: 28px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--dh-line-soft);
 }
 
@@ -1796,14 +1812,24 @@
 
 .dhTerminalReportList {
   display: grid;
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.dhTerminalReportsPanel {
+  grid-column: 1 / -1;
+  min-height: 178px;
+}
+
+.dhTerminalReportsPanel .dhTerminalReportList {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dhTerminalReportItem {
   display: grid;
   gap: 4px;
-  min-height: 48px;
-  padding: 8px 9px;
+  min-height: 54px;
+  padding: 7px 9px;
   border-radius: 8px;
   background: var(--dh-card-soft);
   color: inherit;
@@ -1836,15 +1862,15 @@
 
 .dhTerminalIncomeTrend {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(110px, 0.7fr);
+  grid-template-columns: minmax(118px, 1fr) minmax(104px, 0.68fr);
   gap: var(--dh-space-2);
   align-items: stretch;
-  min-height: 150px;
+  min-height: 146px;
 }
 
 .dhTerminalIncomeChart {
   min-width: 0;
-  height: 150px;
+  height: 142px;
 }
 
 .dhTerminalIncomeList {
@@ -1898,7 +1924,7 @@
 
 .dhTerminalGapPanel {
   grid-column: 1 / -1;
-  min-height: 136px;
+  min-height: 118px;
 }
 
 .dhTerminalGapPanel .dhTerminalGapList {
@@ -2321,7 +2347,15 @@
     grid-column: 1 / -1;
   }
 
+  .dhTerminalPanelWide {
+    grid-column: 1 / -1;
+  }
+
   .dhTerminalGapPanel .dhTerminalGapList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhTerminalReportsPanel .dhTerminalReportList {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2377,6 +2411,10 @@
     grid-template-columns: 1fr;
   }
 
+  .dhTerminalPanelWide {
+    grid-column: auto;
+  }
+
   .dhTerminalRiskGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2390,6 +2428,10 @@
   }
 
   .dhTerminalGapPanel .dhTerminalGapList {
+    grid-template-columns: 1fr;
+  }
+
+  .dhTerminalReportsPanel .dhTerminalReportList {
     grid-template-columns: 1fr;
   }
 
