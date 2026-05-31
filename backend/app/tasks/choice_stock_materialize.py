@@ -26,10 +26,13 @@ from backend.app.repositories.tushare_adapter import (
     resolve_tushare_token_with_settings_fallback,
 )
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
+from backend.app.services.runtime_cache import get_runtime_cache
 
 logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
+CHOICE_STOCK_MATERIALIZATION_COVERAGE_CACHE_NAME = "choice_stock_materialization_coverage"
+CHOICE_STOCK_MATERIALIZATION_COVERAGE_CACHE_TTL_SECONDS = 120.0
 
 TUSHARE_FALLBACK_RETRY_ATTEMPTS = 3
 TUSHARE_FALLBACK_RETRY_DELAY_SECONDS = 1.0
@@ -559,6 +562,58 @@ def load_choice_stock_materialization_coverage(
             missing=_format_required_items(required_items),
         )
 
+    cache_key = _choice_stock_materialization_coverage_cache_key(
+        path=path,
+        as_of_date=resolved_date,
+        required_items=required_items,
+    )
+    if cache_key is not None:
+        cache = get_runtime_cache(
+            CHOICE_STOCK_MATERIALIZATION_COVERAGE_CACHE_NAME,
+            ttl_seconds=CHOICE_STOCK_MATERIALIZATION_COVERAGE_CACHE_TTL_SECONDS,
+        )
+        return cache.get_or_set(
+            cache_key,
+            lambda: _load_choice_stock_materialization_coverage_uncached(
+                path=path,
+                resolved_date=resolved_date,
+                required_items=required_items,
+            ),
+        )
+
+    return _load_choice_stock_materialization_coverage_uncached(
+        path=path,
+        resolved_date=resolved_date,
+        required_items=required_items,
+    )
+
+
+def _choice_stock_materialization_coverage_cache_key(
+    *,
+    path: Path,
+    as_of_date: str,
+    required_items: tuple[tuple[str, str], ...],
+) -> tuple[str, int, int, str, tuple[str, ...]] | None:
+    try:
+        stat = path.stat()
+        resolved_path = str(path.resolve())
+    except OSError:
+        return None
+    return (
+        resolved_path,
+        stat.st_mtime_ns,
+        stat.st_size,
+        as_of_date,
+        tuple(_format_required_items(required_items)),
+    )
+
+
+def _load_choice_stock_materialization_coverage_uncached(
+    *,
+    path: Path,
+    resolved_date: str,
+    required_items: tuple[tuple[str, str], ...],
+) -> ChoiceStockMaterializationCoverage:
     try:
         conn = duckdb.connect(str(path), read_only=True)
     except duckdb.Error:

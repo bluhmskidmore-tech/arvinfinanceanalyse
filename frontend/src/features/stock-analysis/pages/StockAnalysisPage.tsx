@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartOutlined,
@@ -52,9 +52,23 @@ import {
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisEvidenceStatus,
   buildStockAnalysisKpiStrip,
+  buildConsensusReviewPanelSummary,
+  buildCycleRotationPanelSummary,
+  buildEventsMonitoringPanelSummary,
+  buildMarketPriorityPanelSummary,
+  buildObservationPoolsPanelSummary,
+  buildStrategyBacktestPanelSummary,
+  buildStrategyOptimizationPanelSummary,
+  buildThemeBreakoutPanelSummary,
   buildThemeBreakoutCards,
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
+  buildStockAnalysisPagePurpose,
+  buildReviewQueueEmptyState,
+  localizeImplementationStage,
+  localizeMarketDataStatus,
+  localizeThemeRadarBadge,
+  type StockStrategyPanelQueryState,
 } from "../lib/stockAnalysisPageModel";
 import type {
   StockSectorRow,
@@ -64,11 +78,24 @@ import type {
 import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
 import { buildConsensusSummary, consensusStrategyLabel, lookupStockStrategyRanks } from "../lib/buildConsensusSummary";
 import { EquityKpiCard } from "../components/EquityKpiCard";
+import { StrategyModuleCard } from "../components/StrategyModuleCard";
+import { StrategyPanelComplianceDetails } from "../components/StrategyPanelResultStrip";
 import { StockDetailDrawer } from "../components/StockDetailDrawer";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockAnalysisPage.css";
 
 const { Text } = Typography;
+
+const STOCK_ANALYSIS_STALE_TIME_MS = 5 * 60_000;
+const STOCK_ANALYSIS_GC_TIME_MS = 15 * 60_000;
+const STOCK_ANALYSIS_DEFERRED_SECTION_FALLBACK_MS = 1_000;
+
+const stockAnalysisReadQueryOptions = {
+  staleTime: STOCK_ANALYSIS_STALE_TIME_MS,
+  gcTime: STOCK_ANALYSIS_GC_TIME_MS,
+  refetchOnWindowFocus: false,
+} as const;
+const EMPTY_STRATEGY_PRIORITY_ROWS: LivermoreStrategyScorePayload["rows"] = [];
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -107,18 +134,56 @@ function iconTone(tone?: string) {
   return "neutral";
 }
 
+function useDeferredSectionSeen<TElement extends HTMLElement>(
+  enabled: boolean,
+  delayMs = STOCK_ANALYSIS_DEFERRED_SECTION_FALLBACK_MS,
+) {
+  const ref = useRef<TElement | null>(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    if (seen || !enabled) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      const timer = window.setTimeout(() => setSeen(true), delayMs);
+      return () => window.clearTimeout(timer);
+    }
+
+    const node = ref.current;
+    if (!node) return undefined;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setSeen(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [delayMs, enabled, seen]);
+
+  return { ref, seen };
+}
+
 const tabularNumStyle: CSSProperties = {
   fontVariantNumeric: "tabular-nums",
   fontFamily: "var(--moss-font-mono)",
 };
 
-/** 首屏卡片与标题 — 与 DESIGN.md compact 8/12/16 对齐 */
-const SA_CARD = "flex flex-col gap-4 rounded-md border border-neutral-200 bg-white p-4";
-const SA_CARD_TITLE = "m-0 text-sm font-semibold text-neutral-900";
-const SA_SECTION_HEAD = "flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 pb-3";
-const SA_SECTION_DESC = "mt-1 text-xs leading-snug text-neutral-500";
-const SA_PILL =
-  "inline-flex items-center whitespace-nowrap rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700";
+/** 首屏卡片与标题 — 对齐 dashboard-home 终端视觉 */
+const SA_FIRST_CARD = "stock-analysis-page__dh-card stock-analysis-page__dh-panel bg-white";
+const SA_FIRST_HERO = "stock-analysis-page__dh-card stock-analysis-page__dh-hero bg-white";
+const SA_CARD_TITLE = "m-0";
+const SA_SECTION_HEAD = "stock-analysis-page__dh-section-head";
+const SA_SECTION_DESC = "stock-analysis-page__dh-section-desc";
+const SA_SECTION_EYEBROW = "stock-analysis-page__dh-section-eyebrow";
+const SA_PILL = "stock-analysis-page__dh-pill";
+/** 首屏以下深度折叠区 — 白底卡片 + 16px 内边距 */
+const SA_DEEP_CARD =
+  "stock-analysis-page__dh-card stock-analysis-page__dh-panel stock-analysis-page__dh-deep-section bg-white";
 
 function kpiToneToDelta(tone?: string): "up" | "down" | "flat" {
   if (tone === "positive") return "up";
@@ -204,15 +269,18 @@ const SECTION_HEAD_ICONS = [
   <DatabaseOutlined key="boundary" />,
 ];
 
+/** 图表色 — 对齐 dashboard-home 蓝灰机构台（非旧版绿色主题） */
 const stockChartPalette = {
-  ink: "#12231d",
-  muted: "#6b7d74",
-  grid: "#dce6e1",
-  track: "#eef3f1",
-  green: "#1f6b55",
-  greenSoft: "#8fb5a7",
-  blue: "#315b7c",
-  danger: "#b45d58",
+  ink: "#0c1c33",
+  muted: "#6b7d95",
+  grid: "#e4e9f0",
+  track: "#eef2f7",
+  primary: "#1850a1",
+  primaryLight: "#4d84cc",
+  accent: "#2f68b8",
+  success: "#1f7a55",
+  successLight: "#86acdb",
+  danger: "#b94743",
 };
 
 const miniBarChartStyle: CSSProperties = { height: 54, width: "100%" };
@@ -241,7 +309,7 @@ function sectorViewLabel(view: StockSectorViewKind): string {
 function buildCompactBarOption({
   labels,
   values,
-  color = stockChartPalette.green,
+  color = stockChartPalette.primary,
   valueSuffix = "",
 }: {
   labels: string[];
@@ -296,9 +364,12 @@ function buildEventSummaryOption(rows: Array<{ label: string; count: number }>):
       data: [row.count],
       barWidth: 10,
       itemStyle: {
-        color: [stockChartPalette.green, stockChartPalette.blue, stockChartPalette.danger, stockChartPalette.greenSoft][
-          index
-        ],
+        color: [
+          stockChartPalette.primary,
+          stockChartPalette.accent,
+          stockChartPalette.danger,
+          stockChartPalette.primaryLight,
+        ][index],
         borderRadius: index === 0 ? [2, 0, 0, 2] : index === rows.length - 1 ? [0, 2, 2, 0] : 0,
       },
     })),
@@ -350,7 +421,10 @@ function buildSectorStrengthOption({
         data: rows.map((row, index) => ({
           value: values[index],
           itemStyle: {
-            color: row.sectorCode === activeSectorCode ? stockChartPalette.blue : stockChartPalette.green,
+            color:
+              row.sectorCode === activeSectorCode
+                ? stockChartPalette.primary
+                : stockChartPalette.primaryLight,
             borderRadius: [0, 3, 3, 0],
           },
         })),
@@ -650,6 +724,17 @@ function formatPriorityScore(value: number | null | undefined): string {
   return value == null || Number.isNaN(value) ? "-" : value.toFixed(1);
 }
 
+function resolvePanelQueryState(input: {
+  enabled: boolean;
+  isLoading: boolean;
+  isError: boolean;
+}): StockStrategyPanelQueryState {
+  if (!input.enabled) return "idle";
+  if (input.isLoading) return "loading";
+  if (input.isError) return "error";
+  return "ready";
+}
+
 function buildStrategyPriorityHeadline(rows: StrategyPriorityRow[]): string {
   const sufficientRows = rows.filter((row) => row.sample_status === "sufficient");
   if (rows.length === 0 || sufficientRows.length === 0) {
@@ -843,6 +928,15 @@ export default function StockAnalysisPage() {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [sectorSeriesCollapseKeys, setSectorSeriesCollapseKeys] = useState<string[]>([]);
   const [sectorSeriesWindow, setSectorSeriesWindow] = useState<5 | 20>(5);
+  const [expandedStrategyCardIds, setExpandedStrategyCardIds] = useState<string[]>([]);
+
+  const toggleStrategyCard = (id: string) => {
+    setExpandedStrategyCardIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
+
+  const isStrategyCardExpanded = (id: string) => expandedStrategyCardIds.includes(id);
 
   const strategyQueryKey = ["stock-analysis", "livermore-strategy", asOfOverride ?? "__default"] as const;
 
@@ -852,9 +946,15 @@ export default function StockAnalysisPage() {
       asOfOverride
         ? client.getLivermoreStrategy({ asOfDate: asOfOverride })
         : client.getLivermoreStrategy(),
+    ...stockAnalysisReadQueryOptions,
   });
 
   const strategyPayload = strategyQuery.data?.result ?? null;
+  const deferredSectionsEnabled = Boolean(strategyPayload?.as_of_date);
+  const cycleFrameworkSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
+  const strategyPrioritySection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
+  const strategyBacktestSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
+  const strategyOptimizationSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
 
   const confluenceQuery = useQuery({
     queryKey: ["stock-analysis", "livermore-signal-confluence", strategyPayload?.as_of_date ?? "__none"],
@@ -863,6 +963,7 @@ export default function StockAnalysisPage() {
         asOfDate: strategyPayload?.as_of_date ?? undefined,
       }),
     enabled: Boolean(strategyPayload?.as_of_date),
+    ...stockAnalysisReadQueryOptions,
   });
 
   const confluencePayload: LivermoreSignalConfluencePayload | null =
@@ -883,6 +984,28 @@ export default function StockAnalysisPage() {
       strategyQuery.data?.result_meta?.vendor_status,
       strategyQuery.data?.result_meta?.fallback_mode,
     ],
+  );
+
+  const pagePurpose = useMemo(
+    () =>
+      strategyPayload
+        ? buildStockAnalysisPagePurpose(strategyPayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
+          })
+        : null,
+    [
+      strategyPayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+    ],
+  );
+
+  const reviewQueueEmptyState = useMemo(
+    () => (strategyPayload ? buildReviewQueueEmptyState(strategyPayload) : null),
+    [strategyPayload],
   );
 
   const marketState = useMemo(
@@ -1071,7 +1194,7 @@ export default function StockAnalysisPage() {
       buildCompactBarOption({
         labels: sectorChartRows.map((row) => row.label),
         values: sectorChartRows.map((row) => row.value),
-        color: stockChartPalette.green,
+        color: stockChartPalette.primary,
       }),
     [sectorChartRows],
   );
@@ -1081,7 +1204,7 @@ export default function StockAnalysisPage() {
       buildCompactBarOption({
         labels: readinessChartRows.map((row) => row.label),
         values: readinessChartRows.map((row) => row.value),
-        color: stockChartPalette.blue,
+        color: stockChartPalette.accent,
       }),
     [readinessChartRows],
   );
@@ -1284,7 +1407,8 @@ export default function StockAnalysisPage() {
         minSample: 20,
         primaryHorizon: "return_5d",
       }),
-    enabled: Boolean(effectiveAsOf),
+    enabled: Boolean(effectiveAsOf && strategyPrioritySection.seen),
+    ...stockAnalysisReadQueryOptions,
   });
   const strategyScorePayload = strategyScoreQuery.data?.result ?? null;
   const strategyOptimizationQuery = useQuery({
@@ -1301,7 +1425,8 @@ export default function StockAnalysisPage() {
         minSample: 20,
         primaryHorizon: "return_5d",
       }),
-    enabled: Boolean(effectiveAsOf),
+    enabled: Boolean(effectiveAsOf && strategyOptimizationSection.seen),
+    ...stockAnalysisReadQueryOptions,
   });
   const strategyOptimizationPayload = strategyOptimizationQuery.data?.result ?? null;
   const strategyOptimizationRows = useMemo(
@@ -1312,7 +1437,7 @@ export default function StockAnalysisPage() {
     () => strategyOptimizationSlicePair(strategyOptimizationPayload),
     [strategyOptimizationPayload],
   );
-  const strategyPriorityRows = strategyScorePayload?.current_market_state_rows ?? [];
+  const strategyPriorityRows = strategyScorePayload?.current_market_state_rows ?? EMPTY_STRATEGY_PRIORITY_ROWS;
   const strategyPriorityHeadline = buildStrategyPriorityHeadline(strategyPriorityRows);
   const strategyPriorityReason = strategyPrioritySummaryReason(strategyPriorityRows);
   const strategyMaturityRow = resolveStrategyMaturityRow(strategyPriorityRows);
@@ -1336,7 +1461,8 @@ export default function StockAnalysisPage() {
         snapshotTo: effectiveAsOf ?? undefined,
         limit: 500,
       }),
-    enabled: Boolean(effectiveAsOf),
+    enabled: Boolean(effectiveAsOf && strategyBacktestSection.seen),
+    ...stockAnalysisReadQueryOptions,
   });
 
   const strategyBacktestPayload = strategyBacktestQuery.data?.result ?? null;
@@ -1360,7 +1486,8 @@ export default function StockAnalysisPage() {
       client.getLivermoreCycleProxyBacktest({
         snapshotTo: effectiveAsOf ?? undefined,
       }),
-    enabled: Boolean(effectiveAsOf && cycleRotationFramework),
+    enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+    ...stockAnalysisReadQueryOptions,
   });
   const cycleProxyBacktestPayload: LivermoreCycleProxyBacktestPayload | null =
     cycleProxyBacktestQuery.data?.result ?? null;
@@ -1374,7 +1501,8 @@ export default function StockAnalysisPage() {
       client.getLivermoreCandidateHistoryPortfolioBacktest({
         snapshotTo: effectiveAsOf ?? undefined,
       }),
-    enabled: Boolean(effectiveAsOf && cycleRotationFramework),
+    enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+    ...stockAnalysisReadQueryOptions,
   });
   const candidateHistoryPortfolioBacktestPayload: LivermoreCandidateHistoryPortfolioBacktestPayload | null =
     candidateHistoryPortfolioBacktestQuery.data?.result ?? null;
@@ -1392,7 +1520,13 @@ export default function StockAnalysisPage() {
         snapshotTo: strategyMaturityDetailSnapshotTo ?? undefined,
         limit: 500,
       }),
-    enabled: Boolean(strategyMaturityRow && strategyMaturityDetailSnapshotFrom && strategyMaturityDetailSnapshotTo),
+    enabled: Boolean(
+      strategyPrioritySection.seen &&
+        strategyMaturityRow &&
+        strategyMaturityDetailSnapshotFrom &&
+        strategyMaturityDetailSnapshotTo,
+    ),
+    ...stockAnalysisReadQueryOptions,
   });
   const strategyMaturityCandidateRows = useMemo(
     () =>
@@ -1402,6 +1536,165 @@ export default function StockAnalysisPage() {
         strategyMaturitySnapshots,
       ),
     [strategyMaturityDetailQuery.data, strategyMaturityRow, strategyMaturitySnapshots],
+  );
+
+  const strategyBacktestDateRangeLabel =
+    strategyBacktestSnapshotFrom && effectiveAsOf
+      ? `${strategyBacktestSnapshotFrom} 至 ${effectiveAsOf}`
+      : "日期待补";
+
+  const cycleRotationPanelSummary = useMemo(
+    () =>
+      cycleRotationFramework
+        ? buildCycleRotationPanelSummary({
+            framework: cycleRotationFramework,
+            macroLayer: cycleMacroLayerSummary,
+            portfolioBacktest: candidateHistoryPortfolioBacktestPayload,
+            proxyBacktest: cycleProxyBacktestPayload,
+            portfolioQueryState: resolvePanelQueryState({
+              enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+              isLoading: candidateHistoryPortfolioBacktestQuery.isLoading,
+              isError: candidateHistoryPortfolioBacktestQuery.isError,
+            }),
+            proxyQueryState: resolvePanelQueryState({
+              enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+              isLoading: cycleProxyBacktestQuery.isLoading,
+              isError: cycleProxyBacktestQuery.isError,
+            }),
+          })
+        : null,
+    [
+      cycleRotationFramework,
+      cycleMacroLayerSummary,
+      candidateHistoryPortfolioBacktestPayload,
+      cycleProxyBacktestPayload,
+      effectiveAsOf,
+      cycleFrameworkSection.seen,
+      candidateHistoryPortfolioBacktestQuery.isLoading,
+      candidateHistoryPortfolioBacktestQuery.isError,
+      cycleProxyBacktestQuery.isLoading,
+      cycleProxyBacktestQuery.isError,
+    ],
+  );
+
+  const themeBreakoutPanelSummary = useMemo(
+    () =>
+      strategyPayload
+        ? buildThemeBreakoutPanelSummary({
+            payload: strategyPayload,
+            cards: themeBreakoutCards,
+            reviewCount: themeBreakoutReviewItems.length,
+            unsupportedReason: themeBreakoutUnsupported?.reason,
+          })
+        : null,
+    [strategyPayload, themeBreakoutCards, themeBreakoutReviewItems.length, themeBreakoutUnsupported?.reason],
+  );
+
+  const consensusReviewPanelSummary = useMemo(
+    () => buildConsensusReviewPanelSummary(consensusSummary),
+    [consensusSummary],
+  );
+
+  const marketPriorityPanelSummary = useMemo(
+    () =>
+      buildMarketPriorityPanelSummary({
+        rows: strategyPriorityRows,
+        payload: strategyScorePayload,
+        marketState: currentMarketState,
+        queryState: resolvePanelQueryState({
+          enabled: Boolean(effectiveAsOf && strategyPrioritySection.seen),
+          isLoading: strategyScoreQuery.isLoading,
+          isError: strategyScoreQuery.isError,
+        }),
+        errorMessage: strategyScoreQuery.isError ? errorMessage(strategyScoreQuery.error) : undefined,
+      }),
+    [
+      strategyPriorityRows,
+      strategyScorePayload,
+      currentMarketState,
+      effectiveAsOf,
+      strategyPrioritySection.seen,
+      strategyScoreQuery.isLoading,
+      strategyScoreQuery.isError,
+      strategyScoreQuery.error,
+    ],
+  );
+
+  const strategyBacktestPanelSummary = useMemo(
+    () =>
+      buildStrategyBacktestPanelSummary({
+        payload: strategyBacktestPayload,
+        sampleCount: strategyBacktestSampleCount,
+        window: strategyBacktestWindow,
+        dateRangeLabel: strategyBacktestDateRangeLabel,
+        rows: strategyBacktestRows,
+        queryState: resolvePanelQueryState({
+          enabled: Boolean(effectiveAsOf && strategyBacktestSection.seen),
+          isLoading: strategyBacktestQuery.isLoading,
+          isError: strategyBacktestQuery.isError,
+        }),
+        errorMessage: strategyBacktestQuery.isError ? errorMessage(strategyBacktestQuery.error) : undefined,
+      }),
+    [
+      strategyBacktestPayload,
+      strategyBacktestSampleCount,
+      strategyBacktestWindow,
+      strategyBacktestDateRangeLabel,
+      strategyBacktestRows,
+      effectiveAsOf,
+      strategyBacktestSection.seen,
+      strategyBacktestQuery.isLoading,
+      strategyBacktestQuery.isError,
+      strategyBacktestQuery.error,
+    ],
+  );
+
+  const strategyOptimizationPanelSummary = useMemo(
+    () =>
+      buildStrategyOptimizationPanelSummary({
+        payload: strategyOptimizationPayload,
+        rows: strategyOptimizationRows,
+        queryState: resolvePanelQueryState({
+          enabled: Boolean(effectiveAsOf && strategyOptimizationSection.seen),
+          isLoading: strategyOptimizationQuery.isLoading,
+          isError: strategyOptimizationQuery.isError,
+        }),
+        errorMessage: strategyOptimizationQuery.isError
+          ? errorMessage(strategyOptimizationQuery.error)
+          : undefined,
+      }),
+    [
+      strategyOptimizationPayload,
+      strategyOptimizationRows,
+      effectiveAsOf,
+      strategyOptimizationSection.seen,
+      strategyOptimizationQuery.isLoading,
+      strategyOptimizationQuery.isError,
+      strategyOptimizationQuery.error,
+    ],
+  );
+
+  const observationPoolsPanelSummary = useMemo(
+    () =>
+      buildObservationPoolsPanelSummary({
+        gateState,
+        meanReversionCount: meanReversionPayload?.candidate_count ?? 0,
+        factorScreenCount: factorScreenPayload?.candidate_count ?? 0,
+        hybridFusionCount: hybridFusionPayload?.candidate_count ?? 0,
+        meanReversionActive: meanReversionMarketActive,
+      }),
+    [
+      gateState,
+      meanReversionPayload?.candidate_count,
+      factorScreenPayload?.candidate_count,
+      hybridFusionPayload?.candidate_count,
+      meanReversionMarketActive,
+    ],
+  );
+
+  const eventsMonitoringPanelSummary = useMemo(
+    () => buildEventsMonitoringPanelSummary(eventMonitorRows),
+    [eventMonitorRows],
   );
 
   const sectorSeriesExpanded = sectorSeriesCollapseKeys.includes("sector-rank-series-multi");
@@ -1420,6 +1713,7 @@ export default function StockAnalysisPage() {
         strategyPayload &&
         !sectorRankUnavailable(strategyPayload),
     ),
+    ...stockAnalysisReadQueryOptions,
   });
 
   const sectorSeriesTableRows = useMemo(() => {
@@ -1446,16 +1740,19 @@ export default function StockAnalysisPage() {
   return (
     <PageV2Shell testId="stock-analysis-page" style={stockAnalysisPageCssVars}>
       <main className="stock-analysis-page" data-layout-rev="2026-05-16b" data-data-viz-rev="2026-05-16c">
-        <header className="stock-analysis-page__header">
-          <div className="stock-analysis-page__header-main">
+        <header
+          className="stock-analysis-page__header stock-analysis-page__dh-topbar"
+          data-testid="stock-analysis-toolbar"
+        >
+          <div className="stock-analysis-page__header-main stock-analysis-page__dh-topbar-main">
             <div className="stock-analysis-page__header-title-row">
               <h1>股票分析</h1>
               <span className="stock-analysis-page__badge">只读复核</span>
             </div>
-            <div className="stock-analysis-page__header-controls">
+            <div className="stock-analysis-page__header-controls stock-analysis-page__dh-topbar-controls">
               <Button
                 type="default"
-                className="stock-analysis-page__agent-entry"
+                className="stock-analysis-page__agent-entry stock-analysis-page__dh-topbar-btn"
                 data-testid="stock-analysis-agent-open"
                 icon={<SafetyCertificateOutlined />}
                 onClick={() => setAgentDrawerOpen(true)}
@@ -1466,13 +1763,19 @@ export default function StockAnalysisPage() {
               <DatePicker
                 allowClear
                 aria-label="as-of-date-picker"
+                className="stock-analysis-page__dh-date-picker"
                 data-testid="stock-analysis-as-of-picker"
                 value={pickerDisplay}
                 onChange={(_, iso) => {
                   setAsOfOverride(Array.isArray(iso) ? (iso[0] ?? null) : iso || null);
                 }}
               />
-              <Button data-testid="stock-analysis-refresh" icon={<ReloadOutlined />} onClick={invalidateStockAnalysis}>
+              <Button
+                data-testid="stock-analysis-refresh"
+                className="stock-analysis-page__dh-topbar-btn"
+                icon={<ReloadOutlined />}
+                onClick={invalidateStockAnalysis}
+              >
                 刷新
               </Button>
               {strategyQuery.data?.result_meta?.generated_at ? (
@@ -1504,7 +1807,7 @@ export default function StockAnalysisPage() {
         {marketState ? (
           <>
             {decisionSummary && dailyJudgmentStrip ? (
-              <div className="flex flex-col gap-4 bg-neutral-50 px-4 pb-4">
+              <div className="stock-analysis-page__first-screen">
                 {showStaleBanner ? (
                   <div
                     className="stock-analysis-page__stale-banner rounded-lg border border-warning-200 bg-warning-50 px-4 py-2 text-sm text-warning-800"
@@ -1517,42 +1820,56 @@ export default function StockAnalysisPage() {
 
                 <section
                   data-testid="stock-analysis-tailwind-cockpit"
-                  className={`${SA_CARD} shadow-sm`}
+                  className={SA_FIRST_HERO}
                   aria-label="策略复核决策"
                 >
+                  {pagePurpose ? (
+                    <div
+                      className="stock-analysis-page__dh-purpose"
+                      data-testid="stock-analysis-page-purpose"
+                    >
+                      <p className="stock-analysis-page__dh-purpose-eyebrow">{pagePurpose.eyebrow}</p>
+                      <h2 className="stock-analysis-page__dh-purpose-title">{pagePurpose.title}</h2>
+                      <p className="stock-analysis-page__dh-purpose-copy">{pagePurpose.subtitle}</p>
+                      <p className="stock-analysis-page__dh-purpose-foot">
+                        {pagePurpose.asOfLine} · {pagePurpose.dataStatusLine}
+                      </p>
+                    </div>
+                  ) : null}
+
                   <div className="flex flex-col gap-3" data-testid="stock-analysis-decision-panel">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-1 flex-col gap-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">
-                            只读复核
-                          </span>
-                          <span className="text-xs text-neutral-600">
+                          <span className="stock-analysis-page__dh-chip">只读复核</span>
+                          <span className="stock-analysis-page__dh-hero-meta">
                             观察日{" "}
-                            <strong className="text-neutral-900" style={tabularNumStyle}>
+                            <strong className="stock-analysis-page__tabular text-[color:var(--sa-dh-ink)]">
                               {decisionSummary.asOfLabel}
                             </strong>
                           </span>
                           {backendSupplyOverview ? (
-                            <span className="text-xs text-neutral-500">
+                            <span className="stock-analysis-page__dh-hero-meta">
                               后端供数 {backendSupplyOverview.asOfLabel}
                             </span>
                           ) : null}
                         </div>
-                        <h1 className="m-0 text-xl font-semibold text-neutral-900">
+                        <h1 className="stock-analysis-page__dh-hero-title">
                           {backendSupplyOverview?.gateLabel ?? `门控 ${strategyPayload?.market_gate.state}`}
                           {" · "}
                           {decisionSummary.exposureLabel}
                         </h1>
-                        <p className="m-0 text-sm text-neutral-600">{decisionSummary.headline}</p>
-                        <p className="m-0 text-sm text-neutral-900">{decisionSummary.nextReviewAction}</p>
-                        <p className="m-0 text-xs text-neutral-500">
+                        <p className="stock-analysis-page__dh-hero-copy">{decisionSummary.headline}</p>
+                        <p className="stock-analysis-page__dh-hero-copy font-semibold text-[color:var(--sa-dh-ink)]">
+                          {decisionSummary.nextReviewAction}
+                        </p>
+                        <p className="stock-analysis-page__dh-hero-meta">
                           {decisionSummary.dataFreshnessLabel} · {decisionSummary.boundaryLabel}
                         </p>
                       </div>
                     </div>
 
-                    <p className="m-0 text-xs text-neutral-500" aria-label="市场门控状态">
+                    <p className="stock-analysis-page__dh-hero-meta" aria-label="市场门控状态">
                       {[
                         dailyJudgmentStrip.gateChip,
                         dailyJudgmentStrip.exposureChip,
@@ -1575,14 +1892,14 @@ export default function StockAnalysisPage() {
                         : null}
                     </div>
 
-                    <details className="group border-t border-neutral-100 pt-3">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900 [&::-webkit-details-marker]:hidden">
+                    <details className="stock-analysis-page__dh-details border-t border-[color:var(--sa-dh-line-soft)] pt-3">
+                      <summary>
                         <span className="flex items-center gap-2">
-                          <span className="text-primary-600 group-open:rotate-90">▸</span>
+                          <span className="text-[color:var(--sa-dh-blue)] group-open:rotate-90">▸</span>
                           供数明细与闭环
                         </span>
                         {closedLoopSummary ? (
-                          <strong className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-neutral-600">
+                          <strong className="stock-analysis-page__dh-pill">
                             {closedLoopSummary.referenceRating.label}
                           </strong>
                         ) : null}
@@ -1750,11 +2067,12 @@ export default function StockAnalysisPage() {
                 </section>
 
                 {kpiStrip.length > 0 ? (
-                  <section
-                    className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6"
-                    data-testid="stock-analysis-kpi-strip"
-                    aria-label="核心 KPI"
-                  >
+                  <section data-testid="stock-analysis-kpi-section" aria-label="门控与敞口">
+                    <p className={SA_SECTION_EYEBROW}>门控与敞口</p>
+                    <div
+                      className="stock-analysis-page__dh-kpi-strip"
+                      data-testid="stock-analysis-kpi-strip"
+                    >
                     {kpiStrip.map((item) => (
                       <EquityKpiCard
                         key={item.key}
@@ -1764,11 +2082,12 @@ export default function StockAnalysisPage() {
                         deltaTone={kpiToneToDelta(item.tone)}
                       />
                     ))}
+                    </div>
                   </section>
                 ) : null}
 
-                <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3" data-testid="stock-analysis-first-screen-workbench">
-                  <div className="flex flex-col gap-4 xl:col-span-2" data-testid="stock-analysis-first-screen-primary">
+                <div className="stock-analysis-page__dh-work-grid" data-testid="stock-analysis-first-screen-workbench">
+                  <div className="flex flex-col gap-3" data-testid="stock-analysis-first-screen-primary">
                     <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
                       <article className="stock-analysis-page__mini-panel">
                         <div className="stock-analysis-page__mini-panel-head">
@@ -1905,12 +2224,13 @@ export default function StockAnalysisPage() {
                     </div>
 
               <section
-                className={`${SA_CARD} shadow-sm`}
+                className={SA_FIRST_CARD}
                 data-testid="stock-analysis-sector-strength-panel"
               >
                 <div className={SA_SECTION_HEAD}>
                   <div className="min-w-0">
-                    <h2 className={`${SA_CARD_TITLE} inline-flex items-center gap-2`}>
+                    <p className={SA_SECTION_EYEBROW}>行业相对强弱</p>
+                    <h2 className={SA_CARD_TITLE}>
                       <StatusIcon>{SECTION_HEAD_ICONS[0]}</StatusIcon>
                       板块强弱
                     </h2>
@@ -1919,7 +2239,7 @@ export default function StockAnalysisPage() {
                     </p>
                   </div>
                   <span className={SA_PILL}>
-                    {(strategyPayload?.sector_rank?.formula_version ?? "").trim() || "formula 待补"}
+                    {sectorRowsFull.length > 0 ? `${sectorRowsFull.length} 个板块` : "板块待补"}
                   </span>
                 </div>
 
@@ -2268,9 +2588,10 @@ export default function StockAnalysisPage() {
                 )}
               </section>
 
-              <section className={`${SA_CARD} shadow-sm`} data-testid="stock-analysis-review-queue">
+              <section className={SA_FIRST_CARD} data-testid="stock-analysis-review-queue">
                 <div className={SA_SECTION_HEAD}>
                   <div className="min-w-0">
+                    <p className={SA_SECTION_EYEBROW}>今日待复核</p>
                     <h2 className={SA_CARD_TITLE}>复核队列</h2>
                     <p className={SA_SECTION_DESC}>
                       {reviewQueueUsesHybridFusion
@@ -2436,11 +2757,18 @@ export default function StockAnalysisPage() {
                   </div>
                 ) : (
                   <div
-                  className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500"
-                  role="status"
-                >
-                  候选待补，暂无复核项
-                </div>
+                    className="flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-600"
+                    role="status"
+                    data-testid="stock-analysis-review-queue-empty"
+                  >
+                    <strong className="text-neutral-900">
+                      {reviewQueueEmptyState?.headline ?? "今天没有进入复核队列的候选"}
+                    </strong>
+                    <p className="m-0 max-w-md text-xs leading-relaxed text-neutral-500">
+                      {reviewQueueEmptyState?.detail ??
+                        "可下翻查看多因子或融合观察池，并核对门控与板块强弱。"}
+                    </p>
+                  </div>
                 )}
                 {reviewQueue.length > 0 &&
                 sectorFilterSectorCode &&
@@ -2454,14 +2782,15 @@ export default function StockAnalysisPage() {
 
                   </div>
 
-                  <aside className="flex flex-col gap-4" aria-label="风险与数据可信度" data-testid="stock-analysis-first-screen-rail">
+                  <aside className="flex flex-col gap-3" aria-label="风险与数据可信度" data-testid="stock-analysis-first-screen-rail">
+                    <p className={SA_SECTION_EYEBROW}>闭环 / 风险 / 边界</p>
                     {closedLoopSummary ? (
                       <section
-                        className={SA_CARD}
+                        className={SA_FIRST_CARD}
                         data-testid="stock-analysis-closed-loop-summary"
                         aria-label="闭环摘要"
                       >
-                        <div className="flex items-start justify-between gap-2">
+                        <div className={SA_SECTION_HEAD}>
                           <h2 className={SA_CARD_TITLE}>闭环摘要</h2>
                           <span
                             className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tonePillClass(closedLoopSummary.referenceRating.tone)}`}
@@ -2533,9 +2862,13 @@ export default function StockAnalysisPage() {
                       </section>
                     ) : null}
 
-                    <section className={SA_CARD} data-testid="stock-analysis-risk-section">
-                      <h2 className={SA_CARD_TITLE}>风险退出观察</h2>
-                      <p className={SA_SECTION_DESC}>{riskRows.length} 项 · 触发与观察分层</p>
+                    <section className={SA_FIRST_CARD} data-testid="stock-analysis-risk-section">
+                      <div className={SA_SECTION_HEAD}>
+                        <div className="min-w-0">
+                          <h2 className={SA_CARD_TITLE}>风险退出观察</h2>
+                          <p className={SA_SECTION_DESC}>{riskRows.length} 项 · 触发与观察分层</p>
+                        </div>
+                      </div>
                       {confluenceQuery.isError ? (
                         <p className="text-xs text-warning-700">联动观察暂不可用。</p>
                       ) : null}
@@ -2600,8 +2933,10 @@ export default function StockAnalysisPage() {
                       )}
                     </section>
 
-                    <section className={SA_CARD} data-testid="stock-analysis-boundary-rail">
-                      <h2 className={SA_CARD_TITLE}>数据口径与边界</h2>
+                    <section className={SA_FIRST_CARD} data-testid="stock-analysis-boundary-rail">
+                      <div className={SA_SECTION_HEAD}>
+                        <h2 className={SA_CARD_TITLE}>数据口径与边界</h2>
+                      </div>
                       <div className="space-y-2">
                         {evidenceStatusItems.map((item) => (
                           <div key={item.key} className="flex items-start gap-2 text-xs">
@@ -2712,33 +3047,34 @@ export default function StockAnalysisPage() {
             ) : null}
 
             <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
-              <div className="stock-analysis-page__primary">
+              <div className="stock-analysis-page__deep-zone" data-testid="stock-analysis-deep-zone">
+                <div className="stock-analysis-page__deep-zone-head">
+                  <h2 className="m-0 text-base font-extrabold text-[color:var(--sa-dh-blue-deep)]">深度分析</h2>
+                  <p className="m-0 text-xs text-neutral-500">卡片速览 · 点「查看明细」展开</p>
+                </div>
+              <div className="stock-analysis-strategy-card-grid">
               {cycleRotationFramework ? (
-                <section
-                  className="stock-analysis-page__panel stock-analysis-page__panel--compact stock-analysis-page__cycle-framework"
-                  data-testid="stock-analysis-cycle-rotation-framework"
+                <StrategyModuleCard
+                  id="cycle-rotation"
+                  title={cycleRotationFramework.display_name}
+                  subtitle="周期轮动 · 只读观察"
+                  badgeLabel={
+                    cycleRotationPanelSummary?.badgeLabel ??
+                    localizeImplementationStage(cycleRotationFramework.implementation_stage)
+                  }
+                  summary={cycleRotationPanelSummary}
+                  summaryTestId="stock-analysis-cycle-panel-summary"
+                  expanded={isStrategyCardExpanded("cycle-rotation")}
+                  onToggleExpand={() => toggleStrategyCard("cycle-rotation")}
+                  mountDetail
+                  sectionRef={cycleFrameworkSection.ref}
+                  sectionTestId="stock-analysis-cycle-rotation-framework"
+                  className="stock-analysis-page__cycle-framework"
                 >
-                  <Collapse
-                    ghost
-                    bordered={false}
-                    className="stock-analysis-page__deep-collapse"
-                    items={[
-                      {
-                        key: "cycle-framework",
-                        forceRender: true,
-                        label: (
-                          <div className="stock-analysis-page__section-head">
-                            <div>
-                              <h2>{cycleRotationFramework.display_name}</h2>
-                              <p>{cycleRotationFramework.boundary}</p>
-                            </div>
-                            <span className="stock-analysis-page__pill">
-                              {cycleRotationFramework.implementation_stage}
-                            </span>
-                          </div>
-                        ),
-                        children: (
-                          <>
+                  <StrategyPanelComplianceDetails
+                    complianceDetail={cycleRotationPanelSummary?.complianceDetail}
+                    testId="stock-analysis-cycle-panel-compliance"
+                  />
                   <div className="stock-analysis-page__cycle-formulas">
                     <strong>{cycleRotationFramework.score_formula}</strong>
                     {cycleRotationFramework.macro_formula ? (
@@ -2757,9 +3093,9 @@ export default function StockAnalysisPage() {
                       className="stock-analysis-page__cycle-macro-layer"
                       data-testid="stock-analysis-cycle-macro-layer"
                     >
-                      <div className="stock-analysis-page__section-head">
+                      <div className={SA_SECTION_HEAD}>
                         <strong>宏观层 MacroScore</strong>
-                        <span className="stock-analysis-page__pill">
+                        <span className={SA_PILL}>
                           {cycleMacroLayerSummary.statusLabel}
                         </span>
                       </div>
@@ -2930,43 +3266,33 @@ export default function StockAnalysisPage() {
                       )
                     ) : null}
                   </div>
-                          </>
-                        ),
-                      },
-                    ]}
-                  />
-                </section>
+                </StrategyModuleCard>
               ) : null}
 
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
-                data-testid="stock-analysis-theme-breakout"
+              <StrategyModuleCard
+                id="theme-breakout"
+                title="题材突变观察"
+                subtitle="代理/概念簇 · 不生成执行结论"
+                badgeLabel={
+                  themeBreakoutPanelSummary?.badgeLabel ??
+                  `${localizeThemeRadarBadge(
+                    strategyPayload?.theme_breakout?.is_proxy ?? true,
+                    strategyPayload?.theme_breakout?.formula_version,
+                  )}${themeBreakoutCards.length > 0 ? ` · ${themeBreakoutCards.length} 项` : ""}`
+                }
+                summary={themeBreakoutPanelSummary}
+                summaryTestId="stock-analysis-theme-panel-summary"
+                expanded={isStrategyCardExpanded("theme-breakout")}
+                onToggleExpand={() => toggleStrategyCard("theme-breakout")}
+                mountDetail
+                sectionTestId="stock-analysis-theme-breakout"
               >
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "theme-breakout",
-                      forceRender: true,
-                      label: (
-                        <div className="stock-analysis-page__section-head">
-                          <div>
-                            <h2>题材突变雷达</h2>
-                            <p>
-                              绕开“一线行业前三”硬门槛的观察层，只看现有日线、涨停和名称代理簇，不生成执行性结论。
-                            </p>
-                          </div>
-                          <span className="stock-analysis-page__pill">
-                            {(strategyPayload?.theme_breakout?.formula_version ?? "").trim() || "proxy radar"}
-                            {themeBreakoutCards.length > 0 ? ` · ${themeBreakoutCards.length} 项` : ""}
-                          </span>
-                        </div>
-                      ),
-                      children:
-                        themeBreakoutCards.length > 0 ? (
+                <StrategyPanelComplianceDetails
+                            complianceDetail={themeBreakoutPanelSummary?.complianceDetail}
+                            testId="stock-analysis-theme-panel-compliance"
+                          />
+                          {themeBreakoutCards.length > 0 ? (
                   <div className="stock-analysis-page__candidate-grid">
                     {themeBreakoutCards.map((card) => (
                       <article className="stock-analysis-page__candidate" key={card.themeKey}>
@@ -3007,146 +3333,106 @@ export default function StockAnalysisPage() {
                       </article>
                     ))}
                   </div>
-                        ) : (
+                          ) : (
                   <p className="stock-analysis-page__empty">
                     {themeBreakoutUnsupported
-                      ? themeBreakoutUnsupported.reason
+                      ? themeBreakoutPanelSummary?.detail ?? "当前无题材突变观察项。"
                       : "当前无题材突变观察项。"}
                   </p>
-                        ),
-                    },
-                  ]}
-                />
-              </section>
-
-              {themeEvidenceRows.length > 0 ? (
-                <section className="stock-analysis-page__panel stock-analysis-page__panel--evidence" data-testid="stock-analysis-theme-evidence-state">
-                  <Collapse
-                    ghost
-                    bordered={false}
-                    className="stock-analysis-page__deep-collapse"
-                    items={[
-                      {
-                        key: "theme-evidence",
-                        forceRender: true,
-                        label: (
-                          <div className="stock-analysis-page__section-head">
-                            <div>
-                              <h2>题材证据就绪</h2>
-                              <p>概念与日内证据是否已确认、落库且日期对齐。</p>
-                            </div>
-                            <span className="stock-analysis-page__pill">Evidence · {themeEvidenceRows.length}</span>
-                          </div>
-                        ),
-                        children: (
-                  <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
-                    {themeEvidenceRows.map((row) => (
-                      <li key={row.key}>
-                        <span>
-                          <strong>{row.label}</strong>
-                          <small>
-                            {row.status} / {row.rowCountLabel}
-                          </small>
-                        </span>
-                        <em>{row.detail}</em>
-                      </li>
-                    ))}
-                  </ul>
-                        ),
-                      },
-                    ]}
-                  />
-                </section>
-              ) : null}
-
-              {themeBreakoutReviewItems.length > 0 ? (
-                <section className="stock-analysis-page__panel stock-analysis-page__panel--evidence" data-testid="stock-analysis-theme-review-items">
-                  <Collapse
-                    ghost
-                    bordered={false}
-                    className="stock-analysis-page__deep-collapse"
-                    items={[
-                      {
-                        key: "theme-review",
-                        forceRender: true,
-                        label: (
-                          <div className="stock-analysis-page__section-head">
-                            <div>
-                              <h2>题材未入选复核</h2>
-                              <p>强度足够但未通过门槛的观察簇，仅供复核排查。</p>
-                            </div>
-                            <span className="stock-analysis-page__pill">
-                              Review · {themeBreakoutReviewItems.length}
-                            </span>
-                          </div>
-                        ),
-                        children: (
-                  <div className="stock-analysis-page__candidate-grid">
-                    {themeBreakoutReviewItems.map((item) => (
-                      <article className="stock-analysis-page__candidate" key={item.themeKey}>
-                        <div className="stock-analysis-page__candidate-head">
-                          <div>
-                            <h3>
-                              Review #{item.rank} {item.themeName}
-                            </h3>
-                            <p>{item.parentSectorLabel}</p>
-                            <div className="stock-analysis-page__pattern-tag">{item.summary}</div>
-                          </div>
-                          <span>{item.sourceKindLabel}</span>
-                        </div>
-                        <div className="stock-analysis-page__decision-meta">
-                          <span>{item.failedGateLabel}</span>
-                        </div>
-                        <p className="stock-analysis-page__review-focus">{item.reason}</p>
-                        {item.leaders.length > 0 ? (
-                          <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
-                            {item.leaders.map((leader) => (
-                              <li key={leader.stockCode}>
-                                <span>
-                                  <strong>{leader.stockName}</strong>
-                                  <small>
-                                     {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度{" "}
-                                    {leader.closeStrength}
-                                  </small>
-                                </span>
-                                <em>{leader.tags.join(" / ") || "Review"}</em>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </article>
-                    ))}
+                          )}
+                {themeEvidenceRows.length > 0 ? (
+                  <div data-testid="stock-analysis-theme-evidence-state">
+                    <div className={SA_SECTION_HEAD}>
+                      <strong>题材证据就绪</strong>
+                      <span className={SA_PILL}>{themeEvidenceRows.length} 项证据</span>
+                    </div>
+                    <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                      {themeEvidenceRows.map((row) => (
+                        <li key={row.key}>
+                          <span>
+                            <strong>{row.label}</strong>
+                            <small>
+                              {row.status} / {row.rowCountLabel}
+                            </small>
+                          </span>
+                          <em>{row.detail}</em>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                        ),
-                      },
-                    ]}
-                  />
-                </section>
-              ) : null}
+                ) : null}
+                {themeBreakoutReviewItems.length > 0 ? (
+                  <div data-testid="stock-analysis-theme-review-items">
+                    <div className={SA_SECTION_HEAD}>
+                      <strong>题材未入选复核</strong>
+                      <span className={SA_PILL}>待排查 {themeBreakoutReviewItems.length} 项</span>
+                    </div>
+                    <div className="stock-analysis-page__candidate-grid">
+                      {themeBreakoutReviewItems.map((item) => (
+                        <article className="stock-analysis-page__candidate" key={item.themeKey}>
+                          <div className="stock-analysis-page__candidate-head">
+                            <div>
+                              <h3>
+                                复核 #{item.rank} {item.themeName}
+                              </h3>
+                              <p>{item.parentSectorLabel}</p>
+                              <div className="stock-analysis-page__pattern-tag">{item.summary}</div>
+                            </div>
+                            <span>{item.sourceKindLabel}</span>
+                          </div>
+                          <div className="stock-analysis-page__decision-meta">
+                            <span>{item.failedGateLabel}</span>
+                          </div>
+                          <p className="stock-analysis-page__review-focus">{item.reason}</p>
+                          {item.leaders.length > 0 ? (
+                            <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                              {item.leaders.map((leader) => (
+                                <li key={leader.stockCode}>
+                                  <span>
+                                    <strong>{leader.stockName}</strong>
+                                    <small>
+                                      {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度{" "}
+                                      {leader.closeStrength}
+                                    </small>
+                                  </span>
+                                  <em>{leader.tags.join(" / ") || "Review"}</em>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </StrategyModuleCard>
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-consensus-review-panel"
-                aria-label="多策略共振复核"
+              <StrategyModuleCard
+                id="consensus-review"
+                title="历史复核 / T+5 共振"
+                subtitle="趋势 + 多因子同选 · 超跌仅作背景"
+                badgeLabel={
+                  consensusReviewPanelSummary.tone === "positive"
+                    ? "已就绪"
+                    : consensusReviewPanelSummary.tone === "warning"
+                      ? "代理观察"
+                      : "证据待齐"
+                }
+                summary={consensusReviewPanelSummary}
+                summaryTestId="stock-analysis-consensus-panel-summary"
+                expanded={isStrategyCardExpanded("consensus-review")}
+                onToggleExpand={() => toggleStrategyCard("consensus-review")}
+                mountDetail
+                sectionTestId="stock-analysis-consensus-review-panel"
               >
                 <div
                   className="stock-analysis-page__historical-review-label"
                   data-testid="stock-analysis-historical-review-section"
                 >
-                  <strong>历史复核</strong>
-                  <span>策略评分 / 候选历史 / 代理回测下沉展示</span>
+                  <strong>历史复核摘要</strong>
+                  <span>T+5 共振 · 候选历史与评分</span>
                 </div>
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "consensus",
-                      forceRender: true,
-                      label: `T+5核心共振复核 · ${consensusSummary.doubleCount} 只（趋势+多因子）`,
-                      children: (
-                        <div className="stock-analysis-page__consensus" data-testid="stock-analysis-consensus">
+                <div className="stock-analysis-page__consensus" data-testid="stock-analysis-consensus">
                           <div className="stock-analysis-page__consensus-stats">
                             <span>
                               趋势 <strong>{consensusSummary.strategyCounts.livermore}</strong> 只
@@ -3166,10 +3452,12 @@ export default function StockAnalysisPage() {
                           </div>
 
                           {!consensusSummary.hasAnyStrategy ? (
-                            <p className="stock-analysis-page__empty">当前无任何策略输出候选股</p>
+                            <p className="stock-analysis-page__empty">
+                              {consensusReviewPanelSummary.detail}
+                            </p>
                           ) : consensusSummary.items.length === 0 ? (
                             <p className="stock-analysis-page__empty">
-                              当前没有被趋势与多因子同时选中的股票
+                              {consensusReviewPanelSummary.detail}
                             </p>
                           ) : (
                             <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
@@ -3252,42 +3540,29 @@ export default function StockAnalysisPage() {
                             这里仅统计趋势与多因子的 T+5 共振；超跌反弹作为更长周期观察背景展示，不自动抬高复核排序。
                           </p>
                         </div>
-                      ),
-                    },
-                  ]}
-                />
-              </section>
+              </StrategyModuleCard>
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-market-priority-summary"
+              <StrategyModuleCard
+                id="market-priority"
+                title="当前市场策略优先级"
+                subtitle="近 180 天快照 · T+5 排序 · 只读复核"
+                badgeLabel={`${localizeMarketDataStatus(
+                  strategyScorePayload?.current_market_state ?? currentMarketState,
+                )} / ${
+                  strategyScorePayload?.primary_horizon === "return_1d"
+                    ? "T+1"
+                    : strategyScorePayload?.primary_horizon === "return_20d"
+                      ? "T+20"
+                      : "T+5"
+                }`}
+                summary={marketPriorityPanelSummary}
+                summaryTestId="stock-analysis-market-priority-panel-summary"
+                expanded={isStrategyCardExpanded("market-priority")}
+                onToggleExpand={() => toggleStrategyCard("market-priority")}
+                mountDetail
+                sectionRef={strategyPrioritySection.ref}
+                sectionTestId="stock-analysis-market-priority-summary"
               >
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "market-priority",
-                      forceRender: true,
-                      label: (
-                        <div className="stock-analysis-page__section-head">
-                          <div>
-                            <h2>当前市场策略优先级</h2>
-                            <p>按近 180 天候选快照拆分市场状态，以 T+5 为主排序；只读评分，仅用于复核先后。</p>
-                          </div>
-                          <span className="stock-analysis-page__pill">
-                            {(strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补")} /{" "}
-                            {strategyScorePayload?.primary_horizon === "return_1d"
-                              ? "T+1"
-                              : strategyScorePayload?.primary_horizon === "return_20d"
-                                ? "T+20"
-                                : "T+5"}
-                          </span>
-                        </div>
-                      ),
-                      children: (
-                        <>
                 {strategyScoreQuery.isLoading ? (
                   <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
                 ) : null}
@@ -3302,7 +3577,11 @@ export default function StockAnalysisPage() {
                       className="stock-analysis-page__filter-status"
                       data-testid="stock-analysis-market-priority-current"
                     >
-                      <span>{strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补"}</span>
+                      <span>
+                        {localizeMarketDataStatus(
+                          strategyScorePayload?.current_market_state ?? currentMarketState,
+                        )}
+                      </span>
                       <strong>{strategyPriorityHeadline}</strong>
                       <small>
                         {strategyPriorityReason} 样本阈值 {strategyScorePayload?.min_sample ?? 20}，不输出交易动作。
@@ -3471,40 +3750,21 @@ export default function StockAnalysisPage() {
                     ) : null}
                   </>
                 ) : null}
-                        </>
-                      ),
-                    },
-                  ]}
-                />
-              </section>
+              </StrategyModuleCard>
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-strategy-backtest"
+              <StrategyModuleCard
+                id="strategy-backtest"
+                title="策略回溯表现"
+                subtitle="近 10 日快照 · 已完成日计胜率"
+                badgeLabel={strategyBacktestDateRangeLabel}
+                summary={strategyBacktestPanelSummary}
+                summaryTestId="stock-analysis-strategy-backtest-panel-summary"
+                expanded={isStrategyCardExpanded("strategy-backtest")}
+                onToggleExpand={() => toggleStrategyCard("strategy-backtest")}
+                mountDetail
+                sectionRef={strategyBacktestSection.ref}
+                sectionTestId="stock-analysis-strategy-backtest"
               >
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "strategy-backtest",
-                      forceRender: true,
-                      label: (
-                        <div className="stock-analysis-page__section-head">
-                          <div>
-                            <h2>策略回溯表现</h2>
-                            <p>按近 10 个自然日入选快照拆分，仅使用已完成回溯日期计算胜率。</p>
-                          </div>
-                          <span className="stock-analysis-page__pill">
-                            {strategyBacktestSnapshotFrom && effectiveAsOf
-                              ? `${strategyBacktestSnapshotFrom} 至 ${effectiveAsOf}`
-                              : "日期待补"}
-                          </span>
-                        </div>
-                      ),
-                      children: (
-                        <>
                 {strategyBacktestQuery.isLoading ? (
                   <p className="stock-analysis-page__empty">策略回溯表现加载中。</p>
                 ) : null}
@@ -3590,44 +3850,29 @@ export default function StockAnalysisPage() {
                     ) : null}
                   </>
                 ) : null}
-                        </>
-                      ),
-                    },
-                  ]}
-                />
-              </section>
+              </StrategyModuleCard>
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-strategy-optimization"
+              <StrategyModuleCard
+                id="strategy-optimization"
+                title="优化诊断"
+                subtitle="切片回测 T+5 · 复核排序建议"
+                badgeLabel={
+                  strategyOptimizationPayload?.primary_horizon === "return_1d"
+                    ? "T+1"
+                    : strategyOptimizationPayload?.primary_horizon === "return_10d"
+                      ? "T+10"
+                      : strategyOptimizationPayload?.primary_horizon === "return_20d"
+                        ? "T+20"
+                        : "T+5"
+                }
+                summary={strategyOptimizationPanelSummary}
+                summaryTestId="stock-analysis-strategy-optimization-panel-summary"
+                expanded={isStrategyCardExpanded("strategy-optimization")}
+                onToggleExpand={() => toggleStrategyCard("strategy-optimization")}
+                mountDetail
+                sectionRef={strategyOptimizationSection.ref}
+                sectionTestId="stock-analysis-strategy-optimization"
               >
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "strategy-optimization",
-                      forceRender: true,
-                      label: (
-                        <div className="stock-analysis-page__section-head">
-                          <div>
-                            <h2>优化诊断</h2>
-                            <p>基于候选历史切片回测 T+5 收益，只输出复核排序建议。</p>
-                          </div>
-                          <span className="stock-analysis-page__pill">
-                            {strategyOptimizationPayload?.primary_horizon === "return_1d"
-                              ? "T+1"
-                              : strategyOptimizationPayload?.primary_horizon === "return_10d"
-                                ? "T+10"
-                                : strategyOptimizationPayload?.primary_horizon === "return_20d"
-                                  ? "T+20"
-                                  : "T+5"}
-                          </span>
-                        </div>
-                      ),
-                      children: (
-                        <>
                 {strategyOptimizationQuery.isLoading ? (
                   <p className="stock-analysis-page__empty">优化诊断加载中。</p>
                 ) : null}
@@ -3736,29 +3981,29 @@ export default function StockAnalysisPage() {
                     ) : null}
                   </>
                 ) : null}
-                        </>
-                      ),
-                    },
-                  ]}
-                />
-              </section>
+              </StrategyModuleCard>
 
-
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-mean-reversion"
-                aria-label="超跌反弹观察池"
+              <StrategyModuleCard
+                id="observation-pools"
+                title="Observation Pools"
+                subtitle="超跌 / 多因子 / 融合 · WARM 激活观察"
+                badgeLabel={`合计 ${
+                  (meanReversionPayload?.candidate_count ?? 0) +
+                  (factorScreenPayload?.candidate_count ?? 0) +
+                  (hybridFusionPayload?.candidate_count ?? 0)
+                } 只`}
+                summary={observationPoolsPanelSummary}
+                summaryTestId="stock-analysis-observation-pools-panel-summary"
+                expanded={isStrategyCardExpanded("observation-pools")}
+                onToggleExpand={() => toggleStrategyCard("observation-pools")}
+                mountDetail
+                sectionTestId="stock-analysis-mean-reversion"
               >
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "mean-reversion",
-                      label: `超跌反弹观察池 · ${meanReversionPayload?.candidate_count ?? 0} 只 · 仅在 WARM 市场激活`,
-                      children: (
-                        <div className="stock-analysis-page__mean-reversion">
+                <div className="stock-analysis-page__mean-reversion">
+                  <div className={SA_SECTION_HEAD}>
+                    <strong>超跌反弹观察池</strong>
+                    <span className={SA_PILL}>WARM 激活</span>
+                  </div>
                           {gateState && !meanReversionMarketActive ? (
                             <p className="stock-analysis-page__empty">当前不是 WARM 市场，超跌反弹观察池暂停。</p>
                           ) : null}
@@ -3837,13 +4082,14 @@ export default function StockAnalysisPage() {
                             HOT/OVERHEAT 时自动停用。
                           </p>
                         </div>
-                      ),
-                    },
-                    {
-                      key: "factor-screen",
-                      label: `多因子选股 · ${factorScreenPayload?.candidate_count ?? 0} 只 · ${factorScreenPayload?.coverage_note ?? "数据未就绪"}`,
-                      children: (
-                        <div className="stock-analysis-page__factor-screen">
+                <div className="stock-analysis-page__factor-screen">
+                  <div className={SA_SECTION_HEAD}>
+                    <strong>多因子选股</strong>
+                    <span className={SA_PILL}>
+                      {factorScreenPayload?.candidate_count ?? 0} 只 ·{" "}
+                      {factorScreenPayload?.coverage_note ?? "数据未就绪"}
+                    </span>
+                  </div>
                           {!factorScreenPayload ? (
                             <p className="stock-analysis-page__empty">因子数据未就绪。</p>
                           ) : factorScreenPayload.items.length === 0 ? (
@@ -3917,37 +4163,21 @@ export default function StockAnalysisPage() {
                             仅作复核观察，不给出操作动作提示。
                           </p>
                         </div>
-                      ),
-                    },
-                  ]}
-                />
-              </section>
+              </StrategyModuleCard>
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
-                data-testid="stock-analysis-events-monitoring"
+              <StrategyModuleCard
+                id="events-monitoring"
+                title="关键事件与监控"
+                subtitle="诊断 / 缺口 / 风险触发复核队列"
+                badgeLabel={eventMonitorRows.length > 0 ? `${eventMonitorRows.length} 条` : "无事件"}
+                summary={eventsMonitoringPanelSummary}
+                summaryTestId="stock-analysis-events-panel-summary"
+                expanded={isStrategyCardExpanded("events-monitoring")}
+                onToggleExpand={() => toggleStrategyCard("events-monitoring")}
+                mountDetail
+                sectionTestId="stock-analysis-events-monitoring"
               >
-                <Collapse
-                  ghost
-                  bordered={false}
-                  className="stock-analysis-page__deep-collapse"
-                  items={[
-                    {
-                      key: "events-monitoring",
-                      forceRender: true,
-                      label: (
-                        <div className="stock-analysis-page__section-head">
-                          <div>
-                            <h2>关键事件与监控</h2>
-                            <p>汇总诊断、缺口、未支持输出和风险触发项，只作为复核队列的事件清单。</p>
-                          </div>
-                          <span className="stock-analysis-page__pill">
-                            Monitor{eventMonitorRows.length > 0 ? ` · ${eventMonitorRows.length}` : ""}
-                          </span>
-                        </div>
-                      ),
-                      children:
-                        eventMonitorRows.length > 0 ? (
+                {eventMonitorRows.length > 0 ? (
                   <div className="stock-analysis-page__table-wrap">
                     <table className="stock-analysis-page__table stock-analysis-page__table--dense">
                       <thead>
@@ -3978,11 +4208,9 @@ export default function StockAnalysisPage() {
                   </div>
                         ) : (
                   <p className="stock-analysis-page__empty">暂无关键事件，继续以只读证据复核。</p>
-                        ),
-                    },
-                  ]}
-                />
-              </section>
+                )}
+              </StrategyModuleCard>
+              </div>
               </div>
             </AnalysisGrid>
           </>

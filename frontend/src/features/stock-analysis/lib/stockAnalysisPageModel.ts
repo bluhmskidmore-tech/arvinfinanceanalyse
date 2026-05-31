@@ -1,17 +1,25 @@
 import type {
+  BacktestWindowSummary,
   BacktestWindowSummaryStatus,
   ConfluenceReplayBlockedDate,
   ConfluenceReplayStatus,
+  LivermoreCandidateHistoryHorizonStats,
+  LivermoreCandidateHistoryPayload,
+  LivermoreCandidateHistoryPortfolioBacktestPayload,
+  LivermoreCycleProxyBacktestPayload,
   LivermoreMarketGateState,
   LivermoreSignalConfluencePayload,
   LivermoreStockCandidateItem,
+  LivermoreStrategyOptimizationPayload,
   LivermoreStrategyPayload,
+  LivermoreStrategyScorePayload,
   HybridFusionCandidateItem,
   LivermoreThemeBreakoutReviewItem,
   LivermoreThemeEvidenceInputState,
   LivermoreThemeBreakoutItem,
   ResultMeta,
 } from "../../../api/contracts";
+import type { ConsensusSummary } from "./buildConsensusSummary";
 
 export type StockMarketConditionRow = {
   key: string;
@@ -614,6 +622,89 @@ function formatFreshnessLabel(meta: StockViewModelMeta = {}): string {
   return `新鲜度 ${quality} / ${vendor}${fallback}`;
 }
 
+function localizeMetaQualityFlag(value: string | undefined): string {
+  const normalized = (value ?? "pending").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ok: "质量正常",
+    warning: "质量需复核",
+    stale: "数据陈旧",
+    error: "质量异常",
+    pending: "质量待确认",
+  };
+  return labels[normalized] ?? "质量待确认";
+}
+
+function localizeMetaVendorStatus(value: string | undefined): string {
+  const normalized = (value ?? "pending").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ok: "通道正常",
+    degraded: "通道降级",
+    error: "通道异常",
+    pending: "通道待确认",
+  };
+  return labels[normalized] ?? "通道待确认";
+}
+
+function localizeBasisLabel(basis: string | null | undefined): string {
+  const normalized = (basis ?? "").trim().toLowerCase();
+  if (normalized === "analytical") return "分析口径（非交易）";
+  if (normalized === "formal") return "正式口径";
+  if (!normalized) return "口径待补";
+  return `口径 ${basis}`;
+}
+
+export type StockAnalysisPagePurpose = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  asOfLine: string;
+  dataStatusLine: string;
+};
+
+export function buildStockAnalysisPagePurpose(
+  payload: LivermoreStrategyPayload,
+  meta: StockViewModelMeta = {},
+): StockAnalysisPagePurpose {
+  const quality = meta.quality_flag ?? "pending";
+  const vendor = meta.vendor_status ?? "pending";
+  const fallback = meta.fallback_mode ?? "none";
+  const aligned = quality === "ok" && vendor === "ok" && fallback === "none";
+  const asOf = payload.as_of_date ?? "待补";
+  return {
+    eyebrow: "Livermore 策略 · 只读复核台",
+    title: "股票策略复核台",
+    subtitle: "查看今日门控、候选队列与证据是否齐全；仅作只读复核，不执行任何交易操作。",
+    asOfLine: `观察日 ${asOf}`,
+    dataStatusLine: aligned
+      ? `数据状态：已对齐（${asOf}）`
+      : `数据状态：待复核 · ${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${
+          fallback !== "none" ? ` / 回退 ${fallback}` : ""
+        }`,
+  };
+}
+
+export type StockReviewQueueEmptyState = {
+  headline: string;
+  detail: string;
+};
+
+export function buildReviewQueueEmptyState(payload: LivermoreStrategyPayload): StockReviewQueueEmptyState {
+  const factorCount = payload.factor_screen_candidates?.candidate_count ?? 0;
+  const hybridCount = payload.hybrid_fusion_candidates?.candidate_count ?? 0;
+  const nextParts: string[] = [];
+  if (factorCount > 0) {
+    nextParts.push(`可先看多因子池 ${factorCount} 只`);
+  } else if (hybridCount > 0) {
+    nextParts.push(`可先看融合策略池 ${hybridCount} 只`);
+  } else {
+    nextParts.push("可下翻「深度分析」查看各观察池");
+  }
+  return {
+    headline: "今天没有进入复核队列的候选",
+    detail: `${nextParts.join("；")}，并核对门控与板块强弱。`,
+  };
+}
+
 export function buildDailyJudgmentStrip(payload: LivermoreStrategyPayload): StockDailyJudgmentStrip {
   const gate = payload.market_gate;
   const tone = mapGateStateToTone(gate.state);
@@ -1191,12 +1282,16 @@ export function buildThemeBreakoutReviewItems(payload: LivermoreStrategyPayload)
         rank: item.rank ?? index + 1,
         themeKey: item.theme_key,
         themeName: item.theme_name,
-        sourceKindLabel: item.source_kind ?? (payload.theme_breakout?.is_proxy ? "proxy" : "real_concept"),
+        sourceKindLabel: localizeThemeSourceKind(
+          item.source_kind,
+          payload.theme_breakout?.is_proxy ?? true,
+        ),
         parentSectorLabel: `${item.parent_sector_name} #${item.parent_sector_rank}`,
         summary: `${item.member_count} review rows, ${item.strong_stock_count} strong, ${
           item.limit_stock_count
         } limit-up, avg ${formatPercent(item.avg_pctchange)}`,
-        failedGateLabel: `failed gates ${failedGates.length > 0 ? failedGates.join(", ") : "pending"}`,
+        failedGateLabel:
+          failedGates.length > 0 ? `未过门槛：${failedGates.join("、")}` : "门槛待确认",
         reason: item.reason,
         leaders: themeReviewLeaders(item),
       };
@@ -1237,8 +1332,8 @@ export function buildDecisionSummary(
     boundaryLabel: boundaryCount > 0 ? `${boundaryCount} 条边界` : "边界清晰",
     nextReviewAction: firstReview
       ? `下一步：先复核 ${firstReview.stockName}（${firstReview.stockCode}），${firstReview.sectorName}，距观察位 ${firstReview.distanceToBreakoutPct}。`
-      : "暂无候选股，先核对门控、板块强弱和数据边界。",
-    basisLabel: `basis: ${payload.basis}`,
+      : buildReviewQueueEmptyState(payload).detail,
+    basisLabel: localizeBasisLabel(payload.basis),
     asOfLabel: payload.as_of_date ?? "待补日期",
   };
 }
@@ -2104,4 +2199,626 @@ function deriveLineageStatus(
   if (adversarialStatus === "degraded" || adversarialStatus === "error") return "degraded";
   if (adversarialStatus === "ok" || adversarialStatus === "complete") return "complete";
   return "missing";
+}
+
+export type StockStrategyPanelQueryState = "idle" | "loading" | "ready" | "error";
+
+export type StockStrategyPanelMiniStatValueTone = "up" | "down" | "flat" | "emphasis" | "warning";
+
+export type StockStrategyPanelMiniStat = {
+  key: string;
+  label: string;
+  value: string;
+  tone?: StockClosedLoopTone;
+  /** 数值着色：红涨绿跌 / 强调 / 预警 */
+  valueTone?: StockStrategyPanelMiniStatValueTone;
+};
+
+export type StockStrategyPanelResultSummary = {
+  headline: string;
+  detail?: string;
+  /** 英文合规/边界原文，默认折叠在展开区 */
+  complianceDetail?: string;
+  badgeLabel?: string;
+  stats: StockStrategyPanelMiniStat[];
+  tone?: StockClosedLoopTone;
+};
+
+export function localizeImplementationStage(stage: string): string {
+  const normalized = stage.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    verification_pending: "证据待齐",
+    proxy_reconstruction: "代理重建",
+    proxy_only: "仅代理观察",
+    landed: "已落地",
+    partial: "部分就绪",
+    missing_inputs: "输入待补",
+    provisional: "临时版",
+    ready: "就绪",
+    no_data: "暂无数据",
+  };
+  return labels[normalized] ?? stage.replace(/_/g, " ");
+}
+
+export function localizeThemeRadarBadge(isProxy: boolean, formulaVersion?: string | null): string {
+  if (isProxy) {
+    return "代理观察";
+  }
+  const version = formulaVersion?.trim();
+  return version ? `概念库` : "概念库";
+}
+
+export function localizeThemeSourceKind(sourceKind: string | undefined, isProxyDefault: boolean): string {
+  const normalized = (sourceKind ?? "").trim().toLowerCase();
+  if (normalized === "proxy" || (!normalized && isProxyDefault)) {
+    return "代理观察";
+  }
+  if (normalized === "real_concept" || normalized === "concept") {
+    return "概念库";
+  }
+  if (normalized.includes("proxy")) {
+    return "代理观察";
+  }
+  if (!normalized) {
+    return isProxyDefault ? "代理观察" : "概念库";
+  }
+  return sourceKind.replace(/_/g, " ");
+}
+
+export function localizeMarketDataStatus(status: string | null | undefined): string {
+  const normalized = (status ?? "").trim().toUpperCase();
+  const labels: Record<string, string> = {
+    NO_DATA: "暂无数据",
+    STALE: "数据陈旧",
+    PENDING_DATA: "数据待补",
+    OFF: "关闭",
+    WARM: "温和",
+    HOT: "偏热",
+    OVERHEAT: "过热",
+  };
+  return labels[normalized] ?? status ?? "状态待补";
+}
+
+function localizeThemeUnsupportedSummary(reason: string): { detail: string; gateHint?: string } {
+  const text = reason.trim();
+  const lower = text.toLowerCase();
+  if (lower.includes("overheat")) {
+    return {
+      detail: "市场过热门控下暂停题材执行观察；历史回放显示该桶拖累。",
+      gateHint: "OVERHEAT",
+    };
+  }
+  if (lower.includes("no_data") || lower.includes("not landed") || lower.includes("missing")) {
+    return {
+      detail: "题材输入未落地或门控未开放，暂不出执行结论。",
+    };
+  }
+  if (text.length <= 48) {
+    return { detail: text };
+  }
+  return {
+    detail: "门控或数据限制导致暂未产出题材结论，展开查看英文原文。",
+  };
+}
+
+function formatBacktestRate(value: number | null | undefined, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "待补";
+  }
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatBacktestSignedReturn(value: number | null | undefined, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "待补";
+  }
+  const pct = value * 100;
+  const prefix = pct > 0 ? "+" : "";
+  return `${prefix}${pct.toFixed(digits)}%`;
+}
+
+function formatBacktestHorizonStatsText(stats: LivermoreCandidateHistoryHorizonStats | undefined): string {
+  if (!stats || stats.available_count <= 0) {
+    return "样本待补";
+  }
+  return `胜率 ${formatBacktestRate(stats.win_rate)} / 均收益 ${formatBacktestSignedReturn(stats.avg_return)} / ${stats.available_count}条`;
+}
+
+function pickTopPriorityRow(
+  rows: LivermoreStrategyScorePayload["rows"],
+): LivermoreStrategyScorePayload["rows"][number] | null {
+  const ranked = rows
+    .filter((row) => row.priority_score != null && Number.isFinite(row.priority_score))
+    .sort((left, right) => (right.priority_score ?? 0) - (left.priority_score ?? 0));
+  return ranked[0] ?? rows[0] ?? null;
+}
+
+function summarizeThemeMovementCount(payload: LivermoreStrategyPayload): number {
+  return (payload.theme_breakout?.items ?? []).reduce(
+    (sum, item) => sum + (item.movement_event_count ?? 0),
+    0,
+  );
+}
+
+function eventMonitorPriority(row: StockAnalysisEventMonitorRow): number {
+  if (row.level === "error") return 3;
+  if (row.level === "warning") return 2;
+  return 1;
+}
+
+export function buildCycleRotationPanelSummary(input: {
+  framework: NonNullable<LivermoreStrategyPayload["cycle_rotation_framework"]>;
+  macroLayer: StockCycleMacroLayerSummary | null;
+  portfolioBacktest: LivermoreCandidateHistoryPortfolioBacktestPayload | null;
+  proxyBacktest: LivermoreCycleProxyBacktestPayload | null;
+  portfolioQueryState?: StockStrategyPanelQueryState;
+  proxyQueryState?: StockStrategyPanelQueryState;
+}): StockStrategyPanelResultSummary {
+  const readyLayers = input.framework.layers.filter((layer) => layer.status === "ready").length;
+  const totalLayers = input.framework.layers.length;
+  const stageLabel = localizeImplementationStage(input.framework.implementation_stage);
+  const proxyReturn =
+    input.proxyBacktest?.status === "proxy" ? input.proxyBacktest.summary?.cumulative_return : null;
+  const portfolioReturn =
+    input.portfolioBacktest?.status === "portfolio_proxy"
+      ? input.portfolioBacktest.summary?.cumulative_return
+      : null;
+  const stats: StockStrategyPanelMiniStat[] = [
+    {
+      key: "stage",
+      label: "阶段",
+      value: stageLabel,
+      valueTone: input.framework.implementation_stage.includes("proxy") ? "warning" : "emphasis",
+    },
+    {
+      key: "layers",
+      label: "就绪层",
+      value: `${readyLayers}/${totalLayers}`,
+      valueTone: readyLayers === totalLayers ? "emphasis" : "warning",
+    },
+  ];
+  if (input.macroLayer) {
+    stats.push({
+      key: "macro",
+      label: "MacroScore",
+      value: input.macroLayer.macroScoreLabel,
+      valueTone: input.macroLayer.tone === "positive" ? "emphasis" : "warning",
+    });
+  }
+  if (input.portfolioQueryState === "loading" || input.proxyQueryState === "loading") {
+    stats.push({ key: "backtest", label: "回测", value: "加载中", valueTone: "flat" });
+  } else if (portfolioReturn != null) {
+    stats.push({
+      key: "portfolio",
+      label: "组合回测",
+      value: formatBacktestSignedReturn(portfolioReturn),
+      valueTone: portfolioReturn >= 0 ? "up" : "down",
+    });
+  } else if (proxyReturn != null) {
+    stats.push({
+      key: "proxy",
+      label: "代理回测",
+      value: formatBacktestSignedReturn(proxyReturn),
+      valueTone: proxyReturn >= 0 ? "up" : "down",
+    });
+  } else {
+    stats.push({ key: "backtest", label: "回测", value: "暂无样本", valueTone: "warning" });
+  }
+
+  const macroStatus = input.macroLayer?.statusLabel ?? "待补";
+  const detail =
+    readyLayers < totalLayers
+      ? `就绪 ${readyLayers}/${totalLayers} 层；补齐缺失输入后可进入完整验证。`
+      : "各层只读证据已接入，展开查看公式、层状态与回测明细。";
+
+  return {
+    headline: macroStatus === "已落地" ? "宏观层已落地" : `宏观层${macroStatus}`,
+    detail,
+    complianceDetail: input.framework.boundary,
+    badgeLabel: stageLabel,
+    stats,
+    tone: input.macroLayer?.tone ?? "neutral",
+  };
+}
+
+export function buildThemeBreakoutPanelSummary(input: {
+  payload: LivermoreStrategyPayload;
+  cards: StockThemeBreakoutCard[];
+  reviewCount: number;
+  unsupportedReason?: string;
+}): StockStrategyPanelResultSummary {
+  const themePayload = input.payload.theme_breakout;
+  const isProxy = themePayload?.is_proxy ?? true;
+  const movementTotal = summarizeThemeMovementCount(input.payload);
+  const topCard = input.cards[0];
+  const coverageCount = themePayload?.items?.length ?? input.cards.length;
+
+  if (input.unsupportedReason) {
+    const localized = localizeThemeUnsupportedSummary(input.unsupportedReason);
+    const stats: StockStrategyPanelMiniStat[] = [
+      { key: "status", label: "状态", value: "暂无数据", valueTone: "warning" },
+    ];
+    if (localized.gateHint) {
+      stats.push({
+        key: "gate",
+        label: "门控",
+        value: localized.gateHint,
+        valueTone: "warning",
+      });
+    }
+    return {
+      headline: "题材雷达未开放",
+      detail: localized.detail,
+      complianceDetail: input.unsupportedReason,
+      badgeLabel: isProxy ? "代理观察" : "概念库",
+      stats,
+      tone: "warning",
+    };
+  }
+
+  const stats: StockStrategyPanelMiniStat[] = [
+    {
+      key: "mode",
+      label: "模式",
+      value: isProxy ? "代理簇" : "概念库",
+      valueTone: isProxy ? "warning" : "emphasis",
+    },
+    {
+      key: "coverage",
+      label: "覆盖",
+      value: `${coverageCount} 簇`,
+      valueTone: coverageCount > 0 ? "emphasis" : "flat",
+    },
+    {
+      key: "movement",
+      label: "异动",
+      value: `${movementTotal} 条`,
+      valueTone: movementTotal > 0 ? "warning" : "flat",
+    },
+  ];
+  if (input.reviewCount > 0) {
+    stats.push({
+      key: "review",
+      label: "未入选",
+      value: `${input.reviewCount} 项`,
+      valueTone: "warning",
+    });
+  }
+
+  return {
+    headline:
+      input.cards.length > 0
+        ? `领先 #${topCard?.rank ?? 1} ${topCard?.themeName ?? "题材"}`
+        : "当前无题材突变观察项",
+    detail:
+      input.cards.length > 0
+        ? (topCard?.summary ?? "展开查看簇内龙头与边界说明。")
+        : isProxy
+          ? "代理观察：日线+涨停+名称簇，非正式概念库。"
+          : "真实概念观察：已落地成分与异动，仍只读复核。",
+    complianceDetail: isProxy
+      ? "Proxy theme radar: daily bars, limit-up flags and name clustering; not a formal concept catalog."
+      : undefined,
+    badgeLabel: localizeThemeRadarBadge(isProxy, themePayload?.formula_version),
+    stats,
+    tone: input.cards.length > 0 ? "positive" : "neutral",
+  };
+}
+
+export function buildConsensusReviewPanelSummary(consensus: ConsensusSummary): StockStrategyPanelResultSummary {
+  if (!consensus.hasAnyStrategy) {
+    return {
+      headline: "暂无候选",
+      detail: "今天没有共振候选；先核对门控，再下翻看多因子池或各策略观察池。",
+      stats: [
+        { key: "sample", label: "共振样本", value: "0", valueTone: "warning" },
+        { key: "trend", label: "趋势", value: "0", valueTone: "flat" },
+        { key: "factor", label: "多因子", value: "0", valueTone: "flat" },
+        { key: "fusion", label: "融合", value: "0", valueTone: "flat" },
+      ],
+      tone: "warning",
+    };
+  }
+  if (consensus.doubleCount <= 0) {
+    return {
+      headline: "暂无共振",
+      detail: "今天没有趋势+多因子共振；可先复核单策略池，或查看多因子池排序。",
+      stats: [
+        { key: "sample", label: "共振样本", value: "0", valueTone: "warning" },
+        { key: "trend", label: "趋势", value: `${consensus.strategyCounts.livermore}`, valueTone: "emphasis" },
+        { key: "factor", label: "多因子", value: `${consensus.strategyCounts.factor_screen}`, valueTone: "emphasis" },
+        { key: "union", label: "去重池", value: `${consensus.totalUnion}`, valueTone: "flat" },
+      ],
+      tone: "warning",
+    };
+  }
+
+  const top = consensus.items[0];
+  return {
+    headline: `T+5 共振 ${consensus.doubleCount} 只${consensus.tripleCount > 0 ? ` · 三策略 ${consensus.tripleCount}` : ""}`,
+    detail: top
+      ? `下一步：优先复核 ${top.stockName}（${top.stockCode}），${top.strategies.length} 策略同选。`
+      : "按共振得分排序，仅作复核先后。",
+    stats: [
+      {
+        key: "double",
+        label: "核心共振",
+        value: `${consensus.doubleCount}`,
+        valueTone: "emphasis",
+      },
+      {
+        key: "trend",
+        label: "趋势池",
+        value: `${consensus.strategyCounts.livermore}`,
+        valueTone: "flat",
+      },
+      {
+        key: "factor",
+        label: "多因子池",
+        value: `${consensus.strategyCounts.factor_screen}`,
+        valueTone: "flat",
+      },
+    ],
+    tone: "positive",
+  };
+}
+
+export function buildMarketPriorityPanelSummary(input: {
+  rows: LivermoreStrategyScorePayload["rows"];
+  payload: LivermoreStrategyScorePayload | null;
+  marketState: string | null;
+  queryState: StockStrategyPanelQueryState;
+  errorMessage?: string;
+}): StockStrategyPanelResultSummary {
+  if (input.queryState === "loading") {
+    return {
+      headline: "市场优先级计算中",
+      detail: "展开后将按近 180 天快照与 T+5 统计排序。",
+      stats: [{ key: "state", label: "市场", value: input.marketState ?? "待补", tone: "neutral" }],
+      tone: "neutral",
+    };
+  }
+  if (input.queryState === "error") {
+    return {
+      headline: "市场优先级暂不可用",
+      detail: input.errorMessage,
+      stats: [{ key: "state", label: "市场", value: input.marketState ?? "待补", tone: "warning" }],
+      tone: "warning",
+    };
+  }
+  const top = pickTopPriorityRow(input.rows);
+  const sufficientCount = input.rows.filter((row) => row.sample_status === "sufficient").length;
+  if (!top || sufficientCount === 0) {
+    return {
+      headline: "当前市场状态样本不足",
+      detail: `样本阈值 ${input.payload?.min_sample ?? 20}，不输出交易动作。`,
+      stats: [
+        { key: "state", label: "市场", value: input.payload?.current_market_state ?? input.marketState ?? "待补", tone: "warning" },
+        { key: "rows", label: "策略行", value: `${input.rows.length}`, tone: "neutral" },
+      ],
+      tone: "warning",
+    };
+  }
+
+  const horizon = input.payload?.primary_horizon ?? "return_5d";
+  const horizonStats = top.stats[horizon];
+  return {
+    headline: `优先复核 ${top.strategy_label} · 评分 ${top.priority_score?.toFixed(1) ?? "-"}`,
+    detail: top.reason,
+    stats: [
+      {
+        key: "state",
+        label: "市场",
+        value: input.payload?.current_market_state ?? input.marketState ?? "待补",
+        tone: "neutral",
+      },
+      {
+        key: "label",
+        label: "建议",
+        value: top.priority_label,
+        tone: top.priority_label === "优先复核" ? "positive" : "warning",
+      },
+      {
+        key: "t5",
+        label: "T+5",
+        value: formatBacktestHorizonStatsText(horizonStats),
+        tone: (horizonStats?.win_rate ?? 0) >= 0.5 ? "positive" : "neutral",
+      },
+    ],
+    tone: top.priority_label === "优先复核" ? "positive" : "warning",
+  };
+}
+
+export function buildStrategyBacktestPanelSummary(input: {
+  payload: LivermoreCandidateHistoryPayload | null;
+  sampleCount: number;
+  window: BacktestWindowSummary | null;
+  dateRangeLabel: string;
+  rows: Array<{ kind: string; label: string; count: number; stats: Record<string, string> }>;
+  queryState: StockStrategyPanelQueryState;
+  errorMessage?: string;
+}): StockStrategyPanelResultSummary {
+  if (input.queryState === "loading") {
+    return {
+      headline: "策略回溯加载中",
+      detail: input.dateRangeLabel,
+      stats: [{ key: "range", label: "区间", value: input.dateRangeLabel || "待补", tone: "neutral" }],
+      tone: "neutral",
+    };
+  }
+  if (input.queryState === "error") {
+    return {
+      headline: "策略回溯暂不可用",
+      detail: input.errorMessage,
+      stats: [],
+      tone: "warning",
+    };
+  }
+  const topRow = [...input.rows].sort((left, right) => right.count - left.count)[0];
+  const signalStats =
+    input.payload?.summary?.by_signal_kind_horizon_usable_stats?.stock_candidate?.return_5d ??
+    input.payload?.summary?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d;
+  const trendT5 =
+    signalStats != null
+      ? formatBacktestHorizonStatsText(signalStats)
+      : topRow?.stats.return_5d ?? "样本待补";
+
+  return {
+    headline:
+      input.sampleCount > 0
+        ? `有效样本 ${input.sampleCount} 条 · 完成日 ${input.window?.replay_dates_completed ?? 0}`
+        : "暂无可用回溯样本",
+    detail: input.dateRangeLabel,
+    stats: [
+      { key: "range", label: "区间", value: input.dateRangeLabel || "待补", tone: "neutral" },
+      {
+        key: "trend",
+        label: topRow?.label ?? "趋势",
+        value: trendT5,
+        tone: input.sampleCount > 0 ? "positive" : "warning",
+      },
+      {
+        key: "pending",
+        label: "待成熟",
+        value: `${input.window?.replay_dates_pending ?? 0} 日`,
+        tone: (input.window?.replay_dates_pending ?? 0) > 0 ? "warning" : "neutral",
+      },
+    ],
+    tone: input.sampleCount > 0 ? "positive" : "warning",
+  };
+}
+
+export function buildStrategyOptimizationPanelSummary(input: {
+  payload: LivermoreStrategyOptimizationPayload | null;
+  rows: LivermoreStrategyOptimizationPayload["strategy_summaries"];
+  queryState: StockStrategyPanelQueryState;
+  errorMessage?: string;
+}): StockStrategyPanelResultSummary {
+  if (input.queryState === "loading") {
+    return {
+      headline: "优化诊断加载中",
+      stats: [{ key: "horizon", label: "主 horizon", value: "T+5", tone: "neutral" }],
+      tone: "neutral",
+    };
+  }
+  if (input.queryState === "error") {
+    return {
+      headline: "优化诊断暂不可用",
+      detail: input.errorMessage,
+      stats: [],
+      tone: "warning",
+    };
+  }
+
+  const promoteCount = (input.payload?.recommendations ?? []).filter(
+    (item) => item.action === "promote" || item.priority_label === "优先复核",
+  ).length;
+  const downgradeCount = (input.payload?.recommendations ?? []).filter(
+    (item) => item.action === "downgrade" || item.priority_label === "降权观察",
+  ).length;
+  const top = input.rows[0];
+  const horizon = input.payload?.primary_horizon ?? "return_5d";
+  const primaryStats = top?.stats[horizon];
+
+  if (!top) {
+    return {
+      headline: "优化诊断样本不足",
+      detail: input.payload?.pending_summary.message,
+      stats: [
+        {
+          key: "pending",
+          label: "待成熟",
+          value: `${input.payload?.pending_summary.pending_rows ?? 0} 行`,
+          tone: "warning",
+        },
+      ],
+      tone: "warning",
+    };
+  }
+
+  return {
+    headline: `Top 建议 ${top.recommendation.priority_label} · ${top.strategy_label}`,
+    detail: top.recommendation.reason,
+    stats: [
+      {
+        key: "promote",
+        label: "上调",
+        value: `${promoteCount}`,
+        tone: promoteCount > 0 ? "positive" : "neutral",
+      },
+      {
+        key: "downgrade",
+        label: "降权",
+        value: `${downgradeCount}`,
+        tone: downgradeCount > 0 ? "warning" : "neutral",
+      },
+      {
+        key: "t5",
+        label: "T+5",
+        value: formatBacktestHorizonStatsText(primaryStats),
+        tone: "neutral",
+      },
+    ],
+    tone: top.recommendation.priority_label === "优先复核" ? "positive" : "warning",
+  };
+}
+
+export function buildObservationPoolsPanelSummary(input: {
+  gateState: string | null | undefined;
+  meanReversionCount: number;
+  factorScreenCount: number;
+  hybridFusionCount: number;
+  meanReversionActive: boolean;
+}): StockStrategyPanelResultSummary {
+  const total = input.meanReversionCount + input.factorScreenCount + input.hybridFusionCount;
+  const activation =
+    input.meanReversionActive && input.gateState === "WARM"
+      ? "WARM 激活超跌反弹"
+      : input.gateState
+        ? `${input.gateState} · 超跌池${input.meanReversionActive ? "开" : "停"}`
+        : "市场状态待补";
+
+  return {
+    headline: `观察池合计 ${total} 只 · 融合 ${input.hybridFusionCount} / 多因子 ${input.factorScreenCount} / 超跌 ${input.meanReversionCount}`,
+    detail: activation,
+    stats: [
+      { key: "hybrid", label: "融合", value: `${input.hybridFusionCount}`, tone: input.hybridFusionCount > 0 ? "positive" : "neutral" },
+      { key: "factor", label: "多因子", value: `${input.factorScreenCount}`, tone: input.factorScreenCount > 0 ? "positive" : "neutral" },
+      {
+        key: "mean",
+        label: "超跌",
+        value: input.meanReversionActive ? `${input.meanReversionCount}` : "暂停",
+        tone: input.meanReversionActive ? "warning" : "neutral",
+      },
+    ],
+    tone: total > 0 ? "positive" : "neutral",
+  };
+}
+
+export function buildEventsMonitoringPanelSummary(
+  rows: StockAnalysisEventMonitorRow[],
+): StockStrategyPanelResultSummary {
+  if (rows.length === 0) {
+    return {
+      headline: "暂无待复核事件",
+      detail: "诊断、缺口与风险触发均空。",
+      stats: [{ key: "count", label: "事件", value: "0", tone: "positive" }],
+      tone: "positive",
+    };
+  }
+
+  const errorCount = rows.filter((row) => row.level === "error").length;
+  const warningCount = rows.filter((row) => row.level === "warning").length;
+  const top = [...rows].sort((left, right) => eventMonitorPriority(right) - eventMonitorPriority(left))[0];
+
+  return {
+    headline: `${rows.length} 条待复核 · 最高优先 ${top.event}`,
+    detail: top.detail,
+    stats: [
+      { key: "error", label: "错误", value: `${errorCount}`, tone: errorCount > 0 ? "negative" : "positive" },
+      { key: "warn", label: "预警", value: `${warningCount}`, tone: warningCount > 0 ? "warning" : "neutral" },
+      { key: "top", label: "影响域", value: top.impact, tone: "neutral" },
+    ],
+    tone: errorCount > 0 ? "negative" : warningCount > 0 ? "warning" : "neutral",
+  };
 }

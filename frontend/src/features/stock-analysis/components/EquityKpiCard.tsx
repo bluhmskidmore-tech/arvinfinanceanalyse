@@ -1,7 +1,8 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo } from "react";
 
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
+import styles from "./EquityKpiCard.module.css";
 
 /** 品牌主色描边，与 designTokens.color.primary[600] 同源 */
 const SPARKLINE_STROKE = designTokens.color.primary[600];
@@ -12,18 +13,14 @@ export type EquityKpiCardProps = {
   deltaText?: string;
   deltaTone?: "up" | "down" | "flat";
   sparkline?: number[];
+  testId?: string;
 };
 
-const tabularValueStyle: CSSProperties = {
-  fontVariantNumeric: "tabular-nums",
-  fontFamily: "var(--moss-font-mono)",
-};
-
-const deltaToneClass: Record<NonNullable<EquityKpiCardProps["deltaTone"]>, string> = {
-  up: "text-success-600",
-  down: "text-danger-600",
-  flat: "text-neutral-600",
-};
+function deltaClass(tone: NonNullable<EquityKpiCardProps["deltaTone"]>): string {
+  if (tone === "up") return styles.deltaUp ?? "";
+  if (tone === "down") return styles.deltaDown ?? "";
+  return styles.deltaFlat ?? "";
+}
 
 function buildSparklineOption(values: number[]): EChartsOption {
   return {
@@ -43,6 +40,7 @@ function buildSparklineOption(values: number[]): EChartsOption {
         smooth: true,
         symbol: "none",
         lineStyle: { color: SPARKLINE_STROKE, width: 1.5 },
+        areaStyle: { opacity: 0.12, color: SPARKLINE_STROKE },
       },
     ],
   };
@@ -54,6 +52,7 @@ export function EquityKpiCard({
   deltaText,
   deltaTone = "flat",
   sparkline,
+  testId,
 }: EquityKpiCardProps) {
   const sparklineOption = useMemo(
     () => (sparkline && sparkline.length > 0 ? buildSparklineOption(sparkline) : null),
@@ -61,26 +60,25 @@ export function EquityKpiCard({
   );
 
   return (
-    <article
-      className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white p-3 shadow-sm transition-shadow duration-200 hover:-translate-y-px hover:shadow-md"
-      data-equity-kpi-card
-    >
-      <header className="flex items-start justify-between gap-2">
-        <span className="text-xs font-medium text-neutral-600">{label}</span>
-        <div className="h-8 w-20 shrink-0" aria-hidden={sparklineOption ? undefined : true}>
-          {sparklineOption ? (
-            <ReactECharts option={sparklineOption} style={{ height: 32, width: 80 }} />
-          ) : (
-            <div className="mt-3 h-px w-full rounded-full bg-neutral-200" title="无序列，占位" />
-          )}
-        </div>
-      </header>
-      <p className="text-lg font-semibold leading-tight text-neutral-900" style={tabularValueStyle}>
-        {value}
-      </p>
+    <article className={styles.card} data-equity-kpi-card data-testid={testId}>
+      <div className={styles.top}>
+        <span>{label}</span>
+      </div>
+      <div className={styles.value}>{value}</div>
       {deltaText ? (
-        <p className={`text-xs leading-snug ${deltaToneClass[deltaTone]}`}>{deltaText}</p>
-      ) : null}
+        <div className={`${styles.delta} ${deltaClass(deltaTone)}`}>{deltaText}</div>
+      ) : (
+        <div className={styles.delta} aria-hidden="true" />
+      )}
+      {sparklineOption ? (
+        <ReactECharts
+          className={styles.spark}
+          option={sparklineOption}
+          style={{ height: 28, width: "100%" }}
+        />
+      ) : (
+        <div className={styles.sparkPlaceholder} aria-hidden="true" title="无序列，占位" />
+      )}
     </article>
   );
 }

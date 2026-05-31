@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -65,6 +66,7 @@ from backend.app.services.formal_result_runtime import (
     VendorStatus,
     build_result_envelope,
 )
+from backend.app.services.runtime_cache import get_runtime_cache
 from backend.app.tasks.choice_stock_materialize import (
     ChoiceStockMaterializationCoverage,
     load_choice_stock_materialization_coverage,
@@ -72,6 +74,8 @@ from backend.app.tasks.choice_stock_materialize import (
 
 RULE_VERSION = "rv_livermore_strategy_v1"
 CACHE_VERSION = "cv_livermore_strategy_v1"
+PAYLOAD_CACHE_NAME = "livermore_strategy_payload"
+PAYLOAD_CACHE_TTL_SECONDS = 120.0
 RESULT_KIND = "market_data.livermore"
 STRATEGY_NAME = "Livermore A-Share Defended Trend"
 EXECUTION_STOCK_CANDIDATE_POLICY = EXP3B_STOCK_CANDIDATE_POLICY
@@ -135,6 +139,47 @@ def load_livermore_strategy_payload(
     stock_candidate_policy: str | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness or choice_stock_readiness_missing("")
+    cache_key = _livermore_strategy_payload_cache_key(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        stock_readiness=resolved_stock_readiness,
+        backfill_mode=backfill_mode,
+        stock_candidate_policy=stock_candidate_policy,
+    )
+    if cache_key is not None:
+        cache = get_runtime_cache(
+            PAYLOAD_CACHE_NAME,
+            ttl_seconds=PAYLOAD_CACHE_TTL_SECONDS,
+        )
+        return cache.get_or_set(
+            cache_key,
+            lambda: _load_livermore_strategy_payload_uncached(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                stock_readiness=resolved_stock_readiness,
+                backfill_mode=backfill_mode,
+                stock_candidate_policy=stock_candidate_policy,
+            ),
+        )
+
+    return _load_livermore_strategy_payload_uncached(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        stock_readiness=resolved_stock_readiness,
+        backfill_mode=backfill_mode,
+        stock_candidate_policy=stock_candidate_policy,
+    )
+
+
+def _load_livermore_strategy_payload_uncached(
+    *,
+    duckdb_path: str,
+    as_of_date: date | None,
+    stock_readiness: ChoiceStockReadiness,
+    backfill_mode: bool,
+    stock_candidate_policy: str | None,
+) -> tuple[dict[str, object], dict[str, object]]:
+    resolved_stock_readiness = stock_readiness
     history_rows, broad_index_tables = _load_broad_index_history(
         duckdb_path=duckdb_path,
         as_of_date=as_of_date,
@@ -245,6 +290,40 @@ def load_livermore_strategy_payload(
         "evidence_rows": len(history_rows) + stock_outputs.evidence_rows + cycle_input_evidence.evidence_rows,
     }
     return payload, meta
+
+
+def _livermore_strategy_payload_cache_key(
+    *,
+    duckdb_path: str,
+    as_of_date: date | None,
+    stock_readiness: ChoiceStockReadiness,
+    backfill_mode: bool,
+    stock_candidate_policy: str | None,
+) -> tuple[str, int, int, str, str, bool, str, str] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        resolved_path = str(path.resolve())
+    except OSError:
+        return None
+    readiness_fingerprint = json.dumps(
+        stock_readiness.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return (
+        resolved_path,
+        stat.st_mtime_ns,
+        stat.st_size,
+        as_of_date.isoformat() if as_of_date is not None else "",
+        readiness_fingerprint,
+        backfill_mode,
+        stock_candidate_policy or "",
+        RULE_VERSION,
+    )
 
 
 def _parse_optional_date(value: str | None) -> date | None:

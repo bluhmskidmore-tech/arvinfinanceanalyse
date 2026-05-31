@@ -12,6 +12,9 @@ import {
   buildCycleMacroLayerSummary,
   buildDataBoundarySummary,
   buildDecisionSummary,
+  buildStockAnalysisPagePurpose,
+  buildReviewQueueEmptyState,
+  localizeImplementationStage,
   buildDailyJudgmentStrip,
   buildDataBoundaryNotes,
   buildMarketStateCard,
@@ -25,7 +28,12 @@ import {
   buildThemeBreakoutCards,
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
+  buildConsensusReviewPanelSummary,
+  buildEventsMonitoringPanelSummary,
+  buildObservationPoolsPanelSummary,
+  buildThemeBreakoutPanelSummary,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
 
 const strategyPayload: LivermoreStrategyPayload = {
   as_of_date: "2026-04-29",
@@ -430,6 +438,35 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.dataFreshnessLabel).toBe("数据需复核 ok / ok / 回退 latest_snapshot");
   });
 
+  it("builds page purpose and review-queue empty guidance in Chinese", () => {
+    const purpose = buildStockAnalysisPagePurpose(strategyPayload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+    });
+    expect(purpose.title).toBe("股票策略复核台");
+    expect(purpose.subtitle).toContain("只读复核");
+    expect(purpose.dataStatusLine).toContain("已对齐");
+
+    const empty = buildReviewQueueEmptyState({
+      ...strategyPayload,
+      stock_candidates: {
+        ...strategyPayload.stock_candidates!,
+        candidate_count: 0,
+        items: [],
+      },
+      factor_screen_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "factor_v1",
+        candidate_count: 30,
+        items: [],
+      },
+    });
+    expect(empty.headline).toContain("没有进入复核队列");
+    expect(empty.detail).toContain("多因子池 30 只");
+
+    expect(localizeImplementationStage("verification_pending")).toBe("证据待齐");
+  });
+
   it("keeps the decision summary honest when candidates are unavailable", () => {
     const summary = buildDecisionSummary(
       {
@@ -450,7 +487,8 @@ describe("stockAnalysisPageModel", () => {
     );
 
     expect(summary.candidateCountLabel).toBe("候选 0");
-    expect(summary.nextReviewAction).toBe("暂无候选股，先核对门控、板块强弱和数据边界。");
+    expect(summary.nextReviewAction).toContain("深度分析");
+    expect(summary.nextReviewAction).toContain("门控与板块强弱");
     expect(summary.boundaryLabel).toContain("3 条边界");
     expect(summary.nextReviewAction).not.toContain("Alpha");
   });
@@ -663,7 +701,7 @@ describe("stockAnalysisPageModel", () => {
     expect(reviewItems).toHaveLength(1);
     expect(reviewItems[0]).toMatchObject({
       themeKey: "semiconductor_proxy",
-      sourceKindLabel: "proxy",
+      sourceKindLabel: "代理观察",
     });
     expect(reviewItems[0].failedGateLabel).toContain("insufficient_cluster_strength");
     expect(reviewItems[0].summary).toContain("2");
@@ -1278,6 +1316,73 @@ describe("stockAnalysisPageModel", () => {
         }),
       ]),
     );
+  });
+
+  it("builds consensus review panel summary for empty resonance", () => {
+    const summary = buildConsensusReviewPanelSummary(
+      buildConsensusSummary({
+        ...strategyPayload,
+        stock_candidates: {
+          ...strategyPayload.stock_candidates!,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "平安",
+              sector_code: "BK",
+              sector_name: "银行",
+              score: 1,
+              close: 10,
+              breakout_level: 11,
+              evidence: [],
+              counter_evidence: [],
+              invalidation_rules: [],
+            },
+          ],
+          candidate_count: 1,
+        },
+        factor_screen_candidates: {
+          formula_version: "factor_v1",
+          candidate_count: 1,
+          coverage_note: "ok",
+          items: [
+            {
+              rank: 1,
+              stock_code: "600000.SH",
+              stock_name: "浦发",
+              sector_code: "BK",
+              sector_name: "银行",
+              industry: "银行",
+              score: 0.9,
+            },
+          ],
+        },
+      }),
+    );
+    expect(summary.headline).toContain("暂无共振");
+  });
+
+  it("builds theme breakout and observation pool panel summaries from payload", () => {
+    const themeSummary = buildThemeBreakoutPanelSummary({
+      payload: strategyPayload,
+      cards: buildThemeBreakoutCards(strategyPayload),
+      reviewCount: 0,
+    });
+    expect(themeSummary.stats.some((stat) => stat.key === "coverage")).toBe(true);
+
+    const poolSummary = buildObservationPoolsPanelSummary({
+      gateState: "WARM",
+      meanReversionCount: 2,
+      factorScreenCount: 1,
+      hybridFusionCount: 0,
+      meanReversionActive: true,
+    });
+    expect(poolSummary.headline).toContain("观察池合计 3 只");
+
+    const events = buildEventsMonitoringPanelSummary(
+      buildStockAnalysisEventMonitorRows(strategyPayload, confluencePayload),
+    );
+    expect(events.headline).toMatch(/条待复核/);
   });
 
 });

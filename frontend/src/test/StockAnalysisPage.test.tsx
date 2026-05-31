@@ -1150,6 +1150,27 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-review-mini-chart")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-event-mini-chart")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-historical-review-section")).toHaveTextContent("历史复核");
+    expect(await screen.findByTestId("stock-analysis-consensus-panel-summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-theme-panel-summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-events-panel-summary")).toBeInTheDocument();
+  });
+
+  it("does not fan out lower-page diagnostics before the first screen", async () => {
+    const client = stockClient();
+    const strategyScoreSpy = vi.spyOn(client, "getLivermoreStrategyScore");
+    const strategyOptimizationSpy = vi.spyOn(client, "getLivermoreStrategyOptimization");
+    const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
+    const cycleProxySpy = vi.spyOn(client, "getLivermoreCycleProxyBacktest");
+    const portfolioBacktestSpy = vi.spyOn(client, "getLivermoreCandidateHistoryPortfolioBacktest");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    expect(await screen.findByTestId("stock-analysis-tailwind-cockpit")).toBeInTheDocument();
+    expect(strategyScoreSpy).not.toHaveBeenCalled();
+    expect(strategyOptimizationSpy).not.toHaveBeenCalled();
+    expect(candidateHistorySpy).not.toHaveBeenCalled();
+    expect(cycleProxySpy).not.toHaveBeenCalled();
+    expect(portfolioBacktestSpy).not.toHaveBeenCalled();
   });
 
   it("scopes shell compression to the stock-analysis route", () => {
@@ -1203,7 +1224,9 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "板块强弱" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "题材突变雷达" })).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-page-purpose")).toHaveTextContent("股票策略复核台");
+    expect(await screen.findByTestId("stock-analysis-deep-zone")).toHaveTextContent("深度分析");
+    expect(await screen.findByRole("heading", { name: "题材突变观察" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "复核队列" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "数据口径与边界" })).toBeInTheDocument();
@@ -1267,7 +1290,7 @@ describe("StockAnalysisPage", () => {
     expect(framework).toHaveTextContent("Macro direction");
     expect(framework).toHaveTextContent("PMI");
     expect(framework).toHaveTextContent("industry cap 25%");
-    expect(framework).toHaveTextContent("verification_pending");
+    expect(framework).toHaveTextContent("证据待齐");
     expect(within(framework).getByTestId("stock-analysis-candidate-history-portfolio-backtest")).toHaveTextContent("组合回测");
     expect(within(framework).getByTestId("stock-analysis-cycle-proxy-backtest")).toHaveTextContent("代理回测");
     await waitFor(() => expect(framework).toHaveTextContent("-18.42%"));
@@ -1380,7 +1403,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const section = await screen.findByTestId("stock-analysis-theme-breakout");
-    expect(section).toHaveTextContent("题材突变雷达");
+    expect(section).toHaveTextContent("题材突变观察");
     expect(section).toHaveTextContent("Semiconductor proxy");
     expect(section).toHaveTextContent("Electronic #9");
     expect(section).toHaveTextContent("代理题材观察");
@@ -1453,7 +1476,8 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
-    await user.click(await screen.findByText(/多因子选股/));
+    const poolsCard = await screen.findByTestId("stock-analysis-mean-reversion");
+    await user.click(within(poolsCard).getByRole("button", { name: "查看明细" }));
 
     expect(await screen.findByText("Factor Alpha")).toBeInTheDocument();
     expect(screen.getByText("600000.SH")).toBeInTheDocument();
@@ -1578,7 +1602,9 @@ describe("StockAnalysisPage", () => {
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
-    expect(verdict).toHaveTextContent("可复核");
+    await waitFor(() => expect(verdict).toHaveTextContent("可进入人工复核队列"), {
+      timeout: 3_000,
+    });
     expect(verdict).toHaveTextContent("可进入人工复核队列");
     expect(verdict).toHaveTextContent("不推导策略收益");
     expect(summary).toHaveTextContent("闭环摘要");
@@ -1620,7 +1646,9 @@ describe("StockAnalysisPage", () => {
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
-    expect(verdict).toHaveTextContent("拦截");
+    await waitFor(() => expect(verdict).toHaveTextContent("闭环阻断，先复核约束项"), {
+      timeout: 3_000,
+    });
     expect(verdict).toHaveTextContent("闭环阻断，先复核约束项");
     expect(verdict).toHaveTextContent("保持仅观察输出");
     expect(decisionPanel).toHaveTextContent("供数明细与闭环");
@@ -1686,7 +1714,9 @@ describe("StockAnalysisPage", () => {
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
-    expect(verdict).toHaveTextContent("暂缓");
+    await waitFor(() => expect(verdict).toHaveTextContent("暂缓复核，存在降级边界"), {
+      timeout: 3_000,
+    });
     expect(verdict).toHaveTextContent("暂缓复核，存在降级边界");
     expect(verdict).toHaveTextContent("保留观察队列");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
@@ -1750,7 +1780,9 @@ describe("StockAnalysisPage", () => {
     });
 
     const replayStatus = await screen.findByTestId("stock-analysis-replay-status");
-    expect(replayStatus).toHaveTextContent("2026-04-30");
+    await waitFor(() => expect(replayStatus).toHaveTextContent("2026-04-30"), {
+      timeout: 3_000,
+    });
     expect(replayStatus).toHaveTextContent("missing_daily_limit_flags");
     expect(replayStatus).toHaveTextContent("2026-05-08");
     expect(replayStatus).toHaveTextContent("forward_returns_pending");
@@ -2043,12 +2075,13 @@ describe("StockAnalysisPage", () => {
   it("renders strategy replay rows from legacy per-strategy horizon stats", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
+    const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
+    await waitFor(() => expect(panel).toHaveTextContent(/180 条/), { timeout: 3_000 });
     const trend = within(await screen.findByTestId("stock-analysis-strategy-backtest-stock_candidate"));
-    const panel = screen.getByTestId("stock-analysis-strategy-backtest");
     expect(panel).toHaveTextContent(/策略回溯表现/);
-    expect(panel).toHaveTextContent(/仅使用已完成回溯日期计算胜率/);
+    expect(panel).toHaveTextContent(/已完成日计胜率/);
+    expect(await screen.findByTestId("stock-analysis-strategy-backtest-panel-summary")).toBeInTheDocument();
     expect(panel).toHaveTextContent(/有效样本/);
-    expect(panel).toHaveTextContent(/180 条/);
     expect(panel).toHaveTextContent(/完成日期 5/);
 
     expect(trend.getByText("趋势突破")).toBeInTheDocument();
@@ -2188,7 +2221,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const card = await screen.findByTestId("stock-analysis-strategy-optimization");
-    await waitFor(() => expect(card).toHaveTextContent("优化诊断"));
+    await waitFor(() => expect(card).toHaveTextContent("多因子"), { timeout: 3_000 });
     expect(card).toHaveTextContent("三策略 T+5 排名");
     expect(card).toHaveTextContent("多因子");
     expect(card).toHaveTextContent("优先复核");
@@ -2257,7 +2290,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
-    await waitFor(() => expect(summary).toHaveTextContent("当前状态样本不足"));
+    await waitFor(() => expect(summary).toHaveTextContent("T+1"), { timeout: 3_000 });
     expect(summary).toHaveTextContent("当前状态样本不足");
     expect(summary).toHaveTextContent("样本不足");
     expect(summary).not.toHaveTextContent("优先复核");
@@ -2399,8 +2432,11 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
-    const stockCandidateRow = await screen.findByTestId("stock-analysis-strategy-backtest-stock_candidate");
-    expect(stockCandidateRow).toHaveTextContent("75.0% / +3.21% / 12条");
+    const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
+    await waitFor(() => expect(panel).toHaveTextContent("75.0% / +3.21% / 12条"), {
+      timeout: 5_000,
+    });
+    const stockCandidateRow = screen.getByTestId("stock-analysis-strategy-backtest-stock_candidate");
     expect(stockCandidateRow).toHaveTextContent("50.0% / -1.11% / 4条");
     expect(stockCandidateRow).toHaveTextContent("待补");
 

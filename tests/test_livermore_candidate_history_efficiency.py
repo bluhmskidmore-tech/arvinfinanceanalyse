@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import duckdb
 
+from backend.app.repositories.choice_stock_adapter import choice_stock_readiness_missing
 from backend.app.services import livermore_candidate_history_service as service
+from backend.app.services import market_data_livermore_service as livermore_service
+from backend.app.services.runtime_cache import clear_runtime_cache
+from backend.app.tasks import choice_stock_materialize
 from backend.app.tasks.livermore_candidate_history_materialize import (
     ensure_livermore_candidate_history_schema,
 )
@@ -268,6 +272,71 @@ def test_strategy_optimization_reuses_loaded_window_rows_for_backtest_summary(mo
 
     assert envelope["result_meta"]["result_kind"] == "market_data.livermore.strategy_optimization"
     assert load_count == 1
+
+
+def test_choice_stock_materialization_coverage_reuses_same_duckdb_date(monkeypatch, tmp_path) -> None:
+    clear_runtime_cache("choice_stock_materialization_coverage")
+    db_path = tmp_path / "choice-stock-coverage-cache.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    scan_count = 0
+    original_completed = choice_stock_materialize._completed_request_items
+
+    def _counting_completed(conn: duckdb.DuckDBPyConnection, as_of_date: str) -> set[str]:
+        nonlocal scan_count
+        scan_count += 1
+        return original_completed(conn, as_of_date)
+
+    monkeypatch.setattr(choice_stock_materialize, "_completed_request_items", _counting_completed)
+
+    first = choice_stock_materialize.load_choice_stock_materialization_coverage(
+        duckdb_path=str(db_path),
+        as_of_date="2026-05-01",
+    )
+    second = choice_stock_materialize.load_choice_stock_materialization_coverage(
+        duckdb_path=str(db_path),
+        as_of_date="2026-05-01",
+    )
+
+    assert first.status == "ready"
+    assert second.status == "ready"
+    assert scan_count == 1
+    clear_runtime_cache("choice_stock_materialization_coverage")
+
+
+def test_livermore_strategy_payload_reuses_same_duckdb_snapshot(monkeypatch, tmp_path) -> None:
+    clear_runtime_cache("livermore_strategy_payload")
+    db_path = tmp_path / "livermore-strategy-payload-cache.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    conn.close()
+
+    load_count = 0
+
+    def _counting_history(*, duckdb_path: str, as_of_date: object) -> tuple[list[object], list[str]]:
+        nonlocal load_count
+        load_count += 1
+        return [], []
+
+    monkeypatch.setattr(livermore_service, "_load_broad_index_history", _counting_history)
+
+    first_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=None,
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+    second_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=None,
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+
+    assert first_payload["strategy_name"] == second_payload["strategy_name"]
+    assert load_count == 1
+    clear_runtime_cache("livermore_strategy_payload")
 
 
 def test_stock_candidate_state_scopes_resolves_market_state_once_per_stock_row(monkeypatch) -> None:
