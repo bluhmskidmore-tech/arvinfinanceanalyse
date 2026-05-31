@@ -71,14 +71,16 @@ describe("CrossAssetPage", () => {
     const fullKpiBand = await screen.findByTestId("cross-asset-kpi-band");
     const livermoreStatus = await screen.findByTestId("cross-asset-livermore-status");
     const observationSupport = await screen.findByTestId("cross-asset-observation-support-grid");
+    const momentumScoreboard = await screen.findByTestId("cross-asset-momentum-scoreboard");
+    const correlationHeatmap = await screen.findByTestId("cross-asset-correlation-heatmap");
     const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
 
     expect(hero).toHaveTextContent("外部变量怎样传导到债券");
     expect(statusStrip).toHaveTextContent("宏观最新质量");
     expect(firstScreenGrid).toContainElement(researchViews);
     expect(firstScreenGrid).toContainElement(headlineKpis);
-    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-momentum-scoreboard"));
-    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-correlation-heatmap"));
+    expect(observationSupport).toContainElement(momentumScoreboard);
+    expect(observationSupport).toContainElement(correlationHeatmap);
     expect(screen.getByTestId("cross-asset-momentum-table-wrap")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-correlation-matrix-wrap")).toBeInTheDocument();
     expect(waterfallEvidence).toHaveTextContent("综合");
