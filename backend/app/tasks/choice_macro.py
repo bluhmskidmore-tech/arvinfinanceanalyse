@@ -247,6 +247,26 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
     },
 }
 
+_CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES = frozenset({"EM1"})
+
+
+def _choice_warning(
+    *,
+    code: str,
+    message: str,
+    series_id: str | None = None,
+    vendor_series_code: str | None = None,
+) -> dict[str, str]:
+    warning = {
+        "code": code,
+        "message": message,
+    }
+    if series_id:
+        warning["series_id"] = series_id
+    if vendor_series_code:
+        warning["vendor_series_code"] = vendor_series_code
+    return warning
+
 
 @dramatiq.actor
 def refresh_choice_macro_snapshot(
@@ -278,12 +298,14 @@ def refresh_choice_macro_snapshot(
     run_id = f"{run.job_name}:{run.created_at}"
     source_version = "sv_choice_macro_pending"
     vendor_version = "vv_none"
+    refresh_warnings: list[dict[str, str]] = []
 
     try:
         if backfill_days > 1:
             snapshot, series_registry = _fetch_backfill_snapshots(
                 settings=settings,
                 backfill_days=backfill_days,
+                warnings=refresh_warnings,
             )
         else:
             batches = load_choice_macro_batches(settings)
@@ -298,6 +320,7 @@ def refresh_choice_macro_snapshot(
                         adapter=adapter,
                         batch=batch,
                         timeout_seconds=settings.choice_timeout_seconds,
+                        warnings=refresh_warnings,
                     )
                 except RuntimeError as exc:
                     if _is_choice_no_data_error(exc):
@@ -497,14 +520,60 @@ def refresh_choice_macro_snapshot(
             raise RuntimeError("Failed to append failed choice_macro lineage") from append_error
         raise exc
 
-    return {
+    gate_supplement_result: dict[str, object] | None = None
+    try:
+        from backend.app.services.livermore_gate_supplement_compute_service import (
+            compute_and_materialize_gate_supplement,
+        )
+
+        gate_supplement_result = compute_and_materialize_gate_supplement(
+            duckdb_path=str(duckdb_file),
+            lookback_days=max(backfill_days, STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS),
+        )
+    except Exception as exc:
+        logger.warning(
+            "livermore gate supplement refresh failed after choice_macro refresh: %s",
+            exc,
+        )
+        gate_warning = _choice_warning(
+            code="gate_supplement_failed",
+            message=str(exc),
+        )
+        refresh_warnings.append(gate_warning)
+        gate_supplement_result = {
+            "status": "failed",
+            "quality_flag": "warning",
+            "warning_code": "gate_supplement_failed",
+            "message": str(exc),
+        }
+
+    status = "completed"
+    quality_flag = "ok"
+    warning_code: str | None = None
+    if refresh_warnings:
+        status = "degraded"
+        quality_flag = "warning"
+        if any(item["code"] == "gate_supplement_failed" for item in refresh_warnings):
+            warning_code = "gate_supplement_failed"
+        else:
+            warning_code = "choice_macro_partial"
+
+    result = {
         "status": "completed",
         "run_id": run_id,
         "series_count": len(snapshot.series),
         "vendor_version": snapshot.vendor_version,
         "source_version": source_version,
         "cache_key": run.cache_key,
+        "gate_supplement_refresh": gate_supplement_result,
     }
+    result["status"] = status
+    result["quality_flag"] = quality_flag
+    if warning_code is not None:
+        result["warning_code"] = warning_code
+    if refresh_warnings:
+        result["warnings"] = refresh_warnings
+    return result
 
 
 def refresh_public_cross_asset_headlines(
@@ -1040,6 +1109,7 @@ def _fetch_choice_macro_batch_snapshot(
     adapter: VendorAdapter,
     batch: ChoiceMacroBatchConfig,
     timeout_seconds: float,
+    warnings: list[dict[str, str]] | None = None,
 ) -> ChoiceMacroSnapshot:
     last_error: RuntimeError | None = None
     for request_options in _iter_choice_batch_request_options(batch):
@@ -1051,21 +1121,48 @@ def _fetch_choice_macro_batch_snapshot(
             )
         except RuntimeError as exc:
             if _is_choice_mixed_ids_error(exc) and len(batch.series) > 1:
-                return merge_choice_macro_snapshots(
-                    [
-                        _fetch_choice_macro_batch_snapshot(
-                            adapter=adapter,
-                            batch=batch.model_copy(
-                                update={
-                                    "series": [series],
-                                    "fetch_granularity": "single",
-                                }
-                            ),
-                            timeout_seconds=timeout_seconds,
+                snapshots: list[ChoiceMacroSnapshot] = []
+                last_split_error: RuntimeError | None = None
+                for series in batch.series:
+                    try:
+                        snapshots.append(
+                            _fetch_choice_macro_batch_snapshot(
+                                adapter=adapter,
+                                batch=batch.model_copy(
+                                    update={
+                                        "series": [series],
+                                        "fetch_granularity": "single",
+                                    }
+                                ),
+                                timeout_seconds=timeout_seconds,
+                                warnings=warnings,
+                            )
                         )
-                        for series in batch.series
-                    ]
-                )
+                    except RuntimeError as split_exc:
+                        if (
+                            not _is_choice_no_data_error(split_exc)
+                            and not _is_choice_unsupported_runtime_error(split_exc)
+                        ):
+                            raise
+                        last_split_error = split_exc
+                if snapshots:
+                    return merge_choice_macro_snapshots(snapshots)
+                if last_split_error is not None:
+                    raise last_split_error
+                raise
+            if _is_choice_unsupported_single_series_error(exc, batch):
+                series = batch.series[0]
+                if warnings is not None:
+                    warnings.append(
+                        _choice_warning(
+                            code="choice_series_unsupported",
+                            series_id=series.series_id,
+                            vendor_series_code=series.vendor_series_code,
+                            message=str(exc),
+                        )
+                    )
+                last_error = RuntimeError(f"unsupported Choice series {series.series_id}: {exc}")
+                break
             if not _is_choice_no_data_error(exc):
                 raise
             last_error = exc
@@ -1111,6 +1208,25 @@ def _is_choice_no_data_error(exc: RuntimeError) -> bool:
 def _is_choice_mixed_ids_error(exc: RuntimeError) -> bool:
     text = str(exc).lower()
     return "parameter error" in text or "can't be mixed" in text or "cannot be mixed" in text
+
+
+def _is_choice_unsupported_runtime_error(exc: RuntimeError) -> bool:
+    return str(exc).lower().startswith("unsupported choice series ")
+
+
+def _is_choice_unsupported_single_series_error(exc: RuntimeError, batch: ChoiceMacroBatchConfig) -> bool:
+    if len(batch.series) != 1:
+        return False
+    text = str(exc).lower()
+    if "format not support" in text:
+        return True
+    if "parameter error" not in text:
+        return False
+    series = batch.series[0]
+    return (
+        series.series_id in _CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES
+        or series.vendor_series_code in _CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES
+    )
 
 
 def _parse_choice_request_options_string(request_options: str) -> dict[str, str]:
@@ -1235,7 +1351,7 @@ def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> Choice
         if snapshot.captured_at > captured_at:
             captured_at = snapshot.captured_at
 
-    vendor_version = vendor_versions[0] if len(set(vendor_versions)) == 1 else "__".join(vendor_versions)
+    vendor_version = _merge_choice_vendor_versions(vendor_versions)
     return ChoiceMacroSnapshot(
         vendor_name="choice",
         vendor_version=vendor_version,
@@ -1243,6 +1359,15 @@ def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> Choice
         series=series,
         raw_payload={"batches": raw_batches},
     )
+
+
+def _merge_choice_vendor_versions(vendor_versions: list[str]) -> str:
+    ordered = sorted({item for item in vendor_versions if item})
+    if not ordered:
+        return "vv_none"
+    if len(ordered) == 1:
+        return ordered[0]
+    return "__".join(ordered)
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -1300,6 +1425,7 @@ def _fetch_backfill_snapshots(
     *,
     settings,
     backfill_days: int,
+    warnings: list[dict[str, str]] | None = None,
 ) -> tuple[ChoiceMacroSnapshot, dict[str, dict[str, object]]]:
     """Fetch Choice macro data for each of the last *backfill_days* calendar days.
 
@@ -1324,6 +1450,7 @@ def _fetch_backfill_snapshots(
                     adapter=adapter,
                     batch=batch,
                     timeout_seconds=settings.choice_timeout_seconds,
+                    warnings=warnings,
                 )
             except RuntimeError as exc:
                 if _is_choice_no_data_error(exc):

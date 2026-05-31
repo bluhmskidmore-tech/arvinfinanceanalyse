@@ -1,6 +1,6 @@
 {
   "result_meta": {
-    "trace_id": "tr_26006cc6ef90",
+    "trace_id": "tr_43c200d579a2",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
@@ -17,7 +17,7 @@
     "as_of_date": "2026-03-31",
     "date_basis": "formal_snapshot",
     "fallback_date": null,
-    "generated_at": "2026-04-22T04:30:50.007980Z",
+    "generated_at": "2026-05-31T07:44:21.980839Z",
     "filters_applied": {},
     "tables_used": [],
     "evidence_rows": null,
@@ -27,16 +27,16 @@
   "result": {
     "report_date": "2026-03-31",
     "portfolio_dv01": {
-      "raw": 0.41281987,
+      "raw": 0.42748515,
       "unit": "dv01",
-      "display": "0.41",
+      "display": "0.43",
       "precision": 2,
       "sign_aware": false
     },
     "regulatory_dv01": {
-      "raw": 0.41281987,
+      "raw": 0.42748515,
       "unit": "dv01",
-      "display": "0.41",
+      "display": "0.43",
       "precision": 2,
       "sign_aware": false
     },
@@ -69,37 +69,37 @@
       "sign_aware": true
     },
     "krd_10y": {
-      "raw": 0.11250583,
+      "raw": 0.12054196,
       "unit": "ratio",
-      "display": "+0.11",
+      "display": "+0.12",
       "precision": 2,
       "sign_aware": true
     },
     "krd_30y": {
-      "raw": 0.30031404,
+      "raw": 0.30694319,
       "unit": "ratio",
-      "display": "+0.30",
+      "display": "+0.31",
       "precision": 2,
       "sign_aware": true
     },
     "cs01": {
-      "raw": 0.41281987,
+      "raw": 0.42748515,
       "unit": "dv01",
-      "display": "0.41",
+      "display": "0.43",
       "precision": 2,
       "sign_aware": false
     },
     "portfolio_convexity": {
-      "raw": 189.52956974,
+      "raw": 180.77409483,
       "unit": "ratio",
-      "display": "189.53",
+      "display": "180.77",
       "precision": 2,
       "sign_aware": false
     },
     "portfolio_modified_duration": {
-      "raw": 12.5096929,
+      "raw": 12.245511,
       "unit": "ratio",
-      "display": "12.51",
+      "display": "12.25",
       "precision": 2,
       "sign_aware": false
     },
@@ -181,16 +181,16 @@
       "sign_aware": false
     },
     "rate_risk_dv01": {
-      "raw": 0.41281987,
+      "raw": 0.42748515,
       "unit": "dv01",
-      "display": "0.41",
+      "display": "0.43",
       "precision": 2,
       "sign_aware": false
     },
     "rate_risk_modified_duration": {
-      "raw": 12.5096929,
+      "raw": 12.245511,
       "unit": "ratio",
-      "display": "12.51",
+      "display": "12.25",
       "precision": 2,
       "sign_aware": false
     },
@@ -227,9 +227,9 @@
       "daily_rate_volatility_bp": null,
       "dominant_krd_bucket": "30Y",
       "dominant_krd": {
-        "raw": 0.30031404,
+        "raw": 0.30694319,
         "unit": "ratio",
-        "display": "+0.30",
+        "display": "+0.31",
         "precision": 2,
         "sign_aware": true
       },
@@ -245,9 +245,9 @@
             "sign_aware": true
           },
           "estimated_pnl_impact": {
-            "raw": -4.1281986999999996,
+            "raw": -4.2748515,
             "unit": "yuan",
-            "display": "-4.13",
+            "display": "-4.27",
             "precision": 2,
             "sign_aware": true
           }
@@ -263,15 +263,15 @@
             "sign_aware": true
           },
           "estimated_pnl_impact": {
-            "raw": -10.32049675,
+            "raw": -10.68712875,
             "unit": "yuan",
-            "display": "-10.32",
+            "display": "-10.69",
             "precision": 2,
             "sign_aware": true
           }
         }
       ],
-      "operating_judgement": "当前监管口径 DV01 0.41；+10bp 平行上行估算影响 -4.13；主风险桶 30Y。审批限额与利率波动源未接入前，暂不判定超限。",
+      "operating_judgement": "当前监管口径 DV01 0.43；+10bp 平行上行估算影响 -4.27；主风险桶 30Y。审批限额与利率波动源未接入前，暂不判定超限。",
       "control_actions": [
         {
           "key": "approved_dv01_limit",
@@ -298,7 +298,7 @@
           "key": "stress_escalation",
           "title": "固化冲击升级",
           "status": "required",
-          "evidence": "+10bp 估算影响 -4.13；+25bp 估算影响 -10.32。",
+          "evidence": "+10bp 估算影响 -4.27；+25bp 估算影响 -10.69。",
           "action": "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。"
         }
       ],

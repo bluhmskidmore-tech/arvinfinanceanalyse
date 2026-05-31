@@ -1,4 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -30,6 +32,11 @@ import type {
   ResultMeta,
 } from "../api/contracts";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+const YIELD_ANALYSIS_SOURCE_PATHS = [
+  resolve(process.cwd(), "src/features/pnl/YieldAnalysisPage.tsx"),
+  resolve(process.cwd(), "src/features/pnl/yieldAnalysis/yieldAnalysis.css"),
+];
 
 function bridgeYuan(raw: number, display: string, signAware = true): Numeric {
   return { raw, unit: "yuan", display, precision: 2, sign_aware: signAware };
@@ -626,6 +633,19 @@ function buildPnlClient(): ApiClient {
 }
 
 describe("pnl routed pages smoke", () => {
+  it("keeps /pnl yield analysis colors on the homepage blue-gray token family", () => {
+    const source = YIELD_ANALYSIS_SOURCE_PATHS.map((path) => readFileSync(path, "utf8")).join("\n");
+
+    expect(source).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
+    expect(source).not.toMatch(/rgba\((76, 58, 44|255, 253, 249)/);
+    expect(source).not.toMatch(/letter-spacing:\s*-/);
+    expect(source).toContain("designTokens.color.primary[600]");
+    expect(source).toContain("designTokens.color.info[600]");
+    expect(source).toContain("designTokens.color.success[600]");
+    expect(source).toContain("var(--moss-color-primary-600)");
+    expect(source).toContain("var(--moss-color-info-50)");
+  });
+
   it("renders the real /pnl route surface through workbench routes", async () => {
     const user = userEvent.setup();
 

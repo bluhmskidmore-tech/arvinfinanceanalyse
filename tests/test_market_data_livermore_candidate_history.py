@@ -333,6 +333,61 @@ def _insert_strategy_score_rows(
     )
 
 
+def _seed_csi300_benchmark(conn: duckdb.DuckDBPyConnection, rows: list[tuple[str, float]]) -> None:
+    conn.execute(
+        """
+        create table if not exists fact_choice_macro_daily (
+          series_id varchar,
+          series_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar,
+          source_version varchar,
+          vendor_version varchar,
+          rule_version varchar,
+          quality_flag varchar,
+          run_id varchar
+        )
+        """
+    )
+    conn.executemany(
+        """
+        insert into fact_choice_macro_daily values
+        ('CA.CSI300', 'CSI300', ?, ?, 'D', 'point', 'sv_benchmark', 'vv_benchmark', 'rv_benchmark', 'ok', 'run-benchmark')
+        """,
+        rows,
+    )
+
+
+def _seed_csi300_snapshot_benchmark(conn: duckdb.DuckDBPyConnection, rows: list[tuple[str, float]]) -> None:
+    conn.execute(
+        """
+        create table if not exists choice_market_snapshot (
+          series_id varchar,
+          series_name varchar,
+          vendor_series_code varchar,
+          vendor_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar,
+          source_version varchar,
+          vendor_version varchar,
+          rule_version varchar,
+          run_id varchar
+        )
+        """
+    )
+    conn.executemany(
+        """
+        insert into choice_market_snapshot values
+        ('CA.CSI300', 'CSI300', '000300.SH', 'Choice', ?, ?, 'D', 'point', 'sv_snapshot', 'vv_snapshot', 'rv_snapshot', 'run-snapshot')
+        """,
+        rows,
+    )
+
+
 def test_task_happy_path_forward_returns(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "hist.duckdb"
     snap = date(2026, 1, 6)
@@ -3612,6 +3667,87 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert "PMI" in body["missing_full_strategy_inputs"]
 
 
+def test_cycle_proxy_backtest_compares_proxy_nav_to_csi300_benchmark(tmp_path) -> None:
+    db_path = tmp_path / "cycle-proxy-benchmark.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Proxy A", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08'
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_csi300_benchmark(conn, [("2026-05-01", 100.0), ("2026-05-08", 105.0)])
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+    )
+
+    summary = envelope["result"]["summary"]
+    assert envelope["result_meta"]["tables_used"] == ["livermore_candidate_history", "fact_choice_macro_daily"]
+    assert summary["benchmark"]["series_id"] == "CA.CSI300"
+    assert summary["benchmark"]["coverage_status"] == "complete"
+    assert summary["benchmark"]["requested_start_date"] == "2026-05-01"
+    assert summary["benchmark"]["requested_end_date"] == "2026-05-08"
+    assert summary["benchmark"]["start_date"] == "2026-05-01"
+    assert summary["benchmark"]["end_date"] == "2026-05-08"
+    assert summary["benchmark"]["cumulative_return"] == 0.05
+    assert summary["benchmark"]["relative_cumulative_return"] == 0.07
+
+
+def test_cycle_proxy_backtest_unions_csi300_benchmark_sources_for_coverage(tmp_path) -> None:
+    db_path = tmp_path / "cycle-proxy-benchmark-union.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Proxy A", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08'
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_csi300_snapshot_benchmark(conn, [("2026-05-01", 100.0)])
+        _seed_csi300_benchmark(conn, [("2026-05-08", 105.0)])
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+    )
+
+    summary = envelope["result"]["summary"]
+    assert envelope["result_meta"]["tables_used"] == [
+        "livermore_candidate_history",
+        "fact_choice_macro_daily",
+        "choice_market_snapshot",
+    ]
+    assert summary["benchmark"]["coverage_status"] == "complete"
+    assert summary["benchmark"]["start_date"] == "2026-05-01"
+    assert summary["benchmark"]["end_date"] == "2026-05-08"
+    assert summary["benchmark"]["cumulative_return"] == 0.05
+
+
 def test_cycle_proxy_backtest_marks_unsupported_when_no_completed_proxy_rows(tmp_path) -> None:
     db_path = tmp_path / "cycle-proxy-empty.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
@@ -3747,6 +3883,49 @@ def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_
     assert body["rebalance_log"][1]["target_count"] == 0
     assert body["rebalance_log"][1]["sell_turnover"] == 1.0
     assert "equal-weight top-6 replay rows" in body["warnings"][1]
+
+
+def test_candidate_history_portfolio_backtest_compares_nav_to_csi300_benchmark(tmp_path) -> None:
+    db_path = tmp_path / "candidate-history-portfolio-benchmark.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-02", "000001.SZ", 110.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Alpha", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+        _seed_csi300_benchmark(conn, [("2026-05-01", 100.0), ("2026-05-02", 120.0)])
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
+    )
+
+    summary = envelope["result"]["summary"]
+    assert envelope["result_meta"]["tables_used"] == [
+        "livermore_candidate_history",
+        "choice_stock_daily_observation",
+        "fact_choice_macro_daily",
+    ]
+    assert summary["benchmark"]["series_id"] == "CA.CSI300"
+    assert summary["benchmark"]["coverage_status"] == "complete"
+    assert summary["benchmark"]["requested_start_date"] == "2026-05-01"
+    assert summary["benchmark"]["requested_end_date"] == "2026-05-02"
+    assert summary["benchmark"]["cumulative_return"] == 0.2
+    assert summary["benchmark"]["relative_cumulative_return"] == -0.10088
 
 
 def test_candidate_history_portfolio_backtest_marks_unsupported_without_replay_rows(tmp_path) -> None:

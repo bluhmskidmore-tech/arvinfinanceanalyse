@@ -1879,6 +1879,14 @@ describe("StockAnalysisPage", () => {
     const boundarySummary = screen.getByTestId("stock-analysis-boundary-summary");
     expect(boundarySummary).toHaveTextContent("2 条边界");
     expect(boundarySummary).toHaveTextContent("诊断 1 / 缺口 1 / 未支持 0");
+    const boundaryRail = screen.getByTestId("stock-analysis-boundary-rail");
+    expect(boundaryRail).toHaveTextContent("数据日期");
+    expect(boundaryRail).toHaveTextContent("规则版本");
+    expect(boundaryRail).toHaveTextContent("数据质量");
+    expect(boundaryRail).toHaveTextContent("例外状态");
+    expect(boundaryRail).not.toHaveTextContent("sv_livermore_test");
+    expect(boundaryRail).not.toHaveTextContent("trace");
+    expect(boundaryRail).not.toHaveTextContent("Breadth inputs are unavailable.");
 
     await user.click(screen.getByRole("button", { name: "查看完整诊断" }));
 

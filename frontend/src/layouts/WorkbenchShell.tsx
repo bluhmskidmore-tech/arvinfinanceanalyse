@@ -106,7 +106,7 @@ function groupSectionPillStyle(active: boolean) {
     gap: 8,
     padding: "8px 12px",
     borderRadius: 14,
-    background: active ? shellTokens.colorAccentSoft : "rgba(255, 253, 248, 0.82)",
+    background: active ? shellTokens.colorAccentSoft : shellTokens.colorBgSurface,
     color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
     border: active
       ? `1px solid ${shellTokens.colorBorderStrong}`
@@ -381,7 +381,6 @@ export function WorkbenchShell() {
     isBondAnalysisMinimalShell ||
     isCrossAssetImmersiveMain ||
     isPortfolioPageOwnedChrome;
-  const showBalanceAnalysisLightHint = isPortfolioGroup && isBalanceAnalysisCompactChrome;
   const showFullWorkspaceGuidance =
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
@@ -389,7 +388,7 @@ export function WorkbenchShell() {
     !isBalanceMovementAnalysisCompactChrome &&
     !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
-  const showWorkspaceHeroCard = showBalanceAnalysisLightHint || showFullWorkspaceGuidance;
+  const showWorkspaceHeroCard = showFullWorkspaceGuidance && !isBalanceAnalysisCompactChrome;
   const showPortfolioDecisionBoard =
     isPortfolioGroup &&
     currentSection.readiness !== "live" &&
@@ -448,7 +447,7 @@ export function WorkbenchShell() {
     <div
       className={`workbench-shell-grid${
         useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"
-      }`}
+      }${isBondAnalysisMinimalShell ? " workbench-shell-grid--bond-analysis" : ""}`}
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",
@@ -1477,7 +1476,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isDashboardCockpitShell && !isBondAnalysisMinimalShell ? (
+          {!isDashboardCockpitShell && !isBondAnalysisMinimalShell && !isBalanceAnalysisCompactChrome ? (
             <section
               data-testid="workbench-section-subnav"
               style={{

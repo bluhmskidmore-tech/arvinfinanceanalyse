@@ -41,6 +41,27 @@ describe("MacroToolkitPage", () => {
     expect(boundary).toHaveTextContent("非正式口径");
     expect(boundary).toHaveTextContent("macro_toolkit.analysis");
     expect(boundary).toHaveTextContent("rv_macro_toolkit_ui_v1");
+    const hasonStrategy = await screen.findByTestId("macro-toolkit-hason-strategy");
+    expect(hasonStrategy).toHaveTextContent("Hason");
+    expect(hasonStrategy).toHaveTextContent("analytical");
+    expect(hasonStrategy).toHaveTextContent("observation-only");
+    expect(hasonStrategy).toHaveTextContent("4/5");
+    expect(hasonStrategy).toHaveTextContent("Module gaps");
+    expect(hasonStrategy).toHaveTextContent("1 partial");
+    expect(hasonStrategy).toHaveTextContent("1 missing script");
+    expect(await screen.findByTestId("macro-toolkit-hason-module-market_state")).toHaveTextContent(
+      "market_state",
+    );
+    const allocationModule = await screen.findByTestId("macro-toolkit-hason-module-allocation");
+    expect(allocationModule).toHaveTextContent("partial");
+    expect(allocationModule).toHaveTextContent("risk_parity_cn");
+    expect(allocationModule).toHaveTextContent("rebalance_cn");
+    expect(await screen.findByTestId("macro-toolkit-hason-runtime-gaps")).toHaveTextContent(
+      "final_signal.csv",
+    );
+    expect(await screen.findByTestId("macro-toolkit-hason-runtime-gaps")).toHaveTextContent(
+      "stale",
+    );
     expect(
       await screen.findByLabelText("宏观工具投研总览"),
     ).toBeInTheDocument();
@@ -172,6 +193,47 @@ describe("MacroToolkitPage", () => {
     expect(screen.getByText("核心判断和市场踩踏风险已先返回。")).toBeInTheDocument();
   });
 
+  it("does not mark Hason runtime outputs ready when freshness is unknown", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            status: "degraded",
+            runtime_output_status: "unknown",
+            missing_runtime_outputs: [],
+            stale_runtime_outputs: [],
+            runtime_outputs: hasonStrategy.runtime_outputs.map((item) => ({
+              ...item,
+              freshness_status: "unknown",
+              modified_date: null,
+              reference_date: "2026-04-30",
+            })),
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const runtimeGaps = await screen.findByTestId("macro-toolkit-hason-runtime-gaps");
+    expect(runtimeGaps).toHaveTextContent("unknown");
+    expect(runtimeGaps).toHaveTextContent("freshness not confirmed");
+    const hasonStrategyPanel = await screen.findByTestId("macro-toolkit-hason-strategy");
+    expect(hasonStrategyPanel).toHaveTextContent("Runtime outputs");
+    expect(hasonStrategyPanel).toHaveTextContent("unknown · 0");
+    expect(runtimeGaps).not.toHaveTextContent("runtime outputs · current");
+  });
+
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const client = {
@@ -295,7 +357,17 @@ describe("MacroToolkitPage", () => {
               price_source: "choice_stock_daily_observation",
               source_versions: ["sv_stock"],
               vendor_versions: ["vv_stock"],
-              missing_factor_inputs: ["pe", "pb"],
+              missing_factor_inputs: [
+                "pe",
+                "pb",
+                "ps",
+                "roe",
+                "gross_margin",
+                "three_month_return",
+                "twelve_month_return",
+                "volatility",
+                "dividend_yield",
+              ],
             },
           }
         : strategy,
@@ -334,7 +406,9 @@ describe("MacroToolkitPage", () => {
     expect(multiFactorCard).toHaveTextContent("vv_stock");
     expect(multiFactorCard).toHaveTextContent("因子来源缺失");
     expect(multiFactorCard).toHaveTextContent("缺失输入");
-    expect(multiFactorCard).toHaveTextContent("pe / pb");
+    expect(multiFactorCard).toHaveTextContent(
+      "pe / pb / ps / roe / gross_margin / three_month_return / twelve_month_return / volatility / dividend_yield",
+    );
   });
 
   it("shows the read-only shadow portfolio report beside the current rule", async () => {

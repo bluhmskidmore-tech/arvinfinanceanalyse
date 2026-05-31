@@ -1,66 +1,293 @@
-.phaseSection {
+﻿.phaseSection {
   display: grid;
-  gap: var(--moss-space-3);
+  gap: 8px;
 }
 
-.evidenceSection {
+.referenceDashboard {
   display: grid;
-  gap: var(--moss-space-2);
+  grid-template-columns: minmax(0, 1fr) 356px;
+  grid-template-areas:
+    "topbar topbar"
+    "signal signal"
+    "kpi kpi"
+    "distribution distribution"
+    "bottom side"
+    "footer footer";
+  gap: 10px;
 }
 
-.stackCompact {
+.holdingsKpiRail {
+  grid-area: kpi;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.05);
+}
+
+.holdingsKpiGrid {
   display: grid;
-  gap: var(--moss-space-3);
+  grid-template-columns: 1.08fr repeat(5, minmax(118px, 1fr)) 1.15fr;
 }
 
-.heroBody {
+.referenceKpiTile,
+.referenceKpiDonutTile {
+  min-width: 0;
+  min-height: 82px;
+  padding: 11px 16px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+  background: #ffffff;
+}
+
+.referenceKpiTile:last-child,
+.referenceKpiDonutTile:last-child {
+  border-right: 0;
+}
+
+.referenceKpiDonutTile {
   display: grid;
-  gap: var(--moss-space-4);
+  grid-template-columns: minmax(0, 1fr) 70px;
+  gap: 10px;
+  align-items: center;
 }
 
-.heroTopGrid {
+.referenceKpiLabel {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.referenceKpiValue {
+  margin-top: 5px;
+  color: var(--moss-color-primary-900);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.referenceKpiValue[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.referenceKpiValue[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.referenceKpiDetail {
+  margin-top: 5px;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.kpiMiniDonut {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.85fr);
-  gap: var(--moss-space-3);
-  align-items: start;
+  place-items: center;
+  width: 66px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--donut);
 }
 
-.heroTitleStack {
+.kpiMiniDonut::after {
+  content: "";
+  position: absolute;
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.kpiMiniDonut span {
+  position: relative;
+  z-index: 1;
+  max-width: 46px;
+  color: var(--moss-color-primary-900);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.referenceTopbar {
   display: grid;
-  gap: var(--moss-space-2);
-}
-
-.kpiBlock {
-  display: grid;
-  gap: var(--moss-space-2);
-}
-
-.summaryBody {
-  display: grid;
-  gap: var(--moss-space-3);
-}
-
-.summaryNarrative {
-  color: var(--moss-color-primary-800);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.evidenceMetricGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--moss-space-3);
-}
-
-.progressRow {
-  display: grid;
-  gap: var(--moss-space-2);
-}
-
-.progressHeader {
-  display: flex;
+  grid-area: topbar;
+  grid-template-columns: minmax(0, 1fr) auto;
   justify-content: space-between;
-  gap: var(--moss-space-3);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.referenceTitle {
+  margin: 0;
+  color: var(--moss-color-primary-900);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.referenceSubtitle {
+  margin: 2px 0 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+}
+
+.referenceStatusPills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.referenceStatusPills span {
+  padding: 4px 9px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--moss-color-primary-800);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.referenceSignalStrip {
+  display: grid;
+  grid-area: signal;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgba(15, 37, 68, 0.035);
+}
+
+.referenceSignalStrip > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.referenceSignalStrip strong {
+  color: var(--moss-color-primary-900);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.referenceSignalStrip > div:first-child span {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenceDistributionGrid {
+  grid-area: distribution;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(360px, 1.05fr) minmax(340px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.referenceDistributionGrid :global(.ant-card-head),
+.referenceBottomGrid :global(.ant-card-head),
+.referenceSideStack :global(.ant-card-head),
+.referenceFooterGrid :global(.ant-card-head) {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.referenceDistributionGrid :global(.ant-card-head-title),
+.referenceBottomGrid :global(.ant-card-head-title),
+.referenceSideStack :global(.ant-card-head-title),
+.referenceFooterGrid :global(.ant-card-head-title) {
+  padding: 8px 0;
+}
+
+.referenceMaturityCard .progressList {
+  display: none;
+}
+
+.referenceDonutPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 12px;
+  align-items: center;
+  min-height: 118px;
+}
+
+.referenceDonutLegend {
+  display: grid;
+  gap: 7px;
+}
+
+.referenceDonutLegendRow {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--moss-color-primary-900);
+  font-size: 12px;
+}
+
+.referenceDonutLegendRow span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.referenceDonutLegendRow strong {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenceDonutLegendRow em {
+  color: var(--moss-color-primary-800);
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.referenceDonut {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--donut);
+}
+
+.referenceDonut::after {
+  content: "";
+  position: absolute;
+  width: 64%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px var(--moss-color-neutral-100);
+}
+
+.referenceDonut span {
+  position: relative;
+  z-index: 1;
+  max-width: 74px;
+  color: var(--moss-color-primary-900);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .statRow {
@@ -70,18 +297,415 @@
   gap: var(--moss-space-3);
 }
 
-.statRowDivider {
+.progressHeader {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
   gap: var(--moss-space-3);
-  padding-bottom: var(--moss-space-3);
-  border-bottom: 1px solid var(--moss-color-neutral-200);
+  color: var(--moss-color-primary-900);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.progressList {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.referenceProgressRow {
+  display: grid;
+  gap: 4px;
+}
+
+.referenceProgressTrack {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--moss-color-neutral-100);
+}
+
+.referenceProgressBar {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.progressDetail {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+}
+
+.maturityChart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  min-height: 116px;
+  margin-top: 8px;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.maturityColumn {
+  display: grid;
+  grid-template-rows: 24px minmax(10px, 86px) 24px;
+  justify-items: center;
+  align-items: end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.maturityColumn span {
+  color: var(--moss-color-primary-800);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.maturityColumn div {
+  width: min(34px, 70%);
+  border-radius: 5px 5px 0 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.maturityColumn small {
+  color: var(--moss-color-neutral-600);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.regionPanel {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(122px, 0.7fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 124px;
+}
+
+.mapPlaceholder {
+  position: relative;
+  min-height: 110px;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.06) 25%, transparent 25%) 0 0 / 22px 22px,
+    linear-gradient(180deg, #f8fbff 0%, #eef5fb 100%);
+}
+
+.mapPlaceholder > span:not(:first-child),
+.mapPlaceholder > span[title] {
+  position: absolute;
+  display: block;
+  border: 1px solid rgba(30, 64, 175, 0.18);
+  border-radius: 42% 58% 49% 51%;
+}
+
+.mapPlaceholder > span:first-child:not([title]) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  text-align: center;
+}
+
+.regionList {
+  display: grid;
+  gap: 8px;
+}
+
+.regionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  color: var(--moss-color-primary-900);
+  font-size: 12px;
+}
+
+.regionRow strong {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.regionRow span {
+  color: var(--moss-color-primary-800);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.referenceBottomGrid {
+  grid-area: bottom;
+  min-width: 0;
+}
+
+.referenceBottomGrid .referenceHoldingsCard {
+  min-height: 200px;
+}
+
+.holdingsTable {
+  overflow-x: auto;
+}
+
+.holdingsTableRows {
+  min-height: 92px;
+}
+
+.holdingsTableHeader,
+.holdingsTableRow {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 1.25fr)
+    minmax(72px, 0.7fr)
+    minmax(54px, 0.5fr)
+    minmax(82px, 0.7fr)
+    minmax(72px, 0.6fr)
+    minmax(64px, 0.52fr)
+    minmax(64px, 0.52fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 700px;
+}
+
+.holdingsTableHeader {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.holdingsTableRow {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+}
+
+.holdingsTableRow:last-child {
+  border-bottom: 0;
+}
+
+.holdingNameCell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.holdingNameCell strong {
+  overflow: hidden;
+  color: var(--moss-color-primary-900);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingNameCell span {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+.tableEmpty {
+  min-height: 92px;
+  padding: 14px 12px;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.pendingReadModelPanel {
+  display: grid;
+  gap: 6px;
+  min-height: 56px;
+  align-content: center;
+  padding: 10px 12px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-neutral-50);
+}
+
+.pendingReadModelPanel strong {
+  color: var(--moss-color-primary-900);
+  font-size: 13px;
+}
+
+.pendingReadModelPanel span {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.riskGuardrailList {
+  display: grid;
+  gap: 9px;
+}
+
+.riskGuardrailRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--moss-space-3);
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+.riskGuardrailRow:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.riskGuardrailRow div {
+  display: grid;
+  gap: 2px;
+}
+
+.riskGuardrailRow span {
+  color: var(--moss-color-primary-900);
+  font-weight: 800;
+}
+
+.riskGuardrailRow small {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.riskGuardrailRow strong {
+  color: var(--moss-color-primary-700);
+  white-space: nowrap;
+}
+
+.referenceSideStack {
+  grid-area: side;
+  display: grid;
+  gap: 10px;
+}
+
+.referenceFooterGrid {
+  grid-area: footer;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.footerMetricPanel {
+  display: grid;
+  gap: 8px;
+}
+
+.footerMetricPanel strong {
+  color: var(--moss-color-primary-900);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.footerMetricPanel span,
+.footerRiskList span {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.footerRiskList {
+  display: grid;
+  gap: 8px;
+}
+
+.footerRiskList div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.footerRiskList strong {
+  color: var(--moss-color-primary-800);
+  font-size: 13px;
+}
+
+.footerSparkline {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+  align-items: end;
+  height: 48px;
+  padding-top: 5px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.footerSparkline i {
+  display: block;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, var(--moss-color-info-400), var(--moss-color-primary-700));
+}
+
+.footerChangeSplit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.footerChangeSplit span {
+  padding: 6px 8px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-primary-800);
+  font-weight: 700;
+}
+
+@media (max-width: 1180px) {
+  .referenceDashboard,
+  .referenceBottomGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .referenceDashboard {
+    grid-template-areas:
+      "topbar"
+      "signal"
+      "kpi"
+      "distribution"
+      "bottom"
+      "side"
+      "footer";
+  }
+
+  .holdingsKpiGrid,
+  .referenceDistributionGrid,
+  .referenceFooterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
-  .heroTopGrid,
-  .evidenceMetricGrid {
+  .referenceTopbar {
+    display: grid;
+  }
+
+  .referenceSignalStrip {
+    display: grid;
+  }
+
+  .referenceStatusPills {
+    justify-content: flex-start;
+  }
+
+  .holdingsKpiGrid,
+  .referenceDistributionGrid,
+  .referenceFooterGrid,
+  .regionPanel {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .referenceKpiTile,
+  .referenceKpiDonutTile {
+    border-right: 0;
+    border-bottom: 1px solid var(--moss-color-neutral-100);
+  }
+
+  .referenceKpiValue {
+    white-space: normal;
   }
 }

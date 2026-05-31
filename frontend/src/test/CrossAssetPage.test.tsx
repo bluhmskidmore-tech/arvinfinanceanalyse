@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
@@ -11,6 +13,11 @@ vi.mock("../lib/echarts", () => ({
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { LivermoreOutputKey } from "../api/contracts";
 import CrossAssetPage from "../features/cross-asset/pages/CrossAssetPage";
+
+const CROSS_ASSET_DRIVERS_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/cross-asset/pages/CrossAssetDriversPage.css",
+);
 
 function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -40,6 +47,33 @@ function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
 }
 
 describe("CrossAssetPage", () => {
+  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+    const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
+
+    expect(css).not.toMatch(/moss-color-warm-/);
+    expect(css).not.toMatch(/rgba\((255, 253, 248|246, 241, 232|255, 250, 242|121, 96, 74|112, 140, 116|52, 43, 39)/);
+    expect(css).not.toMatch(/#(fffdf8|f0e6d8|e4d8c8|b8a38f|342b27|6f6258|8f7e70|b85c38|708c74|7c3e46|667a96)/i);
+    expect(css).toContain("var(--moss-color-primary-600)");
+    expect(css).toContain("var(--moss-color-info-600)");
+    expect(css).toContain("var(--moss-color-success-600)");
+    expect(css).toContain("var(--moss-color-danger-600)");
+    expect(css).toContain("var(--moss-color-warning-600)");
+    expect(css).toContain("var(--moss-color-text-muted)");
+  });
+
+  it("scopes desktop shell compression to the cross-asset route only", () => {
+    const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
+
+    expect(css).toContain("@media (min-width: 901px)");
+    expect(css).toContain(
+      '.workbench-shell-grid--desktop-aligned:has([data-testid="cross-asset-drivers-page"])',
+    );
+    expect(css).toContain('[data-testid="workbench-governance-banner"]');
+    expect(css).not.toContain(
+      '.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:first-child {\n    display: none',
+    );
+  });
+
   it("renders dual-source stock evidence from the default mock latest-series contract", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 

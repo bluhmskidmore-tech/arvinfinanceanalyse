@@ -339,6 +339,25 @@ describe("marketDataPageModel", () => {
     );
   });
 
+  it("does not treat formal-labeled rates as formal when formal use is forbidden", () => {
+    const model = buildMarketDataPageModel({
+      formalRatesEnvelope: envelope<ChoiceMacroLatestPayload>(
+        { read_target: "duckdb", series: [latestPoint("EMM00166466", "2026-04-10")] },
+        {
+          basis: "formal",
+          formal_use_allowed: false,
+          result_kind: "market_data.rates",
+          source_version: "sv_candidate_rates",
+        },
+      ),
+    });
+
+    expect(model.isFormalBasis).toBe(false);
+    expect(model.evidenceLines.formalRates).toBe(
+      "formal rates: basis=formal formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_candidate_rates",
+    );
+  });
+
   it("surfaces stale result quality in evidence lines", () => {
     const model = buildMarketDataPageModel({
       formalRatesEnvelope: envelope<ChoiceMacroLatestPayload>(

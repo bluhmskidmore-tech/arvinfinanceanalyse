@@ -12,7 +12,7 @@ CURRENT_PAGE_EDGE_FILES = (
     ROOT / "backend" / "app" / "core_finance" / "macro_bond_linkage.py",
     ROOT / "frontend" / "src" / "features" / "cross-asset" / "lib" / "crossAssetDriversPageModel.ts",
     ROOT / "frontend" / "src" / "features" / "cross-asset" / "pages" / "CrossAssetDriversPage.tsx",
-    ROOT / "frontend" / "src" / "features" / "workbench" / "pages" / "DashboardPage.tsx",
+    ROOT / "frontend" / "src" / "features" / "bond-dashboard" / "pages" / "BondDashboardPage.tsx",
 )
 
 FUTURE_SUPPLY_AUCTION_FILES = (

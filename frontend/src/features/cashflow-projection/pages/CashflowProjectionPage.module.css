@@ -1,16 +1,17 @@
 .page {
-  --cf-paper: var(--moss-color-card-bg, #fffdf8);
-  --cf-paper-muted: color-mix(in srgb, var(--moss-color-warm-paper, #fffdf8) 72%, var(--moss-color-warm-rail, #f0e6d8));
-  --cf-canvas: var(--moss-color-surface-base, #f6f1e8);
-  --cf-border: var(--moss-color-border-default, #e4d8c8);
-  --cf-border-strong: color-mix(in srgb, var(--moss-color-warm-stone, #e4d8c8) 70%, var(--moss-color-warm-taupe, #b8a38f));
-  --cf-text: var(--moss-color-text-primary, #342b27);
-  --cf-subtle: var(--moss-color-text-secondary, #6f6258);
-  --cf-muted: var(--moss-color-text-muted, #8f7e70);
-  --cf-accent: var(--moss-color-warm-terracotta, #b85c38);
-  --cf-positive: var(--moss-color-warm-sage, #708c74);
-  --cf-negative: var(--moss-color-warm-burgundy, #7c3e46);
-  --cf-info: var(--moss-color-warm-slate-blue, #667a96);
+  --cf-paper: var(--moss-color-card-bg, #ffffff);
+  --cf-paper-muted: color-mix(in srgb, var(--moss-color-neutral-50, #f5f7f9) 74%, var(--moss-color-neutral-100, #eceff3));
+  --cf-canvas: var(--moss-color-surface-base, #f5f7f9);
+  --cf-border: var(--moss-color-border-default, #e2e6ec);
+  --cf-border-strong: color-mix(in srgb, var(--moss-color-neutral-300, #d1d5db) 70%, var(--moss-color-neutral-400, #9ca3af));
+  --cf-text: var(--moss-color-text-primary, #1f2937);
+  --cf-subtle: var(--moss-color-text-secondary, #6b7280);
+  --cf-muted: var(--moss-color-text-muted, #8b95a1);
+  --cf-primary: var(--moss-color-primary-600, #1850a1);
+  --cf-accent: var(--moss-color-warning-600, #b35c05);
+  --cf-positive: var(--moss-color-success-600, #25714d);
+  --cf-negative: var(--moss-color-danger-600, #dc2626);
+  --cf-info: var(--moss-color-info-600, #2563eb);
   max-width: 1280px;
   margin: 0 auto;
   color: var(--cf-text);
@@ -27,9 +28,9 @@
   border: 1px solid var(--cf-border);
   border-radius: 12px;
   background:
-    linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(240, 230, 216, 0.56)),
+    linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted)),
     var(--cf-paper);
-  box-shadow: 0 8px 20px rgba(52, 43, 39, 0.05);
+  box-shadow: 0 8px 20px rgba(22, 35, 46, 0.05);
 }
 
 .heroMain {
@@ -81,7 +82,7 @@
   padding: 12px;
   border: 1px solid var(--cf-border);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.82);
+  background: var(--cf-paper);
 }
 
 .dateSelect {
@@ -117,7 +118,7 @@
   position: relative;
   overflow: hidden;
   padding: 24px;
-  box-shadow: 0 10px 26px rgba(52, 43, 39, 0.06);
+  box-shadow: 0 10px 26px rgba(22, 35, 46, 0.06);
 }
 
 .decisionDeck::before {
@@ -132,14 +133,14 @@
   border-color: color-mix(in srgb, var(--cf-positive) 55%, var(--cf-border));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--cf-positive) 16%, transparent), transparent 36%),
-    linear-gradient(135deg, var(--cf-paper), rgba(255, 253, 248, 0.9) 62%);
+    linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted) 62%);
 }
 
 .decisionDeck_negative {
   border-color: color-mix(in srgb, var(--cf-negative) 50%, var(--cf-border));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--cf-negative) 14%, transparent), transparent 36%),
-    linear-gradient(135deg, var(--cf-paper), rgba(255, 253, 248, 0.9) 62%);
+    linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted) 62%);
 }
 
 .decisionDeck_negative::before {
@@ -150,7 +151,7 @@
   border-color: color-mix(in srgb, var(--cf-info) 46%, var(--cf-border));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--cf-info) 14%, transparent), transparent 36%),
-    linear-gradient(135deg, var(--cf-paper), rgba(255, 253, 248, 0.9) 62%);
+    linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted) 62%);
 }
 
 .decisionDeck_neutral::before {
@@ -161,7 +162,7 @@
   border-color: color-mix(in srgb, var(--cf-accent) 42%, var(--cf-border));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--cf-accent) 15%, transparent), transparent 36%),
-    linear-gradient(135deg, var(--cf-paper), rgba(255, 253, 248, 0.9) 62%);
+    linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted) 62%);
 }
 
 .decisionDeck_pending::before {
@@ -215,7 +216,7 @@
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 82%, transparent);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.72);
+  background: var(--cf-paper);
 }
 
 .decisionFacts div {
@@ -287,7 +288,7 @@
 .sidePanel,
 .tablePanel {
   padding: 16px;
-  box-shadow: 0 8px 18px rgba(52, 43, 39, 0.04);
+  box-shadow: 0 8px 18px rgba(22, 35, 46, 0.04);
 }
 
 .sectionHeader {
@@ -327,7 +328,7 @@
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 82%, transparent);
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.96), var(--cf-paper-muted));
+  background: linear-gradient(180deg, var(--cf-paper), var(--cf-paper-muted));
   transition:
     background 180ms ease,
     border-color 180ms ease,
@@ -343,7 +344,7 @@
 .metricCell_primary {
   grid-column: span 2;
   min-height: 118px;
-  border-color: color-mix(in srgb, var(--cf-accent) 24%, var(--cf-border));
+  border-color: color-mix(in srgb, var(--cf-primary) 24%, var(--cf-border));
 }
 
 .metricCell_supporting,
@@ -352,7 +353,7 @@
 }
 
 .metricCell_supplemental {
-  background: linear-gradient(180deg, var(--cf-paper), rgba(240, 230, 216, 0.52));
+  background: linear-gradient(180deg, var(--cf-paper), var(--cf-paper-muted));
 }
 
 .metricCell span {
@@ -507,7 +508,7 @@
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 72%, transparent);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.62);
+  background: var(--cf-paper);
 }
 
 .riskRow span {

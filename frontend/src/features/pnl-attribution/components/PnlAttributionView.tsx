@@ -58,11 +58,11 @@ const shellStyle = {
 };
 
 const pageSurfaceColor = "#ffffff";
-const pageSubtleSurfaceColor = "#fafafa";
-const pageBorderColor = "#ded6ca";
-const pageBorderSoftColor = "#ece6dd";
-const pageTextColor = designTokens.color.warm.ink;
-const pageMutedTextColor = "#665f58";
+const pageSubtleSurfaceColor = designTokens.color.neutral[50];
+const pageBorderColor = designTokens.color.neutral[200];
+const pageBorderSoftColor = designTokens.color.neutral[100];
+const pageTextColor = designTokens.color.neutral[900];
+const pageMutedTextColor = designTokens.color.neutral[600];
 
 const headerCardStyle = {
   padding: designTokens.space[5],
@@ -289,7 +289,7 @@ function VolumeRateBridgePanel(props: {
       label: "利率效应",
       formula: "上期规模 × Δ收益率",
       value: summary.rateEffect,
-      accent: designTokens.color.warm.slateBlue,
+      accent: designTokens.color.primary[600],
     },
     {
       label: "交叉效应",
@@ -1716,7 +1716,7 @@ export function PnlAttributionView({ reportDate }: Props) {
         <SectionLead
           eyebrow="工作台"
           title="双口径归因工作台"
-          description="产品分类经营归因只读取产品分类接口；正式 FI / 债券分析页签只读取 /api/pnl-attribution/*，不互相解释。"
+          description="产品分类经营归因只读取 /ui/pnl/product-category；正式 FI / 债券分析主要读取 /api/pnl-attribution/*。TPL 市场页签是明确的 hybrid exception：/api/pnl-attribution/tpl-market 提供市场序列，/ui/pnl/product-category 提供 bond_tpl 月度行。"
           testId="pnl-attribution-workbench-lead"
         />
         <FilterBar style={{ ...tabBarStyle, marginTop: designTokens.space[4] }}>

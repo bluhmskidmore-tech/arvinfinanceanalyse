@@ -26,6 +26,38 @@ export const VIEW_MODE_STATUS_LABELS: Record<PnlByBusinessViewMode, string> = {
   formal: "formal primary",
 };
 
+/** 各视图首屏必须回答的首要业务问题（layout contract §2） */
+export const VIEW_MODE_BUSINESS_QUESTIONS: Record<PnlByBusinessViewMode, string> = {
+  monthly: "截至所选报表月，各 ZQTZ 业务种类损益贡献与收益率如何？",
+  ytd: "年累计下哪类业务拉动或拖累组合损益，FTP 后是否仍为正？",
+  formal: "所选报表日 formal primary 对账是否可追溯，未 join 损益有多少？",
+};
+
+export type PnlHeroModel = {
+  businessQuestion: string;
+  conclusionTitle: string;
+  conclusionDetail: string;
+  reportDateLabel: string;
+  requestedReportDate: string;
+  asOfDate: string;
+  reportDateNote: string;
+};
+
+export type PnlStateSurfaceItem = {
+  key: string;
+  variant:
+    | "neutral"
+    | "loading"
+    | "empty"
+    | "error"
+    | "stale"
+    | "fallback-date"
+    | "mock"
+    | "definition-pending";
+  title: string;
+  description: string;
+};
+
 const YUAN_PER_YI = 100_000_000;
 const YUAN_PER_WAN = 10_000;
 
@@ -68,6 +100,7 @@ type BuildPnlByBusinessPageModelInput = {
   selectedReportDate: string;
   selectedYear: number;
   selectedBusinessKey: string | null;
+  clientMode?: "real" | "mock";
   datesState: QueryState;
   monthlyState: QueryState;
   ytdState: QueryState;
@@ -95,6 +128,8 @@ export type PnlByBusinessPageModel = PnlByBusinessSelectionModel & {
   activeDataStatus: string;
   statusStrip: PnlDataStatusStripModel;
   summaryCards: PnlSummaryCard[];
+  hero: PnlHeroModel;
+  stateSurfaces: PnlStateSurfaceItem[];
 };
 
 function numeric(raw: string | number | null | undefined): number | null {
@@ -263,6 +298,173 @@ export function buildPnlByBusinessSelectionModel(input: {
     defaultBusinessRow,
     selectedBusinessRow,
   };
+}
+
+function buildHeroReportDateFields(input: {
+  viewMode: PnlByBusinessViewMode;
+  selectedReportDate: string;
+  activeResultMeta?: ResultMeta;
+}): Pick<PnlHeroModel, "reportDateLabel" | "requestedReportDate" | "asOfDate" | "reportDateNote"> {
+  const requestedReportDate = input.selectedReportDate || "待选择";
+  const asOfDate = input.activeResultMeta?.as_of_date ?? (input.selectedReportDate || "待返回");
+  const reportDateLabel = input.viewMode === "monthly" ? "请求报表日" : "分析截止日";
+  const isFallback = input.activeResultMeta?.fallback_mode === "latest_snapshot";
+  const datesAligned =
+    requestedReportDate !== "待选择" &&
+    asOfDate !== "待返回" &&
+    requestedReportDate === asOfDate;
+
+  let reportDateNote: string;
+  if (isFallback) {
+    reportDateNote = `实际 as_of ${asOfDate}；请求 ${requestedReportDate}，已启用 fallback 快照。`;
+  } else if (datesAligned) {
+    reportDateNote = `实际 as_of ${asOfDate}；与请求日一致。`;
+  } else if (requestedReportDate !== "待选择" && asOfDate !== "待返回") {
+    reportDateNote = `实际 as_of ${asOfDate}；与请求 ${requestedReportDate} 不一致。`;
+  } else {
+    reportDateNote = `实际 as_of ${asOfDate}。`;
+  }
+
+  return {
+    reportDateLabel,
+    requestedReportDate,
+    asOfDate,
+    reportDateNote,
+  };
+}
+
+function buildHeroConclusion(input: {
+  viewMode: PnlByBusinessViewMode;
+  selectedReportDate: string;
+  selectedYear: number;
+  activeResultMeta?: ResultMeta;
+  ytdResult?: PnlByBusinessYtdPayload;
+  activeMonthlyBucket?: PnlByBusinessMonthlyBucket;
+  formalResult?: PnlByBusinessPayload;
+  topMonthlyRow?: PnlByBusinessMonthlyItem;
+  topYtdRow?: PnlByBusinessYtdItem;
+  topFormalRow?: PnlByBusinessRow;
+}): PnlHeroModel {
+  const reportDateFields = buildHeroReportDateFields({
+    viewMode: input.viewMode,
+    selectedReportDate: input.selectedReportDate,
+    activeResultMeta: input.activeResultMeta,
+  });
+
+  if (input.viewMode === "monthly") {
+    const monthKey = input.activeMonthlyBucket?.month_key ?? input.selectedReportDate.slice(0, 7);
+    const total = formatYuanAsWanUnit(input.activeMonthlyBucket?.summary.total_pnl);
+    const topBusiness = input.topMonthlyRow?.business_type ?? "暂无明细";
+    return {
+      ...reportDateFields,
+      businessQuestion: VIEW_MODE_BUSINESS_QUESTIONS.monthly,
+      conclusionTitle: `${monthKey} 月报合计 ${total}`,
+      conclusionDetail: `最大损益业务：${topBusiness}；口径与月报 ZQTZ 管理披露分类一致。`,
+    };
+  }
+
+  if (input.viewMode === "ytd") {
+    const total = formatYuanAsWanUnit(input.ytdResult?.total_pnl);
+    const topBusiness = input.topYtdRow?.business_type ?? "暂无明细";
+    return {
+      ...reportDateFields,
+      businessQuestion: VIEW_MODE_BUSINESS_QUESTIONS.ytd,
+      conclusionTitle: `${input.ytdResult?.period_label ?? `${input.selectedYear} 年累计`} ${total}`,
+      conclusionDetail: `最大损益业务：${topBusiness}；父级汇总不含「其中」细分行。`,
+    };
+  }
+
+  const total = formatYuanAsWanUnit(input.formalResult?.summary.total_pnl);
+  const topBusiness = input.topFormalRow?.business_type_primary ?? "暂无明细";
+  return {
+    ...reportDateFields,
+    businessQuestion: VIEW_MODE_BUSINESS_QUESTIONS.formal,
+    conclusionTitle: `${input.formalResult?.report_date ?? input.selectedReportDate} formal 合计 ${total}`,
+    conclusionDetail: `最大 primary 行：${topBusiness}；未追溯 PnL 行 ${input.formalResult?.summary.untraced_pnl_row_count ?? 0} 条。`,
+  };
+}
+
+function buildStateSurfaces(input: {
+  activeDataStatus: string;
+  activeResultMeta?: ResultMeta;
+  clientMode?: "real" | "mock";
+}): PnlStateSurfaceItem[] {
+  const surfaces: PnlStateSurfaceItem[] = [];
+
+  if (input.clientMode === "mock") {
+    surfaces.push({
+      key: "mock-mode",
+      variant: "mock",
+      title: "演示 / Mock 读路径",
+      description: "当前为本地契约回放，不代表正式 DuckDB 读面。",
+    });
+  }
+
+  const meta = input.activeResultMeta;
+  if (meta?.quality_flag === "error" || input.activeDataStatus === "错误") {
+    surfaces.push({
+      key: "quality-error",
+      variant: "error",
+      title: "结果质量错误",
+      description: `quality_flag=error；as_of ${meta?.as_of_date ?? "待返回"}。请勿据此做正式经营结论。`,
+    });
+  }
+
+  if (meta?.quality_flag === "missing" || input.activeDataStatus === "缺失") {
+    surfaces.push({
+      key: "quality-missing",
+      variant: "empty",
+      title: "结果数据缺失",
+      description: "quality_flag=missing；当前读面未返回完整 formal 结果，需核对报表日与数据源。",
+    });
+  }
+
+  if (meta?.quality_flag === "stale" || input.activeDataStatus === "陈旧") {
+    surfaces.push({
+      key: "stale",
+      variant: "stale",
+      title: "结果可能陈旧",
+      description: `as_of ${meta?.as_of_date ?? "待返回"}；请结合生成时间与 trace 核对是否仍适用。`,
+    });
+  }
+
+  if (meta?.quality_flag === "warning" || input.activeDataStatus === "预警") {
+    surfaces.push({
+      key: "warning",
+      variant: "stale",
+      title: "质量预警",
+      description: "结果 meta 标记为预警，下钻前请核对 vendor 与 fallback 状态。",
+    });
+  }
+
+  if (meta?.fallback_mode === "latest_snapshot") {
+    surfaces.push({
+      key: "fallback-date",
+      variant: "fallback-date",
+      title: "已启用 fallback 快照",
+      description: `展示 as_of ${meta.as_of_date ?? "待返回"}；非请求报表日的最新可用快照。`,
+    });
+  }
+
+  if (meta?.vendor_status === "vendor_stale") {
+    surfaces.push({
+      key: "vendor-stale",
+      variant: "stale",
+      title: "供应商数据陈旧",
+      description: "上游 vendor 标记为 stale，指标仍来自已返回 formal 结果。",
+    });
+  }
+
+  if (meta?.vendor_status === "vendor_unavailable") {
+    surfaces.push({
+      key: "vendor-unavailable",
+      variant: "error",
+      title: "供应商不可用",
+      description: "上游 vendor 不可用；请结合降级模式与 trace 判断是否可决策。",
+    });
+  }
+
+  return surfaces;
 }
 
 function buildStatusStrip(input: {
@@ -477,5 +679,22 @@ export function buildPnlByBusinessPageModel(
       selectedReportDate: input.selectedReportDate,
     }),
     summaryCards,
+    hero: buildHeroConclusion({
+      viewMode: input.viewMode,
+      selectedReportDate: input.selectedReportDate,
+      selectedYear: input.selectedYear,
+      activeResultMeta,
+      ytdResult: input.ytdResult,
+      activeMonthlyBucket,
+      formalResult: input.formalResult,
+      topMonthlyRow,
+      topYtdRow,
+      topFormalRow,
+    }),
+    stateSurfaces: buildStateSurfaces({
+      activeDataStatus,
+      activeResultMeta,
+      clientMode: input.clientMode,
+    }),
   };
 }

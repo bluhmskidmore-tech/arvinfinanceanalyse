@@ -149,12 +149,12 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "team-performance")).toBe(false);
   });
 
-  it("keeps cube-query outside the live primary navigation", () => {
+  it("promotes cube-query into the live primary navigation", () => {
     const cube = workbenchNavigation.find((s) => s.key === "cube-query");
     expect(cube?.path).toBe("/cube-query");
-    expect(cube?.readiness).toBe("placeholder");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
+    expect(cube?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
   });
 
   it("promotes news-events into live primary navigation as a temporary-exception page", () => {

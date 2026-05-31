@@ -9,8 +9,6 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-import duckdb
-
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
@@ -22,7 +20,7 @@ from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
     FormalZqtzBalanceMetricsRepository,
 )
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
-from backend.app.repositories.news_warehouse_repo import list_research_reports
+from backend.app.repositories.news_warehouse_repo import NewsWarehouseRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
@@ -2296,24 +2294,19 @@ def home_research_reports_envelope(
 
     normalized = _normalize_report_date(report_date)
     settings = get_settings()
-    duckdb_path = Path(str(settings.duckdb_path))
+    duckdb_path = str(settings.duckdb_path)
     rows: list[dict[str, object]] = []
     warnings: list[str] = []
 
-    if not duckdb_path.exists():
+    if not Path(duckdb_path).exists():
         warnings.append("DuckDB news warehouse is not available; research reports are empty.")
     else:
         try:
-            conn = duckdb.connect(str(duckdb_path), read_only=True)
-            try:
-                rows = list_research_reports(
-                    conn,
-                    report_date=normalized,
-                    limit=limit,
-                )
-            finally:
-                conn.close()
-        except (duckdb.Error, OSError, RuntimeError, ValueError) as exc:
+            rows = NewsWarehouseRepository(duckdb_path).list_research_reports(
+                report_date=normalized,
+                limit=limit,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
             warnings.append(f"Research reports unavailable from fact_news_event: {exc}")
 
     source_status: Literal["ready", "empty", "stale"] = "ready" if rows else "empty"

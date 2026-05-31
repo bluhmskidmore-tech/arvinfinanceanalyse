@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
 
 import duckdb
 import pandas as pd
@@ -1452,6 +1452,347 @@ def test_choice_macro_refresh_falls_back_to_single_series_when_batch_ids_cannot_
         ["EMM00058124"],
         ["EMM00166455"],
     ]
+
+
+def test_choice_macro_refresh_skips_single_series_parameter_error_after_mixed_batch_split(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_SERIES_JSON",
+        json.dumps(
+            [
+                {
+                    "series_id": "EMM00058124",
+                    "series_name": "中间价:美元兑人民币",
+                    "vendor_series_code": "EMM00058124",
+                    "frequency": "daily",
+                    "unit": "CNY",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "fx"],
+                },
+                {
+                    "series_id": "EM1",
+                    "series_name": "10Y中国国债-10Y美国国债",
+                    "vendor_series_code": "EM1",
+                    "frequency": "daily",
+                    "unit": "bp",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "spread"],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+    )
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[list[str]] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        codes = [item.vendor_series_code for item in series]
+        observed.append(codes)
+        if len(codes) > 1 or codes == ["EM1"]:
+            raise RuntimeError("parameter error")
+        item = series[0]
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_{item.vendor_series_code}",
+            captured_at="2026-04-11T09:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_{item.vendor_series_code}",
+                )
+            ],
+            raw_payload={
+                "vendor_version": f"vv_{item.vendor_series_code}",
+                "captured_at": "2026-04-11T09:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["quality_flag"] == "warning"
+    assert payload["warning_code"] == "choice_macro_partial"
+    assert payload["warnings"] == [
+        {
+            "code": "choice_series_unsupported",
+            "series_id": "EM1",
+            "vendor_series_code": "EM1",
+            "message": "parameter error",
+        }
+    ]
+    assert payload["series_count"] == 1
+    assert observed == [
+        ["EMM00058124", "EM1"],
+        ["EMM00058124"],
+        ["EM1"],
+    ]
+
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=True)
+    try:
+        rows = conn.execute(
+            "select series_id, trade_date, value_numeric from fact_choice_macro_daily order by series_id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("EMM00058124", "2026-04-11", 1.0)]
+    get_settings.cache_clear()
+
+
+def test_merge_choice_macro_snapshots_dedupes_vendor_versions_deterministically():
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    def make_snapshot(series_id: str, vendor_version: str, captured_at: str):
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=vendor_version,
+            captured_at=captured_at,
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=series_id,
+                    series_name=series_id,
+                    vendor_series_code=series_id,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version=vendor_version,
+                )
+            ],
+            raw_payload={
+                "vendor_version": vendor_version,
+                "captured_at": captured_at,
+                "series": [],
+            },
+        )
+
+    merged = task_module.merge_choice_macro_snapshots(
+        [
+            make_snapshot("series_b", "vv_batch_b", "2026-04-11T09:00:00Z"),
+            make_snapshot("series_a1", "vv_batch_a", "2026-04-11T08:00:00Z"),
+            make_snapshot("series_a2", "vv_batch_a", "2026-04-11T10:00:00Z"),
+            make_snapshot("series_b_dup", "vv_batch_b", "2026-04-11T07:00:00Z"),
+        ]
+    )
+
+    assert merged.vendor_version == "vv_batch_a__vv_batch_b"
+    assert merged.captured_at == datetime.fromisoformat("2026-04-11T10:00:00+00:00")
+
+
+def test_choice_macro_refresh_marks_gate_supplement_failure_as_degraded_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_URL", "https://choice.example/macro")
+    monkeypatch.setenv("MOSS_CHOICE_USERNAME", "demo-user")
+    monkeypatch.setenv("MOSS_CHOICE_PASSWORD", "demo-pass")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", _choice_series_json())
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    monkeypatch.setattr(
+        task_module.VendorAdapter,
+        "fetch_macro_snapshot",
+        lambda self, series, timeout_seconds=10.0, request_options="": macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_20260409T140000Z",
+            captured_at="2026-04-09T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id="cn_cpi_yoy",
+                    series_name="CN CPI YoY",
+                    vendor_series_code="EDB_CPI_YOY",
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=0.7,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version="vv_choice_20260409T140000Z",
+                ),
+            ],
+            raw_payload=_choice_gateway_payload(),
+        ),
+    )
+
+    fake_gate_module = type(
+        "FakeGateModule",
+        (),
+        {
+            "compute_and_materialize_gate_supplement": staticmethod(
+                lambda duckdb_path, lookback_days: (_ for _ in ()).throw(RuntimeError("gate supplement failed"))
+            )
+        },
+    )()
+    monkeypatch.setitem(
+        sys.modules,
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        fake_gate_module,
+    )
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["quality_flag"] == "warning"
+    assert payload["warning_code"] == "gate_supplement_failed"
+    assert payload["gate_supplement_refresh"] == {
+        "status": "failed",
+        "quality_flag": "warning",
+        "warning_code": "gate_supplement_failed",
+        "message": "gate supplement failed",
+    }
+    get_settings.cache_clear()
+
+
+def test_choice_macro_refresh_fails_arbitrary_single_series_parameter_error_after_mixed_split(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_SERIES_JSON",
+        json.dumps(
+            [
+                {
+                    "series_id": "EMM00058124",
+                    "series_name": "USD/CNY",
+                    "vendor_series_code": "EMM00058124",
+                    "frequency": "daily",
+                    "unit": "CNY",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "fx"],
+                },
+                {
+                    "series_id": "EMM_BAD_PARAM",
+                    "series_name": "Bad Choice parameter",
+                    "vendor_series_code": "EMM_BAD_PARAM",
+                    "frequency": "daily",
+                    "unit": "%",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "rates"],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+    )
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        codes = [item.vendor_series_code for item in series]
+        if len(codes) > 1 or codes == ["EMM_BAD_PARAM"]:
+            raise RuntimeError("parameter error")
+        item = series[0]
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_{item.vendor_series_code}",
+            captured_at="2026-04-11T09:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_{item.vendor_series_code}",
+                )
+            ],
+            raw_payload={
+                "vendor_version": f"vv_{item.vendor_series_code}",
+                "captured_at": "2026-04-11T09:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    with pytest.raises(RuntimeError, match="parameter error"):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+        )
+    get_settings.cache_clear()
 
 
 def test_public_cross_asset_headline_refresh_materializes_history_and_latest_rows(tmp_path, monkeypatch):

@@ -6,9 +6,11 @@ import logging
 import time
 from datetime import date, datetime
 from pathlib import Path
+from typing import Annotated
 
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import adb_analysis_service
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +157,7 @@ def adb_coverage(
 
 @router.post("/adb/backfill")
 def adb_backfill(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
     end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),
 ):
@@ -169,6 +172,17 @@ def adb_backfill(
     from backend.app.governance.settings import get_settings
 
     settings = get_settings()
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="adb_analysis",
+            action="backfill",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     db_path = str(settings.duckdb_path)
     if not Path(db_path).exists():
         raise HTTPException(status_code=500, detail=f"DuckDB not found: {db_path}")

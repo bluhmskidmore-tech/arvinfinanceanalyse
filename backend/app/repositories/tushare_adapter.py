@@ -237,7 +237,7 @@ class VendorAdapter(VendorAdapterBase):
             "cn_cpi": lambda: pro.cn_cpi(),
             "cn_gdp": lambda: pro.cn_gdp(),
             "cn_ppi": lambda: pro.cn_ppi(),
-            "cn_money": lambda: pro.cn_money(),
+            "cn_money": lambda: pro.cn_m(),
         }
         _PARSE_DISPATCH: dict[str, Any] = {
             "cn_cpi": _rows_from_cn_cpi,

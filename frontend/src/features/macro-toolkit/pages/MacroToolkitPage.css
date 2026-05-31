@@ -449,6 +449,101 @@
   overflow-wrap: anywhere;
 }
 
+.macro-toolkit-hason-strategy {
+  padding: 14px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-left: 3px solid var(--macro-toolkit-primary);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.macro-toolkit-hason-strategy__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.macro-toolkit-hason-strategy__head > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.macro-toolkit-hason-strategy__head span,
+.macro-toolkit-hason-runtime span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.macro-toolkit-hason-strategy__head strong {
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-hason-strategy__head small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-hason-strategy__metrics,
+.macro-toolkit-hason-module-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.macro-toolkit-hason-strategy__metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.macro-toolkit-hason-module-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.macro-toolkit-hason-module {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card-muted);
+}
+
+.macro-toolkit-hason-module strong,
+.macro-toolkit-hason-runtime strong {
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-hason-module small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-hason-runtime {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-warning-soft);
+}
+
 .macro-toolkit-score-track {
   width: 100%;
   height: 5px;
@@ -1189,6 +1284,7 @@
   .macro-toolkit-signal-grid,
   .macro-toolkit-a-share-risk,
   .macro-toolkit-a-share-risk__lists,
+  .macro-toolkit-hason-strategy__metrics,
   .macro-toolkit-readiness-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1212,8 +1308,13 @@
   .macro-toolkit-a-share-risk,
   .macro-toolkit-a-share-risk__metrics,
   .macro-toolkit-a-share-risk__lists,
+  .macro-toolkit-hason-strategy__metrics,
   .macro-toolkit-readiness-strip {
     grid-template-columns: 1fr;
+  }
+
+  .macro-toolkit-hason-strategy__head {
+    display: grid;
   }
 
   .macro-toolkit-section-headline {

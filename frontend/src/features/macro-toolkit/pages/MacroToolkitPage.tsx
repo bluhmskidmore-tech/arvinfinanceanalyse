@@ -26,6 +26,7 @@ import type {
   MacroToolkitCapabilityResult,
   MacroToolkitChoiceStockRefreshRun,
   MacroToolkitAShareRiskPayload,
+  MacroToolkitHasonStrategy,
   MacroToolkitIndicator,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
@@ -376,6 +377,7 @@ export default function MacroToolkitPage() {
     .filter(Boolean)
     .map(formatQueryError);
   const runtimeSections = analysis?.runtime_status?.deferred_sections ?? [];
+  const hasonStrategy = analysis?.hason_strategy ?? null;
 
   const runSelectedScript = useCallback(async () => {
     if (!selectedScript) {
@@ -825,6 +827,8 @@ export default function MacroToolkitPage() {
               tone={degradedResultCount > 0 ? "neutral" : "positive"}
             />
           </div>
+
+          {hasonStrategy ? <HasonMacroStrategyPanel strategy={hasonStrategy} /> : null}
 
           {analysis.warnings.length ? (
             <Alert
@@ -1320,6 +1324,120 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
         </div>
       ) : null}
     </div>
+  );
+}
+
+function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStrategy }) {
+  const readiness = strategy.readiness;
+  const readinessText = `${readiness.ready_modules}/${readiness.total_modules}`;
+  const missingOutputs = strategy.missing_runtime_outputs;
+  const staleOutputs = strategy.stale_runtime_outputs;
+  const runtimeOutputGaps = [...missingOutputs, ...staleOutputs];
+  const runtimeOutputsCurrent = strategy.runtime_output_status === "current";
+  const runtimeOutputValue = runtimeOutputsCurrent
+    ? "ready"
+    : `${strategy.runtime_output_status} · ${runtimeOutputGaps.length}`;
+  const runtimeOutputDetail = runtimeOutputGaps.length
+    ? runtimeOutputGaps.join(" / ")
+    : strategy.required_runtime_outputs.join(" / ");
+  const runtimeGapText = runtimeOutputGaps.length
+    ? runtimeOutputGaps.join(" / ")
+    : runtimeOutputsCurrent
+      ? "none"
+      : "freshness not confirmed";
+  const tracedScripts = strategy.source_trace.filter((item) => item.available).slice(0, 5);
+  return (
+    <section className="macro-toolkit-section macro-toolkit-hason-strategy" data-testid="macro-toolkit-hason-strategy">
+      <div className="macro-toolkit-hason-strategy__head">
+        <div>
+          <span>Hason macro strategy</span>
+          <strong>{strategy.framework_name}</strong>
+          <small>{strategy.boundary}</small>
+        </div>
+        <div className="macro-toolkit-tag-row">
+          <Tag color={statusColor(strategy.status)}>{strategy.status}</Tag>
+          <Tag color="blue">{strategy.basis}</Tag>
+          <Tag color={strategy.observation_only ? "gold" : "green"}>
+            {strategy.observation_only ? "observation-only" : "actionable"}
+          </Tag>
+          <Tag color={strategy.formal_use_allowed ? "green" : "default"}>
+            {strategy.formal_metric_id ?? "no formal MTR"}
+          </Tag>
+        </div>
+      </div>
+
+      <div className="macro-toolkit-hason-strategy__metrics">
+        <MetricTile
+          icon={<SafetyCertificateOutlined />}
+          label="Readiness"
+          value={readinessText}
+          detail={`${formatPercent(readiness.ratio)} module coverage`}
+          tone={readiness.ready_modules === readiness.total_modules ? "positive" : "neutral"}
+        />
+        <MetricTile
+          icon={<ToolOutlined />}
+          label="Module gaps"
+          value={`${readiness.missing_script_count} missing script`}
+          detail={`${readiness.partial_modules} partial / ${readiness.missing_modules} missing module`}
+          tone={readiness.partial_modules || readiness.missing_modules ? "neutral" : "positive"}
+        />
+        <MetricTile
+          icon={<DatabaseOutlined />}
+          label="Runtime outputs"
+          value={runtimeOutputValue}
+          detail={runtimeOutputDetail}
+          tone={runtimeOutputsCurrent ? "positive" : "neutral"}
+        />
+        <MetricTile
+          icon={<ToolOutlined />}
+          label="Script trace"
+          value={tracedScripts.length}
+          detail={tracedScripts.map((item) => item.script).join(" / ") || "no script available"}
+          tone={tracedScripts.length ? "positive" : "neutral"}
+        />
+      </div>
+
+      <div className="macro-toolkit-hason-module-grid">
+        {strategy.modules.map((module) => (
+          <div
+            className="macro-toolkit-hason-module"
+            data-testid={`macro-toolkit-hason-module-${module.key}`}
+            key={module.key}
+          >
+            <div className="macro-toolkit-capability-result-head">
+              <span>{module.key}</span>
+              <Tag color={statusColor(module.status)}>{module.status}</Tag>
+            </div>
+            <strong>{module.label}</strong>
+            <small>可用脚本：{module.available_scripts.join(" / ") || "无"}</small>
+            {module.missing_scripts.length ? (
+              <small className="macro-toolkit-hason-module__missing">
+                缺失脚本：{module.missing_scripts.join(" / ")}
+              </small>
+            ) : null}
+            <div className="macro-toolkit-tag-row">
+              {module.evidence.map((item) => (
+                <Tag color="blue" key={`${module.key}-${item}`}>
+                  {item}
+                </Tag>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-hason-runtime-gaps">
+        <span>runtime outputs · {strategy.runtime_output_status}</span>
+        <strong>{runtimeGapText}</strong>
+        {strategy.runtime_outputs.length ? (
+          <small>
+            {strategy.runtime_outputs
+              .map((item) => `${item.name}: ${item.freshness_status}${item.modified_date ? ` ${item.modified_date}` : ""}`)
+              .join(" / ")}
+          </small>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

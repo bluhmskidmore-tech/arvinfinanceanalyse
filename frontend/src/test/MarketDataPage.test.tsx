@@ -602,6 +602,59 @@ describe("MarketDataPage", () => {
     });
   });
 
+  it("surfaces a visible warning when formal-labeled rates are not allowed for formal use", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const rateSeries = [
+      buildMacroPoint({
+        series_id: "EMM00166466",
+        series_name: "中债国债到期收益率:10年",
+        value_numeric: 1.94,
+        latest_change: -0.012,
+      }),
+    ];
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        trace_id: "tr_formal_blocked_rates_test",
+        basis: "formal",
+        formal_use_allowed: false,
+        source_version: "sv_candidate_rates_test",
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: rateSeries,
+      },
+    }));
+    const getChoiceMacroLatest = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical" as const,
+        result_kind: "macro.choice.latest",
+        formal_use_allowed: false,
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: rateSeries,
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getMarketDataRates,
+      getChoiceMacroLatest,
+    });
+
+    const rateTable = await screen.findByTestId("market-data-rate-quote-table");
+    await within(rateTable).findByText("EMM00166466");
+
+    const sharedMeta = await screen.findByTestId("market-data-workbench-shared-meta");
+    expect(sharedMeta).toHaveTextContent("口径 formal · blocked");
+    expect(sharedMeta).toHaveTextContent("正式可用 否");
+    expect(sharedMeta).toHaveTextContent("禁止作为正式口径");
+    expect(screen.getByTestId("market-data-data-status-strip")).toHaveTextContent("分析/候选");
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent(
+      "formal_use_allowed=false",
+    );
+  });
+
   it("renders explicit empty states for missing rate and money sources instead of demo rows", async () => {
     const base = createApiClient({ mode: "mock" });
     const getMarketDataRates = vi.fn(async () => ({
@@ -1440,7 +1493,7 @@ describe("MarketDataPage", () => {
     });
     const formalRates = queryClient.getQueryCache().find({
       queryKey: ["market-data", "formal-rates", "mock"],
-      exact: true,
+      exact: false,
     });
     const catalog = queryClient.getQueryCache().find({
       queryKey: ["market-data", "macro-foundation", "mock"],

@@ -2,7 +2,7 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: 16px;
   background: var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(76, 58, 44, 0.05);
+  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06);
 }
 
 .yield-analysis-card--padded {
@@ -35,7 +35,7 @@
   color: var(--moss-color-text-primary);
   font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .yield-analysis-page-description {
@@ -75,8 +75,8 @@
 }
 
 .yield-analysis-page-link:hover {
-  border-color: var(--moss-color-warm-terracotta);
-  color: var(--moss-color-warm-terracotta);
+  border-color: var(--moss-color-primary-600);
+  color: var(--moss-color-primary-600);
 }
 
 .yield-analysis-main-tabs {
@@ -105,7 +105,7 @@
   border-color: var(--moss-color-border-default);
   background: var(--moss-color-card-bg);
   color: var(--moss-color-text-primary);
-  box-shadow: 0 6px 14px rgba(76, 58, 44, 0.05);
+  box-shadow: 0 6px 14px rgba(15, 37, 68, 0.06);
 }
 
 .yield-analysis-section {
@@ -117,7 +117,7 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--moss-radius-lg);
   background: var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(76, 58, 44, 0.05);
+  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06);
 }
 
 .yield-analysis-surface--padded {
@@ -194,7 +194,7 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--moss-radius-lg);
   background: var(--moss-color-card-bg);
-  box-shadow: 0 8px 18px rgba(76, 58, 44, 0.05);
+  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.06);
 }
 
 .yield-pnl-command-bar__link {
@@ -208,9 +208,9 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--moss-radius-lg);
   background:
-    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(245, 247, 249, 0.92)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 249, 0.92)),
     var(--moss-color-card-bg);
-  box-shadow: 0 14px 30px rgba(76, 58, 44, 0.08);
+  box-shadow: 0 14px 30px rgba(15, 37, 68, 0.08);
 }
 
 .yield-pnl-conclusion__primary {
@@ -271,7 +271,7 @@
   color: var(--moss-color-text-primary);
   font-size: 16px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .yield-analysis-note--error {
@@ -384,9 +384,9 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--moss-radius-lg);
   background:
-    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(245, 247, 249, 0.92)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 249, 0.92)),
     var(--moss-color-card-bg);
-  box-shadow: 0 14px 30px rgba(76, 58, 44, 0.08);
+  box-shadow: 0 14px 30px rgba(15, 37, 68, 0.08);
 }
 
 .yield-pnl-toolbar__intro {
@@ -413,8 +413,8 @@
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--moss-color-warm-terracotta) 12%, white);
-  color: var(--moss-color-warm-terracotta);
+  background: var(--moss-color-info-50);
+  color: var(--moss-color-primary-600);
   font-size: 11px;
   font-weight: 700;
 }
@@ -581,7 +581,7 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-card-bg);
-  box-shadow: 0 8px 18px rgba(76, 58, 44, 0.05);
+  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.06);
 }
 
 .yield-pnl-metric::before {
@@ -607,7 +607,7 @@
 }
 
 .yield-pnl-metric--total::before {
-  background: var(--moss-color-warm-terracotta);
+  background: var(--moss-color-primary-600);
 }
 
 .yield-pnl-metric__label {
@@ -919,8 +919,8 @@
 }
 
 .pnl-filter-button:hover {
-  border-color: var(--moss-color-warm-terracotta);
-  color: var(--moss-color-warm-terracotta);
+  border-color: var(--moss-color-primary-600);
+  color: var(--moss-color-primary-600);
 }
 
 .pnl-filter-grid {
@@ -1184,11 +1184,11 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--moss-radius-lg);
   background: var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(76, 58, 44, 0.05);
+  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06);
 }
 
 .yield-pnl-detail-card--accent {
-  border-color: color-mix(in srgb, var(--moss-color-warm-terracotta) 52%, var(--moss-color-border-default));
+  border-color: color-mix(in srgb, var(--moss-color-primary-600) 42%, var(--moss-color-border-default));
 }
 
 .yield-pnl-detail-card__header {
@@ -1232,8 +1232,8 @@
 }
 
 .yield-pnl-detail-card__toggle:hover {
-  border-color: var(--moss-color-warm-terracotta);
-  color: var(--moss-color-warm-terracotta);
+  border-color: var(--moss-color-primary-600);
+  color: var(--moss-color-primary-600);
 }
 
 .yield-pnl-detail-card__collapsed {

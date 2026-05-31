@@ -104,7 +104,7 @@ describe("PagePrimitives v2 opt-in contract", () => {
     expect(PAGE_V2_CONTRACT.analysisGridCols["3"]).toContain("moss-page-v2-analysis-grid--cols-3");
   });
 
-  it("keeps the opt-in v2 surface style on the warm cockpit paper token", () => {
+  it("keeps the opt-in v2 surface style on the homepage-aligned shell surface token", () => {
     expect(pageSurfacePanelStyle.background).toBe(shellTokens.colorBgSurface);
   });
 });

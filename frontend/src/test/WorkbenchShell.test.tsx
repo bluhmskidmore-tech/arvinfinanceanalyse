@@ -50,6 +50,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "pnl", element: <div>pnl body</div> },
           { path: "reports", element: <div>reports body</div> },
           { path: "platform-config", element: <div>platform body</div> },
+          { path: "cube-query", element: <div>cube-query body</div> },
           { path: "agent", element: <div>agent body</div> },
         ],
       },
@@ -97,8 +98,7 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config", "/agent"]);
-    expect(hrefs).not.toContain("/cube-query");
+    expect(hrefs).toEqual(["/platform-config", "/cube-query", "/agent"]);
     expect(hrefs).not.toContain("/reports");
   });
 
@@ -115,23 +115,15 @@ describe("WorkbenchShell", () => {
     expect(within(subnav).getByRole("link", { name: /收益分析/ })).toHaveAttribute("href", "/pnl");
   });
 
-  it("keeps live balance-analysis focused on page content with its compact hint", async () => {
+  it("keeps live balance-analysis focused on page content without shell guidance", async () => {
     renderShellAt("/balance-analysis");
 
     expect(await screen.findByText("balance-analysis body")).toBeInTheDocument();
-    const hint = await screen.findByTestId("portfolio-workbench-light-hint");
-    expect(hint).toHaveTextContent("先以正式余额下结论");
-    expect(hint).toHaveTextContent("占位模块不混入首屏判断");
-
+    expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
-    const subnav = screen.getByTestId("workbench-section-subnav");
-    const hrefs = within(subnav)
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/balance-analysis");
-    expect(hrefs).toContain("/balance-movement-analysis");
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
   });
 
   it("retains shell guidance and readiness warning for placeholder routes", async () => {
@@ -544,7 +536,7 @@ describe("WorkbenchShell", () => {
     expect(supportHrefs).toContain("/reports");
   });
 
-  it("marks the active support entry in the warm cockpit rail", async () => {
+  it("marks the active support entry in the homepage-aligned cockpit rail", async () => {
     renderShellAt("/platform-config");
 
     expect(await screen.findByText("platform body")).toBeInTheDocument();

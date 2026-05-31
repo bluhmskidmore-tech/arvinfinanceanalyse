@@ -5,7 +5,7 @@
 - Sample type: `capture-ready`
 - Owner: `TBD`
 - Approver: `TBD`
-- Last reviewed: `2026-05-10`
+- Last reviewed: `2026-05-31`
 
 ## Capture note
 

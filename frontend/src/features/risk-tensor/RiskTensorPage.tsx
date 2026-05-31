@@ -425,7 +425,7 @@ function dv01ControlActionStatusLabel(status: string) {
 
 export default function RiskTensorPage() {
   const client = useApiClient();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
   const [selectedTenor, setSelectedTenor] = useState<string>("");
 
@@ -448,6 +448,13 @@ export default function RiskTensorPage() {
     }
     return datesQuery.data?.result.report_dates[0] ?? "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate]);
+  const reportDateOptions = useMemo(() => {
+    const dates = datesQuery.data?.result.report_dates ?? [];
+    if (!reportDate || dates.includes(reportDate)) {
+      return dates;
+    }
+    return [reportDate, ...dates];
+  }, [datesQuery.data?.result.report_dates, reportDate]);
 
   const datesBlockingError = datesQuery.isError && !reportDate;
   const datesEmpty =
@@ -657,6 +664,28 @@ export default function RiskTensorPage() {
       </div>
 
       <div style={controlBarStyle}>
+        {reportDateOptions.length > 0 ? (
+          <label className="risk-tensor-report-date-select">
+            <span>风险报告日</span>
+            <select
+              value={reportDate}
+              onChange={(event) => {
+                const nextReportDate = event.target.value;
+                setSearchParams((previous) => {
+                  const next = new URLSearchParams(previous);
+                  next.set("report_date", nextReportDate);
+                  return next;
+                });
+              }}
+            >
+              {reportDateOptions.map((dateValue) => (
+                <option key={dateValue} value={dateValue}>
+                  {dateValue}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div
           style={{
             padding: "10px 12px",

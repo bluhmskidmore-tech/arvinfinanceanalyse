@@ -1066,6 +1066,85 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode for the bond analytics DV01 risk endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_risk",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          accounting_class: "OCI",
+          total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          position_count: 0,
+          shock_scenarios: [],
+          tenor_buckets: [],
+          top_bonds: [],
+          top_issuers: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01Risk("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+      shockBps: "5,25",
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_risk");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-risk?report_date=2026-03-31&accounting_class=all&top_n=50&shock_bps=5%2C25",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
   it("returns a structured analytical macro-bond-linkage mock envelope", async () => {
     const client = createApiClient({ mode: "mock" });
 

@@ -357,6 +357,54 @@ export type MacroToolkitRuntimeStatusPayload = {
   }>;
 };
 
+export type MacroToolkitHasonStrategyModule = {
+  key: string;
+  label: string;
+  status: string;
+  scripts: string[];
+  available_scripts: string[];
+  missing_scripts: string[];
+  evidence: string[];
+};
+
+export type MacroToolkitHasonStrategy = {
+  key: "hason_macro_strategy" | string;
+  framework_name: string;
+  basis: "analytical" | string;
+  observation_only: boolean;
+  formal_use_allowed: boolean;
+  formal_metric_id: string | null;
+  status: string;
+  display_status: string;
+  readiness: {
+    ready_modules: number;
+    partial_modules: number;
+    missing_modules: number;
+    missing_script_count: number;
+    total_modules: number;
+    ratio: number;
+  };
+  modules: MacroToolkitHasonStrategyModule[];
+  runtime_output_status: string;
+  runtime_outputs: Array<{
+    name: string;
+    freshness_status: string;
+    modified_at: string | null;
+    modified_date: string | null;
+    reference_date: string | null;
+  }>;
+  required_runtime_outputs: string[];
+  missing_runtime_outputs: string[];
+  stale_runtime_outputs: string[];
+  boundary: string;
+  source_trace: Array<{
+    script: string;
+    filename: string | null;
+    group: string | null;
+    available: boolean;
+  }>;
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -375,6 +423,7 @@ export type MacroToolkitAnalysisPayload = {
   };
   indicators: MacroToolkitIndicator[];
   signal_cards: MacroToolkitSignalCard[];
+  hason_strategy?: MacroToolkitHasonStrategy;
   a_share_risk?: MacroToolkitAShareRiskPayload;
   capability_results: MacroToolkitCapabilityResult[];
   strategy_summaries: MacroToolkitStrategySummary[];
@@ -693,6 +742,98 @@ const MOCK_STRATEGY_SUMMARIES: MacroToolkitStrategySummary[] = [
     },
   },
 ];
+
+const MOCK_HASON_STRATEGY: MacroToolkitHasonStrategy = {
+  key: "hason_macro_strategy",
+  framework_name: "Hason macro hedge due-diligence framework",
+  basis: "analytical",
+  observation_only: true,
+  formal_use_allowed: false,
+  formal_metric_id: null,
+  status: "degraded",
+  display_status: "visible",
+  readiness: {
+    ready_modules: 4,
+    partial_modules: 1,
+    missing_modules: 0,
+    missing_script_count: 1,
+    total_modules: 5,
+    ratio: 0.8,
+  },
+  modules: [
+    {
+      key: "market_state",
+      label: "Market state",
+      status: "integrated",
+      scripts: ["merrill_clock_cn", "regime_switch_cn", "dcc_garch_cn", "garch_multi_asset"],
+      available_scripts: ["merrill_clock_cn", "regime_switch_cn", "dcc_garch_cn", "garch_multi_asset"],
+      missing_scripts: [],
+      evidence: ["cycle", "volatility", "correlation"],
+    },
+    {
+      key: "allocation",
+      label: "Allocation",
+      status: "partial",
+      scripts: ["risk_parity_cn", "rebalance_cn"],
+      available_scripts: ["risk_parity_cn"],
+      missing_scripts: ["rebalance_cn"],
+      evidence: ["risk parity", "risk budget", "rebalancing"],
+    },
+    {
+      key: "strategy_selection",
+      label: "Strategy selection",
+      status: "integrated",
+      scripts: ["cta_trend_cn", "signal_aggregator", "crowding_cn"],
+      available_scripts: ["cta_trend_cn", "signal_aggregator", "crowding_cn"],
+      missing_scripts: [],
+      evidence: ["CTA trend", "crowding filter", "final signal"],
+    },
+    {
+      key: "risk_management",
+      label: "Risk management",
+      status: "integrated",
+      scripts: ["crisis_score_cn", "risk_monitor", "dcc_garch_cn"],
+      available_scripts: ["crisis_score_cn", "risk_monitor", "dcc_garch_cn"],
+      missing_scripts: [],
+      evidence: ["Crisis Score", "vol-correlation crisis", "de-risking"],
+    },
+    {
+      key: "performance_review",
+      label: "Performance review",
+      status: "integrated",
+      scripts: ["performance_metrics_cn", "backtest_cn"],
+      available_scripts: ["performance_metrics_cn", "backtest_cn"],
+      missing_scripts: [],
+      evidence: ["Sharpe", "Sortino", "Calmar"],
+    },
+  ],
+  runtime_output_status: "stale",
+  runtime_outputs: [
+    {
+      name: "final_signal.csv",
+      freshness_status: "stale",
+      modified_at: "2026-04-29T15:00:00+00:00",
+      modified_date: "2026-04-29",
+      reference_date: "2026-04-30",
+    },
+    {
+      name: "crowding_latest.csv",
+      freshness_status: "stale",
+      modified_at: "2026-04-29T15:00:00+00:00",
+      modified_date: "2026-04-29",
+      reference_date: "2026-04-30",
+    },
+  ],
+  required_runtime_outputs: ["final_signal.csv", "crowding_latest.csv"],
+  missing_runtime_outputs: [],
+  stale_runtime_outputs: ["final_signal.csv", "crowding_latest.csv"],
+  boundary: "Analytical macro toolkit display only; not a formal MTR metric, trade order, or portfolio execution engine.",
+  source_trace: [
+    { script: "signal_aggregator", filename: "signal_aggregator.py", group: "macro_signal", available: true },
+    { script: "risk_parity_cn", filename: "risk_parity_cn.py", group: "allocation", available: true },
+    { script: "crisis_score_cn", filename: "crisis_score_cn.py", group: "macro_signal", available: true },
+  ],
+};
 
 const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
   status: "complete",
@@ -1021,6 +1162,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
       evidence: ["尚未发现输出文件"],
     },
   ],
+  hason_strategy: MOCK_HASON_STRATEGY,
   a_share_risk: MOCK_A_SHARE_RISK,
   capability_results: MOCK_CAPABILITY_RESULTS,
   strategy_summaries: MOCK_STRATEGY_SUMMARIES,

@@ -1,12 +1,5 @@
 import type {
   ApiEnvelope,
-  AdvancedAttributionSummary,
-  CampisiAttributionPayload,
-  CampisiEnhancedPayload,
-  CampisiFourEffectsPayload,
-  CampisiMaturityBucketsPayload,
-  CarryRollDownPayload,
-  KRDAttributionPayload,
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
   FxAnalyticalPayload,
@@ -14,12 +7,6 @@ import type {
   MacroBondLinkagePayload,
   MacroVendorPayload,
   NcdFundingProxyPayload,
-  PnlAttributionPayload,
-  PnlAttributionAnalysisSummary,
-  PnlCompositionPayload,
-  SpreadAttributionPayload,
-  TPLMarketCorrelationPayload,
-  VolumeRateAttributionPayload,
 } from "./contracts";
 import {
   createDemoBalanceAnalysisClient,
@@ -65,6 +52,11 @@ import {
   createRealPnlCoreClient,
   type PnlCoreClientMethods,
 } from "./pnlCoreClient";
+import {
+  createDemoPnlAttributionClient,
+  createRealPnlAttributionClient,
+  type PnlAttributionClientMethods,
+} from "./pnlAttributionClient";
 import {
   createDemoProductCategoryClient,
   createRealProductCategoryClient,
@@ -136,6 +128,7 @@ export type { MarketDataClientMethods } from "./marketDataClient";
 export type { MacroToolkitClientMethods } from "./macroToolkitClient";
 export type { PnlClientMethods } from "./pnlClient";
 export type { PnlCoreClientMethods } from "./pnlCoreClient";
+export type { PnlAttributionClientMethods } from "./pnlAttributionClient";
 export type { ProductCategoryClientMethods } from "./productCategoryClient";
 export type { QdbGlMonthlyAnalysisClientMethods } from "./qdbGlMonthlyAnalysisClient";
 export type { PositionsClientMethods } from "./positionsClient";
@@ -152,6 +145,7 @@ export type ApiClient = {
   & ExecutiveClientMethods
   & DashboardClientMethods
   & PnlCoreClientMethods
+  & PnlAttributionClientMethods
   & PnlClientMethods
   & ProductCategoryClientMethods
   & QdbGlMonthlyAnalysisClientMethods
@@ -177,24 +171,18 @@ const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 
 const delay = async () => new Promise<void>((resolve) => setTimeout(resolve, 40));
 
-type MockClientBundle = Pick<typeof import("../mocks/mockApiEnvelope"), "buildMockApiEnvelope"> & typeof import("../mocks/workbench") & typeof import("../mocks/pnlAttributionWorkbench") & typeof import("../mocks/campisiMocks") & typeof import("../mocks/ledgerPnlMocks");
+type MockClientBundle = Pick<typeof import("../mocks/mockApiEnvelope"), "buildMockApiEnvelope"> & typeof import("../mocks/workbench");
 let mockClientBundleCache: MockClientBundle | null = null;
 
 async function loadMockClientBundle(): Promise<MockClientBundle> {
-  const [apiEnvelopeModule, workbench, pnlAttribution, campisi, ledgerPnl] =
+  const [apiEnvelopeModule, workbench] =
     await Promise.all([
       import("../mocks/mockApiEnvelope"),
       import("../mocks/workbench"),
-      import("../mocks/pnlAttributionWorkbench"),
-      import("../mocks/campisiMocks"),
-      import("../mocks/ledgerPnlMocks"),
     ]);
   return {
     buildMockApiEnvelope: apiEnvelopeModule.buildMockApiEnvelope,
     ...workbench,
-    ...pnlAttribution,
-    ...campisi,
-    ...ledgerPnl,
   };
 }
 
@@ -202,26 +190,6 @@ async function ensureMockClientBundle(): Promise<MockClientBundle> {
   mockClientBundleCache ??= await loadMockClientBundle();
   return mockClientBundleCache;
 }
-
-function buildCampisiQuery(options?: {
-  startDate?: string;
-  endDate?: string;
-  lookbackDays?: number;
-}) {
-  const params = new URLSearchParams();
-  if (options?.startDate?.trim()) {
-    params.set("start_date", options.startDate.trim());
-  }
-  if (options?.endDate?.trim()) {
-    params.set("end_date", options.endDate.trim());
-  }
-  if (Number.isFinite(options?.lookbackDays)) {
-    params.set("lookback_days", String(options?.lookbackDays));
-  }
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
 
 function _buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
   return {
@@ -865,12 +833,15 @@ const normalizeBaseUrl = (value?: string) =>
 const parseEnvMode = (): DataSourceMode => {
   const raw = import.meta.env.VITE_DATA_SOURCE;
   const envValue = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  const isProd = import.meta.env.PROD === true;
 
   if (envValue === "real") return "real";
-  if (envValue === "mock") return "mock";
+  if (envValue === "mock") {
+    if (isProd) throw new Error("VITE_DATA_SOURCE='mock' is not allowed in production.");
+    return "mock";
+  }
 
   // Not explicitly set (or invalid value)
-  const isProd = import.meta.env.PROD === true;
   if (isProd) {
     throw new Error(
       "VITE_DATA_SOURCE must be explicitly set to 'real' or 'mock' in production build. " +
@@ -879,13 +850,9 @@ const parseEnvMode = (): DataSourceMode => {
     );
   }
 
-  // dev / test: default to mock with warning
-  console.warn(
-    "[client] VITE_DATA_SOURCE not set (raw=%o). Defaulting to 'mock' in dev mode. " +
-      "Production build will fail fast; always declare explicitly in production.",
-    raw,
-  );
-  return "mock";
+  // dev / test: default to real; mock requires an explicit local switch.
+  console.warn("[client] VITE_DATA_SOURCE not set or invalid (raw=%o). Defaulting to real.", raw);
+  return "real";
 };
 
 const parseBaseUrl = () => {
@@ -1170,76 +1137,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createDemoBondAnalyticsClient(delay, ensureMockClientBundle),
     ...createDemoBondDashboardClient(delay, ensureMockClientBundle),
     ...createDemoPnlCoreClient(delay),
-    async getPnlAttribution(_reportDate?: string) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("executive.pnl-attribution", (await ensureMockClientBundle()).pnlAttributionPayload);
-    },
-    async getVolumeRateAttribution(options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.volume_rate", {
-        ...(await ensureMockClientBundle()).mockVolumeRateAttribution,
-        compare_type: options?.compareType ?? (await ensureMockClientBundle()).mockVolumeRateAttribution.compare_type,
-      });
-    },
-    async getTplMarketCorrelation(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.tpl_market", (await ensureMockClientBundle()).mockTplMarketCorrelation);
-    },
-    async getPnlCompositionBreakdown(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.composition", (await ensureMockClientBundle()).mockPnlComposition);
-    },
-    async getPnlAttributionAnalysisSummary(_reportDate) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "pnl_attribution.summary",
-        (await ensureMockClientBundle()).mockPnlAttributionAnalysisSummary,
-      );
-    },
-    async getPnlCarryRollDown(_reportDate) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.carry_rolldown", (await ensureMockClientBundle()).mockCarryRollDown);
-    },
-    async getPnlSpreadAttribution(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.spread", (await ensureMockClientBundle()).mockSpreadAttribution);
-    },
-    async getPnlKrdAttribution(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.krd", (await ensureMockClientBundle()).mockKrdAttribution);
-    },
-    async getPnlAdvancedAttributionSummary(_reportDate) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope(
-        "pnl_attribution.advanced_summary",
-        (await ensureMockClientBundle()).mockAdvancedAttributionSummary,
-      );
-    },
-    async getPnlCampisiAttribution(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("pnl_attribution.campisi", (await ensureMockClientBundle()).mockCampisiAttribution);
-    },
-    async getPnlCampisiFourEffects(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("campisi.four_effects", (await ensureMockClientBundle()).mockCampisiFourEffects, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-    async getPnlCampisiEnhanced(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("campisi.enhanced", (await ensureMockClientBundle()).mockCampisiEnhanced, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-    async getPnlCampisiMaturityBuckets(_options) {
-      await delay();
-      return (await ensureMockClientBundle()).buildMockApiEnvelope("campisi.maturity_buckets", (await ensureMockClientBundle()).mockCampisiMaturityBuckets, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
+    ...createDemoPnlAttributionClient(delay),
     ...createDemoProductCategoryClient(delay),
     ...createDemoQdbGlMonthlyAnalysisClient(delay, ensureMockClientBundle),
     ...createDemoBalanceAnalysisClient(delay, ensureMockClientBundle),
@@ -1275,149 +1173,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealBondAnalyticsClient({ fetchImpl, baseUrl, requestJson, requestActionJson }),
     ...createRealBondDashboardClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealPnlCoreClient({ fetchImpl, baseUrl, requestJson, requestActionJson }),
-    getPnlAttribution: (reportDate?: string) =>
-      requestJson<PnlAttributionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/pnl/attribution${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
-      ),
-    getVolumeRateAttribution: (options) => {
-      const params = new URLSearchParams();
-      if (options?.reportDate?.trim()) {
-        params.set("report_date", options.reportDate.trim());
-      }
-      if (options?.compareType) {
-        params.set("compare_type", options.compareType);
-      }
-      const q = params.toString();
-      return requestJson<VolumeRateAttributionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/volume-rate${q ? `?${q}` : ""}`,
-      );
-    },
-    getTplMarketCorrelation: (options) => {
-      const params = new URLSearchParams();
-      if (options?.months !== undefined) {
-        params.set("months", String(options.months));
-      }
-      const q = params.toString();
-      return requestJson<TPLMarketCorrelationPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/tpl-market${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlCompositionBreakdown: (options) => {
-      const params = new URLSearchParams();
-      if (options?.reportDate?.trim()) {
-        params.set("report_date", options.reportDate.trim());
-      }
-      if (options?.includeTrend === false) {
-        params.set("include_trend", "false");
-      }
-      if (options?.trendMonths !== undefined) {
-        params.set("trend_months", String(options.trendMonths));
-      }
-      const q = params.toString();
-      return requestJson<PnlCompositionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/composition${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlAttributionAnalysisSummary: (reportDate) => {
-      const params = new URLSearchParams();
-      if (reportDate?.trim()) {
-        params.set("report_date", reportDate.trim());
-      }
-      const q = params.toString();
-      return requestJson<PnlAttributionAnalysisSummary>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/summary${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlCarryRollDown: (reportDate) => {
-      const params = new URLSearchParams();
-      if (reportDate?.trim()) {
-        params.set("report_date", reportDate.trim());
-      }
-      const q = params.toString();
-      return requestJson<CarryRollDownPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/advanced/carry-rolldown${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlSpreadAttribution: (options) => {
-      const params = new URLSearchParams();
-      if (options?.reportDate?.trim()) {
-        params.set("report_date", options.reportDate.trim());
-      }
-      if (options?.lookbackDays !== undefined) {
-        params.set("lookback_days", String(options.lookbackDays));
-      }
-      const q = params.toString();
-      return requestJson<SpreadAttributionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/advanced/spread${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlKrdAttribution: (options) => {
-      const params = new URLSearchParams();
-      if (options?.reportDate?.trim()) {
-        params.set("report_date", options.reportDate.trim());
-      }
-      if (options?.lookbackDays !== undefined) {
-        params.set("lookback_days", String(options.lookbackDays));
-      }
-      const q = params.toString();
-      return requestJson<KRDAttributionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/advanced/krd${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlAdvancedAttributionSummary: (reportDate) => {
-      const params = new URLSearchParams();
-      if (reportDate?.trim()) {
-        params.set("report_date", reportDate.trim());
-      }
-      const q = params.toString();
-      return requestJson<AdvancedAttributionSummary>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/advanced/summary${q ? `?${q}` : ""}`,
-      );
-    },
-    getPnlCampisiAttribution: (options) => {
-      const q = buildCampisiQuery(options);
-      return requestJson<CampisiAttributionPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/advanced/campisi${q}`,
-      );
-    },
-    getPnlCampisiFourEffects: (options) =>
-      requestJson<CampisiFourEffectsPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/campisi/four-effects${buildCampisiQuery(options)}`,
-      ),
-    getPnlCampisiEnhanced: (options) =>
-      requestJson<CampisiEnhancedPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/campisi/enhanced${buildCampisiQuery(options)}`,
-      ),
-    getPnlCampisiMaturityBuckets: (options) =>
-      requestJson<CampisiMaturityBucketsPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl-attribution/campisi/maturity-buckets${buildCampisiQuery(options)}`,
-      ),
+    ...createRealPnlAttributionClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealPositionsClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealCashflowClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealLiabilityAdbClient({ fetchImpl, baseUrl, requestJson }),

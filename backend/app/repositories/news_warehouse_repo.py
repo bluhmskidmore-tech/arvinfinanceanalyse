@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import duckdb
 
+from backend.app.repositories.duckdb_repo import DuckDBRepository
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 
 _URL_KEY_CANDIDATES = (
@@ -243,6 +246,33 @@ def _research_category(extra: dict[str, object]) -> str:
         if text:
             return text
     return "research"
+
+
+@dataclass
+class NewsWarehouseRepository(DuckDBRepository):
+    guard_path_exists: bool = True
+
+    def list_research_reports(
+        self,
+        *,
+        report_date: str,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        if self.guard_path_exists and not Path(self.path).exists():
+            return []
+        conn = self._connect_read_only()
+        if conn is None:
+            return []
+        try:
+            return list_research_reports(
+                conn,
+                report_date=report_date,
+                limit=limit,
+                offset=offset,
+            )
+        finally:
+            conn.close()
 
 
 def list_research_reports(

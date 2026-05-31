@@ -57,7 +57,7 @@ export function useMarketDataPageData() {
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
   const formalRatesQuery = useQuery({
-    queryKey: apiQueryKeys.marketRates(client.mode),
+    queryKey: apiQueryKeys.marketRates(client.mode, watchDate),
     queryFn: () => client.getMarketDataRates(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),

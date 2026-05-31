@@ -6,9 +6,10 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 1450,
-  // Phase 4G moves PnL core endpoint implementations into pnlCoreClient.ts.
-  apiClientMockOccurrences: 199,
+  apiClientLines: 1207,
+  // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
+  apiClientMockOccurrences: 136,
+  dashboardStyleFiles: {},
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,
@@ -52,6 +53,45 @@ function countMatches(text, pattern) {
   return [...text.matchAll(pattern)].length;
 }
 
+function countDashboardStyleDebt(text) {
+  return {
+    hardcodedHexes: countMatches(text, /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g),
+    gradients: countMatches(text, /\b(?:repeating-)?(?:linear|radial)-gradient\(/g),
+    repeatingGradients: countMatches(text, /\brepeating-(?:linear|radial)-gradient\(/g),
+    important: countMatches(text, /!important\b/g),
+  };
+}
+
+function runSelfTest() {
+  if (!baseline.dashboardStyleFiles) {
+    throw new Error("dashboard style debt baselines are required");
+  }
+  const sample = [
+    ".demo {",
+    "  color: #ffffff;",
+    "  border-color: #d9e3ef;",
+    "  background: linear-gradient(180deg, #ffffff, transparent);",
+    "  mask-image: repeating-linear-gradient(90deg, transparent 0 1px, #000 1px 2px);",
+    "  padding: 0 !important;",
+    "}",
+  ].join("\n");
+  const actual = countDashboardStyleDebt(sample);
+  if (
+    actual.hardcodedHexes !== 4 ||
+    actual.gradients !== 2 ||
+    actual.repeatingGradients !== 1 ||
+    actual.important !== 1
+  ) {
+    throw new Error(`dashboard style debt counter mismatch: ${JSON.stringify(actual)}`);
+  }
+  console.log("audit_frontend_debt self-test: ok");
+}
+
+if (process.argv.includes("--self-test")) {
+  runSelfTest();
+  process.exit(0);
+}
+
 const failures = [];
 const notes = [];
 
@@ -64,6 +104,7 @@ function assertNoGrowth(label, actual, max, hint) {
 }
 
 const apiClient = readText("frontend/src/api/client.ts");
+
 assertNoGrowth(
   "api/client.ts lines",
   countLines(apiClient),
@@ -76,6 +117,35 @@ assertNoGrowth(
   baseline.apiClientMockOccurrences,
   "Move mock payloads out of api/client.ts or reduce existing mock coupling.",
 );
+
+for (const [repoPath, limits] of Object.entries(baseline.dashboardStyleFiles)) {
+  const filename = path.basename(repoPath);
+  const debt = countDashboardStyleDebt(readText(repoPath));
+  assertNoGrowth(
+    `${filename} hard-coded hex occurrences`,
+    debt.hardcodedHexes,
+    limits.hardcodedHexes,
+    "Tokenize repeated homepage colors before growing the cockpit style layer.",
+  );
+  assertNoGrowth(
+    `${filename} gradient occurrences`,
+    debt.gradients,
+    limits.gradients,
+    "Reuse existing cockpit/home surfaces instead of adding new gradient treatments.",
+  );
+  assertNoGrowth(
+    `${filename} repeating gradient occurrences`,
+    debt.repeatingGradients,
+    limits.repeatingGradients,
+    "Avoid adding repeating gradient treatments; replace decorative patterns with governed surfaces first.",
+  );
+  assertNoGrowth(
+    `${filename} !important occurrences`,
+    debt.important,
+    limits.important,
+    "Move ownership-conflicting overrides into the correct homepage layer before adding more !important rules.",
+  );
+}
 
 const tsxFiles = walkFiles(
   path.join(repoRoot, "frontend/src"),

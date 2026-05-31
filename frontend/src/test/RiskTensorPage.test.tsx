@@ -1,5 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -14,6 +17,10 @@ import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 
 const WAN_YUAN_UNIT = "\u4e07\u5143";
 const YI_YUAN_UNIT = "\u4ebf\u5143";
+const RISK_TENSOR_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/risk-tensor/RiskTensorPage.css",
+);
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
@@ -155,6 +162,18 @@ function renderRiskTensorRoute(
 }
 
 describe("RiskTensorPage", () => {
+  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+    const css = readFileSync(RISK_TENSOR_CSS_PATH, "utf8");
+
+    expect(css).not.toMatch(/--moss-color-warm-(terracotta|taupe|slate-blue|burgundy)/);
+    expect(css).not.toMatch(/rgba\((124, 88, 61|141, 48, 58|184, 121, 47|82, 63, 44)/);
+    expect(css).not.toMatch(/rgba\((255, 253, 248|249, 244, 235)/);
+    expect(css).toContain("var(--moss-color-info-600)");
+    expect(css).toContain("var(--moss-color-warning-600)");
+    expect(css).toContain("var(--moss-color-danger-600)");
+    expect(css).toContain("var(--moss-color-text-muted)");
+  });
+
   it("converts backend yuan amounts into the risk tensor page display units", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -299,6 +318,46 @@ describe("RiskTensorPage", () => {
       expect(getRiskTensorDates).toHaveBeenCalled();
       expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
     });
+  });
+
+  it("lets users switch among backend report dates from the page", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_switch_dates"),
+      result: { report_dates: ["2026-02-28", "2026-01-31"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_switch_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        ...(reportDate === "2026-01-31"
+          ? {
+              krd_1y: "90000",
+              krd_3y: "20000",
+              krd_5y: "30000",
+            }
+          : {}),
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const reportDateSelect = await screen.findByLabelText("风险报告日");
+    expect(reportDateSelect).toHaveValue("2026-02-28");
+
+    await user.selectOptions(reportDateSelect, "2026-01-31");
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
+    });
+    expect(reportDateSelect).toHaveValue("2026-01-31");
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-01-31");
+    expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 1Y");
   });
 
   it("renders prior-period no-data state without comparison metric cards", async () => {

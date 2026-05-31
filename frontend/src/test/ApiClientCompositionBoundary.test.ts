@@ -6,6 +6,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { createApiClient, type ApiClient } from "../api/client";
 import type { BondAnalyticsClientMethods } from "../api/bondAnalyticsClient";
 import type { PnlClientMethods } from "../api/pnlClient";
+import type { PnlAttributionClientMethods } from "../api/pnlAttributionClient";
 import type { PnlCoreClientMethods } from "../api/pnlCoreClient";
 
 const clientSource = readFileSync(resolve(process.cwd(), "src/api/client.ts"), "utf8");
@@ -21,6 +22,7 @@ const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/execu
 const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
 const cashflowClientSource = readFileSync(resolve(process.cwd(), "src/api/cashflowClient.ts"), "utf8");
+const pnlAttributionClientSource = readFileSync(resolve(process.cwd(), "src/api/pnlAttributionClient.ts"), "utf8");
 const pnlCoreClientSource = readFileSync(resolve(process.cwd(), "src/api/pnlCoreClient.ts"), "utf8");
 const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/positionsClient.ts"), "utf8");
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
@@ -73,6 +75,7 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getBondAnalyticsReturnDecomposition).toBe("function");
     expect(typeof client.getBondAnalyticsBenchmarkExcess).toBe("function");
     expect(typeof client.getBondAnalyticsKrdCurveRisk).toBe("function");
+    expect(typeof client.getBondAnalyticsDv01Risk).toBe("function");
     expect(typeof client.getBondAnalyticsActionAttribution).toBe("function");
     expect(typeof client.getBondAnalyticsAccountingClassAudit).toBe("function");
     expect(typeof client.getBondAnalyticsCreditSpreadMigration).toBe("function");
@@ -121,8 +124,30 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getFormalPnlImportStatus).toBe("function");
   });
 
+  it("keeps the public PnL attribution surface available from createApiClient", () => {
+    const client = createApiClient({ mode: "mock" });
+
+    expect(typeof client.getPnlAttribution).toBe("function");
+    expect(typeof client.getVolumeRateAttribution).toBe("function");
+    expect(typeof client.getTplMarketCorrelation).toBe("function");
+    expect(typeof client.getPnlCompositionBreakdown).toBe("function");
+    expect(typeof client.getPnlAttributionAnalysisSummary).toBe("function");
+    expect(typeof client.getPnlCarryRollDown).toBe("function");
+    expect(typeof client.getPnlSpreadAttribution).toBe("function");
+    expect(typeof client.getPnlKrdAttribution).toBe("function");
+    expect(typeof client.getPnlAdvancedAttributionSummary).toBe("function");
+    expect(typeof client.getPnlCampisiAttribution).toBe("function");
+    expect(typeof client.getPnlCampisiFourEffects).toBe("function");
+    expect(typeof client.getPnlCampisiEnhanced).toBe("function");
+    expect(typeof client.getPnlCampisiMaturityBuckets).toBe("function");
+  });
+
   it("keeps PnL core methods in the PnlClientMethods compatibility type", () => {
     expectTypeOf<PnlClientMethods>().toMatchTypeOf<PnlCoreClientMethods>();
+  });
+
+  it("keeps PnL attribution methods in the PnlClientMethods compatibility type", () => {
+    expectTypeOf<PnlClientMethods>().toMatchTypeOf<PnlAttributionClientMethods>();
   });
 
   it("keeps Cashflow methods in the BondAnalyticsClientMethods compatibility type", () => {
@@ -945,6 +970,232 @@ describe("ApiClient composition boundary", () => {
     });
   });
 
+  it("routes real PnL attribution requests to exact backend endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_pnl_attribution",
+          basis: "formal",
+          result_kind: "pnl_attribution.summary",
+          formal_use_allowed: true,
+          source_version: "sv_pnl_attr",
+          vendor_version: "vv_none",
+          rule_version: "rv_pnl_attr",
+          cache_version: "cv_pnl_attr",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-25T09:00:00Z",
+        },
+        result: {},
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getPnlAttribution(" 2026 03/31 ");
+    await client.getVolumeRateAttribution({
+      reportDate: " 2026 03/31 ",
+      compareType: "yoy",
+    });
+    await client.getTplMarketCorrelation({ months: 18, reportDate: "ignored" });
+    await client.getPnlCompositionBreakdown({
+      reportDate: " 2026 03/31 ",
+      includeTrend: false,
+      trendMonths: 6,
+    });
+    await client.getPnlAttributionAnalysisSummary(" 2026 03/31 ");
+    await client.getPnlCarryRollDown(" 2026 03/31 ");
+    await client.getPnlSpreadAttribution({ reportDate: " 2026 03/31 ", lookbackDays: 30 });
+    await client.getPnlKrdAttribution({ reportDate: " 2026 03/31 ", lookbackDays: 30 });
+    await client.getPnlAdvancedAttributionSummary(" 2026 03/31 ");
+    await client.getPnlCampisiAttribution({
+      startDate: " 2026-03-01 ",
+      endDate: " 2026-03-31 ",
+      lookbackDays: 30,
+    });
+    await client.getPnlCampisiFourEffects({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiEnhanced({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiMaturityBuckets({ endDate: "2026-03-31", lookbackDays: 30 });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/pnl/attribution?report_date=2026%2003%2F31",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/pnl-attribution/volume-rate?report_date=2026+03%2F31&compare_type=yoy",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/pnl-attribution/tpl-market?months=18",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/pnl-attribution/composition?report_date=2026+03%2F31&include_trend=false&trend_months=6",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/pnl-attribution/summary?report_date=2026+03%2F31",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/pnl-attribution/advanced/carry-rolldown?report_date=2026+03%2F31",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/pnl-attribution/advanced/spread?report_date=2026+03%2F31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      "http://localhost:8000/api/pnl-attribution/advanced/krd?report_date=2026+03%2F31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      "http://localhost:8000/api/pnl-attribution/advanced/summary?report_date=2026+03%2F31",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
+      "http://localhost:8000/api/pnl-attribution/advanced/campisi?start_date=2026-03-01&end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      11,
+      "http://localhost:8000/api/pnl-attribution/campisi/four-effects?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      12,
+      "http://localhost:8000/api/pnl-attribution/campisi/enhanced?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      13,
+      "http://localhost:8000/api/pnl-attribution/campisi/maturity-buckets?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps PnL attribution mock envelope shapes after extraction", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getPnlAttribution()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "executive.pnl-attribution",
+      },
+    });
+    await expect(client.getVolumeRateAttribution({ compareType: "yoy" })).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.volume_rate",
+      },
+      result: {
+        compare_type: "yoy",
+      },
+    });
+    await expect(client.getTplMarketCorrelation()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.tpl_market",
+      },
+    });
+    await expect(client.getPnlCompositionBreakdown()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.composition",
+      },
+    });
+    await expect(client.getPnlAttributionAnalysisSummary()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.summary",
+      },
+    });
+    await expect(client.getPnlCarryRollDown()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.carry_rolldown",
+      },
+    });
+    await expect(client.getPnlSpreadAttribution()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.spread",
+      },
+    });
+    await expect(client.getPnlKrdAttribution()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.krd",
+      },
+    });
+    await expect(client.getPnlAdvancedAttributionSummary()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.advanced_summary",
+      },
+    });
+    await expect(client.getPnlCampisiAttribution()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "pnl_attribution.campisi",
+      },
+    });
+    await expect(client.getPnlCampisiFourEffects()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "campisi.four_effects",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+    });
+    await expect(client.getPnlCampisiEnhanced()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "campisi.enhanced",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+    });
+    await expect(client.getPnlCampisiMaturityBuckets()).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "campisi.maturity_buckets",
+        basis: "formal",
+        formal_use_allowed: true,
+      },
+    });
+  });
+
   it("keeps Cashflow mock envelope shape after extraction", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -1083,6 +1334,24 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("ledger_pnl.data");
     expect(clientSource).not.toContain("ledger_pnl.summary");
     expect(clientSource).not.toContain("pnl.bridge");
+    expect(clientSource).not.toContain("/ui/pnl/attribution");
+    expect(clientSource).not.toContain("/api/pnl-attribution/");
+    expect(clientSource).not.toContain("executive.pnl-attribution");
+    expect(clientSource).not.toContain("pnl_attribution.volume_rate");
+    expect(clientSource).not.toContain("pnl_attribution.tpl_market");
+    expect(clientSource).not.toContain("pnl_attribution.composition");
+    expect(clientSource).not.toContain("pnl_attribution.summary");
+    expect(clientSource).not.toContain("pnl_attribution.carry_rolldown");
+    expect(clientSource).not.toContain("pnl_attribution.spread");
+    expect(clientSource).not.toContain("pnl_attribution.krd");
+    expect(clientSource).not.toContain("pnl_attribution.advanced_summary");
+    expect(clientSource).not.toContain("pnl_attribution.campisi");
+    expect(clientSource).not.toContain("campisi.four_effects");
+    expect(clientSource).not.toContain("campisi.enhanced");
+    expect(clientSource).not.toContain("campisi.maturity_buckets");
+    expect(clientSource).not.toContain("../mocks/pnlAttributionWorkbench");
+    expect(clientSource).not.toContain("../mocks/campisiMocks");
+    expect(clientSource).not.toContain("../mocks/ledgerPnlMocks");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -1198,6 +1467,19 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getPnlBridge\(/);
     expect(clientSource).not.toMatch(/async refreshFormalPnl\(/);
     expect(clientSource).not.toMatch(/async getFormalPnlImportStatus\(/);
+    expect(clientSource).not.toMatch(/async getPnlAttribution\(/);
+    expect(clientSource).not.toMatch(/async getVolumeRateAttribution\(/);
+    expect(clientSource).not.toMatch(/async getTplMarketCorrelation\(/);
+    expect(clientSource).not.toMatch(/async getPnlCompositionBreakdown\(/);
+    expect(clientSource).not.toMatch(/async getPnlAttributionAnalysisSummary\(/);
+    expect(clientSource).not.toMatch(/async getPnlCarryRollDown\(/);
+    expect(clientSource).not.toMatch(/async getPnlSpreadAttribution\(/);
+    expect(clientSource).not.toMatch(/async getPnlKrdAttribution\(/);
+    expect(clientSource).not.toMatch(/async getPnlAdvancedAttributionSummary\(/);
+    expect(clientSource).not.toMatch(/async getPnlCampisiAttribution\(/);
+    expect(clientSource).not.toMatch(/async getPnlCampisiFourEffects\(/);
+    expect(clientSource).not.toMatch(/async getPnlCampisiEnhanced\(/);
+    expect(clientSource).not.toMatch(/async getPnlCampisiMaturityBuckets\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -1282,6 +1564,7 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/return-decomposition");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/benchmark-excess");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/krd-curve-risk");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/dv01-risk");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/action-attribution");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/accounting-class-audit");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/credit-spread-migration");
@@ -1297,6 +1580,7 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsReturnDecomposition\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsBenchmarkExcess\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsKrdCurveRisk\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsDv01Risk\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsActionAttribution\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsAccountingClassAudit\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsCreditSpreadMigration\(/);
@@ -1515,6 +1799,52 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlImportStatus\(/);
     expect(pnlCoreClientSource).not.toContain("/api/pnl-attribution/");
     expect(pnlCoreClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+  });
+
+  it("requires pnlAttributionClient.ts to own PnL attribution API implementations", () => {
+    expect(pnlAttributionClientSource).toContain("createDemoPnlAttributionClient");
+    expect(pnlAttributionClientSource).toContain("createRealPnlAttributionClient");
+    expect(pnlAttributionClientSource).toContain("/ui/pnl/attribution");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/volume-rate");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/tpl-market");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/composition");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/summary");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/advanced/carry-rolldown");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/advanced/spread");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/advanced/krd");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/advanced/summary");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/advanced/campisi");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/four-effects");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/enhanced");
+    expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/maturity-buckets");
+    expect(pnlAttributionClientSource).toContain("executive.pnl-attribution");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.volume_rate");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.tpl_market");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.composition");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.summary");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.carry_rolldown");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.spread");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.krd");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.advanced_summary");
+    expect(pnlAttributionClientSource).toContain("pnl_attribution.campisi");
+    expect(pnlAttributionClientSource).toContain("campisi.four_effects");
+    expect(pnlAttributionClientSource).toContain("campisi.enhanced");
+    expect(pnlAttributionClientSource).toContain("campisi.maturity_buckets");
+    expect(pnlAttributionClientSource).toMatch(/async getPnlAttribution\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getVolumeRateAttribution\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getTplMarketCorrelation\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlCompositionBreakdown\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlAttributionAnalysisSummary\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlCarryRollDown\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlSpreadAttribution\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlKrdAttribution\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlAdvancedAttributionSummary\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiAttribution\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiFourEffects\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiEnhanced\(/);
+    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiMaturityBuckets\(/);
+    expect(pnlAttributionClientSource).not.toContain("/api/pnl/bridge");
+    expect(pnlAttributionClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {

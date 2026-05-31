@@ -47,6 +47,12 @@ DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS = (
 
 DISPLAY_ONLY_FILE_SNIPPETS = {
     "features/workbench/dashboard/dashboardCockpitModel.ts": DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS,
+    "features/workbench/dashboard-home/dashboardHomeView.ts": (
+        # Dashboard home renders backend-provided risk readouts; these snippets
+        # are identifiers/field reads, not frontend pricing calculations.
+        'id: "convexity"',
+        "payload.weighted_convexity",
+    ),
 }
 
 DISPLAY_ONLY_FILE_LINE_PREFIXES = {
@@ -68,6 +74,13 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "<th>",
     ),
     "features/workbench/dashboard/sections/DashboardEvidenceLane.tsx": (
+        "<th>",
+    ),
+    "features/workbench/dashboard-home/dashboardHomeView.ts": (
+        "{ id: ",
+        "label: ",
+    ),
+    "features/workbench/dashboard-home/sections/BottomGridSection.tsx": (
         "<th>",
     ),
 }

@@ -11,7 +11,6 @@ import type {
 } from "../types";
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
 import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
-import { BondAnalyticsMacroMarketBar } from "./BondAnalyticsMacroMarketBar";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
 import { BondAnalyticsOverviewMidCharts } from "./BondAnalyticsOverviewMidCharts";
 import RiskTrendChart from "./RiskTrendChart";
@@ -67,10 +66,8 @@ export function BondAnalyticsOverviewPanels({
   calendarItems = [],
 }: BondAnalyticsOverviewPanelsProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: dt.space[3] }}>
-      <div style={{ display: "grid", gap: dt.space[3] }} data-testid="bond-analysis-top-cockpit">
-        <BondAnalyticsMacroMarketBar />
-
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "grid", gap: 8 }} data-testid="bond-analysis-top-cockpit">
         <BondAnalyticsInstitutionalCockpit
           reportDate={reportDate}
           actionAttribution={actionAttributionResult}

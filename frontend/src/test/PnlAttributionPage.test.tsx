@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +14,18 @@ import type {
 } from "../api/contracts";
 import { ApiClientProvider, createApiClient } from "../api/client";
 import PnlAttributionPage from "../features/pnl-attribution/pages/PnlAttributionPage";
+
+const PNL_ATTRIBUTION_THEME_SOURCE_PATHS = [
+  "src/features/pnl-attribution/components/AdvancedAttributionChart.tsx",
+  "src/features/pnl-attribution/components/AttributionWaterfallChart.tsx",
+  "src/features/pnl-attribution/components/CampisiAttributionPanel.tsx",
+  "src/features/pnl-attribution/components/CampisiEnhancedPanel.tsx",
+  "src/features/pnl-attribution/components/CampisiMaturityBucketPanel.tsx",
+  "src/features/pnl-attribution/components/PnlAttributionView.tsx",
+  "src/features/pnl-attribution/components/PnLCompositionChart.tsx",
+  "src/features/pnl-attribution/components/TPLMarketChart.tsx",
+  "src/features/pnl-attribution/components/VolumeRateAnalysisChart.tsx",
+].map((path) => resolve(process.cwd(), path));
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="pnl-attribution-echarts-stub" />,
@@ -142,6 +156,18 @@ function tplMarketPayload(): TPLMarketCorrelationPayload {
 }
 
 describe("PnlAttributionPage", () => {
+  it("keeps attribution surfaces on the homepage blue-gray token family", () => {
+    const source = PNL_ATTRIBUTION_THEME_SOURCE_PATHS.map((path) =>
+      readFileSync(path, "utf8"),
+    ).join("\n");
+
+    expect(source).not.toMatch(/designTokens\.color\.warm|moss-color-warm-/);
+    expect(source).not.toMatch(/#ded6ca|#ece6dd|#665f58/);
+    expect(source).toContain("designTokens.color.neutral[900]");
+    expect(source).toContain("designTokens.color.primary[600]");
+    expect(source).toContain("designTokens.color.info[600]");
+  });
+
   it("mounts with explicit product-category and formal FI lenses", async () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
@@ -176,7 +202,11 @@ describe("PnlAttributionPage", () => {
     expect(screen.getByTestId("pnl-attribution-product-category-lens-card")).toHaveTextContent("FTP 后");
     expect(screen.getByTestId("pnl-attribution-formal-lens-card")).toHaveTextContent("含非标桥接");
     expect(screen.getByTestId("pnl-attribution-formal-lens-card")).toHaveTextContent("未扣 FTP");
-    expect(screen.getByTestId("pnl-attribution-workbench-lead")).toBeInTheDocument();
+    const workbenchLead = screen.getByTestId("pnl-attribution-workbench-lead");
+    expect(workbenchLead).toBeInTheDocument();
+    expect(workbenchLead).toHaveTextContent("/api/pnl-attribution/*");
+    expect(workbenchLead).toHaveTextContent("/ui/pnl/product-category");
+    expect(workbenchLead).toHaveTextContent("TPL");
     expect(screen.getByTestId("pnl-attribution-current-view-lead")).toBeInTheDocument();
     expect(await screen.findByTestId("pnl-attribution-product-category-tab")).toBeInTheDocument();
 

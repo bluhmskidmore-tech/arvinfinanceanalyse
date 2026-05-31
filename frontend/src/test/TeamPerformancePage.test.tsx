@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -208,6 +210,17 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
 }
 
 describe("TeamPerformancePage", () => {
+  it("keeps page state surfaces on the homepage blue-gray token family", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/features/team-performance/TeamPerformancePage.css"),
+      "utf8",
+    );
+
+    expect(css).not.toMatch(/#fffdf8|#fffaf4|moss-color-warm-|designTokens\.color\.warm/);
+    expect(css).toContain("#f8fafc");
+    expect(css).toContain("#ffffff");
+  });
+
   it("locks to 2025-12-31 and renders the matrix, detail panel, warnings, and meta evidence", async () => {
     const base = createApiClient({ mode: "mock" });
     const user = userEvent.setup();

@@ -6,11 +6,11 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const ledgerSurface = "#ffffff";
-const ledgerSubtleSurface = "#fafafa";
-const ledgerBorder = "#ded6ca";
-const ledgerBorderSoft = "#ece6dd";
-const ledgerText = designTokens.color.warm.ink;
-const ledgerMutedText = "#665f58";
+const ledgerSubtleSurface = designTokens.color.neutral[50];
+const ledgerBorder = designTokens.color.neutral[200];
+const ledgerBorderSoft = designTokens.color.neutral[100];
+const ledgerText = designTokens.color.neutral[900];
+const ledgerMutedText = designTokens.color.neutral[600];
 
 const cardStyle = {
   padding: designTokens.space[5],
@@ -89,7 +89,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
           type: "bar",
           data: rows.map((r) => (r.current_pnl.raw ?? 0) / 100_000_000),
           itemStyle: {
-            color: designTokens.color.warm.slateBlue,
+            color: designTokens.color.primary[600],
             borderRadius: [
               designTokens.radius.sm,
               designTokens.radius.sm,

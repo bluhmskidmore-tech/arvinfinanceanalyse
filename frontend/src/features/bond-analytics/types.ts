@@ -15,6 +15,11 @@ import type {
   CreditSpreadDetailBondRow as ApiCreditSpreadDetailBondRow,
   CreditSpreadMigrationPayload as ApiCreditSpreadMigrationPayload,
   CreditSpreadTermStructurePoint as ApiCreditSpreadTermStructurePoint,
+  DV01RiskPayload as ApiDV01RiskPayload,
+  DV01ShockScenario as ApiDV01ShockScenario,
+  DV01TenorBucket as ApiDV01TenorBucket,
+  DV01TopBondItem as ApiDV01TopBondItem,
+  DV01TopIssuerItem as ApiDV01TopIssuerItem,
   ExcessSourceBreakdown as ApiExcessSourceBreakdown,
   KRDBucket as ApiKRDBucket,
   KRDCurveRiskPayload as ApiKRDCurveRiskPayload,
@@ -30,6 +35,7 @@ export type PeriodType = "MoM" | "YTD" | "TTM";
 export type BondAnalyticsAssetClassFilter = "all" | "rate" | "credit";
 export type BondAnalyticsAccountingClassFilter = "all" | "AC" | "OCI" | "TPL";
 export type BondAnalyticsScenarioSetFilter = "standard" | "custom";
+export type BondAnalyticsDV01AccountingClassFilter = "AC" | "OCI" | "TPL" | "all";
 
 export type AssetClassBreakdown = ApiAssetClassBreakdown;
 export type BondLevelDecomposition = ApiBondLevelDecomposition;
@@ -44,6 +50,13 @@ export type KRDBucket = ApiKRDBucket;
 export type ScenarioResult = ApiKRDScenarioResult;
 export type AssetClassRiskSummary = ApiAssetClassRiskSummary;
 export type KRDCurveRiskResponse = ApiKRDCurveRiskPayload;
+
+// DV01 risk types
+export type DV01ShockScenario = ApiDV01ShockScenario;
+export type DV01TenorBucket = ApiDV01TenorBucket;
+export type DV01TopBondItem = ApiDV01TopBondItem;
+export type DV01TopIssuerItem = ApiDV01TopIssuerItem;
+export type DV01RiskResponse = ApiDV01RiskPayload;
 
 // Credit spread types
 export type SpreadScenarioResult = ApiSpreadScenarioResult;

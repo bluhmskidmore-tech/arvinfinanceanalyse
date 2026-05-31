@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import type {
   ConfluenceReplayStatus,
@@ -457,7 +457,10 @@ describe("stockAnalysisPageModel", () => {
       factor_screen_candidates: {
         as_of_date: "2026-04-29",
         formula_version: "factor_v1",
+        market_state: "WARM",
+        input_stock_count: 1,
         candidate_count: 30,
+        coverage_note: "ok",
         items: [],
       },
     });
@@ -1331,18 +1334,24 @@ describe("stockAnalysisPageModel", () => {
               stock_name: "平安",
               sector_code: "BK",
               sector_name: "银行",
-              score: 1,
+              sector_rank: 1,
               close: 10,
               breakout_level: 11,
-              evidence: [],
-              counter_evidence: [],
-              invalidation_rules: [],
+              ma20: 10.5,
+              ma60: 10,
+              ma120: 9.5,
+              close_strength: 0.8,
+              gap_norm: 0.02,
+              abnormal_turnover: 1.1,
             },
           ],
           candidate_count: 1,
         },
         factor_screen_candidates: {
+          as_of_date: "2026-04-29",
           formula_version: "factor_v1",
+          market_state: "WARM",
+          input_stock_count: 1,
           candidate_count: 1,
           coverage_note: "ok",
           items: [
@@ -1354,12 +1363,19 @@ describe("stockAnalysisPageModel", () => {
               sector_name: "银行",
               industry: "银行",
               score: 0.9,
+              pe: 10.2,
+              pb: 1.1,
+              roe: 0.12,
+              gross_margin: 0.3,
+              three_month_return: 0.08,
+              twelve_month_return: 0.16,
+              dividend_yield: 0.02,
             },
           ],
         },
       }),
     );
-    expect(summary.headline).toContain("暂无共振");
+    expect(summary.headline).toContain("暂无 T+5 共振");
   });
 
   it("builds theme breakout and observation pool panel summaries from payload", () => {
@@ -1377,7 +1393,7 @@ describe("stockAnalysisPageModel", () => {
       hybridFusionCount: 0,
       meanReversionActive: true,
     });
-    expect(poolSummary.headline).toContain("观察池合计 3 只");
+    expect(poolSummary.headline).toContain("多因子 1 只待复核");
 
     const events = buildEventsMonitoringPanelSummary(
       buildStockAnalysisEventMonitorRows(strategyPayload, confluencePayload),

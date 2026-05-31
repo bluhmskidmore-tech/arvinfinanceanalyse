@@ -329,6 +329,11 @@ export default function MarketDataPage() {
   const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
+  const formalUseBlocked =
+    formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === false;
+  const ratesBasisLabel = `${formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown"}${
+    formalUseBlocked ? " · blocked" : ""
+  }`;
 
   return (
     <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-05-15d">
@@ -392,7 +397,7 @@ export default function MarketDataPage() {
           />
         </div>
         <div className="market-data-workbench-shared-meta" data-testid="market-data-workbench-shared-meta">
-          <span>口径 {formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown"}</span>
+          <span>口径 {ratesBasisLabel}</span>
           <span>
             正式可用{" "}
             {formalRatesMeta?.formal_use_allowed === undefined
@@ -404,6 +409,7 @@ export default function MarketDataPage() {
           <span>供应商 {formalRatesMeta?.vendor_status ?? "unknown"}</span>
           <span>降级 {formalRatesMeta?.fallback_mode ?? rateQuotesSource?.fallbackMode ?? "unknown"}</span>
           <span>{formalRatesMeta?.source_version ?? rateQuotesSource?.sourceVersion ?? "source-pending"}</span>
+          {formalUseBlocked ? <span>禁止作为正式口径</span> : null}
         </div>
       </MarketSectionBlock>
 

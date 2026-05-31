@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { stockAnalysisPageCssVars } from "../features/stock-analysis/lib/stockAnalysisTokens";
 import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { workbenchTheme } from "../theme/theme";
@@ -41,24 +42,28 @@ describe("shellTokens", () => {
     expect(shellTokens.colorBgApp).toMatch(/^#/);
   });
 
-  it("defines cockpit rail tokens for WorkbenchShell aside", () => {
+  it("defines homepage-aligned cockpit rail tokens for WorkbenchShell aside", () => {
     expect(shellTokens.railBg).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(shellTokens.railBg).toBe(designTokens.color.warm.rail);
+    expect(shellTokens.railBg).toBe(designTokens.color.cockpit.navy950);
     expect(shellTokens.railBorder).toMatch(/^rgba\(/i);
-    expect(shellTokens.railNavActiveBg).toMatch(/^rgba\(/i);
-    expect(shellTokens.railBrandText).toBe(designTokens.color.warm.ink);
+    expect(shellTokens.railNavActiveBg).toBe("rgba(24, 80, 161, 0.24)");
+    expect(shellTokens.railBrandText).toBe(designTokens.color.cockpit.blue50);
   });
 
-  it("maps the shell to the shared design token palette via stable aliases", () => {
-    expect(shellTokens.colorBgApp).toBe(designTokens.color.warm.porcelain);
-    expect(shellTokens.colorBgSurface).toBe(designTokens.color.warm.paper);
-    expect(shellTokens.colorTextPrimary).toBe(designTokens.color.warm.charcoal);
-    expect(shellTokens.colorAccent).toBe(designTokens.color.warm.terracotta);
-    expect(shellTokens.colorSuccess).toBe(designTokens.color.warm.sage);
-    expect(shellTokens.colorDanger).toBe(designTokens.color.warm.burgundy);
-    expect(shellTokens.colorInfo).toBe(designTokens.color.warm.slateBlue);
-    expect(shellTokens.colorBgMuted).toBe("#f0e7db");
-    expect(shellTokens.appBackdrop).toContain(designTokens.color.warm.porcelain);
+  it("maps the shell to the homepage blue-gray design token palette via stable aliases", () => {
+    expect(shellTokens.colorBgApp).toBe(designTokens.color.neutral[50]);
+    expect(shellTokens.colorBgSurface).toBe("#ffffff");
+    expect(shellTokens.colorBgCanvas).toBe("#ffffff");
+    expect(shellTokens.colorTextPrimary).toBe(designTokens.color.neutral[900]);
+    expect(shellTokens.colorTextSecondary).toBe(designTokens.color.neutral[600]);
+    expect(shellTokens.colorTextMuted).toBe(designTokens.color.neutral[500]);
+    expect(shellTokens.colorAccent).toBe(designTokens.color.primary[600]);
+    expect(shellTokens.colorSuccess).toBe(designTokens.color.success[500]);
+    expect(shellTokens.colorWarning).toBe(designTokens.color.warning[500]);
+    expect(shellTokens.colorDanger).toBe(designTokens.color.danger[500]);
+    expect(shellTokens.colorInfo).toBe(designTokens.color.info[500]);
+    expect(shellTokens.colorBgMuted).toBe(designTokens.color.neutral[100]);
+    expect(shellTokens.appBackdrop).toContain(designTokens.color.neutral[50]);
   });
 
   it("defines placeholder readiness badge colors for shell badges", () => {
@@ -93,6 +98,16 @@ describe("workbenchTheme", () => {
   });
 });
 
+describe("stockAnalysisPageCssVars", () => {
+  it("keeps warning surfaces on the design-system warning palette", () => {
+    const vars = stockAnalysisPageCssVars as Record<string, string | number | undefined>;
+
+    expect(vars["--sa-warning-fg"]).toBe(designTokens.color.warning[800]);
+    expect(vars["--sa-warning-soft-bg"]).toBe(designTokens.color.warning[50]);
+    expect(vars["--sa-warning-border"]).toBe(designTokens.color.warning[200]);
+  });
+});
+
 describe("globalCss design token bridge (:root)", () => {
   const globalCss = readFileSync(GLOBAL_CSS_PATH, "utf8");
   const mossVars = parseMossCssVars(globalCss);
@@ -120,9 +135,10 @@ describe("globalCss design token bridge (:root)", () => {
   });
 
   it("exposes shared semantic helpers used by the cockpit shell", () => {
-    expect(mossVars.get("moss-color-surface-base")).toBe("var(--moss-color-warm-porcelain)");
-    expect(mossVars.get("moss-color-card-bg")).toBe("var(--moss-color-warm-paper)");
-    expect(mossVars.get("moss-color-link")).toBe("var(--moss-color-warm-slate-blue)");
+    expect(mossVars.get("moss-color-surface-base")).toBe("var(--moss-color-neutral-50)");
+    expect(mossVars.get("moss-color-card-bg")).toBe("#ffffff");
+    expect(mossVars.get("moss-color-link")).toBe("var(--moss-color-info-500)");
+    expect(mossVars.get("moss-color-primary-rgb")).toBe("24, 80, 161");
   });
 
   it("maps monospace stack to designTokens.fontFamily.tabular", () => {
@@ -138,20 +154,24 @@ describe("globalCss design token bridge (:root)", () => {
   });
 
   it("exposes semantic surface / card / border / text helpers", () => {
-    expect(mossVars.get("moss-color-surface-base")).toBe("var(--moss-color-warm-porcelain)");
-    expect(mossVars.get("moss-color-card-bg")).toBe("var(--moss-color-warm-paper)");
-    expect(mossVars.get("moss-color-border-default")).toContain("var(--moss-color-warm-stone)");
-    expect(mossVars.get("moss-color-text-primary")).toBe("var(--moss-color-warm-charcoal)");
+    expect(mossVars.get("moss-color-surface-base")).toBe("var(--moss-color-neutral-50)");
+    expect(mossVars.get("moss-color-card-bg")).toBe("#ffffff");
+    expect(mossVars.get("moss-color-border-default")).toContain("var(--moss-color-neutral-200)");
+    expect(mossVars.get("moss-color-text-primary")).toBe("var(--moss-color-neutral-900)");
+    expect(mossVars.get("moss-color-text-secondary")).toBe("var(--moss-color-neutral-600)");
+    expect(mossVars.get("moss-color-text-muted")).toBe("var(--moss-color-neutral-500)");
     expect(normalizeHex(mossVars.get("moss-color-warm-porcelain") ?? "")).toBe(
       normalizeHex(designTokens.color.warm.porcelain),
     );
   });
 
-  it("points shell rail css aliases to the light warm rail contract", () => {
-    expect(mossVars.get("moss-shell-rail-bg")).toBe("var(--moss-color-warm-rail)");
-    expect(mossVars.get("moss-shell-rail-text")).toBe("rgba(47, 40, 36, 0.76)");
-    expect(mossVars.get("moss-shell-rail-active-bg")).toBe("rgba(184, 92, 56, 0.12)");
-    expect(mossVars.get("moss-shell-rail-active-border")).toBe("rgba(184, 92, 56, 0.24)");
+  it("points shell rail css aliases to the homepage navy rail contract", () => {
+    expect(normalizeHex(mossVars.get("moss-shell-rail-bg") ?? "")).toBe(
+      normalizeHex(designTokens.color.cockpit.navy950),
+    );
+    expect(mossVars.get("moss-shell-rail-text")).toBe("rgba(234, 242, 251, 0.82)");
+    expect(mossVars.get("moss-shell-rail-active-bg")).toBe("rgba(24, 80, 161, 0.24)");
+    expect(mossVars.get("moss-shell-rail-active-border")).toBe("rgba(96, 165, 250, 0.36)");
   });
 
   it("keeps Page V2 and cockpit shell class hooks in the global stylesheet", () => {
@@ -168,16 +188,14 @@ describe("globalCss design token bridge (:root)", () => {
 
   it("keeps dashboard-home compatibility styles rooted to known page owners", () => {
     expect(globalCss).toContain(
-      ':where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]).dashboard-home-shell',
+      ':where([data-testid="bond-analysis-overview"]).dashboard-home-shell',
     );
     expect(globalCss).toContain(
-      ':where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-toolbar',
-    );
-    expect(globalCss).toContain(
-      '[data-testid="fixed-income-dashboard-page"] .dashboard-action-ledger',
+      ':where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar',
     );
     expect(globalCss).not.toMatch(/(^|[,{]\s*)\.dashboard-home-toolbar\b/m);
     expect(globalCss).not.toMatch(/(^|[,{]\s*)\.dashboard-action-ledger\b/m);
     expect(globalCss).not.toMatch(/\.workbench-shell-grid--cockpit\s+\.dashboard-home-shell\b/m);
+    expect(globalCss).not.toContain("fixed-income-dashboard-page");
   });
 });

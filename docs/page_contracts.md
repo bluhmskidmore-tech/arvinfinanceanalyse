@@ -1657,6 +1657,48 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Backend: `tests/test_result_meta_on_all_ui_endpoints.py` and liability analytics route/service tests where present.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
+## 14.4 PAGE-CUBE-QUERY-001 Cube Query
+
+### A. Page identity
+
+- Page ID: `PAGE-CUBE-QUERY-001`
+- Primary front-end route: `/cube-query`
+- Status: `active candidate query surface`
+- Primary APIs:
+  - `POST /api/cube/query`
+  - `GET /api/cube/dimensions/{fact_table}`
+
+### B. Primary business question
+
+- The page answers: for an allowed fact table, what grouped rows result from the selected dimensions, measures, filters, and drill path?
+- It is a query tool surface. It must not create a new page-level KPI, metric definition, or formal business conclusion outside the returned `result_meta`.
+- Formal semantics apply only to backend-approved fact tables and response metadata; unsupported tables, dimensions, or measures must fail closed with visible errors.
+
+### C. Data chain
+
+- Frontend page `frontend/src/features/cube-query/pages/CubeQueryPage.tsx` builds a `CubeQueryRequest`.
+- Frontend client `frontend/src/api/cubeClient.ts` sends `POST /api/cube/query`.
+- Backend route `backend/app/api/routes/cube_query.py` delegates query execution to the analytical bridge and dimensions lookup to `CubeQueryService`.
+- The response is `CubeQueryResult` with rows, columns, summary, drill path, and `result_meta`.
+
+### D. Units, dates, and status
+
+- Units and date semantics come from the selected fact table and backend query response; the frontend must not reinterpret measure units.
+- Empty result sets must be rendered as query results or explicit no-data states, not as demo rows.
+- Invalid table, dimension, measure, filter, or unavailable storage states must surface as user-visible query errors.
+- The page must keep result metadata visible enough for operators to distinguish formal, analytical, stale, fallback, and quality states.
+
+### E. Metric bindings
+
+- None. This page is a candidate query surface and has no standalone `MTR-*` binding.
+- Any formal-use claim is scoped to the `result_meta` returned for the specific query.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/CubeQueryPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Backend: `tests/test_cube_query_api.py`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
 ## 15. 当前缺口
 
 ### 15.1 `as_of_date` 未统一

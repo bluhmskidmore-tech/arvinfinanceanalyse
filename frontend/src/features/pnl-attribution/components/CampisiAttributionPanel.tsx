@@ -11,7 +11,7 @@ import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 const cardStyle = {
   padding: designTokens.space[5],
   borderRadius: designTokens.radius.sm,
-  border: "1px solid #ded6ca",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
   background: "#ffffff",
   boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;

@@ -231,7 +231,7 @@ export function BondAnalyticsViewContent() {
     <section data-testid="bond-analysis-overview" className="dashboard-home-shell">
       <header data-testid="bond-analysis-toolbar" className="dashboard-home-toolbar">
         <div className="dashboard-home-toolbar__identity">
-          <h1 className="dashboard-home-toolbar__title">债券分析</h1>
+          <h1 className="dashboard-home-toolbar__title">债券持仓</h1>
           <span className="dashboard-home-toolbar__eyebrow">
             报告日 {effectiveReportDate || "最新可用"}
           </span>

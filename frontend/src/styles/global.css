@@ -1,4 +1,81 @@
-﻿:root {
+﻿@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-primary-50: var(--moss-color-primary-50);
+  --color-primary-100: var(--moss-color-primary-100);
+  --color-primary-200: var(--moss-color-primary-200);
+  --color-primary-300: var(--moss-color-primary-300);
+  --color-primary-400: var(--moss-color-primary-400);
+  --color-primary-500: var(--moss-color-primary-500);
+  --color-primary-600: var(--moss-color-primary-600);
+  --color-primary-700: var(--moss-color-primary-700);
+  --color-primary-800: var(--moss-color-primary-800);
+  --color-primary-900: var(--moss-color-primary-900);
+
+  --color-info-50: var(--moss-color-info-50);
+  --color-info-100: var(--moss-color-info-100);
+  --color-info-200: var(--moss-color-info-200);
+  --color-info-300: var(--moss-color-info-300);
+  --color-info-400: var(--moss-color-info-400);
+  --color-info-500: var(--moss-color-info-500);
+  --color-info-600: var(--moss-color-info-600);
+  --color-info-700: var(--moss-color-info-700);
+  --color-info-800: var(--moss-color-info-800);
+  --color-info-900: var(--moss-color-info-900);
+
+  --color-success-50: var(--moss-color-success-50);
+  --color-success-100: var(--moss-color-success-100);
+  --color-success-200: var(--moss-color-success-200);
+  --color-success-300: var(--moss-color-success-300);
+  --color-success-400: var(--moss-color-success-400);
+  --color-success-500: var(--moss-color-success-500);
+  --color-success-600: var(--moss-color-success-600);
+  --color-success-700: var(--moss-color-success-700);
+  --color-success-800: var(--moss-color-success-800);
+  --color-success-900: var(--moss-color-success-900);
+
+  --color-warning-50: var(--moss-color-warning-50);
+  --color-warning-100: var(--moss-color-warning-100);
+  --color-warning-200: var(--moss-color-warning-200);
+  --color-warning-300: var(--moss-color-warning-300);
+  --color-warning-400: var(--moss-color-warning-400);
+  --color-warning-500: var(--moss-color-warning-500);
+  --color-warning-600: var(--moss-color-warning-600);
+  --color-warning-700: var(--moss-color-warning-700);
+  --color-warning-800: var(--moss-color-warning-800);
+  --color-warning-900: var(--moss-color-warning-900);
+
+  --color-danger-50: var(--moss-color-danger-50);
+  --color-danger-100: var(--moss-color-danger-100);
+  --color-danger-200: var(--moss-color-danger-200);
+  --color-danger-300: var(--moss-color-danger-300);
+  --color-danger-400: var(--moss-color-danger-400);
+  --color-danger-500: var(--moss-color-danger-500);
+  --color-danger-600: var(--moss-color-danger-600);
+  --color-danger-700: var(--moss-color-danger-700);
+  --color-danger-800: var(--moss-color-danger-800);
+  --color-danger-900: var(--moss-color-danger-900);
+
+  --color-neutral-50: var(--moss-color-neutral-50);
+  --color-neutral-100: var(--moss-color-neutral-100);
+  --color-neutral-200: var(--moss-color-neutral-200);
+  --color-neutral-300: var(--moss-color-neutral-300);
+  --color-neutral-400: var(--moss-color-neutral-400);
+  --color-neutral-500: var(--moss-color-neutral-500);
+  --color-neutral-600: var(--moss-color-neutral-600);
+  --color-neutral-700: var(--moss-color-neutral-700);
+  --color-neutral-800: var(--moss-color-neutral-800);
+  --color-neutral-900: var(--moss-color-neutral-900);
+
+  --radius-sm: var(--moss-radius-sm);
+  --radius-md: var(--moss-radius-md);
+  --radius-lg: var(--moss-radius-lg);
+  --radius-xl: var(--moss-radius-xl);
+}
+
+:root {
   color-scheme: light;
 
   /*
@@ -99,11 +176,11 @@
   --moss-radius-lg: 18px;
   --moss-radius-xl: 24px;
 
-  --moss-shadow-card: 0 14px 28px rgba(76, 58, 44, 0.08);
-  --moss-shadow-panel: 0 20px 42px rgba(76, 58, 44, 0.12);
+  --moss-shadow-card: 0 14px 28px rgba(15, 37, 68, 0.07);
+  --moss-shadow-panel: 0 20px 42px rgba(15, 37, 68, 0.10);
   --moss-shadow-popover: 0 12px 32px rgba(22, 35, 46, 0.12);
   --moss-shadow-modal: 0 24px 48px rgba(22, 35, 46, 0.16);
-  --moss-shadow-rail: 8px 0 28px rgba(86, 68, 52, 0.08);
+  --moss-shadow-rail: 8px 0 28px rgba(6, 24, 45, 0.16);
 
   --moss-motion-duration-fast: 150ms;
   --moss-motion-duration-base: 200ms;
@@ -117,35 +194,35 @@
   --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
 
   /* Semantic aliases */
-  --moss-color-surface-base: var(--moss-color-warm-porcelain);
-  --moss-color-card-bg: var(--moss-color-warm-paper);
-  --moss-color-border-default: color-mix(in srgb, var(--moss-color-warm-stone) 72%, var(--moss-color-warm-taupe));
+  --moss-color-surface-base: var(--moss-color-neutral-50);
+  --moss-color-card-bg: #ffffff;
+  --moss-color-border-default: color-mix(in srgb, var(--moss-color-neutral-200) 82%, var(--moss-color-neutral-300));
 
-  color: var(--moss-color-warm-charcoal);
-  background: var(--moss-color-warm-porcelain);
+  color: var(--moss-color-neutral-900);
+  background: var(--moss-color-neutral-50);
 
-  --moss-color-text-primary: var(--moss-color-warm-charcoal);
-  --moss-color-text-secondary: color-mix(in srgb, var(--moss-color-warm-charcoal) 62%, var(--moss-color-warm-taupe));
-  --moss-color-text-muted: var(--moss-color-warm-taupe);
-  --moss-color-link: var(--moss-color-warm-slate-blue);
+  --moss-color-text-primary: var(--moss-color-neutral-900);
+  --moss-color-text-secondary: var(--moss-color-neutral-600);
+  --moss-color-text-muted: var(--moss-color-neutral-500);
+  --moss-color-link: var(--moss-color-info-500);
 
-  --moss-color-primary-rgb: 184, 92, 56;
+  --moss-color-primary-rgb: 24, 80, 161;
   --moss-color-success-rgb: 45, 138, 94;
-  --moss-border-hover: color-mix(in srgb, var(--moss-color-warm-stone) 45%, var(--moss-color-warm-taupe));
-  --moss-shell-rail-bg: var(--moss-color-warm-rail);
-  --moss-shell-rail-border: rgba(92, 68, 52, 0.14);
-  --moss-shell-rail-surface: rgba(184, 92, 56, 0.12);
-  --moss-shell-rail-text: rgba(47, 40, 36, 0.76);
-  --moss-shell-rail-text-muted: rgba(47, 40, 36, 0.62);
-  --moss-shell-rail-active-bg: rgba(184, 92, 56, 0.12);
-  --moss-shell-rail-active-border: rgba(184, 92, 56, 0.24);
-  --moss-shell-rail-mark-glow: linear-gradient(145deg, rgba(184, 92, 56, 0.22), rgba(102, 122, 150, 0.16));
-  --moss-shell-terminal-bg: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(246, 241, 232, 0.94) 100%);
-  --moss-shell-terminal-border: rgba(201, 183, 165, 0.72);
-  --moss-shell-pulse-bg: linear-gradient(90deg, rgba(244, 236, 224, 0.84) 0%, rgba(255, 253, 249, 0.92) 100%);
-  --moss-shell-pulse-border: rgba(201, 183, 165, 0.6);
-  --moss-shell-paper-bg: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(251, 247, 240, 0.94) 100%);
-  --moss-shell-paper-shade: radial-gradient(circle at top right, rgba(184, 92, 56, 0.08) 0%, rgba(184, 92, 56, 0) 36%);
+  --moss-border-hover: color-mix(in srgb, var(--moss-color-neutral-300) 60%, var(--moss-color-info-300));
+  --moss-shell-rail-bg: #06182d;
+  --moss-shell-rail-border: rgba(96, 165, 250, 0.2);
+  --moss-shell-rail-surface: rgba(59, 130, 246, 0.18);
+  --moss-shell-rail-text: rgba(234, 242, 251, 0.82);
+  --moss-shell-rail-text-muted: rgba(234, 242, 251, 0.62);
+  --moss-shell-rail-active-bg: rgba(24, 80, 161, 0.24);
+  --moss-shell-rail-active-border: rgba(96, 165, 250, 0.36);
+  --moss-shell-rail-mark-glow: linear-gradient(145deg, rgba(96, 165, 250, 0.28), rgba(24, 80, 161, 0.20));
+  --moss-shell-terminal-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 247, 249, 0.96) 100%);
+  --moss-shell-terminal-border: rgba(203, 213, 225, 0.86);
+  --moss-shell-pulse-bg: linear-gradient(90deg, rgba(239, 246, 255, 0.82) 0%, rgba(255, 255, 255, 0.94) 100%);
+  --moss-shell-pulse-border: rgba(203, 213, 225, 0.72);
+  --moss-shell-paper-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 251, 255, 0.96) 100%);
+  --moss-shell-paper-shade: radial-gradient(circle at top right, rgba(24, 80, 161, 0.07) 0%, rgba(24, 80, 161, 0) 36%);
 
   font-family: var(--moss-font-sans);
   line-height: 1.5;
@@ -354,9 +431,9 @@ select {
   min-height: 100vh;
   padding: 14px clamp(14px, 1.6vw, 24px);
   background:
-    radial-gradient(circle at top left, rgba(184, 92, 56, 0.1) 0%, rgba(184, 92, 56, 0) 34%),
-    radial-gradient(circle at top right, rgba(102, 122, 150, 0.08) 0%, rgba(102, 122, 150, 0) 30%),
-    linear-gradient(180deg, var(--moss-color-warm-porcelain) 0%, var(--moss-color-warm-rail) 100%);
+    radial-gradient(circle at top left, rgba(var(--moss-color-primary-rgb), 0.1) 0%, rgba(var(--moss-color-primary-rgb), 0) 34%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0) 30%),
+    linear-gradient(180deg, var(--moss-color-neutral-50) 0%, var(--moss-color-neutral-100) 100%);
 }
 
 .workbench-shell-rail {
@@ -368,7 +445,7 @@ select {
   border: 1px solid var(--moss-shell-rail-border);
   box-shadow: var(--moss-shadow-rail);
   background:
-    linear-gradient(180deg, rgba(66, 53, 47, 0.98) 0%, rgba(52, 43, 39, 0.98) 100%);
+    linear-gradient(180deg, rgba(9, 34, 62, 0.98) 0%, var(--moss-shell-rail-bg) 100%);
 }
 
 .workbench-shell-rail.workbench-shell-rail--minimal {
@@ -394,9 +471,9 @@ select {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  border: 1px solid rgba(246, 241, 232, 0.16);
+  border: 1px solid rgba(234, 242, 251, 0.18);
   background: var(--moss-shell-rail-mark-glow), var(--moss-shell-rail-surface);
-  color: var(--moss-color-warm-porcelain);
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -407,7 +484,7 @@ select {
 }
 
 .workbench-shell-rail-product-name {
-  color: var(--moss-color-warm-porcelain);
+  color: #ffffff;
   font-weight: 700;
   font-size: 16px;
   letter-spacing: -0.02em;
@@ -427,7 +504,7 @@ select {
 .workbench-shell-rail .workbench-agent-dialog-trigger {
   border-color: var(--moss-shell-rail-border);
   border-radius: 12px;
-  color: var(--moss-color-warm-porcelain);
+  color: #ffffff;
 }
 
 .workbench-group-nav-shell {
@@ -442,7 +519,7 @@ select {
   border-radius: 22px;
   border: 1px solid var(--moss-shell-terminal-border);
   background: var(--moss-shell-terminal-bg);
-  box-shadow: 0 10px 24px rgba(83, 65, 50, 0.08);
+  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06);
 }
 
 .workbench-terminal-bar-split {
@@ -477,7 +554,7 @@ select {
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--moss-shell-terminal-border);
-  background: rgba(255, 253, 249, 0.82);
+  background: rgba(255, 255, 255, 0.82);
   font-size: 12px;
   font-weight: 600;
 }
@@ -498,7 +575,7 @@ select {
   padding: 5px 10px;
   border-radius: 999px;
   border: 1px solid var(--moss-shell-terminal-border);
-  background: rgba(244, 236, 224, 0.72);
+  background: rgba(241, 245, 249, 0.88);
   color: var(--moss-color-text-secondary);
   font-size: 11px;
   font-weight: 700;
@@ -522,7 +599,7 @@ select {
   gap: 10px;
   min-width: 0;
   padding: 7px 10px;
-  border-top: 1px solid rgba(201, 183, 165, 0.44);
+  border-top: 1px solid rgba(203, 213, 225, 0.54);
   border-radius: 12px;
   background: var(--moss-shell-pulse-bg);
 }
@@ -570,8 +647,8 @@ select {
   min-height: 100vh !important;
   padding: 0 !important;
   background:
-    linear-gradient(180deg, rgba(255, 253, 249, 0.72), rgba(246, 241, 232, 0) 220px),
-    linear-gradient(180deg, var(--moss-color-warm-porcelain) 0%, var(--moss-color-warm-rail) 100%) !important;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 247, 249, 0) 220px),
+    linear-gradient(180deg, var(--moss-color-neutral-50) 0%, var(--moss-color-neutral-100) 100%) !important;
 }
 
 .workbench-shell-grid--desktop-aligned,
@@ -590,8 +667,8 @@ select {
   border: 0 !important;
   border-radius: 0 !important;
   background:
-    linear-gradient(180deg, rgba(66, 53, 47, 0.98) 0%, rgba(52, 43, 39, 0.98) 100%) !important;
-  box-shadow: 10px 0 28px rgba(52, 43, 39, 0.18) !important;
+    linear-gradient(180deg, rgba(9, 34, 62, 0.98) 0%, var(--moss-shell-rail-bg) 100%) !important;
+  box-shadow: 10px 0 28px rgba(6, 24, 45, 0.18) !important;
 }
 
 .moss-data-mode-ribbon + .workbench-shell-grid--desktop-aligned {
@@ -621,7 +698,7 @@ select {
   border-color: var(--moss-shell-terminal-border) !important;
   border-radius: var(--moss-radius-sm) !important;
   background: var(--moss-shell-terminal-bg) !important;
-  box-shadow: 0 8px 18px rgba(83, 65, 50, 0.05) !important;
+  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.05) !important;
 }
 
 .workbench-shell-grid--desktop-aligned [data-testid="workbench-terminal-bar"] > div:first-child {
@@ -666,7 +743,7 @@ select {
   background:
     var(--moss-shell-paper-shade),
     var(--moss-shell-paper-bg) !important;
-  box-shadow: 0 16px 30px rgba(83, 65, 50, 0.06) !important;
+  box-shadow: 0 16px 30px rgba(15, 37, 68, 0.06) !important;
 }
 
 .workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] {
@@ -1943,7 +2020,7 @@ select {
 
 .dashboard-overview-command-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.9fr) minmax(320px, 0.9fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
   margin-top: 12px;
@@ -1991,7 +2068,7 @@ select {
   gap: 12px;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]).dashboard-home-shell {
+:where([data-testid="bond-analysis-overview"]).dashboard-home-shell {
   --dashboard-blue-25: #f8fbff;
   --dashboard-blue-50: #f1f6fc;
   --dashboard-blue-100: #e3edf8;
@@ -2006,7 +2083,7 @@ select {
   --dashboard-red-700: #68242c;
   --dashboard-ink: #182334;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   max-width: none;
   margin: 0;
@@ -2040,16 +2117,16 @@ select {
   display: none !important;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-toolbar {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 0 0 16px;
+  padding: 0 0 8px;
   border: 0;
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 0;
@@ -2058,14 +2135,14 @@ select {
   backdrop-filter: none;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__identity {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__identity {
   display: flex;
   align-items: baseline;
   gap: 12px;
   min-width: 0;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
   color: rgba(71, 85, 105, 0.74);
   font-size: 10px;
   font-weight: 640;
@@ -2074,47 +2151,28 @@ select {
   white-space: nowrap;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__title {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__title {
   margin: 0;
   color: var(--dashboard-ink);
-  font-size: 34px;
+  font-size: 24px;
   font-weight: 680;
   letter-spacing: 0;
   line-height: 1.1;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-actions {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
-[data-testid="fixed-income-dashboard-page"] .dashboard-action-ledger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding-top: 10px;
-  border-top: 1px solid rgba(201, 183, 165, 0.54);
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-action-ledger .dashboard-home-search {
-  flex: 1 1 260px;
-  max-width: 360px;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-action-ledger .dashboard-home-actions {
-  justify-content: flex-end;
-}
-
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-view-pill,
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-action-button,
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-control,
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-check {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
   min-height: 32px;
   border-radius: 999px;
   font-size: 12px;
@@ -2122,58 +2180,47 @@ select {
   line-height: 1;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-view-pill {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill {
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  padding: 0 10px;
+  padding: 0 9px;
   border: 1px solid var(--dashboard-accent-border, var(--moss-color-border-default));
   background: var(--dashboard-accent-bg, #ffffff);
   color: var(--dashboard-accent-fg, var(--moss-color-text-secondary));
   white-space: nowrap;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-control,
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-check {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--moss-color-text-secondary);
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-control > span {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control > span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
   white-space: nowrap;
 }
 
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-date-input {
-  width: 132px;
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--moss-color-text-primary);
-  font-size: 12px;
-}
-
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-check input {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check input {
   margin: 0;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-actions__divider {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-actions__divider {
   width: 1px;
-  height: 18px;
+  height: 14px;
   background: rgba(15, 23, 42, 0.08);
   margin: 0 2px;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-action-button {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid rgba(15, 23, 42, 0.06);
   background: rgba(255, 255, 255, 0.54);
   color: var(--moss-color-text-secondary);
@@ -2181,19 +2228,19 @@ select {
   cursor: pointer;
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-action-button--primary {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--primary {
   border-color: rgba(24, 53, 83, 0.82);
   background: linear-gradient(180deg, #263f5f 0%, #183553 100%);
   color: #ffffff;
   box-shadow: 0 10px 24px rgba(24, 53, 83, 0.12);
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-action-button--secondary:hover {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--secondary:hover {
   border-color: rgba(104, 36, 44, 0.26);
   color: var(--dashboard-red-700);
 }
 
-:where([data-testid="fixed-income-dashboard-page"], [data-testid="bond-analysis-overview"]) .dashboard-home-action-button--disabled {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
@@ -3606,69 +3653,6 @@ select {
   margin-top: auto;
 }
 
-[data-testid="fixed-income-dashboard-page"] {
-  gap: 8px;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar {
-  min-height: 42px;
-  padding: 0 4px 8px;
-  border-bottom: 0;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar__identity {
-  align-items: center;
-  gap: 14px;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar__title {
-  font-size: 29px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar__eyebrow {
-  color: #334155;
-  font-size: 13px;
-  font-weight: 650;
-  text-transform: none;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-actions {
-  gap: 8px;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-view-pill,
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-action-button,
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-control,
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-check,
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-date-input {
-  min-height: 30px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-control,
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-check {
-  padding-inline: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.82);
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-date-input {
-  width: 122px;
-  height: 28px;
-  border: 0;
-  background: transparent;
-}
-
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-action-button,
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-view-pill {
-  padding-inline: 10px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
-}
-
 .dashboard-cockpit-card,
 .dashboard-home-panel {
   border-radius: 8px;
@@ -4146,7 +4130,6 @@ select {
   margin-top: 0;
 }
 
-[data-testid="fixed-income-dashboard-page"] > *,
 .dashboard-home-warning > *,
 .dashboard-cockpit-card > *,
 .dashboard-cockpit-market-ticker__grid > *,
@@ -4233,7 +4216,6 @@ select {
   .dashboard-judgment-band__reasons,
   .dashboard-analysis-grid__items,
   .dashboard-structure-risk-focus__grid,
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar,
   .dashboard-home-market-strip,
   .dashboard-market-strip__grid,
   .dashboard-cockpit-market-ticker__grid,
@@ -4241,14 +4223,6 @@ select {
   .dashboard-cockpit-judgment-cards__grid,
   .dashboard-cockpit-risk-grid {
     grid-template-columns: 1fr;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar {
-    display: grid;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-action-ledger {
-    display: grid;
   }
 
   .dashboard-kpi-ribbon__items {
@@ -4358,11 +4332,6 @@ select {
     overflow-x: hidden;
   }
 
-  .workbench-shell-grid--cockpit [data-testid="fixed-income-dashboard-page"] {
-    width: 100%;
-    max-width: 100%;
-  }
-
   .workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
     max-width: 100%;
     overflow-x: hidden;
@@ -4383,22 +4352,6 @@ select {
     justify-content: flex-start !important;
   }
 
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar {
-    padding: 12px;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar__identity {
-    display: grid;
-    gap: 4px;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-actions {
-    width: 100%;
-    max-width: 100%;
-    justify-content: flex-start;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] > *,
   .dashboard-command-deck > *,
   .dashboard-command-status__grid > *,
   .dashboard-cockpit-market-ticker__grid > *,
@@ -4409,27 +4362,6 @@ select {
   .dashboard-business-detail-strip > * {
     max-width: 100%;
     min-width: 0;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-actions > .dashboard-home-control {
-    flex: 1 1 100%;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-actions > .dashboard-home-control input {
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-actions__divider {
-    display: none !important;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-action-button,
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-view-pill,
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-check {
-    flex: 1 1 calc(50% - 8px);
-    min-width: 0;
-    justify-content: center;
   }
 
   .dashboard-command-status__grid {
@@ -4476,153 +4408,11 @@ select {
   transform: translateY(-1px);
 }
 
-[data-testid="fixed-income-dashboard-page"] .dashboard-home-search {
-  display: none;
-}
-
 @media (min-width: 1181px) {
-  .workbench-shell-grid--cockpit [data-testid="fixed-income-dashboard-page"] {
-    --cockpit-bg: #eef3f8;
-    --cockpit-card: #ffffff;
-    --cockpit-card-soft: #f8fbff;
-    --cockpit-ink: #071832;
-    --cockpit-ink-soft: #243a56;
-    --cockpit-muted: #6b7d91;
-    --cockpit-line: rgba(115, 132, 153, 0.28);
-    --cockpit-line-strong: rgba(63, 85, 112, 0.42);
-    --cockpit-blue: #1463c5;
-    --cockpit-blue-strong: #0b4e9e;
-    --cockpit-green: #0d7a45;
-    --cockpit-red: #c5162e;
-    --cockpit-warning: #a56300;
-    gap: 7px;
-    color: var(--cockpit-ink);
-    font-family: "Aptos", "Segoe UI Variable", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-    font-kerning: normal;
-    font-feature-settings: "kern" 1, "tnum" 1;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: geometricPrecision;
-  }
-
   .workbench-shell-grid--cockpit {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(238, 243, 248, 0) 230px),
       var(--cockpit-bg) !important;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, auto);
-    min-height: 50px;
-    padding: 2px 0 10px;
-    border-bottom: 1px solid var(--cockpit-line);
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar__title {
-    color: var(--cockpit-ink);
-    font-size: 30px;
-    line-height: 1.05;
-    font-weight: 800;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-toolbar__eyebrow {
-    color: var(--cockpit-ink-soft);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-actions {
-    gap: 7px;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-self: end;
-    width: min(360px, 100%);
-    height: 34px;
-    min-width: 0;
-    padding: 0 12px;
-    border: 1px solid var(--cockpit-line);
-    border-radius: 7px;
-    background: rgba(255, 255, 255, 0.92);
-    color: var(--cockpit-muted);
-    box-shadow: 0 2px 8px rgba(15, 45, 80, 0.04);
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-search span {
-    position: relative;
-    width: 14px;
-    height: 14px;
-    flex: 0 0 14px;
-    overflow: hidden;
-    color: transparent;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-search span::before {
-    content: "";
-    position: absolute;
-    left: 1px;
-    top: 1px;
-    width: 8px;
-    height: 8px;
-    border: 1.6px solid var(--cockpit-blue-strong);
-    border-radius: 999px;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-search span::after {
-    content: "";
-    position: absolute;
-    left: 9px;
-    top: 10px;
-    width: 6px;
-    height: 1.6px;
-    border-radius: 999px;
-    background: var(--cockpit-blue-strong);
-    transform: rotate(45deg);
-    transform-origin: left center;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-search input {
-    width: 100%;
-    min-width: 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--cockpit-ink);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-search input::placeholder {
-    color: #8090a3;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-action-button,
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-control,
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-view-pill,
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-check {
-    height: 30px;
-    border: 1px solid var(--cockpit-line);
-    border-radius: 6px;
-    background: var(--cockpit-card);
-    color: var(--cockpit-ink-soft);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-control input {
-    font-size: 12px;
-    font-weight: 650;
-    color: var(--cockpit-ink);
-  }
-
-  [data-testid="fixed-income-dashboard-page"] .dashboard-home-action-button--primary {
-    border-color: var(--cockpit-blue-strong);
-    background: var(--cockpit-blue-strong);
-    color: #fffefa;
   }
 
   .dashboard-cockpit-card,
@@ -5019,7 +4809,7 @@ select {
   }
 }
 
-/* Warm Cockpit shell final layer. Placed after legacy cockpit rules on purpose. */
+/* Homepage-aligned cockpit shell final layer. Placed after legacy cockpit rules on purpose. */
 .workbench-shell-grid--cockpit {
   grid-template-columns: minmax(184px, 208px) minmax(0, 1fr);
   gap: clamp(12px, 1.5vw, 20px);
@@ -5027,9 +4817,9 @@ select {
   min-height: 100vh !important;
   padding: 16px clamp(14px, 1.8vw, 26px) 34px !important;
   background:
-    radial-gradient(circle at 10% 0%, rgba(184, 92, 56, 0.12) 0%, rgba(184, 92, 56, 0) 34%),
-    radial-gradient(circle at 88% 4%, rgba(102, 122, 150, 0.10) 0%, rgba(102, 122, 150, 0) 28%),
-    linear-gradient(180deg, var(--moss-color-warm-porcelain) 0%, var(--moss-color-warm-rail) 100%) !important;
+    radial-gradient(circle at 10% 0%, rgba(24, 80, 161, 0.1) 0%, rgba(24, 80, 161, 0) 34%),
+    radial-gradient(circle at 88% 4%, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0) 28%),
+    linear-gradient(180deg, var(--moss-color-neutral-50) 0%, var(--moss-color-neutral-100) 100%) !important;
 }
 
 .workbench-shell-grid--cockpit .workbench-shell-aside {
@@ -5044,19 +4834,19 @@ select {
   border: 1px solid var(--moss-shell-rail-border) !important;
   border-radius: 10px !important;
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.40), rgba(255, 253, 248, 0) 52%),
+    linear-gradient(180deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0) 52%),
     var(--moss-shell-rail-bg) !important;
   box-shadow: var(--moss-shadow-rail) !important;
 }
 
 .moss-data-mode-ribbon + .workbench-shell-grid--cockpit {
   min-height: calc(100vh - 28px) !important;
-  padding-top: 44px !important;
+  padding-top: 30px !important;
 }
 
 .moss-data-mode-ribbon + .workbench-shell-grid--cockpit .workbench-shell-aside {
-  top: 44px !important;
-  height: calc(100vh - 60px) !important;
+  top: 30px !important;
+  height: calc(100vh - 46px) !important;
 }
 
 .workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child {
@@ -5070,13 +4860,13 @@ select {
 
 .workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child > div > div:first-child {
   display: grid !important;
-  border: 1px solid rgba(184, 92, 56, 0.22) !important;
-  background: var(--moss-shell-rail-mark-glow), rgba(255, 253, 248, 0.66) !important;
-  color: var(--moss-color-warm-terracotta) !important;
+  border: 1px solid rgba(96, 165, 250, 0.36) !important;
+  background: var(--moss-shell-rail-mark-glow), rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
 }
 
 .workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child span {
-  color: var(--moss-color-warm-ink) !important;
+  color: #ffffff !important;
   font-size: 16px !important;
   font-weight: 760 !important;
 }
@@ -5103,8 +4893,8 @@ select {
 .workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a:hover,
 .workbench-shell-grid--cockpit [data-testid="workbench-support-nav"] a:hover,
 .workbench-shell-grid--cockpit .workbench-shell-agent-nav__link:hover {
-  border-color: rgba(184, 92, 56, 0.16) !important;
-  background: rgba(255, 253, 248, 0.42) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+  background: rgba(59, 130, 246, 0.16) !important;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"],
@@ -5112,12 +4902,12 @@ select {
 .workbench-shell-grid--cockpit .workbench-shell-agent-nav__link[data-active="true"] {
   border-color: var(--moss-shell-rail-active-border) !important;
   background: var(--moss-shell-rail-active-bg) !important;
-  color: var(--moss-color-warm-ink) !important;
-  box-shadow: inset 3px 0 0 var(--moss-color-warm-terracotta) !important;
+  color: #ffffff !important;
+  box-shadow: inset 3px 0 0 var(--moss-color-info-400) !important;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child {
-  color: rgba(47, 40, 36, 0.82) !important;
+  color: #ffffff !important;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
@@ -5126,7 +4916,7 @@ select {
   border: 1px solid var(--moss-shell-terminal-border) !important;
   border-radius: 10px !important;
   background: var(--moss-shell-terminal-bg) !important;
-  box-shadow: 0 10px 24px rgba(83, 65, 50, 0.06) !important;
+  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06) !important;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-market-ticker"] {
@@ -5155,7 +4945,36 @@ select {
   background:
     var(--moss-shell-paper-shade),
     var(--moss-shell-paper-bg) !important;
-  box-shadow: 0 18px 36px rgba(83, 65, 50, 0.08) !important;
+  box-shadow: 0 18px 36px rgba(15, 37, 68, 0.08) !important;
+}
+
+.workbench-shell-grid--bond-analysis {
+  grid-template-columns: 154px minmax(0, 1fr) !important;
+  gap: 14px !important;
+  padding: 30px 16px 18px !important;
+}
+
+.moss-data-mode-ribbon + .workbench-shell-grid--bond-analysis {
+  padding-top: 30px !important;
+}
+
+.workbench-shell-grid--bond-analysis .workbench-shell-aside {
+  top: 30px !important;
+  height: calc(100vh - 46px) !important;
+  padding: 14px 10px !important;
+}
+
+.workbench-shell-grid--bond-analysis .workbench-shell-aside > div:first-child span {
+  font-size: 14px !important;
+}
+
+.workbench-shell-grid--bond-analysis .workbench-main-column > main {
+  gap: 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 @media (max-width: 1180px) {

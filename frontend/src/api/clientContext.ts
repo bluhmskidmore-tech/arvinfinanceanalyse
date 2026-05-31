@@ -18,11 +18,15 @@ export type ApiClientProviderProps = {
 const parseDeferredEnvMode = (): DataSourceMode => {
   const raw = import.meta.env.VITE_DATA_SOURCE;
   const envValue = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  const isProd = import.meta.env.PROD === true;
 
   if (envValue === "real") return "real";
-  if (envValue === "mock") return "mock";
+  if (envValue === "mock") {
+    if (isProd) throw new Error("VITE_DATA_SOURCE='mock' is not allowed in production.");
+    return "mock";
+  }
 
-  if (import.meta.env.PROD === true) {
+  if (isProd) {
     throw new Error(
       "VITE_DATA_SOURCE must be explicitly set to 'real' or 'mock' in production build. " +
         "Refusing to silently fall back to mock. " +
@@ -30,12 +34,8 @@ const parseDeferredEnvMode = (): DataSourceMode => {
     );
   }
 
-  console.warn(
-    "[client] VITE_DATA_SOURCE not set (raw=%o). Defaulting to 'mock' in dev mode. " +
-      "Production build will fail fast; always declare explicitly in production.",
-    raw,
-  );
-  return "mock";
+  console.warn("[client] VITE_DATA_SOURCE not set or invalid (raw=%o). Defaulting to real.", raw);
+  return "real";
 };
 
 export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClient {

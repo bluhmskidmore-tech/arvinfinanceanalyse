@@ -17,6 +17,7 @@ def test_native_development_scripts_exist():
         ROOT / "scripts" / "dev-postgres-status.ps1",
         ROOT / "scripts" / "dev-python.ps1",
         ROOT / "scripts" / "dev-governance-maintenance.ps1",
+        ROOT / "scripts" / "dev-hermes-webui.ps1",
         ROOT / "scripts" / "codex-verify-page.ps1",
         ROOT / "scripts" / "codex-page-smoke.ps1",
     ]

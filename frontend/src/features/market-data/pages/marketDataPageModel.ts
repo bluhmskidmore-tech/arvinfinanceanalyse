@@ -303,7 +303,7 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     ncdFundingProxyMeta: input.ncdFundingProxyMeta,
     rateQuotesSource: terminalModel.rateQuotes.source,
     sourcePendingCount,
-    isFormalBasis: formalRatesMeta?.basis === "formal",
+    isFormalBasis: formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === true,
     statusBadges: {
       readinessVerdict: macroMeta?.quality_flag === "error" ? "读面异常" : "读面就绪",
       overviewReadinessLabel: "读面就绪",

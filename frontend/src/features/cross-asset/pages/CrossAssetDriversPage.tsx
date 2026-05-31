@@ -87,6 +87,7 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
   if (correlations.length === 0) {
     return [
       {
+        id: "empty",
         indicator: "暂无治理后的联动排序",
         current: "不可用",
         mid: "不可用",
@@ -96,8 +97,18 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
     ];
   }
 
-  return correlations.slice(0, 8).map((row) => {
+  return correlations.slice(0, 8).map((row, index) => {
     const indicator = `${row.series_name} -> ${row.target_family}${row.target_tenor ? ` (${row.target_tenor})` : ""}`;
+    const id = [
+      row.series_id,
+      row.series_name,
+      row.target_family,
+      row.target_tenor,
+      row.direction,
+      index,
+    ]
+      .filter(Boolean)
+      .join("|");
     const current = formatLinkageCorrelationDisplay(row.correlation_3m);
     const mid = formatLinkageCorrelationDisplay(row.correlation_6m);
     let evalLabel = "混合";
@@ -109,7 +120,7 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
       evalLabel = "负向";
       evalTone = "bear";
     }
-    return { indicator, current, mid, eval: evalLabel, evalTone };
+    return { id, indicator, current, mid, eval: evalLabel, evalTone };
   });
 }
 
@@ -2146,7 +2157,7 @@ export default function CrossAssetDriversPage() {
                 </thead>
                 <tbody>
                   {heatmapRows.map((row) => (
-                    <tr key={row.indicator}>
+                    <tr key={row.id}>
                       <td>{row.indicator}</td>
                       <td style={tabularNumsStyle}>{row.current}</td>
                       <td style={tabularNumsStyle}>{row.mid}</td>
@@ -2209,7 +2220,7 @@ export default function CrossAssetDriversPage() {
           </section>
             <DriverWaterfallPanel bars={waterfallBars} env={env} />
 
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: t.space[3], alignItems: "start" }}>
+            <div className="cross-asset-risk-snapshot-grid">
               <VolatilityClusteringPanel alert={volAlert} />
               <EquityBondERPPanel erp={erpData} />
             </div>

@@ -468,9 +468,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/cube-query",
     icon: "analysis",
     description: "对事实表进行自由维度聚合、筛选、钻取",
-    readiness: "placeholder",
-    readinessLabel: "暂缓",
-    readinessNote: "入口保留；自由聚合查询尚未作为二期主消费面晋升。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote:
+      "已接 /api/cube/query 与 /api/cube/dimensions/*；当前仅按已覆盖事实表与 result_meta 声明查询结果口径。",
   },
   {
     key: "pnl-by-business",

@@ -55,6 +55,10 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
         {"report_date": REPORT_DATE},
     ),
     (
+        "/api/bond-analytics/dv01-risk",
+        {"report_date": REPORT_DATE, "accounting_class": "OCI", "top_n": "20", "shock_bps": "1,10,25,50"},
+    ),
+    (
         "/api/bond-analytics/credit-spread-migration",
         {"report_date": REPORT_DATE},
     ),
@@ -127,7 +131,7 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 10
+    assert len(paths) == len(set(paths)) == 11
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):
@@ -156,6 +160,48 @@ def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypat
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dates"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_risk_returns_numeric_payload(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/api/bond-analytics/dv01-risk",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+            "top_n": 2,
+            "shock_bps": "10,25",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_risk"
+    result = payload["result"]
+    assert result["accounting_class"] == "OCI"
+    assert result["total_dv01"]["unit"] == "dv01"
+    assert result["total_face_value"]["unit"] == "yuan"
+    assert result["shock_scenarios"][0]["estimated_pnl"]["unit"] == "yuan"
+    assert result["tenor_buckets"][0]["dv01_share"]["unit"] == "ratio"
+    assert result["top_bonds"][0]["dv01"]["unit"] == "dv01"
     get_settings.cache_clear()
 
 

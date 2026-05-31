@@ -20,20 +20,20 @@
 }
 
 .toolbarSelect {
-  min-width: 132px;
-  height: 34px;
+  min-width: 120px;
+  height: 28px;
   border: 1px solid var(--moss-color-neutral-300);
-  border-radius: var(--moss-radius-md);
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--moss-color-primary-900);
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  padding: 0 var(--moss-space-3);
+  padding: 0 var(--moss-space-2);
 }
 
 .toolbarSelectWide {
-  min-width: 154px;
+  min-width: 136px;
 }
 
 .refreshButton {

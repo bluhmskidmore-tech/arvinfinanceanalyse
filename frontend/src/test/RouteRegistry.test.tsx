@@ -398,15 +398,11 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("heading", { name: "平台配置" })).toBeInTheDocument();
   });
 
-  it("renders the cube-query route as a placeholder surface", async () => {
+  it("renders the cube-query route as a real query page", async () => {
     renderWorkbenchApp(["/cube-query"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByTestId("cube-query-page")).not.toBeInTheDocument();
-    const banner = screen.getByTestId("workbench-readiness-banner");
-    expect(
-      within(banner).getByText(/入口保留；自由聚合查询尚未作为二期主消费面晋升/),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("cube-query-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the hidden /agent route as the live workbench", async () => {

@@ -1385,6 +1385,13 @@ export default function StockAnalysisPage() {
       strategyQuery.data?.result_meta?.trace_id,
     ],
   );
+  const boundaryRailItems = useMemo(
+    () =>
+      evidenceStatusItems.filter((item) =>
+        ["as-of-date", "rule-version", "quality", "exceptions"].includes(item.key),
+      ),
+    [evidenceStatusItems],
+  );
 
   const showStaleBanner = Boolean(
     strategyQuery.data?.result_meta &&
@@ -3001,32 +3008,34 @@ export default function StockAnalysisPage() {
                       <div className={SA_SECTION_HEAD}>
                         <h2 className={SA_CARD_TITLE}>数据口径与边界</h2>
                       </div>
-                      <div className="space-y-2">
-                        {evidenceStatusItems.map((item) => (
-                          <div key={item.key} className="flex items-start gap-2 text-xs">
-                            <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${toneDotClass(item.tone)}`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-neutral-600">{item.label}</span>
-                                <strong className="text-neutral-900" style={tabularNumStyle}>
-                                  {item.statusLabel}
-                                </strong>
-                              </div>
-                              <p className="m-0 mt-0.5 text-neutral-500">{item.detail}</p>
+                      <div className="stock-analysis-page__boundary-compact-grid">
+                        {boundaryRailItems.map((item) => (
+                          <div key={item.key} data-tone={item.tone}>
+                            <span aria-hidden="true">
+                              {item.key === "as-of-date" ? (
+                                <ClockCircleOutlined />
+                              ) : item.key === "rule-version" ? (
+                                <SafetyCertificateOutlined />
+                              ) : item.key === "quality" ? (
+                                <CheckCircleOutlined />
+                              ) : (
+                                <DatabaseOutlined />
+                              )}
+                            </span>
+                            <div>
+                              <small>{item.label}</small>
+                              <strong style={tabularNumStyle}>{item.statusLabel}</strong>
                             </div>
                           </div>
                         ))}
                       </div>
                       {boundarySummary ? (
                         <p
-                          className="mt-3 border-t border-neutral-100 pt-3 text-xs leading-relaxed text-neutral-500"
+                          className="stock-analysis-page__boundary-summary"
                           data-testid="stock-analysis-boundary-summary"
                         >
-                          <strong className="text-neutral-900">{boundarySummary.summaryLabel}</strong>
-                          <span className="ml-1">{boundarySummary.detailLabel}</span>
-                          {boundarySummary.topMessages[0] ? (
-                            <small className="mt-1 block text-neutral-500">{boundarySummary.topMessages[0]}</small>
-                          ) : null}
+                          <strong>{boundarySummary.summaryLabel}</strong>
+                          <span>{boundarySummary.detailLabel}</span>
                         </p>
                       ) : null}
                       <Button

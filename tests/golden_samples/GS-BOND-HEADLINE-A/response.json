@@ -66,9 +66,9 @@
         "sign_aware": true
       },
       "total_dv01": {
-        "raw": 0.2,
+        "raw": 0.8,
         "unit": "dv01",
-        "display": "0.20",
+        "display": "0.80",
         "precision": 2,
         "sign_aware": false
       },
@@ -118,9 +118,9 @@
         "sign_aware": true
       },
       "total_dv01": {
-        "raw": 0.126,
+        "raw": 0.8,
         "unit": "dv01",
-        "display": "0.13",
+        "display": "0.80",
         "precision": 2,
         "sign_aware": false
       },

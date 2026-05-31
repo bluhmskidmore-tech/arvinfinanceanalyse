@@ -76,12 +76,12 @@ function pnlTone(value: number) {
   return "neutral";
 }
 
-const chartAxisMuted = designTokens.color.warm.taupe;
-const chartMarketCost = designTokens.color.warm.slateBlue;
-const chartSpread = designTokens.color.warm.sage;
-const chartAssetYield = designTokens.color.warm.charcoal;
-const chartLiabilityDash = designTokens.color.warm.taupe;
-const chartScatter = designTokens.color.warm.terracotta;
+const chartAxisMuted = designTokens.color.neutral[500];
+const chartMarketCost = designTokens.color.primary[600];
+const chartSpread = designTokens.color.success[600];
+const chartAssetYield = designTokens.color.neutral[900];
+const chartLiabilityDash = designTokens.color.neutral[500];
+const chartScatter = designTokens.color.info[600];
 
 function historyChartOption(history: LiabilityYieldHistoryPoint[]): EChartsOption {
   const dates = history.map((h) => h.date);

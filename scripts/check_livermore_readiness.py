@@ -78,11 +78,46 @@ def main() -> int:
     if report.stock_missing_families:
         print(f"  missing_input_families: {', '.join(report.stock_missing_families)}")
 
-    print()
-    print(
-        "代码层说明: 5日广度与涨停质量在 livermore_strategy.py 仍为 Phase 1 占位 (missing)；"
-        "修复需落库 + core_finance/服务层读表，而非仅刷新宏观。"
-    )
+    if report.duckdb_exists and report.last_trade_date:
+        print()
+        print(f"gate_supplement (fact_livermore_gate_supplement_daily): max={report.gate_supplement_max_date or '(none)'}")
+        print(
+            f"  landed_for_last_trade ({report.last_trade_date}): "
+            f"{report.gate_supplement_landed_for_last_trade}"
+        )
+        if not report.gate_supplement_landed_for_last_trade:
+            print(
+                "  fix: python scripts/backfill_livermore_gate_supplement.py "
+                f"--as-of {report.last_trade_date}"
+            )
+            print(
+                "  or API: POST /ui/market-data/livermore/refresh-gate-supplement"
+                f"?as_of_date={report.last_trade_date}"
+            )
+
+        print()
+        print(f"position_snapshot (livermore_position_snapshot ACTIVE): max={report.position_active_max_date or '(none)'}")
+        print(
+            f"  landed_for_last_trade ({report.last_trade_date}): "
+            f"{report.position_landed_for_last_trade}"
+        )
+        if report.risk_exit_block_reason:
+            print(f"  risk_exit_block_reason: {report.risk_exit_block_reason}")
+        if not report.position_landed_for_last_trade and report.position_active_max_date:
+            print(
+                "  fix: python scripts/sync_livermore_position_snapshot.py "
+                f"--target-as-of {report.last_trade_date}"
+            )
+            print(
+                "  or import CSV: python -m backend.app.tasks.livermore_position_snapshot_run "
+                f"--as-of-date {report.last_trade_date} --csv-path <holdings.csv>"
+            )
+        elif not report.position_active_max_date:
+            print(
+                "  fix: load holdings via POST /ui/market-data/livermore/position-snapshot/manual "
+                "or livermore_position_snapshot_run with a CSV."
+            )
+
     return 0
 
 

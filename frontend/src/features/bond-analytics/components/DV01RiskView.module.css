@@ -1,0 +1,131 @@
+.shell {
+  display: grid;
+  gap: var(--moss-space-4);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #f8fbff;
+}
+
+.controlGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+  align-items: center;
+}
+
+.controlLabel {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.select {
+  min-width: 88px;
+  height: 32px;
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: var(--moss-space-3);
+}
+
+.kpiCard {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.kpiLabel {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.kpiValue {
+  color: var(--moss-color-neutral-900);
+  font-family: var(--moss-font-mono);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.panel {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--moss-color-primary-900);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.twoColumnGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--moss-space-4);
+}
+
+.emptyState {
+  display: grid;
+  min-height: 128px;
+  place-items: center;
+  border: 1px dashed #cfe0f5;
+  border-radius: var(--moss-radius-sm);
+  background: #f8fbff;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.loadingState {
+  display: grid;
+  min-height: 128px;
+  place-items: center;
+}
+
+@media (max-width: 960px) {
+  .kpiGrid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .twoColumnGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kpiGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

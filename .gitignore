@@ -34,6 +34,8 @@ data_input/
 
 ## Local visual verification artifacts
 .playwright-mcp/
+.codex/screenshots/
+artifacts/
 /dashboard-*.png
 /stock-analysis-*.png
 /team-performance-*.png
@@ -51,6 +53,7 @@ build/
 coverage/
 frontend/dist/
 frontend/playwright-*.png
+frontend/tmp/
 frontend/*.d.ts
 frontend/*.js
 frontend/*.js.map

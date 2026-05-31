@@ -82,8 +82,12 @@ const MarketDataPage = lazy(
 const MacroToolkitPage = lazy(
   () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
 );
+const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
 const StockAnalysisPage = lazy(
   () => import("../features/stock-analysis/pages/StockAnalysisPage"),
+);
+const EquityCockpitPrototypePage = lazy(
+  () => import("../features/prototype/EquityCockpitPrototypePage"),
 );
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
@@ -98,6 +102,14 @@ function routeElement(element: ReactNode) {
     </Suspense>
   );
 }
+
+function parseEnvDataSourceMode() {
+  const raw = import.meta.env.VITE_DATA_SOURCE;
+  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
+}
+
+const equityPrototypeRouteEnabled =
+  import.meta.env.DEV === true && parseEnvDataSourceMode() === "mock";
 
 function placeholderRoute(section: WorkbenchSection): RouteObject {
   return {
@@ -238,6 +250,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/cube-query") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<CubeQueryPage />),
+      };
+    }
+
     if (section.path === "/stock-analysis") {
       return {
         path: section.path.slice(1),
@@ -373,4 +392,12 @@ export const workbenchRoutes: RouteObject[] = [
       },
     ],
   },
+  ...(equityPrototypeRouteEnabled
+    ? [
+        {
+          path: "/prototype/equity-cockpit",
+          element: routeElement(<EquityCockpitPrototypePage />),
+        } satisfies RouteObject,
+      ]
+    : []),
 ];

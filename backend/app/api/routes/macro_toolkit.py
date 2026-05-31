@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Iterable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
 
@@ -290,6 +290,7 @@ def macro_toolkit_analysis(
         capability_results,
         a_share_risk,
     )
+    hason_strategy = _hason_macro_strategy_summary(output_files, analysis_date=analysis_date)
     hit_count = sum(1 for item in indicators if item["latest_value"] is not None)
     coverage = {
         "indicator_count": len(indicators),
@@ -308,6 +309,7 @@ def macro_toolkit_analysis(
             "coverage": coverage,
             "indicators": indicators,
             "signal_cards": signal_cards,
+            "hason_strategy": hason_strategy,
             "a_share_risk": a_share_risk,
             "capability_results": capability_results,
             "strategy_summaries": strategy_summaries,
@@ -2876,6 +2878,229 @@ def _analysis_signal_cards(
         _script_output_card(output_files),
     ]
     return cards
+
+
+_HASON_REQUIRED_OUTPUTS = ("final_signal.csv", "crowding_latest.csv")
+_HASON_BUSINESS_TZ = timezone(timedelta(hours=8))
+_HASON_MODULES: tuple[dict[str, object], ...] = (
+    {
+        "key": "market_state",
+        "label": "Market state",
+        "status": "integrated",
+        "scripts": ("merrill_clock_cn", "regime_switch_cn", "dcc_garch_cn", "garch_multi_asset"),
+        "evidence": ("cycle", "volatility", "correlation"),
+    },
+    {
+        "key": "allocation",
+        "label": "Allocation",
+        "status": "integrated",
+        "scripts": ("risk_parity_cn", "rebalance_cn"),
+        "evidence": ("risk parity", "risk budget", "rebalancing"),
+    },
+    {
+        "key": "strategy_selection",
+        "label": "Strategy selection",
+        "status": "integrated",
+        "scripts": ("cta_trend_cn", "signal_aggregator", "crowding_cn"),
+        "evidence": ("CTA trend", "crowding filter", "final signal"),
+    },
+    {
+        "key": "risk_management",
+        "label": "Risk management",
+        "status": "integrated",
+        "scripts": ("crisis_score_cn", "risk_monitor", "dcc_garch_cn"),
+        "evidence": ("Crisis Score", "vol-correlation crisis", "de-risking"),
+    },
+    {
+        "key": "performance_review",
+        "label": "Performance review",
+        "status": "integrated",
+        "scripts": ("performance_metrics_cn", "backtest_cn"),
+        "evidence": ("Sharpe", "Sortino", "Calmar"),
+    },
+)
+
+
+def _hason_macro_strategy_summary(
+    output_files: list[dict[str, object]],
+    *,
+    analysis_date: str | None = None,
+) -> dict[str, object]:
+    scripts_by_name = {script.name: script for script in iter_toolkit_scripts()}
+    runtime_outputs = _hason_runtime_outputs(output_files, analysis_date=analysis_date)
+    missing_outputs = [
+        str(item["name"])
+        for item in runtime_outputs
+        if item["freshness_status"] == "missing"
+    ]
+    stale_outputs = [
+        str(item["name"])
+        for item in runtime_outputs
+        if item["freshness_status"] == "stale"
+    ]
+    runtime_output_status = _hason_runtime_output_status(runtime_outputs)
+    modules = [_hason_module_payload(module, scripts_by_name) for module in _HASON_MODULES]
+    ready_modules = sum(1 for module in modules if module["status"] == "integrated")
+    partial_modules = sum(1 for module in modules if module["status"] == "partial")
+    missing_modules = sum(1 for module in modules if module["status"] == "missing")
+    missing_script_count = len(
+        {
+            str(script_name)
+            for module in modules
+            for script_name in module["missing_scripts"]
+        }
+    )
+    readiness_ratio = round(ready_modules / len(modules), 4) if modules else 0
+    status = (
+        "integrated"
+        if runtime_output_status == "current" and ready_modules == len(modules)
+        else "degraded"
+    )
+    return {
+        "key": "hason_macro_strategy",
+        "framework_name": "Hason macro hedge due-diligence framework",
+        "basis": "analytical",
+        "observation_only": True,
+        "formal_use_allowed": False,
+        "formal_metric_id": None,
+        "status": status,
+        "display_status": "visible",
+        "readiness": {
+            "ready_modules": ready_modules,
+            "partial_modules": partial_modules,
+            "missing_modules": missing_modules,
+            "missing_script_count": missing_script_count,
+            "total_modules": len(modules),
+            "ratio": readiness_ratio,
+        },
+        "modules": modules,
+        "runtime_output_status": runtime_output_status,
+        "runtime_outputs": runtime_outputs,
+        "required_runtime_outputs": list(_HASON_REQUIRED_OUTPUTS),
+        "missing_runtime_outputs": missing_outputs,
+        "stale_runtime_outputs": stale_outputs,
+        "boundary": "Analytical macro toolkit display only; not a formal MTR metric, trade order, or portfolio execution engine.",
+        "source_trace": _hason_source_trace(modules, scripts_by_name),
+    }
+
+
+def _hason_runtime_outputs(
+    output_files: list[dict[str, object]],
+    *,
+    analysis_date: str | None,
+) -> list[dict[str, object]]:
+    files_by_name = {str(item["name"]): item for item in output_files}
+    return [
+        _hason_runtime_output_payload(name, files_by_name.get(name), analysis_date=analysis_date)
+        for name in _HASON_REQUIRED_OUTPUTS
+    ]
+
+
+def _hason_runtime_output_payload(
+    name: str,
+    file_payload: dict[str, object] | None,
+    *,
+    analysis_date: str | None,
+) -> dict[str, object]:
+    if file_payload is None:
+        return {
+            "name": name,
+            "freshness_status": "missing",
+            "modified_at": None,
+            "modified_date": None,
+            "reference_date": analysis_date,
+        }
+    modified_at = str(file_payload.get("modified_at") or "").strip() or None
+    modified_date = _hason_output_modified_date(modified_at)
+    freshness_status = _hason_output_freshness(modified_date, analysis_date)
+    return {
+        "name": name,
+        "freshness_status": freshness_status,
+        "modified_at": modified_at,
+        "modified_date": modified_date,
+        "reference_date": analysis_date,
+    }
+
+
+def _hason_output_modified_date(modified_at: str | None) -> str | None:
+    if not modified_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(modified_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.date().isoformat()
+    return parsed.astimezone(_HASON_BUSINESS_TZ).date().isoformat()
+
+
+def _hason_output_freshness(modified_date: str | None, analysis_date: str | None) -> str:
+    if not modified_date:
+        return "unknown"
+    if not analysis_date:
+        return "present"
+    try:
+        modified = date.fromisoformat(modified_date[:10])
+        reference = date.fromisoformat(analysis_date[:10])
+    except ValueError:
+        return "unknown"
+    return "current" if modified >= reference else "stale"
+
+
+def _hason_runtime_output_status(runtime_outputs: list[dict[str, object]]) -> str:
+    statuses = {str(item["freshness_status"]) for item in runtime_outputs}
+    if "missing" in statuses:
+        return "missing"
+    if "stale" in statuses:
+        return "stale"
+    if "unknown" in statuses:
+        return "unknown"
+    if statuses == {"current"}:
+        return "current"
+    return "present"
+
+
+def _hason_module_payload(
+    module: dict[str, object],
+    scripts_by_name: dict[str, MacroToolkitScript],
+) -> dict[str, object]:
+    script_names = [str(name) for name in module["scripts"]]
+    available = [name for name in script_names if scripts_by_name.get(name) and scripts_by_name[name].path.exists()]
+    missing = [name for name in script_names if name not in available]
+    status = "integrated" if not missing else "partial" if available else "missing"
+    return {
+        "key": module["key"],
+        "label": module["label"],
+        "status": status,
+        "scripts": script_names,
+        "available_scripts": available,
+        "missing_scripts": missing,
+        "evidence": list(module["evidence"]),
+    }
+
+
+def _hason_source_trace(
+    modules: list[dict[str, object]],
+    scripts_by_name: dict[str, MacroToolkitScript],
+) -> list[dict[str, object]]:
+    traced: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for module in modules:
+        for script_name in module["scripts"]:
+            name = str(script_name)
+            if name in seen:
+                continue
+            seen.add(name)
+            script = scripts_by_name.get(name)
+            traced.append(
+                {
+                    "script": name,
+                    "filename": script.filename if script else None,
+                    "group": script.group if script else None,
+                    "available": bool(script and script.path.exists()),
+                }
+            )
+    return traced
 
 
 def _a_share_stampede_risk_card(a_share_risk: dict[str, object] | None) -> dict[str, object]:

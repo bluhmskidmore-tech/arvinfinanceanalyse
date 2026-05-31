@@ -154,7 +154,7 @@ describe("BondAnalyticsView", () => {
     expect(
       await screen.findByTestId("bond-analysis-toolbar", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toHaveClass("dashboard-home-toolbar");
-    expect(screen.getByRole("heading", { name: "债券分析", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "债券持仓", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toHaveTextContent("刷新");
     expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
 
@@ -168,11 +168,11 @@ describe("BondAnalyticsView", () => {
       { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
     );
     expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion").textContent?.length).toBeGreaterThan(0);
-    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("收益率和信用利差");
+    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("当前结论");
     expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();
-    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toBeInTheDocument();
+    expect(within(topCockpit).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
@@ -199,7 +199,7 @@ describe("BondAnalyticsView", () => {
   );
 
   it(
-    "renders the third-page bond-analysis cockpit sections from the mockup",
+    "renders the bond holdings workbench cockpit sections from the reference",
     async () => {
       renderBondAnalyticsView();
 
@@ -209,6 +209,7 @@ describe("BondAnalyticsView", () => {
         { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
       );
 
+      expect(within(topCockpit).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
       expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
@@ -285,6 +286,7 @@ describe("BondAnalyticsView", () => {
       expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("持仓明细暂未返回，评级分布稍后补齐。")).toBeInTheDocument();
     });
   });
 

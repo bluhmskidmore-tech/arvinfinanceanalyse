@@ -27,7 +27,7 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
     assert "axeSelector" in spec_text
     assert "screenshotFullPage" in spec_text
     assert ".ag-theme-alpine" in spec_text
-    assert "fixed-income-dashboard-page" in spec_text
+    assert "bond-dashboard-page" in spec_text
     assert "balance-analysis-page" in spec_text
     assert "product-category-page" in spec_text
     assert "ledger-pnl-page" in spec_text

@@ -13,7 +13,7 @@ import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 const cardStyle = {
   padding: designTokens.space[5],
   borderRadius: designTokens.radius.sm,
-  border: "1px solid #ded6ca",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
   background: "#ffffff",
   boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
@@ -377,14 +377,14 @@ export function AdvancedAttributionChart({
                 style={{
                   ...cardStyle,
                   padding: designTokens.space[4],
-                  background: "#fafafa",
-                  borderColor: "#ded6ca",
+                  background: designTokens.color.neutral[50],
+                  borderColor: designTokens.color.neutral[200],
                 }}
               >
                 <div
                   style={{
                     fontSize: designTokens.fontSize[12],
-                    color: designTokens.color.warm.ink,
+                    color: designTokens.color.neutral[900],
                   }}
                 >
                   静态收益（年化近似）
@@ -393,7 +393,7 @@ export function AdvancedAttributionChart({
                   style={{
                     fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: designTokens.color.warm.ink,
+                    color: designTokens.color.neutral[900],
                     ...tabularNumsStyle,
                   }}
                 >
@@ -754,10 +754,10 @@ export function AdvancedAttributionChart({
                   margin: `0 0 ${designTokens.space[3]}px`,
                   fontSize: designTokens.fontSize[13],
                   color: designTokens.color.neutral[700],
-                  background: "#fafafa",
+                  background: designTokens.color.neutral[50],
                   padding: designTokens.space[3],
                   borderRadius: designTokens.radius.sm,
-                  border: "1px solid #ece6dd",
+                  border: `1px solid ${designTokens.color.neutral[200]}`,
                 }}
               >
                 曲线形态：{krdData.curve_interpretation}

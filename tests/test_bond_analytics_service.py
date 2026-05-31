@@ -395,6 +395,129 @@ def test_bond_analytics_krd_curve_risk_aggregates_dv01_and_scenarios(tmp_path, m
     get_settings.cache_clear()
 
 
+def test_bond_analytics_dv01_risk_defaults_to_oci_scope_and_parallel_shocks(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_risk(date(2026, 3, 31))
+    result = payload["result"]
+
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_risk"
+    assert result["accounting_class"] == "OCI"
+    assert result["position_count"] == 1
+    assert _numeric_raw(result["total_face_value"]) == Decimal("200")
+    assert _numeric_raw(result["total_market_value"]) == Decimal("190")
+    assert _numeric_raw(result["total_dv01"]) > Decimal("0")
+    assert _numeric_raw(result["face_weighted_modified_duration"]) > Decimal("0")
+    assert [row["shock_bp"]["raw"] for row in result["shock_scenarios"]] == [1.0, -1.0, 10.0, -10.0, 25.0, -25.0, 50.0, -50.0]
+    up_10 = next(row for row in result["shock_scenarios"] if row["shock_bp"]["raw"] == 10.0)
+    down_10 = next(row for row in result["shock_scenarios"] if row["shock_bp"]["raw"] == -10.0)
+    assert _numeric_raw(up_10["estimated_pnl"]) == -_numeric_raw(result["total_dv01"]) * Decimal("10")
+    assert _numeric_raw(down_10["estimated_pnl"]) == _numeric_raw(result["total_dv01"]) * Decimal("10")
+    assert [row["tenor_bucket"] for row in result["tenor_buckets"]] == ["5Y"]
+    assert result["top_bonds"][0]["instrument_code"] == "CB-001"
+    assert result["top_issuers"][0]["issuer_name"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_risk_all_scope_groups_tenors_and_sorts_by_abs_dv01(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="all", top_n=2, shock_bps="5")
+    result = payload["result"]
+
+    assert result["accounting_class"] == "all"
+    assert result["position_count"] == 3
+    assert {row["tenor_bucket"] for row in result["tenor_buckets"]} == {"1Y", "5Y", "10Y"}
+    assert len(result["top_bonds"]) == 2
+    top_dv01_values = [_numeric_raw(row["dv01"]).copy_abs() for row in result["top_bonds"]]
+    assert top_dv01_values == sorted(top_dv01_values, reverse=True)
+    assert [row["shock_bp"]["raw"] for row in result["shock_scenarios"]] == [5.0, -5.0]
+    assert _numeric_raw(result["total_face_value"]) == Decimal("450")
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_risk_empty_scope_returns_warning(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_risk(date(2026, 4, 30), accounting_class="OCI")
+    result = payload["result"]
+
+    assert result["accounting_class"] == "OCI"
+    assert result["position_count"] == 0
+    assert _numeric_raw(result["total_dv01"]) == Decimal("0")
+    assert result["shock_scenarios"] == []
+    assert result["tenor_buckets"] == []
+    assert result["top_bonds"] == []
+    assert result["top_issuers"] == []
+    assert result["warnings"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_risk_shares_use_absolute_exposure_denominator(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "instrument_code": "POS-001",
+            "instrument_name": "Positive DV01",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "3Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("100"),
+            "market_value": Decimal("101"),
+            "modified_duration": Decimal("3"),
+            "dv01": Decimal("100"),
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+        },
+        {
+            "instrument_code": "NEG-001",
+            "instrument_name": "Negative DV01",
+            "issuer_name": "Issuer B",
+            "rating": "AAA",
+            "tenor_bucket": "5Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("100"),
+            "market_value": Decimal("99"),
+            "modified_duration": Decimal("5"),
+            "dv01": Decimal("-40"),
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+        },
+    ]
+    total_dv01 = Decimal("60")
+
+    total_abs_dv01 = service_mod._total_abs_dv01(rows)
+
+    assert total_abs_dv01 == Decimal("140")
+    assert total_dv01 == Decimal("60")
+    tenor_buckets = service_mod._build_dv01_tenor_buckets(rows, total_abs_dv01=total_abs_dv01)
+    top_bonds = service_mod._build_dv01_top_bonds(rows, total_abs_dv01=total_abs_dv01, top_n=2)
+    top_issuers = service_mod._build_dv01_top_issuers(rows, total_abs_dv01=total_abs_dv01, top_n=2)
+
+    assert _numeric_raw(tenor_buckets[0].dv01_share.model_dump(mode="json")) == Decimal(str(100 / 140))
+    assert _numeric_raw(top_bonds[0].dv01_share.model_dump(mode="json")) == Decimal(str(100 / 140))
+    assert _numeric_raw(top_issuers[0].dv01_share.model_dump(mode="json")) == Decimal(str(100 / 140))
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentration(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     service_mod = load_module(

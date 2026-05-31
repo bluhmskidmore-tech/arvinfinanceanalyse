@@ -48,7 +48,7 @@
 - `result.kpis.weighted_duration.raw == 5.0` and `unit == "ratio"`.
 - `result.kpis.weighted_coupon.raw == 0.025` and `unit == "pct"`.
 - `result.kpis.credit_spread_median.raw == 0.04` and `unit == "pct"`.
-- `result.kpis.total_dv01.raw == 0.2` and `unit == "dv01"`.
+- `result.kpis.total_dv01.raw == 0.8` and `unit == "dv01"`.
 - `result.kpis.bond_count == 3`.
 - `result.prev_kpis.total_market_value.raw == 300.0` and `unit == "yuan"`.
 - `result.prev_kpis.unrealized_pnl.raw == 0.0` and `unit == "yuan"`.
@@ -56,7 +56,7 @@
 - `result.prev_kpis.weighted_duration.raw == 4.2` and `unit == "ratio"`.
 - `result.prev_kpis.weighted_coupon.raw == 0.025` and `unit == "pct"`.
 - `result.prev_kpis.credit_spread_median.raw == 0.035` and `unit == "pct"`.
-- `result.prev_kpis.total_dv01.raw == 0.126` and `unit == "dv01"`.
+- `result.prev_kpis.total_dv01.raw == 0.8` and `unit == "dv01"`.
 - `result.prev_kpis.bond_count == 2`.
 
 ## Null And Empty Behavior

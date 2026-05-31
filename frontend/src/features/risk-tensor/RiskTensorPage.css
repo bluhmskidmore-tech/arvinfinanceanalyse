@@ -4,33 +4,57 @@
   margin-bottom: 18px;
 }
 
+.risk-tensor-report-date-select {
+  display: grid;
+  gap: 5px;
+  min-width: 180px;
+}
+
+.risk-tensor-report-date-select span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-report-date-select select {
+  min-height: 40px;
+  padding: 8px 34px 8px 11px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
 .risk-tensor-brief__lead {
   display: grid;
   gap: 8px;
   padding: 16px 18px;
   border: 1px solid var(--moss-color-border-default);
-  border-left: 4px solid var(--moss-color-warm-slate-blue);
+  border-left: 4px solid var(--moss-color-info-600);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.9);
+  background: color-mix(in srgb, var(--moss-color-info-50) 44%, var(--moss-color-card-bg));
 }
 
 .risk-tensor-brief__lead[data-tone="warning"] {
-  border-left-color: var(--moss-color-warm-terracotta);
-  background: rgba(255, 248, 238, 0.82);
+  border-left-color: var(--moss-color-warning-600);
+  background: var(--moss-color-warning-50);
 }
 
 .risk-tensor-brief__lead[data-tone="danger"] {
-  border-left-color: var(--moss-color-warm-burgundy);
-  background: rgba(251, 242, 243, 0.82);
+  border-left-color: var(--moss-color-danger-600);
+  background: var(--moss-color-danger-50);
 }
 
 .risk-tensor-brief__lead[data-tone="ok"] {
-  border-left-color: var(--moss-color-state-success-text);
+  border-left-color: var(--moss-color-success-600);
+  background: var(--moss-color-success-50);
 }
 
 .risk-tensor-brief__lead span,
 .risk-tensor-brief__tile span {
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -57,7 +81,7 @@
   gap: 4px;
   margin: 2px 0 0;
   padding-left: 18px;
-  color: var(--moss-color-warm-burgundy);
+  color: var(--moss-color-danger-700);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -71,10 +95,10 @@
 
 .risk-tensor-brief__badges span {
   padding: 5px 8px;
-  border: 1px solid rgba(124, 88, 61, 0.14);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.74);
-  color: var(--moss-color-warm-taupe);
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -92,24 +116,24 @@
   min-width: 0;
   min-height: 128px;
   padding: 13px;
-  border: 1px solid rgba(124, 88, 61, 0.14);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.72);
+  background: var(--moss-color-card-bg);
 }
 
 .risk-tensor-brief__tile[data-tone="warning"] {
-  border-color: rgba(184, 121, 47, 0.28);
-  background: rgba(255, 248, 238, 0.74);
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
 }
 
 .risk-tensor-brief__tile[data-tone="danger"] {
-  border-color: rgba(141, 48, 58, 0.2);
-  background: rgba(251, 242, 243, 0.62);
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
 }
 
 .risk-tensor-brief__tile[data-tone="ok"] {
-  border-color: rgba(45, 138, 94, 0.18);
-  background: rgba(245, 252, 248, 0.78);
+  border-color: var(--moss-color-success-200);
+  background: var(--moss-color-success-50);
 }
 
 .risk-tensor-brief__tile strong {
@@ -121,20 +145,20 @@
 }
 
 .risk-tensor-brief__tile[data-tone="warning"] strong {
-  color: var(--moss-color-warm-terracotta);
+  color: var(--moss-color-warning-600);
 }
 
 .risk-tensor-brief__tile[data-tone="danger"] strong {
-  color: var(--moss-color-warm-burgundy);
+  color: var(--moss-color-danger-600);
 }
 
 .risk-tensor-brief__tile[data-tone="ok"] strong {
-  color: var(--moss-color-state-success-text);
+  color: var(--moss-color-success-600);
 }
 
 .risk-tensor-brief__tile p {
   margin: 0;
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -153,7 +177,7 @@
 }
 
 .risk-tensor-duration-scope__header span {
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -168,7 +192,7 @@
 
 .risk-tensor-duration-scope__header p {
   margin: 0;
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -187,7 +211,7 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(249, 244, 235, 0.72)),
+    linear-gradient(180deg, var(--moss-color-card-bg), var(--moss-color-neutral-50)),
     var(--moss-color-card-bg);
 }
 
@@ -201,7 +225,7 @@
 
 .risk-tensor-prior-change__header span,
 .risk-tensor-prior-change__metric span {
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -216,9 +240,10 @@
 
 .risk-tensor-prior-change__header strong {
   padding: 7px 9px;
-  border: 1px solid rgba(124, 88, 61, 0.16);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  color: var(--moss-color-warm-taupe);
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -241,9 +266,9 @@
   gap: 7px;
   min-width: 0;
   padding: 12px;
-  border: 1px solid rgba(124, 88, 61, 0.14);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.72);
+  background: var(--moss-color-card-bg);
 }
 
 .risk-tensor-prior-change__metric strong {
@@ -254,17 +279,17 @@
 }
 
 .risk-tensor-prior-change__metric[data-tone="warning"] strong {
-  color: var(--moss-color-warm-burgundy);
+  color: var(--moss-color-warning-600);
 }
 
 .risk-tensor-prior-change__metric[data-tone="good"] strong {
-  color: var(--moss-color-state-success-text);
+  color: var(--moss-color-success-600);
 }
 
 .risk-tensor-prior-change__metric p,
 .risk-tensor-prior-change__metric small {
   margin: 0;
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -275,9 +300,9 @@
   border: 1px solid var(--moss-color-border-default);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(249, 244, 235, 0.86)),
+    linear-gradient(180deg, var(--moss-color-card-bg), var(--moss-color-neutral-50)),
     var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(82, 63, 44, 0.06);
+  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.06);
 }
 
 .risk-tensor-dv01-controls__header {
@@ -287,13 +312,13 @@
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 14px;
-  border-bottom: 1px solid rgba(124, 88, 61, 0.16);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
 }
 
 .risk-tensor-dv01-controls__eyebrow {
   display: block;
   margin-bottom: 5px;
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
@@ -313,15 +338,15 @@
   gap: 2px;
   min-width: 124px;
   padding: 8px 10px;
-  border: 1px solid rgba(184, 121, 47, 0.28);
+  border: 1px solid var(--moss-color-warning-200);
   border-radius: 8px;
-  background: rgba(255, 248, 238, 0.78);
-  color: var(--moss-color-warm-taupe);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-text-muted);
   font-size: 11px;
 }
 
 .risk-tensor-dv01-controls__status strong {
-  color: var(--moss-color-warm-terracotta);
+  color: var(--moss-color-warning-600);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -337,9 +362,9 @@
 .risk-tensor-dv01-controls__cell,
 .risk-tensor-dv01-controls__scenario {
   min-width: 0;
-  border: 1px solid rgba(124, 88, 61, 0.14);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.74);
+  background: var(--moss-color-card-bg);
 }
 
 .risk-tensor-dv01-controls__primary,
@@ -353,7 +378,7 @@
 .risk-tensor-dv01-controls__primary span,
 .risk-tensor-dv01-controls__cell span,
 .risk-tensor-dv01-controls__scenario span {
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -372,7 +397,7 @@
 .risk-tensor-dv01-controls__scenario p,
 .risk-tensor-dv01-controls__action {
   margin: 0;
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -388,12 +413,12 @@
   display: grid;
   gap: 6px;
   padding: 13px;
-  border-color: rgba(141, 48, 58, 0.18);
-  background: rgba(251, 242, 243, 0.58);
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
 }
 
 .risk-tensor-dv01-controls__scenario strong {
-  color: var(--moss-color-warm-burgundy);
+  color: var(--moss-color-danger-600);
 }
 
 .risk-tensor-dv01-controls__judgement {
@@ -401,14 +426,14 @@
   gap: 6px;
   margin-top: 10px;
   padding: 13px;
-  border: 1px solid rgba(124, 88, 61, 0.16);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.78);
+  background: var(--moss-color-card-bg);
 }
 
 .risk-tensor-dv01-controls__judgement span,
 .risk-tensor-dv01-controls__action-card span {
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -433,9 +458,9 @@
   gap: 8px;
   min-width: 0;
   padding: 13px;
-  border: 1px solid rgba(124, 88, 61, 0.14);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.64);
+  background: var(--moss-color-card-bg);
 }
 
 .risk-tensor-dv01-controls__action-card div {
@@ -450,7 +475,7 @@
 
 .risk-tensor-dv01-controls__action-card p {
   margin: 0;
-  color: var(--moss-color-warm-taupe);
+  color: var(--moss-color-text-muted);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -458,7 +483,7 @@
 .risk-tensor-dv01-controls__action {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(124, 88, 61, 0.14);
+  border-top: 1px solid var(--moss-color-neutral-200);
 }
 
 @media (max-width: 1180px) {

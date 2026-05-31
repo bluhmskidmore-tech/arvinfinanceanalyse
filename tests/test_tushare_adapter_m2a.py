@@ -55,6 +55,30 @@ def test_fetch_macro_snapshot_normalizes_cpi_dataframe(monkeypatch):
     assert rows[1]["value"] == pytest.approx(0.5)
 
 
+def test_fetch_macro_snapshot_normalizes_money_supply_dataframe(monkeypatch):
+    monkeypatch.setenv(_TOKEN_ENV, "test-token")
+    frame = pd.DataFrame(
+        [
+            {"month": "202401", "m2_yoy": 8.7, "m2": 2976300.0},
+            {"month": "202402", "m2_yoy": 8.6, "m2": 2995600.0},
+        ]
+    )
+    pro = _FakePro(frame, kind="cn_m")
+    _install_fake_tushare(pro, monkeypatch)
+
+    adapter = VendorAdapter()
+    out = adapter.fetch_macro_snapshot("tushare.macro.cn_money.monthly")
+
+    assert out["vendor_kind"] == "tushare_macro"
+    assert out["series_id"] == "tushare.macro.cn_money.monthly"
+    rows = out["rows"]
+    assert len(rows) == 2
+    assert rows[0]["trade_date"] == "2024-01-01"
+    assert rows[0]["value"] == pytest.approx(8.7)
+    assert rows[1]["trade_date"] == "2024-02-01"
+    assert rows[1]["value"] == pytest.approx(8.6)
+
+
 def test_fetch_macro_snapshot_no_token_raises(monkeypatch):
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
     monkeypatch.setitem(
@@ -146,5 +170,10 @@ class _FakePro:
 
     def cn_gdp(self, **_kwargs: object) -> pd.DataFrame:
         if self._kind == "cn_gdp":
+            return self._frame
+        raise AssertionError
+
+    def cn_m(self, **_kwargs: object) -> pd.DataFrame:
+        if self._kind == "cn_m":
             return self._frame
         raise AssertionError

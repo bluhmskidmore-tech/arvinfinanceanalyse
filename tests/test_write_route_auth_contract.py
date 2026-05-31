@@ -76,6 +76,7 @@ MUTATION_ROUTES = [
     ("POST", "/ui/market-data/livermore/position-snapshot/manual", {"as_of_date": "2026-04-30", "positions": [{"stock_code": "000001.SZ", "stock_name": "Alpha", "entry_cost": 10.5, "bars_since_entry": 6}]}),
     ("POST", "/ui/macro/toolkit/cffex-member-rank/refresh", {"trade_date": "2026-04-10", "contracts": ["T.CFE"], "sources": ["choice"]}),
     ("POST", "/ui/macro/toolkit/scripts/debug_wind/run", {"timeout_seconds": 30}),
+    ("POST", "/api/analysis/adb/backfill?start_date=1900-01-01&end_date=1900-01-02", None),
 ]
 
 RESERVED_MUTATION_PATHS = {

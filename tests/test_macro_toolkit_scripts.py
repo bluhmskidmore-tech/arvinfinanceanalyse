@@ -6,7 +6,8 @@ import inspect
 import py_compile
 import sys
 import time
-from datetime import date
+from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 import duckdb
 import pandas as pd
@@ -342,7 +343,10 @@ def test_cffex_member_rank_refresh_materializes_choice_rows(tmp_path, monkeypatc
 def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
+    output_dir = tmp_path / "macro_toolkit_output"
+    output_dir.mkdir()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -414,6 +418,37 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     indicators = {item["alias"]: item for item in payload["result"]["indicators"]}
     assert indicators["DR007.IB"]["latest_value"] == 1.82
     assert indicators["S0059749"]["latest_value"] == 2.48
+    hason_strategy = payload["result"]["hason_strategy"]
+    assert hason_strategy["key"] == "hason_macro_strategy"
+    assert hason_strategy["basis"] == "analytical"
+    assert hason_strategy["observation_only"] is True
+    assert hason_strategy["formal_use_allowed"] is False
+    assert hason_strategy["formal_metric_id"] is None
+    assert hason_strategy["display_status"] == "visible"
+    assert {item["key"] for item in hason_strategy["modules"]} == {
+        "market_state",
+        "allocation",
+        "strategy_selection",
+        "risk_management",
+        "performance_review",
+    }
+    assert all(item["status"] == "integrated" for item in hason_strategy["modules"])
+    assert all(item["missing_scripts"] == [] for item in hason_strategy["modules"])
+    assert hason_strategy["readiness"] == {
+        "ready_modules": 5,
+        "partial_modules": 0,
+        "missing_modules": 0,
+        "missing_script_count": 0,
+        "total_modules": 5,
+        "ratio": 1.0,
+    }
+    assert {"final_signal.csv", "crowding_latest.csv"}.issubset(
+        set(hason_strategy["missing_runtime_outputs"])
+    )
+    assert any(
+        item["script"] == "signal_aggregator" and item["available"]
+        for item in hason_strategy["source_trace"]
+    )
     strategy_summaries = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
     assert set(strategy_summaries) == {
         "moving_average",
@@ -425,6 +460,158 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert strategy_summaries["low_crowding_regime_multifactor"]["status"] == "sample_only"
     assert strategy_summaries["low_crowding_regime_multifactor"]["result"]["regime"]
     assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
+
+
+def test_hason_module_payload_marks_partially_available_script_chain(tmp_path) -> None:
+    available_script = tmp_path / "signal_aggregator.py"
+    available_script.write_text("# available", encoding="utf-8")
+    missing_script = tmp_path / "crowding_cn.py"
+
+    payload = macro_toolkit_route._hason_module_payload(
+        {
+            "key": "strategy_selection",
+            "label": "Strategy selection",
+            "scripts": ("signal_aggregator", "crowding_cn"),
+            "evidence": ("final signal", "crowding filter"),
+        },
+        {
+            "signal_aggregator": SimpleNamespace(path=available_script),
+            "crowding_cn": SimpleNamespace(path=missing_script),
+        },
+    )
+
+    assert payload["status"] == "partial"
+    assert payload["available_scripts"] == ["signal_aggregator"]
+    assert payload["missing_scripts"] == ["crowding_cn"]
+
+
+def test_hason_summary_counts_partial_modules_and_missing_scripts(tmp_path, monkeypatch) -> None:
+    script_names = {
+        str(script_name)
+        for module in macro_toolkit_route._HASON_MODULES
+        for script_name in module["scripts"]
+    }
+    scripts = []
+    for name in script_names:
+        path = tmp_path / f"{name}.py"
+        if name != "rebalance_cn":
+            path.write_text("# available", encoding="utf-8")
+        scripts.append(
+            SimpleNamespace(
+                name=name,
+                path=path,
+                filename=f"{name}.py",
+                group="macro",
+            )
+        )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [{"name": "final_signal.csv"}, {"name": "crowding_latest.csv"}]
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["readiness"] == {
+        "ready_modules": 4,
+        "partial_modules": 1,
+        "missing_modules": 0,
+        "missing_script_count": 1,
+        "total_modules": 5,
+        "ratio": 0.8,
+    }
+
+
+def test_hason_summary_counts_shared_missing_script_once(tmp_path, monkeypatch) -> None:
+    script_names = {
+        str(script_name)
+        for module in macro_toolkit_route._HASON_MODULES
+        for script_name in module["scripts"]
+    }
+    scripts = []
+    for name in script_names:
+        path = tmp_path / f"{name}.py"
+        if name != "dcc_garch_cn":
+            path.write_text("# available", encoding="utf-8")
+        scripts.append(
+            SimpleNamespace(
+                name=name,
+                path=path,
+                filename=f"{name}.py",
+                group="macro",
+            )
+        )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [{"name": "final_signal.csv"}, {"name": "crowding_latest.csv"}]
+    )
+
+    assert payload["readiness"]["partial_modules"] == 2
+    assert payload["readiness"]["missing_script_count"] == 1
+
+
+def test_hason_summary_marks_existing_outputs_stale_against_analysis_date(tmp_path, monkeypatch) -> None:
+    scripts = []
+    for module in macro_toolkit_route._HASON_MODULES:
+        for name in module["scripts"]:
+            script_name = str(name)
+            path = tmp_path / f"{script_name}.py"
+            path.write_text("# available", encoding="utf-8")
+            scripts.append(
+                SimpleNamespace(
+                    name=script_name,
+                    path=path,
+                    filename=f"{script_name}.py",
+                    group="macro",
+                )
+            )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    stale_modified_at = datetime(2026, 4, 29, 15, 0, tzinfo=UTC).isoformat()
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [
+            {"name": "final_signal.csv", "modified_at": stale_modified_at},
+            {"name": "crowding_latest.csv", "modified_at": stale_modified_at},
+        ],
+        analysis_date="2026-04-30",
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["runtime_output_status"] == "stale"
+    assert payload["stale_runtime_outputs"] == ["final_signal.csv", "crowding_latest.csv"]
+    assert all(item["freshness_status"] == "stale" for item in payload["runtime_outputs"])
+
+
+def test_hason_summary_compares_output_freshness_in_cn_business_date(tmp_path, monkeypatch) -> None:
+    scripts = []
+    for module in macro_toolkit_route._HASON_MODULES:
+        for name in module["scripts"]:
+            script_name = str(name)
+            path = tmp_path / f"{script_name}.py"
+            path.write_text("# available", encoding="utf-8")
+            scripts.append(
+                SimpleNamespace(
+                    name=script_name,
+                    path=path,
+                    filename=f"{script_name}.py",
+                    group="macro",
+                )
+            )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    generated_after_cn_midnight = datetime(2026, 4, 29, 16, 30, tzinfo=UTC).isoformat()
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [
+            {"name": "final_signal.csv", "modified_at": generated_after_cn_midnight},
+            {"name": "crowding_latest.csv", "modified_at": generated_after_cn_midnight},
+        ],
+        analysis_date="2026-04-30",
+    )
+
+    assert payload["status"] == "integrated"
+    assert payload["runtime_output_status"] == "current"
+    assert payload["stale_runtime_outputs"] == []
+    assert all(item["modified_date"] == "2026-04-30" for item in payload["runtime_outputs"])
 
 
 def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkeypatch) -> None:

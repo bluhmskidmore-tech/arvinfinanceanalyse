@@ -11,6 +11,7 @@ import {
   buildPnlByBusinessSelectionModel,
   formatAvgBalanceYi,
   isParentZqtzBusinessRow,
+  VIEW_MODE_BUSINESS_QUESTIONS,
 } from "./pnlByBusinessPageModel";
 
 function meta(partial: Partial<ResultMeta> = {}): ResultMeta {
@@ -248,6 +249,70 @@ describe("pnlByBusinessPageModel", () => {
       ["最大损益业务", "非底层投资资产", "300 万元", "positive"],
       ["最大占比", "60.00%", "非底层投资资产", undefined],
     ]);
+    expect(model.hero.businessQuestion).toBe(VIEW_MODE_BUSINESS_QUESTIONS.ytd);
+    expect(model.hero.conclusionTitle).toContain("500 万元");
+    expect(model.hero.requestedReportDate).toBe("2026-04-30");
+    expect(model.hero.asOfDate).toBe("2026-04-30");
+    expect(model.hero.reportDateNote).toContain("fallback 快照");
+    expect(model.stateSurfaces.map((surface) => surface.key)).toEqual(
+      expect.arrayContaining(["warning", "fallback-date", "vendor-stale"]),
+    );
+  });
+
+  it("builds hero date alignment note and quality error/missing state surfaces", () => {
+    const alignedModel = buildPnlByBusinessPageModel({
+      viewMode: "monthly",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      monthlyResult: {
+        year: 2026,
+        as_of_date: "2026-04-30",
+        source_tables: ["monthly"],
+        months: [monthlyBucket()],
+      },
+      monthlyMeta: meta({ quality_flag: "ok", as_of_date: "2026-04-30", fallback_mode: "none" }),
+    });
+
+    expect(alignedModel.hero.reportDateNote).toContain("与请求日一致");
+
+    const errorModel = buildPnlByBusinessPageModel({
+      viewMode: "formal",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      formalResult: formalPayload(),
+      formalMeta: meta({ quality_flag: "error" }),
+    });
+
+    expect(errorModel.stateSurfaces.map((surface) => surface.key)).toEqual(
+      expect.arrayContaining(["quality-error"]),
+    );
+
+    const missingModel = buildPnlByBusinessPageModel({
+      viewMode: "formal",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      formalResult: formalPayload(),
+      formalMeta: meta({ quality_flag: "missing" }),
+    });
+
+    expect(missingModel.stateSurfaces.map((surface) => surface.key)).toEqual(
+      expect.arrayContaining(["quality-missing"]),
+    );
   });
 
   it("builds monthly and formal KPI models and preserves loading/error/empty states", () => {
@@ -325,5 +390,35 @@ describe("pnlByBusinessPageModel", () => {
     });
     expect(emptyModel.empty).toBe(true);
     expect(emptyModel.activeDataStatus).toBe("无数据");
+    expect(emptyModel.stateSurfaces).toEqual([]);
+  });
+
+  it("surfaces mock mode and monthly hero conclusion without changing KPI values", () => {
+    const monthlyModel = buildPnlByBusinessPageModel({
+      viewMode: "monthly",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      clientMode: "mock",
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      monthlyResult: {
+        year: 2026,
+        as_of_date: "2026-04-30",
+        source_tables: ["monthly"],
+        months: [monthlyBucket()],
+      },
+      monthlyMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(monthlyModel.hero.businessQuestion).toBe(VIEW_MODE_BUSINESS_QUESTIONS.monthly);
+    expect(monthlyModel.hero.conclusionTitle).toContain("-250 万元");
+    expect(monthlyModel.stateSurfaces[0]).toMatchObject({
+      key: "mock-mode",
+      variant: "mock",
+    });
+    expect(monthlyModel.summaryCards[0]?.value).toBe("-250 万元");
   });
 });

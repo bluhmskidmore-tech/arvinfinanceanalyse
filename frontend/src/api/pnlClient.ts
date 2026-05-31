@@ -7,16 +7,7 @@ import { mockCampisiDecisionGrade } from "../mocks/campisiMocks";
 import { readHttpJsonDetail } from "./httpResponseError";
 import type {
   ApiEnvelope,
-  AdvancedAttributionSummary,
-  CampisiAttributionPayload,
   CampisiDecisionGradePayload,
-  CampisiEnhancedPayload,
-  CampisiFourEffectsPayload,
-  CampisiMaturityBucketsPayload,
-  CarryRollDownPayload,
-  KRDAttributionPayload,
-  PnlAttributionAnalysisSummary,
-  PnlAttributionPayload,
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisPayload,
   PnlByBusinessManualAdjustmentListPayload,
@@ -25,13 +16,10 @@ import type {
   PnlByBusinessMonthlyPayload,
   PnlByBusinessPayload,
   PnlByBusinessYtdPayload,
-  PnlCompositionPayload,
   PnlV1DataPayload,
   PnlYearlyBusinessSummaryPayload,
-  SpreadAttributionPayload,
-  TPLMarketCorrelationPayload,
-  VolumeRateAttributionPayload,
 } from "./contracts";
+import type { PnlAttributionClientMethods } from "./pnlAttributionClient";
 import type { PnlCoreClientMethods } from "./pnlCoreClient";
 import type { QdbGlMonthlyAnalysisClientMethods } from "./qdbGlMonthlyAnalysisClient";
 
@@ -61,7 +49,7 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-type PnlAttributionClientMethods = {
+type PnlBusinessClientMethods = {
   getPnlV1Data: (date: string) => Promise<ApiEnvelope<PnlV1DataPayload>>;
   getPnlByBusiness: (reportDate: string) => Promise<ApiEnvelope<PnlByBusinessPayload>>;
   getPnlByBusinessYtd: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
@@ -89,55 +77,6 @@ type PnlAttributionClientMethods = {
     reportDate: string,
   ) => Promise<PnlByBusinessManualAdjustmentListPayload>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
-  getPnlAttribution: (reportDate?: string) => Promise<ApiEnvelope<PnlAttributionPayload>>;
-  getVolumeRateAttribution: (options?: {
-    reportDate?: string;
-    compareType?: "mom" | "yoy";
-  }) => Promise<ApiEnvelope<VolumeRateAttributionPayload>>;
-  getTplMarketCorrelation: (options?: {
-    months?: number;
-    reportDate?: string;
-  }) => Promise<ApiEnvelope<TPLMarketCorrelationPayload>>;
-  getPnlCompositionBreakdown: (options?: {
-    reportDate?: string;
-    includeTrend?: boolean;
-    trendMonths?: number;
-  }) => Promise<ApiEnvelope<PnlCompositionPayload>>;
-  getPnlAttributionAnalysisSummary: (
-    reportDate?: string,
-  ) => Promise<ApiEnvelope<PnlAttributionAnalysisSummary>>;
-  getPnlCarryRollDown: (reportDate?: string) => Promise<ApiEnvelope<CarryRollDownPayload>>;
-  getPnlSpreadAttribution: (options?: {
-    reportDate?: string;
-    lookbackDays?: number;
-  }) => Promise<ApiEnvelope<SpreadAttributionPayload>>;
-  getPnlKrdAttribution: (options?: {
-    reportDate?: string;
-    lookbackDays?: number;
-  }) => Promise<ApiEnvelope<KRDAttributionPayload>>;
-  getPnlAdvancedAttributionSummary: (
-    reportDate?: string,
-  ) => Promise<ApiEnvelope<AdvancedAttributionSummary>>;
-  getPnlCampisiAttribution: (options?: {
-    startDate?: string;
-    endDate?: string;
-    lookbackDays?: number;
-  }) => Promise<ApiEnvelope<CampisiAttributionPayload>>;
-  getPnlCampisiFourEffects: (options?: {
-    startDate?: string;
-    endDate?: string;
-    lookbackDays?: number;
-  }) => Promise<ApiEnvelope<CampisiFourEffectsPayload>>;
-  getPnlCampisiEnhanced: (options?: {
-    startDate?: string;
-    endDate?: string;
-    lookbackDays?: number;
-  }) => Promise<ApiEnvelope<CampisiEnhancedPayload>>;
-  getPnlCampisiMaturityBuckets: (options?: {
-    startDate?: string;
-    endDate?: string;
-    lookbackDays?: number;
-  }) => Promise<ApiEnvelope<CampisiMaturityBucketsPayload>>;
   getPnlCampisiDecisionGrade: (options?: {
     startDate?: string;
     endDate?: string;
@@ -146,23 +85,10 @@ type PnlAttributionClientMethods = {
 };
 
 export type PnlClientMethods =
-  PnlAttributionClientMethods & PnlCoreClientMethods & QdbGlMonthlyAnalysisClientMethods;
-
-type PnlBusinessClientMethods = Pick<
-  PnlClientMethods,
-  | "getPnlV1Data"
-  | "getPnlByBusiness"
-  | "getPnlByBusinessYtd"
-  | "getPnlByBusinessMonthly"
-  | "getPnlByBusinessAnalysis"
-  | "createPnlByBusinessManualAdjustment"
-  | "updatePnlByBusinessManualAdjustment"
-  | "revokePnlByBusinessManualAdjustment"
-  | "restorePnlByBusinessManualAdjustment"
-  | "getPnlByBusinessManualAdjustments"
-  | "getPnlCampisiDecisionGrade"
-  | "getPnlYearlyBusinessSummary"
->;
+  PnlBusinessClientMethods
+  & PnlAttributionClientMethods
+  & PnlCoreClientMethods
+  & QdbGlMonthlyAnalysisClientMethods;
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
 

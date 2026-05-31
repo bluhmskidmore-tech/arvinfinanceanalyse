@@ -1,3 +1,105 @@
+.pnl-by-business-page {
+  min-width: 0;
+}
+
+.pnl-by-business-hero-conclusion {
+  display: grid;
+  gap: 4px;
+}
+
+.pnl-by-business-hero-conclusion strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pnl-by-business-hero-conclusion__mode {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pnl-by-business-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pnl-by-business-mode-pill--real {
+  border-color: var(--moss-color-primary-200);
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-primary-800);
+}
+
+.pnl-by-business-mode-pill--mock {
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800);
+}
+
+.pnl-by-business-state-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.pnl-by-business-hero-report-date {
+  display: grid;
+  gap: 2px;
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pnl-by-business-hero-report-date strong {
+  color: var(--moss-color-neutral-900);
+  font-weight: 800;
+}
+
+.pnl-by-business-kpi-band {
+  margin-bottom: 2px;
+}
+
+.pnl-by-business-kpi-item {
+  min-width: 0;
+}
+
+.pnl-by-business-kpi-item.pnl-by-business-kpi-metric--positive .moss-page-v2-kpi-metric__value {
+  color: var(--moss-color-success-500);
+}
+
+.pnl-by-business-kpi-item.pnl-by-business-kpi-metric--negative .moss-page-v2-kpi-metric__value {
+  color: var(--moss-color-danger-500);
+}
+
+.pnl-by-business-kpi-metric__tabular-value {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-by-business-kpi-metric__text-value {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.pnl-by-business-evidence-panel {
+  margin-top: 2px;
+}
+
+.pnl-by-business-analysis-grid {
+  display: grid;
+  gap: 18px;
+}
+
 .pnl-by-business-page-header {
   display: flex;
   align-items: flex-start;
@@ -33,11 +135,7 @@
 .pnl-by-business-data-status-strip {
   display: grid;
   gap: 10px;
-  margin-bottom: var(--moss-space-4);
-  padding: 12px 14px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, var(--moss-color-warm-porcelain));
+  width: 100%;
 }
 
 .pnl-by-business-data-status-strip__grid {
@@ -51,7 +149,7 @@
   gap: 4px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--moss-color-warm-stone) 74%, transparent);
+  border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-card-bg);
 }
@@ -101,13 +199,7 @@
 
 .pnl-by-business-content {
   display: grid;
-  gap: 18px;
-}
-
-.pnl-by-business-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--moss-space-4);
+  gap: 16px;
 }
 
 .pnl-by-business-table-shell {
@@ -476,11 +568,13 @@
 .pnl-by-business-action-button-primary {
   border-color: var(--moss-color-primary-600);
   background: var(--moss-color-primary-600);
-  color: var(--moss-color-warm-paper);
+  color: #fff;
 }
 
 .pnl-by-business-action-button-primary:hover:not(:disabled) {
-  color: var(--moss-color-warm-paper);
+  border-color: var(--moss-color-primary-700);
+  background: var(--moss-color-primary-700);
+  color: #fff;
 }
 
 .pnl-by-business-action-button:disabled,
@@ -579,159 +673,4 @@
   .pnl-by-business-adjustment-actions {
     justify-content: flex-start;
   }
-}
-
-/* Practical homepage-aligned pass: keep the old page structure, improve scan and visibility. */
-[data-testid="pnl-by-business-page"] {
-  --pnl-practical-paper: var(--moss-color-warm-paper);
-  --pnl-practical-bg: rgba(255, 253, 248, 0.72);
-  --pnl-practical-line: rgba(90, 68, 45, 0.16);
-  --pnl-practical-line-strong: rgba(90, 68, 45, 0.24);
-  --pnl-practical-ink: var(--moss-color-warm-ink);
-  --pnl-practical-muted: color-mix(in srgb, var(--moss-color-warm-ink) 62%, var(--moss-color-warm-taupe));
-  --pnl-practical-copper: var(--moss-color-warm-terracotta);
-  --pnl-practical-green: var(--moss-color-success-500);
-  color: var(--pnl-practical-ink);
-}
-
-[data-testid="pnl-by-business-page"] * {
-  letter-spacing: 0 !important;
-}
-
-.pnl-by-business-page-header,
-.pnl-by-business-filter,
-.pnl-by-business-evidence-details,
-.pnl-by-business-table-shell,
-.pnl-by-business-mini-table,
-.pnl-by-business-adjustment-panel,
-.pnl-by-business-analysis-state,
-.pnl-by-business-month-row {
-  border-color: var(--pnl-practical-line);
-  background: var(--pnl-practical-paper);
-  box-shadow: var(--moss-shadow-card);
-}
-
-.pnl-by-business-page-header {
-  padding: 18px 20px;
-  border: 1px solid var(--pnl-practical-line);
-  border-radius: 14px;
-  background: var(--pnl-practical-bg);
-}
-
-.pnl-by-business-title {
-  color: var(--pnl-practical-ink);
-  font-size: 28px;
-  font-weight: 820;
-}
-
-.pnl-by-business-subtitle {
-  color: var(--pnl-practical-muted);
-  font-size: 14px;
-}
-
-.pnl-by-business-filter {
-  padding: 12px 14px;
-  border: 1px solid var(--pnl-practical-line);
-  border-radius: 14px;
-}
-
-.pnl-by-business-filter-label {
-  color: var(--pnl-practical-muted);
-  font-weight: 700;
-}
-
-.pnl-by-business-control {
-  border-color: var(--pnl-practical-line-strong);
-  border-radius: 10px;
-  background: rgba(255, 253, 248, 0.94);
-}
-
-.pnl-by-business-control:focus {
-  border-color: rgba(122, 74, 43, 0.5);
-  outline: 3px solid color-mix(in srgb, var(--moss-color-warm-terracotta) 12%, transparent);
-  outline-offset: 0;
-}
-
-.pnl-by-business-action-button-primary {
-  border-color: rgba(95, 56, 31, 0.32);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--moss-color-warm-terracotta) 70%, var(--moss-color-warm-ink)) 0%,
-    color-mix(in srgb, var(--moss-color-warm-ink) 82%, var(--moss-color-warm-terracotta)) 100%
-  );
-  color: var(--moss-color-warm-paper);
-  box-shadow: var(--moss-shadow-card);
-}
-
-.pnl-by-business-summary-grid > div {
-  border: 1px solid var(--pnl-practical-line) !important;
-  border-radius: 12px !important;
-  background: rgba(255, 253, 248, 0.88) !important;
-  box-shadow: var(--moss-shadow-card) !important;
-}
-
-.pnl-by-business-evidence-details {
-  overflow: hidden;
-  border: 1px solid var(--pnl-practical-line);
-  border-radius: 12px;
-}
-
-.pnl-by-business-evidence-details summary {
-  min-height: 42px;
-  padding: 12px 14px;
-  color: var(--pnl-practical-muted);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.pnl-by-business-evidence-details summary:hover {
-  color: var(--pnl-practical-copper);
-  background: rgba(122, 74, 43, 0.04);
-}
-
-.pnl-by-business-evidence-details > :not(summary) {
-  margin: 0 12px 12px;
-}
-
-.pnl-by-business-table th {
-  background: color-mix(in srgb, var(--moss-color-warm-paper) 68%, var(--moss-color-warm-stone));
-  color: var(--pnl-practical-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.pnl-by-business-table td {
-  border-bottom-color: rgba(90, 68, 45, 0.1);
-  color: var(--pnl-practical-ink);
-}
-
-.pnl-by-business-table tbody tr[role="button"]:hover,
-.pnl-by-business-table-row-selected {
-  background: rgba(23, 138, 97, 0.08);
-}
-
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(9),
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table th:nth-child(10) {
-  background: color-mix(in srgb, var(--moss-color-warm-paper) 68%, var(--moss-color-warm-stone));
-}
-
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(9),
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table td:nth-child(10) {
-  background: var(--moss-color-warm-paper);
-}
-
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table-row-selected td:nth-child(9),
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table-row-selected td:nth-child(10),
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tbody tr[role="button"]:hover td:nth-child(9),
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tbody tr[role="button"]:hover td:nth-child(10) {
-  background: var(--moss-color-success-50);
-}
-
-.pnl-by-business-table-footer-cell,
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tfoot td:nth-child(9),
-.pnl-by-business-table-shell[data-testid="pnl-by-business-table"] .pnl-by-business-table tfoot td:nth-child(10) {
-  background: color-mix(in srgb, var(--moss-color-warm-paper) 72%, var(--moss-color-warm-stone));
-  color: var(--pnl-practical-ink);
-  font-weight: 800;
 }

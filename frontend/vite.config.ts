@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 /** Dev proxy target; override if the API runs elsewhere, e.g. `MOSS_VITE_API_PROXY=http://127.0.0.1:8765`. */
 const apiTarget = process.env.MOSS_VITE_API_PROXY ?? "http://127.0.0.1:7888";
@@ -8,7 +9,7 @@ const apiTarget = process.env.MOSS_VITE_API_PROXY ?? "http://127.0.0.1:7888";
 const apiProxy = { target: apiTarget, changeOrigin: true, timeout: 120_000 } as const;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tailwindcss(), react()],
   /** `vite preview` does not inherit `server.proxy` unless mirrored here — without it, `/api` and `/ui` hit the static server and return 404. */
   preview: {
     host: true,

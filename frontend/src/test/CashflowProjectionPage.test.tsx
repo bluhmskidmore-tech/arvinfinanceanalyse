@@ -1,16 +1,42 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import CashflowProjectionPage from "../features/cashflow-projection/pages/CashflowProjectionPage";
 import { formatRawAsNumeric } from "../utils/format";
 
+const CASHFLOW_PAGE_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/cashflow-projection/pages/CashflowProjectionPage.module.css",
+);
+const CASHFLOW_PAGE_TSX_PATH = resolve(
+  process.cwd(),
+  "src/features/cashflow-projection/pages/CashflowProjectionPage.tsx",
+);
+
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="cashflow-echarts-stub" />,
 }));
 
 describe("CashflowProjectionPage", () => {
+  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+    const source = [
+      readFileSync(CASHFLOW_PAGE_CSS_PATH, "utf8"),
+      readFileSync(CASHFLOW_PAGE_TSX_PATH, "utf8"),
+    ].join("\n");
+
+    expect(source).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
+    expect(source).not.toMatch(/rgba\((255, 253, 248|240, 230, 216|52, 43, 39)/);
+    expect(source).not.toMatch(/#(fffdf8|f0e6d8|e4d8c8|b8a38f|342b27|6f6258|8f7e70|b85c38|708c74|7c3e46|667a96)/i);
+    expect(source).toContain("var(--moss-color-primary-600");
+    expect(source).toContain("var(--moss-color-success-600");
+    expect(source).toContain("var(--moss-color-danger-600");
+    expect(source).toContain("var(--moss-color-info-600");
+  });
+
   it("mounts KPI cards when projection loads", async () => {
     const client = createApiClient({ mode: "mock" });
     const queryClient = new QueryClient({
