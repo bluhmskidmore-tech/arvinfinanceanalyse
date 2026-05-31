@@ -86,6 +86,57 @@ function createTerminalStateView(overrides: Partial<DashboardHomeView> = {}): Da
       windowLabel: "2026-04-23 至 2026-05-14",
       message: "当前窗口暂无供给/招标事件。",
     },
+    macroBriefing: {
+      releaseItems: [],
+      releaseWindowLabel: "未来 45 天",
+      releaseMessage: "暂无已维护发布日期，请补充配置清单。",
+      newsItems: [],
+      newsMessage: "暂无可展示的宏观新闻。",
+      newsStale: false,
+      newsFreshnessLabel: "暂无更新",
+      newsSourceLabel: "来源：Choice 宏观新闻",
+      newsAsOfLabel: "数据截至：暂无",
+      newsStatusLabel: "来源状态：暂无数据",
+      newsRefreshLabel: "刷新：随页面查询自动更新",
+      supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
+    },
+    marketContext: {
+      temperatureLabel: "市场温度：中性",
+      temperatureScore: 50,
+      temperatureTone: "neutral",
+      drivers: ["外部市场暂无明显方向"],
+      contextBlocks: [
+        {
+          id: "pnl",
+          label: "PnL归因",
+          title: "等待正式归因数据",
+          detail: "未收到 return-decomposition 正式 payload",
+          foot: "不从总 PnL 反推归因",
+        },
+        {
+          id: "curve",
+          label: "曲线/利率",
+          title: "等待曲线期限结构",
+          detail: "未收到 yield_curve_term_structure 正式 payload",
+          foot: "默认曲线 treasury,cdb,aaa_credit",
+        },
+        {
+          id: "credit",
+          label: "信用利差",
+          title: "等待信用利差上下文",
+          detail: "未收到 credit_spread_migration 正式 payload",
+          foot: "只作解释变量，不改变 PnL 计算",
+        },
+      ],
+      aiSummary: [
+        "PnL归因：等待正式归因数据；未收到 return-decomposition 正式 payload。",
+        "曲线/利率：等待曲线期限结构；未收到 yield_curve_term_structure 正式 payload。",
+      ],
+      sourceLabel: "来源：收益归因 / yield_curve_term_structure / credit_spread_migration",
+      asOfLabel: "数据截至：暂无",
+      statusLabel: "来源状态：等待正式数据",
+      refreshLabel: "刷新：随报告日查询自动更新",
+    },
     liabilityWatchBasisNote: null,
     decisionRail: {
       conclusion: "测试结论",
@@ -119,7 +170,7 @@ function createTerminalStateView(overrides: Partial<DashboardHomeView> = {}): Da
     researchReports: [],
     researchReportsState: { kind: "error", label: "研究报告加载失败" },
     incomeTrend: [],
-    incomeTrendState: { kind: "partial", label: "缺基准/超额" },
+    incomeTrendState: { kind: "partial", label: "缺 CDB_INDEX 可核验曲线" },
     backendGaps: [],
     ...overrides,
   };
@@ -465,7 +516,18 @@ describe("DashboardHomePage", () => {
   it("renders compact explicit states instead of blank terminal cards", () => {
     render(
       <MemoryRouter>
-        <TerminalHomeContent view={createTerminalStateView()} />
+        <TerminalHomeContent
+          view={createTerminalStateView({
+            backendGaps: [
+              {
+                id: "leverage",
+                title: "杠杆率",
+                neededEndpoint: "GET /ui/home/leverage?report_date=",
+                reason: "开发缺口不应出现在业务首页。",
+              },
+            ],
+          })}
+        />
       </MemoryRouter>,
     );
 
@@ -474,8 +536,57 @@ describe("DashboardHomePage", () => {
     expect(screen.getByTestId("dashboard-home-holdings-table")).toHaveTextContent("重仓券暂无数据");
     expect(screen.getByTestId("dashboard-home-position-changes")).toHaveTextContent("增减仓加载失败");
     expect(screen.getByTestId("dashboard-home-research-reports")).toHaveTextContent("研究报告加载失败");
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺基准/超额");
+    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺 CDB_INDEX 可核验曲线");
     expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺少部分受管字段");
+    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("今日市场解释");
+    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("市场温度：中性");
+    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("PnL归因");
+    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("曲线/利率");
+    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("信用利差");
+    expect(screen.queryByText("后端工单")).not.toBeInTheDocument();
+    expect(screen.queryByText("杠杆率")).not.toBeInTheDocument();
+  });
+
+  it("renders income trend as portfolio benchmark and excess context", () => {
+    render(
+      <MemoryRouter>
+        <TerminalHomeContent
+          view={createTerminalStateView({
+            incomeTrendState: { kind: "ready", label: "已接入" },
+            incomeTrend: [
+              {
+                id: "2026-03-31",
+                date: "2026-03-31",
+                portfolioPnl: "+1.20 亿",
+                benchmarkPnl: "+0.80 亿",
+                excessPnl: "+0.40 亿",
+                portfolioRaw: 120_000_000,
+                benchmarkRaw: 80_000_000,
+                excessRaw: 40_000_000,
+              },
+              {
+                id: "2026-04-30",
+                date: "2026-04-30",
+                portfolioPnl: "+0.90 亿",
+                benchmarkPnl: "+0.60 亿",
+                excessPnl: "+0.30 亿",
+                portfolioRaw: 90_000_000,
+                benchmarkRaw: 60_000_000,
+                excessRaw: 30_000_000,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    const incomeTrend = screen.getByTestId("dashboard-home-income-trend");
+    expect(incomeTrend).toHaveTextContent("数据截至 2026-04-30");
+    expect(incomeTrend).toHaveTextContent("CDB_INDEX / MoM");
+    expect(incomeTrend).toHaveTextContent("组合");
+    expect(incomeTrend).toHaveTextContent("CDB基准");
+    expect(incomeTrend).toHaveTextContent("超额");
+    expect(incomeTrend).toHaveTextContent("基准 +0.60 亿 · 超额 +0.30 亿");
   });
     /*
     expect(screen.getByTestId("dashboard-home-backend-gap-research-reports")).toHaveTextContent(
@@ -522,25 +633,48 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
-    expect(await within(calendar).findByText("国债净融资节奏")).toBeInTheDocument();
-    expect(await within(calendar).findByText("政策性金融债招标")).toBeInTheDocument();
-    expect(within(calendar).getAllByText("供给").length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(calendar).toHaveTextContent("国债净融资节奏");
+      expect(calendar).toHaveTextContent("政策性金融债招标");
+    });
+    expect(calendar).toHaveTextContent("供给/招标：");
     expect(researchCalendarCalls.some((call) => call.startDate && call.endDate)).toBe(true);
   });
 
   it("keeps an explicit no-data state when the external event feed is empty", async () => {
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const client = createRealModeHomeClient({ getResearchCalendarEvents });
+    const mockNewsClient = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn((options) => mockNewsClient.getChoiceNewsEvents(options));
+    const client = createRealModeHomeClient({ getResearchCalendarEvents, getChoiceNewsEvents });
 
     renderDashboardHome(client);
 
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
+      expect(getChoiceNewsEvents).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
-      expect(calendar).toHaveTextContent("当前窗口暂无供给/招标事件。");
+      expect(calendar).toHaveTextContent("重大信息发布日期前瞻");
+      expect(calendar).toHaveTextContent("国内外宏观新闻");
+      expect(calendar).toHaveTextContent("来源：Choice 宏观新闻");
+      expect(calendar).toHaveTextContent("数据截至");
+      expect(calendar).toHaveTextContent("来源状态");
+      expect(calendar).toHaveTextContent("刷新：");
+      expect(calendar).toHaveTextContent("供给/招标：当前窗口无事件");
+      expect(calendar).not.toHaveTextContent("当前窗口暂无供给/招标事件。");
     });
+    const topicCodes = getChoiceNewsEvents.mock.calls.map(([options]) => options.topicCode);
+    expect(topicCodes).toEqual(
+      expect.arrayContaining([
+        "S888010007API",
+        "S888010003API",
+        "S888010005API",
+        "S888005004API",
+        "C000003006",
+        "C000003002",
+      ]),
+    );
   });
 
   it("keeps an explicit error state when the external event feed fails", async () => {
@@ -556,7 +690,7 @@ describe("DashboardHomePage", () => {
     });
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
-      expect(calendar).toHaveTextContent("研究日历加载失败，请稍后刷新。");
+      expect(calendar).toHaveTextContent("供给/招标：加载失败");
     });
   });
 });

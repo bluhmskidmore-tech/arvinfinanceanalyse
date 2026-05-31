@@ -5,6 +5,8 @@ import type {
   BondPositionChangesPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
+  CampisiFourEffectsPayload,
+  ChoiceNewsEvent,
   CockpitWarningsPayload,
   CoreMetricsResult,
   CreditSpreadMigrationPayload,
@@ -18,8 +20,10 @@ import type {
   ResearchCalendarEvent,
   HomeIncomeTrendPayload,
   HomeResearchReportsPayload,
+  ReturnDecompositionPayload,
   ResultMeta,
   RiskIndicatorsPayload,
+  YieldCurveTermStructurePayload,
   VerdictPayload,
 } from "../../../api/contracts";
 import type {
@@ -46,6 +50,14 @@ import {
 import { findAttributionExtremes, type HomeWaterfallItem } from "./dashboardHomeAttribution";
 import { buildHomeAttributionTabs } from "./adapters/buildHomeAttributionTabs";
 import {
+  buildHomeMacroBriefingModel,
+  type HomeMacroBriefingModel,
+} from "./adapters/buildHomeMacroBriefingModel";
+import {
+  buildHomeMarketContextModel,
+  type HomeMarketContextModel,
+} from "./adapters/buildHomeMarketContextModel";
+import {
   buildHomeResearchCalendarModel,
   type HomeResearchCalendarModel,
 } from "./adapters/buildHomeResearchCalendarModel";
@@ -57,6 +69,7 @@ import {
 import { mapHomeRiskRadar } from "./adapters/mapHomeRiskRadar";
 import { mapPortfolioComparisonToExposureRows } from "./adapters/mapPortfolioComparisonToExposureRows";
 import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
+import { todayIsoDate as resolveTodayIsoDate } from "../pages/dashboardPageHelpers";
 
 export type HomeDeltaTone = "up" | "down" | "flat" | "muted" | "warn";
 
@@ -214,6 +227,8 @@ export type HomeIncomeTrendRow = {
   benchmarkPnl: string;
   excessPnl: string;
   portfolioRaw: number | null;
+  benchmarkRaw: number | null;
+  excessRaw: number | null;
 };
 
 export type HomeTerminalListState = {
@@ -299,6 +314,8 @@ export type DashboardHomeView = {
   balanceMetrics: readonly HomeBalanceMetric[];
   quickDrilldowns: readonly HomeQuickDrill[];
   researchCalendar: HomeResearchCalendarModel;
+  macroBriefing: HomeMacroBriefingModel;
+  marketContext: HomeMarketContextModel;
   liabilityWatchBasisNote: string | null;
   decisionRail: HomeDecisionRail;
   terminalKpis: readonly HomeTerminalKpi[];
@@ -336,6 +353,9 @@ export type MapToHomeViewInput = {
   portfolio: BondPortfolioHeadlinesPayload | null;
   portfolioComparison: PortfolioComparisonPayload | null;
   creditSpreadMigration: CreditSpreadMigrationPayload | null;
+  returnDecomposition: ReturnDecompositionPayload | null;
+  campisiFourEffects: CampisiFourEffectsPayload | null;
+  yieldCurveTermStructure: YieldCurveTermStructurePayload | null;
   decisionItems: readonly BalanceAnalysisDecisionItemStatusRow[] | null;
   marketPoints: readonly import("../../../api/contracts").ChoiceMacroLatestPoint[] | null;
   productCategoryYtd: ProductCategoryYtdHeadlinePayload | null;
@@ -363,6 +383,10 @@ export type MapToHomeViewInput = {
   calendarError: boolean;
   calendarStartDate: string;
   calendarEndDate: string;
+  todayIsoDate?: string;
+  macroNewsEvents?: readonly ChoiceNewsEvent[] | null;
+  macroNewsLoading?: boolean;
+  macroNewsError?: boolean;
   snapshotMeta: ResultMeta | null;
   marketMeta: ResultMeta | null;
   alertCount: number;
@@ -608,6 +632,74 @@ function numericValueOrGap(value: NumericLike, unitHint?: string): string {
   return numericDisplay(value, GAP, unitHint);
 }
 
+function buildFormalAttributionExtremes(input: {
+  campisiFourEffects: CampisiFourEffectsPayload | null | undefined;
+  returnDecomposition: ReturnDecompositionPayload | null | undefined;
+}): {
+  maxDragLabel: string;
+  maxDragValue: string;
+  maxContributionLabel: string;
+  maxContributionValue: string;
+} | null {
+  if (input.campisiFourEffects) {
+    const totals = input.campisiFourEffects.totals;
+    const components = [
+      { label: "Carry/Income", raw: totals.income_return },
+      { label: "利率曲线", raw: totals.treasury_effect },
+      { label: "信用利差", raw: totals.spread_effect },
+      { label: "个券选择/残差", raw: totals.selection_effect },
+    ];
+    const contribution = components.reduce<(typeof components)[number] | null>((best, item) => {
+      if (!Number.isFinite(item.raw) || item.raw <= 0) {
+        return best;
+      }
+      return best == null || item.raw > best.raw ? item : best;
+    }, null);
+    const drag = components.reduce<(typeof components)[number] | null>((best, item) => {
+      if (!Number.isFinite(item.raw) || item.raw >= 0) {
+        return best;
+      }
+      return best == null || item.raw < best.raw ? item : best;
+    }, null);
+    return {
+      maxDragLabel: drag?.label ?? GAP,
+      maxDragValue: drag ? formatYiSigned(drag.raw) : GAP,
+      maxContributionLabel: contribution?.label ?? GAP,
+      maxContributionValue: contribution ? formatYiSigned(contribution.raw) : GAP,
+    };
+  }
+  const payload = input.returnDecomposition;
+  if (!payload) return null;
+  const components = [
+    { label: "Carry/Income", value: payload.carry },
+    { label: "利率曲线", value: payload.rate_effect },
+    { label: "信用利差", value: payload.spread_effect },
+    { label: "个券选择/残差", value: payload.trading },
+  ];
+  const contribution = components.reduce<(typeof components)[number] | null>((best, item) => {
+    const raw = numericRaw(item.value);
+    if (raw == null || raw <= 0) {
+      return best;
+    }
+    const bestRaw = numericRaw(best?.value);
+    return bestRaw == null || raw > bestRaw ? item : best;
+  }, null);
+  const drag = components.reduce<(typeof components)[number] | null>((best, item) => {
+    const raw = numericRaw(item.value);
+    if (raw == null || raw >= 0) {
+      return best;
+    }
+    const bestRaw = numericRaw(best?.value);
+    return bestRaw == null || raw < bestRaw ? item : best;
+  }, null);
+  return {
+    maxDragLabel: drag?.label ?? GAP,
+    maxDragValue: drag ? numericValueOrGap(drag.value, "yuan") : GAP,
+    maxContributionLabel: contribution?.label ?? GAP,
+    maxContributionValue: contribution ? numericValueOrGap(contribution.value, "yuan") : GAP,
+  };
+}
+
 function percentageRaw(value: NumericLike): number {
   const raw = numericRaw(value);
   if (raw == null) {
@@ -826,23 +918,68 @@ function buildIncomeTrendRows(
       state: displayState("empty", "收益趋势暂无数据"),
     };
   }
+  const gapLabel = buildIncomeTrendGapLabel(payload);
+  const missingValueLabel = incomeTrendMissingValueLabel(gapLabel);
   const mappedState =
     payload.source_status === "partial"
-      ? displayState("partial", "缺基准/超额")
+      ? displayState("partial", gapLabel)
       : payload.source_status === "stale"
         ? displayState("stale", "收益趋势数据过期")
         : displayState("ready", "已接入");
   return {
     state: mappedState,
-    rows: payload.points.map((point) => ({
-      id: point.date,
-      date: point.date,
-      portfolioPnl: numericValueOrGap(point.portfolio_pnl, "yuan"),
-      benchmarkPnl: numericValueOrGap(point.benchmark_pnl, "yuan"),
-      excessPnl: numericValueOrGap(point.excess_pnl, "yuan"),
-      portfolioRaw: numericRaw(point.portfolio_pnl),
-    })),
+    rows: payload.points.map((point) => {
+      const benchmarkRaw = numericRaw(point.benchmark_pnl);
+      const excessRaw = numericRaw(point.excess_pnl);
+      return {
+        id: point.date,
+        date: point.date,
+        portfolioPnl: numericValueOrGap(point.portfolio_pnl, "yuan"),
+        benchmarkPnl: benchmarkRaw == null ? missingValueLabel : numericValueOrGap(point.benchmark_pnl, "yuan"),
+        excessPnl: excessRaw == null ? missingValueLabel : numericValueOrGap(point.excess_pnl, "yuan"),
+        portfolioRaw: numericRaw(point.portfolio_pnl),
+        benchmarkRaw,
+        excessRaw,
+      };
+    }),
   };
+}
+
+function buildIncomeTrendGapLabel(payload: HomeIncomeTrendPayload): string {
+  const warnings = payload.warnings.join(" ");
+  if (/CDB_INDEX/i.test(warnings) && /YIELD_CURVE_LATEST_FALLBACK|latest available/i.test(warnings)) {
+    return "缺 CDB_INDEX 可核验曲线";
+  }
+  if (/CDB_INDEX/i.test(warnings) && /unavailable|missing|No\s+/i.test(warnings)) {
+    return "缺 CDB_INDEX 曲线";
+  }
+  if (/benchmark_return|excess_return/i.test(warnings)) {
+    return "缺 benchmark_return/excess_return";
+  }
+  if (payload.missing_components.length > 0) {
+    return `缺 ${payload.missing_components.map(localizeIncomeTrendComponent).join("/")}`;
+  }
+  return "收益趋势部分接入";
+}
+
+function localizeIncomeTrendComponent(component: string): string {
+  if (component === "benchmark_pnl") return "基准PnL";
+  if (component === "excess_pnl") return "超额PnL";
+  if (component === "portfolio_pnl") return "组合PnL";
+  return component;
+}
+
+function incomeTrendMissingValueLabel(gapLabel: string): string {
+  if (gapLabel.includes("CDB_INDEX")) {
+    return "缺CDB_INDEX";
+  }
+  if (gapLabel.includes("benchmark_return")) {
+    return "缺收益率";
+  }
+  if (gapLabel.includes("基准PnL") || gapLabel.includes("超额PnL")) {
+    return "缺PnL";
+  }
+  return "缺数据";
 }
 
 function localizeAssetClass(value: string | null | undefined): string {
@@ -1035,6 +1172,40 @@ function buildMockView(): DashboardHomeView {
     tone: item.tone,
   }));
   const extremes = findAttributionExtremes(waterfall);
+  const researchCalendar: HomeResearchCalendarModel = {
+    items: [],
+    status: "ready",
+    windowLabel: "—",
+    message: null,
+  };
+  const macroBriefing = buildHomeMacroBriefingModel({
+    todayIsoDate: resolveTodayIsoDate(),
+    newsEvents: null,
+    newsLoading: false,
+    newsError: false,
+    supplyCalendar: researchCalendar,
+  });
+  const marketContext = buildHomeMarketContextModel({
+    marketTape: DASHBOARD_MARKET_PULSE_MOCK.map((item) => ({
+      id: item.id,
+      label: item.label,
+      value: item.value,
+      delta: item.delta,
+      deltaTone: item.deltaTone,
+      sparkline: item.sparkline,
+    })),
+    marketPoints: null,
+    macroNewsEvents: null,
+    todayIsoDate: resolveTodayIsoDate(),
+    campisiFourEffects: null,
+    returnDecomposition: null,
+    yieldCurveTermStructure: null,
+    creditSpreadMigration: null,
+    attribution: {
+      maxDragLabel: extremes.maxDrag?.label ?? GAP,
+      maxContributionLabel: extremes.maxContribution?.label ?? GAP,
+    },
+  });
 
   return {
     reportDate: DASHBOARD_COCKPIT_REPORT_DATE,
@@ -1201,12 +1372,9 @@ function buildMockView(): DashboardHomeView {
       icon: item.id,
       path: item.path,
     })),
-    researchCalendar: {
-      items: [],
-      status: "ready",
-      windowLabel: "—",
-      message: null,
-    },
+    researchCalendar,
+    macroBriefing,
+    marketContext,
     liabilityWatchBasisNote: null,
     decisionRail: {
       conclusion:
@@ -1391,6 +1559,10 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
 
   const waterfall = segmentsToWaterfall(input.attribution);
   const extremes = findAttributionExtremes(waterfall);
+  const formalAttributionExtremes = buildFormalAttributionExtremes({
+    campisiFourEffects: input.campisiFourEffects,
+    returnDecomposition: input.returnDecomposition,
+  });
 
   const coreKpis: HomeKpiCard[] = [
     {
@@ -1498,6 +1670,7 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
   const riskRadarMapped = mapHomeRiskRadar(input.portfolio, reportDate);
   const cockpitWatchlist = mapCockpitWarningsToWatchlist(input.cockpitWarnings, reportDate);
   const cockpitRiskCards = mapCockpitWarningsToRiskCards(input.cockpitWarnings, reportDate);
+  const todayIsoDate = input.todayIsoDate?.trim() || resolveTodayIsoDate();
   const researchCalendar = buildHomeResearchCalendarModel({
     events: input.calendarEvents,
     isLoading: input.calendarLoading,
@@ -1505,7 +1678,28 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     startDate: input.calendarStartDate,
     endDate: input.calendarEndDate,
   });
+  const macroBriefing = buildHomeMacroBriefingModel({
+    todayIsoDate,
+    newsEvents: input.macroNewsEvents,
+    newsLoading: Boolean(input.macroNewsLoading),
+    newsError: Boolean(input.macroNewsError),
+    supplyCalendar: researchCalendar,
+  });
   const marketTape = mapMarketTape(input.marketPoints);
+  const marketContext = buildHomeMarketContextModel({
+    marketTape,
+    marketPoints: input.marketPoints,
+    macroNewsEvents: input.macroNewsEvents,
+    todayIsoDate,
+    campisiFourEffects: input.campisiFourEffects,
+    returnDecomposition: input.returnDecomposition,
+    yieldCurveTermStructure: input.yieldCurveTermStructure,
+    creditSpreadMigration: input.creditSpreadMigration,
+    attribution: {
+      maxDragLabel: extremes.maxDrag?.label ?? GAP,
+      maxContributionLabel: extremes.maxContribution?.label ?? GAP,
+    },
+  });
   const riskExposure = buildRiskExposureMetrics(input.riskIndicators, reportDate);
   const riskIndicatorsForTerminal =
     riskExposure.state.kind === "ready" ? input.riskIndicators : null;
@@ -1662,10 +1856,12 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     }),
     attributionWaterfall: waterfall,
     attributionInsights: {
-      maxDragLabel: extremes.maxDrag?.label ?? GAP,
-      maxDragValue: extremes.maxDrag?.value ?? GAP,
-      maxContributionLabel: extremes.maxContribution?.label ?? GAP,
-      maxContributionValue: extremes.maxContribution?.value ?? GAP,
+      maxDragLabel: formalAttributionExtremes?.maxDragLabel ?? extremes.maxDrag?.label ?? GAP,
+      maxDragValue: formalAttributionExtremes?.maxDragValue ?? extremes.maxDrag?.value ?? GAP,
+      maxContributionLabel:
+        formalAttributionExtremes?.maxContributionLabel ?? extremes.maxContribution?.label ?? GAP,
+      maxContributionValue:
+        formalAttributionExtremes?.maxContributionValue ?? extremes.maxContribution?.value ?? GAP,
     },
     attributionNote: verdict?.reasons?.map((reason) => reason.detail).filter(Boolean) ?? [],
     riskCards: cockpitRiskCards.hasData
@@ -1720,13 +1916,17 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
       path: item.path,
     })),
     researchCalendar,
+    macroBriefing,
+    marketContext,
     liabilityWatchBasisNote: cockpitWatchlist.basisNote,
     decisionRail: {
       conclusion: verdict?.conclusion?.trim() || "数据待同步",
-      maxDragLabel: extremes.maxDrag?.label ?? GAP,
-      maxDragValue: extremes.maxDrag?.value ?? GAP,
-      maxContributionLabel: extremes.maxContribution?.label ?? GAP,
-      maxContributionValue: extremes.maxContribution?.value ?? GAP,
+      maxDragLabel: formalAttributionExtremes?.maxDragLabel ?? extremes.maxDrag?.label ?? GAP,
+      maxDragValue: formalAttributionExtremes?.maxDragValue ?? extremes.maxDrag?.value ?? GAP,
+      maxContributionLabel:
+        formalAttributionExtremes?.maxContributionLabel ?? extremes.maxContribution?.label ?? GAP,
+      maxContributionValue:
+        formalAttributionExtremes?.maxContributionValue ?? extremes.maxContribution?.value ?? GAP,
       keyRisk: verdict?.reasons?.[0]?.label ?? GAP,
       suggestions: suggestions.length > 0 ? suggestions : ["数据待同步"],
       pendingSummary: `${input.decisionItems?.length ?? 0} 项`,

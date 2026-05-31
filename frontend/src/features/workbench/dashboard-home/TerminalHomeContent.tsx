@@ -30,7 +30,7 @@ type TerminalHomeContentProps = {
   view: DashboardHomeView;
 };
 
-const CHART_COLORS = ["#1850a1", "#2f68b8", "#86acdb", "#1f7a55", "#b94743", "#9aa7b8"];
+const CHART_COLORS = ["#35679b", "#6f96c3", "#a8bfd8", "#3f8a6a", "#c76b66", "#b6c1cf"];
 
 const STATE_COPY: Record<HomeDataStateKind, string> = {
   ready: "已接入",
@@ -137,7 +137,7 @@ function buildPieOption(slices: readonly HomeDistributionSlice[]): EChartsOption
 
 function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption {
   return {
-    color: ["#1850a1"],
+    color: ["#35679b"],
     grid: { top: 8, right: 10, bottom: 8, left: 28 },
     xAxis: {
       type: "category",
@@ -169,8 +169,16 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
 
 function buildIncomeTrendOption(points: DashboardHomeView["incomeTrend"]): EChartsOption {
   return {
-    color: ["#1850a1"],
-    grid: { top: 8, right: 8, bottom: 20, left: 34 },
+    color: ["#1850a1", "#7b8798", "#c84b4b"],
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 10,
+      itemHeight: 6,
+      textStyle: { fontSize: 10, color: "#667085" },
+      data: ["组合", "CDB基准", "超额"],
+    },
+    grid: { top: 24, right: 8, bottom: 20, left: 34 },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
@@ -191,6 +199,7 @@ function buildIncomeTrendOption(points: DashboardHomeView["incomeTrend"]): EChar
     },
     series: [
       {
+        name: "组合",
         type: "line",
         smooth: true,
         symbol: "circle",
@@ -199,6 +208,28 @@ function buildIncomeTrendOption(points: DashboardHomeView["incomeTrend"]): EChar
         data: points.map((point) => point.portfolioRaw ?? 0),
         lineStyle: { width: 2.2 },
         areaStyle: { opacity: 0.1 },
+      },
+      {
+        name: "CDB基准",
+        type: "line",
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 3,
+        showSymbol: true,
+        data: points.map((point) => point.benchmarkRaw),
+        lineStyle: { width: 1.8, type: "dashed" },
+        connectNulls: false,
+      },
+      {
+        name: "超额",
+        type: "line",
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 3,
+        showSymbol: true,
+        data: points.map((point) => point.excessRaw),
+        lineStyle: { width: 1.8 },
+        connectNulls: false,
       },
     ],
   };
@@ -519,6 +550,17 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
               </span>
             </div>
           ) : null}
+          {latestPoint ? (
+            <div className={styles.dhTerminalIncomeMeta}>
+              <span>{`数据截至 ${latestPoint.date}`}</span>
+              <span>{`CDB_INDEX / MoM${view.incomeTrendState.kind === "partial" ? ` · ${view.incomeTrendState.label}` : ""}`}</span>
+            </div>
+          ) : null}
+          <div className={styles.dhTerminalIncomeLegend} aria-label="收益趋势图例">
+            <span data-series="portfolio">组合</span>
+            <span data-series="benchmark">CDB基准</span>
+            <span data-series="excess">超额</span>
+          </div>
           <div className={styles.dhTerminalIncomeTrend}>
             <div className={styles.dhTerminalIncomeChart}>
               <ReactECharts
@@ -534,7 +576,7 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
                 <div key={point.id} className={styles.dhTerminalIncomeRow}>
                   <span>{point.date.slice(5)}</span>
                   <b className={styles.dhNum}>{point.portfolioPnl}</b>
-                  <small>基准 {point.benchmarkPnl}</small>
+                  <small>{`基准 ${point.benchmarkPnl} · 超额 ${point.excessPnl}`}</small>
                 </div>
               ))}
             </div>
@@ -543,30 +585,6 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
       ) : (
         <StateSurface state={view.incomeTrendState} />
       )}
-    </article>
-  );
-}
-
-function BackendGapPanel({ gaps }: { gaps: DashboardHomeView["backendGaps"] }) {
-  return (
-    <article className={`${styles.dhCard} ${styles.dhTerminalPanel} ${styles.dhTerminalGapPanel}`}>
-      <div className={styles.dhTerminalPanelHead}>
-        <h3>后端工单</h3>
-        <DataStateBadge kind="backend-gap" />
-      </div>
-      <div className={styles.dhTerminalGapList}>
-        {gaps.map((gap) => (
-          <div
-            key={gap.id}
-            data-testid={`dashboard-home-backend-gap-${gap.id}`}
-            className={styles.dhTerminalGap}
-          >
-            <b>{gap.title}</b>
-            <span>后端待接入</span>
-            <small>{gap.neededEndpoint}</small>
-          </div>
-        ))}
-      </div>
     </article>
   );
 }
@@ -591,11 +609,50 @@ function QuickDrilldowns({ view }: { view: DashboardHomeView }) {
   );
 }
 
+function MarketContextPanel({ view }: { view: DashboardHomeView }) {
+  const context = view.marketContext;
+  return (
+    <article
+      data-testid="dashboard-home-market-context"
+      className={`${styles.dhCard} ${styles.dhMarketContext}`}
+    >
+      <div className={styles.dhTerminalPanelHead}>
+        <h3>今日市场解释</h3>
+        <span className={styles.dhMarketContextTemp} data-tone={context.temperatureTone}>
+          {context.temperatureLabel}
+        </span>
+      </div>
+      <div className={styles.dhMacroTrustStrip} aria-label="今日市场解释数据状态">
+        <span>{context.sourceLabel}</span>
+        <span>{context.asOfLabel}</span>
+        <span>{context.statusLabel}</span>
+        <span>{context.refreshLabel}</span>
+      </div>
+      <div className={styles.dhMarketContextGrid}>
+        {context.contextBlocks.map((block) => (
+          <div key={block.id} className={styles.dhMarketContextBlock}>
+            <span>{block.label}</span>
+            <b>{block.title}</b>
+            <small>{block.detail}</small>
+            <small>{block.foot}</small>
+          </div>
+        ))}
+      </div>
+      <ul className={styles.dhMarketContextSummary}>
+        {context.aiSummary.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
 export function TerminalHomeContent({ view }: TerminalHomeContentProps) {
   return (
     <>
       <TerminalKpiStrip view={view} />
       <RiskStrip items={view.keyRiskStrip} />
+      <MarketContextPanel view={view} />
 
       <section data-testid="dashboard-home-work-grid" className={styles.dhTerminalGrid}>
         <HoldingsPanel view={view} />
@@ -627,10 +684,9 @@ export function TerminalHomeContent({ view }: TerminalHomeContentProps) {
         <PositionChangesPanel view={view} />
         <IncomeTrendPanel view={view} />
         <ResearchReportsPanel view={view} />
-        {view.backendGaps.length > 0 ? <BackendGapPanel gaps={view.backendGaps} /> : null}
       </section>
 
-      <ResearchCalendarSection calendar={view.researchCalendar} />
+      <ResearchCalendarSection macroBriefing={view.macroBriefing} />
       <QuickDrilldowns view={view} />
     </>
   );

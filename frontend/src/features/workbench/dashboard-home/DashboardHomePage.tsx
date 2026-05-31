@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
 import { useDashboardData } from "../dashboard/hooks/useDashboardData";
+import { todayIsoDate } from "../pages/dashboardPageHelpers";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import styles from "./dashboardHome.module.css";
 import { mapToHomeView } from "./dashboardHomeView";
@@ -42,8 +43,12 @@ export default function DashboardHomePage() {
     portfolioHeadlinesQuery,
     portfolioComparisonQuery,
     creditSpreadMigrationQuery,
+    returnDecompositionQuery,
+    campisiFourEffectsQuery,
+    yieldCurveTermStructureQuery,
     decisionItemsQuery,
     researchCalendarQuery,
+    macroNewsQueries,
     calendarStartDate,
     calendarEndDate,
   } = useDashboardData({
@@ -152,6 +157,13 @@ export default function DashboardHomePage() {
       (adapterOutput.overview.vm?.metrics ?? []).map((metric) => sanitizeMetricCopy(metric)),
     [adapterOutput.overview.vm?.metrics],
   );
+  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
+  const macroNewsEvents = useMemo(
+    () => macroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
+    [macroNewsQueries],
+  );
+  const macroNewsLoading = macroNewsQueries.some((query) => query.isLoading);
+  const macroNewsError = macroNewsQueries.length > 0 && macroNewsQueries.every((query) => query.isError);
 
   const effectiveReportDate =
     snapshotResult?.report_date?.trim() || initialEffectiveReportDate || reportDate.trim();
@@ -182,6 +194,9 @@ export default function DashboardHomePage() {
         portfolio: portfolioHeadlinesQuery.data?.result ?? null,
         portfolioComparison: portfolioComparisonQuery.data?.result ?? null,
         creditSpreadMigration: creditSpreadMigrationQuery.data?.result ?? null,
+        returnDecomposition: returnDecompositionQuery.data?.result ?? null,
+        campisiFourEffects: campisiFourEffectsQuery.data?.result ?? null,
+        yieldCurveTermStructure: yieldCurveTermStructureQuery.data?.result ?? null,
         decisionItems: decisionItemsQuery.data?.result.rows ?? null,
         marketPoints: marketRatesQuery.data?.result.series ?? null,
         productCategoryYtd: snapshotResult?.product_category_ytd ?? null,
@@ -209,6 +224,10 @@ export default function DashboardHomePage() {
         calendarError: researchCalendarQuery.isError,
         calendarStartDate,
         calendarEndDate,
+        todayIsoDate: dashboardTodayIsoDate,
+        macroNewsEvents,
+        macroNewsLoading,
+        macroNewsError,
         snapshotMeta,
         marketMeta: marketRatesQuery.data?.result_meta ?? null,
         alertCount,
@@ -229,6 +248,8 @@ export default function DashboardHomePage() {
       marketRatesQuery.data?.result_meta,
       portfolioComparisonQuery.data?.result,
       portfolioHeadlinesQuery.data?.result,
+      returnDecompositionQuery.data?.result,
+      campisiFourEffectsQuery.data?.result,
       sanitizedMetrics,
       snapshotMeta,
       assetStructureQuery.data?.result,
@@ -248,9 +269,14 @@ export default function DashboardHomePage() {
       incomeTrendQuery.data?.result,
       incomeTrendQuery.isLoading,
       incomeTrendQuery.isError,
+      yieldCurveTermStructureQuery.data?.result,
       cockpitWarningsQuery.data?.result,
       calendarEndDate,
       calendarStartDate,
+      dashboardTodayIsoDate,
+      macroNewsError,
+      macroNewsEvents,
+      macroNewsLoading,
       researchCalendarQuery.data,
       researchCalendarQuery.isError,
       researchCalendarQuery.isLoading,

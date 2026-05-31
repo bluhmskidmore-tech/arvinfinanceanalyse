@@ -1,12 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
 import type { ApiClient } from "../../../../api/client";
 import { apiQueryKeys } from "../../../../api/queryKeys";
 import type { DashboardResearchCalendarQueryResult } from "../../pages/useDashboardResearchCalendarQuery";
 import { useDashboardResearchCalendarQuery } from "../../pages/useDashboardResearchCalendarQuery";
 import {
+  DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
+  DASHBOARD_MACRO_NEWS_TOPICS,
+} from "../dashboardMacroNewsTopics";
+import {
   getAssetIncomeOverview,
   getBondBucketYield,
+  getCampisiAttributionContext,
   getCreditRiskOverview,
   getDashboardDailyChanges,
   getDashboardOverview,
@@ -15,6 +20,8 @@ import {
   getPortfolioHeadlines,
   getProductPnlTrend,
   getRiskControlOverview,
+  getReturnDecompositionContext,
+  getYieldCurveContext,
   type DashboardSupplementPeriod,
 } from "../services/dashboardApi";
 
@@ -100,6 +107,44 @@ export function useDashboardData({
     enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
   });
 
+  const returnDecompositionQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsReturnDecomposition(
+      dataClient.mode,
+      supplementalReportDate,
+      "MoM",
+      "all",
+      "all",
+    ),
+    queryFn: () => getReturnDecompositionContext(dataClient, supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+  });
+
+  const campisiFourEffectsQuery = useQuery({
+    queryKey: apiQueryKeys.pnlCampisiFourEffects(
+      dataClient.mode,
+      supplementalReportDate,
+      30,
+    ),
+    queryFn: () => getCampisiAttributionContext(dataClient, supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+  });
+
+  const yieldCurveTermStructureQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
+      dataClient.mode,
+      supplementalReportDate,
+      "treasury,cdb,aaa_credit",
+    ),
+    queryFn: () => getYieldCurveContext(dataClient, supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+  });
+
   const bondBucketYieldQuery = useQuery({
     queryKey: apiQueryKeys.pnlByBusinessAnalysis(
       dataClient.mode,
@@ -158,6 +203,20 @@ export function useDashboardData({
     enabled: loadCalendarData,
   });
 
+  const macroNewsQueries = useQueries({
+    queries: DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => ({
+      queryKey: ["dashboard", "macro-news", dataClient.mode, topic.code],
+      queryFn: () =>
+        dataClient.getChoiceNewsEvents({
+          limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
+          offset: 0,
+          topicCode: topic.code,
+        }),
+      retry: false,
+      staleTime: 60_000,
+    })),
+  });
+
   return {
     coreMetricsQuery,
     dailyChangesQuery,
@@ -166,10 +225,14 @@ export function useDashboardData({
     portfolioHeadlinesQuery,
     portfolioComparisonQuery,
     creditSpreadMigrationQuery,
+    returnDecompositionQuery,
+    campisiFourEffectsQuery,
+    yieldCurveTermStructureQuery,
     bondBucketYieldQuery,
     bondBucketMonthlyTrendQuery,
     decisionItemsQuery,
     researchCalendarQuery: researchCalendar.researchCalendarQuery,
+    macroNewsQueries,
     calendarStartDate: researchCalendar.calendarStartDate,
     calendarEndDate: researchCalendar.calendarEndDate,
   } satisfies DashboardResearchCalendarQueryResult & {
@@ -180,9 +243,12 @@ export function useDashboardData({
     portfolioHeadlinesQuery: typeof portfolioHeadlinesQuery;
     portfolioComparisonQuery: typeof portfolioComparisonQuery;
     creditSpreadMigrationQuery: typeof creditSpreadMigrationQuery;
+    returnDecompositionQuery: typeof returnDecompositionQuery;
+    campisiFourEffectsQuery: typeof campisiFourEffectsQuery;
+    yieldCurveTermStructureQuery: typeof yieldCurveTermStructureQuery;
     bondBucketYieldQuery: typeof bondBucketYieldQuery;
     bondBucketMonthlyTrendQuery: typeof bondBucketMonthlyTrendQuery;
     decisionItemsQuery: typeof decisionItemsQuery;
+    macroNewsQueries: typeof macroNewsQueries;
   };
 }
-

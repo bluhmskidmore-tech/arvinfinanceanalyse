@@ -1,59 +1,98 @@
-import type { HomeResearchCalendarModel } from "../adapters/buildHomeResearchCalendarModel";
+import type { HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
 import styles from "../dashboardHome.module.css";
 
 type ResearchCalendarSectionProps = {
-  calendar: HomeResearchCalendarModel;
+  macroBriefing: HomeMacroBriefingModel;
 };
 
-function severityClass(severity: HomeResearchCalendarModel["items"][number]["severity"]): string {
-  if (severity === "high") {
-    return styles.dhCalendarSeverityHigh ?? "";
+function releaseImportanceClass(importance: string): string {
+  if (importance === "high") {
+    return styles.dhMacroReleaseItemHigh ?? "";
   }
-  if (severity === "medium") {
-    return styles.dhCalendarSeverityMedium ?? "";
+  if (importance === "medium") {
+    return styles.dhMacroReleaseItemMedium ?? "";
   }
-  return styles.dhCalendarSeverityLow ?? "";
+  return "";
 }
 
-export function ResearchCalendarSection({ calendar }: ResearchCalendarSectionProps) {
+export function ResearchCalendarSection({ macroBriefing }: ResearchCalendarSectionProps) {
   return (
     <section data-testid="dashboard-home-research-calendar" className={styles.dhCalendarSection}>
-      <article className={`${styles.dhCard} ${styles.dhTableCard}`}>
-        <div className={styles.dhSectionTitle}>
-          <span>研究日历</span>
-          <span className={styles.dhCalendarWindow}>{calendar.windowLabel}</span>
-        </div>
-        {calendar.message ? (
-          <p className={styles.dhCalendarMessage} data-testid="dashboard-home-research-calendar-message">
-            {calendar.message}
-          </p>
-        ) : null}
-        {calendar.status === "ready" && calendar.items.length > 0 ? (
-          <div className={styles.dhTableCardBody}>
-            <table className={styles.dhTable}>
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>标题</th>
-                  <th>类型</th>
-                  <th>优先级</th>
-                  <th>金额</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calendar.items.map((item) => (
-                  <tr key={item.id}>
-                    <td className={styles.dhNum}>{item.date}</td>
-                    <td>{item.title}</td>
-                    <td>{item.kindLabel}</td>
-                    <td className={severityClass(item.severity)}>{item.severity}</td>
-                    <td className={styles.dhNum}>{item.amountLabel}</td>
-                  </tr>
+      <article className={`${styles.dhCard} ${styles.dhMacroBriefingCard}`}>
+        <div className={styles.dhMacroBriefingGrid}>
+          <div className={styles.dhMacroBriefingPane}>
+            <div className={styles.dhMacroBriefingHeader}>
+              <span>重大信息发布日期前瞻</span>
+              <small>{macroBriefing.releaseWindowLabel}</small>
+            </div>
+            {macroBriefing.releaseItems.length > 0 ? (
+              <div className={styles.dhMacroBriefingList}>
+                {macroBriefing.releaseItems.map((item) => (
+                  <a
+                    key={item.id}
+                    className={`${styles.dhMacroReleaseItem} ${releaseImportanceClass(item.importance)}`}
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span className={styles.dhMacroReleaseDate}>
+                      <b>{item.dateLabel}</b>
+                      <small>{item.daysUntilLabel}</small>
+                    </span>
+                    <span className={styles.dhMacroReleaseBody}>
+                      <span className={styles.dhMacroReleaseTitle}>
+                        <span className={styles.dhMacroRegionTag}>{item.region}</span>
+                        {item.title}
+                      </span>
+                      <span className={styles.dhMacroReleaseMetaRow}>
+                        <span className={styles.dhMacroBriefingMeta}>
+                          {item.timeLabel} · {item.category} · {item.sourceName}
+                        </span>
+                        <span className={styles.dhMacroImportanceTag}>{item.importanceLabel}</span>
+                      </span>
+                    </span>
+                  </a>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            ) : (
+              <p className={styles.dhMacroBriefingMessage}>{macroBriefing.releaseMessage}</p>
+            )}
           </div>
-        ) : null}
+
+          <div className={styles.dhMacroBriefingPane}>
+            <div className={styles.dhMacroBriefingHeader}>
+              <span>国内外宏观新闻</span>
+              <small>{macroBriefing.newsFreshnessLabel}</small>
+            </div>
+            <div className={styles.dhMacroTrustStrip} aria-label="宏观新闻数据状态">
+              <span>{macroBriefing.newsSourceLabel}</span>
+              <span>{macroBriefing.newsAsOfLabel}</span>
+              <span>{macroBriefing.newsStatusLabel}</span>
+              <span>{macroBriefing.newsRefreshLabel}</span>
+            </div>
+            {macroBriefing.newsStale ? <span className={styles.dhMacroNewsStale}>新闻源偏旧</span> : null}
+            {macroBriefing.newsItems.length > 0 ? (
+              <div className={styles.dhMacroBriefingList}>
+                {macroBriefing.newsItems.map((item) => (
+                  <div key={item.id} className={styles.dhMacroNewsItem}>
+                    <span className={styles.dhMacroNewsTopic}>{item.topicLabel}</span>
+                    <span className={styles.dhMacroNewsBody}>
+                      <span className={styles.dhMacroNewsTitle}>{item.title}</span>
+                      <span className={styles.dhMacroBriefingMeta}>{item.timeLabel}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.dhMacroBriefingMessage}>{macroBriefing.newsMessage}</p>
+            )}
+          </div>
+        </div>
+        <div className={styles.dhMacroSupplyStrip}>
+          {macroBriefing.supplyItems.map((item) => (
+            <span key={item.id}>{item.label}</span>
+          ))}
+        </div>
       </article>
     </section>
   );
