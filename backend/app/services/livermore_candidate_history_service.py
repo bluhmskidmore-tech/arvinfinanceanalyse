@@ -34,6 +34,9 @@ CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION = "rv_livermore_candidate_hist
 CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION = "cv_livermore_candidate_history_portfolio_backtest_v1"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
+BENCHMARK_SERIES_ID = "CA.CSI300"
+TABLE_BENCHMARK_DAILY = "fact_choice_macro_daily"
+TABLE_BENCHMARK_SNAPSHOT = "choice_market_snapshot"
 _DEFAULT_SIGNAL_KINDS = ["hybrid_fusion", "stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
 _STRATEGY_LABELS = {
     "hybrid_fusion": "融合策略",
@@ -493,6 +496,12 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
             snapshot_from=resolved_from,
             snapshot_to=resolved_to,
         )
+        proxy_nav = _build_cycle_proxy_nav_series(_cycle_proxy_items(rows))
+        benchmark_rows, benchmark_table = _load_benchmark_rows_for_nav_series(
+            conn,
+            tables=tables,
+            nav_series=proxy_nav,
+        )
     finally:
         conn.close()
 
@@ -500,6 +509,7 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
         items=rows,
         snapshot_from=resolved_from,
         snapshot_to=resolved_to,
+        benchmark_rows=benchmark_rows,
     )
     proxy_items = _cycle_proxy_items(rows)
     return _wrap_cycle_proxy_backtest_envelope(
@@ -508,6 +518,7 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
         vendor_version=_first_nonempty_vendor_version(proxy_items or rows) or EMPTY_VENDOR_VERSION,
         evidence_rows=len(proxy_items),
         quality_flag="ok" if proxy_items else "warning",
+        tables_used=_append_optional_table([TABLE_HIST], benchmark_table),
     )
 
 
@@ -536,6 +547,8 @@ def livermore_candidate_history_portfolio_backtest_envelope(
             quality_flag="warning",
         )
 
+    benchmark_rows: list[dict[str, Any]] = []
+    benchmark_table: list[str] = []
     conn = duckdb.connect(str(path), read_only=True)
     try:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
@@ -567,6 +580,15 @@ def livermore_candidate_history_portfolio_backtest_envelope(
             rebalances=monthly_rebalances,
             snapshot_to=resolved_to,
         )
+        portfolio_nav, _rebalance_log = _build_candidate_history_portfolio_series(
+            rebalances=monthly_rebalances,
+            close_rows=close_rows,
+        )
+        benchmark_rows, benchmark_table = _load_benchmark_rows_for_nav_series(
+            conn,
+            tables=tables,
+            nav_series=portfolio_nav,
+        )
     finally:
         conn.close()
 
@@ -575,6 +597,7 @@ def livermore_candidate_history_portfolio_backtest_envelope(
         close_rows=close_rows,
         snapshot_from=resolved_from,
         snapshot_to=resolved_to,
+        benchmark_rows=benchmark_rows,
     )
     evidence_items = [row for rebalance in _candidate_history_portfolio_rebalance_rows(rows) for row in rebalance["items"]]
     return _wrap_candidate_history_portfolio_backtest_envelope(
@@ -583,6 +606,7 @@ def livermore_candidate_history_portfolio_backtest_envelope(
         vendor_version=_first_nonempty_vendor_version(evidence_items or rows) or EMPTY_VENDOR_VERSION,
         evidence_rows=len(evidence_items),
         quality_flag="ok" if payload["summary"] else "warning",
+        tables_used=_append_optional_table([TABLE_HIST, TABLE_OBS], benchmark_table),
     )
 
 
@@ -1282,10 +1306,15 @@ def _build_cycle_proxy_backtest_payload(
     items: list[dict[str, Any]],
     snapshot_from: str | None,
     snapshot_to: str | None,
+    benchmark_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     proxy_items = _cycle_proxy_items(items)
     nav_series = _build_cycle_proxy_nav_series(proxy_items)
-    summary = _build_cycle_proxy_summary(nav_series, candidate_rows=len(proxy_items))
+    summary = _build_cycle_proxy_summary(
+        nav_series,
+        candidate_rows=len(proxy_items),
+        benchmark_rows=benchmark_rows or [],
+    )
     return {
         "status": "proxy" if summary is not None else "unsupported",
         "full_strategy_status": "blocked_missing_inputs",
@@ -1300,7 +1329,7 @@ def _build_cycle_proxy_backtest_payload(
         "warnings": [
             "This is a reduced proxy backtest, not the full A-share cycle-rotation strategy.",
             "It uses daily candidate rows already persisted by the existing Livermore replay pipeline.",
-            "Transaction costs, slippage, benchmark-relative attribution, and the report's monthly core cadence are not modeled here.",
+            "Transaction costs, slippage, full benchmark attribution, and the report's monthly core cadence are not modeled here.",
         ],
         "summary": summary,
         "nav_series": nav_series,
@@ -1313,6 +1342,7 @@ def _build_candidate_history_portfolio_backtest_payload(
     close_rows: list[dict[str, Any]],
     snapshot_from: str | None,
     snapshot_to: str | None,
+    benchmark_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     rebalances = _candidate_history_portfolio_rebalance_rows(items)
     nav_series, rebalance_log = _build_candidate_history_portfolio_series(
@@ -1322,6 +1352,7 @@ def _build_candidate_history_portfolio_backtest_payload(
     summary = _build_candidate_history_portfolio_summary(
         nav_series,
         rebalance_log=rebalance_log,
+        benchmark_rows=benchmark_rows or [],
     )
     return {
         "status": "portfolio_proxy" if summary is not None else "unsupported",
@@ -1444,6 +1475,104 @@ def _load_candidate_history_portfolio_close_rows(
     ]
 
 
+def _load_benchmark_rows_for_nav_series(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    nav_series: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not nav_series:
+        return [], []
+    start_date = str(nav_series[0]["date"])[:10]
+    end_date = str(nav_series[-1].get("exit_date") or nav_series[-1]["date"])[:10]
+    return _load_benchmark_rows(conn, tables=tables, start_date=start_date, end_date=end_date)
+
+
+def _load_benchmark_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    start_date: str,
+    end_date: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    by_date: dict[str, dict[str, Any]] = {}
+    tables_used: list[str] = []
+    for table in (TABLE_BENCHMARK_SNAPSHOT, TABLE_BENCHMARK_DAILY):
+        if table not in tables:
+            continue
+        rows = conn.execute(
+            f"""
+            select trade_date, value_numeric
+            from {table}
+            where series_id = ?
+              and value_numeric is not null
+              and cast(trade_date as date) >= ?
+              and cast(trade_date as date) <= ?
+            order by cast(trade_date as date) asc
+            """,
+            [BENCHMARK_SERIES_ID, start_date, end_date],
+        ).fetchall()
+        if not rows:
+            continue
+        tables_used.append(table)
+        for trade_date, value in rows:
+            if value is None:
+                continue
+            by_date[str(trade_date)[:10]] = {
+                "trade_date": str(trade_date)[:10],
+                "value": float(value),
+            }
+    return [by_date[key] for key in sorted(by_date)], sorted(tables_used, key=_benchmark_table_sort_key)
+
+
+def _benchmark_table_sort_key(table: str) -> int:
+    return (TABLE_BENCHMARK_DAILY, TABLE_BENCHMARK_SNAPSHOT).index(table)
+
+
+def _build_benchmark_summary(
+    *,
+    nav_series: list[dict[str, Any]],
+    benchmark_rows: list[dict[str, Any]],
+    strategy_cumulative_return: float,
+) -> dict[str, Any] | None:
+    if not nav_series or len(benchmark_rows) < 2:
+        return None
+    requested_start_date = str(nav_series[0]["date"])[:10]
+    requested_end_date = str(nav_series[-1].get("exit_date") or nav_series[-1]["date"])[:10]
+    start_row = benchmark_rows[0]
+    end_row = benchmark_rows[-1]
+    start_value = float(start_row["value"])
+    end_value = float(end_row["value"])
+    if start_value <= 0:
+        return None
+    benchmark_return = end_value / start_value - 1
+    start_date = str(start_row["trade_date"])[:10]
+    end_date = str(end_row["trade_date"])[:10]
+    return {
+        "series_id": BENCHMARK_SERIES_ID,
+        "coverage_status": "complete"
+        if start_date <= requested_start_date and end_date >= requested_end_date
+        else "partial",
+        "requested_start_date": requested_start_date,
+        "requested_end_date": requested_end_date,
+        "start_date": start_date,
+        "end_date": end_date,
+        "cumulative_return": round(benchmark_return, 6),
+        "relative_cumulative_return": round(strategy_cumulative_return - benchmark_return, 6),
+    }
+
+
+def _append_optional_table(tables: list[str], table: str | list[str] | None) -> list[str]:
+    if table is None:
+        return tables
+    optional_tables = table if isinstance(table, list) else [table]
+    out = [*tables]
+    for item in optional_tables:
+        if item not in out:
+            out.append(item)
+    return out
+
+
 def _build_candidate_history_portfolio_series(
     *,
     rebalances: list[dict[str, Any]],
@@ -1519,6 +1648,7 @@ def _build_candidate_history_portfolio_summary(
     nav_series: list[dict[str, Any]],
     *,
     rebalance_log: list[dict[str, Any]],
+    benchmark_rows: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     if not nav_series or not rebalance_log:
         return None
@@ -1529,7 +1659,7 @@ def _build_candidate_history_portfolio_summary(
     buy_turnover = sum(float(row["buy_turnover"]) for row in rebalance_log)
     sell_turnover = sum(float(row["sell_turnover"]) for row in rebalance_log)
     transaction_cost = sum(float(row["transaction_cost"]) for row in rebalance_log)
-    return {
+    summary = {
         "sample_days": sample_days,
         "candidate_rows": sum(int(row["target_count"]) for row in rebalance_log),
         "rebalance_count": len(rebalance_log),
@@ -1542,6 +1672,14 @@ def _build_candidate_history_portfolio_summary(
         "max_gain": _max_gain_interval(nav_series),
         "max_drawdown": _max_drawdown_interval(nav_series),
     }
+    benchmark = _build_benchmark_summary(
+        nav_series=nav_series,
+        benchmark_rows=benchmark_rows,
+        strategy_cumulative_return=cumulative_return,
+    )
+    if benchmark is not None:
+        summary["benchmark"] = benchmark
+    return summary
 
 
 def _build_cycle_proxy_nav_series(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1587,6 +1725,7 @@ def _build_cycle_proxy_summary(
     nav_series: list[dict[str, Any]],
     *,
     candidate_rows: int,
+    benchmark_rows: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     if not nav_series:
         return None
@@ -1597,7 +1736,7 @@ def _build_cycle_proxy_summary(
     annualized_return = terminal_nav ** (252 / (sample_days * 5)) - 1 if sample_days > 0 else None
     max_gain = _max_gain_interval(nav_series)
     max_drawdown = _max_drawdown_interval(nav_series)
-    return {
+    summary = {
         "sample_days": sample_days,
         "candidate_rows": candidate_rows,
         "cumulative_return": round(cumulative_return, 6),
@@ -1605,6 +1744,14 @@ def _build_cycle_proxy_summary(
         "max_gain": max_gain,
         "max_drawdown": max_drawdown,
     }
+    benchmark = _build_benchmark_summary(
+        nav_series=nav_series,
+        benchmark_rows=benchmark_rows,
+        strategy_cumulative_return=cumulative_return,
+    )
+    if benchmark is not None:
+        summary["benchmark"] = benchmark
+    return summary
 
 
 def _max_gain_interval(nav_series: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3033,6 +3180,7 @@ def _wrap_cycle_proxy_backtest_envelope(
     vendor_version: str,
     evidence_rows: int,
     quality_flag: str,
+    tables_used: list[str] | None = None,
 ) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
@@ -3050,7 +3198,7 @@ def _wrap_cycle_proxy_backtest_envelope(
             "snapshot_to": payload.get("snapshot_to"),
             "proxy_signal_kind": payload.get("proxy_signal_kind"),
         },
-        tables_used=[TABLE_HIST],
+        tables_used=tables_used or [TABLE_HIST],
         evidence_rows=evidence_rows,
         result_payload=payload,
     )
@@ -3063,6 +3211,7 @@ def _wrap_candidate_history_portfolio_backtest_envelope(
     vendor_version: str,
     evidence_rows: int,
     quality_flag: str,
+    tables_used: list[str] | None = None,
 ) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
@@ -3081,7 +3230,7 @@ def _wrap_candidate_history_portfolio_backtest_envelope(
             "signal_kind": payload.get("signal_kind"),
             "rebalance_rule": payload.get("rebalance_rule"),
         },
-        tables_used=[TABLE_HIST, TABLE_OBS],
+        tables_used=tables_used or [TABLE_HIST, TABLE_OBS],
         evidence_rows=evidence_rows,
         result_payload=payload,
     )
