@@ -31,6 +31,7 @@ from backend.app.core_finance.macro.a_share_stampede_risk import (
     load_a_share_stampede_risk_config,
 )
 from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
+from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
 from backend.app.core_finance.macro.helpers import (
     build_curve_history,
     enrich_wide_with_curve_market_fields,
@@ -227,6 +228,7 @@ def macro_toolkit_scripts() -> dict[str, object]:
     settings = get_settings()
     scripts = [_script_payload(script) for script in iter_toolkit_scripts()]
     source_checks = _source_checks(settings.duckdb_path)
+    source_check_cache = {str(check["alias"]): check for check in source_checks}
     cffex_status = _cffex_member_rank_status(
         settings.duckdb_path,
         reference_date=_latest_source_check_date(source_checks),
@@ -242,11 +244,15 @@ def macro_toolkit_scripts() -> dict[str, object]:
             "omitted_scripts": OMITTED_SOURCE_SCRIPTS,
             "output_files": _output_files(),
             "source_checks": source_checks,
-            "capabilities": _capability_plan(settings.duckdb_path),
+            "capabilities": _capability_plan(
+                settings.duckdb_path,
+                source_check_cache=source_check_cache,
+            ),
             "cffex_member_rank": cffex_status,
             "choice_stock_refresh": _choice_stock_refresh_overview(
                 settings.duckdb_path,
                 settings.governance_path,
+                reference_date=_latest_source_check_date(source_checks),
             ),
             "warnings": _script_warnings(cffex_status),
         },
@@ -315,6 +321,7 @@ def macro_toolkit_analysis(
             "choice_stock_refresh": _choice_stock_refresh_overview(
                 settings.duckdb_path,
                 settings.governance_path,
+                reference_date=analysis_date,
             ),
             "runtime_status": runtime_status,
             "warnings": _analysis_warnings(coverage),
@@ -326,13 +333,16 @@ def macro_toolkit_analysis(
 def macro_toolkit_strategy_summaries() -> dict[str, object]:
     settings = get_settings()
     strategies = _equity_strategy_summaries(settings.duckdb_path)
+    shadow_portfolio_report = compute_equity_shadow_portfolio_report(settings.duckdb_path)
     return _envelope(
         "macro_toolkit.analysis.strategy_summaries",
         {
             "strategy_summaries": strategies,
+            "shadow_portfolio_report": shadow_portfolio_report,
             "choice_stock_refresh": _choice_stock_refresh_overview(
                 settings.duckdb_path,
                 settings.governance_path,
+                reference_date=_latest_strategy_as_of_date(strategies),
             ),
         },
     )
@@ -429,6 +439,7 @@ def macro_toolkit_refresh_choice_stock(
                 settings.duckdb_path,
                 settings.governance_path,
                 permission=permission,
+                reference_date=refresh.as_of_date,
             ),
         },
         quality_flag=refresh.quality_flag,
@@ -448,7 +459,11 @@ def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -
         "macro_toolkit.choice_stock_refresh_status",
         {
             "refresh": status,
-            "choice_stock_refresh": _choice_stock_refresh_overview(settings.duckdb_path, settings.governance_path),
+            "choice_stock_refresh": _choice_stock_refresh_overview(
+                settings.duckdb_path,
+                settings.governance_path,
+                reference_date=str(status.get("report_date") or "")[:10] or None,
+            ),
         },
     )
 
@@ -723,11 +738,13 @@ def _choice_stock_refresh_overview(
     governance_path: str | Path,
     *,
     permission: dict[str, object] | None = None,
+    reference_date: str | None = None,
 ) -> dict[str, object]:
     return macro_toolkit_service.choice_stock_refresh_overview(
         duckdb_path,
         governance_path,
         permission=permission,
+        reference_date=reference_date,
     )
 
 
@@ -735,13 +752,27 @@ def _default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
     return macro_toolkit_service.default_choice_stock_refresh_as_of_date(duckdb_path)
 
 
-def _capability_plan(duckdb_path: str | Path) -> list[dict[str, object]]:
-    return [_capability_payload(item, duckdb_path) for item in _CAPABILITY_DEFINITIONS]
+def _capability_plan(
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    cache = source_check_cache if source_check_cache is not None else {}
+    return [_capability_payload(item, duckdb_path, source_check_cache=cache) for item in _CAPABILITY_DEFINITIONS]
 
 
-def _capability_payload(definition: dict[str, object], duckdb_path: str | Path) -> dict[str, object]:
+def _capability_payload(
+    definition: dict[str, object],
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]],
+) -> dict[str, object]:
     aliases = tuple(str(alias) for alias in definition["data_aliases"])
-    checks = [_source_check(alias, duckdb_path) for alias in aliases]
+    checks: list[dict[str, object]] = []
+    for alias in aliases:
+        if alias not in source_check_cache:
+            source_check_cache[alias] = _source_check(alias, duckdb_path)
+        checks.append(source_check_cache[alias])
     hit_count = sum(1 for check in checks if check["latest"])
     required_count = len(checks)
     if required_count == 0:
@@ -1439,6 +1470,10 @@ def _real_multi_factor_summary(
     if isinstance(financials, pd.DataFrame) and not financials.empty:
         selected = multi_factor_selection(financials)
         selected_stock_codes = [str(stock_code) for stock_code in selected.index.tolist()]
+        factor_provenance = _factor_snapshot_provenance(financials)
+        factor_as_of_date = _factor_snapshot_as_of_date(financials)
+        factor_date_status = _factor_snapshot_date_status(financials)
+        warnings = _factor_snapshot_date_warnings(factor_date_status)
         return {
             "key": "multi_factor_selection",
             "label": "多因子选股",
@@ -1448,20 +1483,25 @@ def _real_multi_factor_summary(
             "primary_metric": {"label": "真实入选数量", "value": len(selected), "unit": ""},
             "evidence": [
                 "已接入 choice_stock_factor_snapshot，按估值、质量、动量、低波动、股息五类因子打分。",
-                f"因子快照日 {price_context['as_of_date']}，可用股票 {len(financials.index)} 只。",
+                f"因子快照日 {factor_as_of_date or price_context['as_of_date']}，行情日 {price_context['as_of_date']}，可用股票 {len(financials.index)} 只。",
             ],
-            "warnings": [],
+            "warnings": warnings,
             "result": {
                 "data_status": "complete",
                 "price_source": "choice_stock_daily_observation",
                 "factor_source": "choice_stock_factor_snapshot",
                 "as_of_date": price_context["as_of_date"],
+                "factor_as_of_date": factor_as_of_date,
+                "factor_date_status": factor_date_status,
                 "stock_count": len(prices.columns),
                 "factor_row_count": len(financials.index),
                 "selected_count": len(selected),
                 "selected_stock_codes": selected_stock_codes,
                 "selection_top_pct": 0.1,
                 "tables_used": ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+                "source_versions": price_context["source_versions"],
+                "vendor_versions": price_context["vendor_versions"],
+                **factor_provenance,
             },
         }
     return {
@@ -1483,6 +1523,8 @@ def _real_multi_factor_summary(
             "stock_count": len(prices.columns),
             "missing_factor_inputs": list(REQUIRED_FACTOR_INPUTS),
             "tables_used": price_context["tables_used"],
+            "source_versions": price_context["source_versions"],
+            "vendor_versions": price_context["vendor_versions"],
         },
     }
 
@@ -1547,6 +1589,10 @@ def _real_low_crowding_regime_multifactor_summary(
 
     selected = low_crowding_multifactor_selection(financials, observations)
     selected_stock_codes = [str(stock_code) for stock_code in selected.index.tolist()]
+    factor_provenance = _factor_snapshot_provenance(financials)
+    factor_as_of_date = _factor_snapshot_as_of_date(financials)
+    factor_date_status = _factor_snapshot_date_status(financials)
+    warnings = _factor_snapshot_date_warnings(factor_date_status)
     excluded_count = (
         int(selected["crowding_excluded_count"].iloc[0])
         if "crowding_excluded_count" in selected.columns and not selected.empty
@@ -1561,18 +1607,21 @@ def _real_low_crowding_regime_multifactor_summary(
         "primary_metric": {"label": "目标仓位", "value": regime["target_position"], "unit": ""},
         "evidence": [
             f"市场状态 {regime['regime']}，仓位建议 {regime['target_position']}。",
-            f"因子快照 {price_context['as_of_date']}，低拥挤多因子入选 {len(selected_stock_codes)} 只。",
+            f"因子快照 {factor_as_of_date or price_context['as_of_date']}，行情日 {price_context['as_of_date']}，低拥挤多因子入选 {len(selected_stock_codes)} 只。",
         ],
-        "warnings": [],
+        "warnings": warnings,
         "result": {
             **base_result,
             "factor_source": "choice_stock_factor_snapshot",
+            "factor_as_of_date": factor_as_of_date,
+            "factor_date_status": factor_date_status,
             "factor_row_count": len(financials.index),
             "selected_count": len(selected_stock_codes),
             "selected_stock_codes": selected_stock_codes,
             "selection_top_pct": 0.1,
             "crowding_excluded_count": excluded_count,
             "tables_used": ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+            **factor_provenance,
         },
     }
 
@@ -1724,6 +1773,17 @@ def _load_equity_strategy_factor_snapshot(
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "choice_stock_factor_snapshot" not in tables:
             return None
+        factor_date_row = conn.execute(
+            """
+            select max(try_cast(as_of_date as date))
+            from choice_stock_factor_snapshot
+            where try_cast(as_of_date as date) <= try_cast(? as date)
+            """,
+            [as_of_date],
+        ).fetchone()
+        factor_as_of_date = factor_date_row[0] if factor_date_row else None
+        if factor_as_of_date is None:
+            return None
         rows = conn.execute(
             """
             select
@@ -1737,11 +1797,15 @@ def _load_equity_strategy_factor_snapshot(
               twelve_month_return,
               volatility,
               dividend_yield,
-              industry
+              industry,
+              source_version,
+              vendor_version,
+              rule_version,
+              run_id
             from choice_stock_factor_snapshot
-            where as_of_date = ?
+            where try_cast(as_of_date as date) = ?
             """,
-            [as_of_date],
+            [factor_as_of_date],
         ).fetchall()
     except duckdb.Error:
         return None
@@ -1763,6 +1827,10 @@ def _load_equity_strategy_factor_snapshot(
             "volatility",
             "dividend_yield",
             "industry",
+            "source_version",
+            "vendor_version",
+            "rule_version",
+            "run_id",
         ],
     )
     if stock_codes is not None:
@@ -1778,7 +1846,46 @@ def _load_equity_strategy_factor_snapshot(
     frame = frame[frame["industry"] != ""]
     if frame.empty:
         return None
-    return frame.set_index("stock_code").sort_index()
+    provenance = {
+        "factor_source_versions": _unique_texts(frame["source_version"].tolist()),
+        "factor_vendor_versions": _unique_texts(frame["vendor_version"].tolist()),
+        "factor_rule_versions": _unique_texts(frame["rule_version"].tolist()),
+        "factor_run_ids": _unique_texts(frame["run_id"].tolist()),
+    }
+    factors = frame.drop(columns=["source_version", "vendor_version", "rule_version", "run_id"])
+    result = factors.set_index("stock_code").sort_index()
+    result.attrs["provenance"] = provenance
+    loaded_factor_date = factor_as_of_date.isoformat()
+    result.attrs["factor_as_of_date"] = loaded_factor_date
+    result.attrs["factor_date_status"] = "aligned" if loaded_factor_date == as_of_date else "fallback"
+    return result
+
+
+def _factor_snapshot_provenance(financials: pd.DataFrame) -> dict[str, list[str]]:
+    provenance = financials.attrs.get("provenance")
+    if not isinstance(provenance, dict):
+        return {}
+    return {
+        key: [str(item) for item in values if str(item or "").strip()]
+        for key, values in provenance.items()
+        if key.startswith("factor_") and isinstance(values, list) and values
+    }
+
+
+def _factor_snapshot_as_of_date(financials: pd.DataFrame) -> str | None:
+    text = str(financials.attrs.get("factor_as_of_date") or "").strip()
+    return text or None
+
+
+def _factor_snapshot_date_status(financials: pd.DataFrame) -> str:
+    text = str(financials.attrs.get("factor_date_status") or "").strip()
+    return text or "unknown"
+
+
+def _factor_snapshot_date_warnings(factor_date_status: str) -> list[str]:
+    if factor_date_status == "fallback":
+        return ["FACTOR_SNAPSHOT_DATE_FALLBACK"]
+    return []
 
 
 def _sample_strategy_observations(prices: pd.DataFrame) -> pd.DataFrame:
@@ -2994,6 +3101,19 @@ def _latest_indicator_date(indicators: list[dict[str, object]]) -> str | None:
     return max(dates) if dates else None
 
 
+def _latest_strategy_as_of_date(strategies: list[dict[str, object]]) -> str | None:
+    dates: list[str] = []
+    for strategy in strategies:
+        result = strategy.get("result")
+        if not isinstance(result, dict):
+            continue
+        for key in ("as_of_date", "factor_as_of_date"):
+            value = str(result.get(key) or "").strip()
+            if value:
+                dates.append(value[:10])
+    return max(dates) if dates else None
+
+
 def _number(item: dict[str, object] | None, field: str) -> float | None:
     if item is None or item.get(field) is None:
         return None
@@ -3029,6 +3149,11 @@ def _envelope(
         tables_used.append("choice_stock_daily_observation")
     if _strategy_summaries_use_stock_factor_snapshot(result):
         tables_used.append("choice_stock_factor_snapshot")
+    shadow_report = result.get("shadow_portfolio_report")
+    if isinstance(shadow_report, dict):
+        report_tables = shadow_report.get("tables_used")
+        if isinstance(report_tables, list):
+            tables_used.extend(str(table) for table in report_tables)
     if "choice_stock_refresh" in result:
         tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
     a_share_risk = result.get("a_share_risk")

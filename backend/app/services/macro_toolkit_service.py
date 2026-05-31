@@ -266,12 +266,13 @@ def choice_stock_refresh_overview(
     governance_path: str | Path,
     *,
     permission: dict[str, object] | None = None,
+    reference_date: str | None = None,
 ) -> dict[str, object]:
     return {
         "permission": permission or build_choice_stock_refresh_permission_payload(),
         "refresh": choice_stock_refresh_status(governance_path),
-        "daily_observation": _choice_stock_daily_observation_status(duckdb_path),
-        "factor_snapshot": _choice_stock_factor_snapshot_status(duckdb_path),
+        "daily_observation": _choice_stock_daily_observation_status(duckdb_path, reference_date=reference_date),
+        "factor_snapshot": _choice_stock_factor_snapshot_status(duckdb_path, reference_date=reference_date),
         "default_factor_max_stock_count": None,
     }
 
@@ -503,17 +504,21 @@ def _choice_stock_refresh_trigger_mode(status: str) -> str:
     return "idle"
 
 
-def _choice_stock_daily_observation_status(duckdb_path: str | Path) -> dict[str, object]:
+def _choice_stock_daily_observation_status(
+    duckdb_path: str | Path,
+    *,
+    reference_date: str | None = None,
+) -> dict[str, object]:
     path = Path(duckdb_path)
     if not path.exists():
-        return _choice_stock_table_status("missing_database")
+        return _choice_stock_table_status("missing_database", reference_date=reference_date)
     try:
         conn = duckdb.connect(str(path), read_only=True)
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_database")
+        return _choice_stock_table_status("unreadable_database", reference_date=reference_date)
     try:
         if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
-            return _choice_stock_table_status("missing_table")
+            return _choice_stock_table_status("missing_table", reference_date=reference_date)
         row = conn.execute(
             """
             select
@@ -525,31 +530,37 @@ def _choice_stock_daily_observation_status(duckdb_path: str | Path) -> dict[str,
             """
         ).fetchone()
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_table")
+        return _choice_stock_table_status("unreadable_table", reference_date=reference_date)
     finally:
         conn.close()
     row_count = _int_or_zero(row[0] if row else 0)
+    latest_trade_date = str(row[3])[:10] if row and row[3] is not None else None
     return {
         "materialized": row_count > 0,
         "status": "ok" if row_count > 0 else "empty_table",
         "row_count": row_count,
         "stock_count": _int_or_zero(row[1] if row else 0),
         "trade_date_count": _int_or_zero(row[2] if row else 0),
-        "latest_trade_date": str(row[3])[:10] if row and row[3] is not None else None,
+        "latest_trade_date": latest_trade_date,
+        **_choice_stock_table_freshness(latest_trade_date, reference_date),
     }
 
 
-def _choice_stock_factor_snapshot_status(duckdb_path: str | Path) -> dict[str, object]:
+def _choice_stock_factor_snapshot_status(
+    duckdb_path: str | Path,
+    *,
+    reference_date: str | None = None,
+) -> dict[str, object]:
     path = Path(duckdb_path)
     if not path.exists():
-        return _choice_stock_table_status("missing_database")
+        return _choice_stock_table_status("missing_database", reference_date=reference_date)
     try:
         conn = duckdb.connect(str(path), read_only=True)
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_database")
+        return _choice_stock_table_status("unreadable_database", reference_date=reference_date)
     try:
         if not _duckdb_table_exists(conn, "choice_stock_factor_snapshot"):
-            return _choice_stock_table_status("missing_table")
+            return _choice_stock_table_status("missing_table", reference_date=reference_date)
         row = conn.execute(
             """
             select
@@ -560,25 +571,74 @@ def _choice_stock_factor_snapshot_status(duckdb_path: str | Path) -> dict[str, o
             """
         ).fetchone()
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_table")
+        return _choice_stock_table_status("unreadable_table", reference_date=reference_date)
     finally:
         conn.close()
     row_count = _int_or_zero(row[0] if row else 0)
+    as_of_date = str(row[2])[:10] if row and row[2] is not None else None
     return {
         "materialized": row_count > 0,
         "status": "ok" if row_count > 0 else "empty_table",
         "row_count": row_count,
         "stock_count": _int_or_zero(row[1] if row else 0),
-        "as_of_date": str(row[2])[:10] if row and row[2] is not None else None,
+        "as_of_date": as_of_date,
+        **_choice_stock_table_freshness(as_of_date, reference_date),
     }
 
 
-def _choice_stock_table_status(status: str) -> dict[str, object]:
+def _choice_stock_table_status(status: str, *, reference_date: str | None = None) -> dict[str, object]:
     return {
         "materialized": False,
         "status": status,
         "row_count": 0,
         "stock_count": 0,
+        **_choice_stock_table_freshness(None, reference_date),
+    }
+
+
+def _choice_stock_table_freshness(data_date: str | None, reference_date: str | None) -> dict[str, object]:
+    if not data_date:
+        return {
+            "freshness_status": "missing",
+            "reference_date": reference_date,
+            "stale_days": None,
+            "fallback_mode": "missing",
+            "fallback_date": None,
+        }
+    if not reference_date:
+        return {
+            "freshness_status": "unknown",
+            "reference_date": None,
+            "stale_days": None,
+            "fallback_mode": "unknown",
+            "fallback_date": None,
+        }
+    try:
+        data_day = date.fromisoformat(data_date[:10])
+        reference_day = date.fromisoformat(reference_date[:10])
+    except ValueError:
+        return {
+            "freshness_status": "unknown",
+            "reference_date": reference_date,
+            "stale_days": None,
+            "fallback_mode": "unknown",
+            "fallback_date": None,
+        }
+    raw_stale_days = (reference_day - data_day).days
+    stale_days = max(raw_stale_days, 0)
+    if raw_stale_days <= 1:
+        status = "current"
+    elif raw_stale_days <= 7:
+        status = "lagging"
+    else:
+        status = "stale"
+    fallback_mode = "none" if status == "current" else "latest_available"
+    return {
+        "freshness_status": status,
+        "reference_date": reference_day.isoformat(),
+        "stale_days": stale_days,
+        "fallback_mode": fallback_mode,
+        "fallback_date": data_day.isoformat() if fallback_mode == "latest_available" else None,
     }
 
 

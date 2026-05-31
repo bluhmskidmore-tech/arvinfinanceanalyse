@@ -42,9 +42,8 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-POS-001": (
         "positions DTO remains page/schema truth only; no approved `MTR-*` page bindings yet."
     ),
-    "PAGE-LEDGER-PNL-001": (
-        "ledger PnL page contract is source-drilldown only; no approved table-bound "
-        "`MTR-*` page bindings yet."
+    "PAGE-MACRO-TOOLKIT-001": (
+        "macro toolkit is a non-formal tooling surface; no approved `MTR-*` bindings by design."
     ),
 }
 

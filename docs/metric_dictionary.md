@@ -22,7 +22,7 @@
   - `/ui/home/overview`
   - `/ui/home/summary`
   - `/ui/pnl/attribution`
-- Wave 1 工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）的 **文档层绑定** 见 §12.5；其中仅 `PAGE-OPS-001` 上的 `balance-analysis.overview` 切片已可钉到既有 `MTR-BAL-*` 与 `GS-BAL-OVERVIEW-A`，其余路由以显式 **GAP** 登记，不臆造 `metric_id`
+- Wave 1 工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）的 **文档层绑定** 见 §12.5；其中 `PAGE-OPS-001` 当前首屏复用 product-category PnL headline 的既有 `MTR-PCP-*` 与 `GS-PROD-CAT-PNL-A`，balance overview 仅作为 supplemental topic-entry evidence 复用既有 `MTR-BAL-*` 与 `GS-BAL-OVERVIEW-A`；其余未冻结部分以显式 **GAP** 登记，不臆造 `metric_id`
 
 不覆盖：
 
@@ -436,14 +436,15 @@ Guardrails:
 
 | 前端路由 | page_id | 页面 / API 证据 | 可绑定 `metric_id` | `sample_id` | 测试文件（golden gate 含 `tests/test_golden_samples_capture_ready.py` 时单列） |
 | --- | --- | --- | --- | --- | --- |
-| `/operations-analysis` | `PAGE-OPS-001` | `frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx` → `client.getBalanceAnalysisOverview`（`positionScope: "all"`, `currencyBasis: "CNY"`） | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
-| `/operations-analysis` | `PAGE-OPS-001` | 同页 → `client.getBalanceAnalysisSummary`（分页汇总行） | `MTR-BAL-004`, `MTR-BAL-005`, `MTR-BAL-006`, `MTR-BAL-103`；请求口径 `MTR-BAL-104`, `MTR-BAL-105` | **无** 独立 capture-ready 包；与 `GS-BAL-OVERVIEW-A` 仅共享 formal 族与 `report_date` 语义，不对 summary 表做 frozen JSON 逐项锁死 | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | `frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx` → `client.getProductCategoryDates` / `client.getProductCategoryPnl`（`view: "monthly"`） | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | `frontend/src/test/OperationsAnalysisPage.test.tsx`；`tests/test_product_category_pnl_flow.py`；`tests/test_golden_samples_capture_ready.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | 同页 → `client.getBalanceAnalysisOverview`（`positionScope: "all"`, `currencyBasis: "CNY"`） | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | `GS-BAL-OVERVIEW-A`；仅作为 supplemental topic-entry evidence | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | 同页 → `getMacroFoundation` / `getChoiceMacroLatest` / `getFxFormalStatus` / `getChoiceNewsEvents` / PnL refresh 状态 | **GAP-OPS-MACRO-FX**：市场与运营条未纳入本版字典 `MTR-*` | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
 | `/bond-dashboard` | `PAGE-BOND-001` | `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` → `getBondDashboardHeadlineKpis`；`frontend/src/features/bond-dashboard/components/HeadlineKpis.tsx`（`total_market_value`, `unrealized_pnl`, `weighted_ytm`, …） | **GAP-BOND-DASH-HL**：**页面契约已有**；Headline 与 `MTR-BAL-001` 等 formal 字段 **未建立字典级同源** | `GS-BOND-HEADLINE-A` **capture-ready**（冻结 `GET /api/bond-dashboard/headline-kpis` 的页面 headline DTO；非字典级 metric 批准） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/bond-dashboard` | `PAGE-BOND-001` | 同页 → `getBondDashboardRiskIndicators`；`RiskIndicatorsPanel.tsx`（`total_market_value`, `total_dv01`, `credit_ratio`, …） | **GAP-BOND-DASH-RISK**：**页面契约已有**；与 `MTR-RSK-*`（`GS-RISK-A` / risk tensor）是否同源 **未冻结** | —（不自动继承 `GS-RISK-A`） | `frontend/src/test/BondDashboardPage.test.tsx` |
 | `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
 | `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；当前仅 formal rates 片段可单独核对，尚无 full-page formal metric dictionary / capture-ready golden sample | — | `frontend/src/test/MarketDataPage.test.tsx` |
+| `/macro-toolkit` | `PAGE-MACRO-TOOLKIT-001` | `MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` / `getMacroToolkitScripts` | **无 `MTR-*`**：工具/分析口径，不升格为正式指标 | — | `frontend/src/test/MacroToolkitPage.test.tsx`；`tests/test_macro_toolkit_scripts.py` |
 
 ## 13. 建议下一步
 
@@ -477,9 +478,9 @@ Guardrails:
 | `bond-dashboard` | 新增 4 条 `candidate`：`MTR-BOND-001`~`MTR-BOND-004` | `PAGE-BOND-001` | `GS-BOND-HEADLINE-A` | 页面 headline DTO 已 freeze，但 §12.5 仍将字典级批准视为 gap，因此保留 `pending_confirmation=true` |
 | `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `none` | 首屏当前是筛选上下文；本次只登记两个列表总数指标 |
 | `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `none` | 页面文案已明确为分析口径子视图，不提升为正式口径 |
-| `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-CONTRACT-PENDING:/ledger-pnl` | `none` | live 只读链路已接通，但缺独立 `PAGE-*` 合同 |
+| `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-LEDGER-PNL-001` | `none` | live 只读链路已有独立 PAGE 合同；三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |
 | `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
-| `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | 当前首屏实现已改为产品分类正式 PnL，和 `PAGE-OPS-001` 旧文字不一致 |
+| `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | `PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence；macro/FX/news 仍由 `GAP-OPS-MACRO-FX` 限定 |
 | `cashflow-projection` | 新增 4 条 `candidate`：`MTR-CFP-001`~`MTR-CFP-004` | `PAGE-CONTRACT-PENDING:/cashflow-projection` | `none` | live 只读链路已接通，字段与 schema 可追溯 |
 | `concentration-monitor` | 新增 4 条 `candidate`：`MTR-CON-001`~`MTR-CON-004` | `PAGE-CONTRACT-PENDING:/concentration-monitor` | `none` | 首屏 4 张卡片均来自 `credit-spread-migration` 结果 |
 | `product-category-pnl` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-PROD-CAT-PNL-001` | `GS-PROD-CAT-PNL-A` | 三条 headline metric 仍是当前唯一 active rows；detail 扩展按 decision 3C 进入矩阵/编号/测试后再落字典 |
@@ -509,9 +510,9 @@ Guardrails:
 
 #### 15.2.4 `ledger-pnl`
 
-- `MTR-LPN-001` 核心损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/ledger-pnl`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-LPN-002` 全量损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/ledger-pnl`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-LPN-003` 净资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/ledger-pnl`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-LPN-001` 核心损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-LEDGER-PNL-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-LPN-002` 全量损益: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-LEDGER-PNL-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-LPN-003` 净资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=signed amount; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/ledger-pnl/summary`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-LEDGER-PNL-001`; `bound_sample_id=none`; `pending_confirmation=true`.
 
 #### 15.2.5 `market-data`
 
@@ -547,7 +548,8 @@ Guardrails:
 
 ### 15.3 复用、排除与对齐说明
 
-- `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 仍记录 balance overview + macro / FX strip，已与当前实现不一致。
+- `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence，macro / FX / news 继续以 `GAP-OPS-MACRO-FX` 约束。
+- `macro-toolkit`: 页面已有 `PAGE-MACRO-TOOLKIT-001`，但它是工具/分析口径 surface；`coverage.hit_rate`、脚本数、策略数、真实链路数、刷新行数与 source/version/run_id 只作状态和追踪证据，不新增 `MTR-MACRO-*` 或任何正式 `MTR-*`。
 - `product-category-pnl`: 继续只复用当前 active 的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 只有在 decision 3C field matrix / numbering / tests 落地后才可升格为更多 `MTR-*`。
 - `positions`: `区间起`、`区间止`、`业务种类`、`产品类型`、`客户搜索`、`方向/对手方` 属过滤上下文，`status=excluded`，不写入 `MTR-*`。
 - `average-balance`: 页面文案明确为“分析口径子视图，不提升为正式口径”；因此本节新增条目全部只登记为 `candidate`。

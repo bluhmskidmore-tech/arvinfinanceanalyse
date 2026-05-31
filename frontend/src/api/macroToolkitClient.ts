@@ -110,6 +110,11 @@ export type MacroToolkitChoiceStockTableStatus = {
   trade_date_count?: number;
   latest_trade_date?: string | null;
   as_of_date?: string | null;
+  freshness_status?: string;
+  reference_date?: string | null;
+  stale_days?: number | null;
+  fallback_mode?: string | null;
+  fallback_date?: string | null;
 };
 
 export type MacroToolkitChoiceStockRefreshStatus = {
@@ -223,6 +228,95 @@ export type MacroToolkitStrategySummary = {
   result: Record<string, unknown>;
 };
 
+export type MacroToolkitShadowPortfolioHolding = {
+  rank: number;
+  stock_code: string;
+  industry: string;
+  score: number;
+  pe: number;
+  pb: number;
+  three_month_return: number;
+};
+
+export type MacroToolkitShadowPortfolioCostResult = {
+  cost_bps: number;
+  total_return: number;
+  excess_return: number;
+  max_drawdown: number;
+  win_rate?: number;
+};
+
+export type MacroToolkitShadowPortfolioPeriodCostResult = {
+  cost_bps: number;
+  net_return: number;
+  cost: number;
+};
+
+export type MacroToolkitShadowPortfolioPeriodReturn = {
+  portfolio_key: string;
+  start_date: string;
+  end_date: string;
+  gross_return: number;
+  benchmark_return: number;
+  excess_return: number;
+  selected_count: number;
+  name_turnover: number | null;
+  traded_notional: number | null;
+  cost_results: MacroToolkitShadowPortfolioPeriodCostResult[];
+};
+
+export type MacroToolkitShadowPortfolio = {
+  key: string;
+  label: string;
+  role: "production_reference" | "shadow_candidate" | string;
+  total_return: number;
+  excess_return: number;
+  max_drawdown: number;
+  win_rate: number;
+  average_turnover: number | null;
+  average_traded_notional?: number | null;
+  average_count: number;
+  average_pe: number | null;
+  average_pb: number | null;
+  weights: Record<string, number>;
+  constraints: {
+    pe_max?: number | null;
+    pb_max?: number | null;
+    turnover_cap?: number | null;
+    top_pct?: number;
+    max_candidates?: number;
+    max_per_industry?: number;
+  };
+  cost_results: MacroToolkitShadowPortfolioCostResult[];
+  latest_holdings: MacroToolkitShadowPortfolioHolding[];
+};
+
+export type MacroToolkitShadowPortfolioReport = {
+  status: "complete" | "insufficient_history" | "unavailable" | string;
+  basis: "read_only_shadow" | string;
+  label: string;
+  as_of_date: string | null;
+  completed_periods: number;
+  factor_dates: string[];
+  rule_version: string;
+  tables_used: string[];
+  warnings: string[];
+  cost_model: {
+    cost_bps: number[];
+    initial_build_included: boolean;
+    final_liquidation_included: boolean;
+    method?: string;
+  };
+  benchmark: {
+    key: string;
+    label: string;
+    total_return: number;
+    max_drawdown: number;
+  } | null;
+  portfolios: MacroToolkitShadowPortfolio[];
+  period_returns: MacroToolkitShadowPortfolioPeriodReturn[];
+};
+
 export type MacroToolkitAShareRiskPayload = {
   trade_date: string | null;
   status: "complete" | "degraded" | "unavailable";
@@ -268,6 +362,7 @@ export type MacroToolkitAnalysisPayload = {
   a_share_risk?: MacroToolkitAShareRiskPayload;
   capability_results: MacroToolkitCapabilityResult[];
   strategy_summaries: MacroToolkitStrategySummary[];
+  shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
   output_files: MacroToolkitOutputFile[];
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
@@ -279,6 +374,7 @@ export type MacroToolkitAnalysisPayload = {
 
 export type MacroToolkitStrategySummariesPayload = {
   strategy_summaries: MacroToolkitStrategySummary[];
+  shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
 };
 
@@ -582,6 +678,120 @@ const MOCK_STRATEGY_SUMMARIES: MacroToolkitStrategySummary[] = [
   },
 ];
 
+const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
+  status: "complete",
+  basis: "read_only_shadow",
+  label: "影子组合报告",
+  as_of_date: "2026-04-30",
+  completed_periods: 4,
+  factor_dates: ["2026-04-01", "2026-04-10", "2026-04-20", "2026-04-25", "2026-04-30"],
+  rule_version: "rv_macro_toolkit_shadow_portfolio_v1",
+  tables_used: ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+  warnings: ["READ_ONLY_SHADOW_NOT_PRODUCTION", "SHORT_HISTORY"],
+  cost_model: {
+    cost_bps: [0, 10, 20, 50],
+    initial_build_included: true,
+    final_liquidation_included: false,
+    method: "cost_bps_applied_to_abs_weight_delta",
+  },
+  benchmark: {
+    key: "equal_weight_factor_universe",
+    label: "因子池等权基准",
+    total_return: -0.0211,
+    max_drawdown: -0.0601,
+  },
+  portfolios: [
+    {
+      key: "current_baseline",
+      label: "当前正式规则",
+      role: "production_reference",
+      total_return: -0.0448,
+      excess_return: -0.0242,
+      max_drawdown: -0.0558,
+      win_rate: 0.25,
+      average_turnover: 0.3247,
+      average_traded_notional: 0.75,
+      average_count: 29.25,
+      average_pe: 43.02,
+      average_pb: 2.06,
+      weights: { value: 0.3, quality: 0.25, momentum: 0.15, low_vol: 0.15, dividend: 0.15 },
+      constraints: { pe_max: null, pb_max: null, turnover_cap: null, top_pct: 0.1, max_candidates: 30, max_per_industry: 3 },
+      cost_results: [
+        { cost_bps: 0, total_return: -0.0448, excess_return: -0.0242, max_drawdown: -0.0558, win_rate: 0.25 },
+        { cost_bps: 20, total_return: -0.0505, excess_return: -0.0301, max_drawdown: -0.0578, win_rate: 0.25 },
+        { cost_bps: 50, total_return: -0.058, excess_return: -0.038, max_drawdown: -0.061, win_rate: 0.25 },
+      ],
+      latest_holdings: [
+        { rank: 1, stock_code: "600519.SH", industry: "食品饮料", score: 1.9, pe: 29.13, pb: 4.32, three_month_return: 0.0613 },
+        { rank: 2, stock_code: "600001.SH", industry: "银行", score: 1.7, pe: 5.3, pb: 0.62, three_month_return: -0.011 },
+      ],
+    },
+    {
+      key: "deep_value_quality_pe80",
+      label: "深度价值质量影子组合",
+      role: "shadow_candidate",
+      total_return: 0.3798,
+      excess_return: 0.0674,
+      max_drawdown: -0.0402,
+      win_rate: 0.5,
+      average_turnover: 0.3472,
+      average_traded_notional: 0.8494,
+      average_count: 26.92,
+      average_pe: 31.08,
+      average_pb: 2.42,
+      weights: { value: 0.45, quality: 0.25, momentum: 0.05, low_vol: 0.1, dividend: 0.15 },
+      constraints: { pe_max: 80, pb_max: null, turnover_cap: null, top_pct: 0.1, max_candidates: 30, max_per_industry: 3 },
+      cost_results: [
+        { cost_bps: 0, total_return: 0.3798, excess_return: 0.0674, max_drawdown: -0.0402, win_rate: 0.5 },
+        { cost_bps: 20, total_return: 0.3593, excess_return: 0.0516, max_drawdown: -0.0447, win_rate: 0.5 },
+        { cost_bps: 50, total_return: 0.3291, excess_return: 0.0282, max_drawdown: -0.0581, win_rate: 0.5 },
+      ],
+      latest_holdings: [
+        { rank: 1, stock_code: "600519.SH", industry: "食品饮料", score: 2.0071, pe: 29.13, pb: 4.32, three_month_return: 0.0613 },
+        { rank: 2, stock_code: "603008.SH", industry: "轻工制造", score: 1.9121, pe: 18.6, pb: 1.52, three_month_return: 0.0413 },
+      ],
+    },
+  ],
+  period_returns: [
+    {
+      portfolio_key: "deep_value_quality_pe80",
+      start_date: "2026-04-01",
+      end_date: "2026-04-10",
+      gross_return: 0.031,
+      benchmark_return: 0,
+      excess_return: 0.031,
+      selected_count: 27,
+      name_turnover: null,
+      traded_notional: 1,
+      cost_results: [{ cost_bps: 20, net_return: 0.029, cost: 0.002 }],
+    },
+    {
+      portfolio_key: "deep_value_quality_pe80",
+      start_date: "2026-04-10",
+      end_date: "2026-04-20",
+      gross_return: -0.019,
+      benchmark_return: -0.007,
+      excess_return: -0.012,
+      selected_count: 27,
+      name_turnover: 0.2,
+      traded_notional: 0.4,
+      cost_results: [{ cost_bps: 20, net_return: -0.0198, cost: 0.0008 }],
+    },
+    {
+      portfolio_key: "deep_value_quality_pe80",
+      start_date: "2026-04-20",
+      end_date: "2026-04-25",
+      gross_return: 0.024,
+      benchmark_return: 0.011,
+      excess_return: 0.013,
+      selected_count: 26,
+      name_turnover: 0.3,
+      traded_notional: 0.6,
+      cost_results: [{ cost_bps: 20, net_return: 0.0228, cost: 0.0012 }],
+    },
+  ],
+};
+
 const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
   permission: {
     mode: "identity_only",
@@ -601,6 +811,11 @@ const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
     stock_count: 1000,
     trade_date_count: 260,
     latest_trade_date: "2026-04-30",
+    freshness_status: "current",
+    reference_date: "2026-04-30",
+    stale_days: 0,
+    fallback_mode: "none",
+    fallback_date: null,
   },
   factor_snapshot: {
     materialized: true,
@@ -608,6 +823,11 @@ const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
     row_count: 643,
     stock_count: 1000,
     as_of_date: "2026-04-30",
+    freshness_status: "current",
+    reference_date: "2026-04-30",
+    stale_days: 0,
+    fallback_mode: "none",
+    fallback_date: null,
   },
   default_factor_max_stock_count: null,
 };
@@ -748,6 +968,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   a_share_risk: MOCK_A_SHARE_RISK,
   capability_results: MOCK_CAPABILITY_RESULTS,
   strategy_summaries: MOCK_STRATEGY_SUMMARIES,
+  shadow_portfolio_report: MOCK_SHADOW_PORTFOLIO_REPORT,
   output_files: [],
   source_checks: [],
   capabilities: [],
@@ -913,6 +1134,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         "macro_toolkit.analysis.strategy_summaries",
         {
           strategy_summaries: MOCK_STRATEGY_SUMMARIES,
+          shadow_portfolio_report: MOCK_SHADOW_PORTFOLIO_REPORT,
           choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
         },
         {

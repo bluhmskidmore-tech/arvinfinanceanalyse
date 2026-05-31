@@ -552,6 +552,9 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert strategies["mean_reversion_momentum"]["status"] == "complete"
     assert strategies["multi_factor_selection"]["status"] == "degraded"
     assert "FUNDAMENTAL_FACTORS_NOT_MATERIALIZED" in strategies["multi_factor_selection"]["warnings"]
+    assert strategies["multi_factor_selection"]["result"]["price_source"] == "choice_stock_daily_observation"
+    assert strategies["multi_factor_selection"]["result"]["source_versions"] == ["sv_stock"]
+    assert strategies["multi_factor_selection"]["result"]["vendor_versions"] == ["vv_stock"]
     low_crowding = strategies["low_crowding_regime_multifactor"]
     assert low_crowding["status"] == "degraded"
     assert low_crowding["result"]["price_source"] == "choice_stock_daily_observation"
@@ -629,12 +632,23 @@ def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_fact
     assert multi_factor["warnings"] == []
     assert multi_factor["primary_metric"]["label"] == "真实入选数量"
     assert multi_factor["primary_metric"]["value"] == 1
+    assert multi_factor["result"]["price_source"] == "choice_stock_daily_observation"
+    assert multi_factor["result"]["source_versions"] == ["sv_stock"]
+    assert multi_factor["result"]["vendor_versions"] == ["vv_stock"]
     assert multi_factor["result"]["factor_source"] == "choice_stock_factor_snapshot"
+    assert multi_factor["result"]["factor_source_versions"] == ["sv_factor"]
+    assert multi_factor["result"]["factor_vendor_versions"] == ["vv_factor"]
+    assert multi_factor["result"]["factor_rule_versions"] == ["rv_factor"]
+    assert multi_factor["result"]["factor_run_ids"] == ["run-factor"]
     assert multi_factor["result"]["selected_stock_codes"] == ["000001.SZ"]
     low_crowding = strategies["low_crowding_regime_multifactor"]
     assert low_crowding["status"] == "complete"
     assert low_crowding["warnings"] == []
     assert low_crowding["result"]["factor_source"] == "choice_stock_factor_snapshot"
+    assert low_crowding["result"]["factor_source_versions"] == ["sv_factor"]
+    assert low_crowding["result"]["factor_vendor_versions"] == ["vv_factor"]
+    assert low_crowding["result"]["factor_rule_versions"] == ["rv_factor"]
+    assert low_crowding["result"]["factor_run_ids"] == ["run-factor"]
     assert low_crowding["result"]["selected_stock_codes"]
     assert "target_position" in low_crowding["result"]
     assert low_crowding["result"]["crowding_excluded_count"] == 0
@@ -993,6 +1007,41 @@ def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_p
     assert payload["result"]["cffex_member_rank"]["reference_date"] == "2026-04-30"
     assert payload["result"]["cffex_member_rank"]["stale_days"] == 20
     assert any("中金所席位排名已落库但最新交易日 2026-04-10" in item for item in payload["result"]["warnings"])
+
+
+def test_macro_toolkit_capability_plan_reuses_source_check_cache(monkeypatch) -> None:
+    def source_check_payload(alias: str) -> dict[str, object]:
+        return {
+            "alias": alias,
+            "row_count": 1,
+            "latest": {
+                "date": "2026-04-30",
+                "series_id": alias,
+                "vendor_name": "choice",
+                "value": 1.0,
+            },
+        }
+
+    calls: list[str] = []
+
+    def fake_source_check(alias: str, duckdb_path: object, *, end: str | None = None) -> dict[str, object]:
+        assert end is None
+        calls.append(alias)
+        return source_check_payload(alias)
+
+    monkeypatch.setattr(macro_toolkit_route, "_source_check", fake_source_check)
+
+    macro_toolkit_route._capability_plan(
+        "dummy.duckdb",
+        source_check_cache={
+            "DR007.IB": source_check_payload("DR007.IB"),
+            "S0059749": source_check_payload("S0059749"),
+        },
+    )
+
+    assert "DR007.IB" not in calls
+    assert "S0059749" not in calls
+    assert len(calls) == len(set(calls))
 
 
 def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monkeypatch) -> None:

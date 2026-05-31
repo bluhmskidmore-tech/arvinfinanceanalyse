@@ -24,6 +24,7 @@ DEFAULT_FACTOR_WEIGHTS: Mapping[str, float] = {
     "low_vol": 0.15,
     "dividend": 0.15,
 }
+DEFAULT_WINSOR_LIMITS: tuple[float, float] = (0.05, 0.95)
 LOW_CROWDING_REGIME_TARGET_POSITIONS: Mapping[str, float] = {
     "liquidity_shock": 0.25,
     "crowded_quant": 0.35,
@@ -76,11 +77,18 @@ def moving_average_strategy(
     entry_prices: dict[str, float | None] = {column: None for column in price_frame.columns}
 
     for row_no in range(1, len(price_frame)):
+        # 先用昨日收盘确定的持仓结算今日收益（避免用当日信号吃当日收益的前视偏差）。
+        previous_position = positions.iloc[row_no - 1]
+        daily_returns = _safe_daily_returns(price_frame, row_no)
+        cash *= 1 + _weighted_return(previous_position, daily_returns)
+        portfolio_value.iat[row_no] = cash
+
         if row_no < long_window:
-            portfolio_value.iat[row_no] = cash
+            positions.iloc[row_no] = previous_position
             continue
 
-        current_position = positions.iloc[row_no - 1].copy()
+        # 今日收盘信号只决定今日收盘后的持仓，影响的是次日及以后的收益。
+        current_position = previous_position.copy()
         for column in price_frame.columns:
             crossed_up = (
                 short_ma[column].iat[row_no - 1] <= long_ma[column].iat[row_no - 1]
@@ -103,9 +111,6 @@ def moving_average_strategy(
                     entry_prices[column] = None
 
         positions.iloc[row_no] = current_position
-        daily_returns = _safe_daily_returns(price_frame, row_no)
-        cash *= 1 + _weighted_return(current_position, daily_returns)
-        portfolio_value.iat[row_no] = cash
 
         peak_value = max(peak_value, cash)
         if peak_value > 0 and (peak_value - cash) / peak_value > max_drawdown:
@@ -145,11 +150,18 @@ def mean_reversion_momentum_strategy(
     peak_value = 1.0
 
     for row_no in range(1, len(price_frame)):
+        # 先用昨日收盘确定的持仓结算今日收益（避免用当日信号吃当日收益的前视偏差）。
+        previous_position = positions.iloc[row_no - 1]
+        daily_returns = _safe_daily_returns(price_frame, row_no)
+        cash *= 1 + _weighted_return(previous_position, daily_returns)
+        portfolio_value.iat[row_no] = cash
+
         if row_no < warmup:
-            portfolio_value.iat[row_no] = cash
+            positions.iloc[row_no] = previous_position
             continue
 
-        current_position = positions.iloc[row_no - 1].copy()
+        # 今日收盘信号只决定今日收盘后的持仓，影响的是次日及以后的收益。
+        current_position = previous_position.copy()
         for column in price_frame.columns:
             price = float(price_frame[column].iat[row_no])
             z_score = z_scores[column].iat[row_no]
@@ -172,9 +184,6 @@ def mean_reversion_momentum_strategy(
                     entry_prices[column] = None
 
         positions.iloc[row_no] = current_position
-        daily_returns = _safe_daily_returns(price_frame, row_no)
-        cash *= 1 + _weighted_return(current_position, daily_returns)
-        portfolio_value.iat[row_no] = cash
 
         peak_value = max(peak_value, cash)
         if peak_value > 0 and (peak_value - cash) / peak_value > max_drawdown:
@@ -185,12 +194,17 @@ def mean_reversion_momentum_strategy(
     return portfolio_value
 
 
-def compute_factors(financial_df: pd.DataFrame) -> pd.DataFrame:
+def compute_factors(
+    financial_df: pd.DataFrame,
+    *,
+    winsor_limits: tuple[float, float] | None = DEFAULT_WINSOR_LIMITS,
+) -> pd.DataFrame:
     missing = [column for column in REQUIRED_FACTOR_INPUTS if column not in financial_df.columns]
     if missing:
         raise ValueError(f"missing factor input columns: {', '.join(missing)}")
 
     numeric = financial_df.loc[:, REQUIRED_FACTOR_INPUTS].apply(pd.to_numeric, errors="coerce")
+    numeric = _winsorize_frame(numeric, winsor_limits)
     value = pd.concat(
         [
             _safe_inverse(numeric["pe"]),
@@ -221,13 +235,18 @@ def multi_factor_selection(
     weights: Mapping[str, float] | None = None,
     top_pct: float = 0.1,
     industries_focus: Sequence[str] | None = None,
+    max_per_industry: int | None = None,
+    industry_neutral: bool = True,
+    winsor_limits: tuple[float, float] | None = DEFAULT_WINSOR_LIMITS,
 ) -> pd.DataFrame:
     if not 0 < top_pct <= 1:
         raise ValueError("top_pct must be in the (0, 1] range")
     if "industry" not in financial_df.columns:
         raise ValueError("missing factor input columns: industry")
 
-    factors = compute_factors(financial_df)
+    factors = compute_factors(financial_df, winsor_limits=winsor_limits)
+    if industry_neutral:
+        factors = _industry_neutralize_factors(factors, financial_df["industry"])
     active_weights = weights or DEFAULT_FACTOR_WEIGHTS
     unknown = [column for column in active_weights if column not in factors.columns]
     if unknown:
@@ -245,7 +264,10 @@ def multi_factor_selection(
         return scored.sort_values("score", ascending=False)
 
     cutoff = max(int(len(scored) * top_pct), 1)
-    return scored.sort_values("score", ascending=False).head(cutoff)
+    selected = scored.sort_values("score", ascending=False).head(cutoff)
+    if max_per_industry is None:
+        return selected
+    return _limit_per_industry(selected, max_per_industry=max_per_industry)
 
 
 def classify_low_crowding_market_regime(
@@ -413,6 +435,45 @@ def _weighted_return(position: pd.Series, daily_returns: pd.Series) -> float:
 def _safe_inverse(series: pd.Series) -> pd.Series:
     clean = pd.to_numeric(series, errors="coerce")
     return pd.Series(np.where(clean > 0, 1 / clean, np.nan), index=series.index, dtype="float64")
+
+
+def _winsorize_frame(frame: pd.DataFrame, limits: tuple[float, float] | None) -> pd.DataFrame:
+    if limits is None:
+        return frame
+    lower, upper = limits
+    if not 0 <= lower < upper <= 1:
+        raise ValueError("winsor_limits must satisfy 0 <= lower < upper <= 1")
+    clipped = frame.copy()
+    for column in clipped.columns:
+        series = pd.to_numeric(clipped[column], errors="coerce")
+        lo = series.quantile(lower)
+        hi = series.quantile(upper)
+        if pd.notna(lo) and pd.notna(hi):
+            clipped[column] = series.clip(lower=lo, upper=hi)
+    return clipped
+
+
+def _industry_neutralize_factors(factors: pd.DataFrame, industries: pd.Series) -> pd.DataFrame:
+    out = factors.copy()
+    industry_labels = industries.reindex(out.index).fillna("").astype(str)
+    for column in FACTOR_COLUMNS:
+        out[column] = out.groupby(industry_labels, group_keys=False)[column].transform(_zscore_if_group_has_peers)
+    return out
+
+
+def _zscore_if_group_has_peers(series: pd.Series) -> pd.Series:
+    if len(series.dropna()) < 2:
+        return series
+    return _zscore(series)
+
+
+def _limit_per_industry(scored: pd.DataFrame, *, max_per_industry: int) -> pd.DataFrame:
+    if max_per_industry <= 0:
+        raise ValueError("max_per_industry must be positive")
+    if "industry" not in scored.columns:
+        return scored
+    kept = scored.groupby("industry", group_keys=False, sort=False).head(max_per_industry)
+    return kept.sort_values("score", ascending=False)
 
 
 def _zscore(series: pd.Series) -> pd.Series:

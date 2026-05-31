@@ -31,6 +31,10 @@ import type {
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
   MacroToolkitSignalCard,
+  MacroToolkitShadowPortfolio,
+  MacroToolkitShadowPortfolioHolding,
+  MacroToolkitShadowPortfolioPeriodReturn,
+  MacroToolkitShadowPortfolioReport,
   MacroToolkitSourceCheck,
   MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
@@ -119,6 +123,11 @@ function statusLabel(status: string) {
     complete: "已完成",
     degraded: "部分降级",
     unavailable: "不可用",
+    deferred: "已延后",
+    loading: "加载中",
+    failed: "失败",
+    aligned: "已对齐",
+    fallback: "最近快照",
     library_ready: "函数已迁入",
     wired: "已接线",
     visible: "已展示",
@@ -133,8 +142,10 @@ function statusColor(status: string) {
   if (["current", "ready", "library_ready", "complete", "wired", "visible"].includes(status)) {
     return "green";
   }
-  if (["lagging", "partial", "planned", "degraded", "sample_only"].includes(status)) return "gold";
-  if (["stale", "missing", "not_wired", "unavailable"].includes(status)) return "red";
+  if (["lagging", "partial", "planned", "degraded", "sample_only", "deferred", "loading"].includes(status)) {
+    return "gold";
+  }
+  if (["stale", "missing", "not_wired", "unavailable", "failed"].includes(status)) return "red";
   return "default";
 }
 
@@ -279,15 +290,32 @@ export default function MacroToolkitPage() {
   const capabilityResults = analysis?.capability_results ?? [];
   const strategyPayload = strategyQuery.data?.result;
   const strategySummaries = strategyPayload?.strategy_summaries ?? analysis?.strategy_summaries ?? [];
-  const hasRealStrategyData = strategySummaries.some(
-    (strategy) =>
-      strategy.status === "complete" &&
-      (strategy.result.price_source === "choice_stock_daily_observation" ||
-        strategy.result.factor_source === "choice_stock_factor_snapshot"),
-  );
-  const strategyDescription = hasRealStrategyData
-    ? "展示已合入宏观模块的 A股策略能力；已接入股票行情与因子快照，不作为正式投资信号。"
-    : "展示已合入宏观模块的 A股策略能力；当前为合成样例和模块可用性检查，不作为正式投资信号。";
+  const shadowPortfolioReport =
+    strategyPayload?.shadow_portfolio_report ?? analysis?.shadow_portfolio_report ?? null;
+  const fullRealStrategyCount = strategySummaries.filter((strategy) => hasCompleteRealStrategyChain(strategy)).length;
+  const partialRealStrategyCount = strategySummaries.filter(
+    (strategy) => hasRealStrategySource(strategy) && !hasCompleteRealStrategyChain(strategy),
+  ).length;
+  const degradedStrategyCount = strategySummaries.filter(
+    (strategy) => hasRealStrategySource(strategy) && strategy.status !== "complete",
+  ).length;
+  const sampleStrategyCount = strategySummaries.filter((strategy) => strategy.status === "sample_only").length;
+  const hasLoadedStrategySummaries = strategySummaries.length > 0;
+  const strategySupplyState =
+    strategyQuery.isFetching && !hasLoadedStrategySummaries
+      ? "loading"
+      : strategyQuery.isError && !hasLoadedStrategySummaries
+        ? "failed"
+        : "loaded";
+  const hasRealStrategyData = strategySummaries.some((strategy) => hasRealStrategySource(strategy));
+  const strategyDescription =
+    strategySupplyState === "loading"
+      ? "策略摘要正在生成，核心判断和市场踩踏风险已先返回。"
+      : strategySupplyState === "failed"
+        ? "策略摘要读取失败，当前不能判断策略供数闭环。"
+        : hasRealStrategyData
+          ? "展示已合入宏观模块的 A股策略能力；已接入股票行情或因子快照，不作为正式投资信号。"
+          : "展示已合入宏观模块的 A股策略能力；当前为合成样例和模块可用性检查，不作为正式投资信号。";
   const groupOptions = useMemo(
     () => [
       { value: "all", label: "全部分组" },
@@ -347,6 +375,7 @@ export default function MacroToolkitPage() {
   const failedReadMessages = [analysisQuery.error, scriptsQuery.error, strategyQuery.error]
     .filter(Boolean)
     .map(formatQueryError);
+  const runtimeSections = analysis?.runtime_status?.deferred_sections ?? [];
 
   const runSelectedScript = useCallback(async () => {
     if (!selectedScript) {
@@ -605,17 +634,7 @@ export default function MacroToolkitPage() {
     },
   ];
 
-  const isInitialLoading = analysisQuery.isLoading && !analysis;
-
-  if (isInitialLoading && !scriptsQuery.isError && !analysisQuery.isError) {
-    return (
-      <PageStateSurface
-        variant="loading"
-        title="正在读取宏观工具"
-        description="正在从后端宏观模块读取脚本注册表。"
-      />
-    );
-  }
+  const isAnalysisLoading = analysisQuery.isLoading && !analysis;
 
   if (!payload && !analysis && (scriptsQuery.isError || analysisQuery.isError)) {
     return (
@@ -729,6 +748,35 @@ export default function MacroToolkitPage() {
         <Alert type="error" showIcon message="宏观分析结果加载失败" />
       ) : null}
 
+      {isAnalysisLoading ? (
+        <>
+          <div data-testid="macro-toolkit-initial-analysis-loading">
+            <Alert
+              type="info"
+              showIcon
+              message="核心分析加载中"
+              description="页面口径边界已就绪；核心信号、市场踩踏风险和脚本注册表会在后端返回后自动补上。"
+            />
+          </div>
+          <section className="macro-toolkit-section">
+            <PageSectionLead
+              eyebrow="signals"
+              title="核心信号"
+              description="等待后端宏观 analysis 结果返回。"
+            />
+            <div className="macro-toolkit-empty-output">核心分析加载中，暂不显示占位结论。</div>
+          </section>
+          <section className="macro-toolkit-section">
+            <PageSectionLead
+              eyebrow="risk"
+              title="市场踩踏风险"
+              description="等待 A 股宽度、跌停、成交与回落压力判断返回。"
+            />
+            <div className="macro-toolkit-empty-output">市场踩踏风险加载中，暂不推导风险等级。</div>
+          </section>
+        </>
+      ) : null}
+
       {analysis ? (
         <>
           <DataStatusStrip className="macro-toolkit-status-strip">
@@ -742,6 +790,17 @@ export default function MacroToolkitPage() {
               <ThunderboltOutlined /> {compactText(analysis.conclusion.recommended_action, 24)}
             </span>
           </DataStatusStrip>
+
+          {runtimeSections.length ? (
+            <div className="macro-toolkit-runtime-strip" aria-label="宏观工具运行状态">
+              {runtimeSections.map((section) => (
+                <span key={section.key}>
+                  <ClockCircleOutlined />
+                  {section.label} · <Tag color={statusColor(section.status)}>{statusLabel(section.status)}</Tag>
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="macro-toolkit-readiness-strip" aria-label="宏观工具投研总览">
             <ReadinessTile
@@ -867,12 +926,12 @@ export default function MacroToolkitPage() {
                 <MetricTile
                   label="股票历史"
                   value={choiceStockRefresh?.daily_observation?.stock_count ?? 0}
-                  detail={`行数 ${choiceStockRefresh?.daily_observation?.row_count ?? 0} · ${choiceStockRefresh?.daily_observation?.latest_trade_date ?? "缺失"}`}
+                  detail={choiceStockTableDetail(choiceStockRefresh?.daily_observation, "latest_trade_date")}
                 />
                 <MetricTile
                   label="完整因子"
                   value={choiceStockRefresh?.factor_snapshot?.stock_count ?? 0}
-                  detail={`行数 ${choiceStockRefresh?.factor_snapshot?.row_count ?? 0} · ${choiceStockRefresh?.factor_snapshot?.as_of_date ?? "缺失"}`}
+                  detail={choiceStockTableDetail(choiceStockRefresh?.factor_snapshot, "as_of_date")}
                 />
                 <MetricTile
                   label="刷新权限"
@@ -892,6 +951,46 @@ export default function MacroToolkitPage() {
                 {stockRefreshError ? <Alert type="error" showIcon message={stockRefreshError} /> : null}
               </div>
             </div>
+            <div className="macro-toolkit-strategy-supply-strip" aria-label="策略供数闭环">
+              <span className="macro-toolkit-strategy-supply-label">
+                <DatabaseOutlined />
+                策略供数闭环
+              </span>
+              {strategySupplyState === "loaded" ? (
+                <>
+                  <span>
+                    <DatabaseOutlined />
+                    完整链路 {fullRealStrategyCount}/{strategySummaries.length}
+                  </span>
+                  <span>
+                    <SafetyCertificateOutlined />
+                    部分链路 {partialRealStrategyCount}
+                  </span>
+                  <span>
+                    <SafetyCertificateOutlined />
+                    降级 {degradedStrategyCount}
+                  </span>
+                  <span>
+                    <SafetyCertificateOutlined />
+                    样例 {sampleStrategyCount}
+                  </span>
+                </>
+              ) : (
+                <span>
+                  <ClockCircleOutlined />
+                  策略供数 {statusLabel(strategySupplyState)}
+                </span>
+              )}
+              <span>
+                <ClockCircleOutlined />
+                股票历史 {choiceStockTableSummary(choiceStockRefresh?.daily_observation, "latest_trade_date")}
+              </span>
+              <span>
+                <ClockCircleOutlined />
+                因子快照 {choiceStockTableSummary(choiceStockRefresh?.factor_snapshot, "as_of_date")}
+              </span>
+            </div>
+            <ShadowPortfolioReportPanel report={shadowPortfolioReport} />
             {strategySummaries.length ? (
               <div className="macro-toolkit-strategy-grid">
                 {strategySummaries.map((strategy) => (
@@ -1347,8 +1446,388 @@ function normalizeInputEvidence(result: MacroToolkitCapabilityResult) {
   return { inputs, missingInputs, sources, latestDates };
 }
 
+function hasRealStrategySource(strategy: MacroToolkitStrategySummary) {
+  return (
+    strategy.result.price_source === "choice_stock_daily_observation" ||
+    strategy.result.factor_source === "choice_stock_factor_snapshot"
+  );
+}
+
+function hasCompleteRealStrategyChain(strategy: MacroToolkitStrategySummary) {
+  if (strategy.status !== "complete" || strategyDataStatus(strategy) !== "complete") {
+    return false;
+  }
+  const hasPriceSource = strategy.result.price_source === "choice_stock_daily_observation";
+  const hasFactorSource = strategy.result.factor_source === "choice_stock_factor_snapshot";
+  if (strategy.key === "multi_factor_selection") {
+    return hasFactorSource;
+  }
+  if (strategy.key === "low_crowding_regime_multifactor") {
+    return hasPriceSource && hasFactorSource;
+  }
+  return hasPriceSource;
+}
+
+function strategyDataStatus(strategy: MacroToolkitStrategySummary) {
+  return typeof strategy.result.data_status === "string" && strategy.result.data_status.trim()
+    ? strategy.result.data_status.trim()
+    : strategy.status;
+}
+
+function choiceStockTableDetail(
+  table: { row_count?: number; latest_trade_date?: string | null; as_of_date?: string | null; freshness_status?: string; fallback_mode?: string | null; fallback_date?: string | null } | null | undefined,
+  dateField: "latest_trade_date" | "as_of_date",
+) {
+  return `行数 ${table?.row_count ?? 0} · ${choiceStockTableSummary(table, dateField)}`;
+}
+
+function choiceStockTableSummary(
+  table: { latest_trade_date?: string | null; as_of_date?: string | null; freshness_status?: string; fallback_mode?: string | null; fallback_date?: string | null } | null | undefined,
+  dateField: "latest_trade_date" | "as_of_date",
+) {
+  const dateText = table?.[dateField] ?? "缺失";
+  const statusText = statusLabel(table?.freshness_status ?? "unknown");
+  const fallbackText = choiceStockFallbackText(table);
+  return [dateText, statusText, fallbackText].filter(Boolean).join(" · ");
+}
+
+function choiceStockFallbackText(
+  table: { fallback_mode?: string | null; fallback_date?: string | null } | null | undefined,
+) {
+  if (table?.fallback_mode !== "latest_available" || !table.fallback_date) {
+    return "";
+  }
+  return `最近可用 ${table.fallback_date}`;
+}
+
+function formatSignedRatio(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return "缺失";
+  }
+  const percent = value * 100;
+  return `${percent >= 0 ? "+" : ""}${percent.toFixed(1)}%`;
+}
+
+function formatPlainRatio(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return "缺失";
+  }
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatNumberValue(value: number | null | undefined, digits = 1) {
+  if (value == null || !Number.isFinite(value)) {
+    return "缺失";
+  }
+  return value.toFixed(digits);
+}
+
+function portfolioConstraintText(portfolio: MacroToolkitShadowPortfolio) {
+  const constraints = portfolio.constraints;
+  const parts = [
+    constraints.pe_max == null ? "" : `PE≤${constraints.pe_max}`,
+    constraints.pb_max == null ? "" : `PB≤${constraints.pb_max}`,
+    constraints.turnover_cap == null ? "" : `换手≤${Math.round(constraints.turnover_cap * 100)}%`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "沿用正式规则约束";
+}
+
+function portfolioWeightsText(portfolio: MacroToolkitShadowPortfolio) {
+  const labels: Record<string, string> = {
+    value: "价值",
+    quality: "质量",
+    momentum: "动量",
+    low_vol: "低波",
+    dividend: "红利",
+  };
+  return Object.entries(portfolio.weights)
+    .map(([key, value]) => `${labels[key] ?? key}${Math.round(value * 100)}%`)
+    .join(" / ");
+}
+
+function costResultText(portfolio: MacroToolkitShadowPortfolio, costBps: number) {
+  const result = portfolio.cost_results.find((item) => item.cost_bps === costBps);
+  if (!result) {
+    return `${costBps}bp 缺失`;
+  }
+  return `${costBps}bp ${formatSignedRatio(result.total_return)} / 超额 ${formatSignedRatio(result.excess_return)}`;
+}
+
+function portfolioCostResult(portfolio: MacroToolkitShadowPortfolio, costBps: number) {
+  return portfolio.cost_results.find((item) => item.cost_bps === costBps);
+}
+
+function shadowPortfolioPeriodRows(
+  report: MacroToolkitShadowPortfolioReport,
+  portfolio: MacroToolkitShadowPortfolio,
+) {
+  return report.period_returns.filter((row) => row.portfolio_key === portfolio.key);
+}
+
+function shadowPortfolioPeriodWinLossText(rows: MacroToolkitShadowPortfolioPeriodReturn[]) {
+  if (!rows.length) {
+    return "周期缺失";
+  }
+  const wins = rows.filter((row) => row.excess_return > 0).length;
+  return `${wins}赢 / ${rows.length - wins}输`;
+}
+
+function shadowPortfolioPeriodRangeText(rows: MacroToolkitShadowPortfolioPeriodReturn[]) {
+  if (!rows.length) {
+    return "最佳缺失 / 最差缺失";
+  }
+  const best = rows.reduce((winner, row) => (row.excess_return > winner.excess_return ? row : winner), rows[0]!);
+  const worst = rows.reduce((loser, row) => (row.excess_return < loser.excess_return ? row : loser), rows[0]!);
+  return `最佳 ${formatSignedRatio(best.excess_return)} / 最差 ${formatSignedRatio(worst.excess_return)}`;
+}
+
+function shadowPortfolioCostGateText(
+  reference: MacroToolkitShadowPortfolio,
+  candidate: MacroToolkitShadowPortfolio,
+) {
+  const passingCosts = [20, 50].filter((costBps) => {
+    const referenceCost = portfolioCostResult(reference, costBps);
+    const candidateCost = portfolioCostResult(candidate, costBps);
+    return (
+      referenceCost != null &&
+      candidateCost != null &&
+      candidateCost.total_return > referenceCost.total_return &&
+      candidateCost.excess_return > referenceCost.excess_return
+    );
+  });
+  if (passingCosts.length === 2) {
+    return "20bp/50bp 均胜出";
+  }
+  if (passingCosts.length) {
+    return `${passingCosts.join("bp / ")}bp 胜出`;
+  }
+  return "成本后未胜出";
+}
+
+function holdingCodeList(holdings: MacroToolkitShadowPortfolioHolding[]) {
+  return holdings.slice(0, 3).map((holding) => holding.stock_code).join(" / ") || "无";
+}
+
+function shadowPortfolioHoldingDiff(
+  reference: MacroToolkitShadowPortfolio,
+  candidate: MacroToolkitShadowPortfolio,
+) {
+  const referenceCodes = new Set(reference.latest_holdings.map((holding) => holding.stock_code));
+  const candidateCodes = new Set(candidate.latest_holdings.map((holding) => holding.stock_code));
+  const overlap = candidate.latest_holdings.filter((holding) => referenceCodes.has(holding.stock_code));
+  const candidateOnly = candidate.latest_holdings.filter((holding) => !referenceCodes.has(holding.stock_code));
+  const referenceOnly = reference.latest_holdings.filter((holding) => !candidateCodes.has(holding.stock_code));
+  return {
+    overlapText: `持仓重合 ${overlap.length}/${Math.max(candidate.latest_holdings.length, 1)}`,
+    candidateOnlyText: `新增观察 ${holdingCodeList(candidateOnly)}`,
+    referenceOnlyText: `正式独有 ${holdingCodeList(referenceOnly)}`,
+  };
+}
+
+function periodChipText(row: MacroToolkitShadowPortfolioPeriodReturn) {
+  return `${row.start_date.slice(5)}→${row.end_date.slice(5)} ${formatSignedRatio(row.excess_return)}`;
+}
+
+function shadowPortfolioWarningText(warning: string) {
+  if (warning === "DUCKDB_BUSY") {
+    return "本地股票历史库正在刷新或被落库任务占用，稍后刷新页面即可重试。";
+  }
+  if (warning.startsWith("DUCKDB_OPEN_FAILED")) {
+    return "DuckDB 读连接打开失败，暂时不能生成影子组合回测。";
+  }
+  if (warning === "DUCKDB_NOT_FOUND") {
+    return "本地股票历史库不存在，暂时不能生成影子组合回测。";
+  }
+  if (warning.startsWith("MISSING_TABLES")) {
+    return "本地股票历史表或因子快照表缺失，暂时不能生成影子组合回测。";
+  }
+  if (warning === "FACTOR_HISTORY_TOO_SHORT" || warning === "SHORT_HISTORY") {
+    return "因子快照历史偏短，当前结果只能作为只读观察。";
+  }
+  if (warning === "READ_ONLY_SHADOW_NOT_PRODUCTION") {
+    return "只读影子评估，不能作为正式投研信号。";
+  }
+  return warning;
+}
+
+function shadowPortfolioUnavailableDescription(warnings: readonly string[]) {
+  const visibleWarnings = Array.from(new Set(warnings.map(shadowPortfolioWarningText).filter(Boolean)));
+  return visibleWarnings.join(" / ") || "本地股票历史或因子快照不足。";
+}
+
+function ShadowPortfolioReview({ report }: { report: MacroToolkitShadowPortfolioReport }) {
+  const reference =
+    report.portfolios.find((portfolio) => portfolio.role === "production_reference") ?? report.portfolios[0];
+  const candidates = report.portfolios.filter((portfolio) => portfolio.role === "shadow_candidate");
+  if (!reference || !candidates.length) {
+    return null;
+  }
+  return (
+    <div className="macro-toolkit-shadow-review" aria-label="影子组合稳健性审查">
+      {candidates.map((candidate) => {
+        const rows = shadowPortfolioPeriodRows(report, candidate);
+        const holdingDiff = shadowPortfolioHoldingDiff(reference, candidate);
+        return (
+          <div className="macro-toolkit-shadow-review__item" key={`review-${candidate.key}`}>
+            <div className="macro-toolkit-capability-result-head">
+              <span>稳健性审查</span>
+              <Tag color="blue">{candidate.label}</Tag>
+            </div>
+            <div className="macro-toolkit-shadow-review__facts">
+              <span>
+                <b>周期胜负</b>
+                {shadowPortfolioPeriodWinLossText(rows)}
+              </span>
+              <span>
+                <b>区间分布</b>
+                {shadowPortfolioPeriodRangeText(rows)}
+              </span>
+              <span>
+                <b>成本后结论</b>
+                {shadowPortfolioCostGateText(reference, candidate)}
+              </span>
+              <span>
+                <b>持仓差异</b>
+                {holdingDiff.overlapText}
+              </span>
+            </div>
+            {rows.length ? (
+              <div className="macro-toolkit-shadow-review__periods">
+                {rows.slice(-4).map((row) => (
+                  <span key={`${candidate.key}-${row.start_date}-${row.end_date}`}>{periodChipText(row)}</span>
+                ))}
+              </div>
+            ) : null}
+            <div className="macro-toolkit-shadow-holdings macro-toolkit-shadow-holdings--diff">
+              <span>{holdingDiff.candidateOnlyText}</span>
+              <span>{holdingDiff.referenceOnlyText}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ShadowPortfolioReportPanel({ report }: { report: MacroToolkitShadowPortfolioReport | null }) {
+  if (!report) {
+    return null;
+  }
+  if (report.status !== "complete") {
+    return (
+      <div className="macro-toolkit-shadow-report macro-toolkit-shadow-report--warning" aria-label="影子组合报告">
+        <Alert
+          type="warning"
+          showIcon
+          message="影子组合报告暂不可用"
+          description={shadowPortfolioUnavailableDescription(report.warnings)}
+        />
+        {report.warnings.length ? (
+          <div className="macro-toolkit-tag-row">
+            {report.warnings.map((warning) => (
+              <Tag color="gold" key={warning}>
+                {warning}
+              </Tag>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="macro-toolkit-shadow-report" aria-label="影子组合报告">
+      <div className="macro-toolkit-shadow-report__head">
+        <div>
+          <span>只读影子组合</span>
+          <strong>{report.as_of_date ?? "日期缺失"}</strong>
+          <small>
+            {report.completed_periods} 个完成调仓周期 / {report.benchmark?.label ?? "基准缺失"}
+          </small>
+        </div>
+        <div className="macro-toolkit-tag-row">
+          <Tag color="blue">{report.rule_version}</Tag>
+          {report.warnings.map((warning) => (
+            <Tag color="gold" key={warning}>
+              {warning}
+            </Tag>
+          ))}
+        </div>
+      </div>
+      <div className="macro-toolkit-shadow-report__grid">
+        {report.portfolios.map((portfolio) => (
+          <div className="macro-toolkit-shadow-card" key={portfolio.key}>
+            <div className="macro-toolkit-capability-result-head">
+              <span>{portfolio.role === "shadow_candidate" ? "影子观察" : "正式参照"}</span>
+              <Tag color={portfolio.role === "shadow_candidate" ? "blue" : "default"}>{portfolio.label}</Tag>
+            </div>
+            <div className="macro-toolkit-shadow-card__metrics">
+              <MetricTile label="总收益" value={formatSignedRatio(portfolio.total_return)} detail="不含生产替换" />
+              <MetricTile label="超额" value={formatSignedRatio(portfolio.excess_return)} detail="相对因子池等权" />
+              <MetricTile label="最大回撤" value={formatSignedRatio(portfolio.max_drawdown)} detail={`胜率 ${formatPlainRatio(portfolio.win_rate)}`} />
+              <MetricTile label="估值" value={`PE ${formatNumberValue(portfolio.average_pe)}`} detail={`PB ${formatNumberValue(portfolio.average_pb)}`} />
+            </div>
+            <div className="macro-toolkit-strategy-trace">
+              <span>
+                <b>权重</b>
+                {portfolioWeightsText(portfolio)}
+              </span>
+              <span>
+                <b>约束</b>
+                {portfolioConstraintText(portfolio)}
+              </span>
+              <span>
+                <b>换手</b>
+                {formatPlainRatio(portfolio.average_turnover)}
+              </span>
+              <span>
+                <b>20bp</b>
+                {costResultText(portfolio, 20)}
+              </span>
+              <span>
+                <b>50bp</b>
+                {costResultText(portfolio, 50)}
+              </span>
+            </div>
+            {portfolio.latest_holdings.length ? (
+              <div className="macro-toolkit-shadow-holdings">
+                {portfolio.latest_holdings.slice(0, 5).map((holding) => (
+                  <span key={`${portfolio.key}-${holding.stock_code}`}>
+                    {holding.rank}. {holding.stock_code} · {holding.industry}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <ShadowPortfolioReview report={report} />
+    </div>
+  );
+}
+
 function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrategySummary }) {
   const metric = strategy.primary_metric;
+  const dataStatus = strategyDataStatus(strategy);
+  const priceSource =
+    typeof strategy.result.price_source === "string" && strategy.result.price_source.trim()
+      ? strategy.result.price_source
+      : "价格来源缺失";
+  const factorSource =
+    typeof strategy.result.factor_source === "string" && strategy.result.factor_source.trim()
+      ? strategy.result.factor_source
+      : "因子来源缺失";
+  const warnings = strategy.warnings;
+  const sourceVersions = strategyTraceList(strategy.result.source_versions);
+  const vendorVersions = strategyTraceList(strategy.result.vendor_versions);
+  const factorSourceVersions = strategyTraceList(strategy.result.factor_source_versions);
+  const factorVendorVersions = strategyTraceList(strategy.result.factor_vendor_versions);
+  const factorRuleVersions = strategyTraceList(strategy.result.factor_rule_versions);
+  const factorRunIds = strategyTraceList(strategy.result.factor_run_ids);
+  const missingFactorInputs = strategyTraceList(strategy.result.missing_factor_inputs, Number.POSITIVE_INFINITY);
+  const asOfDate = strategyScalarText(strategy.result.as_of_date);
+  const factorAsOfDate = strategyScalarText(strategy.result.factor_as_of_date);
+  const factorDateStatus = strategyScalarText(strategy.result.factor_date_status);
+
   return (
     <div className={`macro-toolkit-strategy-card macro-toolkit-strategy-card--${strategy.tone}`}>
       <div className="macro-toolkit-capability-result-head">
@@ -1361,8 +1840,103 @@ function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrategySumma
         <b>{metric ? `${metric.value}${metric.unit}` : statusLabel(strategy.status)}</b>
       </div>
       <small>{strategy.evidence.slice(0, 2).join(" / ") || "暂无证据"}</small>
+      <div className="macro-toolkit-strategy-trace" aria-label={`${strategy.label}策略追踪`}>
+        <span>
+          <b>数据状态</b>
+          {statusLabel(dataStatus)} <em>{dataStatus}</em>
+        </span>
+        <span>
+          <b>价格</b>
+          {priceSource}
+        </span>
+        <span>
+          <b>因子</b>
+          {factorSource}
+        </span>
+        {asOfDate ? (
+          <span>
+            <b>行情日</b>
+            {asOfDate}
+          </span>
+        ) : null}
+        {factorAsOfDate ? (
+          <span>
+            <b>因子日</b>
+            {factorAsOfDate}
+            {factorDateStatus ? ` · ${statusLabel(factorDateStatus)}` : ""}
+          </span>
+        ) : null}
+        {sourceVersions ? (
+          <span>
+            <b>价格版本</b>
+            {sourceVersions}
+          </span>
+        ) : null}
+        {vendorVersions ? (
+          <span>
+            <b>行情厂商</b>
+            {vendorVersions}
+          </span>
+        ) : null}
+        {factorSourceVersions ? (
+          <span>
+            <b>因子版本</b>
+            {factorSourceVersions}
+          </span>
+        ) : null}
+        {factorVendorVersions ? (
+          <span>
+            <b>因子厂商</b>
+            {factorVendorVersions}
+          </span>
+        ) : null}
+        {factorRuleVersions ? (
+          <span>
+            <b>因子规则</b>
+            {factorRuleVersions}
+          </span>
+        ) : null}
+        {factorRunIds ? (
+          <span>
+            <b>因子运行</b>
+            {factorRunIds}
+          </span>
+        ) : null}
+        {missingFactorInputs ? (
+          <span>
+            <b>缺失输入</b>
+            {missingFactorInputs}
+          </span>
+        ) : null}
+        {warnings.length ? (
+          <div className="macro-toolkit-strategy-warnings">
+            {warnings.map((warning) => (
+              <Tag color="gold" key={warning}>
+                {warning}
+              </Tag>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function strategyTraceList(value: unknown, maxItems = 3) {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  const items = value
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+  return (Number.isFinite(maxItems) ? items.slice(0, maxItems) : items).join(" / ");
+}
+
+function strategyScalarText(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return "";
+  }
+  return String(value).trim();
 }
 
 const A_SHARE_RISK_METRICS: Array<{

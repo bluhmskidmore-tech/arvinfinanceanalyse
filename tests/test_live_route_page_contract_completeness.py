@@ -28,6 +28,7 @@ from tests.helpers import ROOT
 
 NAVIGATION_PATH = ROOT / "frontend" / "src" / "mocks" / "navigation.ts"
 PAGE_CONTRACTS_PATH = ROOT / "docs" / "page_contracts.md"
+ROUTE_MATURITY_PATH = ROOT / "docs" / "live_route_maturity.md"
 
 TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
     "/bond-analysis": (
@@ -44,9 +45,6 @@ TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
     "/decision-items": (
         "temporary-exception route; decision items are documented as a section "
         "inside `PAGE-BALANCE-001`, not as a standalone page contract yet."
-    ),
-    "/macro-toolkit": (
-        "temporary-exception macro tooling route; page-level contract is still deferred."
     ),
     "/stock-analysis": (
         "temporary-exception observation route; no governed page contract yet."
@@ -86,6 +84,19 @@ FULL_PAGE_ID_RE = re.compile(r"PAGE-[A-Z0-9-]+")
 class LiveRoute:
     path: str
     governance_status: str | None
+
+
+@dataclass(frozen=True)
+class RouteMaturity:
+    route: str
+    nav_state: str
+    maturity_tier: str
+    page_contract: str
+    owner: str
+    risk: str
+    exit_condition: str
+    review_date: str
+    verification: str
 
 
 def _normalize_route_path(path: str) -> str:
@@ -195,6 +206,82 @@ def _build_route_to_page_map() -> dict[str, str]:
     return route_to_page
 
 
+def _parse_markdown_table(path: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    header: list[str] | None = None
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+        if header is None:
+            header = cells
+            continue
+        if all(set(cell) <= {"-", ":"} for cell in cells):
+            continue
+        rows.append(dict(zip(header, cells, strict=True)))
+
+    return rows
+
+
+def _parse_route_maturity_registry() -> dict[str, RouteMaturity]:
+    assert ROUTE_MATURITY_PATH.exists(), (
+        "`docs/live_route_maturity.md` must exist and list every live route "
+        "with maturity tier, owner, risk, exit condition, review date, and verification."
+    )
+
+    rows = _parse_markdown_table(ROUTE_MATURITY_PATH)
+    required_columns = {
+        "route",
+        "nav_state",
+        "maturity_tier",
+        "page_contract",
+        "owner",
+        "risk",
+        "exit_condition",
+        "review_date",
+        "verification",
+    }
+    if not rows:
+        pytest.fail("`docs/live_route_maturity.md` has no route maturity rows.")
+
+    missing_columns = required_columns - set(rows[0])
+    if missing_columns:
+        pytest.fail(
+            "`docs/live_route_maturity.md` is missing columns: "
+            + ", ".join(sorted(missing_columns))
+        )
+
+    registry: dict[str, RouteMaturity] = {}
+    duplicates: list[str] = []
+
+    for row in rows:
+        route = _normalize_route_path(row["route"])
+        if route in registry:
+            duplicates.append(route)
+            continue
+        registry[route] = RouteMaturity(
+            route=route,
+            nav_state=row["nav_state"],
+            maturity_tier=row["maturity_tier"],
+            page_contract=row["page_contract"],
+            owner=row["owner"],
+            risk=row["risk"],
+            exit_condition=row["exit_condition"],
+            review_date=row["review_date"],
+            verification=row["verification"],
+        )
+
+    if duplicates:
+        pytest.fail(
+            "`docs/live_route_maturity.md` has duplicate route rows:\n"
+            + "\n".join(f"- {route}" for route in sorted(duplicates))
+        )
+
+    return registry
+
+
 def test_live_routes_have_page_contracts_or_explicit_temporary_exception_whitelist():
     live_routes = _parse_live_routes()
     live_by_path = {route.path: route for route in live_routes}
@@ -254,3 +341,71 @@ def test_live_routes_have_page_contracts_or_explicit_temporary_exception_whiteli
             )
 
         pytest.fail("\n".join(lines))
+
+
+def test_live_routes_have_maturity_registry_rows():
+    live_routes = _parse_live_routes()
+    live_by_path = {route.path: route for route in live_routes}
+    registry = _parse_route_maturity_registry()
+
+    missing = sorted(path for path in live_by_path if path not in registry)
+    stale = sorted(path for path in registry if path not in live_by_path)
+
+    if missing or stale:
+        lines = ["Live route maturity registry gap report:"]
+        if missing:
+            lines.append(f"missing={len(missing)}")
+            lines.extend(f"- {path}: live in navigation but absent from route maturity registry." for path in missing)
+        if stale:
+            lines.append(f"stale={len(stale)}")
+            lines.extend(f"- {path}: present in route maturity registry but not live in navigation." for path in stale)
+        pytest.fail("\n".join(lines))
+
+
+def test_temporary_exception_routes_have_burn_down_metadata():
+    live_routes = _parse_live_routes()
+    registry = _parse_route_maturity_registry()
+    allowed_tiers = {
+        "governed",
+        "governed-mixed-source",
+        "candidate",
+        "temporary-exception",
+        "placeholder",
+        "excluded",
+    }
+    missing: list[str] = []
+
+    for route in live_routes:
+        maturity = registry[route.path]
+        expected_nav_state = (
+            "temporary-exception"
+            if route.governance_status == "temporary-exception"
+            else "live"
+        )
+        if maturity.nav_state != expected_nav_state:
+            missing.append(
+                f"{route.path}: nav_state={maturity.nav_state!r}, expected {expected_nav_state!r}."
+            )
+        if maturity.maturity_tier not in allowed_tiers:
+            missing.append(
+                f"{route.path}: maturity_tier={maturity.maturity_tier!r} is not one of {sorted(allowed_tiers)}."
+            )
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", maturity.review_date):
+            missing.append(f"{route.path}: review_date must be YYYY-MM-DD.")
+        for field_name in ("owner", "risk", "exit_condition", "verification"):
+            value = getattr(maturity, field_name)
+            if value.strip() in {"", "-", "TBD", "none"}:
+                missing.append(f"{route.path}: {field_name} must be explicit.")
+        if route.governance_status == "temporary-exception":
+            for field_name in ("owner", "risk", "exit_condition"):
+                value = getattr(maturity, field_name)
+                if len(value.strip()) < 12:
+                    missing.append(
+                        f"{route.path}: temporary-exception {field_name} is too terse."
+                    )
+
+    if missing:
+        pytest.fail(
+            "Route maturity burn-down metadata gaps:\n"
+            + "\n".join(f"- {item}" for item in missing)
+        )

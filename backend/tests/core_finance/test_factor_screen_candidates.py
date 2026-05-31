@@ -11,6 +11,7 @@ from backend.app.core_finance.factor_screen_candidates import (
 
 
 def _sample_row(i: int) -> dict[str, object]:
+    sector = f"行业{i % 40:02d}"
     return {
         "stock_code": f"{100000 + i:06d}.SH",
         "stock_name": f"Co{i}",
@@ -23,9 +24,9 @@ def _sample_row(i: int) -> dict[str, object]:
         "twelve_month_return": 0.02 + i * 0.0005,
         "volatility": 0.22 + (i % 5) * 0.01,
         "dividend_yield": 0.015 + (i % 3) * 0.003,
-        "industry": "电力设备",
+        "industry": sector,
         "sector_code": "801730",
-        "sector_name": "电力设备",
+        "sector_name": sector,
     }
 
 
@@ -88,6 +89,140 @@ def test_max_30_candidates() -> None:
     )
     items = cast(list[dict[str, Any]], cast(dict[str, Any], result.payload)["items"])
     assert len(items) == MAX_CANDIDATES
+
+
+def test_factor_screen_limits_industry_concentration() -> None:
+    rows = []
+    for i in range(40):
+        row = _sample_row(i)
+        row.update(
+            {
+                "stock_code": f"{600000 + i:06d}.SH",
+                "stock_name": f"Construction{i}",
+                "pe": 4.0 + i * 0.02,
+                "pb": 0.3 + i * 0.005,
+                "ps": 0.01 + i * 0.001,
+                "industry": "建筑装饰",
+                "sector_name": "建筑装饰",
+            }
+        )
+        rows.append(row)
+    for i, sector in enumerate(["通信", "医药生物", "食品饮料", "电子", "机械设备"]):
+        row = _sample_row(100 + i)
+        row.update(
+            {
+                "stock_code": f"{300000 + i:06d}.SZ",
+                "stock_name": f"WeakBalanced{i}",
+                "pe": 55.0 + i,
+                "pb": 4.8 + i * 0.1,
+                "ps": 7.0 + i * 0.1,
+                "roe": 0.04,
+                "gross_margin": 0.08,
+                "three_month_return": -0.18,
+                "twelve_month_return": -0.28,
+                "volatility": 0.55,
+                "dividend_yield": 0.005,
+                "industry": sector,
+                "sector_name": sector,
+            }
+        )
+        rows.append(row)
+
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=rows,
+    )
+
+    items = cast(list[dict[str, Any]], cast(dict[str, Any], result.payload)["items"])
+    counts: dict[str, int] = {}
+    for item in items:
+        industry = str(item["industry"])
+        counts[industry] = counts.get(industry, 0) + 1
+    assert counts["建筑装饰"] <= 3
+
+
+def test_factor_screen_excludes_st_and_extreme_financial_rows() -> None:
+    rows = [
+        {
+            **_sample_row(1),
+            "stock_code": "600001.SH",
+            "stock_name": "Normal A",
+            "industry": "电子",
+            "sector_name": "电子",
+            "roe": 0.18,
+            "dividend_yield": 0.035,
+        },
+        {
+            **_sample_row(2),
+            "stock_code": "600002.SH",
+            "stock_name": "ST Risk",
+            "industry": "电子",
+            "sector_name": "电子",
+            "roe": 0.20,
+            "dividend_yield": 0.03,
+        },
+        {
+            **_sample_row(3),
+            "stock_code": "600003.SH",
+            "stock_name": "Extreme ROE",
+            "industry": "汽车",
+            "sector_name": "汽车",
+            "roe": 0.99,
+            "dividend_yield": 0.03,
+        },
+        {
+            **_sample_row(4),
+            "stock_code": "600004.SH",
+            "stock_name": "Extreme Dividend",
+            "industry": "通信",
+            "sector_name": "通信",
+            "roe": 0.18,
+            "dividend_yield": 0.80,
+        },
+        {
+            **_sample_row(5),
+            "stock_code": "600005.SH",
+            "stock_name": "Normal B",
+            "industry": "通信",
+            "sector_name": "通信",
+            "roe": 0.16,
+            "dividend_yield": 0.025,
+        },
+    ]
+    rows.extend(
+        {
+            **_sample_row(100 + i),
+            "stock_code": f"610{i:03d}.SH",
+            "stock_name": f"Weak{i}",
+            "industry": f"行业X{i:02d}",
+            "sector_name": f"行业X{i:02d}",
+            "pe": 80.0,
+            "pb": 5.0,
+            "ps": 8.0,
+            "roe": 0.02,
+            "gross_margin": 0.08,
+            "three_month_return": -0.20,
+            "twelve_month_return": -0.30,
+            "volatility": 0.50,
+            "dividend_yield": 0.005,
+        }
+        for i in range(30)
+    )
+
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=rows,
+    )
+
+    codes = {
+        str(item["stock_code"])
+        for item in cast(list[dict[str, Any]], cast(dict[str, Any], result.payload)["items"])
+    }
+    assert "600002.SH" not in codes
+    assert "600003.SH" not in codes
+    assert "600004.SH" not in codes
 
 
 def test_coverage_note_present() -> None:

@@ -49,6 +49,13 @@ def test_dev_api_script_bootstraps_native_environment():
     assert "uvicorn backend.app.main:app" in script
 
 
+def test_dev_api_does_not_enable_home_snapshot_prewarm_by_default():
+    script = (ROOT / "scripts" / "dev-api.ps1").read_text(encoding="utf-8")
+
+    assert '$env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "0"' in script
+    assert '$env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "1"' not in script
+
+
 def test_dev_worker_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-worker.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
@@ -86,6 +93,29 @@ def test_dev_governance_maintenance_script_validates_storage_bootstrap():
     script = (ROOT / "scripts" / "dev-governance-maintenance.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
     assert "Assert-DevBootstrapStorageReady" in script
+
+
+def test_dev_hermes_webui_script_uses_wsl_webui_and_moss_defaults():
+    script = (ROOT / "scripts" / "dev-hermes-webui.ps1").read_text(encoding="utf-8")
+    assert 'ValidateSet("start", "stop", "restart", "status", "logs")' in script
+    assert "$WslDistro = \"HermesUbuntu\"" in script
+    assert "$HermesWebuiDir = \"/home/hermes/hermes-webui\"" in script
+    assert "$HermesAgentDir = \"/home/hermes/hermes-agent\"" in script
+    assert "$HermesHome = \"/home/hermes/.hermes-moss\"" in script
+    assert "$Port = 8787" in script
+    assert "$BindHost = \"127.0.0.1\"" in script
+    assert "ConvertTo-WslPath" in script
+    assert "HERMES_WEBUI_DEFAULT_WORKSPACE='$workspaceWsl'" in script
+    assert "HERMES_WEBUI_AGENT_DIR='$HermesAgentDir'" in script
+    assert "HERMES_WEBUI_PYTHON='$HermesPython'" in script
+    assert "Start-Process" in script
+    assert "-WindowStyle Hidden" in script
+    assert "hermes-webui-start.sh" in script
+    assert "Set-Content -Path $startScriptPath" in script
+    assert "bootstrap.py --no-browser --foreground" in script
+    assert "Wait-HermesWebuiHealth" in script
+    assert "Get-HermesWebuiLog" in script
+    assert "http://127.0.0.1:$Port" in script
 
 
 def test_dev_smoke_script_validates_storage_bootstrap():

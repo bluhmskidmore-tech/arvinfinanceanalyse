@@ -4,11 +4,15 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-FORMULA_VERSION = "rv_factor_screen_candidates_v1"
+FORMULA_VERSION = "rv_factor_screen_candidates_v2"
 # 所有市场状态都运行（多因子是基本面驱动，不依赖市场趋势）
 ACTIVE_MARKET_STATES = {"OFF", "WARM", "HOT", "OVERHEAT"}
 TOP_PCT = 0.10  # 取前 10%，约 64 只（643 * 0.1）
 MAX_CANDIDATES = 30  # 最多输出 30 只
+MAX_CANDIDATES_PER_INDUSTRY = 3
+MAX_ABS_ROE = 0.60
+MAX_DIVIDEND_YIELD = 0.12
+MIN_POSITIVE_MARGIN = 0.03
 
 
 @dataclass(frozen=True)
@@ -75,7 +79,8 @@ def compute_factor_screen_candidates(
         if col not in df.columns:
             df[col] = ""
 
-    df_clean = df[required].dropna()
+    df_clean = df.dropna(subset=required)
+    df_clean = _filter_factor_screen_universe(df_clean)
     if df_clean.empty:
         return FactorScreenResult(
             payload=_build_payload(
@@ -87,7 +92,11 @@ def compute_factor_screen_candidates(
             )
         )
 
-    selected = multi_factor_selection(df_clean, top_pct=TOP_PCT)
+    selected = multi_factor_selection(
+        df_clean,
+        top_pct=TOP_PCT,
+        max_per_industry=MAX_CANDIDATES_PER_INDUSTRY,
+    )
     selected = selected.head(MAX_CANDIDATES)
 
     meta = df[meta_cols].reindex(selected.index)
@@ -169,3 +178,12 @@ def _safe_round(value: object, ndigits: int = 4) -> float | None:
         return round(float(value), ndigits)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+
+
+def _filter_factor_screen_universe(df: pd.DataFrame) -> pd.DataFrame:
+    stock_name = df.get("stock_name", pd.Series("", index=df.index)).fillna("").astype(str).str.upper()
+    mask = ~stock_name.str.match(r"^\*?ST")
+    mask &= pd.to_numeric(df["roe"], errors="coerce").abs() <= MAX_ABS_ROE
+    mask &= pd.to_numeric(df["dividend_yield"], errors="coerce") <= MAX_DIVIDEND_YIELD
+    mask &= pd.to_numeric(df["gross_margin"], errors="coerce") >= MIN_POSITIVE_MARGIN
+    return df[mask]

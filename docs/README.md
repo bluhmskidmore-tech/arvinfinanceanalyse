@@ -11,10 +11,12 @@ If this file conflicts with that chain, follow the authority chain.
 - `AGENTS.md`: repo operating rules and current priorities.
 - `docs/DOCUMENT_AUTHORITY.md`: document authority order and conflict handling.
 - `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`: current-state navigation entrypoint.
+- `docs/SPEC_HARNESS_GOVERNANCE_INDEX.md`: supporting Spec + Harness workflow index; non-authorizing and does not change the authority chain.
 
 ## Current Reference
 
 - `docs/page_contracts.md`: page-level contracts after the repo-level read path is clear.
+- `docs/live_route_maturity.md`: supporting live-route maturity burn-down registry; non-authorizing and does not approve metric definitions.
 - `docs/calc_rules.md`: calculation rules reference.
 - `docs/metric_dictionary.md`: metric dictionary reference.
 - `docs/MCP_RUNBOOK.md`: MCP evidence workflow reference.

@@ -55,6 +55,39 @@ def test_moving_average_strategy_returns_clean_portfolio_path() -> None:
     assert portfolio.iloc[-1] > 1.0
 
 
+def test_moving_average_strategy_does_not_capture_signal_day_return() -> None:
+    # 金叉在第 4 天（row_no=4）才确认，且当天价格从 10 跳到 13。
+    # 正确做法：信号当天收盘后才建仓，次日起才计收益，因此吃不到这 30% 跳涨。
+    # 若存在前视偏差（用当天信号吃当天收益），净值会变成约 1.30。
+    prices = pd.DataFrame(
+        {"x": [10, 10, 10, 10, 13, 13, 13, 13]},
+        index=pd.date_range("2026-01-01", periods=8, freq="D"),
+    )
+
+    portfolio = moving_average_strategy(prices, short_window=2, long_window=3)
+
+    assert abs(float(portfolio.iloc[-1]) - 1.0) < 1e-9
+
+
+def test_mean_reversion_momentum_strategy_does_not_capture_signal_day_return() -> None:
+    # 第 3 天（row_no=3）触发入场（跌破短期均值但仍在长期均线上方），入场日是下跌日。
+    # 第 4 天反弹 +22% 并触发止盈。正确做法应吃到第 4 天的反弹（净值≈1.22）。
+    # 若存在前视偏差，入场日先吃到 -10%、止盈日又吃不到反弹，净值会低于 1.0。
+    prices = pd.DataFrame(
+        {"x": [10, 10, 20, 18, 22, 22, 22]},
+        index=pd.date_range("2026-01-01", periods=7, freq="D"),
+    )
+
+    portfolio = mean_reversion_momentum_strategy(
+        prices,
+        short_window=2,
+        long_window=3,
+        z_threshold=0.5,
+    )
+
+    assert float(portfolio.iloc[-1]) > 1.1
+
+
 def test_mean_reversion_momentum_strategy_returns_clean_portfolio_path() -> None:
     prices = pd.DataFrame(
         {
@@ -100,6 +133,94 @@ def test_multi_factor_selection_ranks_and_filters_industry() -> None:
     assert set(factors.columns) == {"value", "quality", "momentum", "low_vol", "dividend"}
     assert selected.index.tolist() == ["AAA"]
     assert selected["score"].iloc[0] == financials.assign(score=selected["score"]).loc["AAA", "score"]
+
+
+def test_multi_factor_selection_caps_extreme_value_outlier() -> None:
+    financials = pd.DataFrame(
+        {
+            "pe": [22.0, 18.0, 20.0, 24.0, 26.0],
+            "pb": [1.8, 1.7, 1.9, 2.0, 1.6],
+            "ps": [0.001, 2.0, 2.2, 2.4, 2.6],
+            "roe": [0.01, 0.18, 0.20, 0.16, 0.19],
+            "gross_margin": [0.02, 0.40, 0.42, 0.38, 0.41],
+            "three_month_return": [-0.20, 0.08, 0.06, 0.07, 0.09],
+            "twelve_month_return": [-0.15, 0.20, 0.18, 0.19, 0.21],
+            "volatility": [0.25, 0.22, 0.24, 0.23, 0.21],
+            "dividend_yield": [0.01, 0.03, 0.025, 0.028, 0.032],
+            "industry": ["logistics", "technology", "technology", "consumer", "consumer"],
+        },
+        index=["deep_value_outlier", "tech_a", "tech_b", "consumer_a", "consumer_b"],
+    )
+
+    selected = multi_factor_selection(financials, top_pct=0.4, max_per_industry=2)
+
+    assert "deep_value_outlier" not in selected.index.tolist()
+
+
+def test_multi_factor_selection_limits_industry_concentration() -> None:
+    rows = []
+    index = []
+    for i in range(6):
+        rows.append(
+            {
+                "pe": 5.0 + i,
+                "pb": 0.45 + i * 0.02,
+                "ps": 0.01 + i * 0.001,
+                "roe": 0.08,
+                "gross_margin": 0.12,
+                "three_month_return": -0.05,
+                "twelve_month_return": -0.08,
+                "volatility": 0.18,
+                "dividend_yield": 0.04,
+                "industry": "construction",
+            }
+        )
+        index.append(f"construction_{i}")
+    for i, industry in enumerate(["technology", "medicine", "consumer"]):
+        rows.append(
+            {
+                "pe": 18.0,
+                "pb": 1.8,
+                "ps": 2.0,
+                "roe": 0.22 - i * 0.01,
+                "gross_margin": 0.42 - i * 0.02,
+                "three_month_return": 0.12 - i * 0.01,
+                "twelve_month_return": 0.28 - i * 0.02,
+                "volatility": 0.24 + i * 0.01,
+                "dividend_yield": 0.025,
+                "industry": industry,
+            }
+        )
+        index.append(industry)
+    financials = pd.DataFrame(rows, index=index)
+
+    selected = multi_factor_selection(financials, top_pct=1.0, max_per_industry=2)
+
+    assert selected["industry"].value_counts().max() <= 2
+    assert len(selected) == 5
+
+
+def test_multi_factor_selection_keeps_singleton_industries_ranked_by_factors() -> None:
+    financials = pd.DataFrame(
+        {
+            "pe": [8.0, 18.0, 35.0],
+            "pb": [0.8, 2.2, 4.0],
+            "ps": [1.0, 3.0, 8.0],
+            "roe": [0.22, 0.12, 0.03],
+            "gross_margin": [0.45, 0.30, 0.08],
+            "three_month_return": [0.18, 0.08, -0.12],
+            "twelve_month_return": [0.42, 0.10, -0.30],
+            "volatility": [0.16, 0.25, 0.45],
+            "dividend_yield": [0.06, 0.03, 0.00],
+            "industry": ["technology", "consumer", "financial"],
+        },
+        index=["strong", "middle", "weak"],
+    )
+
+    selected = multi_factor_selection(financials, top_pct=1.0)
+
+    assert selected["score"].nunique() > 1
+    assert selected.index.tolist()[0] == "strong"
 
 
 def test_low_crowding_scores_rank_less_crowded_names_higher() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 from tests.helpers import ROOT
@@ -17,6 +18,15 @@ def _read_doc(name: str) -> str:
 
 def _read_pnl_doc(name: str) -> str:
     return (DOCS_DIR / "pnl" / name).read_text(encoding="utf-8")
+
+
+def _read_root_file(name: str) -> str:
+    return (ROOT / name).read_text(encoding="utf-8")
+
+
+def _page_contract_section(current_heading: str, next_heading: str) -> str:
+    page_contracts = _read_doc("page_contracts.md")
+    return page_contracts.split(current_heading, maxsplit=1)[1].split(next_heading, maxsplit=1)[0]
 
 
 def _sample_dirs() -> list[str]:
@@ -112,6 +122,110 @@ def test_metric_dictionary_and_page_contracts_cover_current_governed_scope():
         assert page_id in page_contracts
 
     assert "PAGE-PROD-CAT-001" in product_category_page_contract
+
+
+def test_spec_harness_governance_index_is_supporting_and_mcp_aligned():
+    readme = _read_doc("README.md")
+    index = _read_doc("SPEC_HARNESS_GOVERNANCE_INDEX.md")
+    mcp_runbook = _read_doc("MCP_RUNBOOK.md")
+    mcp_config = json.loads(_read_root_file(".mcp.json"))
+
+    assert "Status label: supporting" in index
+    assert "non-authorizing" in index
+    assert "`AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`" in index
+    assert (
+        "`docs/SPEC_HARNESS_GOVERNANCE_INDEX.md`: supporting Spec + Harness workflow index; "
+        "non-authorizing and does not change the authority chain."
+    ) in readme
+
+    for heading in (
+        "## Two-Layer Model",
+        "## Standard Read Path",
+        "## Harness Rules For AI Execution",
+        "## Before-Editing Checklist",
+        "## Completion Checklist",
+        "## Page Maturity Matrix",
+        "## Evidence Tool Map",
+    ):
+        assert heading in index
+
+    for page_slug in ("`dashboard-home`", "`product-category-pnl`", "`market-data`"):
+        assert page_slug in index
+
+    for server_name in mcp_config["mcpServers"]:
+        assert f"`{server_name}`" in mcp_runbook
+        assert f"`{server_name}`" in index
+
+
+def test_live_route_maturity_registry_is_supporting_and_authority_safe():
+    registry = _read_doc("live_route_maturity.md")
+    readme = _read_doc("README.md")
+
+    assert "Status label: supporting" in registry
+    assert "does not authorize new metric definitions" in registry
+    assert "`docs/live_route_maturity.md`" in readme
+
+    for required in (
+        "`nav_state` mirrors navigation",
+        "`maturity_tier` is one of",
+        "`page_contract` must be an existing `PAGE-*` id or an explicit `GAP-*` marker",
+        "`temporary-exception` rows must carry a real owner",
+    ):
+        assert required in registry
+
+
+def test_operations_analysis_contract_matches_current_product_category_headline_binding():
+    ops_contract = _page_contract_section("## 13.5 PAGE-OPS-001", "## 13.6 PAGE-BOND-001")
+    metric_dictionary = _read_doc("metric_dictionary.md")
+
+    for required in (
+        "`client.getProductCategoryDates()` -> `GET /ui/pnl/product-category/dates`",
+        "`client.getProductCategoryPnl()` -> `GET /ui/pnl/product-category`",
+        "`MTR-PCP-001`",
+        "`MTR-PCP-002`",
+        "`MTR-PCP-003`",
+        "`GS-PROD-CAT-PNL-A`",
+        "`GAP-OPS-MACRO-FX`",
+        "Current implementation primary first-screen formal PnL evidence",
+        "Balance overview is supplemental topic-entry evidence",
+        "does not create `MTR-OPS-*`",
+    ):
+        assert required in ops_contract
+
+    assert "`PAGE-OPS-001` 已对齐当前 product-category headline 实现" in metric_dictionary
+    assert "PAGE-OPS-001` 仍记录 balance overview + macro / FX strip，已与当前实现不一致" not in metric_dictionary
+
+
+def test_ledger_pnl_candidate_metrics_bind_existing_page_contract_without_formal_promotion():
+    ledger_contract = _page_contract_section(
+        "## 14.0 PAGE-LEDGER-PNL-001",
+        "## 14. PAGE-PROD-CAT-PNL-001",
+    )
+    metric_dictionary = _read_doc("metric_dictionary.md")
+
+    for required in (
+        "`MTR-LPN-001`",
+        "`MTR-LPN-002`",
+        "`MTR-LPN-003`",
+        "candidate display metrics",
+        "remain `pending_confirmation=true`",
+    ):
+        assert required in ledger_contract
+
+    for metric_id in ("MTR-LPN-001", "MTR-LPN-002", "MTR-LPN-003"):
+        metric_line = next(
+            line for line in metric_dictionary.splitlines() if line.startswith(f"- `{metric_id}`")
+        )
+        assert "status=candidate" in metric_line
+        assert "bound_page_id=PAGE-LEDGER-PNL-001" in metric_line
+        assert "pending_confirmation=true" in metric_line
+
+    assert (
+        "| `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | "
+        "`PAGE-LEDGER-PNL-001` | `none` | live 只读链路已有独立 PAGE 合同；"
+        "三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |"
+    ) in metric_dictionary
+    assert "PAGE-CONTRACT-PENDING:/ledger-pnl" not in metric_dictionary
 
 
 def test_golden_sample_docs_match_current_sample_directories():
@@ -338,6 +452,66 @@ def test_product_category_metric_dictionary_does_not_promote_unapproved_fields()
         "`cnx_scale`",
     ):
         assert field_name in metric_dictionary
+
+
+def test_market_data_page_contract_documents_blocked_formal_use_visibility():
+    page_contracts = _read_doc("page_contracts.md")
+    market_section = page_contracts.split("## 13.8 PAGE-MKT-001", maxsplit=1)[1].split(
+        "## 13.9",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "`formal_use_allowed=false`",
+        "`formal · blocked`",
+        "`禁止作为正式口径`",
+        "`分析/候选`",
+        "`frontend/src/features/market-data/pages/marketDataPageModel.ts`",
+        "`frontend/src/features/market-data/pages/MarketDataPage.tsx`",
+        "`frontend/src/test/MarketDataPage.test.tsx`",
+        "`frontend/src/features/market-data/pages/marketDataPageModel.test.ts`",
+    ):
+        assert required in market_section
+
+
+def test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promotion():
+    macro_contract = _page_contract_section(
+        "## 13.9 PAGE-MACRO-TOOLKIT-001",
+        "## 14.0 PAGE-LEDGER-PNL-001",
+    )
+    metric_dictionary = _read_doc("metric_dictionary.md")
+    maturity_registry = _read_doc("live_route_maturity.md")
+
+    for required in (
+        "页面 ID：`PAGE-MACRO-TOOLKIT-001`",
+        "路由：前端 `/macro-toolkit`",
+        "`MacroToolkitContractBoundary`",
+        "`formal_use_allowed=false`",
+        "`非正式口径`",
+        "`GET /ui/macro/toolkit/analysis?detail=core`",
+        "`GET /ui/macro/toolkit/analysis/strategy-summaries`",
+        "`GET /ui/macro/toolkit/scripts`",
+        "`POST /ui/macro/toolkit/scripts/{name}/run`",
+        "`POST /ui/macro/toolkit/cffex-member-rank/refresh`",
+        "`POST /ui/macro/toolkit/choice-stock/refresh`",
+        "不新增 `MTR-MACRO-*`",
+        "`frontend/src/test/MacroToolkitPage.test.tsx`",
+        "`tests/test_macro_toolkit_scripts.py`",
+    ):
+        assert required in macro_contract
+
+    assert (
+        "| `/macro-toolkit` | `PAGE-MACRO-TOOLKIT-001` | "
+        "`MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / "
+        "`getMacroToolkitStrategySummaries` / `getMacroToolkitScripts` | "
+        "**无 `MTR-*`**：工具/分析口径，不升格为正式指标 | — | "
+        "`frontend/src/test/MacroToolkitPage.test.tsx`；`tests/test_macro_toolkit_scripts.py` |"
+    ) in metric_dictionary
+    assert "`macro-toolkit`: 页面已有 `PAGE-MACRO-TOOLKIT-001`" in metric_dictionary
+    assert "GAP-MACRO-TOOLKIT-PAGE" not in maturity_registry
+    assert (
+        "| `/macro-toolkit` | live | candidate | PAGE-MACRO-TOOLKIT-001 |"
+    ) in maturity_registry
 
 
 def test_product_category_as_of_date_decision_has_no_standalone_field():

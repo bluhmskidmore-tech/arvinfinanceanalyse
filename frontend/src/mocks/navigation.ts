@@ -250,10 +250,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "迁移后的宏观脚本工具入口，默认读取系统 Choice/Tushare 数据源。",
     readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
+    readinessLabel: "工具口径",
     readinessNote:
-      "脚本注册表与运行入口已接到后端宏观模块；中金所席位数据可通过 Choice/Tushare 刷新落库。",
+      "脚本注册表、分析结果与运行入口已接到后端宏观模块；页面明确标注非正式口径。",
   },
   {
     key: "stock-analysis",

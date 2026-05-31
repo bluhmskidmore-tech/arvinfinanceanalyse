@@ -1024,7 +1024,7 @@
 - 页面 ID：`PAGE-OPS-001`
 - 页面名称：`经营分析`
 - 路由：前端 `/operations-analysis`（`frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx`）
-- 页面状态：`mixed-source`（正式正式余额读面 + `basis=analytical` 的 source/macro/news + 仍存在的演示/本地组件混排；`WorkbenchShell` 对本路由保留 **temporary exception** 横幅）
+- 页面状态：`mixed-source`（当前首屏正式经营口径复用 product-category PnL headline；余额读面仅作为专题入口补充；`basis=analytical` 的 source/macro/news 与 FX 覆盖状态仍为证据/观察面；`WorkbenchShell` 对本路由保留 **temporary exception** 横幅）
 - 编制备注：`client.mode === "real"` 与 `"mock"` 分支影响 badge/演示语义；**不得**将 mock 与真实链路混读为同一正式结论。
 
 ### B. 页面目标
@@ -1032,7 +1032,7 @@
 - 主要问题（业务）：**当前经营判断是否已有可追证的读链路支撑；若需要下钻，第一站应进哪个受治理专题页？**
 - 明确 **不负责**：
   - 不替代 `balance-analysis` 工作簿/明细真值
-  - 不替代 `pnl` / 产品分类损益正式页
+  - 不替代 `pnl` / 产品分类损益正式页；本页只复用产品分类损益正式页已批准的 headline truth
   - 不把 `source_preview` / Choice news / macro `preview` 伪装为 formal compute 主链真值
   - 不承诺 Wave 1 文档中列为「禁止首屏」的组件已从代码中物理移除（见下 **Pending**）
 
@@ -1040,20 +1040,20 @@
 
 | 类别 | section_key / 组件 | 状态 | 备注 |
 | --- | --- | --- | --- |
-| 必有（代码已渲染） | `hero` / `PageHeader` + `operations-business-kpis` | live | 多卡 KPI 条带来自 balance overview + source/macro/FX/news 等查询的聚合展示 |
+| 必有（代码已渲染） | `hero` / `PageHeader` + `operations-business-kpis` | live | Current implementation primary first-screen formal PnL evidence：前三张 KPI 卡来自 `GET /ui/pnl/product-category` 的资产端、负债端、合计经营净收入；其余卡片为日期、行数、source/macro/FX/news 证据状态 |
 | 必有（代码已渲染） | `operations-conclusion-grid` 内含 `BusinessConclusion`、`RevenueCostBridge`（可测试 stub）、`QualityObservation` | **与 Wave 1 目标清单冲突** | 以代码为准作契约；收缩首屏需后续改动 |
-| 必有（代码已渲染） | `operations-contribution-grid`（`BusinessContributionTable` + `AlertList` + `CalendarList` 等） | mixed | 表格为正式 balance **summary 行**；`AlertList`/`CalendarList` 使用 `businessAnalysisWorkbenchMocks` |
+| 必有（代码已渲染） | `operations-contribution-grid`（`BusinessContributionTable` + `AlertList` + `CalendarList` 等） | mixed | 表格为 product-category detail rows；`AlertList`/`CalendarList` 使用 `businessAnalysisWorkbenchMocks`，仍是静态示例 |
 | 必有（代码已渲染） | `operations-structure-grid`（`TenorConcentrationPanel` + `ManagementOutput`） | mixed | 与 §13.5 历史「禁止区块」声明不一致；**Pending** 对齐或更新禁止清单 |
-| 必有 | `recommendation` 推导 + `ManagementOutput` 行动卡片 | live | 推导见 `recommendation` `useMemo`（`source/macro/FX/balance` 错误/空/缺失） |
-| 必有 | 专题入口 `operations-entry-balance-section` 等 | live | 正式余额速览 + `Link` 至 `/balance-analysis`、`/market-data` 等 |
-| 可选 / 运维 | PnL refresh 按钮 + `runPollingTask` + `getFormalPnlImportStatus` | operational | 非主读数真值面 |
+| 必有 | `recommendation` 推导 + `ManagementOutput` 行动卡片 | live | 推导见 `recommendation` `useMemo`（source 预览、product-category 日期/结果/行为空或失败时不得给出充分证据结论；FX 缺口只影响关注事项） |
+| 必有 | 专题入口 `operations-entry-balance-section` 等 | live | Balance overview is supplemental topic-entry evidence；只作为 `/balance-analysis` 下钻入口，不替代首屏 product-category headline |
+| 可选 / 运维 | 产品分类 PnL refresh/status | operational | 本页不承接刷新操作；刷新/调整入口归 `/product-category-pnl` truth contract |
 | 可选 | `getChoiceNewsEvents` | **analytical-only** / advisory | `result_kind` 为 news vendor 流；仅作信息 |
-| 禁止 | 将上述 advisory/preview 与 `MTR-BAL-*` 混写为无 provenance 的「正式经营结论」 | — | UI 上须可区分来源（badge / meta / 失败态） |
+| 禁止 | 将上述 advisory/preview、静态示例或 supplemental balance overview 混写为无 provenance 的「正式经营结论」 | — | UI 上须可区分来源（badge / meta / 失败态） |
 
 ### D. 时间语义
 
-- `requested_report_date`：经营页自身无独立日期控件；`balance` 部分使用 `getBalanceAnalysisDates` 的 **首个** `report_dates[0]` 拉 overview/summary（与页面「最新证据」策略一致，非用户逐日点选语义）。
-- `resolved_report_date`：以 `getBalanceAnalysisOverview` 返回的 `result.report_date` 为 balance 子系统的解析报告日；其它 endpoint 各自带 `result_meta` / 载荷内日期字段。
+- `requested_report_date`：经营页自身无独立日期控件；product-category 与 balance 部分分别使用各自 dates endpoint 的 **首个** `report_dates[0]`（与页面「最新证据」策略一致，非用户逐日点选语义）。
+- `resolved_report_date`：首屏经营口径以 `getProductCategoryPnl` 返回的 `result.report_date` 为准；balance 专题入口以 `getBalanceAnalysisOverview` 返回的 `result.report_date` 为准；其它 endpoint 各自带 `result_meta` / 载荷内日期字段。
 - `as_of_date`：本页**未**统一为单一向外字段；各区块遵循上游契约（同 §4.1 缺口声明）。
 - `generated_at`：来自各 `ApiEnvelope['result_meta'].generated_at`；多来源页须在运维/折叠区保留可核对条带（见实装中 Collapse/面板）。
 
@@ -1066,24 +1066,28 @@
 | 宏观最新 | `getChoiceMacroLatest()` → `GET /ui/macro/choice-series/latest` | Choice macro latest points + `result_meta` | **analytical** + vendor |
 | 正式汇率覆盖 | `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status` | `FxFormalStatusPayload`（rows/materialized/candidate/日期） | 正式行与缺失行表；**非**全页 formal truth |
 | 新闻 | `getChoiceNewsEvents()` | 事件列表 + `result_meta` | **analytical** |
+| 产品分类日期 | `client.getProductCategoryDates()` -> `GET /ui/pnl/product-category/dates` | `ProductCategoryDatesPayload` | `formal`（复用 product-category PnL 主链） |
+| 产品分类 PnL | `client.getProductCategoryPnl()` -> `GET /ui/pnl/product-category` | `ProductCategoryPnlPayload`，headline + detail rows | `formal`（本页首屏经营口径） |
 | 余额日期 | `getBalanceAnalysisDates()` | `BalanceAnalysisDatesPayload` | `formal`（与 balance-analysis 页同链） |
-| 余额概览 | `getBalanceAnalysisOverview()` | `BalanceAnalysisOverviewPayload` | `formal` |
-| 余额汇总行 | `getBalanceAnalysisSummary()` | summary rows | `formal` |
-| PnL 刷新 | `refreshFormalPnl` / `getFormalPnlImportStatus` | 运维轮询 payload | 非主读 value |
+| 余额概览 | `getBalanceAnalysisOverview()` | `BalanceAnalysisOverviewPayload` | `formal`；supplemental topic-entry evidence |
 
 ### F. 指标映射（`metric_id`）
 
-- 本页 **不** 引入新的 `metric_id` 绑定; 与正式余额重叠的展示项，沿用 `PAGE-BALANCE-001` 在字典中的 `MTR-BAL-*`（如总市值/成本/应计/行数等），以 `getBalanceAnalysisOverview` / `summary` 字段为准；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
+- 本页 does not create `MTR-OPS-*`。当前首屏正式经营净收入复用产品分类损益已批准的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` 与 `GS-PROD-CAT-PNL-A`；与正式余额重叠的专题入口展示项仍沿用 `PAGE-BALANCE-001` 在字典中的 `MTR-BAL-*`，以 `getBalanceAnalysisOverview` 字段为准；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
 
 | 展示锚点 | `metric_id`（若可映射） | 来源 |
 | --- | --- | --- |
-| 总市值/摊余/应计/行数 | `MTR-BAL-001`–`MTR-BAL-103`（与 balance 页一致部分） | `BalanceAnalysisOverviewPayload` / summary rows |
-| Source/Macro/News/FX 卡计数 | 不适用（无 `metric_id`） | 各 `result` 列表长度或 envelope |
+| 资产端经营净收入 | `MTR-PCP-001` | `ProductCategoryPnlPayload.asset_total.business_net_income` |
+| 负债端经营净收入 | `MTR-PCP-002` | `ProductCategoryPnlPayload.liability_total.business_net_income` |
+| 合计经营净收入 | `MTR-PCP-003` | `ProductCategoryPnlPayload.grand_total.business_net_income` |
+| product-category detail rows | 不新增 `metric_id` | detail rows 仍按 product-category truth contract / sample truth，不在本页升格 |
+| 总市值/摊余/应计/行数 | `MTR-BAL-001`–`MTR-BAL-103`（与 balance 页一致部分） | `BalanceAnalysisOverviewPayload`；supplemental topic-entry evidence |
+| Source/Macro/News/FX 卡计数 | 不适用（无 `metric_id`）；`GAP-OPS-MACRO-FX` | 各 `result` 列表长度或 envelope |
 
 ### G. 状态：loading / empty / stale / fallback / error
 
-- **Loading**：`AsyncSection` 与多 `useQuery` 并存；`balance` 与 `source/macro` 可不同步完成。
-- **Empty**：`recommendation` 在 `sourceSummaries` 或 `macroLatest` 或 `fxFormalRows` 空时走 **Evidence chain incomplete** 分支；`balance` 无日期时走 **Await governed balance**。
+- **Loading**：`AsyncSection` 与多 `useQuery` 并存；product-category、balance 与 `source/macro` 可不同步完成。
+- **Empty**：`recommendation` 在 `sourceSummaries`、product-category 日期、product-category payload 或 detail rows 为空时走证据链不完整分支；balance 无日期只影响专题入口。
 - **Stale / fallback**：遵循各 `result_meta.fallback_mode`、`quality_flag`、`vendor_status`；`ManagementOutput` / KPI 行须能反映查询失败态（`buildStatusCardContent` 等）。
 - **Error**：`isError` 时 recommendation 与卡片文案必须可见；禁止用静态 KPI 行掩盖。
 - **Mock 模式**：`client.mode === "mock"` 时首屏仍须标注演示语义（badge）。
@@ -1091,12 +1095,12 @@
 ### H. 测试与黄金样本锚点
 
 - 测试：`frontend/src/test/OperationsAnalysisPage.test.tsx`、`navigation.test.ts`、`RouteRegistry.test.tsx`、`WorkbenchShell.test.tsx`（与 §13.5 旧表一致）
-- 黄金样本：本页**无**独立 GS；正式余额对账见 `GS-BAL-OVERVIEW-A` / balance 相关样本。
+- 黄金样本：本页**无**独立 GS；首屏 product-category headline 复用 `GS-PROD-CAT-PNL-A`；balance 专题入口对账见 `GS-BAL-OVERVIEW-A` / balance 相关样本。
 
 ### I. 显式待确认（Pending）
 
 - Wave 1 书面「禁止首屏」列表与 **当前** `OperationsAnalysisPage.tsx` 实装（仍含 `BusinessConclusion`、`TenorConcentrationPanel`、mock `AlertList`/`CalendarList` 等）的收敛策略：删组件 vs 改文档权威。
-- `requested_report_date` 与「默认最新余额日」的人机交互是否应升级为可点选，与 `PAGE-BALANCE-001` 统一。
+- `requested_report_date` 与「默认最新 product-category / balance 日期」的人机交互是否应升级为可点选，并分别与 `PAGE-PROD-CAT-PNL-001`、`PAGE-BALANCE-001` 统一。
 
 ## 13.6 PAGE-BOND-001 债券总览（债券分析驾驶舱）
 
@@ -1275,6 +1279,14 @@
 
 - `frontend/src/test/MarketDataPage.test.tsx`、`ApiClient.test.ts`（端点 URL 拼写）、`RouteRegistry.test.tsx`
 
+### H.1 Blocked formal-use visibility
+
+- If the `/market-data` formal rates fragment returns `result_meta.basis=formal` but `formal_use_allowed=false`, the page must not present it as formal-ready.
+- Required user-visible copy: `formal · blocked`, `禁止作为正式口径`, and first-screen status `分析/候选`.
+- Current implementation anchors: `frontend/src/features/market-data/pages/marketDataPageModel.ts`, `frontend/src/features/market-data/pages/MarketDataPage.tsx`, `frontend/src/features/market-data/pages/MarketDataHeroSection.tsx`.
+- Regression anchors: `frontend/src/test/MarketDataPage.test.tsx` and `frontend/src/features/market-data/pages/marketDataPageModel.test.ts`.
+- This visibility rule does not add new `MTR-*` rows, approve full-page formal truth, or create a capture-ready golden sample; `GAP-MKT-DATA` remains in force.
+
 ### I. 显式待确认
 
 - 与全仓 `Phase 2` cutover 声明对齐后，本页是否拆分为「formal 子面」+「preview 子应用」的导航或强提示（当前为 **同页 mixed-source**）。
@@ -1286,6 +1298,83 @@
 - **NCD 读面**：`ncd-funding-proxy` 为 **Shibor/资金利率类 proxy**（默认文案与 `payload.proxy_label` 对齐，如 Tushare Shibor funding proxy），**不是**「实际同业存单期限 × 评级」全矩阵真值；页内 `NcdMatrix` 已声明 proxy 语义。
 - **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。
 - **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。
+
+## 13.9 PAGE-MACRO-TOOLKIT-001 宏观工具
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-MACRO-TOOLKIT-001`
+- 页面名称：`宏观工具`
+- 路由：前端 `/macro-toolkit`（`frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx`）
+- 页面状态：`candidate tooling surface`。本页是宏观分析与脚本工具入口，允许展示分析/候选/运维证据，但 **不** 是正式宏观指标页，也不创建正式投资信号。
+- 页面边界锚点：`MacroToolkitContractBoundary` 必须在正常页与错误页可见，并展示 `formal_use_allowed=false` 时的 `非正式口径` 文案。
+
+### B. 业务问题与不回答
+
+- **须回答**：当前宏观工具的核心判断、证据覆盖、市场踩踏风险、M7-M16 功能结果、策略供数状态、脚本注册表与脚本运行结果是否可读、可追踪、可显式降级。
+- **不回答**：
+  - 不替代 `market-data` 的利率/宏观序列读面。
+  - 不替代 `stock-analysis` 或任何正式投资决策页。
+  - 不把脚本输出、样例策略、Choice/Tushare vendor 读面或刷新状态升格为 governed macro metric truth。
+
+### C. 必有 section / 组件
+
+| Section / component | 状态 | 备注 |
+| --- | --- | --- |
+| `macro-toolkit-tailwind-cockpit` | live | 首屏展示分析日期、投研观点、证据覆盖、能力闭环与合同边界 |
+| `DataStatusStrip` + `MacroToolkitContractBoundary` | live | 显示 `result_meta.basis`、`quality_flag`、`result_kind`、`rule_version`、`formal_use_allowed=false` |
+| 核心信号 / 市场踩踏风险 | live | 只展示后端宏观模块返回的分析结果；缺失时须显示空/失败态 |
+| 指标矩阵 / 功能结果 | live | M7-M16 的输入证据、缺失输入和降级状态须可见 |
+| 策略展示 / 策略供数闭环 | live | 显示真实链路、降级、样例数量、股票历史日期、因子快照日期与 source/version/run_id |
+| CFFEX 席位状态 / 股票数据刷新 | operational | 显式触发的刷新动作；须由后端权限与审计测试约束 |
+| 脚本注册表 / 脚本产物 / 运行结果 | operational | 只作为工具运行证据；不得作为正式指标或自动交易建议 |
+
+### D. 时间语义
+
+- `requested_report_date`：本页没有独立日期控件；核心分析由后端 `MacroToolkitAnalysisPayload.as_of_date` 与各源状态共同决定。
+- `resolved_report_date`：以各返回 payload 内的 `as_of_date`、`latest_trade_date`、`reference_date`、`factor_snapshot.as_of_date` 为准；不同区块不得被合并成一个全页日期。
+- `generated_at`：来自各 `ApiEnvelope.result_meta.generated_at`。
+- 刷新动作产生的 `run_id`、`started_at`、`finished_at` 仅用于运维追踪，不构成页面主读数日期。
+
+### E. Endpoint / DTO 表
+
+| Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
+| --- | --- | --- | --- |
+| `getMacroToolkitAnalysis()` -> `GET /ui/macro/toolkit/analysis?detail=core` | 核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
+| `getMacroToolkitScripts()` -> `GET /ui/macro/toolkit/scripts` | 脚本注册表、源命中、产物列表 | `MacroToolkitPayload` | tooling |
+| `runMacroToolkitScript()` -> `POST /ui/macro/toolkit/scripts/{name}/run` | 显式运行选中脚本 | `MacroToolkitRunResponse` | operational |
+| `refreshCffexMemberRank()` -> `POST /ui/macro/toolkit/cffex-member-rank/refresh` | 中金所席位数据刷新 | `MacroToolkitCffexRefreshResponse` | operational / permission-gated |
+| `refreshChoiceStock()` -> `POST /ui/macro/toolkit/choice-stock/refresh` | 股票历史与因子快照刷新 | `MacroToolkitChoiceStockRefreshResponse` | operational / permission-gated |
+| `getChoiceStockRefreshStatus()` -> `GET /ui/macro/toolkit/choice-stock/refresh-status` | 刷新任务状态 | `MacroToolkitChoiceStockRefreshResponse` | operational |
+
+### F. 指标映射
+
+- 本页不新增 `MTR-MACRO-*`，不新增 `MTR-*`，也不绑定 golden sample。
+- `coverage.hit_rate`、脚本数量、策略数量、真实链路数量、股票历史行数、因子快照行数等均为页面状态/运维证据，不能写入正式指标字典。
+- 若未来要把某个宏观指标升格为正式指标，必须另行补 metric dictionary 行、单位/精度/null 规则、source lineage、sample 或明确 `pending_confirmation=true` 的 candidate 决策；本页合同不授权该升格。
+
+### G. 状态规则
+
+- **Loading**：核心分析可以先返回；`runtime_status.deferred_sections` 须让策略展示等延后区块可见。
+- **Empty**：无脚本、无策略、无指标时必须显示空态，不得补静态假数据。
+- **Stale / fallback**：遵循 `result_meta.quality_flag`、`fallback_mode`、各源最新日期与 warnings；供数闭环必须保留样例/降级/真实链路区分。
+- **Error**：分析、脚本或策略读取失败时，错误页或区块必须同时显示合同边界和失败来源。
+- **Permission**：刷新和运行入口必须依赖后端权限/授权测试；前端不单独声明授权成功。
+
+### H. 测试与验证锚点
+
+- 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
+- 后端/API/权限：`tests/test_macro_toolkit_scripts.py`
+- 债务基线：`npm run debt:audit`
+- 浏览器检查：打开 `/macro-toolkit`，核对 `非正式口径`、核心信号、市场踩踏风险、策略供数闭环、脚本注册表和运行结果可见。
+
+### I. 显式待确认
+
+- 是否未来拆分为「只读宏观观察页」与「运维脚本工具页」两个路由。
+- 是否将某些宏观序列或策略状态按 candidate metric 登记；当前合同明确不登记。
+- 是否允许脚本运行输出进入可下载报告或审计归档；当前仅作为页面运行证据显示。
 
 ## 14.0 PAGE-LEDGER-PNL-001 Ledger PnL
 
@@ -1333,7 +1422,15 @@
 - Stale/fallback/vendor degradation must remain visible through `result_meta`.
 - No-data and missing-source states must be explicit; pending formal indicators must not be rendered as zero.
 
-### F. Tests
+### F. Candidate metric bindings
+
+- Ledger summary cards have dictionary entries only as candidate display metrics; they remain `pending_confirmation=true` and must not be read as formal PnL, product-category PnL, or approved financial-indicator truth.
+- `MTR-LPN-001` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_core`
+- `MTR-LPN-002` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_all`
+- `MTR-LPN-003` -> `LedgerPnlSummaryPayload.ledger_net_assets`
+- The bound page is `PAGE-LEDGER-PNL-001`; `bound_sample_id=none` until a capture-ready ledger summary sample is approved.
+
+### G. Tests
 
 - API/source contract: `tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`.
 - Ledger summary/detail: `tests/test_ledger_pnl_service.py`.
