@@ -7,6 +7,8 @@ import type {
   AlertsPayload,
   ContributionPayload,
   GetHomeSnapshotOptions,
+  HomeIncomeTrendPayload,
+  HomeResearchReportsPayload,
   HomeSnapshotPayload,
   OverviewPayload,
   PlaceholderSnapshot,
@@ -22,6 +24,14 @@ export type ExecutiveClientMethods = {
   getHomeSnapshot: (
     options?: GetHomeSnapshotOptions,
   ) => Promise<ApiEnvelope<HomeSnapshotPayload>>;
+  getHomeResearchReports: (
+    reportDate: string,
+    limit?: number,
+  ) => Promise<ApiEnvelope<HomeResearchReportsPayload>>;
+  getHomeIncomeTrend: (
+    reportDate: string,
+    window?: number,
+  ) => Promise<ApiEnvelope<HomeIncomeTrendPayload>>;
   getSummary: () => Promise<ApiEnvelope<SummaryPayload>>;
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
@@ -38,6 +48,8 @@ type ExecutiveThinClientMethods = Pick<
   ExecutiveClientMethods,
   | "getOverview"
   | "getHomeSnapshot"
+  | "getHomeResearchReports"
+  | "getHomeIncomeTrend"
   | "getSummary"
   | "getRiskOverview"
   | "getRiskTensorDates"
@@ -91,6 +103,37 @@ export function createDemoExecutiveClient(
       await delay();
       const bundle = await ensureBundle();
       return bundle.buildMockApiEnvelope("home.snapshot", bundle.mockHomeSnapshot);
+    },
+    async getHomeResearchReports(reportDate: string, limit = 5) {
+      await delay();
+      void limit;
+      const bundle = await ensureBundle();
+      return bundle.buildMockApiEnvelope(
+        "home.research_reports",
+        {
+          report_date: reportDate,
+          source_status: "empty",
+          items: [],
+          warnings: [],
+        },
+        { basis: "analytical", formal_use_allowed: false },
+      );
+    },
+    async getHomeIncomeTrend(reportDate: string, window = 7) {
+      await delay();
+      const bundle = await ensureBundle();
+      return bundle.buildMockApiEnvelope(
+        "home.income_trend",
+        {
+          report_date: reportDate,
+          window,
+          source_status: "empty",
+          points: [],
+          missing_components: [],
+          warnings: [],
+        },
+        { basis: "analytical", formal_use_allowed: false },
+      );
     },
     async getSummary() {
       await delay();
@@ -191,6 +234,28 @@ export function createRealExecutiveClient(
       ),
     getHomeSnapshot: (options?: GetHomeSnapshotOptions) =>
       fetchHomeSnapshotEnvelope(fetchImpl, baseUrl, options),
+    getHomeResearchReports: (reportDate: string, limit = 5) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        limit: String(limit),
+      });
+      return requestJson<HomeResearchReportsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/home/research-reports?${params.toString()}`,
+      );
+    },
+    getHomeIncomeTrend: (reportDate: string, window = 7) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        window: String(window),
+      });
+      return requestJson<HomeIncomeTrendPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/home/income-trend?${params.toString()}`,
+      );
+    },
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getRiskOverview: () =>

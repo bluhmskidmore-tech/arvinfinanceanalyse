@@ -9,9 +9,11 @@ import type {
   BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
+  DV01RiskPayload,
   BenchmarkExcessPayload,
   AssetStructurePayload,
   BondDashboardHeadlinePayload,
+  BondPositionChangesPayload,
   CreditSpreadAnalysisPayload,
   CreditSpreadMigrationPayload,
   YieldCurveTermStructurePayload,
@@ -77,6 +79,10 @@ type BondAnalyticsCoreSurfaceMethods = {
     reportDate: string,
     options?: { scenarioSet?: string },
   ) => Promise<ApiEnvelope<KRDCurveRiskPayload>>;
+  getBondAnalyticsDv01Risk: (
+    reportDate: string,
+    options?: { accountingClass?: string; topN?: number; shockBps?: string },
+  ) => Promise<ApiEnvelope<DV01RiskPayload>>;
   getBondAnalyticsActionAttribution: (
     reportDate: string,
     periodType: string,
@@ -95,6 +101,10 @@ type BondAnalyticsCoreSurfaceMethods = {
     reportDate: string,
     topN?: number,
   ) => Promise<ApiEnvelope<BondTopHoldingsPayload>>;
+  getBondAnalyticsPositionChanges: (
+    reportDate: string,
+    topN?: number,
+  ) => Promise<ApiEnvelope<BondPositionChangesPayload>>;
   getCreditSpreadAnalysisDetail: (
     reportDate: string,
   ) => Promise<ApiEnvelope<CreditSpreadAnalysisPayload>>;
@@ -117,11 +127,13 @@ type BondAnalyticsCoreClientMethods = Pick<
   | "getBondAnalyticsReturnDecomposition"
   | "getBondAnalyticsBenchmarkExcess"
   | "getBondAnalyticsKrdCurveRisk"
+  | "getBondAnalyticsDv01Risk"
   | "getBondAnalyticsActionAttribution"
   | "getBondAnalyticsAccountingClassAudit"
   | "getBondAnalyticsCreditSpreadMigration"
   | "getBondAnalyticsPortfolioHeadlines"
   | "getBondAnalyticsTopHoldings"
+  | "getBondAnalyticsPositionChanges"
   | "getBondAnalyticsYieldCurveTermStructure"
   | "getCreditSpreadAnalysisDetail"
 >;
@@ -308,6 +320,35 @@ export function createDemoBondAnalyticsClient(
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getBondAnalyticsDv01Risk(
+      reportDate: string,
+      options?: { accountingClass?: string; topN?: number; shockBps?: string },
+    ) {
+      await delay();
+      const accountingClass = options?.accountingClass ?? "OCI";
+      const zeroYuan = formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false });
+      const zeroRatio = formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: false });
+      const zeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope<DV01RiskPayload>(
+        "bond_analytics.dv01_risk",
+        {
+          report_date: reportDate,
+          accounting_class: accountingClass,
+          total_face_value: zeroYuan,
+          total_market_value: zeroYuan,
+          face_weighted_modified_duration: zeroRatio,
+          total_dv01: zeroDv01,
+          position_count: 0,
+          shock_scenarios: [],
+          tenor_buckets: [],
+          top_bonds: [],
+          top_issuers: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getBondAnalyticsActionAttribution(reportDate: string, periodType: string) {
       await delay();
       const zy = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: s });
@@ -420,6 +461,24 @@ export function createDemoBondAnalyticsClient(
           top_n: topN,
           items: [],
           total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsPositionChanges(reportDate: string, topN = 5) {
+      await delay();
+      return (await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_analytics.position_changes",
+        {
+          report_date: reportDate,
+          prev_report_date: null,
+          top_n: topN,
+          source_status: "empty",
+          items: [],
+          total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          prev_total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -804,6 +863,20 @@ export function createRealBondAnalyticsClient(
         `/api/bond-analytics/krd-curve-risk?${params.toString()}`,
       );
     },
+    getBondAnalyticsDv01Risk: (
+      reportDate: string,
+      options?: { accountingClass?: string; topN?: number; shockBps?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      params.set("accounting_class", options?.accountingClass ?? "OCI");
+      params.set("top_n", String(options?.topN ?? 20));
+      params.set("shock_bps", options?.shockBps ?? "1,10,25,50");
+      return requestJson<DV01RiskPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/dv01-risk?${params.toString()}`,
+      );
+    },
     getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>
       requestJson<ActionAttributionPayload>(
         fetchImpl,
@@ -843,6 +916,17 @@ export function createRealBondAnalyticsClient(
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/top-holdings?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsPositionChanges: (reportDate: string, topN = 5) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        top_n: String(topN),
+      });
+      return requestJson<BondPositionChangesPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/position-changes?${params.toString()}`,
       );
     },
     getBondAnalyticsYieldCurveTermStructure: (

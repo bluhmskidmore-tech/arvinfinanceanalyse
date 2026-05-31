@@ -52,6 +52,22 @@ describe("mapToHomeView", () => {
     productCategoryYtd: null,
     productCategoryMonthly: null,
     assetStructure: null,
+    ratingStructure: null,
+    maturityStructure: null,
+    industryDistribution: null,
+    riskIndicators: null,
+    topHoldings: null,
+    topHoldingsLoading: false,
+    topHoldingsError: false,
+    positionChanges: null,
+    positionChangesLoading: false,
+    positionChangesError: false,
+    researchReports: null,
+    researchReportsLoading: false,
+    researchReportsError: false,
+    incomeTrend: null,
+    incomeTrendLoading: false,
+    incomeTrendError: false,
     cockpitWarnings: null,
     calendarEvents: null,
     calendarLoading: false,
@@ -89,6 +105,90 @@ describe("mapToHomeView", () => {
     expect(view.attributionTabs).toHaveLength(4);
     expect(view.assetBarsPlaceholder).toBe(true);
     expect(view.riskRadar.placeholder).toBe(true);
+  });
+
+  it("maps landed home backend blocks without keeping their backend-gap cards", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      positionChanges: {
+        report_date: "2026-04-30",
+        prev_report_date: "2026-04-29",
+        top_n: 5,
+        source_status: "ready",
+        total_market_value: numeric(1_000_000_000, "10.00 yi"),
+        prev_total_market_value: numeric(900_000_000, "9.00 yi"),
+        warnings: [],
+        computed_at: "2026-04-30T10:00:00Z",
+        items: [
+          {
+            instrument_code: "240001.IB",
+            instrument_name: "test bond",
+            issuer_name: null,
+            rating: "AAA",
+            asset_class: "rate",
+            previous_market_value: numeric(100_000_000, "1.00 yi"),
+            current_market_value: numeric(160_000_000, "1.60 yi"),
+            change_market_value: numeric(60_000_000, "+0.60 yi"),
+            previous_weight: numeric(0.1, "10.00%", "ratio"),
+            current_weight: numeric(0.16, "16.00%", "ratio"),
+            change_weight: numeric(0.06, "+6.00pp", "ratio"),
+            direction: "increase",
+            reason_label: "增持",
+            source_status: "ready",
+          },
+        ],
+      },
+      researchReports: {
+        report_date: "2026-04-30",
+        source_status: "ready",
+        warnings: [],
+        items: [
+          {
+            id: "r1",
+            title: "利率债周报",
+            category: "fixed_income",
+            published_at: "2026-04-29T09:00:00",
+            link: "https://example.com/report.pdf",
+            source: "tushare_research",
+            source_status: "ready",
+            summary: "关注久期和曲线",
+          },
+        ],
+      },
+      incomeTrend: {
+        report_date: "2026-04-30",
+        window: 2,
+        source_status: "partial",
+        missing_components: ["benchmark_pnl", "excess_pnl"],
+        warnings: ["Benchmark and excess PnL are not available."],
+        points: [
+          {
+            date: "2026-03-31",
+            portfolio_pnl: numeric(120_000_000, "+1.20 yi"),
+            benchmark_pnl: { ...numeric(0, "-"), raw: null },
+            excess_pnl: { ...numeric(0, "-"), raw: null },
+            basis: "product_category_pnl_monthly",
+            source_status: "partial",
+          },
+          {
+            date: "2026-04-30",
+            portfolio_pnl: numeric(90_000_000, "+0.90 yi"),
+            benchmark_pnl: { ...numeric(0, "-"), raw: null },
+            excess_pnl: { ...numeric(0, "-"), raw: null },
+            basis: "product_category_pnl_monthly",
+            source_status: "partial",
+          },
+        ],
+      },
+    });
+
+    expect(view.positionChanges[0]?.code).toBe("240001.IB");
+    expect(view.researchReports[0]?.title).toBe("利率债周报");
+    expect(view.incomeTrend[0]?.portfolioPnl).toBe("1.20 亿");
+    expect(view.incomeTrendState.kind).toBe("partial");
+    expect(view.backendGaps.some((gap) => gap.id === "position-changes")).toBe(false);
+    expect(view.backendGaps.some((gap) => gap.id === "research-reports")).toBe(false);
+    expect(view.backendGaps.some((gap) => gap.id === "income-trend")).toBe(false);
   });
 
   it("maps attribution waterfall extremes from segments", () => {

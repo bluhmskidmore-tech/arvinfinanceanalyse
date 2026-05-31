@@ -44,6 +44,60 @@ export const apiQueryKeys = {
       normalizeReportDate(reportDate),
       groupBy,
     ] as const,
+  bondAnalyticsTopHoldings: (
+    mode: string,
+    reportDate: string | null | undefined,
+    topN: number,
+  ) =>
+    [
+      "bond-analytics",
+      "top-holdings",
+      mode,
+      normalizeReportDate(reportDate),
+      topN,
+    ] as const,
+  bondAnalyticsPositionChanges: (
+    mode: string,
+    reportDate: string | null | undefined,
+    topN: number,
+  ) =>
+    [
+      "bond-analytics",
+      "position-changes",
+      mode,
+      normalizeReportDate(reportDate),
+      topN,
+    ] as const,
+  homeResearchReports: (
+    mode: string,
+    reportDate: string | null | undefined,
+    limit: number,
+  ) =>
+    [
+      "home",
+      "research-reports",
+      mode,
+      normalizeReportDate(reportDate),
+      limit,
+    ] as const,
+  homeIncomeTrend: (
+    mode: string,
+    reportDate: string | null | undefined,
+    window: number,
+  ) =>
+    [
+      "home",
+      "income-trend",
+      mode,
+      normalizeReportDate(reportDate),
+      window,
+    ] as const,
+  bondDashboardMaturityStructure: (mode: string, reportDate: string | null | undefined) =>
+    ["bond-dashboard", "maturity-structure", mode, normalizeReportDate(reportDate)] as const,
+  bondDashboardIndustryDistribution: (mode: string, reportDate: string | null | undefined) =>
+    ["bond-dashboard", "industry-distribution", mode, normalizeReportDate(reportDate)] as const,
+  bondDashboardRiskIndicators: (mode: string, reportDate: string | null | undefined) =>
+    ["bond-dashboard", "risk-indicators", mode, normalizeReportDate(reportDate)] as const,
   bondAnalyticsCreditSpreadMigration: (
     mode: string,
     reportDate: string | null | undefined,

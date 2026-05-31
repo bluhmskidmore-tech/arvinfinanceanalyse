@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from backend.app.schemas.common_numeric import Numeric
 
@@ -232,6 +232,50 @@ class ProductCategoryMonthlyHeadlinePayload(BaseModel):
     view: Literal["monthly"] = "monthly"
     monthly_income: Numeric
     monthly_income_detail: str
+
+
+class HomeResearchReportItem(BaseModel):
+    """Research report row for the dashboard home page."""
+
+    id: str
+    title: str
+    category: str
+    published_at: str
+    link: str | None = None
+    source: str
+    source_status: Literal["ready", "empty", "stale"] = "ready"
+    summary: str | None = None
+
+
+class HomeResearchReportsPayload(BaseModel):
+    """Research report list backed by fact_news_event source_kind=research."""
+
+    report_date: str
+    source_status: Literal["ready", "empty", "stale"]
+    items: list[HomeResearchReportItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class HomeIncomeTrendPoint(BaseModel):
+    """Dashboard-home income trend point backed by product-category monthly PnL."""
+
+    date: str
+    portfolio_pnl: Numeric
+    benchmark_pnl: Numeric
+    excess_pnl: Numeric
+    basis: Literal["product_category_pnl_monthly"]
+    source_status: Literal["ready", "partial", "empty", "stale"]
+
+
+class HomeIncomeTrendPayload(BaseModel):
+    """Recent report-period income trend for dashboard-home terminal panels."""
+
+    report_date: str
+    window: int
+    source_status: Literal["ready", "partial", "empty", "stale"]
+    points: list[HomeIncomeTrendPoint] = Field(default_factory=list)
+    missing_components: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class HomeSnapshotPayload(BaseModel):

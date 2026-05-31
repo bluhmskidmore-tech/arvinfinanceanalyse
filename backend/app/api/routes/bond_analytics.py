@@ -16,8 +16,10 @@ from backend.app.services.bond_analytics_service import (
     get_action_attribution,
     get_benchmark_excess,
     get_credit_spread_migration,
+    get_dv01_risk,
     get_krd_curve_risk,
     get_portfolio_headlines,
+    get_position_changes,
     get_return_decomposition,
     get_top_holdings,
     refresh_bond_analytics,
@@ -63,6 +65,24 @@ def krd_curve_risk(
     return get_krd_curve_risk(report_date, scenario_set)
 
 
+@router.get("/dv01-risk")
+def dv01_risk(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+    top_n: int = Query(20, ge=1, le=100, description="Number of top bonds and issuers"),
+    shock_bps: str = Query("1,10,25,50", description="Comma-separated absolute bp shocks"),
+):
+    try:
+        return get_dv01_risk(
+            report_date,
+            accounting_class=accounting_class,
+            top_n=top_n,
+            shock_bps=shock_bps,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/credit-spread-migration")
 def credit_spread_migration(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -102,6 +122,14 @@ def top_holdings(
     top_n: int = Query(20, ge=1, le=500, description="Number of largest positions by MV"),
 ):
     return get_top_holdings(report_date, top_n=top_n)
+
+
+@router.get("/position-changes")
+def position_changes(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    top_n: int = Query(5, ge=1, le=100, description="Number of largest position changes by absolute MV delta"),
+):
+    return get_position_changes(report_date, top_n=top_n)
 
 
 @router.get("/action-attribution")

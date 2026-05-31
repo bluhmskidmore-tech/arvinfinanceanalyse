@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -717,6 +717,133 @@ class PortfolioHeadlinesResponse(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class DV01ShockScenario(BaseModel):
+    """Estimated valuation impact from a parallel rate shock."""
+
+    scenario_name: str
+    shock_bp: Numeric
+    estimated_pnl: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "shock_bp": ("bp", True),
+        "estimated_pnl": ("yuan", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01TenorBucket(BaseModel):
+    """DV01 distribution by tenor bucket."""
+
+    tenor_bucket: str
+    face_value: Numeric
+    market_value: Numeric
+    face_weighted_modified_duration: Numeric
+    dv01: Numeric
+    dv01_share: Numeric
+    position_count: int
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "face_value": ("yuan", False),
+        "market_value": ("yuan", False),
+        "face_weighted_modified_duration": ("ratio", False),
+        "dv01": ("dv01", False),
+        "dv01_share": ("ratio", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01TopBondItem(BaseModel):
+    """Bond-level DV01 contribution row."""
+
+    instrument_code: str
+    instrument_name: Optional[str] = None
+    issuer_name: Optional[str] = None
+    rating: Optional[str] = None
+    tenor_bucket: str
+    accounting_class: str
+    face_value: Numeric
+    market_value: Numeric
+    modified_duration: Numeric
+    dv01: Numeric
+    dv01_share: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "face_value": ("yuan", False),
+        "market_value": ("yuan", False),
+        "modified_duration": ("ratio", False),
+        "dv01": ("dv01", False),
+        "dv01_share": ("ratio", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01TopIssuerItem(BaseModel):
+    """Issuer-level DV01 contribution row."""
+
+    issuer_name: str
+    face_value: Numeric
+    market_value: Numeric
+    face_weighted_modified_duration: Numeric
+    dv01: Numeric
+    dv01_share: Numeric
+    position_count: int
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "face_value": ("yuan", False),
+        "market_value": ("yuan", False),
+        "face_weighted_modified_duration": ("ratio", False),
+        "dv01": ("dv01", False),
+        "dv01_share": ("ratio", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01RiskResponse(BaseModel):
+    """Cross-sectional DV01 rate-risk analysis response."""
+
+    report_date: date
+    accounting_class: str
+    total_face_value: Numeric
+    total_market_value: Numeric
+    face_weighted_modified_duration: Numeric
+    total_dv01: Numeric
+    position_count: int
+    shock_scenarios: list[DV01ShockScenario] = Field(default_factory=list)
+    tenor_buckets: list[DV01TenorBucket] = Field(default_factory=list)
+    top_bonds: list[DV01TopBondItem] = Field(default_factory=list)
+    top_issuers: list[DV01TopIssuerItem] = Field(default_factory=list)
+    computed_at: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "total_face_value": ("yuan", False),
+        "total_market_value": ("yuan", False),
+        "face_weighted_modified_duration": ("ratio", False),
+        "total_dv01": ("dv01", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class BondTopHoldingItem(BaseModel):
     """Single row in top-holdings by market value."""
 
@@ -757,6 +884,63 @@ class BondTopHoldingsResponse(BaseModel):
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class BondPositionChangeItem(BaseModel):
+    """Single position market-value change between adjacent bond analytics snapshots."""
+
+    instrument_code: str
+    instrument_name: Optional[str] = None
+    issuer_name: Optional[str] = None
+    rating: Optional[str] = None
+    asset_class: str
+    previous_market_value: Numeric
+    current_market_value: Numeric
+    change_market_value: Numeric
+    previous_weight: Numeric
+    current_weight: Numeric
+    change_weight: Numeric
+    direction: Literal["increase", "decrease", "flat"]
+    reason_label: str
+    source_status: Literal["ready", "empty", "stale"] = "ready"
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "previous_market_value": ("yuan", False),
+        "current_market_value": ("yuan", False),
+        "change_market_value": ("yuan", True),
+        "previous_weight": ("ratio", False),
+        "current_weight": ("ratio", False),
+        "change_weight": ("ratio", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class BondPositionChangesResponse(BaseModel):
+    """Top position changes between current and previous bond analytics report dates."""
+
+    report_date: date
+    prev_report_date: date | None = None
+    top_n: int
+    source_status: Literal["ready", "empty", "stale"]
+    items: list[BondPositionChangeItem] = Field(default_factory=list)
+    total_market_value: Numeric
+    prev_total_market_value: Numeric
+    computed_at: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "total_market_value": ("yuan", False),
+        "prev_total_market_value": ("yuan", False),
     }
 
     @model_validator(mode="before")

@@ -9,6 +9,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
+import duckdb
+
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
@@ -20,6 +22,7 @@ from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
     FormalZqtzBalanceMetricsRepository,
 )
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
+from backend.app.repositories.news_warehouse_repo import list_research_reports
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
@@ -31,6 +34,10 @@ from backend.app.schemas.executive_dashboard import (
     ContributionPayload,
     ContributionRow,
     ExecutiveMetric,
+    HomeIncomeTrendPayload,
+    HomeIncomeTrendPoint,
+    HomeResearchReportItem,
+    HomeResearchReportsPayload,
     HomeSnapshotPayload,
     OverviewPayload,
     PnlAttributionPayload,
@@ -2277,6 +2284,169 @@ def _build_product_category_monthly_headline(report_date: str) -> ProductCategor
         view="monthly",
         monthly_income=_fmt_yi_amount(monthly_value, signed=True),
         monthly_income_detail=monthly_detail,
+    )
+
+
+def home_research_reports_envelope(
+    *,
+    report_date: str,
+    limit: int = 5,
+) -> dict[str, object]:
+    """Return dashboard-home research reports from governed news warehouse rows."""
+
+    normalized = _normalize_report_date(report_date)
+    settings = get_settings()
+    duckdb_path = Path(str(settings.duckdb_path))
+    rows: list[dict[str, object]] = []
+    warnings: list[str] = []
+
+    if not duckdb_path.exists():
+        warnings.append("DuckDB news warehouse is not available; research reports are empty.")
+    else:
+        try:
+            conn = duckdb.connect(str(duckdb_path), read_only=True)
+            try:
+                rows = list_research_reports(
+                    conn,
+                    report_date=normalized,
+                    limit=limit,
+                )
+            finally:
+                conn.close()
+        except (duckdb.Error, OSError, RuntimeError, ValueError) as exc:
+            warnings.append(f"Research reports unavailable from fact_news_event: {exc}")
+
+    source_status: Literal["ready", "empty", "stale"] = "ready" if rows else "empty"
+    if not rows and not warnings:
+        warnings.append("No research reports found on or before report_date.")
+
+    payload = HomeResearchReportsPayload(
+        report_date=normalized,
+        source_status=source_status,
+        items=[HomeResearchReportItem.model_validate(row) for row in rows],
+        warnings=warnings,
+    )
+    return _envelope(
+        "home.research_reports",
+        payload,
+        quality_flag="ok" if rows else "warning",
+        vendor_status="ok" if rows else "vendor_unavailable",
+        source_version="sv_home_research_reports_v1" if rows else "sv_home_research_reports_empty_v1",
+        rule_version="rv_home_research_reports_v1",
+        filters_applied={
+            "report_date": normalized,
+            "limit": limit,
+            "source_kind": "research",
+        },
+        requested_report_date=normalized,
+        resolved_report_date=normalized,
+        as_of_date=normalized,
+        date_basis="fact_news_event.pub_time_lte_report_date",
+    )
+
+
+def home_income_trend_envelope(
+    *,
+    report_date: str,
+    window: int = 7,
+) -> dict[str, object]:
+    """Return recent monthly portfolio PnL points from the governed product-category read model.
+
+    The available source currently provides portfolio PnL only. Benchmark and
+    excess PnL stay explicit null Numerics so the frontend can show a partial
+    data state without fabricating missing metrics.
+    """
+
+    normalized = _normalize_report_date(report_date)
+    bounded_window = max(1, min(int(window), 30))
+    settings = get_settings()
+    repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
+    rows: list[dict[str, object]] = []
+    warnings: list[str] = []
+
+    try:
+        report_dates = [
+            value
+            for value in repo.list_report_dates()
+            if value <= normalized
+        ][:bounded_window]
+        for candidate_date in report_dates:
+            grand_total = next(
+                (
+                    row
+                    for row in repo.fetch_rows(candidate_date, "monthly")
+                    if str(row.get("category_id") or "") == "grand_total"
+                ),
+                None,
+            )
+            if grand_total is not None:
+                rows.append(grand_total)
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError) as exc:
+        warnings.append(f"Income trend unavailable from product_category_pnl_formal_read_model: {exc}")
+
+    missing_components = ["benchmark_pnl", "excess_pnl"]
+    source_status: Literal["partial", "empty"] = "partial" if rows else "empty"
+    if not rows and not warnings:
+        warnings.append("No monthly grand_total rows found on or before report_date.")
+    if rows:
+        warnings.append("Benchmark and excess PnL are not available in the current governed source.")
+
+    null_pnl = Numeric(
+        raw=None,
+        unit="yuan",
+        display="-",
+        precision=2,
+        sign_aware=True,
+    )
+    points = [
+        HomeIncomeTrendPoint(
+            date=str(row.get("report_date") or ""),
+            portfolio_pnl=_fmt_yi_amount(
+                float(row["business_net_income"])
+                if row.get("business_net_income") is not None
+                else None,
+                signed=True,
+            ),
+            benchmark_pnl=null_pnl,
+            excess_pnl=null_pnl,
+            basis="product_category_pnl_monthly",
+            source_status=source_status,
+        )
+        for row in sorted(rows, key=lambda item: str(item.get("report_date") or ""))
+    ]
+    payload = HomeIncomeTrendPayload(
+        report_date=normalized,
+        window=bounded_window,
+        source_status=source_status,
+        points=points,
+        missing_components=missing_components if rows else [],
+        warnings=warnings,
+    )
+    return _envelope(
+        "home.income_trend",
+        payload,
+        quality_flag="warning" if source_status != "ready" else "ok",
+        vendor_status="ok" if rows else "vendor_unavailable",
+        source_version=(
+            _join_lineage_tokens(*_lineage_tokens_from_rows(rows, "source_version"))
+            if rows
+            else "sv_home_income_trend_empty_v1"
+        ),
+        rule_version=(
+            _join_lineage_tokens("rv_home_income_trend_v1", *_lineage_tokens_from_rows(rows, "rule_version"))
+            if rows
+            else "rv_home_income_trend_v1"
+        ),
+        filters_applied={
+            "report_date": normalized,
+            "window": bounded_window,
+            "view": "monthly",
+            "category_id": "grand_total",
+        },
+        requested_report_date=normalized,
+        resolved_report_date=points[-1].date if points else normalized,
+        as_of_date=points[-1].date if points else normalized,
+        date_basis="product_category_pnl_formal_read_model.report_date_lte_request",
     )
 
 

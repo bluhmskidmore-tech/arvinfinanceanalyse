@@ -8,9 +8,11 @@ from backend.app.services.executive_service import (
     executive_pnl_attribution,
     executive_risk_overview,  # noqa: F401 - reserved route contract monkeypatch target
     executive_summary,
+    home_income_trend_envelope,
+    home_research_reports_envelope,
     home_snapshot_envelope,
 )
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/ui")
 
@@ -93,5 +95,37 @@ def home_snapshot(
         lambda: home_snapshot_envelope(
             report_date=normalized_report_date,
             allow_partial=allow_partial,
+        ),
+    )
+
+
+@router.get("/home/research-reports")
+def home_research_reports(
+    report_date: str,
+    limit: int = Query(5, ge=1, le=20),
+) -> dict[str, object]:
+    normalized_report_date = _normalize_report_date(report_date)
+    assert normalized_report_date is not None
+    return timed_api_call(
+        "/ui/home/research-reports",
+        lambda: home_research_reports_envelope(
+            report_date=normalized_report_date,
+            limit=limit,
+        ),
+    )
+
+
+@router.get("/home/income-trend")
+def home_income_trend(
+    report_date: str,
+    window: int = Query(7, ge=1, le=30),
+) -> dict[str, object]:
+    normalized_report_date = _normalize_report_date(report_date)
+    assert normalized_report_date is not None
+    return timed_api_call(
+        "/ui/home/income-trend",
+        lambda: home_income_trend_envelope(
+            report_date=normalized_report_date,
+            window=window,
         ),
     )

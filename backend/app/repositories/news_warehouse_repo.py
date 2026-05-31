@@ -225,6 +225,65 @@ def list_news_latest(
     return out
 
 
+def _parse_extra_json(raw: object) -> dict[str, object]:
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _research_category(extra: dict[str, object]) -> str:
+    for key in ("category", "category_name", "report_type", "research_type"):
+        value = extra.get(key)
+        text = str(value or "").strip()
+        if text:
+            return text
+    return "research"
+
+
+def list_research_reports(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    limit: int = 5,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    lim = max(1, int(limit))
+    off = max(0, int(offset))
+    rows = conn.execute(
+        """
+        select news_key, source, title, url, summary, pub_time, ingested_at, extra_json
+        from fact_news_event
+        where source_kind = 'research'
+          and (pub_time is null or cast(pub_time as date) <= cast(? as date))
+        order by pub_time desc nulls last, ingested_at desc
+        limit ? offset ?
+        """,
+        [report_date, lim, off],
+    ).fetchall()
+    out: list[dict[str, object]] = []
+    for news_key, source, title, url, summary, pub_time, ingested_at, extra_json in rows:
+        extra = _parse_extra_json(extra_json)
+        published = pub_time if isinstance(pub_time, datetime) else ingested_at
+        out.append(
+            {
+                "id": str(news_key or ""),
+                "title": str(title or "").strip(),
+                "category": _research_category(extra),
+                "published_at": published.isoformat() if isinstance(published, datetime) else "",
+                "link": (str(url).strip() or None) if url is not None else None,
+                "source": str(source or "").strip(),
+                "summary": (str(summary).strip() or None) if summary is not None else None,
+                "source_status": "ready",
+            }
+        )
+    return out
+
+
 def backfill_from_choice_news_event(
     conn: duckdb.DuckDBPyConnection,
     *,

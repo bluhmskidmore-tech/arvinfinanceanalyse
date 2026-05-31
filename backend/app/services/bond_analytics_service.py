@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 from datetime import date, datetime, timedelta, timezone
@@ -92,6 +92,13 @@ from backend.app.schemas.bond_analytics import (
     AssetClassRiskSummary,
     BenchmarkExcessResponse,
     BondLevelDecomposition,
+    DV01RiskResponse,
+    DV01ShockScenario,
+    DV01TenorBucket,
+    DV01TopBondItem,
+    DV01TopIssuerItem,
+    BondPositionChangeItem,
+    BondPositionChangesResponse,
     BondTopHoldingItem,
     BondTopHoldingsResponse,
     ConcentrationItem,
@@ -488,6 +495,23 @@ def _build_fact_envelope(
         default_cache_version=CACHE_VERSION,
         source_surface="bond_analytics",
         result_payload=_bond_analytics_api_payload(result_payload),
+    )
+
+
+def _build_numeric_fact_envelope(
+    *,
+    result_kind: str,
+    report_date: date,
+    rows: list[dict[str, object]],
+    result_payload: dict[str, object],
+) -> dict[str, object]:
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind=result_kind,
+        lineage=_lineage(report_date.isoformat(), rows),
+        default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
+        result_payload=result_payload,
     )
 
 
@@ -1875,6 +1899,231 @@ def get_portfolio_headlines(report_date: date) -> dict:
     )
 
 
+def get_dv01_risk(
+    report_date: date,
+    accounting_class: str = "OCI",
+    top_n: int = 20,
+    shock_bps: str = "1,10,25,50",
+) -> dict:
+    normalized_class = _normalize_dv01_accounting_class(accounting_class)
+    rows = _repo().fetch_bond_analytics_rows(
+        report_date=report_date.isoformat(),
+        accounting_class=normalized_class,
+    )
+    top_n = max(1, min(int(top_n), 100))
+    shocks = _parse_dv01_shocks(shock_bps)
+    total_face_value = sum((safe_decimal(row.get("face_value")) for row in rows), ZERO)
+    total_market_value = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
+    total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
+    total_abs_dv01 = _total_abs_dv01(rows)
+    face_weighted_duration = _face_weighted_modified_duration(rows)
+    warnings = [] if rows else [EMPTY_WARNING]
+
+    payload = DV01RiskResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "accounting_class": normalized_class,
+                "total_face_value": total_face_value,
+                "total_market_value": total_market_value,
+                "face_weighted_modified_duration": face_weighted_duration,
+                "total_dv01": total_dv01,
+                "position_count": len(rows),
+                "shock_scenarios": [
+                    DV01ShockScenario.model_validate(
+                        promote_flat_payload(
+                            {
+                                "scenario_name": f"rate_{'up' if shock > 0 else 'down'}_{abs(shock)}bp",
+                                "shock_bp": shock,
+                                "estimated_pnl": -(total_dv01 * shock),
+                            },
+                            DV01ShockScenario,
+                        )
+                    )
+                    for shock in _expand_parallel_shocks(shocks)
+                ] if rows else [],
+                "tenor_buckets": _build_dv01_tenor_buckets(rows, total_abs_dv01=total_abs_dv01),
+                "top_bonds": _build_dv01_top_bonds(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
+                "top_issuers": _build_dv01_top_issuers(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": warnings,
+            },
+            DV01RiskResponse,
+        )
+    )
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind="bond_analytics.dv01_risk",
+        lineage=_lineage(report_date.isoformat(), rows),
+        default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def _normalize_dv01_accounting_class(value: str) -> str:
+    normalized = str(value or "OCI").strip().upper()
+    if normalized in {"", "ALL"}:
+        return "all"
+    if normalized not in {"AC", "OCI", "TPL"}:
+        raise ValueError("accounting_class must be one of AC, OCI, TPL, all")
+    return normalized
+
+
+def _parse_dv01_shocks(value: str) -> list[Decimal]:
+    shocks: list[Decimal] = []
+    for raw in str(value or "1,10,25,50").split(","):
+        text = raw.strip()
+        if not text:
+            continue
+        shock = safe_decimal(text).copy_abs()
+        if shock == ZERO:
+            continue
+        if shock not in shocks:
+            shocks.append(shock)
+    return shocks or [Decimal("1"), Decimal("10"), Decimal("25"), Decimal("50")]
+
+
+def _expand_parallel_shocks(shocks: list[Decimal]) -> list[Decimal]:
+    expanded: list[Decimal] = []
+    for shock in shocks:
+        expanded.extend([shock, -shock])
+    return expanded
+
+
+def _face_weighted_modified_duration(rows: list[dict[str, object]]) -> Decimal:
+    total_face_value = sum((safe_decimal(row.get("face_value")) for row in rows), ZERO)
+    if total_face_value == ZERO:
+        return ZERO
+    return (
+        sum(
+            (
+                safe_decimal(row.get("face_value")) * safe_decimal(row.get("modified_duration"))
+                for row in rows
+            ),
+            ZERO,
+        )
+        / total_face_value
+    )
+
+
+def _total_abs_dv01(rows: list[dict[str, object]]) -> Decimal:
+    return sum((safe_decimal(row.get("dv01")).copy_abs() for row in rows), ZERO)
+
+
+def _dv01_share(dv01: Decimal, total_abs_dv01: Decimal) -> Decimal:
+    denominator = total_abs_dv01.copy_abs()
+    if denominator == ZERO:
+        return ZERO
+    return abs(dv01) / denominator
+
+
+def _build_dv01_tenor_buckets(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+) -> list[DV01TenorBucket]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        tenor = str(row.get("tenor_bucket") or "UNKNOWN").strip() or "UNKNOWN"
+        grouped.setdefault(tenor, []).append(row)
+    result: list[DV01TenorBucket] = []
+    for tenor, bucket_rows in grouped.items():
+        face_value = sum((safe_decimal(row.get("face_value")) for row in bucket_rows), ZERO)
+        market_value = sum((safe_decimal(row.get("market_value")) for row in bucket_rows), ZERO)
+        dv01 = sum((safe_decimal(row.get("dv01")) for row in bucket_rows), ZERO)
+        result.append(
+            DV01TenorBucket.model_validate(
+                promote_flat_payload(
+                    {
+                        "tenor_bucket": tenor,
+                        "face_value": face_value,
+                        "market_value": market_value,
+                        "face_weighted_modified_duration": _face_weighted_modified_duration(bucket_rows),
+                        "dv01": dv01,
+                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
+                        "position_count": len(bucket_rows),
+                    },
+                    DV01TenorBucket,
+                )
+            )
+        )
+    return sorted(result, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), str(row.tenor_bucket)), reverse=True)
+
+
+def _build_dv01_top_bonds(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    top_n: int,
+) -> list[DV01TopBondItem]:
+    ordered = sorted(
+        rows,
+        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
+        reverse=True,
+    )
+    return [
+        DV01TopBondItem.model_validate(
+            promote_flat_payload(
+                {
+                    "instrument_code": str(row.get("instrument_code") or ""),
+                    "instrument_name": _optional_text(row.get("instrument_name")),
+                    "issuer_name": _optional_text(row.get("issuer_name")),
+                    "rating": _optional_text(row.get("rating")),
+                    "tenor_bucket": str(row.get("tenor_bucket") or ""),
+                    "accounting_class": str(row.get("accounting_class") or ""),
+                    "face_value": safe_decimal(row.get("face_value")),
+                    "market_value": safe_decimal(row.get("market_value")),
+                    "modified_duration": safe_decimal(row.get("modified_duration")),
+                    "dv01": safe_decimal(row.get("dv01")),
+                    "dv01_share": _dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
+                },
+                DV01TopBondItem,
+            )
+        )
+        for row in ordered[:top_n]
+    ]
+
+
+def _build_dv01_top_issuers(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    top_n: int,
+) -> list[DV01TopIssuerItem]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        issuer = str(row.get("issuer_name") or "UNKNOWN").strip() or "UNKNOWN"
+        grouped.setdefault(issuer, []).append(row)
+    items: list[DV01TopIssuerItem] = []
+    for issuer, issuer_rows in grouped.items():
+        face_value = sum((safe_decimal(row.get("face_value")) for row in issuer_rows), ZERO)
+        market_value = sum((safe_decimal(row.get("market_value")) for row in issuer_rows), ZERO)
+        dv01 = sum((safe_decimal(row.get("dv01")) for row in issuer_rows), ZERO)
+        items.append(
+            DV01TopIssuerItem.model_validate(
+                promote_flat_payload(
+                    {
+                        "issuer_name": issuer,
+                        "face_value": face_value,
+                        "market_value": market_value,
+                        "face_weighted_modified_duration": _face_weighted_modified_duration(issuer_rows),
+                        "dv01": dv01,
+                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
+                        "position_count": len(issuer_rows),
+                    },
+                    DV01TopIssuerItem,
+                )
+            )
+        )
+    return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.issuer_name), reverse=True)[:top_n]
+
+
+def _optional_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
 def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     if not rows:
@@ -1938,6 +2187,163 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
         result_kind="bond_analytics.top_holdings",
         report_date=report_date,
         rows=rows,
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def _position_change_direction(change_market_value: Decimal) -> Literal["increase", "decrease", "flat"]:
+    if change_market_value > ZERO:
+        return "increase"
+    if change_market_value < ZERO:
+        return "decrease"
+    return "flat"
+
+
+def _position_change_reason(
+    *,
+    previous_market_value: Decimal,
+    current_market_value: Decimal,
+    change_market_value: Decimal,
+) -> str:
+    if previous_market_value == ZERO and current_market_value > ZERO:
+        return "新增"
+    if previous_market_value > ZERO and current_market_value == ZERO:
+        return "清仓"
+    if change_market_value > ZERO:
+        return "增持"
+    if change_market_value < ZERO:
+        return "减持"
+    return "持平"
+
+
+def _position_change_item(
+    *,
+    instrument_code: str,
+    current_row: dict[str, object] | None,
+    previous_row: dict[str, object] | None,
+    total_market_value: Decimal,
+    prev_total_market_value: Decimal,
+) -> BondPositionChangeItem:
+    row = current_row or previous_row or {}
+    current_market_value = safe_decimal((current_row or {}).get("market_value"))
+    previous_market_value = safe_decimal((previous_row or {}).get("market_value"))
+    change_market_value = current_market_value - previous_market_value
+    current_weight = ZERO if total_market_value == ZERO else current_market_value / total_market_value
+    previous_weight = ZERO if prev_total_market_value == ZERO else previous_market_value / prev_total_market_value
+    return BondPositionChangeItem.model_validate(
+        promote_flat_payload(
+            {
+                "instrument_code": instrument_code,
+                "instrument_name": _optional_text(row.get("instrument_name")),
+                "issuer_name": _optional_text(row.get("issuer_name")),
+                "rating": _optional_text(row.get("rating")),
+                "asset_class": str(row.get("asset_class_std") or row.get("asset_class") or ""),
+                "previous_market_value": previous_market_value,
+                "current_market_value": current_market_value,
+                "change_market_value": change_market_value,
+                "previous_weight": previous_weight,
+                "current_weight": current_weight,
+                "change_weight": current_weight - previous_weight,
+                "direction": _position_change_direction(change_market_value),
+                "reason_label": _position_change_reason(
+                    previous_market_value=previous_market_value,
+                    current_market_value=current_market_value,
+                    change_market_value=change_market_value,
+                ),
+                "source_status": "ready",
+            },
+            BondPositionChangeItem,
+        )
+    )
+
+
+def get_position_changes(report_date: date, top_n: int = 5) -> dict:
+    repo = _repo()
+    current_rows = repo.fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    prev_report_date = _resolve_prior_bond_snapshot_date(repo, report_date.isoformat())
+    previous_rows = repo.fetch_bond_analytics_rows(report_date=prev_report_date) if prev_report_date else []
+    total_market_value = sum((safe_decimal(row.get("market_value")) for row in current_rows), ZERO)
+    prev_total_market_value = sum((safe_decimal(row.get("market_value")) for row in previous_rows), ZERO)
+
+    warnings: list[str] = []
+    if not current_rows:
+        warnings.append(EMPTY_WARNING)
+    if not prev_report_date:
+        warnings.append("No prior bond analytics report date available; position changes cannot be computed.")
+    elif not previous_rows:
+        warnings.append("Prior bond analytics snapshot is empty; position changes cannot be computed.")
+
+    if not current_rows or not previous_rows:
+        payload = BondPositionChangesResponse.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": report_date,
+                    "prev_report_date": date.fromisoformat(prev_report_date) if prev_report_date else None,
+                    "top_n": top_n,
+                    "source_status": "empty",
+                    "items": [],
+                    "total_market_value": total_market_value,
+                    "prev_total_market_value": prev_total_market_value,
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "warnings": warnings,
+                },
+                BondPositionChangesResponse,
+            )
+        )
+        return _build_numeric_fact_envelope(
+            result_kind="bond_analytics.position_changes",
+            report_date=report_date,
+            rows=[*current_rows, *previous_rows],
+            result_payload=payload.model_dump(mode="json"),
+        )
+
+    by_current = {str(row.get("instrument_code") or "").strip(): row for row in current_rows}
+    by_previous = {str(row.get("instrument_code") or "").strip(): row for row in previous_rows}
+    instrument_codes = sorted((set(by_current) | set(by_previous)) - {""})
+    all_items = [
+        _position_change_item(
+            instrument_code=instrument_code,
+            current_row=by_current.get(instrument_code),
+            previous_row=by_previous.get(instrument_code),
+            total_market_value=total_market_value,
+            prev_total_market_value=prev_total_market_value,
+        )
+        for instrument_code in instrument_codes
+    ]
+    changed_items = [
+        item
+        for item in all_items
+        if safe_decimal(item.change_market_value.raw) != ZERO
+    ]
+    ordered = sorted(
+        changed_items,
+        key=lambda item: (
+            safe_decimal(item.change_market_value.raw).copy_abs(),
+            safe_decimal(item.change_market_value.raw),
+            item.instrument_code,
+        ),
+        reverse=True,
+    )
+    payload = BondPositionChangesResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "prev_report_date": date.fromisoformat(prev_report_date),
+                "top_n": top_n,
+                "source_status": "ready",
+                "items": ordered[:top_n],
+                "total_market_value": total_market_value,
+                "prev_total_market_value": prev_total_market_value,
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": [],
+            },
+            BondPositionChangesResponse,
+        )
+    )
+    return _build_numeric_fact_envelope(
+        result_kind="bond_analytics.position_changes",
+        report_date=report_date,
+        rows=[*current_rows, *previous_rows],
         result_payload=payload.model_dump(mode="json"),
     )
 

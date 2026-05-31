@@ -158,6 +158,42 @@ export type HomeSnapshotPayload = {
   product_category_monthly?: ProductCategoryMonthlyHeadlinePayload | null;
 };
 
+export type HomeResearchReportItem = {
+  id: string;
+  title: string;
+  category: string;
+  published_at: string;
+  link: string | null;
+  source: string;
+  source_status: "ready" | "empty" | "stale";
+  summary?: string | null;
+};
+
+export type HomeResearchReportsPayload = {
+  report_date: string;
+  source_status: "ready" | "empty" | "stale";
+  items: HomeResearchReportItem[];
+  warnings: string[];
+};
+
+export type HomeIncomeTrendPoint = {
+  date: string;
+  portfolio_pnl: Numeric;
+  benchmark_pnl: Numeric;
+  excess_pnl: Numeric;
+  basis: "product_category_pnl_monthly";
+  source_status: "ready" | "partial" | "empty" | "stale";
+};
+
+export type HomeIncomeTrendPayload = {
+  report_date: string;
+  window: number;
+  source_status: "ready" | "partial" | "empty" | "stale";
+  points: HomeIncomeTrendPoint[];
+  missing_components: string[];
+  warnings: string[];
+};
+
 export type GetHomeSnapshotOptions = {
   reportDate?: string;
   allowPartial?: boolean;
@@ -361,6 +397,91 @@ export type BondTopHoldingsPayload = {
   top_n: number;
   items: BondTopHoldingItem[];
   total_market_value: Numeric;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type BondPositionChangeItem = {
+  instrument_code: string;
+  instrument_name: string | null;
+  issuer_name: string | null;
+  rating: string | null;
+  asset_class: string;
+  previous_market_value: Numeric;
+  current_market_value: Numeric;
+  change_market_value: Numeric;
+  previous_weight: Numeric;
+  current_weight: Numeric;
+  change_weight: Numeric;
+  direction: "increase" | "decrease" | "flat";
+  reason_label: string;
+  source_status: "ready" | "empty" | "stale";
+};
+
+export type BondPositionChangesPayload = {
+  report_date: string;
+  prev_report_date: string | null;
+  top_n: number;
+  source_status: "ready" | "empty" | "stale";
+  items: BondPositionChangeItem[];
+  total_market_value: Numeric;
+  prev_total_market_value: Numeric;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type DV01ShockScenario = {
+  scenario_name: string;
+  shock_bp: Numeric;
+  estimated_pnl: Numeric;
+};
+
+export type DV01TenorBucket = {
+  tenor_bucket: string;
+  face_value: Numeric;
+  market_value: Numeric;
+  face_weighted_modified_duration: Numeric;
+  dv01: Numeric;
+  dv01_share: Numeric;
+  position_count: number;
+};
+
+export type DV01TopBondItem = {
+  instrument_code: string;
+  instrument_name: string | null;
+  issuer_name: string | null;
+  rating: string | null;
+  tenor_bucket: string;
+  accounting_class: string;
+  face_value: Numeric;
+  market_value: Numeric;
+  modified_duration: Numeric;
+  dv01: Numeric;
+  dv01_share: Numeric;
+};
+
+export type DV01TopIssuerItem = {
+  issuer_name: string;
+  face_value: Numeric;
+  market_value: Numeric;
+  face_weighted_modified_duration: Numeric;
+  dv01: Numeric;
+  dv01_share: Numeric;
+  position_count: number;
+};
+
+export type DV01RiskPayload = {
+  report_date: string;
+  accounting_class: string;
+  total_face_value: Numeric;
+  total_market_value: Numeric;
+  face_weighted_modified_duration: Numeric;
+  total_dv01: Numeric;
+  position_count: number;
+  shock_scenarios: DV01ShockScenario[];
+  tenor_buckets: DV01TenorBucket[];
+  top_bonds: DV01TopBondItem[];
+  top_issuers: DV01TopIssuerItem[];
   warnings: string[];
   computed_at: string;
 };

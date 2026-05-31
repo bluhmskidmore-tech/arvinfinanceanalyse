@@ -7,13 +7,9 @@ import { useDashboardData } from "../dashboard/hooks/useDashboardData";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import styles from "./dashboardHome.module.css";
 import { mapToHomeView } from "./dashboardHomeView";
-import { BottomGridSection } from "./sections/BottomGridSection";
 import { DashboardHomeToolbar } from "./sections/DashboardHomeToolbar";
 import { DecisionRailSection } from "./sections/DecisionRailSection";
-import { HeroSection } from "./sections/HeroSection";
-import { MarketTapeSection } from "./sections/MarketTapeSection";
-import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
-import { WorkGridSection } from "./sections/WorkGridSection";
+import { TerminalHomeContent } from "./TerminalHomeContent";
 
 export default function DashboardHomePage() {
   const [reportDate, setReportDate] = useState("");
@@ -75,6 +71,74 @@ export default function DashboardHomePage() {
     enabled: hasSupplementalReportDate,
   });
 
+  const ratingStructureQuery = useQuery({
+    queryKey: apiQueryKeys.bondDashboardAssetStructure(
+      dataClient.mode,
+      supplementalReportDate,
+      "rating",
+    ),
+    queryFn: () => dataClient.getBondDashboardAssetStructure(supplementalReportDate ?? "", "rating"),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const maturityStructureQuery = useQuery({
+    queryKey: apiQueryKeys.bondDashboardMaturityStructure(dataClient.mode, supplementalReportDate),
+    queryFn: () => dataClient.getBondDashboardMaturityStructure(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const industryDistributionQuery = useQuery({
+    queryKey: apiQueryKeys.bondDashboardIndustryDistribution(dataClient.mode, supplementalReportDate),
+    queryFn: () => dataClient.getBondDashboardIndustryDistribution(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const riskIndicatorsQuery = useQuery({
+    queryKey: apiQueryKeys.bondDashboardRiskIndicators(dataClient.mode, supplementalReportDate),
+    queryFn: () => dataClient.getBondDashboardRiskIndicators(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const topHoldingsQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsTopHoldings(dataClient.mode, supplementalReportDate, 8),
+    queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", 8),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const positionChangesQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsPositionChanges(dataClient.mode, supplementalReportDate, 5),
+    queryFn: () => dataClient.getBondAnalyticsPositionChanges(supplementalReportDate ?? "", 5),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const researchReportsQuery = useQuery({
+    queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, supplementalReportDate, 5),
+    queryFn: () => dataClient.getHomeResearchReports(supplementalReportDate ?? "", 5),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
+  const incomeTrendQuery = useQuery({
+    queryKey: apiQueryKeys.homeIncomeTrend(dataClient.mode, supplementalReportDate, 7),
+    queryFn: () => dataClient.getHomeIncomeTrend(supplementalReportDate ?? "", 7),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasSupplementalReportDate,
+  });
+
   const cockpitWarningsQuery = useQuery({
     queryKey: ["dashboard-home", "cockpit-warnings", dataClient.mode, supplementalReportDate ?? "pending-snapshot"],
     queryFn: () => dataClient.getCockpitWarnings(supplementalReportDate ?? ""),
@@ -123,6 +187,22 @@ export default function DashboardHomePage() {
         productCategoryYtd: snapshotResult?.product_category_ytd ?? null,
         productCategoryMonthly: snapshotResult?.product_category_monthly ?? null,
         assetStructure: assetStructureQuery.data?.result ?? null,
+        ratingStructure: ratingStructureQuery.data?.result ?? null,
+        maturityStructure: maturityStructureQuery.data?.result ?? null,
+        industryDistribution: industryDistributionQuery.data?.result ?? null,
+        riskIndicators: riskIndicatorsQuery.data?.result ?? null,
+        topHoldings: topHoldingsQuery.data?.result ?? null,
+        topHoldingsLoading: topHoldingsQuery.isLoading,
+        topHoldingsError: topHoldingsQuery.isError,
+        positionChanges: positionChangesQuery.data?.result ?? null,
+        positionChangesLoading: positionChangesQuery.isLoading,
+        positionChangesError: positionChangesQuery.isError,
+        researchReports: researchReportsQuery.data?.result ?? null,
+        researchReportsLoading: researchReportsQuery.isLoading,
+        researchReportsError: researchReportsQuery.isError,
+        incomeTrend: incomeTrendQuery.data?.result ?? null,
+        incomeTrendLoading: incomeTrendQuery.isLoading,
+        incomeTrendError: incomeTrendQuery.isError,
         cockpitWarnings: cockpitWarningsQuery.data?.result ?? null,
         calendarEvents: researchCalendarQuery.data ?? null,
         calendarLoading: researchCalendarQuery.isLoading,
@@ -152,6 +232,22 @@ export default function DashboardHomePage() {
       sanitizedMetrics,
       snapshotMeta,
       assetStructureQuery.data?.result,
+      ratingStructureQuery.data?.result,
+      maturityStructureQuery.data?.result,
+      industryDistributionQuery.data?.result,
+      riskIndicatorsQuery.data?.result,
+      topHoldingsQuery.data?.result,
+      topHoldingsQuery.isLoading,
+      topHoldingsQuery.isError,
+      positionChangesQuery.data?.result,
+      positionChangesQuery.isLoading,
+      positionChangesQuery.isError,
+      researchReportsQuery.data?.result,
+      researchReportsQuery.isLoading,
+      researchReportsQuery.isError,
+      incomeTrendQuery.data?.result,
+      incomeTrendQuery.isLoading,
+      incomeTrendQuery.isError,
       cockpitWarningsQuery.data?.result,
       calendarEndDate,
       calendarStartDate,
@@ -185,36 +281,7 @@ export default function DashboardHomePage() {
 
       <div className={styles.dhLayout}>
         <main className={styles.dhMain}>
-          <HeroSection
-            aiJudge={view.aiJudge}
-            coreKpis={view.coreKpis}
-            riskMinis={view.riskMinis}
-          />
-          <MarketTapeSection items={view.marketTape} />
-          <WorkGridSection
-            portfolioStats={view.portfolioStats}
-            assetBars={view.assetBars}
-            assetBarsPlaceholder={view.assetBarsPlaceholder}
-            centerAum={view.centerAum}
-            interbank={view.interbank}
-            attributionTabs={view.attributionTabs}
-            attributionWaterfall={view.attributionWaterfall}
-            attributionInsights={view.attributionInsights}
-            attributionNote={view.attributionNote}
-            riskCards={view.riskCards}
-            riskCardsPlaceholder={view.riskCardsPlaceholder}
-            riskRadar={view.riskRadar}
-            todos={view.todos}
-            watchlist={view.watchlist}
-            watchlistPlaceholder={view.watchlistPlaceholder}
-            liabilityWatchBasisNote={view.liabilityWatchBasisNote}
-          />
-          <ResearchCalendarSection calendar={view.researchCalendar} />
-          <BottomGridSection
-            exposureRows={view.exposureRows}
-            balanceMetrics={view.balanceMetrics}
-            quickDrilldowns={view.quickDrilldowns}
-          />
+          <TerminalHomeContent view={view} />
         </main>
 
         <DecisionRailSection

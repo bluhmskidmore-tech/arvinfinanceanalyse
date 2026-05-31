@@ -85,7 +85,8 @@
   grid-template-columns: minmax(0, 1fr) 296px;
   gap: var(--dh-space-3);
   align-items: start;
-  max-width: 1560px;
+  max-width: none;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -1293,9 +1294,737 @@
   color: #fff;
 }
 
+/* Terminal home */
+.dhTerminalHero {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--dh-space-2);
+  margin-bottom: var(--dh-space-2);
+}
+
+.dhTerminalJudgement,
+.dhTerminalKpi,
+.dhTerminalPanel,
+.dhTerminalRiskStrip,
+.dhTerminalQuick {
+  border-radius: 8px;
+}
+
+.dhTerminalJudgement {
+  min-height: 120px;
+  padding: var(--dh-space-3) var(--dh-space-4);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background:
+    linear-gradient(160deg, var(--dh-card) 0%, var(--dh-blue-soft) 100%);
+}
+
+.dhTerminalEyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--dh-blue);
+}
+
+.dhTerminalJudgement h2 {
+  margin: var(--dh-space-2) 0;
+  color: var(--dh-ink);
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 800;
+}
+
+.dhTerminalJudgementFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--dh-space-1);
+  color: var(--dh-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dhTerminalHealthTrack {
+  flex: 1;
+  height: 7px;
+  min-width: 80px;
+  border-radius: 999px;
+  background: var(--dh-line);
+  overflow: hidden;
+}
+
+.dhTerminalHealthTrack > span {
+  display: block;
+  width: var(--dh-terminal-health);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dh-blue), var(--dh-green));
+}
+
+.dhTerminalKpi {
+  min-height: 112px;
+  padding: 10px 12px 8px;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  overflow: hidden;
+}
+
+.dhTerminalKpiTop {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--dh-space-1);
+  align-items: center;
+  color: var(--dh-ink-2);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.dhTerminalKpiTop > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dhTerminalKpiValue {
+  margin-top: var(--dh-space-1);
+  color: var(--dh-ink);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalKpiValue small {
+  margin-left: 3px;
+  color: var(--dh-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dhTerminalKpiDelta {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalKpiSpark {
+  width: 100%;
+  height: 32px;
+  align-self: end;
+  margin-top: 4px;
+}
+
+.dhTerminalState {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  max-width: 100%;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dhTerminalStateReady {
+  color: var(--dh-green);
+  background: var(--dh-green-soft);
+}
+
+.dhTerminalStateMuted {
+  color: var(--dh-muted);
+  background: var(--dh-surface-muted);
+}
+
+.dhTerminalStateStale {
+  color: var(--dh-amber);
+  background: var(--dh-amber-soft);
+}
+
+.dhTerminalStateWarn {
+  color: var(--dh-red);
+  background: var(--dh-red-soft);
+}
+
+.dhTerminalRiskStrip {
+  padding: var(--dh-space-2) var(--dh-space-3);
+  margin-bottom: var(--dh-space-2);
+}
+
+.dhTerminalPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dh-space-2);
+  min-width: 0;
+  margin-bottom: var(--dh-space-2);
+}
+
+.dhTerminalPanelHead h3 {
+  margin: 0;
+  color: var(--dh-blue-deep);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.dhTerminalRiskGrid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--dh-line-soft);
+}
+
+.dhTerminalRiskCell {
+  min-height: 54px;
+  padding: 9px 10px;
+  background: var(--dh-card);
+  display: grid;
+  align-content: center;
+  gap: 3px;
+}
+
+.dhTerminalRiskCell span {
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.dhTerminalRiskCell b {
+  color: var(--dh-blue-deep);
+  font-size: 13px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalRiskCell em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dhTerminalGrid {
+  display: grid;
+  grid-template-columns: minmax(500px, 1.6fr) repeat(2, minmax(280px, 1fr));
+  gap: var(--dh-space-2);
+  margin-bottom: var(--dh-space-2);
+}
+
+.dhTerminalPanel {
+  min-height: 224px;
+  padding: var(--dh-space-2) var(--dh-space-3);
+  overflow: hidden;
+}
+
+.dhTerminalHoldings {
+  grid-row: auto;
+}
+
+.dhTerminalTable {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--dh-ink-2);
+  font-size: 10.5px;
+  table-layout: fixed;
+}
+
+.dhTerminalHoldColBond {
+  width: 26%;
+}
+
+.dhTerminalHoldColType {
+  width: 12%;
+}
+
+.dhTerminalHoldColMetric {
+  width: 13%;
+}
+
+.dhTerminalHoldColRating {
+  width: 10%;
+}
+
+.dhTerminalTable th {
+  height: 25px;
+  padding: 0 6px;
+  color: var(--dh-muted);
+  background: var(--dh-card-soft);
+  border-bottom: 1px solid var(--dh-line);
+  text-align: right;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dhTerminalTable th:first-child,
+.dhTerminalTable td:first-child {
+  text-align: left;
+}
+
+.dhTerminalTable td {
+  height: 31px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--dh-line-soft);
+  text-align: right;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalTable td:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.dhTerminalTable td:first-child b {
+  color: var(--dh-ink);
+}
+
+.dhTerminalTable td:first-child span {
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalDistribution {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1fr);
+  gap: var(--dh-space-2);
+  align-items: center;
+  min-height: 168px;
+}
+
+.dhTerminalChart {
+  height: 140px;
+  min-width: 0;
+}
+
+.dhTerminalDistributionList {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dhTerminalDistributionRow {
+  display: grid;
+  grid-template-columns: 8px minmax(42px, 1fr) minmax(54px, auto) minmax(40px, auto);
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.dhTerminalDistributionName {
+  color: var(--dh-ink-2);
+  font-weight: 750;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dhTerminalDistributionValue,
+.dhTerminalDistributionPct {
+  color: var(--dh-muted);
+  font-weight: 750;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalDistributionTrack {
+  grid-column: 2 / -1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--dh-line-soft);
+  overflow: hidden;
+}
+
+.dhTerminalDistributionFill {
+  display: block;
+  width: var(--dh-terminal-bar-width);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dh-blue), var(--dh-blue-2));
+}
+
+.dhTerminalLegendDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dh-blue);
+}
+
+.dhTerminalLegendDot[data-color-index="1"] {
+  background: var(--dh-blue-2);
+}
+
+.dhTerminalLegendDot[data-color-index="2"] {
+  background: var(--dh-dist-teal);
+}
+
+.dhTerminalLegendDot[data-color-index="3"] {
+  background: var(--dh-green);
+}
+
+.dhTerminalLegendDot[data-color-index="4"] {
+  background: var(--dh-red);
+}
+
+.dhTerminalLegendDot[data-color-index="5"] {
+  background: var(--dh-dist-neutral);
+}
+
+.dhTerminalExposureGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dh-space-1);
+}
+
+.dhTerminalExposureItem {
+  min-height: 58px;
+  padding: var(--dh-space-2);
+  border-radius: 8px;
+  background: var(--dh-card-soft);
+  display: grid;
+  gap: 5px;
+}
+
+.dhTerminalExposureItem span {
+  color: var(--dh-muted);
+  font-size: 10.5px;
+  font-weight: 750;
+}
+
+.dhTerminalExposureItem b {
+  color: var(--dh-blue-deep);
+  font-size: 15px;
+}
+
+.dhTerminalChangeList {
+  display: grid;
+  gap: 8px;
+}
+
+.dhTerminalChangeRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 46px minmax(60px, 0.8fr) minmax(78px, auto) minmax(76px, auto);
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--dh-line-soft);
+}
+
+.dhTerminalChangeRow:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.dhTerminalChangeBond {
+  display: grid;
+  min-width: 0;
+}
+
+.dhTerminalChangeBond b {
+  color: var(--dh-ink);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalChangeBond small,
+.dhTerminalReportItem small {
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalChangeReason {
+  color: var(--dh-blue-deep);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.dhTerminalChangeBar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dh-line-soft);
+  overflow: hidden;
+}
+
+.dhTerminalChangeFill {
+  display: block;
+  width: var(--dh-terminal-bar-width);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dh-red);
+}
+
+.dhTerminalChangeFill[data-direction="decrease"] {
+  background: var(--dh-green);
+}
+
+.dhTerminalChangeValue,
+.dhTerminalChangeCurrent {
+  text-align: right;
+  font-size: 11px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalChangeCurrent {
+  color: var(--dh-muted);
+}
+
+.dhTerminalReportList {
+  display: grid;
+  gap: 8px;
+}
+
+.dhTerminalReportItem {
+  display: grid;
+  gap: 4px;
+  min-height: 48px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: var(--dh-card-soft);
+  color: inherit;
+  text-decoration: none;
+}
+
+.dhTerminalReportItem b {
+  color: var(--dh-ink);
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalReportMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dh-blue-deep);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.dhTerminalReportMeta em {
+  color: var(--dh-muted);
+  font-style: normal;
+  font-weight: 750;
+}
+
+.dhTerminalIncomeTrend {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(110px, 0.7fr);
+  gap: var(--dh-space-2);
+  align-items: stretch;
+  min-height: 150px;
+}
+
+.dhTerminalIncomeChart {
+  min-width: 0;
+  height: 150px;
+}
+
+.dhTerminalIncomeList {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dhTerminalIncomeRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 2px 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--dh-line-soft);
+}
+
+.dhTerminalIncomeRow:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.dhTerminalIncomeRow span {
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dhTerminalIncomeRow b {
+  color: var(--dh-blue-deep);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalIncomeRow small {
+  grid-column: 2;
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalGapList {
+  display: grid;
+  gap: var(--dh-space-1);
+}
+
+.dhTerminalGapPanel {
+  grid-column: 1 / -1;
+  min-height: 136px;
+}
+
+.dhTerminalGapPanel .dhTerminalGapList {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dhTerminalGap {
+  min-height: 48px;
+  padding: var(--dh-space-2);
+  border-radius: 8px;
+  background: var(--dh-card-soft);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px var(--dh-space-2);
+}
+
+.dhTerminalGap b {
+  color: var(--dh-ink);
+  font-size: 11.5px;
+}
+
+.dhTerminalGap span {
+  color: var(--dh-red);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.dhTerminalGap small {
+  grid-column: 1 / -1;
+  color: var(--dh-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalEmpty {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  color: var(--dh-muted);
+  background: var(--dh-card-soft);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.dhTerminalBottom {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--dh-space-2);
+  margin-top: var(--dh-space-2);
+}
+
+.dhTerminalQuick {
+  min-height: 78px;
+  padding: var(--dh-space-3);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dh-space-2);
+  color: var(--dh-ink);
+  text-decoration: none;
+}
+
+.dhTerminalQuick span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--dh-blue);
+  background: var(--dh-blue-soft);
+  font-size: 19px;
+}
+
+.dhTerminalQuick b {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--dh-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalQuick em {
+  color: var(--dh-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
 /* Decision rail */
 .dhDecision {
+  position: relative;
+  overflow: hidden;
   padding: var(--dh-space-3) var(--dh-space-2);
+  background:
+    radial-gradient(circle at 90% 2%, rgba(47, 104, 184, 0.36), transparent 32%),
+    linear-gradient(180deg, var(--dh-ink) 0%, var(--dh-blue-deep) 100%);
+  border-color: rgba(47, 104, 184, 0.48);
+  color: var(--dh-card);
+}
+
+.dhDecision::after {
+  content: "AI";
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--dh-card);
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background:
+    radial-gradient(circle, rgba(47, 104, 184, 0.76), rgba(24, 80, 161, 0.24) 58%, transparent 60%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 10px rgba(47, 104, 184, 0.1);
+  pointer-events: none;
 }
 
 .dhDecisionTitle {
@@ -1304,9 +2033,10 @@
   gap: 8px;
   font-size: 16px;
   font-weight: 700;
-  color: var(--dh-blue-deep);
+  color: var(--dh-card);
   margin: 0 0 14px;
   letter-spacing: -0.005em;
+  padding-right: 72px;
 }
 
 .dhDecisionIcon {
@@ -1315,14 +2045,14 @@
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background: linear-gradient(180deg, var(--dh-blue-soft), #d4e6f9);
-  color: var(--dh-blue);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--dh-card);
   font-size: 14px;
 }
 
 .dhAiCard {
   border: none;
-  background: var(--dh-card-soft);
+  background: rgba(255, 255, 255, 0.07);
   border-radius: var(--dh-radius);
   padding: var(--dh-space-2);
   margin-bottom: var(--dh-space-2);
@@ -1330,7 +2060,7 @@
 }
 
 .dhAiCard:hover {
-  background: var(--dh-surface-muted);
+  background: rgba(255, 255, 255, 0.1);
   box-shadow: none;
 }
 
@@ -1338,7 +2068,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--dh-blue-deep);
+  color: var(--dh-card);
   font-size: 12px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -1346,7 +2076,7 @@
 }
 
 .dhAiCardHead :global(.anticon) {
-  color: var(--dh-blue);
+  color: var(--dh-card);
   font-size: 13px;
 }
 
@@ -1354,14 +2084,14 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.65;
-  color: var(--dh-ink-2);
+  color: rgba(255, 255, 255, 0.78);
   font-weight: 500;
 }
 
 .dhAiCard b {
   font-size: 12px;
   font-weight: 700;
-  color: var(--dh-blue-deep);
+  color: var(--dh-card);
   display: block;
   margin-bottom: 6px;
   letter-spacing: 0.01em;
@@ -1380,21 +2110,21 @@
   width: 32px;
   height: 32px;
   border-radius: var(--dh-radius);
-  background: var(--dh-blue-soft);
+  background: rgba(255, 255, 255, 0.1);
   font-size: 14px;
   flex-shrink: 0;
 }
 
 .dhRailIconBlue {
-  color: var(--dh-blue);
+  color: var(--dh-card);
 }
 
 .dhRailIcon.dhUpRed {
-  background: var(--dh-red-soft);
+  background: rgba(185, 71, 67, 0.18);
 }
 
 .dhRailIcon.dhDownGreen {
-  background: var(--dh-green-soft);
+  background: rgba(31, 122, 85, 0.18);
 }
 
 .dhSuggestionList {
@@ -1410,7 +2140,7 @@
   gap: 8px;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dh-ink-2);
+  color: rgba(255, 255, 255, 0.82);
   font-weight: 500;
   margin-bottom: 4px;
 }
@@ -1423,8 +2153,8 @@
   width: 18px;
   height: 18px;
   border-radius: 5px;
-  background: var(--dh-blue-soft);
-  color: var(--dh-blue);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--dh-card);
   font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
@@ -1434,7 +2164,7 @@
   height: 40px;
   margin-top: 4px;
   border-radius: 8px;
-  background: linear-gradient(180deg, var(--dh-blue-2), var(--dh-blue));
+  background: linear-gradient(180deg, var(--dh-red), var(--dh-red));
   color: #fff;
   display: flex;
   align-items: center;
@@ -1446,14 +2176,14 @@
   border: 0;
   width: 100%;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(24, 80, 161, 0.22);
+  box-shadow: 0 4px 12px rgba(185, 71, 67, 0.28);
   transition: box-shadow 140ms ease, transform 140ms ease, background 140ms ease;
   font-family: inherit;
 }
 
 .dhReportBtn:hover {
-  background: linear-gradient(180deg, var(--dh-blue), var(--dh-blue-deep));
-  box-shadow: 0 8px 22px rgba(24, 80, 161, 0.3);
+  background: linear-gradient(180deg, var(--dh-red), var(--dh-red));
+  box-shadow: 0 8px 22px rgba(185, 71, 67, 0.34);
   transform: translateY(-1px);
 }
 
@@ -1571,6 +2301,34 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .dhTerminalHero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhTerminalJudgement {
+    grid-column: 1 / -1;
+  }
+
+  .dhTerminalRiskGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dhTerminalGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dhTerminalHoldings {
+    grid-column: 1 / -1;
+  }
+
+  .dhTerminalGapPanel .dhTerminalGapList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhTerminalBottom {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .dhRiskConstraint {
     grid-column: span 2;
   }
@@ -1611,9 +2369,45 @@
   }
 
   .dhHero,
+  .dhTerminalHero,
+  .dhTerminalGrid,
+  .dhTerminalBottom,
   .dhWorkGrid,
   .dhBottomGrid {
     grid-template-columns: 1fr;
+  }
+
+  .dhTerminalRiskGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhTerminalDistribution {
+    grid-template-columns: 1fr;
+  }
+
+  .dhTerminalIncomeTrend {
+    grid-template-columns: 1fr;
+  }
+
+  .dhTerminalGapPanel .dhTerminalGapList {
+    grid-template-columns: 1fr;
+  }
+
+  .dhTerminalChangeRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dhTerminalChangeBar,
+  .dhTerminalChangeCurrent {
+    grid-column: 1 / -1;
+  }
+
+  .dhTerminalQuick {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dhTerminalQuick em {
+    display: none;
   }
 
   .dhDecision {

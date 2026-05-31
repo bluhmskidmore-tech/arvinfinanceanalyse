@@ -5,10 +5,11 @@ import { apiQueryKeys } from "./queryKeys";
 
 describe("apiQueryKeys", () => {
   it("shares cache keys for the same cross-page read models", () => {
-    expect(apiQueryKeys.marketRates("real")).toEqual([
+    expect(apiQueryKeys.marketRates("real", "2026-04-30")).toEqual([
       "market-data",
       "formal-rates",
       "real",
+      "2026-04-30",
     ]);
     expect(dashboardBondHeadlineQueryKey("real", "2026-04-30")).toEqual(
       apiQueryKeys.bondDashboardHeadline("real", "2026-04-30"),
@@ -31,6 +32,13 @@ describe("apiQueryKeys", () => {
       "real",
       "2026-04-30",
       "10,25,50",
+    ]);
+    expect(apiQueryKeys.homeIncomeTrend("real", "2026-04-30", 7)).toEqual([
+      "home",
+      "income-trend",
+      "real",
+      "2026-04-30",
+      7,
     ]);
     expect(apiQueryKeys.balanceAnalysisDecisionItems("real", "2026-04-30", "all", "CNY")).toEqual([
       "balance-analysis",
