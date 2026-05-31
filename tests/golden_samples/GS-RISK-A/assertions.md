@@ -25,7 +25,7 @@
 - `MTR-RSK-017 == "14.00000000"`.
 - `MTR-RSK-018 == "14.00000000"`.
 - `MTR-RSK-012 == "1.00000000"`.
-- `MTR-RSK-001` is an 8-decimal string.
+- `MTR-RSK-001 == "0.22175249"`.
 - `regulatory_dv01.unit == "dv01"` and `regulatory_dv01.raw == portfolio_dv01.raw` under the default all-included regulatory scope.
 - `rate_risk_market_value.raw == total_market_value.raw` for the clean sample.
 - `duration_excluded_count == 0` and `duration_excluded_market_value.raw == 0`.

@@ -5,6 +5,7 @@ useDefault = true
 description = "Generated repo snapshots and local artifact directories"
 paths = [
   '''^audit_pack/source_snapshot/''',
+  '''^\.codex-tmp/''',
   '''^\.playwright-mcp/''',
   '''^test_output/''',
   '''^tmp/''',
@@ -20,4 +21,20 @@ paths = [
   '''^\.pytest_cache/''',
   '''^\.mypy_cache/''',
   '''^\.ruff_cache/''',
+]
+
+[[allowlists]]
+description = "Governed business identifier values, not credentials"
+targetRules = ["generic-api-key"]
+stopwords = [
+  "approved_dv01_limit",
+  "bal_wb_decision_gap_001",
+  "csi300_close_gt_ma60",
+  "fx_sensitivity_per_0_01",
+  "liquidity_gap_30d_ratio",
+  "mega_cap_top5_weight",
+  "policyBank10y",
+  "regulatory_dv01",
+  "reinvestment_ratio_1y",
+  "voucher_treasury_1430101_cost",
 ]

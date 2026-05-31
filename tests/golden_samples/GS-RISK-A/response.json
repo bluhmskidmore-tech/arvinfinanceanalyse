@@ -1,6 +1,6 @@
 {
   "result_meta": {
-    "trace_id": "tr_3e6dd9216f54",
+    "trace_id": "tr_bbc7762fc4df",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
@@ -17,7 +17,7 @@
     "as_of_date": "2026-03-31",
     "date_basis": "formal_snapshot",
     "fallback_date": null,
-    "generated_at": "2026-04-22T04:30:48.192645Z",
+    "generated_at": "2026-05-31T07:47:08.747662Z",
     "filters_applied": {},
     "tables_used": [],
     "evidence_rows": null,
@@ -27,21 +27,21 @@
   "result": {
     "report_date": "2026-03-31",
     "portfolio_dv01": {
-      "raw": 0.20904876,
+      "raw": 0.22175249,
       "unit": "dv01",
-      "display": "0.21",
+      "display": "0.22",
       "precision": 2,
       "sign_aware": false
     },
     "regulatory_dv01": {
-      "raw": 0.20904876,
+      "raw": 0.22175249,
       "unit": "dv01",
-      "display": "0.21",
+      "display": "0.22",
       "precision": 2,
       "sign_aware": false
     },
     "krd_1y": {
-      "raw": 0.00972495,
+      "raw": 0.00982318,
       "unit": "ratio",
       "display": "+0.01",
       "precision": 2,
@@ -55,7 +55,7 @@
       "sign_aware": true
     },
     "krd_5y": {
-      "raw": 0.08681798,
+      "raw": 0.09138735,
       "unit": "ratio",
       "display": "+0.09",
       "precision": 2,
@@ -69,9 +69,9 @@
       "sign_aware": true
     },
     "krd_10y": {
-      "raw": 0.11250583,
+      "raw": 0.12054196,
       "unit": "ratio",
-      "display": "+0.11",
+      "display": "+0.12",
       "precision": 2,
       "sign_aware": true
     },
@@ -83,9 +83,9 @@
       "sign_aware": true
     },
     "cs01": {
-      "raw": 0.19932381,
+      "raw": 0.21192931,
       "unit": "dv01",
-      "display": "0.20",
+      "display": "0.21",
       "precision": 2,
       "sign_aware": false
     },
@@ -181,9 +181,9 @@
       "sign_aware": false
     },
     "rate_risk_dv01": {
-      "raw": 0.20904876,
+      "raw": 0.22175249,
       "unit": "dv01",
-      "display": "0.21",
+      "display": "0.22",
       "precision": 2,
       "sign_aware": false
     },
@@ -223,9 +223,9 @@
       "daily_rate_volatility_bp": null,
       "dominant_krd_bucket": "10Y",
       "dominant_krd": {
-        "raw": 0.11250583,
+        "raw": 0.12054196,
         "unit": "ratio",
-        "display": "+0.11",
+        "display": "+0.12",
         "precision": 2,
         "sign_aware": true
       },
@@ -241,9 +241,9 @@
             "sign_aware": true
           },
           "estimated_pnl_impact": {
-            "raw": -2.0904876,
+            "raw": -2.2175249,
             "unit": "yuan",
-            "display": "-2.09",
+            "display": "-2.22",
             "precision": 2,
             "sign_aware": true
           }
@@ -259,15 +259,15 @@
             "sign_aware": true
           },
           "estimated_pnl_impact": {
-            "raw": -5.226219,
+            "raw": -5.54381225,
             "unit": "yuan",
-            "display": "-5.23",
+            "display": "-5.54",
             "precision": 2,
             "sign_aware": true
           }
         }
       ],
-      "operating_judgement": "当前监管口径 DV01 0.21；+10bp 平行上行估算影响 -2.09；主风险桶 10Y。审批限额与利率波动源未接入前，暂不判定超限。",
+      "operating_judgement": "当前监管口径 DV01 0.22；+10bp 平行上行估算影响 -2.22；主风险桶 10Y。审批限额与利率波动源未接入前，暂不判定超限。",
       "control_actions": [
         {
           "key": "approved_dv01_limit",
@@ -294,7 +294,7 @@
           "key": "stress_escalation",
           "title": "固化冲击升级",
           "status": "required",
-          "evidence": "+10bp 估算影响 -2.09；+25bp 估算影响 -5.23。",
+          "evidence": "+10bp 估算影响 -2.22；+25bp 估算影响 -5.54。",
           "action": "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。"
         }
       ],

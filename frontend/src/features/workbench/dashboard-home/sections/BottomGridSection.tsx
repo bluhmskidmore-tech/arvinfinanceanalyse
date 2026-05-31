@@ -59,7 +59,7 @@ export function BottomGridSection({
               <th>资产规模（亿）</th>
               <th>占比</th>
               <th>久期</th>
-              <th>DV01（万）</th>
+              <th>利率敏感度（万）</th>
               <th>日收益（万）</th>
             </tr>
           </thead>

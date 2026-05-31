@@ -22,6 +22,8 @@
 - `duration_excluded_market_value.raw == 99.0`.
 - `rate_risk_market_value.raw == 330.0`.
 - `rate_risk_modified_duration.raw == portfolio_modified_duration.raw`.
+- `regulatory_dv01.raw == 0.42748515` under the degraded warning fixture.
+- `portfolio_convexity.raw == 180.77409483`.
 
 ## Reconciliation
 

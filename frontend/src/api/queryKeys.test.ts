@@ -9,6 +9,7 @@ describe("apiQueryKeys", () => {
       "market-data",
       "formal-rates",
       "real",
+      "pending-snapshot",
     ]);
     expect(dashboardBondHeadlineQueryKey("real", "2026-04-30")).toEqual(
       apiQueryKeys.bondDashboardHeadline("real", "2026-04-30"),

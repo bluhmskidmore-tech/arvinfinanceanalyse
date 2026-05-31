@@ -1439,7 +1439,7 @@ describe("MarketDataPage", () => {
       exact: true,
     });
     const formalRates = queryClient.getQueryCache().find({
-      queryKey: ["market-data", "formal-rates", "mock"],
+      queryKey: ["market-data", "formal-rates", "mock", "pending-snapshot"],
       exact: true,
     });
     const catalog = queryClient.getQueryCache().find({

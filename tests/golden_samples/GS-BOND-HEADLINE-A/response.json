@@ -1,6 +1,6 @@
 {
   "result_meta": {
-    "trace_id": "tr_bfc8e06208b8",
+    "trace_id": "tr_133ad2adee12",
     "basis": "formal",
     "result_kind": "bond_dashboard.headline_kpis",
     "formal_use_allowed": true,
@@ -11,8 +11,13 @@
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
+    "requested_report_date": null,
+    "resolved_report_date": null,
     "scenario_flag": false,
-    "generated_at": "2026-05-10T14:57:44.914593Z",
+    "as_of_date": null,
+    "date_basis": null,
+    "fallback_date": null,
+    "generated_at": "2026-05-31T07:47:07.505577Z",
     "filters_applied": {},
     "tables_used": [],
     "evidence_rows": null,
@@ -66,9 +71,9 @@
         "sign_aware": true
       },
       "total_dv01": {
-        "raw": 0.2,
+        "raw": 0.8,
         "unit": "dv01",
-        "display": "0.20",
+        "display": "0.80",
         "precision": 2,
         "sign_aware": false
       },
@@ -118,9 +123,9 @@
         "sign_aware": true
       },
       "total_dv01": {
-        "raw": 0.126,
+        "raw": 0.8,
         "unit": "dv01",
-        "display": "0.13",
+        "display": "0.80",
         "precision": 2,
         "sign_aware": false
       },

@@ -462,7 +462,7 @@ function buildMockView(): DashboardHomeView {
     riskMinis: [
       {
         id: "dv01",
-        label: "组合DV01",
+        label: "组合敏感度",
         value: "10,615.59",
         unit: "万",
         foot: "敞口下降\n-4.97 万",
@@ -700,7 +700,7 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
   const riskMinis: HomeRiskMini[] = [
     {
       id: "dv01",
-      label: "组合DV01",
+      label: "组合敏感度",
       value: dv01Split.value,
       unit: dv01Split.unit,
       foot: dv01Foot.foot,

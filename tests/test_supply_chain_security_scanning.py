@@ -34,12 +34,23 @@ def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowli
     )
 
     assert "audit_pack/source_snapshot" in allowlist_paths
+    assert ".codex-tmp" in allowlist_paths
     assert "node_modules" in allowlist_paths
     assert ".venv" in allowlist_paths
     assert ".playwright-mcp" in allowlist_paths
     assert "test_output" in allowlist_paths
     assert "backend/app" not in allowlist_paths
     assert "frontend/src" not in allowlist_paths
+
+    identifier_allowlist = next(
+        allowlist
+        for allowlist in config.get("allowlists", [])
+        if allowlist.get("description") == "Governed business identifier values, not credentials"
+    )
+    assert identifier_allowlist["targetRules"] == ["generic-api-key"]
+    assert "approved_dv01_limit" in identifier_allowlist["stopwords"]
+    assert "fx_sensitivity_per_0_01" in identifier_allowlist["stopwords"]
+    assert "voucher_treasury_1430101_cost" in identifier_allowlist["stopwords"]
 
 
 def test_supply_chain_scan_dry_run_emits_expected_plan(capsys):
