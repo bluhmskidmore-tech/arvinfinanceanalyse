@@ -57,10 +57,10 @@ export function DashboardHomeToolbar({
           <CalendarOutlined className={styles.dhDateSelectIcon} />
           <input
             aria-label="报告日"
-            type="text"
-            inputMode="numeric"
+            type="date"
             placeholder="2026-04-30"
             value={reportDateInput}
+            onClick={(event) => event.currentTarget.showPicker?.()}
             onChange={(event) => onReportDateChange(event.target.value)}
           />
         </label>

@@ -316,8 +316,9 @@
   font-weight: 600;
   font-family: var(--dh-font-mono);
   color: var(--dh-blue-deep);
-  width: 92px;
+  width: 118px;
   padding: 0;
+  cursor: pointer;
 }
 
 .dhSearch {
