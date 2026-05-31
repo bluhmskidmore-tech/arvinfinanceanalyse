@@ -1145,7 +1145,7 @@ describe("StockAnalysisPage", () => {
     expect(workbench).toHaveTextContent("输出可用");
     expect(workbench).toHaveTextContent("风险供数");
     expect(workbench).not.toHaveTextContent("多策略共振");
-    expect(workbench).not.toHaveTextContent("复核队列");
+    expect(workbench).toHaveTextContent("复核队列");
     expect(await screen.findByTestId("stock-analysis-sector-mini-chart")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-review-mini-chart")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-event-mini-chart")).toBeInTheDocument();

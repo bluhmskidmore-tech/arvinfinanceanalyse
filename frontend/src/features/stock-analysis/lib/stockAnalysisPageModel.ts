@@ -1218,7 +1218,7 @@ export function buildDecisionSummary(
   const vendorStatus = meta.vendor_status ?? "待补";
   const fallbackMode = meta.fallback_mode ?? "none";
   const isFallback = fallbackMode !== "none";
-  const fallbackLabel = isFallback ? ` / fallback ${fallbackMode}` : "";
+  const fallbackLabel = isFallback ? ` / 回退 ${fallbackMode}` : "";
   const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok" && !isFallback;
   const candidateCount =
     payload.hybrid_fusion_candidates?.candidate_count ??

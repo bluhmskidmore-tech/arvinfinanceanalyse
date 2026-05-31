@@ -1,13 +1,10 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AimOutlined,
   BarChartOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  ExclamationCircleOutlined,
-  EyeOutlined,
   FireOutlined,
   LineChartOutlined,
   ReloadOutlined,
@@ -36,7 +33,6 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import {
   AnalysisGrid,
   DataStatusStrip,
-  KpiBand,
   PageV2Shell,
 } from "../../../components/page/PagePrimitives";
 import { AgentPanel } from "../../agent/AgentPanel";
@@ -44,9 +40,9 @@ import {
   buildCandidateReviewQueue,
   buildClosedLoopSummary,
   buildCycleMacroLayerSummary,
+  buildDailyJudgmentStrip,
   buildDataBoundarySummary,
   buildDecisionSummary,
-  buildInlineMetaSegments,
   buildMarketStateCard,
   buildRiskExitRows,
   buildSectorFilterSummary,
@@ -54,6 +50,8 @@ import {
   buildSectorTableSortComparator,
   buildSectorViewModel,
   buildStockAnalysisEventMonitorRows,
+  buildStockAnalysisEvidenceStatus,
+  buildStockAnalysisKpiStrip,
   buildThemeBreakoutCards,
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
@@ -65,6 +63,7 @@ import type {
 } from "../lib/stockAnalysisPageModel";
 import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
 import { buildConsensusSummary, consensusStrategyLabel, lookupStockStrategyRanks } from "../lib/buildConsensusSummary";
+import { EquityKpiCard } from "../components/EquityKpiCard";
 import { StockDetailDrawer } from "../components/StockDetailDrawer";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockAnalysisPage.css";
@@ -108,6 +107,69 @@ function iconTone(tone?: string) {
   return "neutral";
 }
 
+const tabularNumStyle: CSSProperties = {
+  fontVariantNumeric: "tabular-nums",
+  fontFamily: "var(--moss-font-mono)",
+};
+
+/** 首屏卡片与标题 — 与 DESIGN.md compact 8/12/16 对齐 */
+const SA_CARD = "flex flex-col gap-4 rounded-md border border-neutral-200 bg-white p-4";
+const SA_CARD_TITLE = "m-0 text-sm font-semibold text-neutral-900";
+const SA_SECTION_HEAD = "flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 pb-3";
+const SA_SECTION_DESC = "mt-1 text-xs leading-snug text-neutral-500";
+const SA_PILL =
+  "inline-flex items-center whitespace-nowrap rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700";
+
+function kpiToneToDelta(tone?: string): "up" | "down" | "flat" {
+  if (tone === "positive") return "up";
+  if (tone === "negative") return "down";
+  return "flat";
+}
+
+function filterChipClass(active: boolean): string {
+  const base =
+    "inline-flex min-h-7 cursor-pointer items-center whitespace-nowrap rounded-full border px-2.5 text-xs font-semibold transition-colors";
+  return active
+    ? `${base} border-primary-500 bg-primary-50 text-primary-800`
+    : `${base} border-neutral-200 bg-neutral-50 text-neutral-700 hover:bg-neutral-100`;
+}
+
+function statusIconClass(tone?: string): string {
+  const base = "inline-grid h-5 w-5 shrink-0 place-items-center rounded border text-xs leading-none";
+  if (tone === "positive") return `${base} border-success-200 bg-success-50 text-success-700`;
+  if (tone === "warning") return `${base} border-warning-200 bg-warning-50 text-warning-700`;
+  if (tone === "negative") return `${base} border-danger-200 bg-danger-50 text-danger-700`;
+  return `${base} border-primary-200 bg-primary-50 text-primary-700`;
+}
+
+function toneDotClass(tone?: string): string {
+  if (tone === "positive") return "bg-success-600";
+  if (tone === "warning") return "bg-warning-600";
+  if (tone === "negative") return "bg-danger-600";
+  return "bg-neutral-400";
+}
+
+function toneTextClass(tone?: string): string {
+  if (tone === "positive") return "text-success-600";
+  if (tone === "warning") return "text-warning-600";
+  if (tone === "negative") return "text-danger-600";
+  return "text-neutral-600";
+}
+
+function tonePillClass(tone?: string): string {
+  if (tone === "positive") return "border border-success-200 bg-success-50 text-success-700";
+  if (tone === "warning") return "border border-warning-200 bg-warning-50 text-warning-700";
+  if (tone === "negative") return "border border-danger-200 bg-danger-50 text-danger-700";
+  return "border border-neutral-200 bg-neutral-50 text-neutral-600";
+}
+
+function closedLoopItemSurfaceClass(tone?: string): string {
+  if (tone === "positive") return "border-neutral-200 bg-success-50/40";
+  if (tone === "warning") return "border-neutral-200 bg-warning-50/50";
+  if (tone === "negative") return "border-neutral-200 bg-danger-50/40";
+  return "border-neutral-200 bg-neutral-50/80";
+}
+
 function StatusIcon({
   tone = "neutral",
   children,
@@ -116,38 +178,17 @@ function StatusIcon({
   children: React.ReactNode;
 }) {
   return (
-    <span
-      aria-hidden="true"
-      className={`stock-analysis-page__status-icon stock-analysis-page__status-icon--${iconTone(tone)}`}
-    >
+    <span aria-hidden="true" className={statusIconClass(iconTone(tone))}>
       {children}
     </span>
   );
 }
-
-const DECISION_META_ICONS = [
-  <CheckCircleOutlined key="gate" />,
-  <AimOutlined key="exposure" />,
-  <BarChartOutlined key="strongest" />,
-  <BarChartOutlined key="weakest" />,
-  <EyeOutlined key="candidate" />,
-  <SafetyCertificateOutlined key="freshness" />,
-];
 
 const DECISION_GRID_ICONS = [
   <ClockCircleOutlined key="date" />,
   <DatabaseOutlined key="basis" />,
   <SafetyCertificateOutlined key="boundary" />,
   <CheckCircleOutlined key="gate" />,
-];
-
-const KPI_ICONS = [
-  <AimOutlined key="gate" />,
-  <BarChartOutlined key="sector" />,
-  <EyeOutlined key="candidate" />,
-  <SafetyCertificateOutlined key="quality" />,
-  <ThunderboltOutlined key="action" />,
-  <ClockCircleOutlined key="date" />,
 ];
 
 const FIRST_SCREEN_ICONS = [
@@ -371,20 +412,6 @@ function buildStatusCounts(rows: Array<{ status: string }>) {
     acc[row.status] = (acc[row.status] ?? 0) + 1;
     return acc;
   }, {});
-}
-
-function outputLabel(key: string) {
-  const labels: Record<string, string> = {
-    market_gate: "门控",
-    sector_rank: "板块",
-    stock_candidates: "候选",
-    mean_reversion_candidates: "反弹",
-    factor_screen_candidates: "多因子",
-    theme_breakout: "题材",
-    hybrid_fusion: "融合",
-    risk_exit: "风险",
-  };
-  return labels[key] ?? key;
 }
 
 function buildBackendSupplyOverview(
@@ -1134,15 +1161,76 @@ export default function StockAnalysisPage() {
     ],
   );
 
-  const metaSegments = strategyPayload
-    ? buildInlineMetaSegments(strategyPayload, {
-        quality_flag: strategyQuery.data?.result_meta?.quality_flag,
-        vendor_status: strategyQuery.data?.result_meta?.vendor_status,
-        source_version: strategyQuery.data?.result_meta?.source_version,
-        rule_version: strategyQuery.data?.result_meta?.rule_version,
-        fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
-      })
-    : [];
+  const dailyJudgmentStrip = useMemo(
+    () => (strategyPayload ? buildDailyJudgmentStrip(strategyPayload) : null),
+    [strategyPayload],
+  );
+
+  const kpiStrip = useMemo(
+    () =>
+      strategyPayload && !confluenceQuery.isLoading
+        ? buildStockAnalysisKpiStrip(strategyPayload, confluencePayload, {
+            quality_flag:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.quality_flag ?? strategyQuery.data?.result_meta?.quality_flag)
+                : strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.vendor_status ?? strategyQuery.data?.result_meta?.vendor_status)
+                : strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.fallback_mode ?? strategyQuery.data?.result_meta?.fallback_mode)
+                : strategyQuery.data?.result_meta?.fallback_mode,
+            source_version:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.source_version ?? strategyQuery.data?.result_meta?.source_version)
+                : strategyQuery.data?.result_meta?.source_version,
+            rule_version:
+              confluencePayload?.closed_loop_state != null
+                ? (confluenceQuery.data?.result_meta?.rule_version ?? strategyQuery.data?.result_meta?.rule_version)
+                : strategyQuery.data?.result_meta?.rule_version,
+          })
+        : [],
+    [
+      strategyPayload,
+      confluencePayload,
+      confluenceQuery.isLoading,
+      confluenceQuery.data?.result_meta?.quality_flag,
+      confluenceQuery.data?.result_meta?.vendor_status,
+      confluenceQuery.data?.result_meta?.fallback_mode,
+      confluenceQuery.data?.result_meta?.source_version,
+      confluenceQuery.data?.result_meta?.rule_version,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+      strategyQuery.data?.result_meta?.source_version,
+      strategyQuery.data?.result_meta?.rule_version,
+    ],
+  );
+
+  const evidenceStatusItems = useMemo(
+    () =>
+      strategyPayload
+        ? buildStockAnalysisEvidenceStatus(strategyPayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
+            source_version: strategyQuery.data?.result_meta?.source_version,
+            rule_version: strategyQuery.data?.result_meta?.rule_version,
+            trace_id: strategyQuery.data?.result_meta?.trace_id,
+          })
+        : [],
+    [
+      strategyPayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+      strategyQuery.data?.result_meta?.source_version,
+      strategyQuery.data?.result_meta?.rule_version,
+      strategyQuery.data?.result_meta?.trace_id,
+    ],
+  );
 
   const showStaleBanner = Boolean(
     strategyQuery.data?.result_meta &&
@@ -1415,33 +1503,144 @@ export default function StockAnalysisPage() {
 
         {marketState ? (
           <>
-            {decisionSummary ? (
-              <section
-                data-testid="stock-analysis-tailwind-cockpit"
-                className="stock-analysis-page__command-board rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-                aria-label="股票数据看板"
-              >
-                <div className="stock-analysis-page__command-board-body" data-testid="stock-analysis-decision-panel">
-                  <div className="stock-analysis-page__command-board-main">
-                    <div className="stock-analysis-page__command-lead">
-                      <div className="stock-analysis-page__decision-eyebrow">
-                        <StatusIcon>
-                          <ClockCircleOutlined />
-                        </StatusIcon>
-                        <span>后端供数</span>
-                        <strong className="stock-analysis-page__tabular">
-                          {backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}
-                        </strong>
+            {decisionSummary && dailyJudgmentStrip ? (
+              <div className="flex flex-col gap-4 bg-neutral-50 px-4 pb-4">
+                {showStaleBanner ? (
+                  <div
+                    className="stock-analysis-page__stale-banner rounded-lg border border-warning-200 bg-warning-50 px-4 py-2 text-sm text-warning-800"
+                    data-testid="stock-analysis-stale-banner"
+                    role="status"
+                  >
+                    数据陈旧、通道异常或使用回退快照（quality_flag / vendor_status / fallback_mode）。下方结论仅供复核参考。
+                  </div>
+                ) : null}
+
+                <section
+                  data-testid="stock-analysis-tailwind-cockpit"
+                  className={`${SA_CARD} shadow-sm`}
+                  aria-label="策略复核决策"
+                >
+                  <div className="flex flex-col gap-3" data-testid="stock-analysis-decision-panel">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 flex-col gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">
+                            只读复核
+                          </span>
+                          <span className="text-xs text-neutral-600">
+                            观察日{" "}
+                            <strong className="text-neutral-900" style={tabularNumStyle}>
+                              {decisionSummary.asOfLabel}
+                            </strong>
+                          </span>
+                          {backendSupplyOverview ? (
+                            <span className="text-xs text-neutral-500">
+                              后端供数 {backendSupplyOverview.asOfLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                        <h1 className="m-0 text-xl font-semibold text-neutral-900">
+                          {backendSupplyOverview?.gateLabel ?? `门控 ${strategyPayload?.market_gate.state}`}
+                          {" · "}
+                          {decisionSummary.exposureLabel}
+                        </h1>
+                        <p className="m-0 text-sm text-neutral-600">{decisionSummary.headline}</p>
+                        <p className="m-0 text-sm text-neutral-900">{decisionSummary.nextReviewAction}</p>
+                        <p className="m-0 text-xs text-neutral-500">
+                          {decisionSummary.dataFreshnessLabel} · {decisionSummary.boundaryLabel}
+                        </p>
                       </div>
-                      <h1>
-                        {backendSupplyOverview
-                          ? `${backendSupplyOverview.gateLabel} · ${backendSupplyOverview.conditionLabel} · ${backendSupplyOverview.supportedLabel} · ${backendSupplyOverview.unsupportedLabel}`
-                          : "暂无后端供数"}
-                      </h1>
-                      <p className="stock-analysis-page__decision-next">
-                        只展示 Livermore 后端当前已供字段；历史评分、代理回测和复核队列下沉处理。
-                      </p>
-                      <div className="stock-analysis-page__command-summary-chips" aria-label="后端供数摘要">
+                    </div>
+
+                    <p className="m-0 text-xs text-neutral-500" aria-label="市场门控状态">
+                      {[
+                        dailyJudgmentStrip.gateChip,
+                        dailyJudgmentStrip.exposureChip,
+                        dailyJudgmentStrip.strongestSectorChip,
+                        dailyJudgmentStrip.weakestSectorChip,
+                      ].join(" · ")}
+                    </p>
+
+                    <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
+                      {backendSupplyOverview
+                        ? [
+                            backendSupplyOverview.gateLabel,
+                            backendSupplyOverview.exposureLabel,
+                            backendSupplyOverview.readinessLabel,
+                            backendSupplyOverview.dataGapLabel,
+                            backendSupplyOverview.supportedLabel,
+                            backendSupplyOverview.unsupportedLabel,
+                            backendSupplyOverview.qualityLabel,
+                          ].join(" ")
+                        : null}
+                    </div>
+
+                    <details className="group border-t border-neutral-100 pt-3">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900 [&::-webkit-details-marker]:hidden">
+                        <span className="flex items-center gap-2">
+                          <span className="text-primary-600 group-open:rotate-90">▸</span>
+                          供数明细与闭环
+                        </span>
+                        {closedLoopSummary ? (
+                          <strong className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-neutral-600">
+                            {closedLoopSummary.referenceRating.label}
+                          </strong>
+                        ) : null}
+                      </summary>
+                      <div className="mt-3 space-y-3 px-1">
+                      {backendSupplyOverview ? (
+                        <DataStatusStrip
+                          testId="stock-analysis-backend-supply-status"
+                          className="grid content-start gap-1.5 border-l border-neutral-200 bg-neutral-50 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="m-0 text-sm font-semibold text-neutral-900">规则就绪</h3>
+                            <span className="whitespace-nowrap rounded border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-bold text-primary-700">
+                              只读
+                            </span>
+                          </div>
+                          <div className="grid gap-0.5">
+                            {backendSupplyOverview.readinessRows.map((item) => (
+                              <div
+                                className="flex min-h-[23px] items-center justify-between gap-2 border-b border-neutral-200/80 py-0.5"
+                                data-tone={readinessTone(item.status)}
+                                key={item.key}
+                              >
+                                <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[10px] font-bold text-neutral-500">
+                                  <StatusIcon tone={readinessTone(item.status)}>
+                                    <SafetyCertificateOutlined />
+                                  </StatusIcon>
+                                  {item.title}
+                                </span>
+                                <strong className="text-right text-[11px] leading-tight text-neutral-900">
+                                  {item.status}
+                                </strong>
+                              </div>
+                            ))}
+                            {backendSupplyOverview.dataGapRows.slice(0, 3).map((item) => (
+                              <div
+                                className="flex min-h-[23px] items-center justify-between gap-2 border-b border-neutral-200/80 py-0.5"
+                                data-tone={gapTone(item.status)}
+                                key={`gap:${item.input_family}`}
+                              >
+                                <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[10px] font-bold text-neutral-500">
+                                  <StatusIcon tone={gapTone(item.status)}>
+                                    <DatabaseOutlined />
+                                  </StatusIcon>
+                                  {item.input_family}
+                                </span>
+                                <strong className="text-right text-[11px] leading-tight text-neutral-900">
+                                  {item.status}
+                                </strong>
+                              </div>
+                            ))}
+                          </div>
+                        </DataStatusStrip>
+                      ) : null}
+                      <div
+                        className="grid grid-cols-2 gap-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 sm:grid-cols-3 xl:grid-cols-6"
+                        aria-label="后端供数摘要"
+                      >
                         {[
                           backendSupplyOverview?.gateLabel ?? decisionSummary.gateLabel,
                           backendSupplyOverview?.exposureLabel ?? decisionSummary.exposureLabel,
@@ -1449,711 +1648,277 @@ export default function StockAnalysisPage() {
                           backendSupplyOverview?.dataGapLabel ?? "缺口 0",
                           backendSupplyOverview?.supportedLabel ?? "可用 0",
                           backendSupplyOverview?.unsupportedLabel ?? "阻断 0",
-                        ].map((label, index) => {
-                          const shortLabel = compactText(label, 18);
+                        ].map((label) => {
+                          const shortLabel = compactText(label, 20);
                           return (
-                            <span key={label} title={label}>
-                              <StatusIcon>{DECISION_META_ICONS[index]}</StatusIcon>
-                              <strong>{shortLabel}</strong>
+                            <span
+                              key={label}
+                              title={label}
+                              className="flex min-h-[46px] min-w-0 items-center gap-2 border-b border-r border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-900 last:border-r-0 sm:[&:nth-child(3n)]:border-r-0 xl:border-b-0 xl:[&:nth-child(6n)]:border-r-0"
+                            >
+                              <strong className="min-w-0 truncate">{shortLabel}</strong>
+                              {shortLabel !== label ? (
+                                <small className="sr-only">{label}</small>
+                              ) : null}
                             </span>
                           );
                         })}
                       </div>
-                    </div>
-                    {backendSupplyOverview ? (
-                      <DataStatusStrip
-                        testId="stock-analysis-backend-supply-status"
-                        className="stock-analysis-page__evidence-status-panel"
-                      >
-                        <div className="stock-analysis-page__evidence-status-head">
-                          <h3>规则就绪</h3>
-                          <span>只读</span>
-                        </div>
-                        <div className="stock-analysis-page__evidence-status-list">
-                          {backendSupplyOverview.readinessRows.map((item) => (
-                            <div
-                              className="stock-analysis-page__evidence-status-row"
-                              data-tone={readinessTone(item.status)}
-                              key={item.key}
-                            >
-                              <span>
-                                <StatusIcon tone={readinessTone(item.status)}>
-                                  <SafetyCertificateOutlined />
-                                </StatusIcon>
-                                {item.title}
-                              </span>
-                              <strong>{item.status}</strong>
-                              <small title={item.summary}>
-                                {item.missing_inputs.join(" / ") || item.summary}
-                              </small>
-                            </div>
-                          ))}
-                          {backendSupplyOverview.dataGapRows.slice(0, 3).map((item) => (
-                            <div
-                              className="stock-analysis-page__evidence-status-row"
-                              data-tone={gapTone(item.status)}
-                              key={`gap:${item.input_family}`}
-                            >
-                              <span>
-                                <StatusIcon tone={gapTone(item.status)}>
-                                  <DatabaseOutlined />
-                                </StatusIcon>
-                                {item.input_family}
-                              </span>
-                              <strong>{item.status}</strong>
-                              <small title={item.evidence}>{compactText(item.evidence, 30)}</small>
-                            </div>
-                          ))}
-                        </div>
-                      </DataStatusStrip>
-                    ) : null}
-                  </div>
-
-                  {backendSupplyOverview ? (
-                    <KpiBand className="stock-analysis-page__kpi-strip" testId="stock-analysis-kpi-strip">
-                      {[
-                        {
-                          key: "gate",
-                          label: "门控",
-                          value: backendSupplyOverview.gateLabel,
-                          detail: `${backendSupplyOverview.conditionLabel} / ${backendSupplyOverview.availableConditionLabel}`,
-                          tone: "warning",
-                        },
-                        {
-                          key: "readiness",
-                          label: "规则",
-                          value: backendSupplyOverview.readinessLabel,
-                          detail: backendSupplyOverview.dataGapLabel,
-                          tone: "warning",
-                        },
-                        {
-                          key: "outputs",
-                          label: "输出",
-                          value: backendSupplyOverview.supportedLabel,
-                          detail: backendSupplyOverview.unsupportedLabel,
-                          tone: backendSupplyOverview.unsupportedOutputs.length > 0 ? "warning" : "positive",
-                        },
-                        {
-                          key: "sector",
-                          label: "板块",
-                          value: backendSupplyOverview.sectorSupplyLabel,
-                          detail: backendSupplyOverview.candidateSupplyLabel,
-                          tone: "positive",
-                        },
-                        {
-                          key: "risk",
-                          label: "风险",
-                          value: backendSupplyOverview.riskSupplyLabel,
-                          detail: backendSupplyOverview.riskDetailLabel,
-                          tone: (backendSupplyOverview.risk?.signal_count ?? 0) > 0 ? "warning" : "positive",
-                        },
-                        {
-                          key: "quality",
-                          label: "质量",
-                          value: backendSupplyOverview.qualityLabel,
-                          detail: `${backendSupplyOverview.vendorLabel} / ${backendSupplyOverview.fallbackLabel}`,
-                          tone: backendSupplyOverview.qualityLabel.includes("ok") ? "positive" : "warning",
-                        },
-                      ].map((item, index) => (
+                      <div className="grid grid-cols-2 gap-0 overflow-hidden rounded-md border border-neutral-200 bg-white sm:grid-cols-4">
                         <div
-                          className="moss-page-v2-kpi-metric stock-analysis-page__kpi-tile"
-                          data-tone={item.tone}
-                          key={item.key}
+                          className="grid min-h-[50px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 border-b border-r border-neutral-200 px-3 py-2 sm:[&:nth-child(2n)]:border-r-0 sm:[&:nth-child(-n+2)]:border-b sm:[&:nth-child(n+3)]:border-b-0 sm:odd:border-r"
+                          title={`数据日期 ${backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}`}
                         >
-                          <span>
-                            <StatusIcon tone={item.tone}>{KPI_ICONS[index] ?? <BarChartOutlined />}</StatusIcon>
-                            {item.label}
-                          </span>
-                          <strong>{item.value}</strong>
-                          <small title={item.detail}>{item.detail}</small>
+                          <StatusIcon>{DECISION_GRID_ICONS[0]}</StatusIcon>
+                          <span className="text-xs text-neutral-500">数据日期</span>
+                          <strong className="col-start-2 text-sm" style={tabularNumStyle}>
+                            {backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}
+                          </strong>
                         </div>
-                      ))}
-                    </KpiBand>
-                  ) : null}
-
-                  <details className="stock-analysis-page__decision-detail">
-                    <summary>
-                      <span>供数明细与闭环</span>
-                      {closedLoopSummary ? (
-                        <strong>{closedLoopSummary.referenceRating.label}</strong>
-                      ) : null}
-                    </summary>
-                    <div className="stock-analysis-page__decision-meta" aria-label="后端供数摘要">
-                      {[
-                        backendSupplyOverview?.gateLabel ?? decisionSummary.gateLabel,
-                        backendSupplyOverview?.exposureLabel ?? decisionSummary.exposureLabel,
-                        backendSupplyOverview?.readinessLabel ?? "就绪 0/0",
-                        backendSupplyOverview?.dataGapLabel ?? "缺口 0",
-                        backendSupplyOverview?.supportedLabel ?? "可用 0",
-                        backendSupplyOverview?.unsupportedLabel ?? "阻断 0",
-                      ].map((label, index) => {
-                        const shortLabel = compactText(label, 20);
-                        return (
-                          <span key={label} title={label}>
-                            <StatusIcon>{DECISION_META_ICONS[index]}</StatusIcon>
-                            <strong>{shortLabel}</strong>
-                            {shortLabel !== label ? (
-                              <small className="stock-analysis-page__visually-hidden">{label}</small>
-                            ) : null}
-                          </span>
-                        );
-                      })}
-                    </div>
-
-                    <div className="stock-analysis-page__decision-grid">
-                      <div title={`数据日期 ${backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}`}>
-                        <StatusIcon>{DECISION_GRID_ICONS[0]}</StatusIcon>
-                        <span>数据日期</span>
-                        <strong className="stock-analysis-page__tabular">
-                          {backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}
-                        </strong>
-                      </div>
-                      <div title={`口径 ${backendSupplyOverview?.basisLabel ?? decisionSummary.basisLabel}`}>
-                        <StatusIcon>{DECISION_GRID_ICONS[1]}</StatusIcon>
-                        <span>口径</span>
-                        <strong>{backendSupplyOverview?.basisLabel ?? decisionSummary.basisLabel}</strong>
-                      </div>
-                      <div title={`请求日期 ${backendSupplyOverview?.requestedAsOfLabel ?? "默认"}`}>
-                        <StatusIcon>{DECISION_GRID_ICONS[2]}</StatusIcon>
-                        <span>请求日期</span>
-                        <strong>{backendSupplyOverview?.requestedAsOfLabel ?? "默认"}</strong>
-                      </div>
-                      <div title={`门控确认 ${backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}`}>
-                        <StatusIcon>{DECISION_GRID_ICONS[3]}</StatusIcon>
-                        <span>门控确认</span>
-                        <strong>{backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}</strong>
-                      </div>
-                    </div>
-                    {closedLoopSummary ? (
-                      <section
-                        className="stock-analysis-page__closed-loop-summary"
-                        data-testid="stock-analysis-closed-loop-summary"
-                        aria-label="闭环摘要"
-                      >
                         <div
-                          className="stock-analysis-page__closed-loop-verdict"
-                          data-tone={closedLoopSummary.verdict.tone}
-                          data-testid="stock-analysis-closed-loop-verdict"
+                          className="grid min-h-[50px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 border-b border-r border-neutral-200 px-3 py-2 sm:border-r-0 sm:[&:nth-child(-n+2)]:border-b"
+                          title={`口径 ${backendSupplyOverview?.basisLabel ?? decisionSummary.basisLabel}`}
                         >
-                          <div>
-                            <span>
-                              <StatusIcon tone={closedLoopSummary.verdict.tone}>
-                                {closedLoopSummary.verdict.tone === "positive" ? (
-                                  <CheckCircleOutlined />
-                                ) : (
-                                  <ExclamationCircleOutlined />
-                                )}
-                              </StatusIcon>
-                              {closedLoopSummary.verdict.label}
-                            </span>
-                            <strong>{closedLoopSummary.verdict.headline}</strong>
-                            <p title={closedLoopSummary.verdict.primaryReason}>
-                              {compactText(closedLoopSummary.verdict.primaryReason, 42)}
-                            </p>
-                          </div>
-                          <ul aria-label="闭环结论证据">
-                            {closedLoopSummary.verdict.evidence.map((item) => (
-                              <li key={item} title={item}>{compactText(item, 28)}</li>
+                          <StatusIcon>{DECISION_GRID_ICONS[1]}</StatusIcon>
+                          <span className="text-xs text-neutral-500">口径</span>
+                          <strong className="col-start-2 break-words text-sm">
+                            {backendSupplyOverview?.basisLabel ?? decisionSummary.basisLabel}
+                          </strong>
+                        </div>
+                        <div
+                          className="grid min-h-[50px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 border-b border-r border-neutral-200 px-3 py-2 sm:odd:border-r sm:[&:nth-child(n+3)]:border-b-0"
+                          title={`请求日期 ${backendSupplyOverview?.requestedAsOfLabel ?? "默认"}`}
+                        >
+                          <StatusIcon>{DECISION_GRID_ICONS[2]}</StatusIcon>
+                          <span className="text-xs text-neutral-500">请求日期</span>
+                          <strong className="col-start-2 text-sm">
+                            {backendSupplyOverview?.requestedAsOfLabel ?? "默认"}
+                          </strong>
+                        </div>
+                        <div
+                          className="grid min-h-[50px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 border-neutral-200 px-3 py-2 sm:border-r-0"
+                          title={`门控确认 ${backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}`}
+                        >
+                          <StatusIcon>{DECISION_GRID_ICONS[3]}</StatusIcon>
+                          <span className="text-xs text-neutral-500">门控确认</span>
+                          <strong className="col-start-2 break-words text-sm">
+                            {backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}
+                          </strong>
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <section>
+                          <h3 className="mb-2 text-sm font-semibold text-neutral-900">门控条件</h3>
+                          <ul className="grid gap-1.5 p-0">
+                            {marketState.conditions.map((condition) => (
+                              <li
+                                key={condition.key}
+                                className="flex items-center justify-between gap-3 rounded-md border border-neutral-100 bg-neutral-50 px-2.5 py-2"
+                              >
+                                <span>
+                                  <strong className="text-sm text-neutral-900">{condition.label}</strong>
+                                  <small className="block text-xs text-neutral-500">{condition.evidence}</small>
+                                </span>
+                                <em className="not-italic rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+                                  {statusLabel(condition.status)}
+                                </em>
+                              </li>
                             ))}
                           </ul>
-                          <small title={closedLoopSummary.verdict.nextStep}>
-                            {compactText(closedLoopSummary.verdict.nextStep, 40)}
-                          </small>
-                        </div>
-                        <div className="stock-analysis-page__closed-loop-compact-head">
-                          <strong>闭环摘要</strong>
-                          <span className="stock-analysis-page__pill" data-tone={closedLoopSummary.referenceRating.tone}>
-                            {closedLoopSummary.referenceRating.label}
-                          </span>
-                          <small>{closedLoopSummary.referenceRating.detail}</small>
-                        </div>
-                        <div className="stock-analysis-page__closed-loop-items">
-                          {closedLoopSummary.items.map((item) => (
-                            <div
-                              key={item.key}
-                              data-tone={item.tone}
-                              data-testid={item.key === "replay" ? "stock-analysis-replay-status" : undefined}
-                            >
-                              <span>
-                                <StatusIcon tone={item.tone}>
-                                  {item.tone === "positive" ? <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
-                                </StatusIcon>
-                                {item.label}
-                              </span>
-                              <strong>{item.statusLabel}</strong>
-                              <small className="stock-analysis-page__visually-hidden">{item.detail}</small>
-                              {item.badges?.map((badge) => (
-                                <small className="stock-analysis-page__visually-hidden" key={badge}>
-                                  {badge}
-                                </small>
+                        </section>
+                        <section>
+                          <h3 className="mb-2 text-sm font-semibold text-neutral-900">需要关注边界</h3>
+                          {marketState.warnings.length > 0 ? (
+                            <ul className="grid gap-2 p-0">
+                              {marketState.warnings.slice(0, 4).map((warning) => (
+                                <li
+                                  key={warning}
+                                  className="border-l-[3px] border-warning-300 py-1 pl-2.5 text-sm leading-relaxed text-neutral-500"
+                                >
+                                  {warning}
+                                </li>
                               ))}
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    ) : null}
-                    <div className="stock-analysis-page__decision-detail-grid">
-                      <section>
-                        <h3>门控条件</h3>
-                        <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
-                          {marketState.conditions.map((condition) => (
-                            <li key={condition.key}>
-                              <span>
-                                <strong>{condition.label}</strong>
-                                <small>{condition.evidence}</small>
-                              </span>
-                              <em>{statusLabel(condition.status)}</em>
-                            </li>
-                          ))}
-                        </ul>
-                      </section>
-                      <section>
-                        <h3>需要关注边界</h3>
-                        {marketState.warnings.length > 0 ? (
-                          <ul className="stock-analysis-page__notes">
-                            {marketState.warnings.slice(0, 4).map((warning) => (
-                              <li key={warning}>{warning}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="stock-analysis-page__empty">当前无诊断预警。</p>
-                        )}
-                      </section>
-                    </div>
-                  </details>
-                </div>
-              </section>
-            ) : null}
-
-            <section
-              className="stock-analysis-page__first-screen-workbench"
-              data-testid="stock-analysis-first-screen-workbench"
-              aria-label="首屏研究工作台"
-            >
-              <article className="stock-analysis-page__mini-panel">
-                <div className="stock-analysis-page__mini-panel-head">
-                  <strong>
-                    <StatusIcon>{FIRST_SCREEN_ICONS[0]}</StatusIcon>
-                    板块供数
-                  </strong>
-                  <span>{backendSupplyOverview?.sectorSupplyLabel ?? "板块 0"}</span>
-                </div>
-                <div
-                  className="stock-analysis-page__mini-chart"
-                  data-testid="stock-analysis-sector-mini-chart"
-                  aria-label="板块供数图"
-                >
-                  {sectorChartRows.length > 0 ? (
-                    <ReactECharts
-                      option={sectorMiniChartOption}
-                      className="stock-analysis-page__echart"
-                      style={miniBarChartStyle}
-                      opts={{ renderer: "canvas" }}
-                      notMerge
-                      lazyUpdate
-                    />
-                  ) : (
-                    <span className="stock-analysis-page__empty stock-analysis-page__empty--signal">-</span>
-                  )}
-                </div>
-                <div className="stock-analysis-page__mini-table" aria-label="板块供数首屏摘要">
-                  {sectorRowsFull.slice(0, 5).map((row) => (
-                    <div key={row.sectorCode}>
-                      <span>#{row.rank} {row.sectorName}</span>
-                      <strong className="stock-analysis-page__tabular">{row.score}</strong>
-                      <small className="stock-analysis-page__tabular">{row.pctChange}</small>
-                    </div>
-                  ))}
-                </div>
-              </article>
-
-              <article className="stock-analysis-page__mini-panel">
-                <div className="stock-analysis-page__mini-panel-head">
-                  <strong>
-                    <StatusIcon>{FIRST_SCREEN_ICONS[1]}</StatusIcon>
-                    规则就绪
-                  </strong>
-                  <span>{backendSupplyOverview?.readinessLabel ?? "就绪 0/0"}</span>
-                </div>
-                <div
-                  className="stock-analysis-page__mini-chart"
-                  data-testid="stock-analysis-review-mini-chart"
-                  aria-label="规则就绪分布图"
-                >
-                  {readinessChartRows.length > 0 ? (
-                    <ReactECharts
-                      option={readinessMiniChartOption}
-                      className="stock-analysis-page__echart"
-                      style={miniBarChartStyle}
-                      opts={{ renderer: "canvas" }}
-                      notMerge
-                      lazyUpdate
-                    />
-                  ) : (
-                    <span className="stock-analysis-page__empty stock-analysis-page__empty--signal">-</span>
-                  )}
-                </div>
-                {backendSupplyOverview?.readinessRows.length ? (
-                  <div className="stock-analysis-page__mini-table" aria-label="规则就绪首屏摘要">
-                    {backendSupplyOverview.readinessRows.slice(0, 4).map((row) => (
-                      <div key={row.key} data-level={row.status}>
-                        <span>{row.title}</span>
-                        <strong>{row.status}</strong>
-                        <small title={row.missing_inputs.join(" / ") || row.summary}>
-                          {row.missing_inputs[0] ?? "ready"}
-                        </small>
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-neutral-500">当前无诊断预警。</p>
+                          )}
+                        </section>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="stock-analysis-page__empty stock-analysis-page__empty--signal" aria-label="暂无规则就绪项">
-                    -
-                  </p>
-                )}
-              </article>
-
-              <article className="stock-analysis-page__mini-panel">
-                <div className="stock-analysis-page__mini-panel-head">
-                  <strong>
-                    <StatusIcon>{FIRST_SCREEN_ICONS[2]}</StatusIcon>
-                    输出可用
-                  </strong>
-                  <span>{backendSupplyOverview?.supportedLabel ?? "可用 0"}</span>
-                </div>
-                <div
-                  className="stock-analysis-page__mini-chart stock-analysis-page__mini-chart--stack"
-                  data-testid="stock-analysis-event-mini-chart"
-                  aria-label="输出可用分布图"
-                >
-                  {outputChartRows.some((row) => row.value > 0) ? (
-                    <ReactECharts
-                      option={outputMiniChartOption}
-                      className="stock-analysis-page__echart"
-                      style={miniStackChartStyle}
-                      opts={{ renderer: "canvas" }}
-                      notMerge
-                      lazyUpdate
-                    />
-                  ) : (
-                    <span className="stock-analysis-page__empty stock-analysis-page__empty--signal">-</span>
-                  )}
-                </div>
-                    {backendSupplyOverview ? (
-                  <div className="stock-analysis-page__mini-table" aria-label="输出可用首屏摘要">
-                    <div>
-                      <span>候选</span>
-                      <strong>{backendSupplyOverview.candidateSupplyLabel}</strong>
-                      <small>stock_candidates</small>
-                    </div>
-                    {backendSupplyOverview.supportedOutputs.slice(0, 4).map((key) => (
-                      <div key={key}>
-                        <span>{outputLabel(key)}</span>
-                        <strong>可用</strong>
-                        <small>{key}</small>
                       </div>
-                    ))}
-                    {backendSupplyOverview.unsupportedOutputs.slice(0, 2).map((row) => (
-                      <div key={row.key} data-level="blocked">
-                        <span>{outputLabel(row.key)}</span>
-                        <strong>阻断</strong>
-                        <small title={row.reason}>{compactText(row.reason, 10)}</small>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="stock-analysis-page__empty stock-analysis-page__empty--signal" aria-label="当前无复核候选">
-                    -
-                  </p>
-                )}
-              </article>
-
-              <article className="stock-analysis-page__mini-panel">
-                <div className="stock-analysis-page__mini-panel-head">
-                  <strong>
-                    <StatusIcon>{FIRST_SCREEN_ICONS[3]}</StatusIcon>
-                    风险供数
-                  </strong>
-                  <span>{backendSupplyOverview?.riskSupplyLabel ?? "风险 0"}</span>
-                </div>
-                <div
-                  className="stock-analysis-page__mini-chart stock-analysis-page__mini-chart--stack"
-                  data-testid="stock-analysis-risk-mini-chart"
-                  aria-label="风险供数分布图"
-                >
-                  {riskSupplyChartRows.some((row) => row.value > 0) ? (
-                    <ReactECharts
-                      option={riskSupplyMiniChartOption}
-                      className="stock-analysis-page__echart"
-                      style={miniStackChartStyle}
-                      opts={{ renderer: "canvas" }}
-                      notMerge
-                      lazyUpdate
-                    />
-                  ) : (
-                    <span className="stock-analysis-page__empty stock-analysis-page__empty--signal">-</span>
-                  )}
-                </div>
-                {backendSupplyOverview ? (
-                  <div className="stock-analysis-page__mini-table" aria-label="风险供数首屏摘要">
-                    <div>
-                      <span>持仓</span>
-                      <strong className="stock-analysis-page__tabular">
-                        持仓 {backendSupplyOverview.risk?.position_count ?? 0}
-                      </strong>
-                      <small>position</small>
-                    </div>
-                    <div>
-                      <span>触发</span>
-                      <strong className="stock-analysis-page__tabular">
-                        触发 {backendSupplyOverview.risk?.signal_count ?? 0}
-                      </strong>
-                      <small>signal</small>
-                    </div>
-                    <div>
-                      <span>观察</span>
-                      <strong className="stock-analysis-page__tabular">
-                        观察 {backendSupplyOverview.risk?.watch_items?.length ?? 0}
-                      </strong>
-                      <small>watch</small>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="stock-analysis-page__empty stock-analysis-page__empty--signal" aria-label="暂无关键事件">
-                    -
-                  </p>
-                )}
-              </article>
-            </section>
-
-            {showStaleBanner ? (
-              <div className="stock-analysis-page__stale-banner" data-testid="stock-analysis-stale-banner" role="status">
-                数据陈旧、通道异常或使用回退快照（quality_flag / vendor_status / fallback_mode）。下方结论仅供复核参考。
-              </div>
-            ) : null}
-
-            <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
-              <div className="stock-analysis-page__primary">
-              {cycleRotationFramework ? (
-                <section
-                  className="stock-analysis-page__panel stock-analysis-page__panel--compact stock-analysis-page__cycle-framework"
-                  data-testid="stock-analysis-cycle-rotation-framework"
-                >
-                  <div className="stock-analysis-page__section-head">
-                    <div>
-                      <h2>{cycleRotationFramework.display_name}</h2>
-                      <p>{cycleRotationFramework.boundary}</p>
-                    </div>
-                    <span className="stock-analysis-page__pill">
-                      {cycleRotationFramework.implementation_stage}
-                    </span>
-                  </div>
-                  <div className="stock-analysis-page__cycle-formulas">
-                    <strong>{cycleRotationFramework.score_formula}</strong>
-                    {cycleRotationFramework.macro_formula ? (
-                      <span>{cycleRotationFramework.macro_formula}</span>
-                    ) : null}
-                    {cycleRotationFramework.lifecourt_formula ? (
-                      <span>{cycleRotationFramework.lifecourt_formula}</span>
-                    ) : null}
-                    {cycleRotationFramework.fusion_formula ? (
-                      <span>{cycleRotationFramework.fusion_formula}</span>
-                    ) : null}
-                    <small>{cycleRotationFramework.rebalance_cadence}</small>
-                  </div>
-                  {cycleMacroLayerSummary ? (
-                    <div
-                      className="stock-analysis-page__cycle-macro-layer"
-                      data-testid="stock-analysis-cycle-macro-layer"
-                    >
-                      <div className="stock-analysis-page__section-head">
-                        <strong>宏观层 MacroScore</strong>
-                        <span className="stock-analysis-page__pill">
-                          {cycleMacroLayerSummary.statusLabel}
-                        </span>
-                      </div>
-                      <p>
-                        MacroScore {cycleMacroLayerSummary.macroScoreLabel} · 融合公式{" "}
-                        {cycleMacroLayerSummary.formulaVersionLabel}
-                      </p>
-                      <p>{cycleMacroLayerSummary.evidence}</p>
-                      <small>{cycleMacroLayerSummary.detailLabel}</small>
-                      {cycleMacroLayerSummary.macroGapLabels.length > 0 ? (
-                        <div className="stock-analysis-page__cycle-constraints">
-                          {cycleMacroLayerSummary.macroGapLabels.map((gap) => (
-                            <span key={gap}>{gap}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {cycleRotationFramework.lifecourt_overlay ? (
-                    <div className="stock-analysis-page__cycle-lifecourt-overlay">
-                      <strong>{cycleRotationFramework.lifecourt_overlay.display_name}</strong>
-                      <p>{cycleRotationFramework.lifecourt_overlay.boundary}</p>
-                      <small>
-                        Available: {cycleRotationFramework.lifecourt_overlay.available_inputs.join(", ") || "-"} /
-                        Missing: {cycleRotationFramework.lifecourt_overlay.missing_inputs.join(", ") || "-"}
-                      </small>
-                      <div className="stock-analysis-page__cycle-constraints">
-                        {cycleRotationFramework.lifecourt_overlay.life_long_gates.map((gate) => (
-                          <span key={gate}>{gate}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="stock-analysis-page__cycle-layer-grid">
-                    {cycleRotationFramework.layers.map((layer) => (
-                      <article className="stock-analysis-page__cycle-layer" key={layer.key}>
-                        <div>
-                          <span>{layer.title}</span>
-                          <strong>{layer.weight == null ? "guardrail" : `${Math.round(layer.weight * 100)}%`}</strong>
-                        </div>
-                        <em>{layer.status}</em>
-                        <p>{layer.evidence}</p>
-                        <small>
-                          Available: {layer.available_inputs.join(", ") || "-"} / Missing:{" "}
-                          {layer.missing_inputs.join(", ") || "-"}
-                        </small>
-                      </article>
-                    ))}
-                  </div>
-                  <div className="stock-analysis-page__cycle-constraints">
-                    {cycleRotationFramework.constraints.map((constraint) => (
-                      <span key={constraint}>{constraint}</span>
-                    ))}
-                  </div>
-                  <div
-                    className="stock-analysis-page__cycle-proxy-backtest"
-                    data-testid="stock-analysis-candidate-history-portfolio-backtest"
-                  >
-                    {candidateHistoryPortfolioBacktestQuery.isLoading ? (
-                      <p className="stock-analysis-page__empty">组合回测加载中。</p>
-                    ) : null}
-                    {candidateHistoryPortfolioBacktestQuery.isError ? (
-                      <p className="stock-analysis-page__notice">
-                        组合回测暂不可用：{errorMessage(candidateHistoryPortfolioBacktestQuery.error)}
-                      </p>
-                    ) : null}
-                    {!candidateHistoryPortfolioBacktestQuery.isLoading &&
-                    !candidateHistoryPortfolioBacktestQuery.isError ? (
-                      candidateHistoryPortfolioBacktestPayload?.status === "portfolio_proxy" &&
-                      candidateHistoryPortfolioBacktestPayload.summary ? (
-                        <>
-                          <p className="stock-analysis-page__footnote">
-                            当前更接近执行层的是候选历史组合回测；完整策略仍缺少{" "}
-                            {candidateHistoryPortfolioBacktestPayload.missing_full_strategy_inputs.join("、")}。
-                          </p>
-                          <div className="stock-analysis-page__cycle-proxy-grid">
-                            <div>
-                              <span>组合回测收益</span>
-                              <strong>
-                                {formatBacktestSignedPercent(
-                                  candidateHistoryPortfolioBacktestPayload.summary.cumulative_return,
-                                )}
-                              </strong>
-                            </div>
-                            <div>
-                              <span>最大上涨区间</span>
-                              <strong>
-                                {formatBacktestSignedPercent(
-                                  candidateHistoryPortfolioBacktestPayload.summary.max_gain.return,
-                                )}
-                              </strong>
-                              <small>
-                                {candidateHistoryPortfolioBacktestPayload.summary.max_gain.start_date} 至{" "}
-                                {candidateHistoryPortfolioBacktestPayload.summary.max_gain.end_date}
-                              </small>
-                            </div>
-                            <div>
-                              <span>最大回撤区间</span>
-                              <strong>
-                                {formatBacktestSignedPercent(
-                                  candidateHistoryPortfolioBacktestPayload.summary.max_drawdown.return,
-                                )}
-                              </strong>
-                              <small>
-                                {candidateHistoryPortfolioBacktestPayload.summary.max_drawdown.peak_date} 至{" "}
-                                {candidateHistoryPortfolioBacktestPayload.summary.max_drawdown.trough_date}
-                              </small>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <p className="stock-analysis-page__footnote">
-                          候选历史组合回测暂无可用样本，完整策略仍处于待验证状态。
-                        </p>
-                      )
-                    ) : null}
-                  </div>
-                  <div
-                    className="stock-analysis-page__cycle-proxy-backtest"
-                    data-testid="stock-analysis-cycle-proxy-backtest"
-                  >
-                    {cycleProxyBacktestQuery.isLoading ? (
-                      <p className="stock-analysis-page__empty">代理回测加载中。</p>
-                    ) : null}
-                    {cycleProxyBacktestQuery.isError ? (
-                      <p className="stock-analysis-page__notice">
-                        代理回测暂不可用：{errorMessage(cycleProxyBacktestQuery.error)}
-                      </p>
-                    ) : null}
-                    {!cycleProxyBacktestQuery.isLoading && !cycleProxyBacktestQuery.isError ? (
-                      cycleProxyBacktestPayload?.status === "proxy" && cycleProxyBacktestPayload.summary ? (
-                        <>
-                          <p className="stock-analysis-page__footnote">
-                            当前仅能输出代理回测；完整策略仍缺少{" "}
-                            {cycleProxyBacktestPayload.missing_full_strategy_inputs.join("、")}。
-                          </p>
-                          <div className="stock-analysis-page__cycle-proxy-grid">
-                            <div>
-                              <span>累计收益</span>
-                              <strong>{formatBacktestSignedPercent(cycleProxyBacktestPayload.summary.cumulative_return)}</strong>
-                            </div>
-                            <div>
-                              <span>最大上涨区间</span>
-                              <strong>
-                                {formatBacktestSignedPercent(cycleProxyBacktestPayload.summary.max_gain.return)}
-                              </strong>
-                              <small>
-                                {cycleProxyBacktestPayload.summary.max_gain.start_date} 至{" "}
-                                {cycleProxyBacktestPayload.summary.max_gain.end_date}
-                              </small>
-                            </div>
-                            <div>
-                              <span>最大回撤区间</span>
-                              <strong>
-                                {formatBacktestSignedPercent(cycleProxyBacktestPayload.summary.max_drawdown.return)}
-                              </strong>
-                              <small>
-                                {cycleProxyBacktestPayload.summary.max_drawdown.peak_date} 至{" "}
-                                {cycleProxyBacktestPayload.summary.max_drawdown.trough_date}
-                              </small>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <p className="stock-analysis-page__footnote">
-                          代理回测暂无可用样本，完整策略仍处于待验证状态。
-                        </p>
-                      )
-                    ) : null}
+                    </details>
                   </div>
                 </section>
-              ) : null}
+
+                {kpiStrip.length > 0 ? (
+                  <section
+                    className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6"
+                    data-testid="stock-analysis-kpi-strip"
+                    aria-label="核心 KPI"
+                  >
+                    {kpiStrip.map((item) => (
+                      <EquityKpiCard
+                        key={item.key}
+                        label={item.label}
+                        value={item.value}
+                        deltaText={item.detail}
+                        deltaTone={kpiToneToDelta(item.tone)}
+                      />
+                    ))}
+                  </section>
+                ) : null}
+
+                <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3" data-testid="stock-analysis-first-screen-workbench">
+                  <div className="flex flex-col gap-4 xl:col-span-2" data-testid="stock-analysis-first-screen-primary">
+                    <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
+                      <article className="stock-analysis-page__mini-panel">
+                        <div className="stock-analysis-page__mini-panel-head">
+                          <strong>
+                            <StatusIcon>{FIRST_SCREEN_ICONS[0]}</StatusIcon>
+                            板块供数
+                          </strong>
+                          <span>{backendSupplyOverview?.sectorSupplyLabel ?? "板块 0"}</span>
+                        </div>
+                        <div
+                          className="stock-analysis-page__mini-chart"
+                          data-testid="stock-analysis-sector-mini-chart"
+                          aria-label="板块供数图"
+                        >
+                          {sectorChartRows.length > 0 ? (
+                            <ReactECharts
+                              option={sectorMiniChartOption}
+                              className="stock-analysis-page__echart"
+                              style={miniBarChartStyle}
+                              opts={{ renderer: "canvas" }}
+                              notMerge
+                              lazyUpdate
+                            />
+                          ) : (
+                            <span className="stock-analysis-page__empty stock-analysis-page__empty--signal">-</span>
+                          )}
+                        </div>
+                      </article>
+                      <article className="stock-analysis-page__mini-panel">
+                        <div className="stock-analysis-page__mini-panel-head">
+                          <strong>
+                            <StatusIcon>{FIRST_SCREEN_ICONS[1]}</StatusIcon>
+                            规则就绪
+                          </strong>
+                          <span>{backendSupplyOverview?.readinessLabel ?? "就绪 0/0"}</span>
+                        </div>
+                        <div
+                          className="stock-analysis-page__mini-chart"
+                          data-testid="stock-analysis-review-mini-chart"
+                          aria-label="规则就绪分布图"
+                        >
+                          {readinessChartRows.length > 0 ? (
+                            <ReactECharts
+                              option={readinessMiniChartOption}
+                              className="stock-analysis-page__echart"
+                              style={miniBarChartStyle}
+                              opts={{ renderer: "canvas" }}
+                              notMerge
+                              lazyUpdate
+                            />
+                          ) : null}
+                        </div>
+                      </article>
+                      <article className="stock-analysis-page__mini-panel">
+                        <div className="stock-analysis-page__mini-panel-head">
+                          <strong>
+                            <StatusIcon>{FIRST_SCREEN_ICONS[2]}</StatusIcon>
+                            输出可用
+                          </strong>
+                          <span>{backendSupplyOverview?.supportedLabel ?? "可用 0"}</span>
+                        </div>
+                        <div
+                          className="stock-analysis-page__mini-chart"
+                          data-testid="stock-analysis-event-mini-chart"
+                          aria-label="输出可用分布图"
+                        >
+                          {outputChartRows.some((row) => row.value > 0) ? (
+                            <ReactECharts
+                              option={outputMiniChartOption}
+                              className="stock-analysis-page__echart"
+                              style={miniStackChartStyle}
+                              opts={{ renderer: "canvas" }}
+                              notMerge
+                              lazyUpdate
+                            />
+                          ) : null}
+                        </div>
+                        {backendSupplyOverview ? (
+                          <div className="stock-analysis-page__mini-table" aria-label="输出可用首屏摘要">
+                            <div>
+                              <span>候选</span>
+                              <strong>{backendSupplyOverview.candidateSupplyLabel}</strong>
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                      <article className="stock-analysis-page__mini-panel">
+                        <div className="stock-analysis-page__mini-panel-head">
+                          <strong>
+                            <StatusIcon>{FIRST_SCREEN_ICONS[3]}</StatusIcon>
+                            风险供数
+                          </strong>
+                          <span>{backendSupplyOverview?.riskSupplyLabel ?? "风险 0"}</span>
+                        </div>
+                        <div
+                          className="stock-analysis-page__mini-chart"
+                          data-testid="stock-analysis-risk-mini-chart"
+                          aria-label="风险供数分布图"
+                        >
+                          {riskSupplyChartRows.some((row) => row.value > 0) ? (
+                            <ReactECharts
+                              option={riskSupplyMiniChartOption}
+                              className="stock-analysis-page__echart"
+                              style={miniStackChartStyle}
+                              opts={{ renderer: "canvas" }}
+                              notMerge
+                              lazyUpdate
+                            />
+                          ) : null}
+                        </div>
+                        {backendSupplyOverview ? (
+                          <div className="stock-analysis-page__mini-table" aria-label="风险供数首屏摘要">
+                            <div>
+                              <span>持仓</span>
+                              <strong className="stock-analysis-page__tabular">
+                                持仓 {backendSupplyOverview.risk?.position_count ?? 0}
+                              </strong>
+                            </div>
+                            <div>
+                              <span>触发</span>
+                              <strong className="stock-analysis-page__tabular">
+                                触发 {backendSupplyOverview.risk?.signal_count ?? 0}
+                              </strong>
+                            </div>
+                            <div>
+                              <span>观察</span>
+                              <strong className="stock-analysis-page__tabular">
+                                观察 {backendSupplyOverview.risk?.watch_items?.length ?? 0}
+                              </strong>
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    </div>
 
               <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--compact"
+                className={`${SA_CARD} shadow-sm`}
                 data-testid="stock-analysis-sector-strength-panel"
               >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>
+                <div className={SA_SECTION_HEAD}>
+                  <div className="min-w-0">
+                    <h2 className={`${SA_CARD_TITLE} inline-flex items-center gap-2`}>
                       <StatusIcon>{SECTION_HEAD_ICONS[0]}</StatusIcon>
                       板块强弱
                     </h2>
-                    <p>{sectorRowsFull.length} 个板块 / Top-Bottom 对比 / 点击筛选候选。</p>
+                    <p className={SA_SECTION_DESC}>
+                      {sectorRowsFull.length} 个板块 / Top-Bottom 对比 / 点击筛选候选。
+                    </p>
                   </div>
-                  <span className="stock-analysis-page__pill">
+                  <span className={SA_PILL}>
                     {(strategyPayload?.sector_rank?.formula_version ?? "").trim() || "formula 待补"}
                   </span>
                 </div>
@@ -2169,89 +1934,105 @@ export default function StockAnalysisPage() {
                     />
 
                     <div
-                      className="stock-analysis-page__sector-chart"
+                      className="mb-2 h-[190px] w-full min-w-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-50"
                       data-testid="stock-analysis-sector-strength-chart"
                       aria-label="板块强弱横向图"
                     >
                       {sectorStrengthChartRows.length > 0 ? (
                         <ReactECharts
                           option={sectorStrengthChartOption}
-                          className="stock-analysis-page__echart"
+                          className="min-w-0"
                           style={sectorStrengthChartStyle}
                           opts={{ renderer: "canvas" }}
                           notMerge
                           lazyUpdate
                         />
                       ) : (
-                        <span className="stock-analysis-page__empty stock-analysis-page__empty--signal">-</span>
+                        <span className="grid min-h-[54px] place-items-center font-mono text-2xl font-bold text-neutral-300">
+                          -
+                        </span>
                       )}
                     </div>
 
-                    <div className="stock-analysis-page__sector-bisect" data-testid="stock-analysis-sector-bars">
-                      <div>
-                        <h3 className="stock-analysis-page__sector-col-title">强势 Top 5</h3>
-                        <div className="stock-analysis-page__bar-list">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="stock-analysis-sector-bars">
+                      <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2.5">
+                        <h3 className="mb-2 text-sm font-semibold text-neutral-500">强势 Top 5</h3>
+                        <div className="grid gap-1.5">
                           {topBars.map((row) => (
                             <button
                               type="button"
                               key={`top-${row.sectorCode}-${row.rank}`}
-                              className={`stock-analysis-page__bar-row${sectorFilterSectorCode === row.sectorCode ? " stock-analysis-page__bar-row--active" : ""}`}
+                              className={`grid w-full gap-1 rounded-md border border-transparent bg-transparent p-0.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500${
+                                sectorFilterSectorCode === row.sectorCode
+                                  ? " shadow-[inset_3px_0_0_0_theme(colors.primary.600)] pl-2"
+                                  : ""
+                              }`}
                               aria-pressed={sectorFilterSectorCode === row.sectorCode}
                               data-testid={`sector-bar-${row.sectorCode}`}
                               onClick={() => toggleSectorFilter(row.sectorCode)}
                             >
-                              <div className="stock-analysis-page__bar-meta stock-analysis-page__table-number">
-                                <span>
+                              <div className="flex items-baseline justify-between gap-2 text-xs text-neutral-900" style={tabularNumStyle}>
+                                <span className="min-w-0 truncate">
                                   {row.rank}. {row.sectorName}{" "}
-                                  <small className="stock-analysis-page__tabular">{row.sectorCode}</small>
+                                  <small style={tabularNumStyle}>{row.sectorCode}</small>
                                 </span>
                                 <span>{row.score}</span>
                               </div>
-                              <div className="stock-analysis-page__bar-track">
+                              <div className="relative h-[18px] overflow-hidden rounded border border-neutral-200 bg-neutral-100">
                                 <div
-                                  className="stock-analysis-page__bar-fill"
+                                  className="absolute inset-y-0 left-0 bg-primary-600/20 transition-[width] duration-150 ease-out"
                                   style={{
                                     width: `${(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}%`,
                                   }}
                                 />
-                                <div className="stock-analysis-page__bar-label-overlay stock-analysis-page__table-number">
+                                <div
+                                  className="pointer-events-none absolute inset-0 flex items-center gap-1.5 px-2 text-[11px] font-semibold"
+                                  style={tabularNumStyle}
+                                >
                                   <span>{row.pctChange}</span>
-                                  <small>成分 {row.constituentCount}</small>
+                                  <small className="text-neutral-500">成分 {row.constituentCount}</small>
                                 </div>
                               </div>
                             </button>
                           ))}
                         </div>
                       </div>
-                      <div className="stock-analysis-page__sector-col--bottom">
-                        <h3 className="stock-analysis-page__sector-col-title">弱势 Bottom 5</h3>
-                        <div className="stock-analysis-page__bar-list">
+                      <div className="rounded-md border border-danger-100 bg-danger-50/30 p-2.5">
+                        <h3 className="mb-2 text-sm font-semibold text-neutral-500">弱势 Bottom 5</h3>
+                        <div className="grid gap-1.5">
                           {bottomBars.map((row) => (
                             <button
                               type="button"
                               key={`bottom-${row.sectorCode}-${row.rank}`}
-                              className={`stock-analysis-page__bar-row${sectorFilterSectorCode === row.sectorCode ? " stock-analysis-page__bar-row--active" : ""}`}
+                              className={`grid w-full gap-1 rounded-md border border-transparent bg-transparent p-0.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500${
+                                sectorFilterSectorCode === row.sectorCode
+                                  ? " shadow-[inset_3px_0_0_0_theme(colors.primary.600)] pl-2"
+                                  : ""
+                              }`}
                               aria-pressed={sectorFilterSectorCode === row.sectorCode}
                               data-testid={`sector-bar-bottom-${row.sectorCode}`}
                               onClick={() => toggleSectorFilter(row.sectorCode)}
                             >
-                              <div className="stock-analysis-page__bar-meta stock-analysis-page__table-number">
-                                <span>
+                              <div className="flex items-baseline justify-between gap-2 text-xs text-neutral-900" style={tabularNumStyle}>
+                                <span className="min-w-0 truncate">
                                   {row.rank}. {row.sectorName}{" "}
-                                  <small className="stock-analysis-page__tabular">{row.sectorCode}</small>
+                                  <small style={tabularNumStyle}>{row.sectorCode}</small>
                                 </span>
                                 <span>{row.pctChange}</span>
                               </div>
-                              <div className="stock-analysis-page__bar-track">
+                              <div className="relative h-[18px] overflow-hidden rounded border border-neutral-200 bg-neutral-100">
                                 <div
-                                  className="stock-analysis-page__bar-fill"
+                                  className="absolute inset-y-0 left-0 bg-danger-600/15 transition-[width] duration-150 ease-out"
                                   style={{
                                     width: `${(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}%`,
                                   }}
                                 />
-                                <div className="stock-analysis-page__bar-label-overlay stock-analysis-page__table-number">
+                                <div
+                                  className="pointer-events-none absolute inset-0 flex items-center gap-1.5 px-2 text-[11px] font-semibold"
+                                  style={tabularNumStyle}
+                                >
                                   <span>{row.pctChange}</span>
-                                  <small>成分 {row.constituentCount}</small>
+                                  <small className="text-neutral-500">成分 {row.constituentCount}</small>
                                 </div>
                               </div>
                             </button>
@@ -2259,7 +2040,7 @@ export default function StockAnalysisPage() {
                         </div>
                       </div>
                     </div>
-                    <p className="stock-analysis-page__footnote">
+                    <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
                       视图切换不重拉接口；条形图为单日截面，多日窗口可看下方聚合表（运行时聚合，sum 累加未复利）。
                     </p>
 
@@ -2478,27 +2259,714 @@ export default function StockAnalysisPage() {
                     />
                   </>
                 ) : (
-                  <p className="stock-analysis-page__empty">
-                    当前行业强弱不可用，请检查 Choice 股票目录与当日落地覆盖。
-                  </p>
+                  <div
+                    className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500"
+                    role="status"
+                  >
+                    板块数据不足，待补
+                  </div>
                 )}
               </section>
+
+              <section className={`${SA_CARD} shadow-sm`} data-testid="stock-analysis-review-queue">
+                <div className={SA_SECTION_HEAD}>
+                  <div className="min-w-0">
+                    <h2 className={SA_CARD_TITLE}>复核队列</h2>
+                    <p className={SA_SECTION_DESC}>
+                      {reviewQueueUsesHybridFusion
+                        ? "融合策略候选优先进入队列，先看融合分、代理证据、反证和失效条件。"
+                        : "按当前只读证据排列候选，先看为什么进入观察，再看反证、待补和失效条件。"}
+                    </p>
+                  </div>
+                  <span className={SA_PILL}>
+                    {reviewQueueUsesHybridFusion ? "融合策略 / 复核队列" : "候选 / 复核队列"}
+                  </span>
+                </div>
+
+                {reviewQueue.length > 0 ? (
+                  <div
+                    className="mb-2 flex max-h-[68px] flex-wrap gap-1.5 overflow-y-auto pb-0.5"
+                    data-testid="stock-sector-filter-chips"
+                  >
+                    <button
+                      type="button"
+                      className={filterChipClass(sectorFilterSectorCode === null)}
+                      onClick={() => setSectorFilterSectorCode(null)}
+                      aria-pressed={sectorFilterSectorCode === null}
+                    >
+                      全部行业
+                    </button>
+                    {sectorOptions.map(([code, label]) => (
+                      <button
+                        key={code}
+                        type="button"
+                        data-testid={`sector-filter-chip-${code}`}
+                        className={filterChipClass(sectorFilterSectorCode === code)}
+                        onClick={() => toggleSectorFilter(code)}
+                        aria-pressed={sectorFilterSectorCode === code}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {reviewQueue.length > 0 ? (
+                  <div
+                    className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2 text-xs text-neutral-500"
+                    data-testid="stock-review-filter-status"
+                  >
+                    <span>当前复核范围</span>
+                    <strong className="text-sm text-neutral-900">{selectedSectorLabel ?? "全部行业"}</strong>
+                    <small>
+                      显示 {filteredCandidates.length} / {reviewQueue.length} 个候选
+                      {reviewQueueUsesHybridFusion ? " · 融合策略候选优先" : ""}
+                    </small>
+                  </div>
+                ) : null}
+
+                {reviewQueue.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {filteredCandidates.map((card) => (
+                      <article
+                        className="grid gap-2.5 rounded-md border border-neutral-200 bg-white p-3.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
+                        data-testid={`stock-candidate-${card.stockCode}`}
+                        key={card.stockCode}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="m-0 text-base font-semibold text-neutral-900">{card.headline}</h3>
+                            <p className="mt-1 text-xs text-neutral-500">
+                              {card.stockCode} / {card.stockName} / {card.sectorName}
+                            </p>
+                            <div
+                              className="mt-1.5 inline-block rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-semibold text-neutral-500"
+                              title={card.patternNote}
+                            >
+                              形态：{card.pattern} / 距观察位 {card.distanceToBreakoutPct}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-1.5">
+                            <strong className="text-lg text-primary-700" style={tabularNumStyle}>
+                              #{card.rank}
+                            </strong>
+                            <Button
+                              type="default"
+                              size="small"
+                              data-testid={`stock-candidate-review-chart-${card.stockCode}`}
+                              onClick={() => {
+                                const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
+                                setDetailSelection({
+                                  code: card.stockCode,
+                                  name: card.stockName,
+                                  reviewRank: card.rank,
+                                  sectorCode: card.sectorCode,
+                                  sectorName: card.sectorName,
+                                  distanceToBreakoutPct: card.distanceToBreakoutPct,
+                            source: "review_queue",
+                            livermoreRank: reviewQueueUsesHybridFusion ? ranks.livermoreRank : card.rank,
+                            meanReversionRank: ranks.meanReversionRank,
+                            factorScreenRank: ranks.factorScreenRank,
+                            hybridFusionRank: reviewQueueUsesHybridFusion ? card.rank : ranks.hybridFusionRank,
+                          });
+                              }}
+                            >
+                              复核 K 线
+                            </Button>
+                            <span className="rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+                              观察
+                            </span>
+                          </div>
+                        </div>
+                        <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold leading-relaxed text-neutral-900">
+                          {card.reviewFocus}
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <div>
+                            <h4 className="mb-2 text-sm font-semibold text-neutral-900">为什么先看</h4>
+                            <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                              {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
+                                <li key={item.key}>
+                                  <strong className="text-neutral-900">{item.label}</strong>：{item.value}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-semibold text-neutral-900">反证与待补</h4>
+                            <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                              {card.boundaryEvidence.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-semibold text-neutral-900">失效条件</h4>
+                            <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold text-neutral-900">
+                              {card.invalidationFocus}
+                            </p>
+                            <ul className="m-0 mt-1 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                              {card.invalidationRules.slice(1).map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        <Collapse
+                          ghost
+                          bordered={false}
+                          items={[
+                            {
+                              key: "raw",
+                              label: "展开原始字段",
+                              children: (
+                                <dl className="stock-analysis-page__raw-grid">
+                                  {card.rawFields.map((field) => (
+                                    <div key={field.key}>
+                                      <dt>{field.label}</dt>
+                                      <dd>{field.value}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              ),
+                            },
+                          ]}
+                        />
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                  className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500"
+                  role="status"
+                >
+                  候选待补，暂无复核项
+                </div>
+                )}
+                {reviewQueue.length > 0 &&
+                sectorFilterSectorCode &&
+                filteredCandidates.length === 0 ? (
+                  <p className="stock-analysis-page__empty">
+                    该行业暂无候选复核项，可切换到其他行业复核。
+                  </p>
+                ) : null}
+              </section>
+
+
+                  </div>
+
+                  <aside className="flex flex-col gap-4" aria-label="风险与数据可信度" data-testid="stock-analysis-first-screen-rail">
+                    {closedLoopSummary ? (
+                      <section
+                        className={SA_CARD}
+                        data-testid="stock-analysis-closed-loop-summary"
+                        aria-label="闭环摘要"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h2 className={SA_CARD_TITLE}>闭环摘要</h2>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tonePillClass(closedLoopSummary.referenceRating.tone)}`}
+                          >
+                            {closedLoopSummary.referenceRating.label}
+                          </span>
+                        </div>
+
+                        <div
+                          className={`mt-3 rounded-md border px-3 py-2.5 ${closedLoopItemSurfaceClass(closedLoopSummary.verdict.tone)}`}
+                          data-testid="stock-analysis-closed-loop-verdict"
+                          data-tone={closedLoopSummary.verdict.tone}
+                        >
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className={`text-xs font-semibold ${toneTextClass(closedLoopSummary.verdict.tone)}`}>
+                              {closedLoopSummary.verdict.label}
+                            </span>
+                            <span className="text-sm font-medium text-neutral-900">
+                              {closedLoopSummary.verdict.headline}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-xs leading-relaxed text-neutral-600">
+                            {closedLoopSummary.verdict.primaryReason}
+                          </p>
+                          <details className="mt-2 text-xs text-neutral-600">
+                            <summary className="cursor-pointer select-none text-primary-600 hover:text-primary-700">
+                              查看依据与下一步
+                            </summary>
+                            <ul className="mt-2 space-y-1 pl-4" aria-label="闭环结论证据">
+                              {closedLoopSummary.verdict.evidence.map((item) => (
+                                <li key={item} className="list-disc" title={item}>
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-neutral-500">{closedLoopSummary.verdict.nextStep}</p>
+                          </details>
+                          <span className="stock-analysis-page__visually-hidden">{closedLoopSummary.referenceRating.detail}</span>
+                        </div>
+
+                        <ul className="mt-3 space-y-1.5" aria-label="闭环检查项">
+                          {closedLoopSummary.items.map((item) => (
+                            <li
+                              key={item.key}
+                              className={`rounded-md border px-2.5 py-2 ${closedLoopItemSurfaceClass(item.tone)}`}
+                              data-tone={item.tone}
+                              data-testid={item.key === "replay" ? "stock-analysis-replay-status" : undefined}
+                            >
+                              <div className="flex items-center justify-between gap-2 text-xs">
+                                <span className="flex min-w-0 items-center gap-1.5 text-neutral-600">
+                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${toneDotClass(item.tone)}`} />
+                                  <span className="truncate font-medium">{item.label}</span>
+                                </span>
+                                <strong className={`shrink-0 font-semibold ${toneTextClass(item.tone)}`}>
+                                  {item.statusLabel}
+                                </strong>
+                              </div>
+                              {item.detail ? (
+                                <p className="mt-1 pl-3 text-[11px] leading-snug text-neutral-500">{item.detail}</p>
+                              ) : null}
+                              {item.badges?.map((badge) => (
+                                <span className="stock-analysis-page__visually-hidden" key={badge}>
+                                  {badge}
+                                </span>
+                              ))}
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
+
+                    <section className={SA_CARD} data-testid="stock-analysis-risk-section">
+                      <h2 className={SA_CARD_TITLE}>风险退出观察</h2>
+                      <p className={SA_SECTION_DESC}>{riskRows.length} 项 · 触发与观察分层</p>
+                      {confluenceQuery.isError ? (
+                        <p className="text-xs text-warning-700">联动观察暂不可用。</p>
+                      ) : null}
+                      {riskExitUnsupported ? (
+                        <div className="mt-2 grid gap-1.5 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-800">
+                          <strong>风险退出观察暂不可用。</strong>
+                          <p className="m-0">{riskExitUnsupported.reason}</p>
+                        </div>
+                      ) : null}
+                      {riskRows.length > 0 ? (
+                        <div className="space-y-2">
+                          {riskRows.slice(0, 5).map((row) => (
+                            <div
+                              className="cursor-pointer rounded-md border border-neutral-100 bg-neutral-50 p-2 text-xs transition-colors hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+                              data-testid={`stock-risk-row-${row.stockCode}`}
+                              key={`${row.stockCode}:${row.status}:${row.reason}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
+                                setDetailSelection({
+                                  code: row.stockCode,
+                                  name: row.stockName,
+                                  source: "risk_exit",
+                                  livermoreRank: ranks.livermoreRank,
+                                  meanReversionRank: ranks.meanReversionRank,
+                                  factorScreenRank: ranks.factorScreenRank,
+                                  hybridFusionRank: ranks.hybridFusionRank,
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
+                                  setDetailSelection({
+                                    code: row.stockCode,
+                                    name: row.stockName,
+                                    source: "risk_exit",
+                                    livermoreRank: ranks.livermoreRank,
+                                    meanReversionRank: ranks.meanReversionRank,
+                                    factorScreenRank: ranks.factorScreenRank,
+                                    hybridFusionRank: ranks.hybridFusionRank,
+                                  });
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <strong className="text-neutral-900">{row.stockName}</strong>
+                                <span className={toneTextClass(row.status === "triggered" ? "negative" : "warning")}>
+                                  {riskStatusLabel(row.status)}
+                                </span>
+                              </div>
+                              <small className="text-neutral-500">{row.stockCode}</small>
+                              <p className="mt-1 text-neutral-600">{row.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-neutral-500">
+                          {riskExitUnsupported ? "等待持仓快照接入后生成风险退出观察项。" : "当前无风险退出观察项。"}
+                        </p>
+                      )}
+                    </section>
+
+                    <section className={SA_CARD} data-testid="stock-analysis-boundary-rail">
+                      <h2 className={SA_CARD_TITLE}>数据口径与边界</h2>
+                      <div className="space-y-2">
+                        {evidenceStatusItems.map((item) => (
+                          <div key={item.key} className="flex items-start gap-2 text-xs">
+                            <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${toneDotClass(item.tone)}`} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-neutral-600">{item.label}</span>
+                                <strong className="text-neutral-900" style={tabularNumStyle}>
+                                  {item.statusLabel}
+                                </strong>
+                              </div>
+                              <p className="m-0 mt-0.5 text-neutral-500">{item.detail}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {boundarySummary ? (
+                        <p
+                          className="mt-3 border-t border-neutral-100 pt-3 text-xs leading-relaxed text-neutral-500"
+                          data-testid="stock-analysis-boundary-summary"
+                        >
+                          <strong className="text-neutral-900">{boundarySummary.summaryLabel}</strong>
+                          <span className="ml-1">{boundarySummary.detailLabel}</span>
+                          {boundarySummary.topMessages[0] ? (
+                            <small className="mt-1 block text-neutral-500">{boundarySummary.topMessages[0]}</small>
+                          ) : null}
+                        </p>
+                      ) : null}
+                      <Button
+                        type="link"
+                        className="mt-1 px-0"
+                        aria-expanded={boundaryDrawerOpen}
+                        onClick={() => setBoundaryDrawerOpen(true)}
+                      >
+                        查看完整诊断
+                      </Button>
+                      <Drawer
+                        title="数据口径诊断"
+                        open={boundaryDrawerOpen}
+                        onClose={() => setBoundaryDrawerOpen(false)}
+                        destroyOnClose
+                        width={480}
+                      >
+                        {strategyPayload ? (
+                          <>
+                            <Text strong type="danger">
+                              严重 / Error
+                            </Text>
+                            <ul>
+                              {strategyPayload.diagnostics
+                                .filter((d) => d.severity === "error")
+                                .map((d) => (
+                                  <li key={d.code}>{d.message}</li>
+                                ))}
+                              {strategyPayload.diagnostics.filter((d) => d.severity === "error").length === 0 ? (
+                                <li>暂无</li>
+                              ) : null}
+                            </ul>
+                            <Text strong type="warning">
+                              警告 / Warning
+                            </Text>
+                            <ul>
+                              {strategyPayload.diagnostics
+                                .filter((d) => d.severity === "warning")
+                                .map((d) => (
+                                  <li key={d.code}>{d.message}</li>
+                                ))}
+                              {strategyPayload.diagnostics.filter((d) => d.severity === "warning").length === 0 ? (
+                                <li>暂无</li>
+                              ) : null}
+                            </ul>
+                            <Text strong type="secondary">
+                              信息 / Info
+                            </Text>
+                            <ul>
+                              {strategyPayload.diagnostics
+                                .filter((d) => d.severity === "info")
+                                .map((d) => (
+                                  <li key={d.code}>{d.message}</li>
+                                ))}
+                            </ul>
+                            <Typography.Title level={5}>data_gaps</Typography.Title>
+                            <ul>
+                              {strategyPayload.data_gaps.map((g) => (
+                                <li key={`${g.input_family}-${g.status}`}>
+                                  <strong>{g.input_family}</strong> {g.status}: {g.evidence}
+                                </li>
+                              ))}
+                            </ul>
+                            <Typography.Title level={5}>supported_outputs</Typography.Title>
+                            <p>{strategyPayload.supported_outputs.join(", ") || "无"}</p>
+                            <Typography.Title level={5}>unsupported_outputs</Typography.Title>
+                            <ul>
+                              {strategyPayload.unsupported_outputs.map((u) => (
+                                <li key={u.key}>
+                                  <strong>{u.key}</strong>: {u.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                      </Drawer>
+                    </section>
+
+                  </aside>
+                </div>
+              </div>
+            ) : null}
+
+            <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
+              <div className="stock-analysis-page__primary">
+              {cycleRotationFramework ? (
+                <section
+                  className="stock-analysis-page__panel stock-analysis-page__panel--compact stock-analysis-page__cycle-framework"
+                  data-testid="stock-analysis-cycle-rotation-framework"
+                >
+                  <Collapse
+                    ghost
+                    bordered={false}
+                    className="stock-analysis-page__deep-collapse"
+                    items={[
+                      {
+                        key: "cycle-framework",
+                        forceRender: true,
+                        label: (
+                          <div className="stock-analysis-page__section-head">
+                            <div>
+                              <h2>{cycleRotationFramework.display_name}</h2>
+                              <p>{cycleRotationFramework.boundary}</p>
+                            </div>
+                            <span className="stock-analysis-page__pill">
+                              {cycleRotationFramework.implementation_stage}
+                            </span>
+                          </div>
+                        ),
+                        children: (
+                          <>
+                  <div className="stock-analysis-page__cycle-formulas">
+                    <strong>{cycleRotationFramework.score_formula}</strong>
+                    {cycleRotationFramework.macro_formula ? (
+                      <span>{cycleRotationFramework.macro_formula}</span>
+                    ) : null}
+                    {cycleRotationFramework.lifecourt_formula ? (
+                      <span>{cycleRotationFramework.lifecourt_formula}</span>
+                    ) : null}
+                    {cycleRotationFramework.fusion_formula ? (
+                      <span>{cycleRotationFramework.fusion_formula}</span>
+                    ) : null}
+                    <small>{cycleRotationFramework.rebalance_cadence}</small>
+                  </div>
+                  {cycleMacroLayerSummary ? (
+                    <div
+                      className="stock-analysis-page__cycle-macro-layer"
+                      data-testid="stock-analysis-cycle-macro-layer"
+                    >
+                      <div className="stock-analysis-page__section-head">
+                        <strong>宏观层 MacroScore</strong>
+                        <span className="stock-analysis-page__pill">
+                          {cycleMacroLayerSummary.statusLabel}
+                        </span>
+                      </div>
+                      <p>
+                        MacroScore {cycleMacroLayerSummary.macroScoreLabel} · 融合公式{" "}
+                        {cycleMacroLayerSummary.formulaVersionLabel}
+                      </p>
+                      <p>{cycleMacroLayerSummary.evidence}</p>
+                      <small>{cycleMacroLayerSummary.detailLabel}</small>
+                      {cycleMacroLayerSummary.macroGapLabels.length > 0 ? (
+                        <div className="stock-analysis-page__cycle-constraints">
+                          {cycleMacroLayerSummary.macroGapLabels.map((gap) => (
+                            <span key={gap}>{gap}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {cycleRotationFramework.lifecourt_overlay ? (
+                    <div className="stock-analysis-page__cycle-lifecourt-overlay">
+                      <strong>{cycleRotationFramework.lifecourt_overlay.display_name}</strong>
+                      <p>{cycleRotationFramework.lifecourt_overlay.boundary}</p>
+                      <small>
+                        Available: {cycleRotationFramework.lifecourt_overlay.available_inputs.join(", ") || "-"} /
+                        Missing: {cycleRotationFramework.lifecourt_overlay.missing_inputs.join(", ") || "-"}
+                      </small>
+                      <div className="stock-analysis-page__cycle-constraints">
+                        {cycleRotationFramework.lifecourt_overlay.life_long_gates.map((gate) => (
+                          <span key={gate}>{gate}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="stock-analysis-page__cycle-layer-grid">
+                    {cycleRotationFramework.layers.map((layer) => (
+                      <article className="stock-analysis-page__cycle-layer" key={layer.key}>
+                        <div>
+                          <span>{layer.title}</span>
+                          <strong>{layer.weight == null ? "guardrail" : `${Math.round(layer.weight * 100)}%`}</strong>
+                        </div>
+                        <em>{layer.status}</em>
+                        <p>{layer.evidence}</p>
+                        <small>
+                          Available: {layer.available_inputs.join(", ") || "-"} / Missing:{" "}
+                          {layer.missing_inputs.join(", ") || "-"}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="stock-analysis-page__cycle-constraints">
+                    {cycleRotationFramework.constraints.map((constraint) => (
+                      <span key={constraint}>{constraint}</span>
+                    ))}
+                  </div>
+                  <div
+                    className="stock-analysis-page__cycle-proxy-backtest"
+                    data-testid="stock-analysis-candidate-history-portfolio-backtest"
+                  >
+                    {candidateHistoryPortfolioBacktestQuery.isLoading ? (
+                      <p className="stock-analysis-page__empty">组合回测加载中。</p>
+                    ) : null}
+                    {candidateHistoryPortfolioBacktestQuery.isError ? (
+                      <p className="stock-analysis-page__notice">
+                        组合回测暂不可用：{errorMessage(candidateHistoryPortfolioBacktestQuery.error)}
+                      </p>
+                    ) : null}
+                    {!candidateHistoryPortfolioBacktestQuery.isLoading &&
+                    !candidateHistoryPortfolioBacktestQuery.isError ? (
+                      candidateHistoryPortfolioBacktestPayload?.status === "portfolio_proxy" &&
+                      candidateHistoryPortfolioBacktestPayload.summary ? (
+                        <>
+                          <p className="stock-analysis-page__footnote">
+                            当前更接近执行层的是候选历史组合回测；完整策略仍缺少{" "}
+                            {candidateHistoryPortfolioBacktestPayload.missing_full_strategy_inputs.join("、")}。
+                          </p>
+                          <div className="stock-analysis-page__cycle-proxy-grid">
+                            <div>
+                              <span>组合回测收益</span>
+                              <strong>
+                                {formatBacktestSignedPercent(
+                                  candidateHistoryPortfolioBacktestPayload.summary.cumulative_return,
+                                )}
+                              </strong>
+                            </div>
+                            <div>
+                              <span>最大上涨区间</span>
+                              <strong>
+                                {formatBacktestSignedPercent(
+                                  candidateHistoryPortfolioBacktestPayload.summary.max_gain.return,
+                                )}
+                              </strong>
+                              <small>
+                                {candidateHistoryPortfolioBacktestPayload.summary.max_gain.start_date} 至{" "}
+                                {candidateHistoryPortfolioBacktestPayload.summary.max_gain.end_date}
+                              </small>
+                            </div>
+                            <div>
+                              <span>最大回撤区间</span>
+                              <strong>
+                                {formatBacktestSignedPercent(
+                                  candidateHistoryPortfolioBacktestPayload.summary.max_drawdown.return,
+                                )}
+                              </strong>
+                              <small>
+                                {candidateHistoryPortfolioBacktestPayload.summary.max_drawdown.peak_date} 至{" "}
+                                {candidateHistoryPortfolioBacktestPayload.summary.max_drawdown.trough_date}
+                              </small>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="stock-analysis-page__footnote">
+                          候选历史组合回测暂无可用样本，完整策略仍处于待验证状态。
+                        </p>
+                      )
+                    ) : null}
+                  </div>
+                  <div
+                    className="stock-analysis-page__cycle-proxy-backtest"
+                    data-testid="stock-analysis-cycle-proxy-backtest"
+                  >
+                    {cycleProxyBacktestQuery.isLoading ? (
+                      <p className="stock-analysis-page__empty">代理回测加载中。</p>
+                    ) : null}
+                    {cycleProxyBacktestQuery.isError ? (
+                      <p className="stock-analysis-page__notice">
+                        代理回测暂不可用：{errorMessage(cycleProxyBacktestQuery.error)}
+                      </p>
+                    ) : null}
+                    {!cycleProxyBacktestQuery.isLoading && !cycleProxyBacktestQuery.isError ? (
+                      cycleProxyBacktestPayload?.status === "proxy" && cycleProxyBacktestPayload.summary ? (
+                        <>
+                          <p className="stock-analysis-page__footnote">
+                            当前仅能输出代理回测；完整策略仍缺少{" "}
+                            {cycleProxyBacktestPayload.missing_full_strategy_inputs.join("、")}。
+                          </p>
+                          <div className="stock-analysis-page__cycle-proxy-grid">
+                            <div>
+                              <span>累计收益</span>
+                              <strong>{formatBacktestSignedPercent(cycleProxyBacktestPayload.summary.cumulative_return)}</strong>
+                            </div>
+                            <div>
+                              <span>最大上涨区间</span>
+                              <strong>
+                                {formatBacktestSignedPercent(cycleProxyBacktestPayload.summary.max_gain.return)}
+                              </strong>
+                              <small>
+                                {cycleProxyBacktestPayload.summary.max_gain.start_date} 至{" "}
+                                {cycleProxyBacktestPayload.summary.max_gain.end_date}
+                              </small>
+                            </div>
+                            <div>
+                              <span>最大回撤区间</span>
+                              <strong>
+                                {formatBacktestSignedPercent(cycleProxyBacktestPayload.summary.max_drawdown.return)}
+                              </strong>
+                              <small>
+                                {cycleProxyBacktestPayload.summary.max_drawdown.peak_date} 至{" "}
+                                {cycleProxyBacktestPayload.summary.max_drawdown.trough_date}
+                              </small>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="stock-analysis-page__footnote">
+                          代理回测暂无可用样本，完整策略仍处于待验证状态。
+                        </p>
+                      )
+                    ) : null}
+                  </div>
+                          </>
+                        ),
+                      },
+                    ]}
+                  />
+                </section>
+              ) : null}
+
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
                 data-testid="stock-analysis-theme-breakout"
               >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>题材突变雷达</h2>
-                    <p>绕开“一线行业前三”硬门槛的观察层，只看现有日线、涨停和名称代理簇，不生成执行性结论。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">
-                    {(strategyPayload?.theme_breakout?.formula_version ?? "").trim() || "proxy radar"}
-                  </span>
-                </div>
-
-                {themeBreakoutCards.length > 0 ? (
+                <Collapse
+                  ghost
+                  bordered={false}
+                  className="stock-analysis-page__deep-collapse"
+                  items={[
+                    {
+                      key: "theme-breakout",
+                      forceRender: true,
+                      label: (
+                        <div className="stock-analysis-page__section-head">
+                          <div>
+                            <h2>题材突变雷达</h2>
+                            <p>
+                              绕开“一线行业前三”硬门槛的观察层，只看现有日线、涨停和名称代理簇，不生成执行性结论。
+                            </p>
+                          </div>
+                          <span className="stock-analysis-page__pill">
+                            {(strategyPayload?.theme_breakout?.formula_version ?? "").trim() || "proxy radar"}
+                            {themeBreakoutCards.length > 0 ? ` · ${themeBreakoutCards.length} 项` : ""}
+                          </span>
+                        </div>
+                      ),
+                      children:
+                        themeBreakoutCards.length > 0 ? (
                   <div className="stock-analysis-page__candidate-grid">
                     {themeBreakoutCards.map((card) => (
                       <article className="stock-analysis-page__candidate" key={card.themeKey}>
@@ -2539,24 +3007,38 @@ export default function StockAnalysisPage() {
                       </article>
                     ))}
                   </div>
-                ) : (
+                        ) : (
                   <p className="stock-analysis-page__empty">
                     {themeBreakoutUnsupported
                       ? themeBreakoutUnsupported.reason
                       : "当前无题材突变观察项。"}
                   </p>
-                )}
+                        ),
+                    },
+                  ]}
+                />
               </section>
 
               {themeEvidenceRows.length > 0 ? (
                 <section className="stock-analysis-page__panel stock-analysis-page__panel--evidence" data-testid="stock-analysis-theme-evidence-state">
-                  <div className="stock-analysis-page__section-head">
-                    <div>
-                      <h2>Theme evidence state</h2>
-                      <p>Shows whether real concept and intraday evidence is confirmed, landed, and date-matched.</p>
-                    </div>
-                    <span className="stock-analysis-page__pill">Evidence</span>
-                  </div>
+                  <Collapse
+                    ghost
+                    bordered={false}
+                    className="stock-analysis-page__deep-collapse"
+                    items={[
+                      {
+                        key: "theme-evidence",
+                        forceRender: true,
+                        label: (
+                          <div className="stock-analysis-page__section-head">
+                            <div>
+                              <h2>题材证据就绪</h2>
+                              <p>概念与日内证据是否已确认、落库且日期对齐。</p>
+                            </div>
+                            <span className="stock-analysis-page__pill">Evidence · {themeEvidenceRows.length}</span>
+                          </div>
+                        ),
+                        children: (
                   <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                     {themeEvidenceRows.map((row) => (
                       <li key={row.key}>
@@ -2570,18 +3052,35 @@ export default function StockAnalysisPage() {
                       </li>
                     ))}
                   </ul>
+                        ),
+                      },
+                    ]}
+                  />
                 </section>
               ) : null}
 
               {themeBreakoutReviewItems.length > 0 ? (
                 <section className="stock-analysis-page__panel stock-analysis-page__panel--evidence" data-testid="stock-analysis-theme-review-items">
-                  <div className="stock-analysis-page__section-head">
-                    <div>
-                      <h2>Theme miss review</h2>
-                      <p>Review-only clusters that were strong enough to inspect but failed one or more selection gates.</p>
-                    </div>
-                    <span className="stock-analysis-page__pill">Review only</span>
-                  </div>
+                  <Collapse
+                    ghost
+                    bordered={false}
+                    className="stock-analysis-page__deep-collapse"
+                    items={[
+                      {
+                        key: "theme-review",
+                        forceRender: true,
+                        label: (
+                          <div className="stock-analysis-page__section-head">
+                            <div>
+                              <h2>题材未入选复核</h2>
+                              <p>强度足够但未通过门槛的观察簇，仅供复核排查。</p>
+                            </div>
+                            <span className="stock-analysis-page__pill">
+                              Review · {themeBreakoutReviewItems.length}
+                            </span>
+                          </div>
+                        ),
+                        children: (
                   <div className="stock-analysis-page__candidate-grid">
                     {themeBreakoutReviewItems.map((item) => (
                       <article className="stock-analysis-page__candidate" key={item.themeKey}>
@@ -2618,6 +3117,10 @@ export default function StockAnalysisPage() {
                       </article>
                     ))}
                   </div>
+                        ),
+                      },
+                    ]}
+                  />
                 </section>
               ) : null}
 
@@ -2636,10 +3139,11 @@ export default function StockAnalysisPage() {
                 <Collapse
                   ghost
                   bordered={false}
-                  defaultActiveKey={consensusSummary.items.length > 0 ? ["consensus"] : undefined}
+                  className="stock-analysis-page__deep-collapse"
                   items={[
                     {
                       key: "consensus",
+                      forceRender: true,
                       label: `T+5核心共振复核 · ${consensusSummary.doubleCount} 只（趋势+多因子）`,
                       children: (
                         <div className="stock-analysis-page__consensus" data-testid="stock-analysis-consensus">
@@ -2758,20 +3262,32 @@ export default function StockAnalysisPage() {
                 className="stock-analysis-page__panel stock-analysis-page__panel--compact"
                 data-testid="stock-analysis-market-priority-summary"
               >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>当前市场策略优先级</h2>
-                    <p>按近 180 天候选快照拆分市场状态，以 T+5 为主排序；只读评分，仅用于复核先后。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">
-                    {(strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补")} /{" "}
-                    {strategyScorePayload?.primary_horizon === "return_1d"
-                      ? "T+1"
-                      : strategyScorePayload?.primary_horizon === "return_20d"
-                        ? "T+20"
-                        : "T+5"}
-                  </span>
-                </div>
+                <Collapse
+                  ghost
+                  bordered={false}
+                  className="stock-analysis-page__deep-collapse"
+                  items={[
+                    {
+                      key: "market-priority",
+                      forceRender: true,
+                      label: (
+                        <div className="stock-analysis-page__section-head">
+                          <div>
+                            <h2>当前市场策略优先级</h2>
+                            <p>按近 180 天候选快照拆分市场状态，以 T+5 为主排序；只读评分，仅用于复核先后。</p>
+                          </div>
+                          <span className="stock-analysis-page__pill">
+                            {(strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补")} /{" "}
+                            {strategyScorePayload?.primary_horizon === "return_1d"
+                              ? "T+1"
+                              : strategyScorePayload?.primary_horizon === "return_20d"
+                                ? "T+20"
+                                : "T+5"}
+                          </span>
+                        </div>
+                      ),
+                      children: (
+                        <>
                 {strategyScoreQuery.isLoading ? (
                   <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
                 ) : null}
@@ -2955,23 +3471,40 @@ export default function StockAnalysisPage() {
                     ) : null}
                   </>
                 ) : null}
+                        </>
+                      ),
+                    },
+                  ]}
+                />
               </section>
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--compact"
                 data-testid="stock-analysis-strategy-backtest"
               >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>策略回溯表现</h2>
-                    <p>按近 10 个自然日入选快照拆分，仅使用已完成回溯日期计算胜率。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">
-                    {strategyBacktestSnapshotFrom && effectiveAsOf
-                      ? `${strategyBacktestSnapshotFrom} 至 ${effectiveAsOf}`
-                      : "日期待补"}
-                  </span>
-                </div>
+                <Collapse
+                  ghost
+                  bordered={false}
+                  className="stock-analysis-page__deep-collapse"
+                  items={[
+                    {
+                      key: "strategy-backtest",
+                      forceRender: true,
+                      label: (
+                        <div className="stock-analysis-page__section-head">
+                          <div>
+                            <h2>策略回溯表现</h2>
+                            <p>按近 10 个自然日入选快照拆分，仅使用已完成回溯日期计算胜率。</p>
+                          </div>
+                          <span className="stock-analysis-page__pill">
+                            {strategyBacktestSnapshotFrom && effectiveAsOf
+                              ? `${strategyBacktestSnapshotFrom} 至 ${effectiveAsOf}`
+                              : "日期待补"}
+                          </span>
+                        </div>
+                      ),
+                      children: (
+                        <>
                 {strategyBacktestQuery.isLoading ? (
                   <p className="stock-analysis-page__empty">策略回溯表现加载中。</p>
                 ) : null}
@@ -3057,27 +3590,44 @@ export default function StockAnalysisPage() {
                     ) : null}
                   </>
                 ) : null}
+                        </>
+                      ),
+                    },
+                  ]}
+                />
               </section>
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--compact"
                 data-testid="stock-analysis-strategy-optimization"
               >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>优化诊断</h2>
-                    <p>基于候选历史切片回测 T+5 收益，只输出复核排序建议。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">
-                    {strategyOptimizationPayload?.primary_horizon === "return_1d"
-                      ? "T+1"
-                      : strategyOptimizationPayload?.primary_horizon === "return_10d"
-                        ? "T+10"
-                        : strategyOptimizationPayload?.primary_horizon === "return_20d"
-                          ? "T+20"
-                          : "T+5"}
-                  </span>
-                </div>
+                <Collapse
+                  ghost
+                  bordered={false}
+                  className="stock-analysis-page__deep-collapse"
+                  items={[
+                    {
+                      key: "strategy-optimization",
+                      forceRender: true,
+                      label: (
+                        <div className="stock-analysis-page__section-head">
+                          <div>
+                            <h2>优化诊断</h2>
+                            <p>基于候选历史切片回测 T+5 收益，只输出复核排序建议。</p>
+                          </div>
+                          <span className="stock-analysis-page__pill">
+                            {strategyOptimizationPayload?.primary_horizon === "return_1d"
+                              ? "T+1"
+                              : strategyOptimizationPayload?.primary_horizon === "return_10d"
+                                ? "T+10"
+                                : strategyOptimizationPayload?.primary_horizon === "return_20d"
+                                  ? "T+20"
+                                  : "T+5"}
+                          </span>
+                        </div>
+                      ),
+                      children: (
+                        <>
                 {strategyOptimizationQuery.isLoading ? (
                   <p className="stock-analysis-page__empty">优化诊断加载中。</p>
                 ) : null}
@@ -3186,171 +3736,13 @@ export default function StockAnalysisPage() {
                     ) : null}
                   </>
                 ) : null}
+                        </>
+                      ),
+                    },
+                  ]}
+                />
               </section>
 
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--evidence"
-                data-testid="stock-analysis-review-queue"
-              >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>复核队列</h2>
-                    <p>
-                      {reviewQueueUsesHybridFusion
-                        ? "融合策略候选优先进入队列，先看融合分、代理证据、反证和失效条件。"
-                        : "按当前只读证据排列候选，先看为什么进入观察，再看反证、待补和失效条件。"}
-                    </p>
-                  </div>
-                  <span className="stock-analysis-page__pill">
-                    {reviewQueueUsesHybridFusion ? "融合策略 / 复核队列" : "候选 / 复核队列"}
-                  </span>
-                </div>
-
-                {reviewQueue.length > 0 ? (
-                  <div className="stock-analysis-page__chip-row" data-testid="stock-sector-filter-chips">
-                    <button
-                      type="button"
-                      className={`stock-analysis-page__pill stock-analysis-page__filter-chip${sectorFilterSectorCode === null ? " stock-analysis-page__filter-chip--active" : ""}`}
-                      onClick={() => setSectorFilterSectorCode(null)}
-                      aria-pressed={sectorFilterSectorCode === null}
-                    >
-                      全部行业
-                    </button>
-                    {sectorOptions.map(([code, label]) => (
-                      <button
-                        key={code}
-                        type="button"
-                        data-testid={`sector-filter-chip-${code}`}
-                        className={`stock-analysis-page__pill stock-analysis-page__filter-chip${sectorFilterSectorCode === code ? " stock-analysis-page__filter-chip--active" : ""}`}
-                        onClick={() => toggleSectorFilter(code)}
-                        aria-pressed={sectorFilterSectorCode === code}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {reviewQueue.length > 0 ? (
-                  <div className="stock-analysis-page__filter-status" data-testid="stock-review-filter-status">
-                    <span>当前复核范围</span>
-                    <strong>{selectedSectorLabel ?? "全部行业"}</strong>
-                    <small>
-                      显示 {filteredCandidates.length} / {reviewQueue.length} 个候选
-                      {reviewQueueUsesHybridFusion ? " · 融合策略候选优先" : ""}
-                    </small>
-                  </div>
-                ) : null}
-
-                {reviewQueue.length > 0 ? (
-                  <div className="stock-analysis-page__candidate-grid">
-                    {filteredCandidates.map((card) => (
-                      <article
-                        className="stock-analysis-page__candidate stock-analysis-page__review-card"
-                        data-testid={`stock-candidate-${card.stockCode}`}
-                        key={card.stockCode}
-                      >
-                        <div className="stock-analysis-page__candidate-head">
-                          <div>
-                            <h3>{card.headline}</h3>
-                            <p>
-                              {card.stockCode} / {card.stockName} / {card.sectorName}
-                            </p>
-                            <div className="stock-analysis-page__pattern-tag" title={card.patternNote}>
-                              形态：{card.pattern} / 距观察位 {card.distanceToBreakoutPct}
-                            </div>
-                          </div>
-                          <div className="stock-analysis-page__candidate-actions">
-                            <strong>#{card.rank}</strong>
-                            <Button
-                              type="default"
-                              size="small"
-                              data-testid={`stock-candidate-review-chart-${card.stockCode}`}
-                              onClick={() => {
-                                const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
-                                setDetailSelection({
-                                  code: card.stockCode,
-                                  name: card.stockName,
-                                  reviewRank: card.rank,
-                                  sectorCode: card.sectorCode,
-                                  sectorName: card.sectorName,
-                                  distanceToBreakoutPct: card.distanceToBreakoutPct,
-                            source: "review_queue",
-                            livermoreRank: reviewQueueUsesHybridFusion ? ranks.livermoreRank : card.rank,
-                            meanReversionRank: ranks.meanReversionRank,
-                            factorScreenRank: ranks.factorScreenRank,
-                            hybridFusionRank: reviewQueueUsesHybridFusion ? card.rank : ranks.hybridFusionRank,
-                          });
-                              }}
-                            >
-                              复核 K 线
-                            </Button>
-                            <span>观察</span>
-                          </div>
-                        </div>
-                        <p className="stock-analysis-page__review-focus">{card.reviewFocus}</p>
-                        <div className="stock-analysis-page__evidence-columns">
-                          <div>
-                            <h4>为什么先看</h4>
-                            <ul>
-                              {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
-                                <li key={item.key}>
-                                  <strong>{item.label}</strong>：{item.value}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h4>反证与待补</h4>
-                            <ul>
-                              {card.boundaryEvidence.map((item) => (
-                                <li key={item}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h4>失效条件</h4>
-                            <p className="stock-analysis-page__review-focus">{card.invalidationFocus}</p>
-                            <ul>
-                              {card.invalidationRules.slice(1).map((item) => (
-                                <li key={item}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                        <Collapse
-                          ghost
-                          bordered={false}
-                          items={[
-                            {
-                              key: "raw",
-                              label: "展开原始字段",
-                              children: (
-                                <dl className="stock-analysis-page__raw-grid">
-                                  {card.rawFields.map((field) => (
-                                    <div key={field.key}>
-                                      <dt>{field.label}</dt>
-                                      <dd>{field.value}</dd>
-                                    </div>
-                                  ))}
-                                </dl>
-                              ),
-                            },
-                          ]}
-                        />
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="stock-analysis-page__empty">当前无候选股复核队列。</p>
-                )}
-                {reviewQueue.length > 0 &&
-                sectorFilterSectorCode &&
-                filteredCandidates.length === 0 ? (
-                  <p className="stock-analysis-page__empty">
-                    该行业暂无候选复核项，可切换到其他行业复核。
-                  </p>
-                ) : null}
-              </section>
 
               <section
                 className="stock-analysis-page__panel stock-analysis-page__panel--compact"
@@ -3360,6 +3752,7 @@ export default function StockAnalysisPage() {
                 <Collapse
                   ghost
                   bordered={false}
+                  className="stock-analysis-page__deep-collapse"
                   items={[
                     {
                       key: "mean-reversion",
@@ -3534,14 +3927,27 @@ export default function StockAnalysisPage() {
                 className="stock-analysis-page__panel stock-analysis-page__panel--compact"
                 data-testid="stock-analysis-events-monitoring"
               >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>关键事件与监控</h2>
-                    <p>汇总诊断、缺口、未支持输出和风险触发项，只作为复核队列的事件清单。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">Monitor</span>
-                </div>
-                {eventMonitorRows.length > 0 ? (
+                <Collapse
+                  ghost
+                  bordered={false}
+                  className="stock-analysis-page__deep-collapse"
+                  items={[
+                    {
+                      key: "events-monitoring",
+                      forceRender: true,
+                      label: (
+                        <div className="stock-analysis-page__section-head">
+                          <div>
+                            <h2>关键事件与监控</h2>
+                            <p>汇总诊断、缺口、未支持输出和风险触发项，只作为复核队列的事件清单。</p>
+                          </div>
+                          <span className="stock-analysis-page__pill">
+                            Monitor{eventMonitorRows.length > 0 ? ` · ${eventMonitorRows.length}` : ""}
+                          </span>
+                        </div>
+                      ),
+                      children:
+                        eventMonitorRows.length > 0 ? (
                   <div className="stock-analysis-page__table-wrap">
                     <table className="stock-analysis-page__table stock-analysis-page__table--dense">
                       <thead>
@@ -3570,192 +3976,14 @@ export default function StockAnalysisPage() {
                       </tbody>
                     </table>
                   </div>
-                ) : (
+                        ) : (
                   <p className="stock-analysis-page__empty">暂无关键事件，继续以只读证据复核。</p>
-                )}
+                        ),
+                    },
+                  ]}
+                />
               </section>
               </div>
-
-              <aside className="stock-analysis-page__rail" aria-label="股票分析辅助信息">
-              <section className="stock-analysis-page__panel stock-analysis-page__panel--rail" data-testid="stock-analysis-risk-section">
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>
-                      <StatusIcon>{SECTION_HEAD_ICONS[1]}</StatusIcon>
-                      风险退出观察
-                    </h2>
-                    <p>{riskRows.length} 项 / 触发与观察分层 / 不生成交易动作。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">退出观察价</span>
-                </div>
-                {confluenceQuery.isError ? (
-                  <p className="stock-analysis-page__notice">联动观察暂不可用。</p>
-                ) : null}
-                {riskExitUnsupported ? (
-                  <div className="stock-analysis-page__notice-block">
-                    <strong>风险退出观察暂不可用。</strong>
-                    <p>{riskExitUnsupported.reason}</p>
-                  </div>
-                ) : null}
-                {riskRows.length > 0 ? (
-                  <div className="stock-analysis-page__rail-list">
-                    {riskRows.map((row) => (
-                      <div
-                        className="stock-analysis-page__rail-row stock-analysis-page__rail-row--interactive"
-                        data-testid={`stock-risk-row-${row.stockCode}`}
-                        key={`${row.stockCode}:${row.status}:${row.reason}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
-                          setDetailSelection({
-                            code: row.stockCode,
-                            name: row.stockName,
-                            source: "risk_exit",
-                            livermoreRank: ranks.livermoreRank,
-                            meanReversionRank: ranks.meanReversionRank,
-                            factorScreenRank: ranks.factorScreenRank,
-                            hybridFusionRank: ranks.hybridFusionRank,
-                          });
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
-                            setDetailSelection({
-                              code: row.stockCode,
-                              name: row.stockName,
-                              source: "risk_exit",
-                              livermoreRank: ranks.livermoreRank,
-                              meanReversionRank: ranks.meanReversionRank,
-                              factorScreenRank: ranks.factorScreenRank,
-                              hybridFusionRank: ranks.hybridFusionRank,
-                            });
-                          }
-                        }}
-                      >
-                        <div>
-                          <strong>{row.stockName}</strong>
-                          <small>{row.stockCode}</small>
-                        </div>
-                        <span>{riskStatusLabel(row.status)}</span>
-                        <p className="stock-analysis-page__tabular">
-                          最新收盘 {row.latestClose} / 退出观察价 {row.exitWatchPrice} / 距价 {row.distanceToExitPct}{" "}
-                          <small>({row.exitDistanceBucket})</small>
-                        </p>
-                        <p>{row.reason}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="stock-analysis-page__empty">
-                    {riskExitUnsupported
-                      ? "等待持仓快照接入后生成风险退出观察项。"
-                      : "当前无风险退出观察项。"}
-                  </p>
-                )}
-              </section>
-
-              <section
-                className="stock-analysis-page__panel stock-analysis-page__panel--rail"
-                data-testid="stock-analysis-boundary-rail"
-              >
-                <div className="stock-analysis-page__section-head">
-                  <div>
-                    <h2>
-                      <StatusIcon>{SECTION_HEAD_ICONS[2]}</StatusIcon>
-                      数据口径与边界
-                    </h2>
-                    <p>日期 / 口径 / 版本 / 诊断，完整项进抽屉。</p>
-                  </div>
-                  <span className="stock-analysis-page__pill">只读链路</span>
-                </div>
-                <div className="stock-analysis-page__toolbar-meta">
-                  {metaSegments.map((seg, index) => (
-                    <span key={seg.key} className="stock-analysis-page__toolbar-meta-code">
-                      {index > 0 ? " / " : null}
-                      {`${seg.key}=${seg.text}`}
-                    </span>
-                  ))}
-                </div>
-                {boundarySummary ? (
-                  <p className="stock-analysis-page__boundary-summary" data-testid="stock-analysis-boundary-summary">
-                    <strong>{boundarySummary.summaryLabel}</strong>
-                    <span>{boundarySummary.detailLabel}</span>
-                    {boundarySummary.topMessages[0] ? <small>{boundarySummary.topMessages[0]}</small> : null}
-                  </p>
-                ) : null}
-                <Button type="link" aria-expanded={boundaryDrawerOpen} onClick={() => setBoundaryDrawerOpen(true)}>
-                  查看完整诊断
-                </Button>
-                <Drawer
-                  title="数据口径诊断"
-                  open={boundaryDrawerOpen}
-                  onClose={() => setBoundaryDrawerOpen(false)}
-                  destroyOnClose
-                  width={480}
-                >
-                  {strategyPayload ? (
-                    <>
-                      <Text strong type="danger">
-                        严重 / Error
-                      </Text>
-                      <ul>
-                        {strategyPayload.diagnostics
-                          .filter((d) => d.severity === "error")
-                          .map((d) => (
-                            <li key={d.code}>{d.message}</li>
-                          ))}
-                        {strategyPayload.diagnostics.filter((d) => d.severity === "error").length === 0 ? (
-                          <li>暂无</li>
-                        ) : null}
-                      </ul>
-                      <Text strong type="warning">
-                        警告 / Warning
-                      </Text>
-                      <ul>
-                        {strategyPayload.diagnostics
-                          .filter((d) => d.severity === "warning")
-                          .map((d) => (
-                            <li key={d.code}>{d.message}</li>
-                          ))}
-                        {strategyPayload.diagnostics.filter((d) => d.severity === "warning").length === 0 ? (
-                          <li>暂无</li>
-                        ) : null}
-                      </ul>
-                      <Text strong type="secondary">
-                        信息 / Info
-                      </Text>
-                      <ul>
-                        {strategyPayload.diagnostics
-                          .filter((d) => d.severity === "info")
-                          .map((d) => (
-                            <li key={d.code}>{d.message}</li>
-                          ))}
-                      </ul>
-                      <Typography.Title level={5}>data_gaps</Typography.Title>
-                      <ul>
-                        {strategyPayload.data_gaps.map((g) => (
-                          <li key={`${g.input_family}-${g.status}`}>
-                            <strong>{g.input_family}</strong> {g.status}: {g.evidence}
-                          </li>
-                        ))}
-                      </ul>
-                      <Typography.Title level={5}>supported_outputs</Typography.Title>
-                      <p>{strategyPayload.supported_outputs.join(", ") || "无"}</p>
-                      <Typography.Title level={5}>unsupported_outputs</Typography.Title>
-                      <ul>
-                        {strategyPayload.unsupported_outputs.map((u) => (
-                          <li key={u.key}>
-                            <strong>{u.key}</strong>: {u.reason}
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  ) : null}
-                </Drawer>
-              </section>
-              </aside>
             </AnalysisGrid>
           </>
         ) : null}

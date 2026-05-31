@@ -427,7 +427,7 @@ describe("stockAnalysisPageModel", () => {
       fallback_mode: "latest_snapshot",
     });
 
-    expect(summary.dataFreshnessLabel).toBe("数据需复核 ok / ok / fallback latest_snapshot");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 ok / ok / 回退 latest_snapshot");
   });
 
   it("keeps the decision summary honest when candidates are unavailable", () => {
