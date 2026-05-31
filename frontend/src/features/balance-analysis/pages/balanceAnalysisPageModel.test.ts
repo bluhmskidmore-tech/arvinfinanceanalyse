@@ -18,6 +18,8 @@ import {
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
+  formatBalanceBusinessTextDisplay,
+  formatBalanceEvidenceKindDisplay,
   formatBalanceGridThousandsValue,
   formatBalanceDecisionWorkflowStatusDisplay,
   formatBalanceGovernedSeverityDisplay,
@@ -104,6 +106,33 @@ describe("balanceAnalysisPageModel", () => {
         "Gap dropped to -12.80 亿元.",
       );
       expect(formatBalanceWorkbookWanTextDisplay("No numeric amount here.")).toBe("No numeric amount here.");
+    });
+
+    it("translates governed workbook labels for business-facing UI", () => {
+      expect(formatBalanceBusinessTextDisplay("Negative gap in 3-6 months")).toBe(
+        "3-6个月负缺口",
+      );
+      expect(formatBalanceBusinessTextDisplay("repo-1 maturity")).toBe("回购-1 到期");
+      expect(formatBalanceBusinessTextDisplay("Cashflow Calendar")).toBe("现金流日历");
+      expect(formatBalanceBusinessTextDisplay("Gap dropped to -25000 wan yuan.")).toBe(
+        "缺口降至 -2.50 亿元",
+      );
+      expect(formatBalanceBusinessTextDisplay("bond_maturity")).toBe("债券到期");
+      expect(formatBalanceBusinessTextDisplay("internal_governed_schedule")).toBe("内部治理日历");
+      expect(formatBalanceBusinessTextDisplay("Top rating bucket share reached 0.7573.")).toBe(
+        "最高评级桶占比达到 75.73%",
+      );
+      expect(formatBalanceBusinessTextDisplay("top1_concentration")).toBe("最大单一发行人占比");
+      expect(formatBalanceBusinessTextDisplay("interbank_liability_ratio")).toBe("同业负债占比");
+      expect(formatBalanceBusinessTextDisplay("review")).toBe("需复核");
+      expect(formatBalanceBusinessTextDisplay("asset")).toBe("资产");
+      expect(formatBalanceBusinessTextDisplay("CNY")).toBe("人民币");
+    });
+
+    it("translates evidence result kinds for business-facing UI", () => {
+      expect(formatBalanceEvidenceKindDisplay("balance-analysis.decision-items")).toBe("治理队列");
+      expect(formatBalanceEvidenceKindDisplay("balance-analysis.advanced-attribution")).toBe("高阶归因");
+      expect(formatBalanceEvidenceKindDisplay("unknown.kind")).toBe("unknown.kind");
     });
 
     it("rewrites 万元 (Chinese) amounts in workbook notes the same as wan yuan", () => {
@@ -233,8 +262,8 @@ describe("balanceAnalysisPageModel", () => {
 
       expect(model.resolvedReportDate).toBe("2026-04-30");
       expect(model.dateStatus).toBe("matched");
-      expect(model.sourceBadge.label).toBe("正式只读链路");
-      expect(model.filterLine).toBe("头寸范围 全头寸 · 币种口径 CNY");
+      expect(model.sourceBadge.label).toBe("正式业务读面");
+      expect(model.filterLine).toBe("头寸范围 全头寸 · 币种口径 人民币");
       expect(model.kpis.map((item) => item.key)).toEqual([
         "total-market-value",
         "total-amortized-cost",
@@ -248,6 +277,25 @@ describe("balanceAnalysisPageModel", () => {
       expect(model.evidenceCards).toHaveLength(2);
       expect(model.stateSurfaces).toContainEqual(
         expect.objectContaining({ variant: "neutral", title: "报告日已匹配" }),
+      );
+    });
+
+    it("does not present an unavailable report date as a formal business read surface", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: null,
+        summary: null,
+        decisionItems: null,
+        metaSections: [],
+      });
+
+      expect(model.dateStatus).toBe("pending");
+      expect(model.sourceBadge.label).toBe("等待业务读面");
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "date", label: "报告日待定" }),
       );
     });
 
@@ -765,7 +813,7 @@ describe("balanceAnalysisPageModel", () => {
       );
       expect(model.contribution.watchItems[0]).toMatchObject({
         level: "danger",
-        title: "Review 3-6 month gap",
+        title: "复核 3-6个月缺口",
       });
       expect(model.contribution.watchItems[0].detail).toContain("-2.50 亿元");
       expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月", "1-2年"]);
@@ -778,14 +826,14 @@ describe("balanceAnalysisPageModel", () => {
       );
       expect(model.bottom.calendarItems[0]).toMatchObject({
         date: "2026-03-05",
-        event: "repo-1 maturity",
-        amount: "maturity_gap",
+        event: "回购-1 到期",
+        amount: "期限缺口分析",
         level: "high",
       });
       expect(model.bottom.calendarItems[1]).toMatchObject({
         date: "2026-03-08",
-        event: "asset-1 maturity",
-        amount: "maturity_gap",
+        event: "asset-1 到期",
+        amount: "期限缺口分析",
         level: "medium",
       });
     });

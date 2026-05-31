@@ -125,7 +125,7 @@ export const workbookPanelStyle = {
   border: `1px solid ${shellTokens.colorBorderSoft}`,
   background: shellTokens.colorBgSurface,
   padding: s[4],
-  boxShadow: "0 8px 18px rgba(76, 58, 44, 0.035)",
+  boxShadow: "0 8px 18px rgba(15, 37, 68, 0.035)",
 } as const;
 
 export const workbookPanelHeaderStyle = {

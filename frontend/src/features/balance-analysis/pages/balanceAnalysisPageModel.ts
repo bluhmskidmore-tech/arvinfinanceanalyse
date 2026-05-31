@@ -355,6 +355,60 @@ export function formatBalanceWorkbookWanTextDisplay(value: unknown): string {
   );
 }
 
+/** Workbook governed prose/title display: keep source values intact, but translate known operator-facing tags. */
+export function formatBalanceBusinessTextDisplay(value: unknown): string {
+  let text = formatBalanceWorkbookWanTextDisplay(value).trim();
+  if (text === "—") {
+    return text;
+  }
+
+  text = text
+    .replace(/\b(\d+)\s*-\s*(\d+)\s*months?\b/gi, "$1-$2个月")
+    .replace(/\b(\d+)\s*-\s*(\d+)\s*years?(?:\s+bucket)?\b/gi, "$1-$2年期限桶")
+    .replace(/^Review\s+(.+)\s+gap$/i, "复核 $1缺口")
+    .replace(/^Negative gap in\s+(.+)$/i, "$1负缺口")
+    .replace(/^Negative gap$/i, "负缺口")
+    .replace(/^Cashflow Calendar$/i, "现金流日历")
+    .replace(/^Issuance liabilities outstanding$/i, "发行类负债余额")
+    .replace(/^AAA concentration watch$/i, "AAA 集中度关注")
+    .replace(/^maturity$/i, "期限结构")
+    .replace(/^funding_rollover$/i, "融资滚续")
+    .replace(/^asset_maturity$/i, "资产到期")
+    .replace(/^bond_maturity$/i, "债券到期")
+    .replace(/^internal_governed_schedule$/i, "内部治理日历")
+    .replace(/^asset$/i, "资产")
+    .replace(/^liability$/i, "负债")
+    .replace(/^CNY$/i, "人民币")
+    .replace(/^AC$/i, "摊余成本")
+    .replace(/^FVOCI$/i, "其他综合收益公允价值")
+    .replace(/^FVTPL$/i, "损益公允价值")
+    .replace(/^ZQTZ$/i, "债券投资")
+    .replace(/^TYW$/i, "同业往来")
+    .replace(/^top1_concentration$/i, "最大单一发行人占比")
+    .replace(/^interbank_liability_ratio$/i, "同业负债占比")
+    .replace(/^review$/i, "需复核")
+    .replace(/^watch$/i, "关注")
+    .replace(/\bFull-scope gap dropped to (.+?)(?:[.。])?$/i, "全口径缺口降至 $1")
+    .replace(/\bGap dropped to (.+?)(?:[.。])?$/i, "缺口降至 $1")
+    .replace(/\bIssuance book totals (.+?)(?:[.。])?$/i, "发行类余额合计 $1")
+    .replace(/\bTop rating bucket share reached\s+(\d+(?:\.\d+)?)(?:[.。])?$/i, (_match, rawShare: string) => {
+      const share = Number(rawShare);
+      return Number.isFinite(share)
+        ? `最高评级桶占比达到 ${(share * 100).toLocaleString("zh-CN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}%`
+        : `最高评级桶占比达到 ${rawShare}`;
+    })
+    .replace(/\basset book\b/gi, "资产账簿")
+    .replace(/\bliability book\b/gi, "负债账簿")
+    .replace(/\binterbank\b/gi, "同业")
+    .replace(/\brepo\b/gi, "回购")
+    .replace(/\b([A-Za-z0-9._-]+) maturity\b/gi, "$1 到期");
+
+  return text;
+}
+
 /**
  * Core AG Grid value formatter: null/undefined/"" → "—"; invalid → original string; else zh-CN grouped.
  */
@@ -621,7 +675,7 @@ function balancePositionScopeLabel(value: BalancePositionScope): string {
 }
 
 function balanceCurrencyBasisLabel(value: BalanceCurrencyBasis): string {
-  return value === "native" ? "原币" : "CNY";
+  return value === "native" ? "原币" : "人民币";
 }
 
 function metaBasisLabel(value: ResultMeta["basis"] | undefined): string {
@@ -645,6 +699,28 @@ function metaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): stri
   if (value === "none") return "未降级";
   if (value === "latest_snapshot") return "最新快照降级";
   return "未提供";
+}
+
+const BALANCE_EVIDENCE_KIND_LABELS: Record<string, string> = {
+  "balance-analysis.dates": "报告日列表",
+  "balance-analysis.overview": "首屏总览",
+  "balance-analysis.workbook": "工作簿图谱",
+  "balance-analysis.decision-items": "治理队列",
+  "balance-analysis.summary": "汇总分页",
+  "balance-analysis.detail": "明细底稿",
+  "balance-analysis.summary-by-basis": "口径拆解",
+  "balance-analysis.adb-comparison": "日均对比",
+  "balance-analysis.movement.dates": "余额变动报告日",
+  "balance-analysis.movement.detail": "余额变动联动",
+  "balance-analysis.advanced-attribution": "高阶归因",
+};
+
+export function formatBalanceEvidenceKindDisplay(value: unknown): string {
+  const text = formatBalanceWorkbookCellDisplay(value);
+  if (text === "—") {
+    return text;
+  }
+  return BALANCE_EVIDENCE_KIND_LABELS[text] ?? text;
 }
 
 function countDisplay(value: number | null | undefined): string {
@@ -685,37 +761,37 @@ function buildBalancePageKpis(input: BalanceAnalysisPageReadModelInput): Balance
       "total-market-value",
       "总市值",
       overview?.total_market_value_amount,
-      "MTR-BAL-001 · overview.total_market_value_amount",
+      "MTR-BAL-001 · 市值规模",
     ),
     buildReadModelAmountKpi(
       "total-amortized-cost",
       "总摊余成本",
       overview?.total_amortized_cost_amount,
-      "MTR-BAL-002 · overview.total_amortized_cost_amount",
+      "MTR-BAL-002 · 摊余成本",
     ),
     buildReadModelAmountKpi(
       "total-accrued-interest",
       "总应计利息",
       overview?.total_accrued_interest_amount,
-      "MTR-BAL-003 · overview.total_accrued_interest_amount",
+      "MTR-BAL-003 · 应计利息",
     ),
     buildReadModelCountKpi(
       "detail-row-count",
       "明细行数",
       overview?.detail_row_count,
-      "MTR-BAL-101 · overview.detail_row_count",
+      "MTR-BAL-101 · 明细覆盖",
     ),
     buildReadModelCountKpi(
       "summary-row-count",
       "汇总行数",
       overview?.summary_row_count ?? input.summary?.total_rows,
-      "MTR-BAL-102/103 · overview.summary_row_count / summary.total_rows",
+      "MTR-BAL-102/103 · 汇总覆盖",
     ),
     buildReadModelCountKpi(
       "decision-item-count",
       "治理动作",
       input.decisionItems?.rows.length,
-      "decision-items.rows.length · 运营治理",
+      "治理队列 · 决策事项",
     ),
   ];
 }
@@ -729,7 +805,7 @@ function buildBalanceEvidenceCards(
       {
         key: section.key,
         title: section.title,
-        resultKind: section.meta.result_kind,
+        resultKind: formatBalanceEvidenceKindDisplay(section.meta.result_kind),
         basisLabel: metaBasisLabel(section.meta.basis),
         qualityLabel: metaQualityLabel(section.meta.quality_flag),
         fallbackLabel: metaFallbackLabel(section.meta.fallback_mode),
@@ -759,9 +835,11 @@ export function buildBalanceAnalysisPageReadModel(
   const hasStale = metas.some((meta) => meta.quality_flag === "stale");
   const hasQualityError = metas.some((meta) => meta.quality_flag === "error" || meta.quality_flag === "missing");
   const sourceBadge: BalanceAnalysisPageStatusBadge =
-    input.clientMode === "real"
-      ? { key: "source-real", label: "正式只读链路", tone: "success" }
-      : { key: "source-mock", label: "本地演示数据", tone: "mock" };
+    requestedReportDate === "—"
+      ? { key: "source-pending", label: "等待业务读面", tone: "neutral" }
+      : input.clientMode === "real"
+        ? { key: "source-real", label: "正式业务读面", tone: "success" }
+        : { key: "source-mock", label: "本地演示数据", tone: "mock" };
 
   const statusBadges: BalanceAnalysisPageStatusBadge[] = [
     sourceBadge,
@@ -783,13 +861,13 @@ export function buildBalanceAnalysisPageReadModel(
   ];
 
   if (hasFallback) {
-    statusBadges.push({ key: "fallback", label: "fallback date", tone: "warning" });
+    statusBadges.push({ key: "fallback", label: "降级日期", tone: "warning" });
   }
   if (hasStale) {
-    statusBadges.push({ key: "stale", label: "stale", tone: "warning" });
+    statusBadges.push({ key: "stale", label: "陈旧数据", tone: "warning" });
   }
   if (hasQualityError) {
-    statusBadges.push({ key: "quality-error", label: "quality error", tone: "danger" });
+    statusBadges.push({ key: "quality-error", label: "质量错误", tone: "danger" });
   }
 
   const stateSurfaces: BalanceAnalysisPageStateSurface[] = [];
@@ -821,15 +899,15 @@ export function buildBalanceAnalysisPageReadModel(
       key: "stale",
       variant: "stale",
       title: "存在陈旧数据标记",
-      description: "至少一个正式读面返回 stale，需要在结论旁显式提醒。",
+      description: "至少一个正式读面返回陈旧标记，需要在结论旁显式提醒。",
     });
   }
   if (hasFallback) {
     stateSurfaces.push({
       key: "fallback",
       variant: "fallback-date",
-      title: "存在 fallback 日期",
-      description: "至少一个正式读面使用 latest_snapshot 降级，需查看证据账本确认 as-of。",
+      title: "存在降级日期",
+      description: "至少一个正式读面使用最新快照降级，需查看证据账本确认数据日。",
     });
   }
   if (hasQualityError) {
@@ -837,7 +915,7 @@ export function buildBalanceAnalysisPageReadModel(
       key: "quality-error",
       variant: "error",
       title: "存在质量错误",
-      description: "至少一个正式读面返回 error/missing，不应渲染为正常结论。",
+      description: "至少一个正式读面返回错误或缺失，不应渲染为正常结论。",
     });
   }
 
@@ -849,7 +927,7 @@ export function buildBalanceAnalysisPageReadModel(
     sourceBadge,
     statusBadges,
     stateSurfaces,
-    conclusionTitle: "正式状态判断",
+    conclusionTitle: "缺口与治理判断",
     conclusionDetail:
       "先看正式资产、负债和治理动作；净头寸、期限缺口与解释项进入 governed workbook 与证据账本下钻，不在前端补算正式口径。",
     kpis: buildBalancePageKpis(input),
@@ -1185,7 +1263,7 @@ function statusForReconciliationLink({
     return {
       status: "pending",
       statusLabel: "待联动数据",
-      statusDetail: "正在等待 summary-by-basis 或工作簿数据返回。",
+      statusDetail: "正在等待口径拆解或工作簿数据返回。",
     };
   }
   if (!movementAvailableForDate || movementControlYuan === null) {
@@ -1537,11 +1615,11 @@ function buildWatchItems(rows: readonly StageDecisionRow[]): BalanceStageAlertIt
     const status = displayDecisionStatus(row);
     return {
       level: alertLevelFromSeverity(row.severity),
-      title: row.title,
+      title: formatBalanceBusinessTextDisplay(row.title),
       detail: [
-        formatBalanceWorkbookWanTextDisplay(row.reason),
-        row.source_section,
-        status ? `状态 ${status}` : null,
+        formatBalanceBusinessTextDisplay(row.reason),
+        formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section),
+        status ? `进度 ${status}` : null,
       ]
         .filter(Boolean)
         .join(" · "),
@@ -1549,7 +1627,7 @@ function buildWatchItems(rows: readonly StageDecisionRow[]): BalanceStageAlertIt
   });
   return items.length > 0
     ? items
-    : [{ level: "info", title: "当前报告日未返回治理事项", detail: "decision_items 为空，未补造静态事项。" }];
+    : [{ level: "info", title: "当前报告日未返回治理事项", detail: "治理事项为空，未补造静态事项。" }];
 }
 
 function buildAlertItems(
@@ -1558,19 +1636,22 @@ function buildAlertItems(
 ): BalanceStageAlertItem[] {
   const riskItems = riskAlertRows.slice(0, 3).map((row) => ({
     level: alertLevelFromSeverity(row.severity),
-    title: row.title,
-    detail: `${formatBalanceWorkbookWanTextDisplay(row.reason)} · ${row.source_section}`,
+    title: formatBalanceBusinessTextDisplay(row.title),
+    detail: [
+      formatBalanceBusinessTextDisplay(row.reason),
+      formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section),
+    ].join(" · "),
   }));
   const eventItems = eventCalendarRows.slice(0, Math.max(0, 4 - riskItems.length)).map((row) => ({
     level: "info" as const,
-    title: row.title,
-    detail: `${row.event_type} · ${row.impact_hint}`,
+    title: formatBalanceBusinessTextDisplay(row.title),
+    detail: `${formatBalanceBusinessTextDisplay(row.event_type)} · ${formatBalanceBusinessTextDisplay(row.impact_hint)}`,
     time: row.event_date,
   }));
   const items = [...riskItems, ...eventItems];
   return items.length > 0
     ? items
-    : [{ level: "info", title: "当前报告日未返回预警或事件", detail: "risk_alerts/event_calendar 为空。" }];
+    : [{ level: "info", title: "当前报告日未返回预警或事件", detail: "预警与事件日历为空。" }];
 }
 
 function buildStageCalendarItems(
@@ -1578,11 +1659,11 @@ function buildStageCalendarItems(
 ): BalanceStageCalendarItem[] {
   const items = eventCalendarRows.slice(0, 6).map((row) => ({
     date: row.event_date,
-    event: row.title,
-    issuerLabel: row.event_type,
-    amount: row.source_section,
+    event: formatBalanceBusinessTextDisplay(row.title),
+    issuerLabel: formatBalanceBusinessTextDisplay(row.event_type),
+    amount: formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section),
     level: calendarLevelFromEventType(row.event_type),
-    note: row.impact_hint,
+    note: formatBalanceBusinessTextDisplay(row.impact_hint),
   }));
   return items.length > 0
     ? items
@@ -1592,7 +1673,7 @@ function buildStageCalendarItems(
           event: "当前报告日未返回事件日历",
           amount: "—",
           level: "low",
-          note: "event_calendar 为空，未使用静态日历。",
+          note: "事件日历为空，未使用静态日历。",
         },
       ];
 }
@@ -1624,28 +1705,34 @@ function buildStageRiskRows({
       dim: "期限缺口",
       current: largestGapValue === null ? "无切片" : largestGapValue < 0 ? "负缺口" : "非负",
       stress: largestGapValue === null ? "—" : `${formatSignedWanAsYiPlain(largestGapValue)} 亿元`,
-      scenario: formatBalanceWorkbookCellDisplay(largestGap?.bucket ?? "maturity_gap"),
+      scenario: formatBalanceWorkbookCellDisplay(largestGap?.bucket ?? "期限缺口"),
       level: largestGapValue === null ? "mid" : largestGapValue < 0 ? "high" : "low",
     },
     {
       dim: "风险预警",
       current: `${riskAlertRows.length} 条`,
-      stress: topRisk?.severity ?? "—",
-      scenario: topRisk?.source_section ?? "risk_alerts",
+      stress: topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : "—",
+      scenario: topRisk
+        ? formatBalanceWorkbookOperationalSectionKeyDisplay(topRisk.source_section)
+        : "风险预警",
       level: riskLevelFromSeverity(topRisk?.severity),
     },
     {
       dim: "治理事项",
       current: `${decisionRows.length} 项`,
-      stress: topDecision?.severity ?? "—",
-      scenario: topDecision?.source_section ?? "decision_items",
+      stress: topDecision ? formatBalanceGovernedSeverityDisplay(topDecision.severity) : "—",
+      scenario: topDecision
+        ? formatBalanceWorkbookOperationalSectionKeyDisplay(topDecision.source_section)
+        : "治理事项",
       level: riskLevelFromSeverity(topDecision?.severity),
     },
     {
       dim: "事件日历",
       current: `${eventCalendarRows.length} 个`,
       stress: eventCalendarRows[0]?.event_date ?? "—",
-      scenario: eventCalendarRows[0]?.event_type ?? "event_calendar",
+      scenario: eventCalendarRows[0]
+        ? formatBalanceBusinessTextDisplay(eventCalendarRows[0].event_type)
+        : "事件日历",
       level: eventCalendarRows.length > 0 ? "mid" : "low",
     },
     {
@@ -1925,5 +2012,11 @@ function formatStagePositionScope(scope: BalancePositionScope | string): string 
 }
 
 function formatStageCurrencyBasis(currencyBasis: BalanceCurrencyBasis | string): string {
-  return currencyBasis === "native" ? "原币" : String(currencyBasis);
+  if (currencyBasis === "native") {
+    return "原币";
+  }
+  if (currencyBasis === "CNY") {
+    return "人民币";
+  }
+  return String(currencyBasis);
 }

@@ -24,6 +24,7 @@ import {
 import { NavLink } from "react-router-dom";
 
 import type {
+  BalanceAnalysisCurrentUserPayload,
   BalanceAnalysisDecisionItemStatusRow,
   BalanceAnalysisEventCalendarRow,
   BalanceAnalysisOverviewPayload,
@@ -38,6 +39,7 @@ import { primaryWorkbenchNavigationGroups } from "../../../mocks/navigation";
 import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
+  formatBalanceBusinessTextDisplay,
   formatBalanceDecisionWorkflowStatusDisplay,
   formatBalanceGovernedSeverityDisplay,
   formatBalanceWorkbookOperationalSectionKeyDisplay,
@@ -61,6 +63,43 @@ export type BalanceWorkbenchKpiBar = {
   percent: number;
 };
 
+export type BalanceEndpointStatus = "ready" | "loading" | "deferred" | "idle" | "error";
+
+export type BalanceEndpointChip = {
+  key: string;
+  label: string;
+  path: string;
+  status: BalanceEndpointStatus;
+  value?: string;
+  detail: string;
+};
+
+export type BalanceEndpointGroup = {
+  key: string;
+  title: string;
+  description: string;
+  count: number;
+  tone: "primary" | "info" | "action";
+  endpoints: BalanceEndpointChip[];
+};
+
+export type BalanceDeferredSurface = {
+  key: string;
+  title: string;
+  endpoint: string;
+  status: BalanceEndpointStatus;
+  value: string;
+  detail: string;
+};
+
+export type BalanceStateSentinel = {
+  key: string;
+  label: string;
+  status: BalanceEndpointStatus;
+  active: boolean;
+  detail: string;
+};
+
 type BalanceMetricComparison = {
   key: string;
   title: string;
@@ -68,6 +107,14 @@ type BalanceMetricComparison = {
   liability: BalanceWorkbenchMetric;
   assetWidth: string;
   liabilityWidth: string;
+};
+
+type BalanceHomepageKpi = {
+  key: string;
+  label: string;
+  value: string;
+  unit: string;
+  source: string;
 };
 
 type BalanceWorkbenchCard = {
@@ -85,12 +132,16 @@ type BalanceAnalysisWorkbenchLayoutProps = {
   workbook: BalanceAnalysisWorkbookPayload | undefined;
   detail: BalanceAnalysisPayload | undefined;
   formalStatus: ResultMeta | undefined;
+  currentUser: BalanceAnalysisCurrentUserPayload | undefined;
   decisionRows: BalanceAnalysisDecisionItemStatusRow[];
   riskAlerts: BalanceAnalysisRiskAlertRow[];
   calendarEvents: BalanceAnalysisEventCalendarRow[];
   tableRows: BalanceAnalysisTableRow[];
   metrics: BalanceWorkbenchMetric[];
   kpiBars: BalanceWorkbenchKpiBar[];
+  endpointGroups: BalanceEndpointGroup[];
+  deferredSurfaces: BalanceDeferredSurface[];
+  stateSentinels: BalanceStateSentinel[];
   compactFilters: ReactNode;
 };
 
@@ -99,22 +150,77 @@ const portfolioNavigationItems =
     .find((group) => group.key === "portfolio")
     ?.sections.filter((section) => section.key !== "balance-analysis") ?? [];
 
-function formatMetricDefinitionDisplayUnit(displayUnit: string | undefined): string {
-  if (displayUnit === "yi_yuan") {
-    return "亿元";
+const endpointStatusLabels: Record<BalanceEndpointStatus, string> = {
+  ready: "正常",
+  loading: "加载",
+  deferred: "延迟",
+  idle: "待触发",
+  error: "需关注",
+};
+
+function formatEndpointStatus(status: BalanceEndpointStatus): string {
+  return endpointStatusLabels[status];
+}
+
+function renderEndpointStatusIcon(status: BalanceEndpointStatus) {
+  if (status === "ready") {
+    return <CheckCircleOutlined />;
   }
-  return "—";
+  if (status === "error") {
+    return <WarningOutlined />;
+  }
+  if (status === "deferred") {
+    return <BranchesOutlined />;
+  }
+  return <ClockCircleOutlined />;
+}
+
+function renderEndpointChip(endpoint: BalanceEndpointChip) {
+  const shouldShowStatus = endpoint.status === "error";
+  return (
+    <span
+      key={endpoint.key}
+      className="balance-workbench__endpoint-chip"
+      data-status={endpoint.status}
+      data-testid={`balance-analysis-endpoint-chip-${endpoint.key}`}
+      title={`${endpoint.label}：${endpoint.detail}`}
+      data-endpoint-path={endpoint.path}
+      aria-label={`${endpoint.label}，${endpoint.detail}，返回摘要 ${endpoint.value ?? "未返回"}`}
+    >
+      <span className="balance-workbench__endpoint-state-icon" aria-hidden>
+        {renderEndpointStatusIcon(endpoint.status)}
+      </span>
+      <span className="balance-workbench__endpoint-copy">
+        <b>{endpoint.label}</b>
+        <small className="balance-workbench__endpoint-detail">{endpoint.detail}</small>
+      </span>
+      {shouldShowStatus ? (
+        <em className="balance-workbench__endpoint-status">
+          {formatEndpointStatus(endpoint.status)}
+        </em>
+      ) : null}
+      <small className="balance-workbench__endpoint-value">{endpoint.value ?? "—"}</small>
+    </span>
+  );
+}
+
+function formatEndpointGroupStatusSummary(group: BalanceEndpointGroup): string {
+  const errorCount = group.endpoints.filter((endpoint) => endpoint.status === "error").length;
+  if (errorCount > 0) {
+    return `${group.description} · ${errorCount} 项需关注`;
+  }
+  return group.description;
 }
 
 function formatFormalStatus(meta: ResultMeta | undefined) {
   if (!meta) {
-    return "result_meta 未返回";
+    return "读面未返回";
   }
   return [
-    meta.basis,
-    meta.formal_use_allowed ? "formal_use_allowed=true" : "formal_use_allowed=false",
-    meta.quality_flag,
-    meta.fallback_mode,
+    meta.basis === "formal" ? "正式口径" : meta.basis,
+    meta.formal_use_allowed ? "可用于判断" : "待确认",
+    formatQualityFlag(meta),
+    formatFallbackMode(meta),
   ].join(" / ");
 }
 
@@ -176,8 +282,79 @@ function comparisonWidth(value: number | null, scale: number): string {
   return `${Math.max(8, Math.min(100, (value / scale) * 100))}%`;
 }
 
+function metricValueDisplay(value: string): string {
+  return value === "—" ? "待返回" : value;
+}
+
 function metricDisplay(metric: BalanceWorkbenchMetric): string {
-  return metric.unit ? `${metric.value} ${metric.unit}` : metric.value;
+  const value = metricValueDisplay(metric.value);
+  return metric.unit && metric.value !== "—" ? `${value} ${metric.unit}` : value;
+}
+
+function renderDeferredVisual(surface: BalanceDeferredSurface) {
+  if (surface.key === "detail-ledger") {
+    return (
+      <div className="balance-workbench__deferred-visual balance-workbench__deferred-visual--pill" aria-hidden>
+        底稿
+      </div>
+    );
+  }
+  if (surface.key === "basis-breakdown") {
+    return (
+      <div className="balance-workbench__deferred-visual balance-workbench__deferred-visual--segments" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </div>
+    );
+  }
+  if (surface.key === "adb-comparison") {
+    return (
+      <div className="balance-workbench__deferred-visual balance-workbench__deferred-visual--line" aria-hidden>
+        <i />
+      </div>
+    );
+  }
+  if (surface.key === "movement-link") {
+    return (
+      <div className="balance-workbench__deferred-visual balance-workbench__deferred-visual--bars" aria-hidden>
+        <i />
+        <i />
+        <i />
+        <i />
+        <i />
+      </div>
+    );
+  }
+  if (surface.key === "advanced-attribution") {
+    return (
+      <div className="balance-workbench__deferred-visual balance-workbench__deferred-visual--pill" aria-hidden>
+        归因
+      </div>
+    );
+  }
+  return (
+    <div className="balance-workbench__deferred-visual balance-workbench__deferred-visual--count" aria-hidden>
+      {surface.value}
+    </div>
+  );
+}
+
+function formatOverviewAmount(value: number | string | null | undefined): string {
+  return formatBalanceAmountToYiFromYuan(value);
+}
+
+function formatHomepageScope(value: string | undefined) {
+  if (value === "all") return "全部";
+  if (value === "asset") return "资产";
+  if (value === "liability") return "负债";
+  return value;
+}
+
+function formatHomepageCurrency(value: string | undefined) {
+  if (value === "CNY") return "人民币";
+  if (value === "native") return "原币";
+  return value;
 }
 
 function workbookCardDisplay(card: BalanceAnalysisWorkbookPayload["cards"][number] | undefined): string {
@@ -295,9 +472,9 @@ function buildCards({
           <ul className="balance-workbench-card__list">
             {firstRows(workbookTables, 4).map((table) => (
               <li key={table.key} className="balance-workbench-card__item">
-                <strong>{table.title}</strong>
+                <strong>{formatBalanceBusinessTextDisplay(table.title)}</strong>
                 <span className="balance-workbench-card__item-meta">
-                  {table.rows.length} 行 / {table.columns.length} 列 / workbook
+                  {table.rows.length} 行 / {table.columns.length} 列 / 工作簿
                 </span>
               </li>
             ))}
@@ -345,12 +522,12 @@ function buildCards({
           <ul className="balance-workbench-card__list">
             {firstRows(decisionRows, 3).map((row) => (
               <li key={row.decision_key} className="balance-workbench-card__item">
-                <strong>{row.title}</strong>
+                <strong>{formatBalanceBusinessTextDisplay(row.title)}</strong>
                 <span className="balance-workbench-card__item-meta">
                   {formatBalanceGovernedSeverityDisplay(row.severity)} /{" "}
                   {row.latest_status?.status != null
                     ? formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)
-                    : "未返回状态"}{" "}
+                    : "待治理反馈"}{" "}
                   / {formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section)}
                 </span>
               </li>
@@ -369,14 +546,14 @@ function buildCards({
       body: (
         <ul className="balance-workbench-card__list">
           <li className="balance-workbench-card__item">
-            <strong>{overview?.currency_basis ?? "—"}</strong>
+            <strong>{formatHomepageCurrency(overview?.currency_basis) ?? "—"}</strong>
             <span className="balance-workbench-card__item-meta">
-              {overview?.position_scope ?? "—"} / {formatFormalStatus(formalStatus)}
+              {formatHomepageScope(overview?.position_scope) ?? "—"} / {formatFormalStatus(formalStatus)}
             </span>
           </li>
           <li className="balance-workbench-card__item">
             <strong>{summary?.total_rows ?? 0} 汇总行</strong>
-            <span className="balance-workbench-card__item-meta">summary table / 当前分页 {summary?.rows.length ?? 0} 行</span>
+            <span className="balance-workbench-card__item-meta">当前分页 {summary?.rows.length ?? 0} 行</span>
           </li>
         </ul>
       ),
@@ -392,9 +569,10 @@ function buildCards({
           <ul className="balance-workbench-card__list">
             {firstRows(riskAlerts, 3).map((row) => (
               <li key={`${row.rule_id}:${row.title}`} className="balance-workbench-card__item">
-                <strong>{row.title}</strong>
+                <strong>{formatBalanceBusinessTextDisplay(row.title)}</strong>
                 <span className="balance-workbench-card__item-meta">
-                  {row.severity} / {formatBalanceWorkbookWanTextDisplay(row.reason)}
+                  {formatBalanceGovernedSeverityDisplay(row.severity)} /{" "}
+                  {formatBalanceBusinessTextDisplay(row.reason)}
                 </span>
               </li>
             ))}
@@ -414,9 +592,10 @@ function buildCards({
           <ul className="balance-workbench-card__list">
             {firstRows(calendarEvents, 3).map((row) => (
               <li key={`${row.event_date}:${row.title}`} className="balance-workbench-card__item">
-                <strong>{row.title}</strong>
+                <strong>{formatBalanceBusinessTextDisplay(row.title)}</strong>
                 <span className="balance-workbench-card__item-meta">
-                  {row.event_date} / {row.event_type} / {row.impact_hint}
+                  {row.event_date} / {formatBalanceBusinessTextDisplay(row.event_type)} /{" "}
+                  {formatBalanceBusinessTextDisplay(row.impact_hint)}
                 </span>
               </li>
             ))}
@@ -449,7 +628,7 @@ function buildCards({
               </div>
             ))}
             <div className="balance-workbench-card__subtle">
-              明细接口 summary {detail?.summary.length ?? 0} 组，details {detail?.details.length ?? 0} 行。
+              明细汇总 {detail?.summary.length ?? 0} 组，明细行 {detail?.details.length ?? 0} 行。
             </div>
           </div>
         ) : (
@@ -501,6 +680,9 @@ export default function BalanceAnalysisWorkbenchLayout({
   tableRows,
   metrics,
   kpiBars,
+  endpointGroups,
+  deferredSurfaces,
+  stateSentinels,
   compactFilters,
 }: BalanceAnalysisWorkbenchLayoutProps) {
   const cards = buildCards({
@@ -517,13 +699,147 @@ export default function BalanceAnalysisWorkbenchLayout({
   const topDecision = decisionRows[0];
   const topRisk = riskAlerts[0];
   const topEvent = calendarEvents[0];
-  const metricDefinitions = overview?.metric_definitions ?? [];
-  const firstMetricDefinition = metricDefinitions[0];
+  const topDecisionTitle = topDecision ? formatBalanceBusinessTextDisplay(topDecision.title) : null;
+  const topRiskTitle = topRisk ? formatBalanceBusinessTextDisplay(topRisk.title) : null;
+  const topEventTitle = topEvent ? formatBalanceBusinessTextDisplay(topEvent.title) : null;
   const comparisonPairs = buildMetricComparisons(metrics);
   const assetMarketMetric = findMetricByKey(metrics, "asset-market-value");
   const liabilityMarketMetric = findMetricByKey(metrics, "liability-market-value");
   const netPositionCard = findWorkbookCardByKey(workbook, "net_position");
   const issuanceCard = findWorkbookCardByKey(workbook, "issuance_liabilities");
+  const homepageActionTitle = topDecisionTitle ?? topRiskTitle ?? "暂无治理动作";
+  const homepageActionMeta = topDecision
+    ? `${formatBalanceGovernedSeverityDisplay(topDecision.severity)} / ${
+        topDecision.latest_status?.status
+          ? formatBalanceDecisionWorkflowStatusDisplay(topDecision.latest_status.status)
+          : "待治理反馈"
+      }`
+    : topRisk
+      ? `${formatBalanceGovernedSeverityDisplay(topRisk.severity)} / 风险待核`
+      : "暂无治理队列";
+  const reportDateFocus = overview?.report_date ?? "等待报告日";
+  const scopeFocus =
+    [
+      formatHomepageScope(overview?.position_scope),
+      formatHomepageCurrency(overview?.currency_basis),
+    ]
+      .filter(Boolean)
+      .join(" / ") ||
+    "等待筛选结果";
+  const rowCoverageFocus = `${String(overview?.summary_row_count ?? "—")} / ${String(
+    overview?.detail_row_count ?? "—",
+  )}`;
+  const governanceQueueFocus = `${decisionRows.length} / ${riskAlerts.length}`;
+  const formalStatusWarnings = [
+    formalStatus?.basis && formalStatus.basis !== "formal"
+      ? { key: "basis", label: "口径", value: formalStatus.basis }
+      : null,
+    formalStatus && !formalStatus.formal_use_allowed
+      ? { key: "allowed", label: "正式可用", value: formatFormalAllowed(formalStatus) }
+      : null,
+    formalStatus?.quality_flag && formalStatus.quality_flag !== "ok"
+      ? { key: "quality", label: "质量", value: formatQualityFlag(formalStatus) }
+      : null,
+    formalStatus?.fallback_mode && formalStatus.fallback_mode !== "none"
+      ? { key: "fallback", label: "降级", value: formatFallbackMode(formalStatus) }
+      : null,
+  ].filter((item): item is { key: string; label: string; value: string } => item !== null);
+  const activeStateSentinels = stateSentinels.filter((sentinel) => sentinel.active);
+  const decisionFlowSteps = [
+    {
+      key: "availability",
+      label: "读面",
+      detail: formalStatus?.formal_use_allowed ? "正式读面可用" : "等待正式读面",
+      active: Boolean(formalStatus?.formal_use_allowed),
+    },
+    {
+      key: "scale",
+      label: "规模",
+      detail: assetMarketMetric && liabilityMarketMetric ? "资产/负债已对齐" : "等待规模读面",
+      active: Boolean(assetMarketMetric || liabilityMarketMetric),
+    },
+    {
+      key: "risk",
+      label: "风险",
+      detail: topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : "无风险预警",
+      active: Boolean(topRisk),
+    },
+    {
+      key: "action",
+      label: "治理动作",
+      detail: topDecision?.latest_status?.status
+        ? formatBalanceDecisionWorkflowStatusDisplay(topDecision.latest_status.status)
+        : "等待治理反馈",
+      active: Boolean(topDecision),
+    },
+  ];
+  const totalEndpointCount = endpointGroups.reduce((sum, group) => sum + group.count, 0);
+  const endpointStatusCounts = endpointGroups
+    .flatMap((group) => group.endpoints)
+    .reduce(
+      (counts, endpoint) => ({
+        ...counts,
+        [endpoint.status]: counts[endpoint.status] + 1,
+      }),
+      {
+        ready: 0,
+        loading: 0,
+        deferred: 0,
+        idle: 0,
+        error: 0,
+      } satisfies Record<BalanceEndpointStatus, number>,
+    );
+  const endpointSummaryLine =
+    endpointStatusCounts.error > 0
+      ? `${endpointStatusCounts.error} 项需关注 · ${totalEndpointCount} 个读面`
+      : `${totalEndpointCount} 个读面 · 覆盖首屏、补充读面、动作`;
+  const endpointMatrixHiddenSummary = endpointGroups
+    .map((group) => `${group.title}${group.count}：${group.description}`)
+    .join(" / ");
+  const homepageKpis: BalanceHomepageKpi[] = [
+    {
+      key: "total-market-value",
+      label: "总市值规模",
+      value: formatOverviewAmount(overview?.total_market_value_amount),
+      unit: "亿元",
+      source: "MTR-BAL-001",
+    },
+    {
+      key: "total-amortized-cost",
+      label: "总摊余成本",
+      value: formatOverviewAmount(overview?.total_amortized_cost_amount),
+      unit: "亿元",
+      source: "MTR-BAL-002",
+    },
+    {
+      key: "total-accrued-interest",
+      label: "总应计利息",
+      value: formatOverviewAmount(overview?.total_accrued_interest_amount),
+      unit: "亿元",
+      source: "MTR-BAL-003",
+    },
+    {
+      key: "detail-row-count",
+      label: "明细行数",
+      value: String(overview?.detail_row_count ?? "—"),
+      unit: "行",
+      source: "MTR-BAL-101",
+    },
+    {
+      key: "summary-row-count",
+      label: "汇总行数",
+      value: String(overview?.summary_row_count ?? summary?.total_rows ?? "—"),
+      unit: "行",
+      source: "MTR-BAL-102/103",
+    },
+    {
+      key: "decision-action-count",
+      label: "治理动作",
+      value: String(decisionRows.length),
+      unit: "项",
+      source: "治理队列",
+    },
+  ];
   const metricGroups = (["asset", "liability", "evidence"] as const)
     .map((key) => ({
       key,
@@ -542,23 +858,42 @@ export default function BalanceAnalysisWorkbenchLayout({
             <div className="balance-workbench__terminal-header">
               <IconBadge tone="asset" icon={<FundProjectionScreenOutlined />} />
               <div>
-                <span className="balance-workbench__eyebrow">Investment banking terminal memo</span>
-                <h2 className="balance-workbench__judgement-title">正式状态判断</h2>
+                <span className="balance-workbench__eyebrow">缺口判断台</span>
+                <h2 className="balance-workbench__judgement-title">资产负债缺口判断</h2>
                 <p className="balance-workbench__judgement-lede">
-                  先看净头寸、风险 tape 与治理状态，再进入汇总表、工作簿和明细底稿下钻。
+                  {topRiskTitle ? `${topRiskTitle}需复核` : "净头寸、期限缺口与治理动作可读"}
                 </p>
               </div>
             </div>
+            <div className="balance-workbench__decision-flow" aria-label="首页判断流程">
+              {decisionFlowSteps.map((step, index) => (
+                <div
+                  key={step.key}
+                  className="balance-workbench__decision-step"
+                  data-active={step.active ? "true" : "false"}
+                >
+                  <span>{index + 1}</span>
+                  <strong>{step.label}</strong>
+                  <small>{step.detail}</small>
+                </div>
+              ))}
+            </div>
             <p className="balance-workbench__judgement-copy">
               {[
-                topRisk ? `风险: ${topRisk.title} / ${topRisk.severity}` : null,
-                topDecision
-                  ? `决策: ${topDecision.title} / ${topDecision.latest_status?.status ?? "未返回状态"}`
+                topRisk
+                  ? `风险: ${topRiskTitle} / ${formatBalanceGovernedSeverityDisplay(topRisk.severity)}`
                   : null,
-                topEvent ? `事件: ${topEvent.title} / ${topEvent.event_date}` : null,
+                topDecision
+                  ? `决策: ${topDecisionTitle} / ${
+                      topDecision.latest_status?.status
+                        ? formatBalanceDecisionWorkflowStatusDisplay(topDecision.latest_status.status)
+                        : "待治理反馈"
+                    }`
+                  : null,
+                topEvent ? `事件: ${topEventTitle} / ${topEvent.event_date}` : null,
               ]
                 .filter(Boolean)
-                .join("。") || "当前报告日未返回治理异常信号。"}
+                .join("。") || "当前报告日未返回治理风险信号。"}
             </p>
             <div className="balance-workbench__terminal-tape" data-testid="balance-analysis-terminal-tape">
               <div className="balance-workbench__tape-item balance-workbench__tape-item--asset">
@@ -586,24 +921,24 @@ export default function BalanceAnalysisWorkbenchLayout({
               <div className="balance-workbench__signal">
                 <IconBadge tone="risk" icon={<WarningOutlined />} />
                 <span>最高风险</span>
-                <strong>{topRisk?.title ?? "未返回风险预警"}</strong>
-                <small>{topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : "risk_alerts"}</small>
+                <strong>{topRiskTitle ?? "未返回风险预警"}</strong>
+                <small>{topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : "未返回预警"}</small>
               </div>
               <div className="balance-workbench__signal">
                 <IconBadge tone="action" icon={<AuditOutlined />} />
                 <span>待办决策</span>
-                <strong>{topDecision?.title ?? "未返回决策事项"}</strong>
+                <strong>{topDecisionTitle ?? "未返回决策事项"}</strong>
                 <small>
                   {topDecision?.latest_status?.status
                     ? formatBalanceDecisionWorkflowStatusDisplay(topDecision.latest_status.status)
-                    : "decision_items"}
+                    : "未返回决策"}
                 </small>
               </div>
               <div className="balance-workbench__signal">
                 <IconBadge tone="evidence" icon={<ClockCircleOutlined />} />
                 <span>最近事件</span>
-                <strong>{topEvent?.title ?? "未返回事件日历"}</strong>
-                <small>{topEvent?.event_date ?? "event_calendar"}</small>
+                <strong>{topEventTitle ?? "未返回事件日历"}</strong>
+                <small>{topEvent?.event_date ?? "未返回事件"}</small>
               </div>
             </div>
           </div>
@@ -615,112 +950,360 @@ export default function BalanceAnalysisWorkbenchLayout({
           className="balance-workbench__status-rail"
         >
           <div className="balance-workbench__status-head">
-            <span className="balance-workbench__eyebrow">首页焦点 / 数据说明</span>
+            <span className="balance-workbench__eyebrow">首页组合 / 行动摘要</span>
             <strong id="balance-analysis-status-rail-title">
               <SafetyCertificateOutlined aria-hidden />{" "}
-              {formalStatus?.result_kind ?? "result_meta 未返回"}
+              首页行动摘要
             </strong>
-            <small>先确认正式读链路、数据质量与降级状态，再阅读规模和治理行动。</small>
+            <small>只保留会影响判断和处置的信息，常规校验收进证据链路。</small>
           </div>
-          <dl className="balance-workbench__status-pills">
-            <div className="balance-workbench__status-pill">
-              <ControlOutlined aria-hidden />
-              <dt>口径</dt>
-              <dd>{formalStatus?.basis ?? "—"}</dd>
+          {formalStatusWarnings.length > 0 ? (
+            <div className="balance-workbench__status-badges">
+              {formalStatusWarnings.map((warning) => (
+                <span key={warning.key}>
+                  <b>{warning.label}</b>
+                  {warning.value}
+                </span>
+              ))}
             </div>
-            <div className="balance-workbench__status-pill">
-              <CheckCircleOutlined aria-hidden />
-              <dt>正式可用</dt>
-              <dd>{formatFormalAllowed(formalStatus)}</dd>
+          ) : null}
+          <div className="balance-workbench__status-list balance-workbench__status-grid balance-workbench__status-grid--homepage">
+            <div className="balance-workbench__status-metric">
+              <CalendarOutlined aria-hidden className="balance-workbench__status-icon" />
+              <span>报告日 / 口径</span>
+              <strong>{reportDateFocus}</strong>
+              <small>{scopeFocus}</small>
             </div>
-            <div className="balance-workbench__status-pill">
-              <SafetyCertificateOutlined aria-hidden />
-              <dt>质量</dt>
-              <dd>{formatQualityFlag(formalStatus)}</dd>
-            </div>
-            <div className="balance-workbench__status-pill">
-              <BranchesOutlined aria-hidden />
-              <dt>降级</dt>
-              <dd>{formatFallbackMode(formalStatus)}</dd>
-            </div>
-          </dl>
-          <div className="balance-workbench__status-grid">
             <div className="balance-workbench__status-metric">
               <TableOutlined aria-hidden className="balance-workbench__status-icon" />
-              <span>正式汇总查询</span>
-              <strong>{String(overview?.summary_row_count ?? "—")}</strong>
-              <small>汇总行</small>
+              <span>有效读面</span>
+              <strong>{rowCoverageFocus}</strong>
+              <small>汇总行 / 明细行</small>
             </div>
             <div className="balance-workbench__status-metric">
-              <FileSearchOutlined aria-hidden className="balance-workbench__status-icon" />
-              <span>正式明细查询</span>
-              <strong>{String(overview?.detail_row_count ?? "—")}</strong>
-              <small>明细行</small>
+              <AuditOutlined aria-hidden className="balance-workbench__status-icon" />
+              <span>治理队列</span>
+              <strong>{governanceQueueFocus}</strong>
+              <small>决策项 / 风险预警</small>
             </div>
             <div className="balance-workbench__status-metric">
-              <ClusterOutlined aria-hidden className="balance-workbench__status-icon" />
-              <span>工作簿摘要卡</span>
-              <strong>{String(workbook?.cards.length ?? 0)}</strong>
-              <small>摘要卡</small>
+              <ClockCircleOutlined aria-hidden className="balance-workbench__status-icon" />
+              <span>最近事件</span>
+              <strong>{topEvent?.event_date ?? "未返回"}</strong>
+              <small>{topEventTitle ?? "事件日历未返回"}</small>
             </div>
             <div className="balance-workbench__status-metric">
-              <DatabaseOutlined aria-hidden className="balance-workbench__status-icon" />
-              <span>指标定义</span>
-              <strong>{metricDefinitions.length} 项</strong>
-              <small>
-                {formatMetricDefinitionDisplayUnit(firstMetricDefinition?.display_unit)} /{" "}
-                {firstMetricDefinition?.description ?? "—"}
-              </small>
+              <BranchesOutlined aria-hidden className="balance-workbench__status-icon" />
+              <span>首页主动作</span>
+              <strong>{homepageActionTitle}</strong>
+              <small>{homepageActionMeta}</small>
             </div>
           </div>
-          <div className="balance-workbench__status-meta">
-            <span>{formatFormalStatus(formalStatus)}</span>
-            <span><BranchesOutlined aria-hidden /> trace_id: {formalStatus?.trace_id ?? "—"}</span>
+          <div className="balance-workbench__status-bottom">
+            {activeStateSentinels.length > 0 ? (
+              <div
+                data-testid="balance-analysis-abnormal-sentinels"
+                className="balance-workbench__sentinels"
+              >
+                <div className="balance-workbench__sentinels-head">
+                  <span className="balance-workbench__eyebrow">需关注</span>
+                  <strong>需处理事项</strong>
+                </div>
+                <div className="balance-workbench__sentinel-list">
+                  {activeStateSentinels.map((sentinel) => (
+                    <span
+                      key={sentinel.key}
+                      className="balance-workbench__sentinel"
+                      data-active="true"
+                      data-status={sentinel.status}
+                      title={sentinel.detail}
+                    >
+                      <i aria-hidden />
+                      <b>{sentinel.label}</b>
+                      <small>{sentinel.detail}</small>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div
+              className="balance-workbench__status-callout"
+              data-testid="balance-analysis-homepage-focus"
+              hidden
+            >
+              <IconBadge tone={topDecision ? "action" : topRisk ? "risk" : "evidence"} icon={<AuditOutlined />} />
+              <div>
+                <span>首页主动作 / Next best action</span>
+                <strong>{homepageActionTitle}</strong>
+                <small>{homepageActionMeta}</small>
+                <div className="balance-workbench__action-chips" aria-label="首页主动作入口">
+                  <span>确认</span>
+                  <span>暂缓</span>
+                  <span>查看证据</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="balance-workbench__filter-note">{compactFilters}</div>
         </aside>
       </section>
 
-      {comparisonPairs.length > 0 ? (
+      <section className="balance-workbench__homepage-kpis" data-testid="balance-analysis-contract-kpis">
+        <div className="balance-workbench__homepage-kpis-head">
+          <span className="balance-workbench__eyebrow">核心指标速览</span>
+          <strong>正式汇总</strong>
+        </div>
+        <div className="balance-workbench__homepage-kpi-grid">
+          {homepageKpis.map((kpi) => (
+            <article key={kpi.key} className="balance-workbench__homepage-kpi">
+              <span>{kpi.label}</span>
+              <strong>
+                {metricValueDisplay(kpi.value)}
+                {kpi.value === "—" ? null : <small>{kpi.unit}</small>}
+              </strong>
+              <em>{kpi.source}</em>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="balance-workbench__lower-grid" aria-label="核心对比与下钻工作区">
+        {comparisonPairs.length > 0 ? (
+          <section
+            data-testid="balance-analysis-comparison-matrix"
+            className="balance-workbench__comparison-matrix"
+          >
+            <div className="balance-workbench__comparison-head">
+              <IconBadge tone="asset" icon={<BarChartOutlined />} />
+              <span className="balance-workbench__eyebrow">核心规模对比</span>
+              <h2>资产端 / 负债端并排判断</h2>
+            </div>
+            <div className="balance-workbench__comparison-grid">
+              {comparisonPairs.map((pair) => (
+                <article
+                  key={pair.key}
+                  data-testid={`balance-analysis-comparison-row-${pair.key}`}
+                  className="balance-workbench__comparison-card"
+                >
+                  <h3>
+                    <LineChartOutlined aria-hidden />
+                    {pair.title}
+                  </h3>
+                  <div className="balance-workbench__comparison-row balance-workbench__comparison-row--asset">
+                    <span>{pair.asset.label}</span>
+                    <strong>{metricDisplay(pair.asset)}</strong>
+                    <div className="balance-workbench__comparison-track" aria-hidden>
+                      <i style={{ width: pair.assetWidth }} />
+                    </div>
+                  </div>
+                  <div className="balance-workbench__comparison-row balance-workbench__comparison-row--liability">
+                    <span>{pair.liability.label}</span>
+                    <strong>{metricDisplay(pair.liability)}</strong>
+                    <div className="balance-workbench__comparison-track" aria-hidden>
+                      <i style={{ width: pair.liabilityWidth }} />
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section
-          data-testid="balance-analysis-comparison-matrix"
-          className="balance-workbench__comparison-matrix"
+          data-testid="balance-analysis-secondary-workbench"
+          className="balance-workbench__secondary-workbench"
+          aria-label="资产负债分析下钻工作台"
         >
-          <div className="balance-workbench__comparison-head">
-            <IconBadge tone="asset" icon={<BarChartOutlined />} />
-            <span className="balance-workbench__eyebrow">核心规模对比</span>
-            <h2>资产端 / 负债端并排判断</h2>
+          <div className="balance-workbench__secondary-heading">
+            <span className="balance-workbench__eyebrow">下钻工作台</span>
+            <strong>汇总、工作簿与治理闭环</strong>
+            <small>把首屏判断导向可执行读面，技术路径和审计字段收在抽屉。</small>
           </div>
-          <div className="balance-workbench__comparison-grid">
-            {comparisonPairs.map((pair) => (
-              <article
-                key={pair.key}
-                data-testid={`balance-analysis-comparison-row-${pair.key}`}
-                className="balance-workbench__comparison-card"
-              >
-                <h3>
-                  <LineChartOutlined aria-hidden />
-                  {pair.title}
-                </h3>
-                <div className="balance-workbench__comparison-row balance-workbench__comparison-row--asset">
-                  <span>{pair.asset.label}</span>
-                  <strong>{metricDisplay(pair.asset)}</strong>
-                  <div className="balance-workbench__comparison-track" aria-hidden>
-                    <i style={{ width: pair.assetWidth }} />
-                  </div>
-                </div>
-                <div className="balance-workbench__comparison-row balance-workbench__comparison-row--liability">
-                  <span>{pair.liability.label}</span>
-                  <strong>{metricDisplay(pair.liability)}</strong>
-                  <div className="balance-workbench__comparison-track" aria-hidden>
-                    <i style={{ width: pair.liabilityWidth }} />
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
+          <article className="balance-workbench__secondary-panel">
+            <div className="balance-workbench__secondary-title">
+              <IconBadge tone="asset" icon={<TableOutlined />} />
+              <div>
+                <strong>汇总驾驶舱</strong>
+                <span>汇总与明细</span>
+              </div>
+            </div>
+            <dl className="balance-workbench__secondary-stats">
+              <div>
+                <dt>汇总行</dt>
+                <dd>{summary?.total_rows ?? 0}</dd>
+              </div>
+              <div>
+                <dt>当前页</dt>
+                <dd>{summary?.rows.length ?? 0}</dd>
+              </div>
+            </dl>
+            <ul className="balance-workbench__secondary-list">
+              {tableRows.length > 0
+                ? firstRows(tableRows, 3).map((row) => (
+                    <li key={row.row_key}>
+                      <strong>{row.display_name}</strong>
+                      <span>{formatBalanceAmountToYiFromYuan(row.market_value_amount)} 亿元</span>
+                    </li>
+                  ))
+                : [
+                    <li key="summary-empty">
+                      <strong>等待汇总读面</strong>
+                      <span>暂无可展示明细</span>
+                    </li>,
+                  ]}
+            </ul>
+          </article>
+          <article className="balance-workbench__secondary-panel">
+            <div className="balance-workbench__secondary-title">
+              <IconBadge tone="evidence" icon={<PartitionOutlined />} />
+              <div>
+                <strong>工作簿图谱</strong>
+                <span>结构与分布</span>
+              </div>
+            </div>
+            <dl className="balance-workbench__secondary-stats">
+              <div>
+                <dt>表</dt>
+                <dd>{workbook?.tables.length ?? 0}</dd>
+              </div>
+              <div>
+                <dt>卡片</dt>
+                <dd>{workbook?.cards.length ?? 0}</dd>
+              </div>
+            </dl>
+            <ul className="balance-workbench__secondary-list">
+              {(workbook?.tables.length ?? 0) > 0
+                ? firstRows(workbook?.tables ?? [], 4).map((table) => (
+                    <li key={table.key}>
+                      <strong>{formatBalanceBusinessTextDisplay(table.title)}</strong>
+                      <span>{table.rows.length} 行 / {table.columns.length} 列</span>
+                    </li>
+                  ))
+                : [
+                    <li key="workbook-empty">
+                      <strong>等待工作簿图谱</strong>
+                      <span>暂无结构面板</span>
+                    </li>,
+                  ]}
+            </ul>
+          </article>
+          <article className="balance-workbench__secondary-panel">
+            <div className="balance-workbench__secondary-title">
+              <IconBadge tone="action" icon={<AuditOutlined />} />
+              <div>
+                <strong>治理闭环</strong>
+                <span>决策与预警</span>
+              </div>
+            </div>
+            <dl className="balance-workbench__secondary-stats">
+              <div>
+                <dt>决策项</dt>
+                <dd>{decisionRows.length}</dd>
+              </div>
+              <div>
+                <dt>预警</dt>
+                <dd>{riskAlerts.length}</dd>
+              </div>
+            </dl>
+            <ul className="balance-workbench__secondary-list">
+              {decisionRows.length > 0
+                ? firstRows(decisionRows, 3).map((row) => (
+                    <li key={row.decision_key}>
+                      <strong>{formatBalanceBusinessTextDisplay(row.title)}</strong>
+                      <span>
+                        {formatBalanceGovernedSeverityDisplay(row.severity)} /{" "}
+                        {row.latest_status?.status
+                          ? formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)
+                          : "待治理反馈"}
+                      </span>
+                    </li>
+                  ))
+                : [
+                    <li key="decision-empty">
+                      <strong>暂无治理动作</strong>
+                      <span>暂无待办事项</span>
+                    </li>,
+                  ]}
+            </ul>
+          </article>
         </section>
-      ) : null}
+      </section>
+
+      <details
+        data-testid="balance-analysis-endpoint-matrix"
+        className="balance-workbench__endpoint-matrix balance-workbench__endpoint-drawer"
+        aria-label="资产负债分析数据读面链路"
+      >
+        <summary className="balance-workbench__endpoint-summary">
+          <div className="balance-workbench__endpoint-head">
+            <div>
+              <span className="balance-workbench__eyebrow">数据读面链路</span>
+              <strong>读面目录与返回摘要</strong>
+            </div>
+            <span className="balance-workbench__endpoint-auto">
+              {endpointSummaryLine}
+            </span>
+          </div>
+        </summary>
+        <span className="balance-workbench__endpoint-a11y-summary">
+          {endpointMatrixHiddenSummary} 首屏 高级归因 决策处理
+        </span>
+        <div className="balance-workbench__endpoint-body">
+          {endpointGroups.map((group) => (
+            <article
+              key={group.key}
+              className={`balance-workbench__endpoint-group${
+                group.key === "first-screen" ? " balance-workbench__endpoint-group--hero" : ""
+              }`}
+              data-testid={`balance-analysis-endpoint-group-${group.key}`}
+              data-tone={group.tone}
+            >
+              <div className="balance-workbench__endpoint-group-head">
+                <strong>
+                  {group.title}
+                </strong>
+                <em>{group.count} 个读面 · {formatEndpointGroupStatusSummary(group)}</em>
+              </div>
+              <div className="balance-workbench__endpoint-chip-grid">
+                {group.endpoints.map(renderEndpointChip)}
+              </div>
+            </article>
+          ))}
+        </div>
+      </details>
+
+      <details
+        data-testid="balance-analysis-deferred-strip"
+        className="balance-workbench__deferred-strip"
+        aria-label="资产负债分析自动补充分析"
+      >
+        <summary className="balance-workbench__deferred-summary">
+          <span className="balance-workbench__section-tab">补充分析</span>
+          <div className="balance-workbench__deferred-head">
+            <span className="balance-workbench__eyebrow">解释材料</span>
+            <strong>自动补充分析 5</strong>
+            <small>首屏稳定后补充解释材料，不替代正式结论。</small>
+          </div>
+        </summary>
+        <div className="balance-workbench__deferred-grid">
+          {deferredSurfaces.map((surface) => (
+            <article
+              key={surface.key}
+              className="balance-workbench__deferred-card"
+              data-status={surface.status}
+            >
+              <div>
+                <strong>{surface.title}</strong>
+                <span>{surface.endpoint}</span>
+              </div>
+              {surface.status === "error" ? <em>{formatEndpointStatus(surface.status)}</em> : null}
+              {renderDeferredVisual(surface)}
+              <b>{surface.value}</b>
+              <small>{surface.detail}</small>
+            </article>
+          ))}
+        </div>
+      </details>
 
       <details className="balance-workbench__metric-drawer">
         <summary className="balance-workbench__metric-drawer-summary">
@@ -749,7 +1332,10 @@ export default function BalanceAnalysisWorkbenchLayout({
                       />
                       <div className="balance-workbench__metric-copy">
                         <span>{metric.label}</span>
-                        <strong>{metric.value}{metric.unit ? <small>{metric.unit}</small> : null}</strong>
+                        <strong>
+                          {metricValueDisplay(metric.value)}
+                          {metric.unit && metric.value !== "—" ? <small>{metric.unit}</small> : null}
+                        </strong>
                         {metric.detail ? <em>{metric.detail}</em> : null}
                       </div>
                     </div>
@@ -781,21 +1367,28 @@ export default function BalanceAnalysisWorkbenchLayout({
         </div>
       ) : null}
 
-      <section data-testid="balance-analysis-workbench-grid" className="balance-workbench__grid">
-        {cards.map((card) => (
-          <article
-            key={card.key}
-            className={`balance-workbench-card balance-workbench-card--span-${card.span} balance-workbench-card--${card.key}`}
-            data-testid={`balance-analysis-workbench-card-${card.key}`}
-          >
-            <h2 className="balance-workbench-card__heading">
-              <IconBadge tone={card.tone} icon={card.icon} />
-              {card.title}
-            </h2>
-            {card.body}
-          </article>
-        ))}
-      </section>
+      <details className="balance-workbench__legacy-drawer">
+        <summary className="balance-workbench__legacy-drawer-summary">
+          <span className="balance-workbench__eyebrow">更多底稿</span>
+          <strong>治理、结构与证据工作卡片</strong>
+          <span>默认收起，首页先保留判断和下钻动作。</span>
+        </summary>
+        <section data-testid="balance-analysis-workbench-grid" className="balance-workbench__grid">
+          {cards.map((card) => (
+            <article
+              key={card.key}
+              className={`balance-workbench-card balance-workbench-card--span-${card.span} balance-workbench-card--${card.key}`}
+              data-testid={`balance-analysis-workbench-card-${card.key}`}
+            >
+              <h2 className="balance-workbench-card__heading">
+                <IconBadge tone={card.tone} icon={card.icon} />
+                {card.title}
+              </h2>
+              {card.body}
+            </article>
+          ))}
+        </section>
+      </details>
 
       <nav
         data-testid="balance-analysis-portfolio-nav"

@@ -38,9 +38,6 @@ import {
   AnalysisGrid,
   DataStatusStrip,
   EvidencePanel,
-  KpiBand,
-  KpiBandMetric,
-  PageDecisionHero,
   PageFilterTray,
   PageSectionLead,
   PageStateSurface,
@@ -48,7 +45,12 @@ import {
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
-import BalanceAnalysisWorkbenchLayout from "../components/BalanceAnalysisWorkbenchLayout";
+import BalanceAnalysisWorkbenchLayout, {
+  type BalanceDeferredSurface,
+  type BalanceEndpointGroup,
+  type BalanceEndpointStatus,
+  type BalanceStateSentinel,
+} from "../components/BalanceAnalysisWorkbenchLayout";
 import { BalanceBottomRow } from "../components/BalanceBottomRow";
 import { BalanceContributionRow } from "../components/BalanceContributionRow";
 import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
@@ -61,15 +63,13 @@ import {
   workbookPanelHeaderStyle,
   workbookPanelBadgeStyle,
   workbookSecondaryGridStyle,
-  rightRailFilterRowStyle,
-  rightRailFilterStyle,
-  currentUserCardStyle,
 } from "./BalanceAnalysisPage.styles";
 import {
   buildBalanceAnalysisPageModel,
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
+  formatBalanceBusinessTextDisplay,
   formatBalanceGridThousandsValue,
   formatBalanceWorkbookCellDisplay,
   formatBalanceDecisionWorkflowStatusDisplay,
@@ -123,7 +123,175 @@ const workbookRightRailNotes: Record<RightRailWorkbookKey, string> = {
   risk_alerts: "阈值型风险预警，不在前端补正式金融判断。",
 };
 
-const decisionRailNote = "规则驱动的运营建议项通过治理状态流确认、忽略和跟踪，不把状态写回正式事实表。";
+const decisionRailNote = "规则驱动的运营建议项通过处理流确认、忽略和跟踪，不把处理结果写回正式事实表。";
+
+type BalanceEndpointQueryState = {
+  isError: boolean;
+  isLoading: boolean;
+  isFetching?: boolean;
+  isSuccess: boolean;
+};
+
+type BalanceAttentionSentinelKey = "stale" | "fallback" | "error";
+
+type BalanceAttentionReason = {
+  key: string;
+  sentinel: BalanceAttentionSentinelKey;
+  detail: string;
+};
+
+function queryEndpointStatus(
+  query: BalanceEndpointQueryState,
+  enabled = true,
+): BalanceEndpointStatus {
+  if (!enabled) {
+    return "deferred";
+  }
+  if (query.isError) {
+    return "error";
+  }
+  if (query.isLoading || query.isFetching) {
+    return "loading";
+  }
+  if (query.isSuccess) {
+    return "ready";
+  }
+  return "idle";
+}
+
+function actionEndpointStatus({
+  isError,
+  isLoading,
+  isActive,
+}: {
+  isError?: boolean;
+  isLoading?: boolean;
+  isActive?: boolean;
+}): BalanceEndpointStatus {
+  if (isError) {
+    return "error";
+  }
+  if (isLoading) {
+    return "loading";
+  }
+  if (isActive) {
+    return "ready";
+  }
+  return "idle";
+}
+
+function firstAttentionDetail(
+  reasons: readonly BalanceAttentionReason[],
+  sentinel: BalanceAttentionSentinelKey,
+  fallback: string,
+): string {
+  return (
+    reasons.find(
+      (reason) => reason.sentinel === sentinel && !reason.key.startsWith("status-badge-"),
+    )?.detail ??
+    reasons.find((reason) => reason.sentinel === sentinel)?.detail ??
+    fallback
+  );
+}
+
+function formatAttentionBasis(value: string | undefined): string {
+  if (value === "formal") return "正式口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "mock") return "模拟口径";
+  return "未知口径";
+}
+
+function formatAttentionQuality(value: string | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  if (value === "missing") return "缺失";
+  return "未提供";
+}
+
+function formatAttentionFallback(value: string | undefined): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return "未提供";
+}
+
+function formatEvidenceTraceDisplay(value: string): string {
+  if (!value || value === "未提供") {
+    return "未提供";
+  }
+  return "已记录";
+}
+
+function formatRefreshStatusDisplay(status: string | undefined): string {
+  if (status === "queued") return "刷新任务已排队";
+  if (status === "running") return "刷新任务进行中";
+  if (status === "completed") return "刷新结果已生成";
+  if (status === "failed") return "刷新暂未完成";
+  return "刷新任务已有反馈";
+}
+
+function formatOperationIssueDisplay(action: "refresh" | "decision" | "summary-export" | "workbook-export"): string {
+  if (action === "decision") {
+    return "治理处理结果暂未写入，请稍后重试或联系数据负责人。";
+  }
+  if (action === "summary-export") {
+    return "汇总表暂未导出，请稍后重试。";
+  }
+  if (action === "workbook-export") {
+    return "工作簿暂未导出，请稍后重试。";
+  }
+  return "正式结果暂未刷新，请稍后重试。";
+}
+
+function formatCurrentUserRoleDisplay(role: string | undefined): string {
+  if (role === "viewer") return "查看者";
+  if (role === "reviewer") return "复核人";
+  if (role === "admin") return "管理员";
+  return role || "未识别角色";
+}
+
+function formatCurrentUserDisplay(userId: string | undefined): string {
+  if (!userId || userId === "anonymous") return "默认提交人";
+  return userId;
+}
+
+function formatIdentitySourceDisplay(source: string | undefined): string {
+  if (source === "fallback") return "兜底身份";
+  if (source === "header") return "请求头身份";
+  if (source === "session") return "会话身份";
+  return source || "未知来源";
+}
+
+function formatAdvancedAttributionStatusDisplay(status: string | undefined): string {
+  if (status === "not_ready") return "未就绪";
+  if (status === "partial") return "部分可用";
+  if (status === "ready") return "可用";
+  return status ? "已有反馈" : "待返回";
+}
+
+function formatAdvancedAttributionModeDisplay(mode: string | undefined): string {
+  if (mode === "analytical") return "分析口径";
+  if (mode === "scenario") return "情景口径";
+  if (mode === "formal") return "正式口径";
+  return mode ? "补充口径" : "未提供";
+}
+
+function formatAdvancedAttributionInputDisplay(input: string): string {
+  if (/yield_curves/i.test(input)) return "收益曲线对齐";
+  if (/trade|position|cashflow/i.test(input)) return "成交、持仓与现金流明细";
+  if (/benchmark|index/i.test(input)) return "基准指数收益序列";
+  if (/pnl/i.test(input)) return "损益实绩对齐";
+  return "上游治理输入";
+}
+
+function formatAdvancedAttributionWarningDisplay(warning: string): string {
+  if (/advanced_attribution_bundle|partial/i.test(warning)) return "高阶归因仅返回部分分析材料。";
+  if (/bond_analytics|phase3/i.test(warning)) return "债券分析三阶段结果尚未完整对齐。";
+  if (/pnl|bridge|return_decomposition/i.test(warning)) return "归因材料来自已治理摘要，仍需底稿补齐。";
+  return "补充提示已记录。";
+}
 
 const ratingBlockPalette = [
   designTokens.color.success[400],
@@ -204,7 +372,28 @@ function workbookCellFormatter(params: ValueFormatterParams): string {
   if (typeof params.value === "string" && /(?:wan yuan|万元)/i.test(params.value)) {
     return formatBalanceWorkbookWanTextDisplay(params.value);
   }
-  return formatBalanceGridThousandsValue(params.value);
+  const formattedValue = formatBalanceGridThousandsValue(params.value);
+  return typeof params.value === "string" && formattedValue === params.value
+    ? formatBalanceBusinessTextDisplay(params.value)
+    : formattedValue;
+}
+
+function businessTextValueFormatter(params: ValueFormatterParams): string {
+  return formatBalanceBusinessTextDisplay(params.value);
+}
+
+function formatInvestAccountingDisplay(data: {
+  invest_type_std?: unknown;
+  accounting_basis?: unknown;
+} | null | undefined): string {
+  if (!data) {
+    return "";
+  }
+  const investType = data.invest_type_std == null ? "" : formatBalanceBusinessTextDisplay(data.invest_type_std);
+  const accountingBasis =
+    data.accounting_basis == null ? "" : formatBalanceBusinessTextDisplay(data.accounting_basis);
+  const parts = [investType, accountingBasis].filter((part) => part && part !== "—");
+  return parts.length > 0 ? parts.join(" / ") : "—";
 }
 
 const balanceAnalysisGridDefaultColDef: ColDef = {
@@ -217,18 +406,21 @@ const balanceAnalysisGridDefaultColDef: ColDef = {
     params.colDef?.cellClass === "ag-right-aligned-cell" ? { ...tabularNumsStyle } : undefined,
 };
 
+const balanceAnalysisGridLocaleText = {
+  noRowsToShow: "暂无数据",
+};
+
 const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
   {
     field: "source_family",
     headerName: "来源",
-    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+    valueFormatter: businessTextValueFormatter,
   },
-  { field: "row_key", headerName: "行键", minWidth: 160 },
   { field: "display_name", headerName: "展示名" },
   { field: "owner_name", headerName: "组合名称" },
   { field: "category_name", headerName: "分类" },
-  { field: "position_scope", headerName: "头寸范围" },
-  { field: "currency_basis", headerName: "币种口径" },
+  { field: "position_scope", headerName: "头寸范围", valueFormatter: businessTextValueFormatter },
+  { field: "currency_basis", headerName: "币种口径", valueFormatter: businessTextValueFormatter },
   {
     field: "market_value_amount",
     headerName: "规模(亿元)",
@@ -260,8 +452,7 @@ const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
   {
     colId: "invest_accounting",
     headerName: "会计口径",
-    valueGetter: (p) =>
-      p.data ? `${p.data.invest_type_std} / ${p.data.accounting_basis}` : "",
+    valueGetter: (p) => formatInvestAccountingDisplay(p.data),
   },
 ];
 
@@ -269,16 +460,15 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailGridRow>[] = [
   {
     field: "source_family",
     headerName: "来源",
-    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+    valueFormatter: businessTextValueFormatter,
   },
   { field: "display_name", headerName: "标识" },
   { field: "report_date", headerName: "报告日" },
-  { field: "position_scope", headerName: "范围" },
+  { field: "position_scope", headerName: "范围", valueFormatter: businessTextValueFormatter },
   {
     colId: "invest_accounting",
     headerName: "会计口径",
-    valueGetter: (p) =>
-      p.data ? `${p.data.invest_type_std} / ${p.data.accounting_basis}` : "",
+    valueGetter: (p) => formatInvestAccountingDisplay(p.data),
   },
   {
     field: "market_value_amount",
@@ -313,10 +503,10 @@ const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryGridRow>[] = [
   {
     field: "source_family",
     headerName: "来源",
-    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+    valueFormatter: businessTextValueFormatter,
   },
-  { field: "position_scope", headerName: "头寸范围" },
-  { field: "currency_basis", headerName: "币种口径" },
+  { field: "position_scope", headerName: "头寸范围", valueFormatter: businessTextValueFormatter },
+  { field: "currency_basis", headerName: "币种口径", valueFormatter: businessTextValueFormatter },
   {
     field: "row_count",
     headerName: "行数",
@@ -351,12 +541,12 @@ const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] =
   {
     field: "source_family",
     headerName: "来源",
-    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+    valueFormatter: businessTextValueFormatter,
   },
-  { field: "invest_type_std", headerName: "投资类型" },
-  { field: "accounting_basis", headerName: "会计口径" },
-  { field: "position_scope", headerName: "头寸范围" },
-  { field: "currency_basis", headerName: "币种口径" },
+  { field: "invest_type_std", headerName: "投资类型", valueFormatter: businessTextValueFormatter },
+  { field: "accounting_basis", headerName: "会计口径", valueFormatter: businessTextValueFormatter },
+  { field: "position_scope", headerName: "头寸范围", valueFormatter: businessTextValueFormatter },
+  { field: "currency_basis", headerName: "币种口径", valueFormatter: businessTextValueFormatter },
   {
     field: "detail_row_count",
     headerName: "明细行数",
@@ -387,10 +577,34 @@ const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] =
   },
 ];
 
+const workbookColumnLabelDisplay: Record<string, string> = {
+  Month: "月份",
+  "Bond Maturity Amount": "债券到期金额",
+  "Bond Maturity Count": "债券到期笔数",
+  "Interbank Asset Maturity Amount": "同业资产到期金额",
+  "Interbank Asset Maturity Count": "同业资产到期笔数",
+  "Interbank Liability Maturity Amount": "同业负债到期金额",
+  "Interbank Liability Maturity Count": "同业负债到期笔数",
+  "Issuance Maturity Amount": "发行类到期金额",
+  "Issuance Maturity Count": "发行类到期笔数",
+  "Net Cashflow Amount": "净现金流金额",
+  "Cumulative Net Cashflow Amount": "累计净现金流金额",
+  Cumulative: "累计值",
+  指标键: "指标",
+  指标名称: "指标名称",
+  参考阈值: "参考线",
+  状态: "判断",
+  口径说明: "口径",
+};
+
+function formatWorkbookColumnLabelDisplay(label: string): string {
+  return workbookColumnLabelDisplay[label] ?? formatBalanceBusinessTextDisplay(label);
+}
+
 function buildWorkbookGridColumnDefs(columns: BalanceAnalysisWorkbookColumn[]): ColDef[] {
   return columns.map((col) => ({
     field: col.key,
-    headerName: col.label,
+    headerName: formatWorkbookColumnLabelDisplay(col.label),
     valueFormatter: workbookCellFormatter,
     cellStyle: { ...tabularNumsStyle },
   }));
@@ -679,7 +893,7 @@ function renderBalanceReconciliationLinkPanel(
         {renderReconciliationMetricTile({
           label: "Formal CNY 桥",
           value: withYiUnit(formatBalanceAmountToYiFromYuan(model.formalBridgeYuan)),
-          detail: bridgeDetail || "等待 summary-by-basis 返回 AC/OCI/TPL 分桶。",
+          detail: bridgeDetail || "等待口径拆解返回 AC/OCI/TPL 分桶。",
         })}
         {renderReconciliationMetricTile({
           label: "余额变动 CNX",
@@ -858,20 +1072,17 @@ function renderDecisionItemsPanel(
           data-selected={selectedKey === row.decision_key ? "true" : "false"}
         >
           <div className="balance-analysis-mini-topline">
-            <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">{formatBalanceWorkbookCellDisplay(row.title)}</div>
+            <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
+              {formatBalanceBusinessTextDisplay(row.title)}
+            </div>
             <span className="balance-analysis-panel-badge">{formatBalanceGovernedSeverityDisplay(row.severity)}</span>
           </div>
           <div className="balance-analysis-ledger-copy-text">
-            {formatBalanceWorkbookWanTextDisplay(row.reason)}
+            {formatBalanceBusinessTextDisplay(row.reason)}
           </div>
           <div className="balance-analysis-ledger-meta-row">
-            <span>{formatBalanceWorkbookCellDisplay(row.action_label)}</span>
-            <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section)}</span>
-            <span>{formatBalanceWorkbookCellDisplay(row.rule_id)}</span>
-            <span>{formatBalanceWorkbookCellDisplay(row.rule_version)}</span>
-          </div>
-          <div className="balance-analysis-ledger-meta-row balance-analysis-ledger-meta-row--strong">
-            <span>状态：{formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)}</span>
+            <span>{formatBalanceBusinessTextDisplay(row.action_label)}</span>
+            <span>{formatBalanceDecisionWorkflowStatusDisplay(row.latest_status.status)}</span>
             <span>
               更新人：{row.latest_status.updated_by ? row.latest_status.updated_by : "未更新"}
             </span>
@@ -901,7 +1112,7 @@ function renderDecisionItemsPanel(
               className="balance-analysis-mini-button"
               onClick={() => onSelect(row)}
             >
-              查看状态
+              详情
             </button>
           </div>
         </article>
@@ -950,14 +1161,17 @@ function renderEventCalendarPanel(
             data-selected={selectedKey === `${row.event_date}:${row.title}` ? "true" : "false"}
           >
             <div className="balance-analysis-mini-topline">
-              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">{formatBalanceWorkbookCellDisplay(row.title)}</div>
+              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
+                {formatBalanceBusinessTextDisplay(row.title)}
+              </div>
               <div className="balance-analysis-mini-value--info">{formatBalanceWorkbookCellDisplay(row.event_date)}</div>
             </div>
-            <div className="balance-analysis-ledger-copy-text">{formatBalanceWorkbookCellDisplay(row.impact_hint)}</div>
+            <div className="balance-analysis-ledger-copy-text">
+              {formatBalanceBusinessTextDisplay(row.impact_hint)}
+            </div>
             <div className="balance-analysis-ledger-meta-row">
-              <span>{formatBalanceWorkbookCellDisplay(row.event_type)}</span>
-              <span>{formatBalanceWorkbookCellDisplay(row.source)}</span>
-              <span>{formatBalanceWorkbookCellDisplay(row.source_section)}</span>
+              <span>{formatBalanceBusinessTextDisplay(row.event_type)}</span>
+              <span>{formatBalanceBusinessTextDisplay(row.source)}</span>
             </div>
           </article>
         </button>
@@ -1006,18 +1220,18 @@ function renderRiskAlertsPanel(
             data-selected={selectedKey === `${row.severity}:${row.title}` ? "true" : "false"}
           >
             <div className="balance-analysis-mini-topline">
-              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">{formatBalanceWorkbookCellDisplay(row.title)}</div>
+              <div className="balance-analysis-mini-label balance-analysis-mini-label--strong">
+                {formatBalanceBusinessTextDisplay(row.title)}
+              </div>
               <span className="balance-analysis-panel-badge balance-analysis-panel-badge--warning">
-                {formatBalanceWorkbookCellDisplay(row.severity)}
+                {formatBalanceGovernedSeverityDisplay(row.severity)}
               </span>
             </div>
             <div className="balance-analysis-ledger-copy-text balance-analysis-ledger-copy-text--warning">
-              {formatBalanceWorkbookWanTextDisplay(row.reason)}
+              {formatBalanceBusinessTextDisplay(row.reason)}
             </div>
             <div className="balance-analysis-ledger-meta-row balance-analysis-ledger-meta-row--warning">
-              <span>{formatBalanceWorkbookCellDisplay(row.source_section)}</span>
-              <span>{formatBalanceWorkbookCellDisplay(row.rule_id)}</span>
-              <span>{formatBalanceWorkbookCellDisplay(row.rule_version)}</span>
+              <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(row.source_section)}</span>
             </div>
           </article>
         </button>
@@ -1105,6 +1319,7 @@ export default function BalanceAnalysisPage() {
     isBondBusinessLinkedToMovement,
     isIndustryLinkedToMovement,
     movementDateAvailable,
+    deferredAnalysisQueriesEnabled,
     deferredAnalysisQueriesPending,
     totalPages,
     currentPage,
@@ -1167,6 +1382,140 @@ export default function BalanceAnalysisPage() {
     metaSections: resultMetaSections,
   });
   const pageReadModel = pageModel.readModel;
+  const evidenceMetas = resultMetaSections.map((section) => section.meta);
+  const balanceAttentionReasons: BalanceAttentionReason[] = [
+    ...(pageReadModel.dateStatus === "mismatch"
+      ? [
+          {
+            key: "date-mismatch",
+            sentinel: "error" as const,
+            detail: "请求报告日与返回报告日不一致。",
+          },
+        ]
+      : []),
+    ...pageReadModel.statusBadges
+      .filter((badge) => ["danger", "warning"].includes(badge.tone))
+      .map((badge): BalanceAttentionReason => ({
+        key: `status-badge-${badge.key}`,
+        sentinel: badge.key === "stale" ? "stale" : badge.key === "fallback" ? "fallback" : "error",
+        detail: `读面标记需关注：${badge.label}`,
+      })),
+    ...resultMetaSections.flatMap((section): BalanceAttentionReason[] => {
+      const reasons: BalanceAttentionReason[] = [];
+      if (section.meta.basis !== "formal") {
+        reasons.push({
+          key: `meta-basis-${section.key}`,
+          sentinel: "error",
+          detail: `${section.title} 当前为${formatAttentionBasis(section.meta.basis)}，需复核。`,
+        });
+      }
+      if (section.meta.quality_flag === "stale") {
+        reasons.push({
+          key: `meta-stale-${section.key}`,
+          sentinel: "stale",
+          detail: `${section.title} 标记为陈旧。`,
+        });
+      } else if (section.meta.quality_flag !== "ok") {
+        reasons.push({
+          key: `meta-quality-${section.key}`,
+          sentinel: "error",
+          detail: `${section.title} 质量标记为${formatAttentionQuality(section.meta.quality_flag)}。`,
+        });
+      }
+      if (section.meta.fallback_mode !== "none") {
+        reasons.push({
+          key: `meta-fallback-${section.key}`,
+          sentinel: "fallback",
+          detail: `${section.title} 使用${formatAttentionFallback(section.meta.fallback_mode)}。`,
+        });
+      }
+      return reasons;
+    }),
+    ...pageReadModel.stateSurfaces
+      .filter((state) => ["error", "stale", "fallback-date"].includes(state.variant))
+      .map((state): BalanceAttentionReason => ({
+        key: `state-surface-${state.key}`,
+        sentinel: state.variant === "stale" ? "stale" : state.variant === "fallback-date" ? "fallback" : "error",
+        detail: `${state.title}：${state.description}`,
+      })),
+    ...(refreshError
+      ? [
+          {
+            key: "refresh-error",
+            sentinel: "error" as const,
+            detail: refreshError,
+          },
+        ]
+      : []),
+    ...(decisionActionError
+      ? [
+          {
+            key: "decision-action-error",
+            sentinel: "error" as const,
+            detail: decisionActionError,
+          },
+        ]
+      : []),
+    ...[
+      { key: "dates-query", label: "报告日读面暂未返回", query: datesQuery },
+      { key: "overview-query", label: "首屏总览暂未返回", query: overviewQuery },
+      { key: "workbook-query", label: "工作簿图谱暂未返回", query: workbookQuery },
+      { key: "decision-items-query", label: "治理队列暂未返回", query: decisionItemsQuery },
+      { key: "summary-query", label: "汇总分页暂未返回", query: summaryQuery },
+      { key: "detail-query", label: "明细底稿暂未返回", query: detailQuery },
+      { key: "basis-query", label: "口径拆解暂未返回", query: basisBreakdownQuery },
+      { key: "adb-query", label: "日均对比暂未返回", query: adbComparisonQuery },
+      { key: "advanced-attribution-query", label: "高阶归因暂未返回", query: advancedAttributionQuery },
+      { key: "movement-dates-query", label: "余额变动报告日暂未返回", query: movementDatesQuery },
+      { key: "movement-link-query", label: "余额变动联动暂未返回", query: movementLinkQuery },
+      { key: "current-user-query", label: "当前权限暂未返回", query: currentUserQuery },
+    ].flatMap(({ key, label, query }): BalanceAttentionReason[] =>
+      query.isError
+        ? [
+            {
+              key,
+              sentinel: "error",
+              detail: label,
+            },
+          ]
+        : [],
+    ),
+  ];
+  const evidenceLedgerNeedsAttention = balanceAttentionReasons.length > 0;
+  const evidenceLedgerSummary =
+    evidenceMetas.length > 0
+      ? evidenceLedgerNeedsAttention
+        ? [
+            `${evidenceMetas.length} 个读面`,
+            evidenceMetas.every((meta) => meta.basis === "formal") ? "formal" : "混合口径",
+            evidenceMetas.every((meta) => meta.quality_flag === "ok")
+              ? "质量正常"
+              : "质量需复核",
+            evidenceMetas.every((meta) => meta.fallback_mode === "none")
+              ? "未降级"
+              : "存在降级",
+            evidenceMetas.every((meta) => Boolean(meta.trace_id))
+              ? "链路可追溯"
+              : "链路待补齐",
+          ].join(" · ")
+        : [
+            `${evidenceMetas.length} 个读面`,
+            evidenceMetas.every((meta) => Boolean(meta.trace_id))
+              ? "链路可追溯"
+              : "链路待补齐",
+          ].join(" · ")
+      : "等待正式读面元数据";
+  const attentionStatusBadges = pageReadModel.statusBadges.filter((badge) =>
+    ["danger", "warning"].includes(badge.tone) &&
+    (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
+  );
+  const reportDateUnavailable = !selectedReportDate && !datesQuery.isLoading;
+  const reportDateUnavailableTitle = datesQuery.isError
+    ? "报告日暂未接入"
+    : "当前没有可用报告日";
+  const reportDateUnavailableDescription = datesQuery.isError
+    ? "页面暂时拿不到报告日，先收起空指标和底稿区；重新读取后会展示缺口、规模和治理动作。"
+    : "等报告日返回后，会自动展示缺口、规模和治理动作；当前先保留筛选和读取入口。";
   const reconciliationLinkModel = buildBalanceReconciliationLinkModel({
     reportDate: selectedReportDate,
     workbook,
@@ -1180,6 +1529,292 @@ export default function BalanceAnalysisPage() {
       (movementDateAvailable && movementLinkQuery.isLoading),
   });
 
+  const summaryEndpointStatus = queryEndpointStatus(
+    summaryQuery,
+    Boolean(selectedReportDate) && overviewQuery.isSuccess,
+  );
+  const detailEndpointStatus = queryEndpointStatus(detailQuery, deferredAnalysisQueriesEnabled);
+  const basisEndpointStatus = queryEndpointStatus(basisBreakdownQuery, deferredAnalysisQueriesEnabled);
+  const adbEndpointStatus = queryEndpointStatus(adbComparisonQuery, deferredAnalysisQueriesEnabled);
+  const movementDetailEndpointStatus =
+    deferredAnalysisQueriesEnabled && !movementDateAvailable
+      ? "idle"
+      : queryEndpointStatus(
+          movementLinkQuery,
+          deferredAnalysisQueriesEnabled && movementDateAvailable,
+        );
+  const attributionEndpointStatus = queryEndpointStatus(
+    advancedAttributionQuery,
+    deferredAnalysisQueriesEnabled,
+  );
+  const endpointGroups: BalanceEndpointGroup[] = [
+    {
+      key: "first-screen",
+      title: "首屏",
+      description: "报告日、总览、工作簿、治理、汇总、权限、余额变动",
+      count: 7,
+      tone: "primary",
+      endpoints: [
+        {
+          key: "dates",
+          label: "报告日列表",
+          path: "GET /ui/balance-analysis/dates",
+          status: queryEndpointStatus(datesQuery),
+          value: datesQuery.data ? `${datesQuery.data.result.report_dates.length} 个报告日` : "待返回",
+          detail: "报告日选择器与默认报告日。",
+        },
+        {
+          key: "overview",
+          label: "首屏总览",
+          path: "GET /ui/balance-analysis/overview",
+          status: queryEndpointStatus(overviewQuery, Boolean(selectedReportDate)),
+          value: overviewMeta?.basis === "formal" ? "正式口径" : (overviewMeta?.basis ?? "待返回"),
+          detail: "正式读面、规模和首屏 KPI 的主来源。",
+        },
+        {
+          key: "workbook",
+          label: "工作簿图谱",
+          path: "GET /ui/balance-analysis/workbook",
+          status: queryEndpointStatus(workbookQuery, Boolean(selectedReportDate)),
+          value: workbook ? `${workbook.cards.length} 张卡片` : "待返回",
+          detail: "工作簿结构、风险预警、事件和治理动作。",
+        },
+        {
+          key: "decision-items",
+          label: "治理队列",
+          path: "GET /ui/balance-analysis/decision-items",
+          status: queryEndpointStatus(decisionItemsQuery, Boolean(selectedReportDate)),
+          value: `${decisionRows.length} 项`,
+          detail: "治理队列和首页主动作。",
+        },
+        {
+          key: "summary",
+          label: "汇总分页",
+          path: "GET /ui/balance-analysis/summary",
+          status: summaryEndpointStatus,
+          value: summaryTable ? `${summaryTable.rows.length} 行` : "待返回",
+          detail: "汇总表分页和有效读面行数。",
+        },
+        {
+          key: "current-user",
+          label: "当前权限",
+          path: "GET /ui/balance-analysis/current-user",
+          status: queryEndpointStatus(currentUserQuery),
+          value: currentUser ? formatCurrentUserRoleDisplay(currentUser.role) : "待返回",
+          detail: "治理动作提交人与身份来源。",
+        },
+        {
+          key: "movement-dates",
+          label: "余额变动报告日",
+          path: "GET /ui/balance-movement-analysis/dates",
+          status: queryEndpointStatus(movementDatesQuery, Boolean(selectedReportDate)),
+          value: movementDatesQuery.data ? `${movementDatesQuery.data.result.report_dates.length} 个报告日` : "待返回",
+          detail: "判断余额变动联动是否可用。",
+        },
+      ],
+    },
+    {
+      key: "deferred",
+      title: "补充",
+      description: "明细、口径、日均、变动、归因",
+      count: 5,
+      tone: "info",
+      endpoints: [
+        {
+          key: "detail",
+          label: "明细底稿",
+          path: "GET /ui/balance-analysis",
+          status: detailEndpointStatus,
+          value: detailQuery.data ? `${detailQuery.data.result.details.length} 行` : "等待首屏",
+          detail: "明细底稿和明细汇总下钻。",
+        },
+        {
+          key: "summary-by-basis",
+          label: "口径拆解",
+          path: "GET /ui/balance-analysis/summary-by-basis",
+          status: basisEndpointStatus,
+          value: basisBreakdownQuery.data ? `${basisBreakdownQuery.data.result.rows.length} 组` : "待口径",
+          detail: "按会计口径、头寸范围和币种拆解。",
+        },
+        {
+          key: "adb-comparison",
+          label: "日均对比",
+          path: "GET /api/analysis/adb/comparison",
+          status: adbEndpointStatus,
+          value:
+            adbComparisonQuery.data?.net_interest_margin == null
+              ? "等待日均"
+              : `${adbComparisonQuery.data.net_interest_margin.toFixed(2)}% 净息差`,
+          detail: "日均资产负债和净息差解释材料。",
+        },
+        {
+          key: "movement-detail",
+          label: "余额变动联动",
+          path: "GET /ui/balance-movement-analysis",
+          status: movementDetailEndpointStatus,
+          value: movementDateAvailable ? "可联动" : "无联动",
+          detail: movementDateAvailable ? "余额变动联动可用。" : "当前报告日无余额变动联动。",
+        },
+        {
+          key: "advanced-attribution",
+          label: "高阶归因",
+          path: "GET /ui/balance-analysis/advanced-attribution",
+          status: attributionEndpointStatus,
+          value:
+            advancedAttributionQuery.data?.result.status === "not_ready" ? "部分可用" : "情景材料",
+          detail: "高阶归因的可用组件、缺失输入和提示。",
+        },
+      ],
+    },
+    {
+      key: "actions",
+      title: "动作",
+      description: "刷新、进度、导出、治理处理",
+      count: 5,
+      tone: "action",
+      endpoints: [
+        {
+          key: "refresh",
+          label: "刷新正式结果",
+          path: "POST /ui/balance-analysis/refresh",
+          status: actionEndpointStatus({
+            isError: Boolean(refreshError),
+            isLoading: isRefreshing,
+            isActive: Boolean(selectedReportDate),
+          }),
+          value: isRefreshing ? "刷新中" : "手动触发",
+          detail: "触发正式结果重建。",
+        },
+        {
+          key: "refresh-status",
+          label: "刷新进度",
+          path: "GET /ui/balance-analysis/refresh-status",
+          status: actionEndpointStatus({
+            isError: Boolean(refreshError),
+            isLoading: Boolean(refreshStatus && isRefreshing),
+            isActive: Boolean(refreshStatus),
+          }),
+          value: refreshStatus ?? "待触发",
+          detail: refreshStatus ? "刷新任务已有反馈。" : "刷新任务反馈轮询。",
+        },
+        {
+          key: "summary-export",
+          label: "导出汇总表",
+          path: "GET /ui/balance-analysis/summary/export",
+          status: actionEndpointStatus({
+            isError: Boolean(refreshError),
+            isLoading: isExportingCsv,
+            isActive: Boolean(selectedReportDate),
+          }),
+          value: "CSV",
+          detail: "导出汇总 CSV。",
+        },
+        {
+          key: "workbook-export",
+          label: "导出工作簿",
+          path: "GET /ui/balance-analysis/workbook/export",
+          status: actionEndpointStatus({
+            isError: Boolean(refreshError),
+            isLoading: isExportingWorkbook,
+            isActive: Boolean(selectedReportDate),
+          }),
+          value: "Excel",
+          detail: "导出工作簿 Excel。",
+        },
+        {
+          key: "decision-status",
+          label: "治理处理",
+          path: "POST /ui/balance-analysis/decision-items/status",
+          status: actionEndpointStatus({
+            isError: Boolean(decisionActionError),
+            isLoading: Boolean(updatingDecisionKey),
+            isActive: decisionItemsQuery.isSuccess,
+          }),
+          value: `${decisionRows.length} 项`,
+          detail: "确认、忽略并同步治理处理结果。",
+        },
+      ],
+    },
+  ];
+  const deferredSurfaces: BalanceDeferredSurface[] = [
+    {
+      key: "detail-ledger",
+      title: "明细底稿",
+      endpoint: "明细读面",
+      status: detailEndpointStatus,
+      value: detailQuery.data ? `${detailQuery.data.result.details.length} 行` : "等待首屏",
+      detail: `明细汇总 ${detailQuery.data?.result.summary.length ?? 0} 组，用于正式汇总下钻。`,
+    },
+    {
+      key: "basis-breakdown",
+      title: "口径分解",
+      endpoint: "口径读面",
+      status: basisEndpointStatus,
+      value: `${basisBreakdownQuery.data?.result.rows.length ?? 0} 组`,
+      detail: "解释不同会计口径、头寸范围和币种组合。",
+    },
+    {
+      key: "adb-comparison",
+      title: "日均对比",
+      endpoint: "日均读面",
+      status: adbEndpointStatus,
+      value:
+        adbComparisonQuery.data?.net_interest_margin == null
+          ? "等待日均"
+          : `${adbComparisonQuery.data.net_interest_margin.toFixed(2)}% 净息差`,
+      detail: "辅助比较时点与日均口径，不提升为正式主指标。",
+    },
+    {
+      key: "movement-link",
+      title: "变动联动",
+      endpoint: "变动读面",
+      status: movementDetailEndpointStatus,
+      value: movementDateAvailable ? "可联动" : "无同日报告",
+      detail: "承接资产分类和行业分布联动证据。",
+    },
+    {
+      key: "advanced-attribution",
+      title: "高级归因",
+      endpoint: "归因读面",
+      status: attributionEndpointStatus,
+      value:
+        advancedAttributionQuery.data?.result.status === "not_ready"
+          ? "未就绪"
+          : advancedAttributionQuery.data?.result.status
+            ? "情景材料"
+            : "等待输入",
+      detail: `缺失输入 ${advancedAttributionQuery.data?.result.missing_inputs.length ?? 0} 项，提示 ${
+        advancedAttributionQuery.data?.result.warnings.length ?? 0
+      } 条。`,
+    },
+  ];
+  const hasStaleAttention = balanceAttentionReasons.some((reason) => reason.sentinel === "stale");
+  const hasFallbackAttention = balanceAttentionReasons.some((reason) => reason.sentinel === "fallback");
+  const hasErrorAttention = balanceAttentionReasons.some((reason) => reason.sentinel === "error");
+  const stateSentinels: BalanceStateSentinel[] = [
+    {
+      key: "stale",
+      label: "陈旧",
+      active: hasStaleAttention,
+      status: hasStaleAttention ? "error" : "ready",
+      detail: firstAttentionDetail(balanceAttentionReasons, "stale", "未发现陈旧读面。"),
+    },
+    {
+      key: "fallback",
+      label: "降级",
+      active: hasFallbackAttention,
+      status: hasFallbackAttention ? "error" : "ready",
+      detail: firstAttentionDetail(balanceAttentionReasons, "fallback", "未发现降级读面。"),
+    },
+    {
+      key: "error",
+      label: "需处理",
+      active: hasErrorAttention,
+      status: hasErrorAttention ? "error" : "ready",
+      detail: firstAttentionDetail(balanceAttentionReasons, "error", "未发现待处理事项。"),
+    },
+  ];
+
   async function handleRefresh() {
     if (!selectedReportDate) {
       return;
@@ -1191,11 +1826,7 @@ export default function BalanceAnalysisPage() {
         start: () => client.refreshBalanceAnalysis(selectedReportDate),
         getStatus: (runId) => client.getBalanceAnalysisRefreshStatus(runId),
         onUpdate: (nextPayload) => {
-          setRefreshStatus(
-            [nextPayload.status, nextPayload.run_id, nextPayload.source_version]
-              .filter(Boolean)
-              .join(" · "),
-          );
+          setRefreshStatus(formatRefreshStatusDisplay(nextPayload.status));
         },
       });
       if (payload.status !== "completed") {
@@ -1214,8 +1845,8 @@ export default function BalanceAnalysisPage() {
         adbComparisonQuery.refetch(),
         advancedAttributionQuery.refetch(),
       ]);
-    } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : "刷新资产负债分析失败");
+    } catch {
+      setRefreshError(formatOperationIssueDisplay("refresh"));
     } finally {
       setIsRefreshing(false);
     }
@@ -1243,8 +1874,8 @@ export default function BalanceAnalysisPage() {
         comment: decisionStatusComment.trim() || undefined,
       });
       await Promise.all([decisionItemsQuery.refetch(), currentUserQuery.refetch()]);
-    } catch (error) {
-      setDecisionActionError(error instanceof Error ? error.message : "决策状态更新失败。");
+    } catch {
+      setDecisionActionError(formatOperationIssueDisplay("decision"));
     } finally {
       setUpdatingDecisionKey(null);
     }
@@ -1263,8 +1894,8 @@ export default function BalanceAnalysisPage() {
         currencyBasis,
       });
       downloadCsvFile(payload.filename, payload.content);
-    } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : "导出资产负债分析失败");
+    } catch {
+      setRefreshError(formatOperationIssueDisplay("summary-export"));
     } finally {
       setIsExportingCsv(false);
     }
@@ -1283,8 +1914,8 @@ export default function BalanceAnalysisPage() {
         currencyBasis,
       });
       downloadBlobFile(payload.filename, payload.content);
-    } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : "资产负债分析工作簿导出失败。");
+    } catch {
+      setRefreshError(formatOperationIssueDisplay("workbook-export"));
     } finally {
       setIsExportingWorkbook(false);
     }
@@ -1292,26 +1923,31 @@ export default function BalanceAnalysisPage() {
 
   return (
     <section data-testid="balance-analysis-page" className="balance-analysis-page">
-      <PageDecisionHero
-        testId="balance-analysis-contract-hero"
+      <section
+        data-testid="balance-analysis-contract-hero"
         className="balance-analysis-hero"
-        title="资产负债分析"
-        titleTestId="balance-analysis-page-title"
-        questionTestId="balance-analysis-page-subtitle"
-        businessQuestion="正式链路下先判断资产负债状态，再进入证据、汇总与治理行动。"
-        eyebrow="正式余额"
-        reportDateSlot={
-          <span data-testid="balance-analysis-report-date-slot">
-            报告日 {pageReadModel.resolvedReportDate}
-          </span>
-        }
-        conclusion={
+      >
+        <div className="balance-analysis-hero__identity">
+          <span className="balance-analysis-hero__tab">首屏问题</span>
+          <div className="balance-analysis-hero__title-row">
+            <h1 data-testid="balance-analysis-page-title">资产负债分析</h1>
+            <span>报告日判断 · 缺口优先 · 证据闭环</span>
+          </div>
+          <p data-testid="balance-analysis-page-subtitle">
+            先看资产负债缺口、净头寸和治理动作，再进入证据与汇总底稿。
+          </p>
           <span className="balance-analysis-hero-conclusion">
             <strong>{pageReadModel.conclusionTitle}</strong>
             <span>{pageReadModel.filterLine}</span>
           </span>
-        }
-        actions={
+        </div>
+        <div className="balance-analysis-hero__meta">
+          <span
+            className="balance-analysis-hero__report"
+            data-testid="balance-analysis-report-date-slot"
+          >
+            报告日 {pageReadModel.resolvedReportDate}
+          </span>
           <div className="balance-analysis-hero-actions">
             <CalibrationBadge calibration={overview?.calibration} />
             <span
@@ -1322,8 +1958,7 @@ export default function BalanceAnalysisPage() {
               {pageReadModel.sourceBadge.label}
             </span>
           </div>
-        }
-      >
+        </div>
         <PageFilterTray testId="balance-analysis-filter-tray">
           <FilterBar className="balance-analysis-filter-bar">
             <label>
@@ -1410,121 +2045,142 @@ export default function BalanceAnalysisPage() {
             </button>
           </FilterBar>
         </PageFilterTray>
-      </PageDecisionHero>
+      </section>
 
-      <DataStatusStrip
-        testId="balance-analysis-data-status"
-        className="balance-analysis-data-status"
-      >
-        {pageReadModel.statusBadges.map((badge) => (
-          <span key={badge.key} className="balance-analysis-status-badge" data-tone={badge.tone}>
-            {badge.label}
-          </span>
-        ))}
-      </DataStatusStrip>
-
-      <KpiBand testId="balance-analysis-contract-kpis" className="balance-analysis-contract-kpis">
-        {pageReadModel.kpis.map((kpi) => (
-          <KpiBandMetric
-            key={kpi.key}
-            testId={`balance-analysis-contract-kpi-${kpi.key}`}
-            label={kpi.label}
-            value={
-              <>
-                {kpi.value}
-                {kpi.unit ? <span className="balance-analysis-kpi-unit">{kpi.unit}</span> : null}
-              </>
-            }
-            footer={kpi.detail}
-          />
-        ))}
-      </KpiBand>
+      {attentionStatusBadges.length > 0 ? (
+        <DataStatusStrip
+          testId="balance-analysis-data-status"
+          className="balance-analysis-data-status"
+        >
+          {attentionStatusBadges.map((badge) => (
+            <span key={badge.key} className="balance-analysis-status-badge" data-tone={badge.tone}>
+              {badge.label}
+            </span>
+          ))}
+        </DataStatusStrip>
+      ) : null}
 
       {(refreshStatus || refreshError) && (
         <PageStateSurface
-          variant={refreshError ? "error" : "loading"}
-          title={refreshError ? "刷新失败" : "刷新进行中"}
+          variant={refreshError ? "error" : isRefreshing ? "loading" : "neutral"}
+          title={refreshError ? "刷新未完成" : isRefreshing ? "刷新进行中" : "刷新已完成"}
           description={refreshError ?? refreshStatus}
           className="balance-analysis-refresh-state"
         />
       )}
 
-      <BalanceAnalysisWorkbenchLayout
-        overview={overview}
-        summary={summaryTable}
-        workbook={workbook}
-        detail={detailQuery.data?.result}
-        formalStatus={overviewMeta}
-        decisionRows={decisionRows}
-        riskAlerts={riskAlertRows}
-        calendarEvents={eventCalendarRows}
-        tableRows={summaryTable?.rows ?? []}
-        metrics={pageModel.balanceWorkbenchMetrics}
-        kpiBars={[]}
-        compactFilters={
-          <p className="balance-analysis-compact-filter-note">
-            报告日、头寸范围与币种口径请使用页眉筛选。
-          </p>
-        }
-      />
+      {reportDateUnavailable ? (
+        <section
+          data-testid="balance-analysis-report-date-empty"
+          className="balance-analysis-report-date-empty"
+        >
+          <div>
+            <span>等待读面</span>
+            <h2>{reportDateUnavailableTitle}</h2>
+            <p>{reportDateUnavailableDescription}</p>
+          </div>
+          <button
+            type="button"
+            className="balance-analysis-action-button"
+            onClick={() => void datesQuery.refetch()}
+          >
+            <ReloadOutlined aria-hidden className="balance-analysis-inline-icon" />
+            重新读取报告日
+          </button>
+        </section>
+      ) : (
+        <>
+          <BalanceAnalysisWorkbenchLayout
+            overview={overview}
+            summary={summaryTable}
+            workbook={workbook}
+            detail={detailQuery.data?.result}
+            formalStatus={overviewMeta}
+            currentUser={currentUser}
+            decisionRows={decisionRows}
+            riskAlerts={riskAlertRows}
+            calendarEvents={eventCalendarRows}
+            tableRows={summaryTable?.rows ?? []}
+            metrics={pageModel.balanceWorkbenchMetrics}
+            kpiBars={[]}
+            endpointGroups={endpointGroups}
+            deferredSurfaces={deferredSurfaces}
+            stateSentinels={stateSentinels}
+            compactFilters={
+              <p className="balance-analysis-compact-filter-note">
+                报告日、头寸范围与币种口径请使用页眉筛选。
+              </p>
+            }
+          />
 
-      <AnalysisGrid columns={2} className="balance-analysis-ledger-grid">
-        <EvidencePanel heading="正式状态证据" className="balance-analysis-ledger-panel">
-          <p className="balance-analysis-ledger-copy">{pageReadModel.conclusionDetail}</p>
-          <div className="balance-analysis-state-stack">
-            {pageReadModel.stateSurfaces.map((state) => (
-              <PageStateSurface
-                key={state.key}
-                variant={state.variant}
-                title={state.title}
-                description={state.description}
-              />
-            ))}
-          </div>
-        </EvidencePanel>
-        <EvidencePanel heading="证据账本" className="balance-analysis-ledger-panel">
-          <div className="balance-analysis-evidence-ledger">
-            {pageReadModel.evidenceCards.length > 0 ? (
-              pageReadModel.evidenceCards.map((card) => (
-                <article key={card.key} className="balance-analysis-evidence-card">
-                  <div className="balance-analysis-evidence-card__top">
-                    <strong>{card.title}</strong>
-                    <span>{card.basisLabel}</span>
-                  </div>
-                  <dl>
-                    <div>
-                      <dt>kind</dt>
-                      <dd>{card.resultKind}</dd>
+          <details
+            className="balance-analysis-evidence-details"
+            data-testid="balance-analysis-evidence-details"
+            open={evidenceLedgerNeedsAttention}
+          >
+        <summary className="balance-analysis-evidence-details__summary">
+          <span className="balance-analysis-evidence-details__eyebrow">证据链路</span>
+          <strong>{evidenceLedgerSummary}</strong>
+          <span>常规校验默认收起，需处理事项、降级或日期不一致时自动展开。</span>
+        </summary>
+        <AnalysisGrid columns={2} className="balance-analysis-ledger-grid">
+          <EvidencePanel heading="读面证据" className="balance-analysis-ledger-panel">
+            <p className="balance-analysis-ledger-copy">{pageReadModel.conclusionDetail}</p>
+            <div className="balance-analysis-state-stack">
+              {pageReadModel.stateSurfaces.map((state) => (
+                <PageStateSurface
+                  key={state.key}
+                  variant={state.variant}
+                  title={state.title}
+                  description={state.description}
+                />
+              ))}
+            </div>
+          </EvidencePanel>
+          <EvidencePanel heading="证据账本" className="balance-analysis-ledger-panel">
+            <div className="balance-analysis-evidence-ledger">
+              {pageReadModel.evidenceCards.length > 0 ? (
+                pageReadModel.evidenceCards.map((card) => (
+                  <article key={card.key} className="balance-analysis-evidence-card">
+                    <div className="balance-analysis-evidence-card__top">
+                      <strong>{card.title}</strong>
+                      <span>{card.basisLabel}</span>
                     </div>
-                    <div>
-                      <dt>quality</dt>
-                      <dd>{card.qualityLabel}</dd>
-                    </div>
-                    <div>
-                      <dt>fallback</dt>
-                      <dd>{card.fallbackLabel}</dd>
-                    </div>
-                    <div>
-                      <dt>as-of</dt>
-                      <dd>{card.asOfDate}</dd>
-                    </div>
-                    <div>
-                      <dt>trace</dt>
-                      <dd>{card.traceId}</dd>
-                    </div>
-                  </dl>
-                </article>
-              ))
-            ) : (
-              <PageStateSurface
-                variant="loading"
-                title="证据账本等待数据"
-                description="正式读面 result_meta 返回后，会在这里展示来源、质量、降级和 trace。"
-              />
-            )}
-          </div>
-        </EvidencePanel>
-      </AnalysisGrid>
+                    <dl>
+                      <div>
+                        <dt>读面类型</dt>
+                        <dd>{card.resultKind}</dd>
+                      </div>
+                      <div>
+                        <dt>质量</dt>
+                        <dd>{card.qualityLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>降级</dt>
+                        <dd>{card.fallbackLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>数据日</dt>
+                        <dd>{card.asOfDate}</dd>
+                      </div>
+                      <div>
+                        <dt>追踪记录</dt>
+                        <dd title={card.traceId}>{formatEvidenceTraceDisplay(card.traceId)}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                ))
+              ) : (
+                <PageStateSurface
+                  variant="loading"
+                  title="证据账本等待数据"
+                  description="正式读面元数据返回后，会在这里展示来源、质量、降级和追踪记录。"
+                />
+              )}
+            </div>
+          </EvidencePanel>
+        </AnalysisGrid>
+      </details>
 
       <div data-testid="balance-analysis-summary" className="balance-analysis-hidden-summary">
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
@@ -1539,7 +2195,7 @@ export default function BalanceAnalysisPage() {
           <span className="balance-analysis-stage-details__eyebrow">汇总</span>
           <h2 className="balance-analysis-stage-details__heading">正式汇总驾驶舱</h2>
           <span>
-            分页汇总、明细汇总和明细下钻默认收起；首屏先保留状态判断、规模证据和治理行动。
+            分页汇总、明细汇总和明细下钻默认收起；首屏先保留缺口判断、规模证据和治理行动。
           </span>
         </summary>
         <div className="balance-analysis-stage-details__content">
@@ -1576,6 +2232,7 @@ export default function BalanceAnalysisPage() {
               rowData={summaryTable?.rows ?? []}
               columnDefs={balanceSummaryColDefs}
               defaultColDef={balanceAnalysisGridDefaultColDef}
+              localeText={balanceAnalysisGridLocaleText}
               getRowId={(p) => getBalanceSummaryGridRowId(p.data)}
             />
           </div>
@@ -1615,7 +2272,7 @@ export default function BalanceAnalysisPage() {
             (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ color: designTokens.color.neutral[600], fontSize: 12, marginBottom: 8 }}>
-                  明细接口返回的汇总切片（summary[]）
+                  明细底稿返回的汇总切片
                 </div>
                 <div
                   className="ag-theme-alpine"
@@ -1627,6 +2284,7 @@ export default function BalanceAnalysisPage() {
                     rowData={detailSummaryGridRows}
                     columnDefs={balanceDetailSummaryColDefs}
                     defaultColDef={balanceAnalysisGridDefaultColDef}
+                    localeText={balanceAnalysisGridLocaleText}
                     getRowId={(p) => p.data.__gridId}
                   />
                 </div>
@@ -1658,6 +2316,7 @@ export default function BalanceAnalysisPage() {
                   rowData={detailGridRows}
                   columnDefs={balanceDetailColDefs}
                   defaultColDef={balanceAnalysisGridDefaultColDef}
+                  localeText={balanceAnalysisGridLocaleText}
                   getRowId={(p) => p.data.__gridId}
                 />
               </div>
@@ -1704,6 +2363,7 @@ export default function BalanceAnalysisPage() {
                 rowData={basisBreakdownQuery.data?.result.rows ?? []}
                 columnDefs={balanceBasisBreakdownColDefs}
                 defaultColDef={balanceAnalysisGridDefaultColDef}
+                localeText={balanceAnalysisGridLocaleText}
                 getRowId={(p) =>
                   `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
                 }
@@ -1717,33 +2377,49 @@ export default function BalanceAnalysisPage() {
             onRetry={() => void advancedAttributionQuery.refetch()}
           >
             {advancedAttributionQuery.data?.result ? (
-              <div style={{ display: "grid", gap: 10, fontSize: 13, color: designTokens.color.neutral[800] }}>
-                <div>
-                  <strong>状态</strong>：
-                  {advancedAttributionQuery.data.result.status === "not_ready"
-                    ? "未就绪"
-                    : advancedAttributionQuery.data.result.status} ·{" "}
-                  {advancedAttributionQuery.data.result.mode === "analytical"
-                    ? "分析口径"
-                    : advancedAttributionQuery.data.result.mode}
-                </div>
-                <div>
-                  <strong>缺失输入</strong>（节选）：
-                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                    {advancedAttributionQuery.data.result.missing_inputs.slice(0, 5).map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <strong>提示</strong>：
-                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                    {advancedAttributionQuery.data.result.warnings.slice(0, 4).map((w) => (
-                      <li key={w}>{w}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              (() => {
+                const attribution = advancedAttributionQuery.data.result;
+                const inputLabels = Array.from(
+                  new Set(attribution.missing_inputs.map(formatAdvancedAttributionInputDisplay)),
+                );
+                const warningLabels = Array.from(
+                  new Set(attribution.warnings.map(formatAdvancedAttributionWarningDisplay)),
+                );
+
+                return (
+                  <div style={{ display: "grid", gap: 10, fontSize: 13, color: designTokens.color.neutral[800] }}>
+                    <div>
+                      <strong>归因可用性</strong>：
+                      {formatAdvancedAttributionStatusDisplay(attribution.status)} ·{" "}
+                      {formatAdvancedAttributionModeDisplay(attribution.mode)}
+                    </div>
+                    <div>
+                      <strong>缺口材料</strong>：缺 {attribution.missing_inputs.length} 项输入
+                      {inputLabels.length > 0 ? (
+                        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                          {inputLabels.slice(0, 4).map((label) => (
+                            <li key={label}>{label}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>，关键输入已齐备。</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>提示</strong>：{attribution.warnings.length} 条
+                      {warningLabels.length > 0 ? (
+                        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                          {warningLabels.slice(0, 4).map((label) => (
+                            <li key={label}>{label}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>，暂无补充提示。</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
             ) : null}
           </SectionCard>
         </div>
@@ -1752,11 +2428,11 @@ export default function BalanceAnalysisPage() {
       <div style={{ marginTop: 24 }}>
         <PageSectionLead
           eyebrow="工作台"
-          title="工作簿与治理侧栏"
-          description="工作簿主栏承载正式工作簿面板，右侧栏承载治理事项、事件日历、风险预警和详情下钻，保持现有契约和阅读顺序。"
+          title="治理闭环与工作簿底稿"
+          description="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
         />
         <AsyncSection
-          title="工作簿与分析面板"
+          title="治理闭环"
           isLoading={
             datesQuery.isLoading ||
             workbookQuery.isLoading ||
@@ -1798,7 +2474,9 @@ export default function BalanceAnalysisPage() {
                     >
                       <div style={workbookPanelHeaderStyle}>
                         <div>
-                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>
+                            {formatBalanceBusinessTextDisplay(table.title)}
+                          </div>
                           <p
                             style={{
                               marginTop: 6,
@@ -1832,7 +2510,9 @@ export default function BalanceAnalysisPage() {
                     >
                       <div style={workbookPanelHeaderStyle}>
                         <div>
-                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>
+                            {formatBalanceBusinessTextDisplay(table.title)}
+                          </div>
                           <p
                             style={{
                               marginTop: 6,
@@ -1856,27 +2536,23 @@ export default function BalanceAnalysisPage() {
               </div>
             </details>
 
-            <aside data-testid="balance-analysis-right-rail" className="balance-analysis-right-rail">
+            <aside
+              data-testid="balance-analysis-right-rail"
+              className="balance-analysis-right-rail"
+              aria-label="资产负债治理闭环"
+            >
               <article
                 data-testid="balance-analysis-right-rail-panel-decision_items"
-                style={workbookPanelStyle}
+                className="balance-analysis-right-rail__panel balance-analysis-right-rail__panel--decision"
               >
-                <div style={workbookPanelHeaderStyle}>
+                <div className="balance-analysis-governance-panel__header">
                   <div>
-                    <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>决策事项</div>
-                    <p
-                      style={{
-                        marginTop: 6,
-                        marginBottom: 0,
-                        color: designTokens.color.neutral[700],
-                        fontSize: 13,
-                        lineHeight: 1.6,
-                      }}
-                    >
+                    <div className="balance-analysis-governance-panel__title">决策事项</div>
+                    <p className="balance-analysis-governance-panel__note">
                       {decisionRailNote}
                     </p>
                   </div>
-                  <span style={workbookPanelBadgeStyle}>已治理</span>
+                  <span className="balance-analysis-governance-panel__badge">{decisionRows.length} 项</span>
                 </div>
                 {decisionActionError ? (
                   <div
@@ -1895,34 +2571,25 @@ export default function BalanceAnalysisPage() {
                   </div>
                 ) : null}
                 <label
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    marginBottom: 12,
-                    fontSize: 12,
-                    color: designTokens.color.neutral[700],
-                  }}
+                  className="balance-analysis-decision-note"
                 >
                   <span>决策备注（可选，随确认/忽略提交）</span>
                   <textarea
                     value={decisionStatusComment}
                     onChange={(event) => setDecisionStatusComment(event.target.value)}
                     rows={2}
-                    style={{
-                      width: "100%",
-                      borderRadius: 10,
-                      border: `1px solid ${designTokens.color.neutral[300]}`,
-                      padding: "8px 10px",
-                      fontSize: 13,
-                      resize: "vertical",
-                    }}
+                    className="balance-analysis-decision-note__input"
                   />
                 </label>
                 {currentUser ? (
-                  <div data-testid="balance-analysis-current-user" style={currentUserCardStyle}>
-                    <div>当前操作人: {currentUser.user_id}</div>
-                    <div>角色: {currentUser.role}</div>
-                    <div>身份来源: {currentUser.identity_source}</div>
+                  <div
+                    data-testid="balance-analysis-current-user"
+                    className="balance-analysis-current-user"
+                    title={`身份来源：${formatIdentitySourceDisplay(currentUser.identity_source)}`}
+                  >
+                    <span>提交人</span>
+                    <strong>{formatCurrentUserDisplay(currentUser.user_id)}</strong>
+                    <span>{formatCurrentUserRoleDisplay(currentUser.role)}</span>
                   </div>
                 ) : null}
                 {renderDecisionItemsPanel(decisionRows, {
@@ -1942,42 +2609,45 @@ export default function BalanceAnalysisPage() {
                 <article
                   key={table.key}
                   data-testid={`balance-analysis-right-rail-panel-${table.key}`}
-                  style={workbookPanelStyle}
+                  className={`balance-analysis-right-rail__panel ${
+                    table.section_kind === "event_calendar"
+                      ? "balance-analysis-right-rail__panel--event"
+                      : table.section_kind === "risk_alerts"
+                        ? "balance-analysis-right-rail__panel--risk"
+                        : "balance-analysis-right-rail__panel--support"
+                  }`}
                 >
-                  <div style={workbookPanelHeaderStyle}>
+                  <div className="balance-analysis-governance-panel__header">
                     <div>
-                      <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
-                      <p
-                        style={{
-                          marginTop: 6,
-                          marginBottom: 0,
-                          color: designTokens.color.neutral[700],
-                          fontSize: 13,
-                          lineHeight: 1.6,
-                        }}
-                      >
+                      <div className="balance-analysis-governance-panel__title">
+                        {formatBalanceBusinessTextDisplay(table.title)}
+                      </div>
+                      <p className="balance-analysis-governance-panel__note">
                         {workbookRightRailNotes[table.key as RightRailWorkbookKey]}
                       </p>
                     </div>
-                    <span style={workbookPanelBadgeStyle}>已治理</span>
+                    <span className="balance-analysis-governance-panel__badge">
+                      {table.rows.length}
+                      {table.section_kind === "event_calendar" ? " 件" : " 条"}
+                    </span>
                   </div>
                   {table.section_kind === "event_calendar" ? (
                     <>
-                      <div style={rightRailFilterRowStyle}>
+                      <div className="balance-analysis-governance-filter-row">
                         <label>
-                          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700], fontSize: 12 }}>
+                          <span className="balance-analysis-governance-filter-row__label">
                             事件类型
                           </span>
                           <select
                             aria-label="balance-event-type-filter"
                             value={eventTypeFilter}
                             onChange={(event) => setEventTypeFilter(event.target.value)}
-                            style={rightRailFilterStyle}
+                            className="balance-analysis-governance-select"
                           >
                             <option value="all">全部</option>
                             {eventTypeOptions.map((eventType) => (
                               <option key={eventType} value={eventType}>
-                                {eventType}
+                                {formatBalanceBusinessTextDisplay(eventType)}
                               </option>
                             ))}
                           </select>
@@ -1994,9 +2664,9 @@ export default function BalanceAnalysisPage() {
                     </>
                   ) : table.section_kind === "risk_alerts" ? (
                     <>
-                      <div style={rightRailFilterRowStyle}>
+                      <div className="balance-analysis-governance-filter-row">
                         <label>
-                          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700], fontSize: 12 }}>
+                          <span className="balance-analysis-governance-filter-row__label">
                             预警等级
                           </span>
                           <select
@@ -2005,12 +2675,12 @@ export default function BalanceAnalysisPage() {
                             onChange={(event) =>
                               setRiskSeverityFilter(event.target.value as "all" | BalanceAnalysisSeverity)
                             }
-                            style={rightRailFilterStyle}
+                            className="balance-analysis-governance-select"
                           >
                             <option value="all">全部</option>
-                            <option value="high">high</option>
-                            <option value="medium">medium</option>
-                            <option value="low">low</option>
+                            <option value="high">高</option>
+                            <option value="medium">中</option>
+                            <option value="low">低</option>
                           </select>
                         </label>
                       </div>
@@ -2028,32 +2698,29 @@ export default function BalanceAnalysisPage() {
                   )}
                 </article>
               ))}
-              <article data-testid="balance-analysis-right-rail-drilldown" style={workbookPanelStyle}>
-                <div style={workbookPanelHeaderStyle}>
+              <article
+                data-testid="balance-analysis-right-rail-drilldown"
+                className="balance-analysis-right-rail__panel balance-analysis-right-rail__panel--drilldown"
+              >
+                <div className="balance-analysis-governance-panel__header">
                   <div>
-                    <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>详情下钻</div>
-                    <p
-                      style={{
-                        marginTop: 6,
-                        marginBottom: 0,
-                        color: designTokens.color.neutral[700],
-                        fontSize: 13,
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      选择一条事件日历或风险预警后，在这里查看完整说明。
+                    <div className="balance-analysis-governance-panel__title">详情下钻</div>
+                    <p className="balance-analysis-governance-panel__note">
+                      选择决策、事件或预警后，在这里查看完整说明和证据。
                     </p>
                   </div>
-                  <span style={workbookPanelBadgeStyle}>下钻</span>
+                  <span className="balance-analysis-governance-panel__badge">详情</span>
                 </div>
                 {selectedDecision ? (
                   <div data-testid="balance-analysis-right-rail-drilldown-decision" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedDecision.title}</div>
+                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+                      {formatBalanceBusinessTextDisplay(selectedDecision.title)}
+                    </div>
                     <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>
-                      最新状态：{formatBalanceDecisionWorkflowStatusDisplay(selectedDecision.latest_status.status)}
+                      处理进度：{formatBalanceDecisionWorkflowStatusDisplay(selectedDecision.latest_status.status)}
                     </div>
                     <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
-                      {formatBalanceWorkbookWanTextDisplay(selectedDecision.reason)}
+                      {formatBalanceBusinessTextDisplay(selectedDecision.reason)}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
                       <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(selectedDecision.source_section)}</span>
@@ -2080,24 +2747,30 @@ export default function BalanceAnalysisPage() {
                   </div>
                 ) : selectedEventCalendar ? (
                   <div data-testid="balance-analysis-right-rail-drilldown-event" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedEventCalendar.title}</div>
+                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+                      {formatBalanceBusinessTextDisplay(selectedEventCalendar.title)}
+                    </div>
                     <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>{selectedEventCalendar.event_date}</div>
-                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{selectedEventCalendar.impact_hint}</div>
+                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>
+                      {formatBalanceBusinessTextDisplay(selectedEventCalendar.impact_hint)}
+                    </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
-                      <span>{selectedEventCalendar.event_type}</span>
-                      <span>{selectedEventCalendar.source}</span>
-                      <span>{selectedEventCalendar.source_section}</span>
+                      <span>{formatBalanceBusinessTextDisplay(selectedEventCalendar.event_type)}</span>
+                      <span>{formatBalanceBusinessTextDisplay(selectedEventCalendar.source)}</span>
+                      <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(selectedEventCalendar.source_section)}</span>
                     </div>
                   </div>
                 ) : selectedRiskAlert ? (
                   <div data-testid="balance-analysis-right-rail-drilldown-risk" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedRiskAlert.title}</div>
+                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+                      {formatBalanceBusinessTextDisplay(selectedRiskAlert.title)}
+                    </div>
                     <div style={{ color: designTokens.color.warning[600], fontSize: 13 }}>{formatBalanceGovernedSeverityDisplay(selectedRiskAlert.severity)}</div>
                     <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
-                      {formatBalanceWorkbookWanTextDisplay(selectedRiskAlert.reason)}
+                      {formatBalanceBusinessTextDisplay(selectedRiskAlert.reason)}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
-                      <span>{selectedRiskAlert.source_section}</span>
+                      <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(selectedRiskAlert.source_section)}</span>
                       <span>{selectedRiskAlert.rule_id}</span>
                       <span>{selectedRiskAlert.rule_version}</span>
                     </div>
@@ -2123,7 +2796,9 @@ export default function BalanceAnalysisPage() {
             <div data-testid="balance-analysis-workbook-secondary-grid" style={workbookSecondaryGridStyle}>
               {secondaryWorkbookTables.map((table) => (
                 <div key={table.key} data-testid={`balance-analysis-workbook-table-${table.key}`}>
-                  <div style={{ marginBottom: 8, color: designTokens.color.neutral[900], fontWeight: 600 }}>{table.title}</div>
+                  <div style={{ marginBottom: 8, color: designTokens.color.neutral[900], fontWeight: 600 }}>
+                    {formatBalanceBusinessTextDisplay(table.title)}
+                  </div>
                   <div
                     className="ag-theme-alpine"
                     style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
@@ -2135,6 +2810,7 @@ export default function BalanceAnalysisPage() {
                       )}
                       columnDefs={buildWorkbookGridColumnDefs(table.columns)}
                       defaultColDef={balanceAnalysisGridDefaultColDef}
+                      localeText={balanceAnalysisGridLocaleText}
                       getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
                     />
                   </div>
@@ -2165,25 +2841,27 @@ export default function BalanceAnalysisPage() {
         </div>
       </details>
 
-      {resultMetaSections.length > 0 && (
-        <Collapse
-          data-testid="balance-analysis-result-meta-collapse"
-          defaultActiveKey={[]}
-          items={[
-            {
-              key: "result-meta",
-              label: "开发调试：结果元信息",
-              forceRender: true,
-              children: (
-                <FormalResultMetaPanel
-                  testId="balance-analysis-result-meta"
-                  sections={resultMetaSections}
-                />
-              ),
-            },
-          ]}
-          style={{ marginTop: 20 }}
-        />
+          {resultMetaSections.length > 0 && (
+            <Collapse
+              data-testid="balance-analysis-result-meta-collapse"
+              defaultActiveKey={[]}
+              items={[
+                {
+                  key: "result-meta",
+                  label: "开发调试：结果元信息",
+                  forceRender: true,
+                  children: (
+                    <FormalResultMetaPanel
+                      testId="balance-analysis-result-meta"
+                      sections={resultMetaSections}
+                    />
+                  ),
+                },
+              ]}
+              style={{ marginTop: 20 }}
+            />
+          )}
+        </>
       )}
     </section>
   );
