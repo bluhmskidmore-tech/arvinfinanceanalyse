@@ -54,6 +54,7 @@ import {
   buildStockAnalysisKpiStrip,
   buildConsensusReviewPanelSummary,
   buildCycleRotationPanelSummary,
+  buildDeepAnalysisGateSummary,
   buildEventsMonitoringPanelSummary,
   buildMarketPriorityPanelSummary,
   buildObservationPoolsPanelSummary,
@@ -182,7 +183,7 @@ const SA_SECTION_DESC = "stock-analysis-page__dh-section-desc";
 const SA_SECTION_EYEBROW = "stock-analysis-page__dh-section-eyebrow";
 const SA_PILL = "stock-analysis-page__dh-pill";
 /** 首屏以下深度折叠区 — 白底卡片 + 16px 内边距 */
-const SA_DEEP_CARD =
+const _SA_DEEP_CARD =
   "stock-analysis-page__dh-card stock-analysis-page__dh-panel stock-analysis-page__dh-deep-section bg-white";
 
 function kpiToneToDelta(tone?: string): "up" | "down" | "flat" {
@@ -486,6 +487,33 @@ function buildStatusCounts(rows: Array<{ status: string }>) {
     acc[row.status] = (acc[row.status] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+function outputKeyLabel(key: string | null | undefined) {
+  const labels: Record<string, string> = {
+    market_gate: "市场门控",
+    sector_rank: "板块排序",
+    stock_candidates: "趋势候选",
+    mean_reversion_candidates: "超跌池",
+    factor_screen_candidates: "多因子",
+    theme_breakout: "题材观察",
+    hybrid_fusion: "融合池",
+    risk_exit: "风险退出",
+  };
+  return key ? (labels[key] ?? key.replace(/_/g, " ")) : "待补";
+}
+
+function dataGapFamilyLabel(inputFamily: string | null | undefined) {
+  const labels: Record<string, string> = {
+    breadth: "市场宽度",
+    limit_up_quality: "涨停质量",
+    sector_strength: "板块强度",
+    stock_universe: "股票池",
+    position_risk: "持仓风险",
+    PMI: "PMI",
+    credit_impulse: "信用脉冲",
+  };
+  return inputFamily ? (labels[inputFamily] ?? inputFamily.replace(/_/g, " ")) : "待补";
 }
 
 function buildBackendSupplyOverview(
@@ -1168,6 +1196,9 @@ export default function StockAnalysisPage() {
     [backendSupplyOverview],
   );
 
+  const primaryUnsupportedOutput = backendSupplyOverview?.unsupportedOutputs[0] ?? null;
+  const primaryDataGap = backendSupplyOverview?.dataGapRows.find((row) => row.status !== "ready") ?? null;
+
   const riskSupplyChartRows = useMemo<CompactChartRow[]>(
     () => {
       const risk = backendSupplyOverview?.risk;
@@ -1697,6 +1728,18 @@ export default function StockAnalysisPage() {
     [eventMonitorRows],
   );
 
+  const deepAnalysisGateSummary = useMemo(() => {
+    const topPriority =
+      strategyPriorityRows.find(
+        (row) => row.priority_label === "优先复核" && row.sample_status === "sufficient",
+      ) ?? strategyPriorityRows.find((row) => row.sample_status === "sufficient");
+    return buildDeepAnalysisGateSummary({
+      gateState,
+      themeUnsupportedReason: themeBreakoutUnsupported?.reason,
+      priorityStrategyLabel: topPriority?.strategy_label ?? null,
+    });
+  }, [gateState, themeBreakoutUnsupported?.reason, strategyPriorityRows]);
+
   const sectorSeriesExpanded = sectorSeriesCollapseKeys.includes("sector-rank-series-multi");
 
   const sectorRankSeriesQuery = useQuery({
@@ -2088,7 +2131,10 @@ export default function StockAnalysisPage() {
 
                 <div className="stock-analysis-page__dh-work-grid" data-testid="stock-analysis-first-screen-workbench">
                   <div className="flex flex-col gap-3" data-testid="stock-analysis-first-screen-primary">
-                    <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
+                    <div
+                      className="stock-analysis-page__supply-mini-grid"
+                      aria-label="后端供数首屏摘要"
+                    >
                       <article className="stock-analysis-page__mini-panel">
                         <div className="stock-analysis-page__mini-panel-head">
                           <strong>
@@ -2171,6 +2217,15 @@ export default function StockAnalysisPage() {
                               <span>候选</span>
                               <strong>{backendSupplyOverview.candidateSupplyLabel}</strong>
                             </div>
+                            <div>
+                              <span>阻断</span>
+                              <strong>{backendSupplyOverview.unsupportedLabel}</strong>
+                              {primaryUnsupportedOutput ? (
+                                <small title={primaryUnsupportedOutput.reason}>
+                                  {outputKeyLabel(primaryUnsupportedOutput.key)}
+                                </small>
+                              ) : null}
+                            </div>
                           </div>
                         ) : null}
                       </article>
@@ -2218,6 +2273,15 @@ export default function StockAnalysisPage() {
                                 观察 {backendSupplyOverview.risk?.watch_items?.length ?? 0}
                               </strong>
                             </div>
+                            {primaryDataGap ? (
+                              <div>
+                                <span>缺口</span>
+                                <strong>{backendSupplyOverview.dataGapLabel}</strong>
+                                <small title={primaryDataGap.evidence}>
+                                  {dataGapFamilyLabel(primaryDataGap.input_family)}
+                                </small>
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                       </article>
@@ -3049,8 +3113,15 @@ export default function StockAnalysisPage() {
             <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
               <div className="stock-analysis-page__deep-zone" data-testid="stock-analysis-deep-zone">
                 <div className="stock-analysis-page__deep-zone-head">
-                  <h2 className="m-0 text-base font-extrabold text-[color:var(--sa-dh-blue-deep)]">深度分析</h2>
-                  <p className="m-0 text-xs text-neutral-500">卡片速览 · 点「查看明细」展开</p>
+                  <h2 className="m-0 text-base font-extrabold text-[color:var(--sa-dh-blue-deep)]">供数闭环</h2>
+                  <p
+                    className="stock-analysis-page__deep-zone-gate-summary"
+                    data-testid="stock-analysis-deep-zone-gate-summary"
+                    data-tone={deepAnalysisGateSummary.tone}
+                  >
+                    {deepAnalysisGateSummary.line}
+                  </p>
+                  <p className="m-0 text-xs text-neutral-500">后端字段 / 历史复核 / 风险边界</p>
                 </div>
               <div className="stock-analysis-strategy-card-grid">
               {cycleRotationFramework ? (
@@ -3412,11 +3483,8 @@ export default function StockAnalysisPage() {
                 title="历史复核 / T+5 共振"
                 subtitle="趋势 + 多因子同选 · 超跌仅作背景"
                 badgeLabel={
-                  consensusReviewPanelSummary.tone === "positive"
-                    ? "已就绪"
-                    : consensusReviewPanelSummary.tone === "warning"
-                      ? "代理观察"
-                      : "证据待齐"
+                  consensusReviewPanelSummary.badgeLabel ??
+                  (consensusReviewPanelSummary.tone === "positive" ? "已就绪" : "待复核")
                 }
                 summary={consensusReviewPanelSummary}
                 summaryTestId="stock-analysis-consensus-panel-summary"
@@ -3546,15 +3614,14 @@ export default function StockAnalysisPage() {
                 id="market-priority"
                 title="当前市场策略优先级"
                 subtitle="近 180 天快照 · T+5 排序 · 只读复核"
-                badgeLabel={`${localizeMarketDataStatus(
-                  strategyScorePayload?.current_market_state ?? currentMarketState,
-                )} / ${
-                  strategyScorePayload?.primary_horizon === "return_1d"
+                badgeLabel={
+                  marketPriorityPanelSummary.badgeLabel ??
+                  (strategyScorePayload?.primary_horizon === "return_1d"
                     ? "T+1"
                     : strategyScorePayload?.primary_horizon === "return_20d"
                       ? "T+20"
-                      : "T+5"
-                }`}
+                      : "T+5")
+                }
                 summary={marketPriorityPanelSummary}
                 summaryTestId="stock-analysis-market-priority-panel-summary"
                 expanded={isStrategyCardExpanded("market-priority")}
@@ -3756,7 +3823,7 @@ export default function StockAnalysisPage() {
                 id="strategy-backtest"
                 title="策略回溯表现"
                 subtitle="近 10 日快照 · 已完成日计胜率"
-                badgeLabel={strategyBacktestDateRangeLabel}
+                badgeLabel={strategyBacktestPanelSummary.badgeLabel ?? strategyBacktestDateRangeLabel}
                 summary={strategyBacktestPanelSummary}
                 summaryTestId="stock-analysis-strategy-backtest-panel-summary"
                 expanded={isStrategyCardExpanded("strategy-backtest")}
@@ -3857,13 +3924,14 @@ export default function StockAnalysisPage() {
                 title="优化诊断"
                 subtitle="切片回测 T+5 · 复核排序建议"
                 badgeLabel={
-                  strategyOptimizationPayload?.primary_horizon === "return_1d"
+                  strategyOptimizationPanelSummary.badgeLabel ??
+                  (strategyOptimizationPayload?.primary_horizon === "return_1d"
                     ? "T+1"
                     : strategyOptimizationPayload?.primary_horizon === "return_10d"
                       ? "T+10"
                       : strategyOptimizationPayload?.primary_horizon === "return_20d"
                         ? "T+20"
-                        : "T+5"
+                        : "T+5")
                 }
                 summary={strategyOptimizationPanelSummary}
                 summaryTestId="stock-analysis-strategy-optimization-panel-summary"
@@ -3987,11 +4055,7 @@ export default function StockAnalysisPage() {
                 id="observation-pools"
                 title="Observation Pools"
                 subtitle="超跌 / 多因子 / 融合 · WARM 激活观察"
-                badgeLabel={`合计 ${
-                  (meanReversionPayload?.candidate_count ?? 0) +
-                  (factorScreenPayload?.candidate_count ?? 0) +
-                  (hybridFusionPayload?.candidate_count ?? 0)
-                } 只`}
+                badgeLabel={observationPoolsPanelSummary.badgeLabel ?? "观察池"}
                 summary={observationPoolsPanelSummary}
                 summaryTestId="stock-analysis-observation-pools-panel-summary"
                 expanded={isStrategyCardExpanded("observation-pools")}
@@ -4169,7 +4233,7 @@ export default function StockAnalysisPage() {
                 id="events-monitoring"
                 title="关键事件与监控"
                 subtitle="诊断 / 缺口 / 风险触发复核队列"
-                badgeLabel={eventMonitorRows.length > 0 ? `${eventMonitorRows.length} 条` : "无事件"}
+                badgeLabel={eventsMonitoringPanelSummary.badgeLabel ?? "事件"}
                 summary={eventsMonitoringPanelSummary}
                 summaryTestId="stock-analysis-events-panel-summary"
                 expanded={isStrategyCardExpanded("events-monitoring")}

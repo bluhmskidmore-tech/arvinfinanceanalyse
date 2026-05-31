@@ -37,6 +37,9 @@ export function StrategyModuleCard({
   className,
 }: StrategyModuleCardProps) {
   const toneClass = summary?.tone ? ` stock-analysis-strategy-module-card--${summary.tone}` : "";
+  const statusPill = badgeLabel ?? summary?.badgeLabel;
+  const isLoading = summary?.loading === true;
+  const overflowStats = summary && summary.stats.length > 2 ? summary.stats.slice(2) : [];
 
   return (
     <article
@@ -49,23 +52,34 @@ export function StrategyModuleCard({
           <h3 className="stock-analysis-strategy-module-card__title">{title}</h3>
           {subtitle ? <p className="stock-analysis-strategy-module-card__subtitle">{subtitle}</p> : null}
         </div>
-        {badgeLabel ? <span className="stock-analysis-page__dh-pill">{badgeLabel}</span> : null}
+        {statusPill ? (
+          <span className="stock-analysis-strategy-module-card__status-pill">{statusPill}</span>
+        ) : null}
       </header>
 
-      {summary ? (
-        <StrategyPanelKpiGrid
-          stats={summary.stats}
-          testId={summaryTestId}
-          maxItems={4}
-          className="stock-analysis-strategy-module-card__kpi-grid"
-        />
-      ) : null}
-
-      {summary?.headline ? (
-        <p className="stock-analysis-strategy-module-card__headline">{summary.headline}</p>
-      ) : null}
-      {summary?.detail ? (
-        <p className="stock-analysis-strategy-module-card__detail-line">{summary.detail}</p>
+      {isLoading ? (
+        <div
+          className="stock-analysis-strategy-module-card__loading"
+          data-testid={summaryTestId ? `${summaryTestId}-loading` : undefined}
+        >
+          <p className="stock-analysis-strategy-module-card__loading-label">加载中…</p>
+          <div className="stock-analysis-strategy-module-card__loading-skeleton" aria-hidden="true">
+            <span />
+            <span />
+          </div>
+        </div>
+      ) : summary ? (
+        <>
+          {summary.headline ? (
+            <p className="stock-analysis-strategy-module-card__headline">{summary.headline}</p>
+          ) : null}
+          <StrategyPanelKpiGrid
+            stats={summary.stats}
+            testId={summaryTestId}
+            maxItems={2}
+            className="stock-analysis-strategy-module-card__kpi-grid"
+          />
+        </>
       ) : null}
 
       {children ? (
@@ -77,6 +91,7 @@ export function StrategyModuleCard({
               className="stock-analysis-strategy-module-card__toggle"
               data-testid={`stock-analysis-strategy-card-${id}-toggle`}
               aria-expanded={expanded}
+              aria-label={expanded ? "收起明细" : "查看明细"}
               onClick={onToggleExpand}
               icon={expanded ? <UpOutlined /> : <DownOutlined />}
             >
@@ -89,6 +104,16 @@ export function StrategyModuleCard({
               hidden={!expanded}
               data-testid={`stock-analysis-strategy-card-${id}-detail`}
             >
+              {summary?.detail ? (
+                <p className="stock-analysis-strategy-module-card__detail-line">{summary.detail}</p>
+              ) : null}
+              {overflowStats.length > 0 ? (
+                <StrategyPanelKpiGrid
+                  stats={overflowStats}
+                  testId={summaryTestId ? `${summaryTestId}-overflow` : undefined}
+                  className="stock-analysis-strategy-module-card__kpi-grid stock-analysis-strategy-module-card__kpi-grid--overflow"
+                />
+              ) : null}
               {children}
             </div>
           ) : expanded ? (
@@ -96,6 +121,16 @@ export function StrategyModuleCard({
               className="stock-analysis-strategy-module-card__detail"
               data-testid={`stock-analysis-strategy-card-${id}-detail`}
             >
+              {summary?.detail ? (
+                <p className="stock-analysis-strategy-module-card__detail-line">{summary.detail}</p>
+              ) : null}
+              {overflowStats.length > 0 ? (
+                <StrategyPanelKpiGrid
+                  stats={overflowStats}
+                  testId={summaryTestId ? `${summaryTestId}-overflow` : undefined}
+                  className="stock-analysis-strategy-module-card__kpi-grid stock-analysis-strategy-module-card__kpi-grid--overflow"
+                />
+              ) : null}
               {children}
             </div>
           ) : null}

@@ -1146,9 +1146,14 @@ describe("StockAnalysisPage", () => {
     expect(workbench).toHaveTextContent("风险供数");
     expect(workbench).not.toHaveTextContent("多策略共振");
     expect(workbench).toHaveTextContent("复核队列");
-    expect(await screen.findByTestId("stock-analysis-sector-mini-chart")).toBeInTheDocument();
-    expect(await screen.findByTestId("stock-analysis-review-mini-chart")).toBeInTheDocument();
-    expect(await screen.findByTestId("stock-analysis-event-mini-chart")).toBeInTheDocument();
+    const sectorMiniChart = await screen.findByTestId("stock-analysis-sector-mini-chart");
+    const reviewMiniChart = await screen.findByTestId("stock-analysis-review-mini-chart");
+    const outputMiniChart = await screen.findByTestId("stock-analysis-event-mini-chart");
+    const riskMiniChart = await screen.findByTestId("stock-analysis-risk-mini-chart");
+    expect(sectorMiniChart.closest(".stock-analysis-page__visually-hidden")).toBeNull();
+    expect(reviewMiniChart.closest(".stock-analysis-page__visually-hidden")).toBeNull();
+    expect(outputMiniChart.closest(".stock-analysis-page__visually-hidden")).toBeNull();
+    expect(riskMiniChart.closest(".stock-analysis-page__visually-hidden")).toBeNull();
     expect(await screen.findByTestId("stock-analysis-historical-review-section")).toHaveTextContent("历史复核");
     expect(await screen.findByTestId("stock-analysis-consensus-panel-summary")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-theme-panel-summary")).toBeInTheDocument();
@@ -1225,7 +1230,7 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "板块强弱" })).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-page-purpose")).toHaveTextContent("股票策略复核台");
-    expect(await screen.findByTestId("stock-analysis-deep-zone")).toHaveTextContent("深度分析");
+    expect(await screen.findByTestId("stock-analysis-deep-zone")).toHaveTextContent("供数闭环");
     expect(await screen.findByRole("heading", { name: "题材突变观察" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "复核队列" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
@@ -1477,7 +1482,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const poolsCard = await screen.findByTestId("stock-analysis-mean-reversion");
-    await user.click(within(poolsCard).getByRole("button", { name: "查看明细" }));
+    await user.click(within(poolsCard).getByTestId("stock-analysis-strategy-card-observation-pools-toggle"));
 
     expect(await screen.findByText("Factor Alpha")).toBeInTheDocument();
     expect(screen.getByText("600000.SH")).toBeInTheDocument();
@@ -1940,6 +1945,38 @@ describe("StockAnalysisPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("surfaces blocked backend outputs in the first-screen supply strip", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          data_gaps: [
+            {
+              input_family: "position_risk",
+              status: "missing",
+              evidence: "Position snapshot is missing.",
+            },
+          ],
+          supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+          unsupported_outputs: [
+            {
+              key: "risk_exit",
+              reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+            },
+          ],
+          risk_exit: undefined,
+        }),
+      }),
+    });
+
+    const workbench = await screen.findByTestId("stock-analysis-first-screen-workbench");
+    expect(workbench).toHaveTextContent("阻断 1");
+    expect(workbench).toHaveTextContent("风险退出");
+    expect(workbench).not.toHaveTextContent("risk_exit");
+    expect(workbench).toHaveTextContent("持仓风险");
+    expect(workbench).not.toHaveTextContent("position_risk");
+    expect(workbench).toHaveTextContent("缺口 1");
+  });
+
   it("loads sector rank series when multi-day collapse opens", async () => {
     const user = userEvent.setup();
     const client = stockClient();
@@ -2166,7 +2203,7 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => expect(summary).toHaveTextContent("优先复核"));
     await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
     expect(summary).toHaveTextContent("当前市场策略优先级");
-    expect(summary).toHaveTextContent("OVERHEAT");
+    expect(await screen.findByTestId("stock-analysis-deep-zone-gate-summary")).toHaveTextContent("过热");
     expect(summary).toHaveTextContent("T+5");
     expect(summary).toHaveTextContent("优先复核");
     expect(summary).toHaveTextContent("多因子");

@@ -2222,6 +2222,13 @@ export type StockStrategyPanelResultSummary = {
   badgeLabel?: string;
   stats: StockStrategyPanelMiniStat[];
   tone?: StockClosedLoopTone;
+  /** 懒加载卡：卡面仅显示加载态，不渲染 KPI */
+  loading?: boolean;
+};
+
+export type StockDeepAnalysisGateSummary = {
+  line: string;
+  tone: StockClosedLoopTone;
 };
 
 export function localizeImplementationStage(stage: string): string {
@@ -2262,7 +2269,7 @@ export function localizeThemeSourceKind(sourceKind: string | undefined, isProxyD
   if (!normalized) {
     return isProxyDefault ? "代理观察" : "概念库";
   }
-  return sourceKind.replace(/_/g, " ");
+  return normalized.replace(/_/g, " ");
 }
 
 export function localizeMarketDataStatus(status: string | null | undefined): string {
@@ -2340,6 +2347,40 @@ function summarizeThemeMovementCount(payload: LivermoreStrategyPayload): number 
   );
 }
 
+export function buildDeepAnalysisGateSummary(input: {
+  gateState: string | null | undefined;
+  themeUnsupportedReason?: string;
+  priorityStrategyLabel?: string | null;
+}): StockDeepAnalysisGateSummary {
+  const gateLabel = input.gateState ? localizeMarketDataStatus(input.gateState) : "门控待补";
+  const parts = [`当前市场门控：${gateLabel}`];
+  let tone: StockClosedLoopTone = "neutral";
+
+  if (input.themeUnsupportedReason) {
+    const localized = localizeThemeUnsupportedSummary(input.themeUnsupportedReason);
+    if (localized.gateHint === "OVERHEAT" || input.gateState === "OVERHEAT") {
+      parts.push("题材观察暂停");
+      tone = "warning";
+    } else {
+      parts.push("题材未开放");
+      tone = "warning";
+    }
+  }
+
+  if (input.priorityStrategyLabel) {
+    parts.push(`优先看${input.priorityStrategyLabel}复核`);
+    if (tone === "neutral") tone = "positive";
+  } else if (input.gateState === "OVERHEAT") {
+    parts.push("优先看多因子复核");
+    tone = "warning";
+  } else if (input.gateState === "WARM") {
+    parts.push("超跌池已激活");
+    if (tone === "neutral") tone = "positive";
+  }
+
+  return { line: parts.join(" · "), tone };
+}
+
 function eventMonitorPriority(row: StockAnalysisEventMonitorRow): number {
   if (row.level === "error") return 3;
   if (row.level === "warning") return 2;
@@ -2363,6 +2404,9 @@ export function buildCycleRotationPanelSummary(input: {
     input.portfolioBacktest?.status === "portfolio_proxy"
       ? input.portfolioBacktest.summary?.cumulative_return
       : null;
+  const backtestLoading =
+    input.portfolioQueryState === "loading" || input.proxyQueryState === "loading";
+
   const stats: StockStrategyPanelMiniStat[] = [
     {
       key: "stage",
@@ -2372,7 +2416,7 @@ export function buildCycleRotationPanelSummary(input: {
     },
     {
       key: "layers",
-      label: "就绪层",
+      label: "就绪",
       value: `${readyLayers}/${totalLayers}`,
       valueTone: readyLayers === totalLayers ? "emphasis" : "warning",
     },
@@ -2380,39 +2424,41 @@ export function buildCycleRotationPanelSummary(input: {
   if (input.macroLayer) {
     stats.push({
       key: "macro",
-      label: "MacroScore",
+      label: "宏观",
       value: input.macroLayer.macroScoreLabel,
       valueTone: input.macroLayer.tone === "positive" ? "emphasis" : "warning",
     });
   }
-  if (input.portfolioQueryState === "loading" || input.proxyQueryState === "loading") {
-    stats.push({ key: "backtest", label: "回测", value: "加载中", valueTone: "flat" });
-  } else if (portfolioReturn != null) {
+  if (!backtestLoading && portfolioReturn != null) {
     stats.push({
       key: "portfolio",
-      label: "组合回测",
+      label: "组合",
       value: formatBacktestSignedReturn(portfolioReturn),
       valueTone: portfolioReturn >= 0 ? "up" : "down",
     });
-  } else if (proxyReturn != null) {
+  } else if (!backtestLoading && proxyReturn != null) {
     stats.push({
       key: "proxy",
-      label: "代理回测",
+      label: "代理",
       value: formatBacktestSignedReturn(proxyReturn),
       valueTone: proxyReturn >= 0 ? "up" : "down",
     });
-  } else {
-    stats.push({ key: "backtest", label: "回测", value: "暂无样本", valueTone: "warning" });
+  } else if (!backtestLoading) {
+    stats.push({ key: "backtest", label: "回测", value: "无样本", valueTone: "warning" });
   }
 
   const macroStatus = input.macroLayer?.statusLabel ?? "待补";
+  const headline =
+    macroStatus === "已落地" ? "宏观层已落地" : macroStatus === "部分就绪" ? "宏观层部分就绪" : "宏观层待补";
   const detail =
     readyLayers < totalLayers
       ? `就绪 ${readyLayers}/${totalLayers} 层；补齐缺失输入后可进入完整验证。`
-      : "各层只读证据已接入，展开查看公式、层状态与回测明细。";
+      : backtestLoading
+        ? "回测加载中，展开查看公式、层状态与回测明细。"
+        : "各层只读证据已接入，展开查看公式、层状态与回测明细。";
 
   return {
-    headline: macroStatus === "已落地" ? "宏观层已落地" : `宏观层${macroStatus}`,
+    headline,
     detail,
     complianceDetail: input.framework.boundary,
     badgeLabel: stageLabel,
@@ -2435,34 +2481,17 @@ export function buildThemeBreakoutPanelSummary(input: {
 
   if (input.unsupportedReason) {
     const localized = localizeThemeUnsupportedSummary(input.unsupportedReason);
-    const stats: StockStrategyPanelMiniStat[] = [
-      { key: "status", label: "状态", value: "暂无数据", valueTone: "warning" },
-    ];
-    if (localized.gateHint) {
-      stats.push({
-        key: "gate",
-        label: "门控",
-        value: localized.gateHint,
-        valueTone: "warning",
-      });
-    }
     return {
       headline: "题材雷达未开放",
       detail: localized.detail,
       complianceDetail: input.unsupportedReason,
-      badgeLabel: isProxy ? "代理观察" : "概念库",
-      stats,
+      badgeLabel: "暂停",
+      stats: [{ key: "status", label: "状态", value: "未开放", valueTone: "warning" }],
       tone: "warning",
     };
   }
 
   const stats: StockStrategyPanelMiniStat[] = [
-    {
-      key: "mode",
-      label: "模式",
-      value: isProxy ? "代理簇" : "概念库",
-      valueTone: isProxy ? "warning" : "emphasis",
-    },
     {
       key: "coverage",
       label: "覆盖",
@@ -2484,12 +2513,20 @@ export function buildThemeBreakoutPanelSummary(input: {
       valueTone: "warning",
     });
   }
+  stats.push({
+    key: "mode",
+    label: "模式",
+    value: isProxy ? "代理" : "概念",
+    valueTone: isProxy ? "warning" : "emphasis",
+  });
+
+  const headline =
+    input.cards.length > 0
+      ? `#${topCard?.rank ?? 1} ${topCard?.themeName ?? "题材"}领先`
+      : "暂无题材突变项";
 
   return {
-    headline:
-      input.cards.length > 0
-        ? `领先 #${topCard?.rank ?? 1} ${topCard?.themeName ?? "题材"}`
-        : "当前无题材突变观察项",
+    headline,
     detail:
       input.cards.length > 0
         ? (topCard?.summary ?? "展开查看簇内龙头与边界说明。")
@@ -2499,7 +2536,7 @@ export function buildThemeBreakoutPanelSummary(input: {
     complianceDetail: isProxy
       ? "Proxy theme radar: daily bars, limit-up flags and name clustering; not a formal concept catalog."
       : undefined,
-    badgeLabel: localizeThemeRadarBadge(isProxy, themePayload?.formula_version),
+    badgeLabel: input.cards.length > 0 ? "已就绪" : isProxy ? "代理观察" : "概念库",
     stats,
     tone: input.cards.length > 0 ? "positive" : "neutral",
   };
@@ -2510,24 +2547,20 @@ export function buildConsensusReviewPanelSummary(consensus: ConsensusSummary): S
     return {
       headline: "暂无候选",
       detail: "今天没有共振候选；先核对门控，再下翻看多因子池或各策略观察池。",
-      stats: [
-        { key: "sample", label: "共振样本", value: "0", valueTone: "warning" },
-        { key: "trend", label: "趋势", value: "0", valueTone: "flat" },
-        { key: "factor", label: "多因子", value: "0", valueTone: "flat" },
-        { key: "fusion", label: "融合", value: "0", valueTone: "flat" },
-      ],
+      badgeLabel: "待补",
+      stats: [{ key: "sample", label: "共振", value: "0", valueTone: "warning" }],
       tone: "warning",
     };
   }
   if (consensus.doubleCount <= 0) {
     return {
-      headline: "暂无共振",
+      headline: "暂无 T+5 共振",
       detail: "今天没有趋势+多因子共振；可先复核单策略池，或查看多因子池排序。",
+      badgeLabel: "待复核",
       stats: [
-        { key: "sample", label: "共振样本", value: "0", valueTone: "warning" },
         { key: "trend", label: "趋势", value: `${consensus.strategyCounts.livermore}`, valueTone: "emphasis" },
         { key: "factor", label: "多因子", value: `${consensus.strategyCounts.factor_screen}`, valueTone: "emphasis" },
-        { key: "union", label: "去重池", value: `${consensus.totalUnion}`, valueTone: "flat" },
+        { key: "union", label: "去重", value: `${consensus.totalUnion}`, valueTone: "flat" },
       ],
       tone: "warning",
     };
@@ -2535,27 +2568,28 @@ export function buildConsensusReviewPanelSummary(consensus: ConsensusSummary): S
 
   const top = consensus.items[0];
   return {
-    headline: `T+5 共振 ${consensus.doubleCount} 只${consensus.tripleCount > 0 ? ` · 三策略 ${consensus.tripleCount}` : ""}`,
+    headline: `T+5 共振 ${consensus.doubleCount} 只`,
     detail: top
       ? `下一步：优先复核 ${top.stockName}（${top.stockCode}），${top.strategies.length} 策略同选。`
       : "按共振得分排序，仅作复核先后。",
+    badgeLabel: "已就绪",
     stats: [
       {
         key: "double",
-        label: "核心共振",
+        label: "共振",
         value: `${consensus.doubleCount}`,
         valueTone: "emphasis",
       },
       {
-        key: "trend",
-        label: "趋势池",
-        value: `${consensus.strategyCounts.livermore}`,
+        key: "factor",
+        label: "多因子",
+        value: `${consensus.strategyCounts.factor_screen}`,
         valueTone: "flat",
       },
       {
-        key: "factor",
-        label: "多因子池",
-        value: `${consensus.strategyCounts.factor_screen}`,
+        key: "trend",
+        label: "趋势",
+        value: `${consensus.strategyCounts.livermore}`,
         valueTone: "flat",
       },
     ],
@@ -2572,17 +2606,19 @@ export function buildMarketPriorityPanelSummary(input: {
 }): StockStrategyPanelResultSummary {
   if (input.queryState === "loading") {
     return {
-      headline: "市场优先级计算中",
-      detail: "展开后将按近 180 天快照与 T+5 统计排序。",
-      stats: [{ key: "state", label: "市场", value: input.marketState ?? "待补", tone: "neutral" }],
+      headline: "加载中…",
+      loading: true,
+      badgeLabel: "加载中",
+      stats: [],
       tone: "neutral",
     };
   }
   if (input.queryState === "error") {
     return {
-      headline: "市场优先级暂不可用",
+      headline: "优先级暂不可用",
       detail: input.errorMessage,
-      stats: [{ key: "state", label: "市场", value: input.marketState ?? "待补", tone: "warning" }],
+      badgeLabel: "待补",
+      stats: [],
       tone: "warning",
     };
   }
@@ -2590,12 +2626,10 @@ export function buildMarketPriorityPanelSummary(input: {
   const sufficientCount = input.rows.filter((row) => row.sample_status === "sufficient").length;
   if (!top || sufficientCount === 0) {
     return {
-      headline: "当前市场状态样本不足",
+      headline: "样本不足",
       detail: `样本阈值 ${input.payload?.min_sample ?? 20}，不输出交易动作。`,
-      stats: [
-        { key: "state", label: "市场", value: input.payload?.current_market_state ?? input.marketState ?? "待补", tone: "warning" },
-        { key: "rows", label: "策略行", value: `${input.rows.length}`, tone: "neutral" },
-      ],
+      badgeLabel: "待补",
+      stats: [{ key: "rows", label: "策略", value: `${input.rows.length}`, tone: "neutral" }],
       tone: "warning",
     };
   }
@@ -2603,19 +2637,14 @@ export function buildMarketPriorityPanelSummary(input: {
   const horizon = input.payload?.primary_horizon ?? "return_5d";
   const horizonStats = top.stats[horizon];
   return {
-    headline: `优先复核 ${top.strategy_label} · 评分 ${top.priority_score?.toFixed(1) ?? "-"}`,
+    headline: `优先 ${top.strategy_label}`,
     detail: top.reason,
+    badgeLabel: top.priority_label === "优先复核" ? "已就绪" : "降权观察",
     stats: [
       {
-        key: "state",
-        label: "市场",
-        value: input.payload?.current_market_state ?? input.marketState ?? "待补",
-        tone: "neutral",
-      },
-      {
-        key: "label",
-        label: "建议",
-        value: top.priority_label,
+        key: "score",
+        label: "评分",
+        value: top.priority_score?.toFixed(1) ?? "-",
         tone: top.priority_label === "优先复核" ? "positive" : "warning",
       },
       {
@@ -2640,16 +2669,18 @@ export function buildStrategyBacktestPanelSummary(input: {
 }): StockStrategyPanelResultSummary {
   if (input.queryState === "loading") {
     return {
-      headline: "策略回溯加载中",
-      detail: input.dateRangeLabel,
-      stats: [{ key: "range", label: "区间", value: input.dateRangeLabel || "待补", tone: "neutral" }],
+      headline: "加载中…",
+      loading: true,
+      badgeLabel: "加载中",
+      stats: [],
       tone: "neutral",
     };
   }
   if (input.queryState === "error") {
     return {
-      headline: "策略回溯暂不可用",
+      headline: "回溯暂不可用",
       detail: input.errorMessage,
+      badgeLabel: "待补",
       stats: [],
       tone: "warning",
     };
@@ -2664,13 +2695,10 @@ export function buildStrategyBacktestPanelSummary(input: {
       : topRow?.stats.return_5d ?? "样本待补";
 
   return {
-    headline:
-      input.sampleCount > 0
-        ? `有效样本 ${input.sampleCount} 条 · 完成日 ${input.window?.replay_dates_completed ?? 0}`
-        : "暂无可用回溯样本",
+    headline: input.sampleCount > 0 ? `有效样本 ${input.sampleCount} 条` : "暂无回溯样本",
     detail: input.dateRangeLabel,
+    badgeLabel: input.sampleCount > 0 ? "已就绪" : "待补",
     stats: [
-      { key: "range", label: "区间", value: input.dateRangeLabel || "待补", tone: "neutral" },
       {
         key: "trend",
         label: topRow?.label ?? "趋势",
@@ -2682,6 +2710,12 @@ export function buildStrategyBacktestPanelSummary(input: {
         label: "待成熟",
         value: `${input.window?.replay_dates_pending ?? 0} 日`,
         tone: (input.window?.replay_dates_pending ?? 0) > 0 ? "warning" : "neutral",
+      },
+      {
+        key: "range",
+        label: "区间",
+        value: input.dateRangeLabel || "待补",
+        tone: "neutral",
       },
     ],
     tone: input.sampleCount > 0 ? "positive" : "warning",
@@ -2696,8 +2730,10 @@ export function buildStrategyOptimizationPanelSummary(input: {
 }): StockStrategyPanelResultSummary {
   if (input.queryState === "loading") {
     return {
-      headline: "优化诊断加载中",
-      stats: [{ key: "horizon", label: "主 horizon", value: "T+5", tone: "neutral" }],
+      headline: "加载中…",
+      loading: true,
+      badgeLabel: "加载中",
+      stats: [],
       tone: "neutral",
     };
   }
@@ -2705,6 +2741,7 @@ export function buildStrategyOptimizationPanelSummary(input: {
     return {
       headline: "优化诊断暂不可用",
       detail: input.errorMessage,
+      badgeLabel: "待补",
       stats: [],
       tone: "warning",
     };
@@ -2722,8 +2759,9 @@ export function buildStrategyOptimizationPanelSummary(input: {
 
   if (!top) {
     return {
-      headline: "优化诊断样本不足",
+      headline: "优化样本不足",
       detail: input.payload?.pending_summary.message,
+      badgeLabel: "待补",
       stats: [
         {
           key: "pending",
@@ -2737,8 +2775,9 @@ export function buildStrategyOptimizationPanelSummary(input: {
   }
 
   return {
-    headline: `Top 建议 ${top.recommendation.priority_label} · ${top.strategy_label}`,
+    headline: `${top.recommendation.priority_label} · ${top.strategy_label}`,
     detail: top.recommendation.reason,
+    badgeLabel: top.recommendation.priority_label === "优先复核" ? "已就绪" : "降权观察",
     stats: [
       {
         key: "promote",
@@ -2771,24 +2810,41 @@ export function buildObservationPoolsPanelSummary(input: {
   meanReversionActive: boolean;
 }): StockStrategyPanelResultSummary {
   const total = input.meanReversionCount + input.factorScreenCount + input.hybridFusionCount;
-  const activation =
-    input.meanReversionActive && input.gateState === "WARM"
-      ? "WARM 激活超跌反弹"
-      : input.gateState
-        ? `${input.gateState} · 超跌池${input.meanReversionActive ? "开" : "停"}`
-        : "市场状态待补";
+  const primaryCount = input.factorScreenCount > 0 ? input.factorScreenCount : input.hybridFusionCount;
+  const primaryLabel = input.factorScreenCount > 0 ? "多因子" : input.hybridFusionCount > 0 ? "融合" : "观察池";
+
+  const headline =
+    primaryCount > 0
+      ? `${primaryLabel} ${primaryCount} 只待复核`
+      : total > 0
+        ? `观察池合计 ${total} 只`
+        : "观察池暂无候选";
 
   return {
-    headline: `观察池合计 ${total} 只 · 融合 ${input.hybridFusionCount} / 多因子 ${input.factorScreenCount} / 超跌 ${input.meanReversionCount}`,
-    detail: activation,
+    headline,
+    detail:
+      input.meanReversionActive && input.gateState === "WARM"
+        ? "WARM 激活超跌反弹；融合/超跌明细见展开区。"
+        : "融合/超跌明细见展开区。",
+    badgeLabel: total > 0 ? "已就绪" : "待补",
     stats: [
-      { key: "hybrid", label: "融合", value: `${input.hybridFusionCount}`, tone: input.hybridFusionCount > 0 ? "positive" : "neutral" },
-      { key: "factor", label: "多因子", value: `${input.factorScreenCount}`, tone: input.factorScreenCount > 0 ? "positive" : "neutral" },
+      {
+        key: "factor",
+        label: "多因子",
+        value: `${input.factorScreenCount}`,
+        tone: input.factorScreenCount > 0 ? "positive" : "neutral",
+      },
       {
         key: "mean",
         label: "超跌",
         value: input.meanReversionActive ? `${input.meanReversionCount}` : "暂停",
         tone: input.meanReversionActive ? "warning" : "neutral",
+      },
+      {
+        key: "hybrid",
+        label: "融合",
+        value: `${input.hybridFusionCount}`,
+        tone: input.hybridFusionCount > 0 ? "positive" : "neutral",
       },
     ],
     tone: total > 0 ? "positive" : "neutral",
@@ -2802,6 +2858,7 @@ export function buildEventsMonitoringPanelSummary(
     return {
       headline: "暂无待复核事件",
       detail: "诊断、缺口与风险触发均空。",
+      badgeLabel: "已就绪",
       stats: [{ key: "count", label: "事件", value: "0", tone: "positive" }],
       tone: "positive",
     };
@@ -2812,12 +2869,13 @@ export function buildEventsMonitoringPanelSummary(
   const top = [...rows].sort((left, right) => eventMonitorPriority(right) - eventMonitorPriority(left))[0];
 
   return {
-    headline: `${rows.length} 条待复核 · 最高优先 ${top.event}`,
-    detail: top.detail,
+    headline: `${rows.length} 条待复核`,
+    detail: `最高优先：${top.event} — ${top.detail}`,
+    badgeLabel: errorCount > 0 ? "待补" : warningCount > 0 ? "待复核" : "已就绪",
     stats: [
       { key: "error", label: "错误", value: `${errorCount}`, tone: errorCount > 0 ? "negative" : "positive" },
       { key: "warn", label: "预警", value: `${warningCount}`, tone: warningCount > 0 ? "warning" : "neutral" },
-      { key: "top", label: "影响域", value: top.impact, tone: "neutral" },
+      { key: "top", label: "域", value: top.impact, tone: "neutral" },
     ],
     tone: errorCount > 0 ? "negative" : warningCount > 0 ? "warning" : "neutral",
   };
