@@ -447,8 +447,15 @@ describe("DashboardHomePage", () => {
       const holdingsTable = screen.getByTestId("dashboard-home-holdings-table");
       expect(within(holdingsTable).getAllByTestId("dashboard-home-holding-row").length).toBeGreaterThan(0);
     });
-    expect(await screen.findByTestId("dashboard-home-position-changes")).toHaveTextContent("240002.IB");
-    expect(await screen.findByTestId("dashboard-home-income-trend")).toHaveTextContent("+1.20");
+    const positionChanges = await screen.findByTestId("dashboard-home-position-changes");
+    expect(positionChanges).toHaveTextContent("240002.IB");
+    expect(positionChanges).toHaveTextContent("+2.00pp");
+    expect(positionChanges).toHaveTextContent("现值");
+    const incomeTrend = await screen.findByTestId("dashboard-home-income-trend");
+    expect(incomeTrend).toHaveTextContent("组合");
+    expect(incomeTrend).toHaveTextContent("基准");
+    expect(incomeTrend).toHaveTextContent("超额");
+    expect(incomeTrend).toHaveTextContent("+1.20");
     expect(await screen.findByTestId("dashboard-home-research-reports")).toHaveTextContent("利率债周报");
     expect(screen.queryByTestId("dashboard-home-backend-gap-research-reports")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-home-backend-gap-position-changes")).not.toBeInTheDocument();

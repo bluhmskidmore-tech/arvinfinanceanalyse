@@ -170,19 +170,21 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
 function buildIncomeTrendOption(points: DashboardHomeView["incomeTrend"]): EChartsOption {
   return {
     color: ["#1850a1"],
-    grid: { top: 12, right: 10, bottom: 22, left: 36 },
+    grid: { top: 8, right: 8, bottom: 20, left: 34 },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
       data: points.map((point) => point.date.slice(5)),
+      boundaryGap: false,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: "#cdd5e1" } },
-      axisLabel: { fontSize: 10 },
+      axisLabel: { fontSize: 10, color: "#6b7d95" },
     },
     yAxis: {
       type: "value",
       axisLabel: {
         fontSize: 10,
+        color: "#6b7d95",
         formatter: (value: number) => `${(Number(value) / 100_000_000).toFixed(1)}亿`,
       },
       splitLine: { lineStyle: { color: "#eef2f7" } },
@@ -191,10 +193,12 @@ function buildIncomeTrendOption(points: DashboardHomeView["incomeTrend"]): EChar
       {
         type: "line",
         smooth: true,
-        showSymbol: false,
+        symbol: "circle",
+        symbolSize: 4,
+        showSymbol: true,
         data: points.map((point) => point.portfolioRaw ?? 0),
-        lineStyle: { width: 2 },
-        areaStyle: { opacity: 0.12 },
+        lineStyle: { width: 2.2 },
+        areaStyle: { opacity: 0.1 },
       },
     ],
   };
@@ -416,7 +420,9 @@ function PositionChangesPanel({ view }: { view: DashboardHomeView }) {
                 <b>{row.code}</b>
                 <small>{row.name}</small>
               </span>
-              <span className={styles.dhTerminalChangeReason}>{row.reason}</span>
+              <span className={styles.dhTerminalChangeReason} data-direction={row.direction}>
+                {row.reason}
+              </span>
               <span className={styles.dhTerminalChangeBar}>
                 <span
                   className={styles.dhTerminalChangeFill}
@@ -426,8 +432,12 @@ function PositionChangesPanel({ view }: { view: DashboardHomeView }) {
               </span>
               <span className={`${styles.dhTerminalChangeValue} ${styles.dhNum} ${resolveDeltaClass(row.tone, styles)}`}>
                 {row.changeValue}
+                <small>{row.weightDelta}</small>
               </span>
-              <span className={`${styles.dhTerminalChangeCurrent} ${styles.dhNum}`}>{row.currentValue}</span>
+              <span className={`${styles.dhTerminalChangeCurrent} ${styles.dhNum}`}>
+                <small>现值</small>
+                {row.currentValue}
+              </span>
             </div>
           ))}
         </div>
@@ -484,6 +494,7 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
   const hasRows =
     (view.incomeTrendState.kind === "ready" || view.incomeTrendState.kind === "partial") &&
     view.incomeTrend.length > 0;
+  const latestPoint = view.incomeTrend.at(-1);
   return (
     <article data-testid="dashboard-home-income-trend" className={`${styles.dhCard} ${styles.dhTerminalPanel}`}>
       <div className={styles.dhTerminalPanelHead}>
@@ -491,24 +502,42 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
         <DataStateBadge kind={view.incomeTrendState.kind} label={view.incomeTrendState.label} />
       </div>
       {hasRows ? (
-        <div className={styles.dhTerminalIncomeTrend}>
-          <div className={styles.dhTerminalIncomeChart}>
-            <ReactECharts
-              option={buildIncomeTrendOption(view.incomeTrend)}
-              opts={{ renderer: "canvas" }}
-              notMerge
-              lazyUpdate
-              style={{ height: "100%", width: "100%" }}
-            />
-          </div>
-          <div className={styles.dhTerminalIncomeList}>
-            {view.incomeTrend.slice(-4).map((point) => (
-              <div key={point.id} className={styles.dhTerminalIncomeRow}>
-                <span>{point.date.slice(5)}</span>
-                <b className={styles.dhNum}>{point.portfolioPnl}</b>
-                <small>基准 {point.benchmarkPnl}</small>
-              </div>
-            ))}
+        <div className={styles.dhTerminalIncomeStack}>
+          {latestPoint ? (
+            <div className={styles.dhTerminalIncomeSummary}>
+              <span>
+                <small>组合</small>
+                <b className={styles.dhNum}>{latestPoint.portfolioPnl}</b>
+              </span>
+              <span>
+                <small>基准</small>
+                <b className={styles.dhNum}>{latestPoint.benchmarkPnl}</b>
+              </span>
+              <span>
+                <small>超额</small>
+                <b className={styles.dhNum}>{latestPoint.excessPnl}</b>
+              </span>
+            </div>
+          ) : null}
+          <div className={styles.dhTerminalIncomeTrend}>
+            <div className={styles.dhTerminalIncomeChart}>
+              <ReactECharts
+                option={buildIncomeTrendOption(view.incomeTrend)}
+                opts={{ renderer: "canvas" }}
+                notMerge
+                lazyUpdate
+                style={{ height: "100%", width: "100%" }}
+              />
+            </div>
+            <div className={styles.dhTerminalIncomeList}>
+              {view.incomeTrend.slice(-4).map((point) => (
+                <div key={point.id} className={styles.dhTerminalIncomeRow}>
+                  <span>{point.date.slice(5)}</span>
+                  <b className={styles.dhNum}>{point.portfolioPnl}</b>
+                  <small>基准 {point.benchmarkPnl}</small>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ) : (

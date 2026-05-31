@@ -1738,15 +1738,15 @@
 
 .dhTerminalChangeList {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .dhTerminalChangeRow {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) 44px minmax(58px, 0.8fr) minmax(72px, auto) minmax(72px, auto);
+  grid-template-columns: minmax(92px, 1fr) auto minmax(58px, 0.8fr) minmax(68px, auto) minmax(68px, auto);
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: 32px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--dh-line-soft);
 }
@@ -1780,9 +1780,27 @@
 }
 
 .dhTerminalChangeReason {
-  color: var(--dh-blue-deep);
-  font-size: 10.5px;
+  min-width: 34px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--dh-green);
+  background: var(--dh-green-soft);
+  font-size: 10px;
   font-weight: 850;
+  white-space: nowrap;
+}
+
+.dhTerminalChangeReason[data-direction="increase"] {
+  color: var(--dh-red);
+  background: var(--dh-red-soft);
+}
+
+.dhTerminalChangeReason[data-direction="flat"] {
+  color: var(--dh-blue-deep);
+  background: var(--dh-blue-soft);
 }
 
 .dhTerminalChangeBar {
@@ -1816,6 +1834,24 @@
 
 .dhTerminalChangeCurrent {
   color: var(--dh-muted);
+}
+
+.dhTerminalChangeValue {
+  display: grid;
+  gap: 1px;
+}
+
+.dhTerminalChangeValue small,
+.dhTerminalChangeCurrent small {
+  color: var(--dh-muted);
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.dhTerminalChangeCurrent {
+  display: grid;
+  gap: 1px;
 }
 
 .dhTerminalReportList {
@@ -1868,23 +1904,60 @@
   font-weight: 750;
 }
 
+.dhTerminalIncomeStack {
+  display: grid;
+  gap: 8px;
+}
+
+.dhTerminalIncomeSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--dh-line-soft);
+}
+
+.dhTerminalIncomeSummary span {
+  min-width: 0;
+  padding: 7px 8px;
+  background: var(--dh-card-soft);
+  display: grid;
+  gap: 3px;
+}
+
+.dhTerminalIncomeSummary small {
+  color: var(--dh-muted);
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.dhTerminalIncomeSummary b {
+  color: var(--dh-blue-deep);
+  font-size: 11.5px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dhTerminalIncomeTrend {
   display: grid;
   grid-template-columns: minmax(118px, 1fr) minmax(104px, 0.68fr);
   gap: var(--dh-space-2);
   align-items: stretch;
-  min-height: 146px;
+  min-height: 112px;
 }
 
 .dhTerminalIncomeChart {
   min-width: 0;
-  height: 142px;
+  height: 112px;
 }
 
 .dhTerminalIncomeList {
   display: grid;
   align-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -1892,7 +1965,7 @@
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
   gap: 2px 8px;
-  padding-bottom: 7px;
+  padding-bottom: 5px;
   border-bottom: 1px solid var(--dh-line-soft);
 }
 
