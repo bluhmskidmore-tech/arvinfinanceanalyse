@@ -389,11 +389,16 @@ export type MacroToolkitHasonStrategy = {
   runtime_outputs: Array<{
     name: string;
     freshness_status: string;
+    freshness_basis: string;
     modified_at: string | null;
     modified_date: string | null;
+    content_date: string | null;
+    content_date_min: string | null;
+    content_date_max: string | null;
     reference_date: string | null;
   }>;
   required_runtime_outputs: string[];
+  runtime_output_gaps: string[];
   missing_runtime_outputs: string[];
   stale_runtime_outputs: string[];
   boundary: string;
@@ -812,19 +817,28 @@ const MOCK_HASON_STRATEGY: MacroToolkitHasonStrategy = {
     {
       name: "final_signal.csv",
       freshness_status: "stale",
+      freshness_basis: "csv_content",
       modified_at: "2026-04-29T15:00:00+00:00",
       modified_date: "2026-04-29",
+      content_date: "2026-04-29",
+      content_date_min: "2026-04-29",
+      content_date_max: "2026-04-29",
       reference_date: "2026-04-30",
     },
     {
       name: "crowding_latest.csv",
       freshness_status: "stale",
+      freshness_basis: "csv_content",
       modified_at: "2026-04-29T15:00:00+00:00",
       modified_date: "2026-04-29",
+      content_date: "2026-04-29",
+      content_date_min: "2026-04-29",
+      content_date_max: "2026-04-29",
       reference_date: "2026-04-30",
     },
   ],
   required_runtime_outputs: ["final_signal.csv", "crowding_latest.csv"],
+  runtime_output_gaps: ["final_signal.csv", "crowding_latest.csv"],
   missing_runtime_outputs: [],
   stale_runtime_outputs: ["final_signal.csv", "crowding_latest.csv"],
   boundary: "Analytical macro toolkit display only; not a formal MTR metric, trade order, or portfolio execution engine.",

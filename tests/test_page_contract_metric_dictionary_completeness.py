@@ -45,6 +45,10 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-MACRO-TOOLKIT-001": (
         "macro toolkit is a non-formal tooling surface; no approved `MTR-*` bindings by design."
     ),
+    "PAGE-CUBE-QUERY-001": (
+        "cube query is a candidate query surface; page contract explicitly has no standalone "
+        "`MTR-*` binding."
+    ),
 }
 
 PAGE_HEADING_RE = re.compile(r"^##\s+[\d.]+\s+(PAGE-[A-Z0-9-]+)\b", re.MULTILINE)

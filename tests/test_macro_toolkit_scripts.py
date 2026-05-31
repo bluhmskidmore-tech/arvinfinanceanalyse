@@ -445,6 +445,10 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert {"final_signal.csv", "crowding_latest.csv"}.issubset(
         set(hason_strategy["missing_runtime_outputs"])
     )
+    assert all("freshness_basis" in item for item in hason_strategy["runtime_outputs"])
+    assert all("content_date" in item for item in hason_strategy["runtime_outputs"])
+    assert all(item["freshness_basis"] == "missing" for item in hason_strategy["runtime_outputs"])
+    assert all(item["content_date"] is None for item in hason_strategy["runtime_outputs"])
     assert any(
         item["script"] == "signal_aggregator" and item["available"]
         for item in hason_strategy["source_trace"]
@@ -612,6 +616,126 @@ def test_hason_summary_compares_output_freshness_in_cn_business_date(tmp_path, m
     assert payload["runtime_output_status"] == "current"
     assert payload["stale_runtime_outputs"] == []
     assert all(item["modified_date"] == "2026-04-30" for item in payload["runtime_outputs"])
+
+
+def test_hason_summary_prefers_csv_content_date_over_file_modified_date(tmp_path, monkeypatch) -> None:
+    scripts = []
+    for module in macro_toolkit_route._HASON_MODULES:
+        for name in module["scripts"]:
+            script_name = str(name)
+            path = tmp_path / f"{script_name}.py"
+            path.write_text("# available", encoding="utf-8")
+            scripts.append(
+                SimpleNamespace(
+                    name=script_name,
+                    path=path,
+                    filename=f"{script_name}.py",
+                    group="macro",
+                )
+            )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    final_signal_path = tmp_path / "final_signal.csv"
+    crowding_path = tmp_path / "crowding_latest.csv"
+    final_signal_path.write_text("品种,日期,最终信号\nT,2026-04-29,空仓\n", encoding="utf-8-sig")
+    crowding_path.write_text("品种,日期,C\nT,2026-04-29,0.5\n", encoding="utf-8-sig")
+    current_modified_at = datetime(2026, 4, 29, 16, 30, tzinfo=UTC).isoformat()
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [
+            {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
+            {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
+        ],
+        analysis_date="2026-04-30",
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["runtime_output_status"] == "stale"
+    assert payload["stale_runtime_outputs"] == ["final_signal.csv", "crowding_latest.csv"]
+    assert all(item["content_date"] == "2026-04-29" for item in payload["runtime_outputs"])
+    assert all(item["freshness_basis"] == "csv_content" for item in payload["runtime_outputs"])
+
+
+def test_hason_summary_marks_future_csv_content_date_unknown(tmp_path, monkeypatch) -> None:
+    scripts = []
+    for module in macro_toolkit_route._HASON_MODULES:
+        for name in module["scripts"]:
+            script_name = str(name)
+            path = tmp_path / f"{script_name}.py"
+            path.write_text("# available", encoding="utf-8")
+            scripts.append(
+                SimpleNamespace(
+                    name=script_name,
+                    path=path,
+                    filename=f"{script_name}.py",
+                    group="macro",
+                )
+            )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    final_signal_path = tmp_path / "final_signal.csv"
+    crowding_path = tmp_path / "crowding_latest.csv"
+    final_signal_path.write_text("品种,日期,最终信号\nT,2026-05-02,空仓\n", encoding="utf-8-sig")
+    crowding_path.write_text("品种,日期,C\nT,2026-05-02,0.5\n", encoding="utf-8-sig")
+    current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [
+            {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
+            {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
+        ],
+        analysis_date="2026-04-30",
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["runtime_output_status"] == "unknown"
+    assert payload["runtime_output_gaps"] == ["final_signal.csv", "crowding_latest.csv"]
+    assert [item["freshness_status"] for item in payload["runtime_outputs"]] == ["future", "future"]
+    assert all(item["content_date"] == "2026-05-02" for item in payload["runtime_outputs"])
+
+
+def test_hason_summary_marks_mixed_csv_content_dates_unknown(tmp_path, monkeypatch) -> None:
+    scripts = []
+    for module in macro_toolkit_route._HASON_MODULES:
+        for name in module["scripts"]:
+            script_name = str(name)
+            path = tmp_path / f"{script_name}.py"
+            path.write_text("# available", encoding="utf-8")
+            scripts.append(
+                SimpleNamespace(
+                    name=script_name,
+                    path=path,
+                    filename=f"{script_name}.py",
+                    group="macro",
+                )
+            )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    final_signal_path = tmp_path / "final_signal.csv"
+    crowding_path = tmp_path / "crowding_latest.csv"
+    final_signal_path.write_text(
+        "品种,日期,最终信号\nT,2026-04-29,空仓\nTL,2026-04-30,空仓\n",
+        encoding="utf-8-sig",
+    )
+    crowding_path.write_text("品种,日期,C\nT,2026-04-30,0.5\nTL,2026-04-30,0.6\n", encoding="utf-8-sig")
+    current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [
+            {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
+            {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
+        ],
+        analysis_date="2026-04-30",
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["runtime_output_status"] == "unknown"
+    assert payload["runtime_output_gaps"] == ["final_signal.csv"]
+    final_signal = payload["runtime_outputs"][0]
+    assert final_signal["freshness_status"] == "mixed"
+    assert final_signal["content_date"] == "2026-04-30"
+    assert final_signal["content_date_min"] == "2026-04-29"
+    assert final_signal["content_date_max"] == "2026-04-30"
 
 
 def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkeypatch) -> None:

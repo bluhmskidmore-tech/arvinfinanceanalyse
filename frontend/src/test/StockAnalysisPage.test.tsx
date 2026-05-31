@@ -1137,6 +1137,7 @@ describe("StockAnalysisPage", () => {
     expect(cockpit).toHaveTextContent("条件 2/4");
     expect(cockpit).toHaveTextContent("缺口 1");
     expect(cockpit).toHaveTextContent("阻断 0");
+    expect(cockpit).not.toHaveTextContent("查看今日门控、候选队列与证据是否齐全");
     expect(cockpit).not.toHaveTextContent("TAILWIND");
 
     const workbench = await screen.findByTestId("stock-analysis-first-screen-workbench");
@@ -1145,6 +1146,11 @@ describe("StockAnalysisPage", () => {
     expect(workbench).toHaveTextContent("输出可用");
     expect(workbench).toHaveTextContent("风险供数");
     expect(workbench).not.toHaveTextContent("多策略共振");
+    expect(workbench).not.toHaveTextContent(/板块供数板块\s+\d/);
+    expect(workbench).not.toHaveTextContent(/规则就绪就绪\s+\d/);
+    expect(workbench).not.toHaveTextContent(/输出可用可用\s+\d/);
+    expect(workbench).not.toHaveTextContent(/风险供数风险\s+\d/);
+    expect(workbench).not.toHaveTextContent(/候选候选|阻断阻断|持仓持仓|触发触发|观察观察|缺口缺口/);
     expect(workbench).toHaveTextContent("复核队列");
     const sectorMiniChart = await screen.findByTestId("stock-analysis-sector-mini-chart");
     const reviewMiniChart = await screen.findByTestId("stock-analysis-review-mini-chart");
@@ -1189,6 +1195,13 @@ describe("StockAnalysisPage", () => {
     expect(css).toContain('[data-testid="workbench-governance-banner"]');
   });
 
+  it("keeps the stock-analysis toolbar title from breaking on tablet width", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+
+    expect(css).toContain(".stock-analysis-page__header h1");
+    expect(css).toContain("white-space: nowrap");
+  });
+
   it("surfaces backend supply status and keeps review work out of the first screen", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
@@ -1209,27 +1222,31 @@ describe("StockAnalysisPage", () => {
     expect(supplyStatus).toHaveTextContent("breadth");
 
     const workbench = await screen.findByTestId("stock-analysis-first-screen-workbench");
-    expect(workbench).toHaveTextContent("候选 2");
-    expect(workbench).toHaveTextContent("持仓 1");
-    expect(workbench).toHaveTextContent("触发 1");
-    expect(workbench).toHaveTextContent("观察 1");
+    expect(workbench).toHaveTextContent("候选");
+    expect(workbench).toHaveTextContent("持仓");
+    expect(workbench).toHaveTextContent("触发");
+    expect(workbench).toHaveTextContent("观察");
+    expect(workbench).not.toHaveTextContent(/候选候选|持仓持仓|触发触发|观察观察/);
     expect(workbench).not.toHaveTextContent("先复核 Alpha");
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
     expect(queue).toHaveTextContent("复核队列");
-    expect(queue).toHaveTextContent("为什么先看");
-    expect(queue).toHaveTextContent("反证与待补");
-    expect(queue).toHaveTextContent("失效条件");
+    expect(queue).toHaveTextContent("证据明细");
+    expect(queue).not.toHaveTextContent("为什么先看");
+    expect(queue).not.toHaveTextContent("反证与待补");
     expect(queue).toHaveTextContent("复核 K 线");
   });
 
   it("renders core sections and candidate evidence", async () => {
+    const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByRole("heading", { name: "股票分析" })).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "板块强弱" })).toBeInTheDocument();
-    expect(await screen.findByTestId("stock-analysis-page-purpose")).toHaveTextContent("股票策略复核台");
+    const pagePurpose = await screen.findByTestId("stock-analysis-page-purpose");
+    expect(pagePurpose).toHaveTextContent("股票策略复核台");
+    expect(pagePurpose).not.toHaveTextContent("查看今日门控、候选队列与证据是否齐全");
     expect(await screen.findByTestId("stock-analysis-deep-zone")).toHaveTextContent("供数闭环");
     expect(await screen.findByRole("heading", { name: "题材突变观察" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "复核队列" })).toBeInTheDocument();
@@ -1239,6 +1256,16 @@ describe("StockAnalysisPage", () => {
     const candidate = screen.getByTestId("stock-candidate-000001.SZ");
     expect(candidate).toHaveTextContent("Alpha");
     expect(candidate).toHaveTextContent("行业排名第 1");
+    expect(candidate).toHaveTextContent("边界 3");
+    expect(candidate).toHaveTextContent("+7 证据");
+    expect(candidate).toHaveTextContent("证据明细");
+    expect(candidate).not.toHaveTextContent("进入依据");
+    expect(candidate).not.toHaveTextContent("10EMA 失效观察");
+    expect(candidate).not.toHaveTextContent("基本面 overlay 已接入候选排序");
+
+    await user.click(within(candidate).getByText("证据明细"));
+
+    expect(candidate).toHaveTextContent("进入依据");
     expect(candidate).toHaveTextContent("10EMA 失效观察");
     expect(candidate).toHaveTextContent("基本面 overlay");
     expect(candidate).toHaveTextContent("因子分 0.4812");
@@ -1497,6 +1524,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("renders hybrid fusion candidates as the primary review queue", async () => {
+    const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategy: buildStrategyPayload({
@@ -1543,6 +1571,11 @@ describe("StockAnalysisPage", () => {
     expect(queue).toHaveTextContent("Fusion Alpha");
     expect(queue).toHaveTextContent("融合分");
     expect(queue).toHaveTextContent("生命法庭代理");
+    expect(queue).toHaveTextContent("+6 证据");
+    expect(queue).not.toHaveTextContent("代理信号");
+
+    await user.click(within(queue).getByText("证据明细"));
+
     expect(queue).toHaveTextContent("代理信号");
     expect(queue).not.toHaveTextContent("买入");
   });
@@ -1977,12 +2010,13 @@ describe("StockAnalysisPage", () => {
     });
 
     const workbench = await screen.findByTestId("stock-analysis-first-screen-workbench");
-    expect(workbench).toHaveTextContent("阻断 1");
+    expect(workbench).toHaveTextContent("阻断");
     expect(workbench).toHaveTextContent("风险退出");
     expect(workbench).not.toHaveTextContent("risk_exit");
     expect(workbench).toHaveTextContent("持仓风险");
     expect(workbench).not.toHaveTextContent("position_risk");
-    expect(workbench).toHaveTextContent("缺口 1");
+    expect(workbench).toHaveTextContent("缺口");
+    expect(workbench).not.toHaveTextContent(/阻断阻断|缺口缺口/);
   });
 
   it("loads sector rank series when multi-day collapse opens", async () => {

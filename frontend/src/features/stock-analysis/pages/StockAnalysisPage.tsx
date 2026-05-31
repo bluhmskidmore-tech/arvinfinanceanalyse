@@ -543,12 +543,19 @@ function buildBackendSupplyOverview(
     conditionLabel: `条件 ${gate.passed_conditions}/${gate.required_conditions}`,
     availableConditionLabel: `可评估 ${gate.available_conditions}`,
     readinessLabel: `就绪 ${readyRuleCount}/${readinessRows.length}`,
+    readinessValueLabel: `${readyRuleCount}/${readinessRows.length}`,
     dataGapLabel: `缺口 ${notReadyGaps.length}`,
+    dataGapValueLabel: `${notReadyGaps.length}`,
     supportedLabel: `可用 ${supportedOutputs.length}`,
+    supportedValueLabel: `${supportedOutputs.length}`,
     unsupportedLabel: `阻断 ${unsupportedOutputs.length}`,
+    unsupportedValueLabel: `${unsupportedOutputs.length}`,
     sectorSupplyLabel: `板块 ${sectorCount}`,
+    sectorSupplyValueLabel: `${sectorCount}`,
     candidateSupplyLabel: `候选 ${candidateCount}`,
+    candidateSupplyValueLabel: `${candidateCount}`,
     riskSupplyLabel: `风险 ${risk?.signal_count ?? 0}`,
+    riskSupplyValueLabel: `${risk?.signal_count ?? 0}`,
     riskDetailLabel: `持仓 ${risk?.position_count ?? 0} / 触发 ${risk?.signal_count ?? 0} / 观察 ${watchCount}`,
     qualityLabel: `质量 ${meta.quality_flag ?? "待补"}`,
     vendorLabel: `通道 ${meta.vendor_status ?? "待补"}`,
@@ -1878,12 +1885,14 @@ export default function StockAnalysisPage() {
                       className="stock-analysis-page__dh-purpose"
                       data-testid="stock-analysis-page-purpose"
                     >
-                      <p className="stock-analysis-page__dh-purpose-eyebrow">{pagePurpose.eyebrow}</p>
-                      <h2 className="stock-analysis-page__dh-purpose-title">{pagePurpose.title}</h2>
-                      <p className="stock-analysis-page__dh-purpose-copy">{pagePurpose.subtitle}</p>
-                      <p className="stock-analysis-page__dh-purpose-foot">
-                        {pagePurpose.asOfLine} · {pagePurpose.dataStatusLine}
-                      </p>
+                      <div className="stock-analysis-page__dh-purpose-main">
+                        <span className="stock-analysis-page__dh-purpose-eyebrow">{pagePurpose.eyebrow}</span>
+                        <h2 className="stock-analysis-page__dh-purpose-title">{pagePurpose.title}</h2>
+                      </div>
+                      <div className="stock-analysis-page__dh-purpose-status" aria-label="页面状态">
+                        <span>{pagePurpose.asOfLine}</span>
+                        <span>{pagePurpose.dataStatusLine}</span>
+                      </div>
                     </div>
                   ) : null}
 
@@ -1909,24 +1918,23 @@ export default function StockAnalysisPage() {
                           {" · "}
                           {decisionSummary.exposureLabel}
                         </h1>
-                        <p className="stock-analysis-page__dh-hero-copy">{decisionSummary.headline}</p>
                         <p className="stock-analysis-page__dh-hero-copy font-semibold text-[color:var(--sa-dh-ink)]">
                           {decisionSummary.nextReviewAction}
                         </p>
-                        <p className="stock-analysis-page__dh-hero-meta">
-                          {decisionSummary.dataFreshnessLabel} · {decisionSummary.boundaryLabel}
-                        </p>
+                        <div className="stock-analysis-page__dh-hero-status-strip" aria-label="市场门控状态">
+                          {[
+                            dailyJudgmentStrip.gateChip,
+                            dailyJudgmentStrip.exposureChip,
+                            dailyJudgmentStrip.strongestSectorChip,
+                            dailyJudgmentStrip.weakestSectorChip,
+                            decisionSummary.dataFreshnessLabel,
+                            decisionSummary.boundaryLabel,
+                          ].map((label) => (
+                            <span key={label}>{label}</span>
+                          ))}
+                        </div>
                       </div>
                     </div>
-
-                    <p className="stock-analysis-page__dh-hero-meta" aria-label="市场门控状态">
-                      {[
-                        dailyJudgmentStrip.gateChip,
-                        dailyJudgmentStrip.exposureChip,
-                        dailyJudgmentStrip.strongestSectorChip,
-                        dailyJudgmentStrip.weakestSectorChip,
-                      ].join(" · ")}
-                    </p>
 
                     <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
                       {backendSupplyOverview
@@ -2148,7 +2156,7 @@ export default function StockAnalysisPage() {
                             <StatusIcon>{FIRST_SCREEN_ICONS[0]}</StatusIcon>
                             板块供数
                           </strong>
-                          <span>{backendSupplyOverview?.sectorSupplyLabel ?? "板块 0"}</span>
+                          <span>{backendSupplyOverview?.sectorSupplyValueLabel ?? "0"}</span>
                         </div>
                         <div
                           className="stock-analysis-page__mini-chart"
@@ -2175,7 +2183,7 @@ export default function StockAnalysisPage() {
                             <StatusIcon>{FIRST_SCREEN_ICONS[1]}</StatusIcon>
                             规则就绪
                           </strong>
-                          <span>{backendSupplyOverview?.readinessLabel ?? "就绪 0/0"}</span>
+                          <span>{backendSupplyOverview?.readinessValueLabel ?? "0/0"}</span>
                         </div>
                         <div
                           className="stock-analysis-page__mini-chart"
@@ -2200,7 +2208,7 @@ export default function StockAnalysisPage() {
                             <StatusIcon>{FIRST_SCREEN_ICONS[2]}</StatusIcon>
                             输出可用
                           </strong>
-                          <span>{backendSupplyOverview?.supportedLabel ?? "可用 0"}</span>
+                          <span>{backendSupplyOverview?.supportedValueLabel ?? "0"}</span>
                         </div>
                         <div
                           className="stock-analysis-page__mini-chart"
@@ -2222,11 +2230,11 @@ export default function StockAnalysisPage() {
                           <div className="stock-analysis-page__mini-table" aria-label="输出可用首屏摘要">
                             <div>
                               <span>候选</span>
-                              <strong>{backendSupplyOverview.candidateSupplyLabel}</strong>
+                              <strong>{backendSupplyOverview.candidateSupplyValueLabel}</strong>
                             </div>
                             <div>
                               <span>阻断</span>
-                              <strong>{backendSupplyOverview.unsupportedLabel}</strong>
+                              <strong>{backendSupplyOverview.unsupportedValueLabel}</strong>
                               {primaryUnsupportedOutput ? (
                                 <small title={primaryUnsupportedOutput.reason}>
                                   {outputKeyLabel(primaryUnsupportedOutput.key)}
@@ -2242,7 +2250,7 @@ export default function StockAnalysisPage() {
                             <StatusIcon>{FIRST_SCREEN_ICONS[3]}</StatusIcon>
                             风险供数
                           </strong>
-                          <span>{backendSupplyOverview?.riskSupplyLabel ?? "风险 0"}</span>
+                          <span>{backendSupplyOverview?.riskSupplyValueLabel ?? "0"}</span>
                         </div>
                         <div
                           className="stock-analysis-page__mini-chart"
@@ -2265,25 +2273,25 @@ export default function StockAnalysisPage() {
                             <div>
                               <span>持仓</span>
                               <strong className="stock-analysis-page__tabular">
-                                持仓 {backendSupplyOverview.risk?.position_count ?? 0}
+                                {backendSupplyOverview.risk?.position_count ?? 0}
                               </strong>
                             </div>
                             <div>
                               <span>触发</span>
                               <strong className="stock-analysis-page__tabular">
-                                触发 {backendSupplyOverview.risk?.signal_count ?? 0}
+                                {backendSupplyOverview.risk?.signal_count ?? 0}
                               </strong>
                             </div>
                             <div>
                               <span>观察</span>
                               <strong className="stock-analysis-page__tabular">
-                                观察 {backendSupplyOverview.risk?.watch_items?.length ?? 0}
+                                {backendSupplyOverview.risk?.watch_items?.length ?? 0}
                               </strong>
                             </div>
                             {primaryDataGap ? (
                               <div>
                                 <span>缺口</span>
-                                <strong>{backendSupplyOverview.dataGapLabel}</strong>
+                                <strong>{backendSupplyOverview.dataGapValueLabel}</strong>
                                 <small title={primaryDataGap.evidence}>
                                   {dataGapFamilyLabel(primaryDataGap.input_family)}
                                 </small>
@@ -2665,9 +2673,7 @@ export default function StockAnalysisPage() {
                     <p className={SA_SECTION_EYEBROW}>今日待复核</p>
                     <h2 className={SA_CARD_TITLE}>复核队列</h2>
                     <p className={SA_SECTION_DESC}>
-                      {reviewQueueUsesHybridFusion
-                        ? "融合策略候选优先进入队列，先看融合分、代理证据、反证和失效条件。"
-                        : "按当前只读证据排列候选，先看为什么进入观察，再看反证、待补和失效条件。"}
+                      {reviewQueueUsesHybridFusion ? "融合策略优先 · 边界同步复核" : "候选排序 · 边界同步复核"}
                     </p>
                   </div>
                   <span className={SA_PILL}>
@@ -2718,12 +2724,17 @@ export default function StockAnalysisPage() {
 
                 {reviewQueue.length > 0 ? (
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {filteredCandidates.map((card) => (
-                      <article
-                        className="grid gap-2.5 rounded-md border border-neutral-200 bg-white p-3.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
-                        data-testid={`stock-candidate-${card.stockCode}`}
-                        key={card.stockCode}
-                      >
+                    {filteredCandidates.map((card) => {
+                      const visibleEvidence = [...card.primaryEvidence, ...card.supportingEvidence].slice(0, 4);
+                      const hiddenEvidenceCount =
+                        card.primaryEvidence.length + card.supportingEvidence.length - visibleEvidence.length;
+
+                      return (
+                        <article
+                          className="grid gap-2.5 rounded-md border border-neutral-200 bg-white p-3.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
+                          data-testid={`stock-candidate-${card.stockCode}`}
+                          key={card.stockCode}
+                        >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="m-0 text-base font-semibold text-neutral-900">{card.headline}</h3>
@@ -2754,12 +2765,12 @@ export default function StockAnalysisPage() {
                                   sectorCode: card.sectorCode,
                                   sectorName: card.sectorName,
                                   distanceToBreakoutPct: card.distanceToBreakoutPct,
-                            source: "review_queue",
-                            livermoreRank: reviewQueueUsesHybridFusion ? ranks.livermoreRank : card.rank,
-                            meanReversionRank: ranks.meanReversionRank,
-                            factorScreenRank: ranks.factorScreenRank,
-                            hybridFusionRank: reviewQueueUsesHybridFusion ? card.rank : ranks.hybridFusionRank,
-                          });
+                                    source: "review_queue",
+                                    livermoreRank: reviewQueueUsesHybridFusion ? ranks.livermoreRank : card.rank,
+                                    meanReversionRank: ranks.meanReversionRank,
+                                    factorScreenRank: ranks.factorScreenRank,
+                                    hybridFusionRank: reviewQueueUsesHybridFusion ? card.rank : ranks.hybridFusionRank,
+                                  });
                               }}
                             >
                               复核 K 线
@@ -2772,44 +2783,94 @@ export default function StockAnalysisPage() {
                         <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold leading-relaxed text-neutral-900">
                           {card.reviewFocus}
                         </p>
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                          <div>
-                            <h4 className="mb-2 text-sm font-semibold text-neutral-900">为什么先看</h4>
-                            <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
-                              {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
-                                <li key={item.key}>
-                                  <strong className="text-neutral-900">{item.label}</strong>：{item.value}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h4 className="mb-2 text-sm font-semibold text-neutral-900">反证与待补</h4>
-                            <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
-                              {card.boundaryEvidence.map((item) => (
-                                <li key={item}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h4 className="mb-2 text-sm font-semibold text-neutral-900">失效条件</h4>
-                            <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold text-neutral-900">
-                              {card.invalidationFocus}
-                            </p>
-                            <ul className="m-0 mt-1 grid list-none gap-1 p-0 text-sm text-neutral-600">
-                              {card.invalidationRules.slice(1).map((item) => (
-                                <li key={item}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {visibleEvidence.map((item, index) => (
+                            <div
+                              className="flex min-w-0 items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2"
+                              key={item.key}
+                              title={`${item.label}: ${item.value}`}
+                            >
+                              <StatusIcon tone={index < card.primaryEvidence.length ? "positive" : "neutral"}>
+                                {index < card.primaryEvidence.length ? (
+                                  <CheckCircleOutlined />
+                                ) : (
+                                  <DatabaseOutlined />
+                                )}
+                              </StatusIcon>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[11px] font-medium text-neutral-500">
+                                  {item.label}
+                                </span>
+                                <strong className="block truncate text-sm font-semibold text-neutral-900">
+                                  {item.value}
+                                </strong>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 text-xs">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 font-semibold text-neutral-600">
+                            <SafetyCertificateOutlined aria-hidden="true" /> 边界 {card.boundaryEvidence.length}
+                          </span>
+                          <span
+                            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-danger-100 bg-danger-50 px-2 py-1 font-semibold text-danger-700"
+                            title={card.invalidationFocus}
+                          >
+                            <ClockCircleOutlined aria-hidden="true" />
+                            <span className="truncate">失效 {compactText(card.invalidationFocus, 24)}</span>
+                          </span>
+                          {hiddenEvidenceCount > 0 ? (
+                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1 font-semibold text-neutral-500">
+                              +{hiddenEvidenceCount} 证据
+                            </span>
+                          ) : null}
                         </div>
                         <Collapse
                           ghost
                           bordered={false}
+                          destroyOnHidden
+                          className="stock-analysis-page__candidate-collapse"
                           items={[
                             {
+                              key: "evidence",
+                              label: "证据明细",
+                              children: (
+                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                  <div>
+                                    <h4 className="mb-2 text-sm font-semibold text-neutral-900">进入依据</h4>
+                                    <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                                      {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
+                                        <li key={item.key}>
+                                          <strong className="text-neutral-900">{item.label}</strong>：{item.value}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                  <div>
+                                    <h4 className="mb-2 text-sm font-semibold text-neutral-900">边界待补</h4>
+                                    <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                                      {card.boundaryEvidence.map((item) => (
+                                        <li key={item}>{item}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                  <div>
+                                    <h4 className="mb-2 text-sm font-semibold text-neutral-900">失效条件</h4>
+                                    <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold text-neutral-900">
+                                      {card.invalidationFocus}
+                                    </p>
+                                    <ul className="m-0 mt-1 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                                      {card.invalidationRules.slice(1).map((item) => (
+                                        <li key={item}>{item}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
+                              ),
+                            },
+                            {
                               key: "raw",
-                              label: "展开原始字段",
+                              label: "原始字段",
                               children: (
                                 <dl className="stock-analysis-page__raw-grid">
                                   {card.rawFields.map((field) => (
@@ -2823,8 +2884,9 @@ export default function StockAnalysisPage() {
                             },
                           ]}
                         />
-                      </article>
-                    ))}
+                        </article>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div

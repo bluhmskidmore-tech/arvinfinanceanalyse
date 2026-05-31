@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.app.schemas.executive_dashboard import HomeSnapshotPayload
 from backend.app.services.executive_service import (
     _compute_unified_report_date,
     _HOME_SNAPSHOT_CALIBERS,
@@ -528,6 +527,7 @@ class TestHomeSnapshotEnvelope:
 class TestHomeSnapshotPayloadSchema:
     def test_roundtrip(self) -> None:
         from backend.app.schemas.executive_dashboard import (
+            HomeSnapshotPayload,
             OverviewPayload,
             PnlAttributionPayload,
         )

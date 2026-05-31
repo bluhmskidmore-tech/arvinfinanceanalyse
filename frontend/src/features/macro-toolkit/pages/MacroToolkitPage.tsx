@@ -1330,10 +1330,8 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
 function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStrategy }) {
   const readiness = strategy.readiness;
   const readinessText = `${readiness.ready_modules}/${readiness.total_modules}`;
-  const missingOutputs = strategy.missing_runtime_outputs;
-  const staleOutputs = strategy.stale_runtime_outputs;
-  const runtimeOutputGaps = [...missingOutputs, ...staleOutputs];
   const runtimeOutputsCurrent = strategy.runtime_output_status === "current";
+  const runtimeOutputGaps = strategy.runtime_output_gaps;
   const runtimeOutputValue = runtimeOutputsCurrent
     ? "ready"
     : `${strategy.runtime_output_status} · ${runtimeOutputGaps.length}`;
@@ -1431,14 +1429,36 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
         <strong>{runtimeGapText}</strong>
         {strategy.runtime_outputs.length ? (
           <small>
-            {strategy.runtime_outputs
-              .map((item) => `${item.name}: ${item.freshness_status}${item.modified_date ? ` ${item.modified_date}` : ""}`)
-              .join(" / ")}
+            {strategy.runtime_outputs.map(formatHasonRuntimeOutput).join(" / ")}
           </small>
         ) : null}
       </div>
     </section>
   );
+}
+
+function formatHasonRuntimeOutput(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
+  return (
+    `${item.name}: ${item.freshness_status} ${hasonFreshnessBasisLabel(item.freshness_basis)}` +
+    `${hasonContentDateText(item)}` +
+    `${item.modified_date ? ` file ${item.modified_date}` : ""}`
+  );
+}
+
+function hasonContentDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
+  if (item.content_date_min && item.content_date_max && item.content_date_min !== item.content_date_max) {
+    return ` content ${item.content_date_min}..${item.content_date_max}`;
+  }
+  return item.content_date ? ` content ${item.content_date}` : "";
+}
+
+function hasonFreshnessBasisLabel(basis: string) {
+  const labels: Record<string, string> = {
+    csv_content: "CSV content date",
+    file_modified_date: "file modified date",
+    missing: "file missing",
+  };
+  return labels[basis] ?? basis;
 }
 
 function ReadinessTile({

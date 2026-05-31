@@ -2882,6 +2882,7 @@ def _analysis_signal_cards(
 
 _HASON_REQUIRED_OUTPUTS = ("final_signal.csv", "crowding_latest.csv")
 _HASON_BUSINESS_TZ = timezone(timedelta(hours=8))
+_HASON_OUTPUT_DATE_COLUMNS = ("日期", "date", "trade_date", "as_of_date")
 _HASON_MODULES: tuple[dict[str, object], ...] = (
     {
         "key": "market_state",
@@ -2938,6 +2939,11 @@ def _hason_macro_strategy_summary(
         for item in runtime_outputs
         if item["freshness_status"] == "stale"
     ]
+    runtime_output_gaps = [
+        str(item["name"])
+        for item in runtime_outputs
+        if item["freshness_status"] != "current"
+    ]
     runtime_output_status = _hason_runtime_output_status(runtime_outputs)
     modules = [_hason_module_payload(module, scripts_by_name) for module in _HASON_MODULES]
     ready_modules = sum(1 for module in modules if module["status"] == "integrated")
@@ -2977,6 +2983,7 @@ def _hason_macro_strategy_summary(
         "runtime_output_status": runtime_output_status,
         "runtime_outputs": runtime_outputs,
         "required_runtime_outputs": list(_HASON_REQUIRED_OUTPUTS),
+        "runtime_output_gaps": runtime_output_gaps,
         "missing_runtime_outputs": missing_outputs,
         "stale_runtime_outputs": stale_outputs,
         "boundary": "Analytical macro toolkit display only; not a formal MTR metric, trade order, or portfolio execution engine.",
@@ -3006,18 +3013,35 @@ def _hason_runtime_output_payload(
         return {
             "name": name,
             "freshness_status": "missing",
+            "freshness_basis": "missing",
             "modified_at": None,
             "modified_date": None,
+            "content_date": None,
+            "content_date_min": None,
+            "content_date_max": None,
             "reference_date": analysis_date,
         }
     modified_at = str(file_payload.get("modified_at") or "").strip() or None
     modified_date = _hason_output_modified_date(modified_at)
-    freshness_status = _hason_output_freshness(modified_date, analysis_date)
+    content_dates = _hason_output_content_dates(file_payload)
+    content_date = content_dates["max"]
+    content_date_min = content_dates["min"]
+    content_date_max = content_dates["max"]
+    freshness_basis = "csv_content" if content_date else "file_modified_date"
+    freshness_status = (
+        "mixed"
+        if content_date_min and content_date_max and content_date_min != content_date_max
+        else _hason_output_freshness(content_date or modified_date, analysis_date)
+    )
     return {
         "name": name,
         "freshness_status": freshness_status,
+        "freshness_basis": freshness_basis,
         "modified_at": modified_at,
         "modified_date": modified_date,
+        "content_date": content_date,
+        "content_date_min": content_date_min,
+        "content_date_max": content_date_max,
         "reference_date": analysis_date,
     }
 
@@ -3034,6 +3058,33 @@ def _hason_output_modified_date(modified_at: str | None) -> str | None:
     return parsed.astimezone(_HASON_BUSINESS_TZ).date().isoformat()
 
 
+def _hason_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | None]:
+    path_value = file_payload.get("path")
+    if not path_value:
+        return {"min": None, "max": None}
+    path = Path(str(path_value))
+    if not path.is_file():
+        return {"min": None, "max": None}
+    try:
+        frame = pd.read_csv(path, nrows=500)
+    except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return {"min": None, "max": None}
+    if frame.empty:
+        return {"min": None, "max": None}
+    for column in _HASON_OUTPUT_DATE_COLUMNS:
+        if column not in frame.columns:
+            continue
+        parsed = pd.to_datetime(frame[column], errors="coerce")
+        parsed = parsed.dropna()
+        if parsed.empty:
+            continue
+        return {
+            "min": parsed.min().date().isoformat(),
+            "max": parsed.max().date().isoformat(),
+        }
+    return {"min": None, "max": None}
+
+
 def _hason_output_freshness(modified_date: str | None, analysis_date: str | None) -> str:
     if not modified_date:
         return "unknown"
@@ -3044,7 +3095,9 @@ def _hason_output_freshness(modified_date: str | None, analysis_date: str | None
         reference = date.fromisoformat(analysis_date[:10])
     except ValueError:
         return "unknown"
-    return "current" if modified >= reference else "stale"
+    if modified > reference:
+        return "future"
+    return "current" if modified == reference else "stale"
 
 
 def _hason_runtime_output_status(runtime_outputs: list[dict[str, object]]) -> str:
@@ -3053,7 +3106,7 @@ def _hason_runtime_output_status(runtime_outputs: list[dict[str, object]]) -> st
         return "missing"
     if "stale" in statuses:
         return "stale"
-    if "unknown" in statuses:
+    if "unknown" in statuses or "future" in statuses or "mixed" in statuses:
         return "unknown"
     if statuses == {"current"}:
         return "current"
