@@ -346,11 +346,26 @@ describe("MacroToolkitPage", () => {
       basis: "read_only_shadow",
       label: "影子组合报告",
       as_of_date: "2026-05-27",
-      completed_periods: 4,
-      factor_dates: ["2026-04-30", "2026-05-08", "2026-05-13", "2026-05-20", "2026-05-27"],
+      completed_periods: 13,
+      factor_dates: [
+        "2026-04-01",
+        "2026-04-03",
+        "2026-04-08",
+        "2026-04-10",
+        "2026-04-15",
+        "2026-04-17",
+        "2026-04-22",
+        "2026-04-24",
+        "2026-04-29",
+        "2026-05-06",
+        "2026-05-08",
+        "2026-05-13",
+        "2026-05-20",
+        "2026-05-27",
+      ],
       rule_version: "rv_macro_toolkit_shadow_portfolio_v1",
       tables_used: ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
-      warnings: ["READ_ONLY_SHADOW_NOT_PRODUCTION", "SHORT_HISTORY"],
+      warnings: ["READ_ONLY_SHADOW_NOT_PRODUCTION"],
       cost_model: {
         cost_bps: [0, 10, 20, 50],
         initial_build_included: true,
@@ -410,6 +425,31 @@ describe("MacroToolkitPage", () => {
             { rank: 1, stock_code: "600519.SH", industry: "食品饮料", score: 2.0071, pe: 29.13, pb: 4.32, three_month_return: 0.0613 },
             { rank: 2, stock_code: "603008.SH", industry: "轻工制造", score: 1.9121, pe: 18.6, pb: 1.52, three_month_return: 0.0413 },
           ],
+          admission: {
+            status: "passed",
+            label: "通过",
+            summary: "可进入正式规则候选评审",
+            criteria: [
+              { key: "history_length", label: "历史周期", passed: true, actual: 13, threshold: ">=12" },
+              {
+                key: "cost_20bps_outperformance",
+                label: "20bp 成本后胜出",
+                passed: true,
+                actual: { total_return: 0.3593, excess_return: 0.0516 },
+                threshold: { total_return: ">-0.0505", excess_return: ">-0.0301" },
+              },
+              {
+                key: "cost_50bps_outperformance",
+                label: "50bp 成本后胜出",
+                passed: true,
+                actual: { total_return: 0.3291, excess_return: 0.0282 },
+                threshold: { total_return: ">-0.058", excess_return: ">-0.038" },
+              },
+              { key: "drawdown", label: "最大回撤", passed: true, actual: -0.0402, threshold: ">=-0.0658" },
+              { key: "diversification", label: "持仓分散度", passed: true, actual: 26.92, threshold: ">=15" },
+              { key: "blocking_warnings", label: "阻断告警", passed: true, actual: [], threshold: "无" },
+            ],
+          },
         },
       ],
       period_returns: [
@@ -500,9 +540,26 @@ describe("MacroToolkitPage", () => {
     expect(review).toHaveTextContent("2赢 / 1输");
     expect(review).toHaveTextContent("最佳 +3.1% / 最差 -1.2%");
     expect(review).toHaveTextContent("20bp/50bp 均胜出");
+    expect(review).toHaveTextContent("准入结论");
+    expect(review).toHaveTextContent("通过");
+    expect(review).toHaveTextContent("可进入正式规则候选评审");
+    expect(review).toHaveTextContent("历史周期");
+    expect(review).toHaveTextContent("持仓分散度");
     expect(review).toHaveTextContent("持仓重合 1/2");
     expect(review).toHaveTextContent("新增观察 603008.SH");
     expect(review).toHaveTextContent("正式独有 600001.SH");
+    const evidencePack = await screen.findByLabelText("影子组合准入证据包");
+    expect(evidencePack).toHaveTextContent("评审动作");
+    expect(evidencePack).toHaveTextContent("进入正式候选评审");
+    expect(evidencePack).toHaveTextContent("不自动替换正式规则");
+    expect(evidencePack).toHaveTextContent("规则版本");
+    expect(evidencePack).toHaveTextContent("rv_macro_toolkit_shadow_portfolio_v1");
+    expect(evidencePack).toHaveTextContent("回测窗口");
+    expect(evidencePack).toHaveTextContent("2026-04-01 → 2026-05-27 / 13周期");
+    expect(evidencePack).toHaveTextContent("成本模型");
+    expect(evidencePack).toHaveTextContent("0/10/20/50bp");
+    expect(evidencePack).toHaveTextContent("choice_stock_daily_observation / choice_stock_factor_snapshot");
+    expect(evidencePack).toHaveTextContent("只读影子评估，不能作为正式投研信号");
   });
 
   it("shows why the shadow portfolio report is temporarily unavailable", async () => {

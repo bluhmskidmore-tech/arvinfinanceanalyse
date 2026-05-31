@@ -83,6 +83,16 @@ def test_macro_toolkit_strategy_endpoint_exposes_read_only_shadow_portfolio_repo
     assert shadow["constraints"]["turnover_cap"] is None
     assert {row["cost_bps"] for row in shadow["cost_results"]} == {0, 10, 20, 50}
     assert all(item["pe"] <= 80 for item in shadow["latest_holdings"])
+    assert shadow["admission"]["status"] == "needs_review"
+    assert shadow["admission"]["label"] == "需复核"
+    assert shadow["admission"]["summary"] == "保留观察，先补齐验证"
+    criteria = {item["key"]: item for item in shadow["admission"]["criteria"]}
+    assert criteria["history_length"]["passed"] is False
+    assert criteria["history_length"]["actual"] == 2
+    assert criteria["history_length"]["threshold"] == ">=12"
+    assert criteria["diversification"]["passed"] is True
+    assert criteria["diversification"]["threshold"] == ">=15"
+    assert criteria["blocking_warnings"]["passed"] is False
 
     assert body["result_meta"]["formal_use_allowed"] is False
     assert "choice_stock_daily_observation" in body["result_meta"]["tables_used"]
@@ -153,25 +163,14 @@ def _seed_shadow_report_db(path: Path) -> None:
             )
             """
         )
+        stock_codes = [f"{idx:06d}.SZ" for idx in range(1, 181)]
+        trade_dates = ("2026-05-01", "2026-05-02", "2026-05-03")
         prices = {
-            "2026-05-01": {
-                "000001.SZ": 10.0,
-                "000002.SZ": 10.0,
-                "000003.SZ": 10.0,
-                "000004.SZ": 10.0,
-            },
-            "2026-05-02": {
-                "000001.SZ": 11.0,
-                "000002.SZ": 9.5,
-                "000003.SZ": 10.4,
-                "000004.SZ": 9.8,
-            },
-            "2026-05-03": {
-                "000001.SZ": 12.0,
-                "000002.SZ": 9.0,
-                "000003.SZ": 10.6,
-                "000004.SZ": 9.7,
-            },
+            trade_date: {
+                stock_code: round((10.0 + (idx % 40) * 0.2) * (1 + date_idx * (0.004 + (idx % 7) * 0.001)), 6)
+                for idx, stock_code in enumerate(stock_codes, start=1)
+            }
+            for date_idx, trade_date in enumerate(trade_dates)
         }
         conn.executemany(
             "insert into choice_stock_daily_observation values (?, ?, ?)",
@@ -181,84 +180,49 @@ def _seed_shadow_report_db(path: Path) -> None:
                 for stock_code, close_value in closes.items()
             ],
         )
+        industries = (
+            "Technology",
+            "Financials",
+            "Health Care",
+            "Industrials",
+            "Consumer",
+            "Materials",
+            "Energy",
+            "Utilities",
+            "Telecom",
+            "Real Estate",
+            "Media",
+            "Transport",
+            "Agriculture",
+            "Defense",
+            "Pharma",
+            "Retail",
+            "Auto",
+            "Semiconductor",
+        )
         factor_rows = []
-        for as_of_date in ("2026-05-01", "2026-05-02", "2026-05-03"):
-            factor_rows.extend(
-                [
+        for as_of_date in trade_dates:
+            for idx, stock_code in enumerate(stock_codes, start=1):
+                factor_rows.append(
                     (
                         as_of_date,
-                        "000001.SZ",
-                        42.0,
-                        4.2,
-                        4.0,
-                        0.16,
-                        0.36,
-                        0.42,
-                        0.68,
-                        0.22,
-                        0.02,
-                        "Technology",
+                        stock_code,
+                        8.0 + (idx % 60),
+                        0.8 + (idx % 30) * 0.05,
+                        1.0 + (idx % 25) * 0.08,
+                        0.08 + (idx % 25) * 0.005,
+                        0.25 + (idx % 20) * 0.006,
+                        -0.05 + (idx % 40) * 0.006,
+                        -0.10 + (idx % 60) * 0.008,
+                        0.12 + (idx % 15) * 0.01,
+                        0.01 + (idx % 10) * 0.004,
+                        industries[idx % len(industries)],
                         "sv_factor",
                         "vv_factor",
                         "rv_factor",
                         "run-factor",
-                    ),
-                    (
-                        as_of_date,
-                        "000002.SZ",
-                        9.0,
-                        0.8,
-                        1.1,
-                        0.19,
-                        0.42,
-                        -0.08,
-                        -0.02,
-                        0.16,
-                        0.05,
-                        "Financials",
-                        "sv_factor",
-                        "vv_factor",
-                        "rv_factor",
-                        "run-factor",
-                    ),
-                    (
-                        as_of_date,
-                        "000003.SZ",
-                        130.0,
-                        12.0,
-                        14.0,
-                        0.08,
-                        0.32,
-                        0.55,
-                        0.80,
-                        0.35,
-                        0.01,
-                        "Health Care",
-                        "sv_factor",
-                        "vv_factor",
-                        "rv_factor",
-                        "run-factor",
-                    ),
-                    (
-                        as_of_date,
-                        "000004.SZ",
-                        28.0,
-                        3.2,
-                        3.0,
-                        0.10,
-                        0.30,
-                        0.12,
-                        0.22,
-                        0.18,
-                        0.03,
-                        "Industrials",
-                        "sv_factor",
-                        "vv_factor",
-                        "rv_factor",
-                        "run-factor",
-                    ),
-                ]
-            )
+                    )
+                )
         conn.executemany(
             "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             factor_rows,

@@ -26,6 +26,10 @@ RULE_VERSION = "rv_macro_toolkit_shadow_portfolio_v1"
 TABLES_USED = ["choice_stock_daily_observation", "choice_stock_factor_snapshot"]
 COST_BPS = [0, 10, 20, 50]
 FACTOR_INPUT_COLUMNS = [*REQUIRED_FACTOR_INPUTS, "industry"]
+ADMISSION_MIN_PERIODS = 12
+ADMISSION_MIN_AVERAGE_COUNT = 15
+ADMISSION_DRAWDOWN_TOLERANCE = 0.01
+NON_BLOCKING_ADMISSION_WARNINGS = {"READ_ONLY_SHADOW_NOT_PRODUCTION"}
 DEEP_VALUE_QUALITY_WEIGHTS = {
     "value": 0.45,
     "quality": 0.25,
@@ -103,8 +107,13 @@ def compute_equity_shadow_portfolio_report(duckdb_path: str | Path) -> dict[str,
             period_payloads.extend(rows)
         latest_date = factor_dates[-1]
         warnings = ["READ_ONLY_SHADOW_NOT_PRODUCTION"]
-        if len(periods) < 12:
+        if len(periods) < ADMISSION_MIN_PERIODS:
             warnings.append("SHORT_HISTORY")
+        _attach_shadow_admissions(
+            portfolio_payloads,
+            completed_periods=len(periods),
+            warnings=warnings,
+        )
         return {
             "status": "complete",
             "basis": "read_only_shadow",
@@ -481,6 +490,145 @@ def _latest_holdings(selected: pd.DataFrame) -> list[dict[str, Any]]:
             }
         )
     return holdings
+
+
+def _attach_shadow_admissions(
+    portfolios: list[dict[str, object]],
+    *,
+    completed_periods: int,
+    warnings: list[str],
+) -> None:
+    reference = next((item for item in portfolios if item.get("role") == "production_reference"), None)
+    if reference is None:
+        return
+    for portfolio in portfolios:
+        if portfolio.get("role") != "shadow_candidate":
+            continue
+        portfolio["admission"] = _shadow_admission(reference, portfolio, completed_periods, warnings)
+
+
+def _shadow_admission(
+    reference: dict[str, object],
+    candidate: dict[str, object],
+    completed_periods: int,
+    warnings: list[str],
+) -> dict[str, object]:
+    cost_20 = _cost_gate(reference, candidate, 20)
+    cost_50 = _cost_gate(reference, candidate, 50)
+    drawdown_floor = _round(float(reference.get("max_drawdown") or 0.0) - ADMISSION_DRAWDOWN_TOLERANCE)
+    blocking_warnings = [warning for warning in warnings if warning not in NON_BLOCKING_ADMISSION_WARNINGS]
+    criteria = [
+        _admission_criterion(
+            "history_length",
+            "历史周期",
+            completed_periods >= ADMISSION_MIN_PERIODS,
+            completed_periods,
+            f">={ADMISSION_MIN_PERIODS}",
+        ),
+        _admission_criterion(
+            "cost_20bps_outperformance",
+            "20bp 成本后胜出",
+            cost_20 is not None and bool(cost_20["passed"]),
+            cost_20["actual"] if cost_20 else None,
+            cost_20["threshold"] if cost_20 else "高于正式规则",
+        ),
+        _admission_criterion(
+            "cost_50bps_outperformance",
+            "50bp 成本后胜出",
+            cost_50 is not None and bool(cost_50["passed"]),
+            cost_50["actual"] if cost_50 else None,
+            cost_50["threshold"] if cost_50 else "高于正式规则",
+        ),
+        _admission_criterion(
+            "drawdown",
+            "最大回撤",
+            float(candidate.get("max_drawdown") or 0.0) >= drawdown_floor,
+            candidate.get("max_drawdown"),
+            f">={drawdown_floor}",
+        ),
+        _admission_criterion(
+            "diversification",
+            "持仓分散度",
+            float(candidate.get("average_count") or 0.0) >= ADMISSION_MIN_AVERAGE_COUNT,
+            candidate.get("average_count"),
+            f">={ADMISSION_MIN_AVERAGE_COUNT}",
+        ),
+        _admission_criterion(
+            "blocking_warnings",
+            "阻断告警",
+            not blocking_warnings,
+            blocking_warnings,
+            "无",
+        ),
+    ]
+    failed_keys = {str(item["key"]) for item in criteria if item["passed"] is False}
+    review_keys = {"history_length", "blocking_warnings"}
+    hard_failed = bool(failed_keys - review_keys)
+    needs_review = bool(failed_keys & review_keys)
+    if hard_failed:
+        status = "failed"
+        label = "不通过"
+        summary = "暂不进入正式候选"
+    elif needs_review:
+        status = "needs_review"
+        label = "需复核"
+        summary = "保留观察，先补齐验证"
+    else:
+        status = "passed"
+        label = "通过"
+        summary = "可进入正式规则候选评审"
+    return {
+        "status": status,
+        "label": label,
+        "summary": summary,
+        "criteria": criteria,
+    }
+
+
+def _cost_gate(reference: dict[str, object], candidate: dict[str, object], cost_bps: int) -> dict[str, object] | None:
+    reference_cost = _cost_result(reference, cost_bps)
+    candidate_cost = _cost_result(candidate, cost_bps)
+    if reference_cost is None or candidate_cost is None:
+        return None
+    reference_total = float(reference_cost.get("total_return") or 0.0)
+    reference_excess = float(reference_cost.get("excess_return") or 0.0)
+    candidate_total = float(candidate_cost.get("total_return") or 0.0)
+    candidate_excess = float(candidate_cost.get("excess_return") or 0.0)
+    passed = candidate_total > reference_total and candidate_excess > reference_excess
+    return {
+        "passed": passed,
+        "actual": {
+            "total_return": _round(candidate_total),
+            "excess_return": _round(candidate_excess),
+        },
+        "threshold": {
+            "total_return": f">{_round(reference_total)}",
+            "excess_return": f">{_round(reference_excess)}",
+        },
+    }
+
+
+def _cost_result(portfolio: dict[str, object], cost_bps: int) -> dict[str, object] | None:
+    for item in portfolio.get("cost_results", []):
+        if isinstance(item, dict) and item.get("cost_bps") == cost_bps:
+            return item
+    return None
+
+
+def _admission_criterion(
+    key: str,
+    label: str,
+    passed: bool,
+    actual: object,
+    threshold: object,
+) -> dict[str, object]:
+    return {
+        "key": key,
+        "label": label,
+        "passed": passed,
+        "actual": actual,
+        "threshold": threshold,
+    }
 
 
 def _round(value: object, digits: int = 6) -> float:

@@ -246,6 +246,21 @@ export type MacroToolkitShadowPortfolioCostResult = {
   win_rate?: number;
 };
 
+export type MacroToolkitShadowPortfolioAdmissionCriterion = {
+  key: string;
+  label: string;
+  passed: boolean;
+  actual: unknown;
+  threshold: unknown;
+};
+
+export type MacroToolkitShadowPortfolioAdmission = {
+  status: "passed" | "needs_review" | "failed" | string;
+  label: string;
+  summary: string;
+  criteria: MacroToolkitShadowPortfolioAdmissionCriterion[];
+};
+
 export type MacroToolkitShadowPortfolioPeriodCostResult = {
   cost_bps: number;
   net_return: number;
@@ -289,6 +304,7 @@ export type MacroToolkitShadowPortfolio = {
   };
   cost_results: MacroToolkitShadowPortfolioCostResult[];
   latest_holdings: MacroToolkitShadowPortfolioHolding[];
+  admission?: MacroToolkitShadowPortfolioAdmission;
 };
 
 export type MacroToolkitShadowPortfolioReport = {
@@ -682,12 +698,27 @@ const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
   status: "complete",
   basis: "read_only_shadow",
   label: "影子组合报告",
-  as_of_date: "2026-04-30",
-  completed_periods: 4,
-  factor_dates: ["2026-04-01", "2026-04-10", "2026-04-20", "2026-04-25", "2026-04-30"],
+  as_of_date: "2026-05-27",
+  completed_periods: 13,
+  factor_dates: [
+    "2026-04-01",
+    "2026-04-03",
+    "2026-04-08",
+    "2026-04-10",
+    "2026-04-15",
+    "2026-04-17",
+    "2026-04-22",
+    "2026-04-24",
+    "2026-04-29",
+    "2026-05-06",
+    "2026-05-08",
+    "2026-05-13",
+    "2026-05-20",
+    "2026-05-27",
+  ],
   rule_version: "rv_macro_toolkit_shadow_portfolio_v1",
   tables_used: ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
-  warnings: ["READ_ONLY_SHADOW_NOT_PRODUCTION", "SHORT_HISTORY"],
+  warnings: ["READ_ONLY_SHADOW_NOT_PRODUCTION"],
   cost_model: {
     cost_bps: [0, 10, 20, 50],
     initial_build_included: true,
@@ -750,6 +781,31 @@ const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
         { rank: 1, stock_code: "600519.SH", industry: "食品饮料", score: 2.0071, pe: 29.13, pb: 4.32, three_month_return: 0.0613 },
         { rank: 2, stock_code: "603008.SH", industry: "轻工制造", score: 1.9121, pe: 18.6, pb: 1.52, three_month_return: 0.0413 },
       ],
+      admission: {
+        status: "passed",
+        label: "通过",
+        summary: "可进入正式规则候选评审",
+        criteria: [
+          { key: "history_length", label: "历史周期", passed: true, actual: 13, threshold: ">=12" },
+          {
+            key: "cost_20bps_outperformance",
+            label: "20bp 成本后胜出",
+            passed: true,
+            actual: { total_return: 0.3593, excess_return: 0.0516 },
+            threshold: { total_return: ">-0.0505", excess_return: ">-0.0301" },
+          },
+          {
+            key: "cost_50bps_outperformance",
+            label: "50bp 成本后胜出",
+            passed: true,
+            actual: { total_return: 0.3291, excess_return: 0.0282 },
+            threshold: { total_return: ">-0.058", excess_return: ">-0.038" },
+          },
+          { key: "drawdown", label: "最大回撤", passed: true, actual: -0.0402, threshold: ">=-0.0658" },
+          { key: "diversification", label: "持仓分散度", passed: true, actual: 26.92, threshold: ">=15" },
+          { key: "blocking_warnings", label: "阻断告警", passed: true, actual: [], threshold: "无" },
+        ],
+      },
     },
   ],
   period_returns: [

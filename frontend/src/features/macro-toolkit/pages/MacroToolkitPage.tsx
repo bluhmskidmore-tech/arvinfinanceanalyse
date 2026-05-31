@@ -1604,6 +1604,26 @@ function shadowPortfolioCostGateText(
   return "成本后未胜出";
 }
 
+function shadowPortfolioAdmissionText(candidate: MacroToolkitShadowPortfolio) {
+  if (!candidate.admission) {
+    return "准入口径缺失";
+  }
+  return `${candidate.admission.label} · ${candidate.admission.summary}`;
+}
+
+function admissionCriterionText(threshold: unknown) {
+  if (threshold == null) {
+    return "";
+  }
+  if (Array.isArray(threshold)) {
+    return threshold.length ? threshold.join(" / ") : "无";
+  }
+  if (typeof threshold === "string" || typeof threshold === "number" || typeof threshold === "boolean") {
+    return String(threshold);
+  }
+  return "";
+}
+
 function holdingCodeList(holdings: MacroToolkitShadowPortfolioHolding[]) {
   return holdings.slice(0, 3).map((holding) => holding.stock_code).join(" / ") || "无";
 }
@@ -1626,6 +1646,35 @@ function shadowPortfolioHoldingDiff(
 
 function periodChipText(row: MacroToolkitShadowPortfolioPeriodReturn) {
   return `${row.start_date.slice(5)}→${row.end_date.slice(5)} ${formatSignedRatio(row.excess_return)}`;
+}
+
+function shadowPortfolioFactorWindowText(report: MacroToolkitShadowPortfolioReport) {
+  const firstDate = report.factor_dates[0];
+  const lastDate = report.factor_dates.at(-1) ?? report.as_of_date;
+  if (!firstDate || !lastDate) {
+    return `${report.completed_periods}周期`;
+  }
+  return `${firstDate} → ${lastDate} / ${report.completed_periods}周期`;
+}
+
+function shadowPortfolioCostModelText(report: MacroToolkitShadowPortfolioReport) {
+  const costs = report.cost_model.cost_bps.length ? `${report.cost_model.cost_bps.join("/")}bp` : "成本缺失";
+  const initialBuild = report.cost_model.initial_build_included ? "含初始建仓" : "不含初始建仓";
+  const finalLiquidation = report.cost_model.final_liquidation_included ? "含期末清仓" : "不含期末清仓";
+  return `${costs} · ${initialBuild} · ${finalLiquidation}`;
+}
+
+function shadowPortfolioReviewAction(candidate: MacroToolkitShadowPortfolio) {
+  if (candidate.admission?.status === "passed") {
+    return "进入正式候选评审，不自动替换正式规则";
+  }
+  if (candidate.admission?.status === "needs_review") {
+    return "补齐历史与告警复核后再评审";
+  }
+  if (candidate.admission?.status === "failed") {
+    return "保持影子观察，暂不进入正式候选";
+  }
+  return "等待准入口径补齐";
 }
 
 function shadowPortfolioWarningText(warning: string) {
@@ -1653,6 +1702,53 @@ function shadowPortfolioWarningText(warning: string) {
 function shadowPortfolioUnavailableDescription(warnings: readonly string[]) {
   const visibleWarnings = Array.from(new Set(warnings.map(shadowPortfolioWarningText).filter(Boolean)));
   return visibleWarnings.join(" / ") || "本地股票历史或因子快照不足。";
+}
+
+function ShadowPortfolioEvidencePack({ report }: { report: MacroToolkitShadowPortfolioReport }) {
+  const candidates = report.portfolios.filter((portfolio) => portfolio.role === "shadow_candidate");
+  if (!candidates.length) {
+    return null;
+  }
+  const warnings = Array.from(new Set(report.warnings.map(shadowPortfolioWarningText).filter(Boolean)));
+  return (
+    <div className="macro-toolkit-shadow-evidence" aria-label="影子组合准入证据包">
+      <div className="macro-toolkit-capability-result-head">
+        <span>准入证据包</span>
+        <Tag color="default">只读评估</Tag>
+      </div>
+      <div className="macro-toolkit-shadow-evidence__facts">
+        <span>
+          <b>规则版本</b>
+          {report.rule_version}
+        </span>
+        <span>
+          <b>回测窗口</b>
+          {shadowPortfolioFactorWindowText(report)}
+        </span>
+        <span>
+          <b>成本模型</b>
+          {shadowPortfolioCostModelText(report)}
+        </span>
+        <span>
+          <b>数据来源</b>
+          {report.tables_used.join(" / ") || "数据表缺失"}
+        </span>
+      </div>
+      <div className="macro-toolkit-shadow-evidence__actions">
+        {candidates.map((candidate) => (
+          <span key={`evidence-${candidate.key}`}>
+            <b>评审动作</b>
+            {candidate.label}：{shadowPortfolioReviewAction(candidate)}
+          </span>
+        ))}
+      </div>
+      <div className="macro-toolkit-shadow-evidence__warnings">
+        {(warnings.length ? warnings : ["无额外告警。"]).map((warning) => (
+          <span key={warning}>{warning}</span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ShadowPortfolioReview({ report }: { report: MacroToolkitShadowPortfolioReport }) {
@@ -1687,10 +1783,35 @@ function ShadowPortfolioReview({ report }: { report: MacroToolkitShadowPortfolio
                 {shadowPortfolioCostGateText(reference, candidate)}
               </span>
               <span>
+                <b>准入结论</b>
+                {shadowPortfolioAdmissionText(candidate)}
+              </span>
+              <span>
                 <b>持仓差异</b>
                 {holdingDiff.overlapText}
               </span>
             </div>
+            {candidate.admission?.criteria.length ? (
+              <div className="macro-toolkit-shadow-review__criteria">
+                {candidate.admission.criteria.map((criterion) => {
+                  const thresholdText = admissionCriterionText(criterion.threshold);
+                  return (
+                    <div
+                      className={`macro-toolkit-shadow-review__criterion ${
+                        criterion.passed
+                          ? "macro-toolkit-shadow-review__criterion--pass"
+                          : "macro-toolkit-shadow-review__criterion--fail"
+                      }`}
+                      key={`${candidate.key}-${criterion.key}`}
+                    >
+                      <b>{criterion.label}</b>
+                      {criterion.passed ? "通过" : "未通过"}
+                      {thresholdText ? ` · ${thresholdText}` : ""}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             {rows.length ? (
               <div className="macro-toolkit-shadow-review__periods">
                 {rows.slice(-4).map((row) => (
@@ -1801,6 +1922,7 @@ function ShadowPortfolioReportPanel({ report }: { report: MacroToolkitShadowPort
         ))}
       </div>
       <ShadowPortfolioReview report={report} />
+      <ShadowPortfolioEvidencePack report={report} />
     </div>
   );
 }
