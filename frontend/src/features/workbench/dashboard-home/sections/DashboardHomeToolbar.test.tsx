@@ -17,8 +17,10 @@ const headerStatus: DashboardHomeView["headerStatus"] = {
   dataSyncPrefix: "数据更新",
 };
 
-function renderToolbar(overrides: Partial<ComponentProps<typeof DashboardHomeToolbar>> = {}) {
-  const props: ComponentProps<typeof DashboardHomeToolbar> = {
+function makeToolbarProps(
+  overrides: Partial<ComponentProps<typeof DashboardHomeToolbar>> = {},
+): ComponentProps<typeof DashboardHomeToolbar> {
+  return {
     headerStatus,
     reportDateInput: "2026-04-30",
     onReportDateChange: vi.fn(),
@@ -30,7 +32,10 @@ function renderToolbar(overrides: Partial<ComponentProps<typeof DashboardHomeToo
     refreshLabel: "刷新",
     ...overrides,
   };
+}
 
+function renderToolbar(overrides: Partial<ComponentProps<typeof DashboardHomeToolbar>> = {}) {
+  const props = makeToolbarProps(overrides);
   render(
     <MemoryRouter>
       <DashboardHomeToolbar {...props} />
@@ -63,5 +68,23 @@ describe("DashboardHomeToolbar", () => {
 
     fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
     expect(onReportDateChange).toHaveBeenCalledWith("2026-03-31");
+  });
+
+  it("uses readable copy for the partial-data toggle", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <DashboardHomeToolbar {...makeToolbarProps({ allowPartial: true })} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("显示部分数据")).toBeChecked();
+
+    rerender(
+      <MemoryRouter>
+        <DashboardHomeToolbar {...makeToolbarProps({ allowPartial: false })} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("仅完整数据")).not.toBeChecked();
   });
 });

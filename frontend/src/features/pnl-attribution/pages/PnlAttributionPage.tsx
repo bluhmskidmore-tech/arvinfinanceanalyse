@@ -7,13 +7,20 @@ const pageStyle = {
   margin: "0 auto",
 } as const;
 
+function getReportDateFromCurrentLocation(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("report_date")?.trim() || undefined;
+}
+
 /**
  * 损益归因工作台：规模/利率、TPL–市场、损益构成、高级归因与 Campisi 四效应。
  */
 export default function PnlAttributionPage() {
+  const reportDate = getReportDateFromCurrentLocation();
+
   return (
     <div style={pageStyle}>
-      <PnlAttributionView />
+      <PnlAttributionView reportDate={reportDate} />
     </div>
   );
 }

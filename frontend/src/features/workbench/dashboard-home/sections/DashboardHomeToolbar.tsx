@@ -114,7 +114,7 @@ export function DashboardHomeToolbar({
             checked={allowPartial}
             onChange={(event) => onAllowPartialChange(event.target.checked)}
           />
-          <span>含缺域</span>
+          <span>{allowPartial ? "显示部分数据" : "仅完整数据"}</span>
         </label>
         <button type="button" className={styles.dhRefreshBtn} onClick={onRefresh}>
           <ReloadOutlined />

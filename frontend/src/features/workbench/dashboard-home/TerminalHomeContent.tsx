@@ -33,6 +33,11 @@ type TerminalHomeContentProps = {
 
 const CHART_COLORS = ["#35679b", "#6f96c3", "#a8bfd8", "#3f8a6a", "#c76b66", "#b6c1cf"];
 
+function buildReportDatePath(path: string, reportDate: string): string {
+  const trimmed = reportDate.trim();
+  return trimmed && trimmed !== "—" ? `${path}?report_date=${encodeURIComponent(trimmed)}` : path;
+}
+
 const STATE_COPY: Record<HomeDataStateKind, string> = {
   ready: "已接入",
   partial: "部分接入",
@@ -617,7 +622,15 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
     <article data-testid="dashboard-home-income-trend" className={`${styles.dhCard} ${styles.dhTerminalPanel}`}>
       <div className={styles.dhTerminalPanelHead}>
         <h3>收益趋势</h3>
-        <DataStateBadge kind={view.incomeTrendState.kind} label={view.incomeTrendState.label} />
+        <div className={styles.dhPanelHeaderActions}>
+          <DataStateBadge kind={view.incomeTrendState.kind} label={view.incomeTrendState.label} />
+          <Link
+            to={buildReportDatePath("/pnl-attribution", view.reportDate)}
+            className={styles.dhPanelDrillLink}
+          >
+            归因明细 →
+          </Link>
+        </div>
       </div>
       {hasRows ? (
         <div className={styles.dhTerminalIncomeStack}>
@@ -705,9 +718,17 @@ function MarketContextPanel({ view }: { view: DashboardHomeView }) {
     >
       <div className={styles.dhTerminalPanelHead}>
         <h3>今日市场解释</h3>
-        <span className={styles.dhMarketContextTemp} data-tone={context.temperatureTone}>
-          {context.temperatureLabel}
-        </span>
+        <div className={styles.dhPanelHeaderActions}>
+          <Link
+            to={buildReportDatePath("/bond-analysis", view.reportDate)}
+            className={styles.dhPanelDrillLink}
+          >
+            曲线/利差 →
+          </Link>
+          <span className={styles.dhMarketContextTemp} data-tone={context.temperatureTone}>
+            {context.temperatureLabel}
+          </span>
+        </div>
       </div>
       <div className={styles.dhMacroTrustStrip} aria-label="今日市场解释数据状态">
         <span>{context.sourceLabel}</span>
