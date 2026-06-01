@@ -26,6 +26,8 @@ import {
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisKpiStrip,
   buildThemeBreakoutCards,
+  buildThemeLeaderPreviewItems,
+  buildSectorHeavyweightPreview,
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
   buildConsensusReviewPanelSummary,
@@ -491,7 +493,8 @@ describe("stockAnalysisPageModel", () => {
 
     expect(summary.candidateCountLabel).toBe("候选 0");
     expect(summary.nextReviewAction).toContain("深度分析");
-    expect(summary.nextReviewAction).toContain("门控与板块强弱");
+    expect(summary.nextReviewAction).toContain("策略共振");
+    expect(summary.nextReviewAction).toContain("多策略观察池");
     expect(summary.boundaryLabel).toContain("3 条边界");
     expect(summary.nextReviewAction).not.toContain("Alpha");
   });
@@ -561,6 +564,188 @@ describe("stockAnalysisPageModel", () => {
       tags: ["涨停", "强势"],
     });
     expect(`${cards[0].summary} ${cards[0].boundaryLabel}`).not.toContain("买入");
+  });
+
+  it("builds flattened theme leader preview items from breakout cards", () => {
+    const cards = buildThemeBreakoutCards({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: true,
+        theme_count: 1,
+        items: [
+          {
+            rank: 1,
+            as_of_date: "2026-05-08",
+            theme_key: "semiconductor_proxy",
+            theme_name: "Semiconductor proxy",
+            parent_sector_code: "801080",
+            parent_sector_name: "Electronic",
+            parent_sector_rank: 9,
+            member_count: 2,
+            advance_count: 2,
+            advance_ratio: 1,
+            strong_stock_count: 2,
+            limit_stock_count: 1,
+            avg_pctchange: 9.5,
+            avg_turn: 4.2,
+            avg_amplitude: 7,
+            observation_only: true,
+            reason: "Leaders 688001.SH, 688002.SH.",
+            items: [
+              {
+                stock_code: "688001.SH",
+                stock_name: "Alpha Semiconductor",
+                sector_code: "801080",
+                sector_name: "Electronic",
+                sector_rank: 9,
+                open: 9.6,
+                high: 10.1,
+                low: 9.4,
+                close: 10,
+                pctchange: 12.1,
+                turn: 4.2,
+                amplitude: 7,
+                close_strength: 0.86,
+                closed_up_limit: true,
+                strong: true,
+              },
+              {
+                stock_code: "688002.SH",
+                stock_name: "Beta Semiconductor",
+                sector_code: "801080",
+                sector_name: "Electronic",
+                sector_rank: 9,
+                open: 8.6,
+                high: 9.1,
+                low: 8.4,
+                close: 9,
+                pctchange: 8.1,
+                turn: 3.8,
+                amplitude: 6,
+                close_strength: 0.72,
+                closed_up_limit: false,
+                strong: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(buildThemeLeaderPreviewItems(cards, 12)).toEqual([
+      expect.objectContaining({
+        stockCode: "688001.SH",
+        themeName: "Semiconductor proxy",
+        themeRank: 1,
+      }),
+      expect.objectContaining({
+        stockCode: "688002.SH",
+        themeName: "Semiconductor proxy",
+      }),
+    ]);
+    expect(buildThemeLeaderPreviewItems(cards, 1)).toHaveLength(1);
+  });
+
+  it("builds sector heavyweight preview rows for top sectors", () => {
+    const preview = buildSectorHeavyweightPreview({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: true,
+        theme_count: 1,
+        items: [
+          {
+            rank: 1,
+            as_of_date: "2026-05-08",
+            theme_key: "semiconductor_proxy",
+            theme_name: "Semiconductor proxy",
+            parent_sector_code: "801080",
+            parent_sector_name: "Electronic",
+            parent_sector_rank: 1,
+            member_count: 2,
+            advance_count: 2,
+            advance_ratio: 1,
+            strong_stock_count: 2,
+            limit_stock_count: 1,
+            avg_pctchange: 9.5,
+            avg_turn: 4.2,
+            avg_amplitude: 7,
+            observation_only: true,
+            reason: "Leaders 688001.SH.",
+            items: [
+              {
+                stock_code: "688001.SH",
+                stock_name: "Alpha Semiconductor",
+                sector_code: "801001",
+                sector_name: "新能源车",
+                sector_rank: 1,
+                open: 9.6,
+                high: 10.1,
+                low: 9.4,
+                close: 10,
+                pctchange: 12.1,
+                turn: 4.2,
+                amplitude: 7,
+                close_strength: 0.86,
+                closed_up_limit: true,
+                strong: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(preview.rows[0]).toMatchObject({
+      sectorCode: "801001",
+      sectorName: "AI",
+      sectorRank: 1,
+    });
+    expect(preview.rows[0].stocks[0]).toMatchObject({
+      stockCode: "688001.SH",
+      pctChange: "12.10%",
+      sourceLabel: "题材强势",
+    });
+    expect(preview.sectorsWithSamples).toBe(1);
+  });
+
+  it("prefers backend sector leader constituents over strategy pool", () => {
+    const preview = buildSectorHeavyweightPreview({
+      ...strategyPayload,
+      sector_rank: {
+        ...strategyPayload.sector_rank!,
+        leader_constituent_limit: 3,
+        leader_constituent_method: "top_turn_same_day",
+        items: strategyPayload.sector_rank!.items.map((item) =>
+          item.sector_code === "801001"
+            ? {
+                ...item,
+                leader_constituents: [
+                  {
+                    rank: 1,
+                    stock_code: "688001.SH",
+                    stock_name: "Leader Alpha",
+                    pctchange: 8.2,
+                    turn: 5.5,
+                    amplitude: 6.1,
+                  },
+                ],
+              }
+            : item,
+        ),
+      },
+    });
+
+    expect(preview.rows[0].stocks[0]).toMatchObject({
+      stockCode: "688001.SH",
+      stockName: "Leader Alpha",
+      pctChange: "8.20%",
+      sourceLabel: "板块成分",
+      auxiliaryLabel: "振幅 6.10%",
+    });
   });
 
   it("builds real concept theme breakout cards with movement evidence", () => {

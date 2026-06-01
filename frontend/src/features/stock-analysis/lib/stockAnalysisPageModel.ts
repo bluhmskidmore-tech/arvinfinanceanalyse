@@ -701,7 +701,7 @@ export function buildReviewQueueEmptyState(payload: LivermoreStrategyPayload): S
   }
   return {
     headline: "今天没有进入复核队列的候选",
-    detail: `${nextParts.join("；")}，并核对门控与板块强弱。`,
+    detail: `${nextParts.join("；")}；请先看下方「策略共振」与「多策略观察池」。`,
   };
 }
 
@@ -945,6 +945,390 @@ export function buildStockAnalysisKpiStrip(
       value: String(boundarySummary.boundaryCount),
       detail: boundarySummary.detailLabel,
       tone: boundarySummary.boundaryCount > 0 || isMetaBoundary(meta) ? "warning" : "positive",
+    },
+  ];
+}
+
+export type StockStrategyLensItem = {
+  key: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "positive" | "warning" | "negative" | "neutral";
+  scrollTarget: string;
+};
+
+export type StockThemeLeaderPreviewItem = {
+  stockCode: string;
+  stockName: string;
+  themeName: string;
+  themeRank: number;
+  pctChange: string;
+  turn: string;
+  closeStrength: string;
+  tags: string[];
+};
+
+export function buildThemeLeaderPreviewItems(
+  cards: StockThemeBreakoutCard[],
+  limit = 12,
+): StockThemeLeaderPreviewItem[] {
+  const items: StockThemeLeaderPreviewItem[] = [];
+  for (const card of cards) {
+    for (const leader of card.leaders) {
+      items.push({
+        stockCode: leader.stockCode,
+        stockName: leader.stockName,
+        themeName: card.themeName,
+        themeRank: card.rank,
+        pctChange: leader.pctChange,
+        turn: leader.turn,
+        closeStrength: leader.closeStrength,
+        tags: leader.tags,
+      });
+      if (items.length >= limit) {
+        return items;
+      }
+    }
+  }
+  return items;
+}
+
+export type StockSectorHeavyweightStockPreview = {
+  stockCode: string;
+  stockName: string;
+  pctChange: string;
+  turn: string;
+  closeStrength: string;
+  sourceLabel: string;
+  detailLabel?: string;
+  auxiliaryLabel?: string;
+};
+
+export type StockSectorHeavyweightPreviewRow = {
+  sectorCode: string;
+  sectorName: string;
+  sectorRank: number;
+  sectorPctChange: string;
+  sectorScore: string;
+  stocks: StockSectorHeavyweightStockPreview[];
+  emptyReason?: string;
+};
+
+export type StockSectorHeavyweightPreviewSummary = {
+  rows: StockSectorHeavyweightPreviewRow[];
+  sectorLimit: number;
+  sectorsWithSamples: number;
+  totalSampleCount: number;
+  uncoveredSectorCount: number;
+};
+
+function sectorHeavyweightSourceLabel(source: string) {
+  const labels: Record<string, string> = {
+    theme_breakout: "题材强势",
+    livermore: "趋势候选",
+    factor_screen: "多因子",
+    hybrid_fusion: "融合策略",
+    mean_reversion: "超跌反弹",
+    review_queue: "复核队列",
+    sector_constituent: "板块成分",
+  };
+  return labels[source] ?? source;
+}
+
+export function buildSectorHeavyweightPreview(
+  payload: LivermoreStrategyPayload,
+  options?: { sectorLimit?: number; stocksPerSector?: number },
+): StockSectorHeavyweightPreviewSummary {
+  const sectorLimit = options?.sectorLimit ?? 8;
+  const stocksPerSector = options?.stocksPerSector ?? 3;
+  const sectorRows = buildSectorRows(payload).slice(0, sectorLimit);
+  if (sectorRows.length === 0) {
+    return {
+      rows: [],
+      sectorLimit,
+      sectorsWithSamples: 0,
+      totalSampleCount: 0,
+      uncoveredSectorCount: 0,
+    };
+  }
+
+  type PoolEntry = {
+    stockCode: string;
+    stockName: string;
+    sectorCode: string;
+    sectorName: string;
+    pctChangeValue: number | null;
+    turnValue: number | null;
+    closeStrengthValue: number | null;
+    factorScoreValue: number | null;
+    rankScore: number;
+    source: string;
+  };
+
+  const pool = new Map<string, PoolEntry>();
+
+  function upsert(entry: PoolEntry) {
+    const key = `${entry.sectorCode}:${entry.stockCode}`;
+    const existing = pool.get(key);
+    if (!existing || entry.rankScore > existing.rankScore) {
+      pool.set(key, entry);
+    }
+  }
+
+  for (const item of payload.theme_breakout?.items ?? []) {
+    for (const stock of item.items) {
+      const pctChangeValue = finiteNumber(stock.pctchange);
+      const turnValue = finiteNumber(stock.turn);
+      upsert({
+        stockCode: stock.stock_code,
+        stockName: stock.stock_name,
+        sectorCode: stock.sector_code,
+        sectorName: stock.sector_name,
+        pctChangeValue,
+        turnValue,
+        closeStrengthValue: finiteNumber(stock.close_strength),
+        factorScoreValue: null,
+        rankScore:
+          (stock.strong ? 1000 : 0) +
+          (stock.closed_up_limit ? 800 : 0) +
+          (pctChangeValue ?? 0) * 10 +
+          (turnValue ?? 0),
+        source: "theme_breakout",
+      });
+    }
+  }
+
+  for (const stock of payload.stock_candidates?.items ?? []) {
+    const turnValue = finiteNumber(stock.abnormal_turnover);
+    const closeStrengthValue = finiteNumber(stock.close_strength);
+    upsert({
+      stockCode: stock.stock_code,
+      stockName: stock.stock_name,
+      sectorCode: stock.sector_code,
+      sectorName: stock.sector_name,
+      pctChangeValue: null,
+      turnValue,
+      closeStrengthValue,
+      factorScoreValue: null,
+      rankScore: 500 - stock.rank + (closeStrengthValue ?? 0) * 20 + (turnValue ?? 0),
+      source: "livermore",
+    });
+  }
+
+  for (const stock of payload.hybrid_fusion_candidates?.items ?? []) {
+    upsert({
+      stockCode: stock.stock_code,
+      stockName: stock.stock_name,
+      sectorCode: stock.sector_code,
+      sectorName: stock.sector_name,
+      pctChangeValue: null,
+      turnValue: null,
+      closeStrengthValue: null,
+      factorScoreValue: null,
+      rankScore: 400 - stock.rank,
+      source: "hybrid_fusion",
+    });
+  }
+
+  for (const stock of payload.factor_screen_candidates?.items ?? []) {
+    const factorScoreValue = finiteNumber(stock.score);
+    upsert({
+      stockCode: stock.stock_code,
+      stockName: stock.stock_name,
+      sectorCode: stock.sector_code,
+      sectorName: stock.sector_name,
+      pctChangeValue: null,
+      turnValue: null,
+      closeStrengthValue: null,
+      factorScoreValue,
+      rankScore: 300 - stock.rank + (factorScoreValue ?? 0) * 10,
+      source: "factor_screen",
+    });
+  }
+
+  for (const stock of payload.mean_reversion_candidates?.items ?? []) {
+    upsert({
+      stockCode: stock.stock_code,
+      stockName: stock.stock_name,
+      sectorCode: stock.sector_code,
+      sectorName: stock.sector_name,
+      pctChangeValue: null,
+      turnValue: null,
+      closeStrengthValue: null,
+      factorScoreValue: finiteNumber(stock.score),
+      rankScore: 250 - stock.rank + (finiteNumber(stock.score) ?? 0),
+      source: "mean_reversion",
+    });
+  }
+
+  for (const card of buildCandidateReviewQueue(payload)) {
+    upsert({
+      stockCode: card.stockCode,
+      stockName: card.stockName,
+      sectorCode: card.sectorCode,
+      sectorName: card.sectorName,
+      pctChangeValue: null,
+      turnValue: null,
+      closeStrengthValue: null,
+      factorScoreValue: null,
+      rankScore: 600 - card.rank,
+      source: "review_queue",
+    });
+  }
+
+  const leaderBySector = new Map(
+    (payload.sector_rank?.items ?? []).map((item) => [item.sector_code, item.leader_constituents ?? []]),
+  );
+
+  function mapPoolEntryToPreview(entry: PoolEntry): StockSectorHeavyweightStockPreview {
+    return {
+      stockCode: entry.stockCode,
+      stockName: entry.stockName,
+      pctChange: entry.pctChangeValue != null ? formatPercent(entry.pctChangeValue) : "待补",
+      turn: entry.turnValue != null ? formatNumber(entry.turnValue, 2) : "待补",
+      closeStrength:
+        entry.closeStrengthValue != null ? formatRatioAsPercent(entry.closeStrengthValue, 0) : "待补",
+      sourceLabel: sectorHeavyweightSourceLabel(entry.source),
+      detailLabel:
+        entry.source === "factor_screen" && entry.factorScoreValue != null
+          ? `因子分 ${formatNumber(entry.factorScoreValue, 4)}`
+          : entry.source === "mean_reversion" && entry.factorScoreValue != null
+            ? `超跌分 ${formatNumber(entry.factorScoreValue, 2)}`
+            : undefined,
+    };
+  }
+
+  const rows = sectorRows.map((sector) => {
+    const backendLeaders = leaderBySector.get(sector.sectorCode) ?? [];
+    const usedCodes = new Set<string>();
+    const stocks: StockSectorHeavyweightStockPreview[] = backendLeaders
+      .slice(0, stocksPerSector)
+      .map((leader) => {
+        usedCodes.add(leader.stock_code);
+        return {
+          stockCode: leader.stock_code,
+          stockName: leader.stock_name,
+          pctChange: formatPercent(leader.pctchange),
+          turn: formatNumber(leader.turn, 2),
+          closeStrength: "待补",
+          sourceLabel: sectorHeavyweightSourceLabel("sector_constituent"),
+          auxiliaryLabel: `振幅 ${formatPercent(leader.amplitude)}`,
+        };
+      });
+
+    if (stocks.length < stocksPerSector) {
+      const supplemental = [...pool.values()]
+        .filter((entry) => entry.sectorCode === sector.sectorCode && !usedCodes.has(entry.stockCode))
+        .sort((left, right) => right.rankScore - left.rankScore)
+        .slice(0, stocksPerSector - stocks.length)
+        .map(mapPoolEntryToPreview);
+      stocks.push(...supplemental);
+    }
+
+    return {
+      sectorCode: sector.sectorCode,
+      sectorName: sector.sectorName,
+      sectorRank: sector.rank,
+      sectorPctChange: sector.pctChange,
+      sectorScore: sector.score,
+      stocks,
+      emptyReason:
+        stocks.length === 0
+          ? "板块成分与策略/题材观察池均未命中（请检查 sector_rank 供数）"
+          : undefined,
+    };
+  });
+
+  const sectorsWithSamples = rows.filter((row) => row.stocks.length > 0).length;
+  const totalSampleCount = rows.reduce((count, row) => count + row.stocks.length, 0);
+
+  return {
+    rows,
+    sectorLimit,
+    sectorsWithSamples,
+    totalSampleCount,
+    uncoveredSectorCount: rows.length - sectorsWithSamples,
+  };
+}
+
+export function buildStrategyLensItems(
+  payload: LivermoreStrategyPayload,
+  consensus: ConsensusSummary,
+): StockStrategyLensItem[] {
+  const reviewCount = buildCandidateReviewQueue(payload).length;
+  const resonanceCount = consensus.items.filter((item) => item.consensusCount >= 2).length;
+  const themeCards = buildThemeBreakoutCards(payload);
+  const themeLeaderCount = buildThemeLeaderPreviewItems(themeCards).length;
+  const sectorHeavyweightPreview = buildSectorHeavyweightPreview(payload);
+
+  return [
+    {
+      key: "review",
+      label: "复核队列",
+      value: String(reviewCount),
+      detail: reviewCount > 0 ? "优先人工复核" : "暂无主候选",
+      tone: reviewCount > 0 ? "positive" : "warning",
+      scrollTarget: "stock-analysis-review-queue",
+    },
+    {
+      key: "resonance",
+      label: "策略共振",
+      value: String(resonanceCount),
+      detail: consensus.tripleCount > 0 ? `${consensus.tripleCount} 只三重共振` : "双策略及以上",
+      tone: resonanceCount > 0 ? "positive" : "neutral",
+      scrollTarget: "stock-analysis-consensus-first-screen",
+    },
+    {
+      key: "hybrid",
+      label: "融合策略",
+      value: String(consensus.strategyCounts.hybrid_fusion),
+      detail: "观察池",
+      tone: consensus.strategyCounts.hybrid_fusion > 0 ? "positive" : "neutral",
+      scrollTarget: "stock-analysis-observation-preview",
+    },
+    {
+      key: "livermore",
+      label: "趋势突破",
+      value: String(consensus.strategyCounts.livermore),
+      detail: "Livermore",
+      tone: consensus.strategyCounts.livermore > 0 ? "positive" : "neutral",
+      scrollTarget: "stock-analysis-observation-preview",
+    },
+    {
+      key: "factor",
+      label: "多因子",
+      value: String(consensus.strategyCounts.factor_screen),
+      detail: "因子池",
+      tone: consensus.strategyCounts.factor_screen > 0 ? "positive" : "neutral",
+      scrollTarget: "stock-analysis-observation-preview",
+    },
+    {
+      key: "mean_reversion",
+      label: "超跌反弹",
+      value: String(consensus.strategyCounts.mean_reversion),
+      detail: payload.market_gate.state === "WARM" ? "WARM 激活" : "门控暂停",
+      tone:
+        payload.market_gate.state === "WARM" && consensus.strategyCounts.mean_reversion > 0
+          ? "positive"
+          : "neutral",
+      scrollTarget: "stock-analysis-observation-preview",
+    },
+    {
+      key: "theme",
+      label: "题材龙头",
+      value: String(themeLeaderCount),
+      detail: `${themeCards.length} 个题材簇`,
+      tone: themeCards.length > 0 ? "positive" : "neutral",
+      scrollTarget: "stock-analysis-theme-leaders-first-screen",
+    },
+    {
+      key: "sector_heavyweight",
+      label: "板块权重",
+      value: String(sectorHeavyweightPreview.totalSampleCount),
+      detail: `${sectorHeavyweightPreview.sectorsWithSamples} 个板块有样本`,
+      tone: sectorHeavyweightPreview.totalSampleCount > 0 ? "positive" : "neutral",
+      scrollTarget: "stock-analysis-sector-heavyweights-first-screen",
     },
   ];
 }
@@ -2387,6 +2771,17 @@ function eventMonitorPriority(row: StockAnalysisEventMonitorRow): number {
   return 1;
 }
 
+function eventMonitorSourceLabel(source: StockAnalysisEventMonitorRow["source"]): string {
+  const labels: Record<StockAnalysisEventMonitorRow["source"], string> = {
+    diagnostic: "诊断",
+    data_gap: "缺口",
+    unsupported: "阻断",
+    signal_confluence: "联动",
+    risk_exit: "风险",
+  };
+  return labels[source];
+}
+
 export function buildCycleRotationPanelSummary(input: {
   framework: NonNullable<LivermoreStrategyPayload["cycle_rotation_framework"]>;
   macroLayer: StockCycleMacroLayerSummary | null;
@@ -2870,12 +3265,12 @@ export function buildEventsMonitoringPanelSummary(
 
   return {
     headline: `${rows.length} 条待复核`,
-    detail: `最高优先：${top.event} — ${top.detail}`,
+    detail: `最高优先：${eventMonitorSourceLabel(top.source)} / ${top.impact.replace(/_/g, " ")}`,
     badgeLabel: errorCount > 0 ? "待补" : warningCount > 0 ? "待复核" : "已就绪",
     stats: [
       { key: "error", label: "错误", value: `${errorCount}`, tone: errorCount > 0 ? "negative" : "positive" },
       { key: "warn", label: "预警", value: `${warningCount}`, tone: warningCount > 0 ? "warning" : "neutral" },
-      { key: "top", label: "域", value: top.impact, tone: "neutral" },
+      { key: "top", label: "来源", value: eventMonitorSourceLabel(top.source), tone: "neutral" },
     ],
     tone: errorCount > 0 ? "negative" : warningCount > 0 ? "warning" : "neutral",
   };
