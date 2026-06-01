@@ -12,6 +12,14 @@ from backend.app.core_finance.livermore_stock_candidates import (
 )
 
 
+class _CountingHistory(list[float]):
+    iteration_count = 0
+
+    def __iter__(self):  # type: ignore[override]
+        type(self).iteration_count += 1
+        return super().__iter__()
+
+
 def _close_history(*, start: float, step: float, count: int = 120) -> list[float]:
     return [round(start + step * index, 6) for index in range(count)]
 
@@ -153,6 +161,36 @@ def test_stock_candidates_emits_ranked_breakout_candidates_from_strategy_bundle_
     assert alpha["abnormal_turnover"] == pytest.approx(math.log1p(1.5 / 0.5))
     assert alpha["ema10"] == pytest.approx(_ema(alpha_closes, 10)[-1])
     assert alpha["ma20"] > alpha["ma60"] > alpha["ma120"]
+
+
+def test_stock_candidates_do_not_rescan_history_when_excluding_non_signal_rows() -> None:
+    _CountingHistory.iteration_count = 0
+    closes = _CountingHistory(_close_history(start=10.0, step=0.1))
+    turns = _CountingHistory(_turnover_history(baseline=0.5, current=1.5))
+
+    result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=[
+            _snapshot(
+                stock_code="000003.SZ",
+                stock_name="Gamma",
+                sector_code="801004",
+                sector_name="Retail",
+                sector_rank=4,
+                close_history=closes,
+                turnover_history=turns,
+                open_value=22.06,
+                high_value=22.22,
+                low_value=21.92,
+            )
+        ],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    assert payload["candidate_count"] == 0
+    assert payload["insufficient_history_count"] == 0
+    assert _CountingHistory.iteration_count == 2
 
 
 def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> None:
