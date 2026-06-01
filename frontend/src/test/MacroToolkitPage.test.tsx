@@ -10,8 +10,19 @@ const MACRO_TOOLKIT_CSS_PATH = resolve(
   process.cwd(),
   "src/features/macro-toolkit/pages/MacroToolkitPage.css",
 );
+const MACRO_TOOLKIT_PAGE_PATH = resolve(
+  process.cwd(),
+  "src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
+);
 
 describe("MacroToolkitPage", () => {
+  it("keeps the macro toolkit page off the monolithic API client entrypoint", () => {
+    const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+
+    expect(source).not.toContain('from "../../../api/client";');
+    expect(source).toContain('from "../../../api/clientContext"');
+  });
+
   it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 
@@ -130,7 +141,7 @@ describe("MacroToolkitPage", () => {
     expect(movingAverageCard).toHaveTextContent("因子来源缺失");
     expect(await screen.findByText("多因子选股")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /刷新股票数据/ })).toBeInTheDocument();
-    const permissionLabel = await screen.findByText("刷新权限");
+    const permissionLabel = await screen.findByText("刷新状态");
     const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
     expect(permissionTile).not.toBeNull();
     expect(permissionTile).toHaveTextContent("已授权");
@@ -751,7 +762,7 @@ describe("MacroToolkitPage", () => {
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    const permissionLabel = await screen.findByText("刷新权限");
+    const permissionLabel = await screen.findByText("刷新状态");
     const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
     expect(permissionTile).not.toBeNull();
     expect(permissionTile).toHaveTextContent("已授权");
@@ -759,6 +770,52 @@ describe("MacroToolkitPage", () => {
     expect(permissionTile?.querySelector("small")).toHaveAttribute(
       "title",
       "resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user stock-refresh-user",
+    );
+  });
+
+  it("shows latest Choice refresh run status beside authorization evidence", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const strategyEnvelope = await baseClient.getMacroToolkitStrategySummaries();
+    const choiceStockRefresh = strategyEnvelope.result.choice_stock_refresh!;
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          strategy_summaries: [],
+        },
+      }),
+      getMacroToolkitStrategySummaries: async () => ({
+        ...strategyEnvelope,
+        result: {
+          ...strategyEnvelope.result,
+          choice_stock_refresh: {
+            ...choiceStockRefresh,
+            refresh: {
+              status: "completed",
+              run_id: "choice_stock_refresh:2026-04-30:done",
+              report_date: "2026-04-30",
+              trigger_mode: "terminal",
+              history_row_count: 111,
+              factor_row_count: 222,
+              permission: choiceStockRefresh.permission,
+            },
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const permissionLabel = await screen.findByText("刷新状态");
+    const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
+    expect(permissionTile).not.toBeNull();
+    expect(permissionTile).toHaveTextContent("已完成");
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      "run choice_stock_refresh:2026-04-30:done · report 2026-04-30 · trigger terminal · rows history 111 / factor 222 · resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
     );
   });
 

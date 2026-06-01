@@ -20,7 +20,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
@@ -128,6 +128,10 @@ function statusLabel(status: string) {
     deferred: "已延后",
     loading: "加载中",
     failed: "失败",
+    idle: "空闲",
+    queued: "已排队",
+    running: "运行中",
+    completed: "已完成",
     aligned: "已对齐",
     fallback: "最近快照",
     library_ready: "函数已迁入",
@@ -944,9 +948,9 @@ export default function MacroToolkitPage() {
                   detail={choiceStockTableDetail(choiceStockRefresh?.factor_snapshot, "as_of_date")}
                 />
                 <MetricTile
-                  label="刷新权限"
-                  value={choiceStockPermissionValue(choiceStockRefresh?.permission)}
-                  detail={choiceStockPermissionDetail(choiceStockRefresh?.permission)}
+                  label="刷新状态"
+                  value={choiceStockRefreshValue(choiceStockRefresh?.refresh, choiceStockRefresh?.permission)}
+                  detail={choiceStockRefreshDetail(choiceStockRefresh?.refresh, choiceStockRefresh?.permission)}
                 />
               </div>
               <div className="macro-toolkit-cffex-actions">
@@ -1679,6 +1683,38 @@ function choiceStockPermissionValue(permission: MacroToolkitChoiceStockRefreshPe
     return "未授权";
   }
   return permission.allowed === true || permission.mode === "identity_only" ? "已授权" : "待确认";
+}
+
+function choiceStockRefreshValue(
+  refresh: MacroToolkitChoiceStockRefreshRun | null | undefined,
+  permission: MacroToolkitChoiceStockRefreshPermission | null | undefined,
+) {
+  if (choiceStockHasRunEvidence(refresh)) {
+    return statusLabel(refresh.status);
+  }
+  return choiceStockPermissionValue(permission);
+}
+
+function choiceStockRefreshDetail(
+  refresh: MacroToolkitChoiceStockRefreshRun | null | undefined,
+  permission: MacroToolkitChoiceStockRefreshPermission | null | undefined,
+) {
+  const hasRunEvidence = choiceStockHasRunEvidence(refresh);
+  const permissionDetail = choiceStockPermissionDetail(hasRunEvidence ? (refresh.permission ?? permission) : permission);
+  if (!hasRunEvidence) {
+    return permissionDetail;
+  }
+  const runId = refresh.run_id ?? "none";
+  const reportDate = refresh.report_date ?? "unknown";
+  const triggerMode = refresh.trigger_mode ?? "unknown";
+  const historyRows = refresh.history_row_count ?? "-";
+  const factorRows = refresh.factor_row_count ?? "-";
+  const failure = refresh.failure_category ? ` · failure ${refresh.failure_category}` : "";
+  return `run ${runId} · report ${reportDate} · trigger ${triggerMode} · rows history ${historyRows} / factor ${factorRows}${failure} · ${permissionDetail}`;
+}
+
+function choiceStockHasRunEvidence(refresh: MacroToolkitChoiceStockRefreshRun | null | undefined): refresh is MacroToolkitChoiceStockRefreshRun {
+  return Boolean(refresh?.run_id);
 }
 
 function choiceStockPermissionDetail(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
