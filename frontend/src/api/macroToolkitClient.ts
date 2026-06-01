@@ -1027,15 +1027,20 @@ const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
 
 const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
   permission: {
-    mode: "identity_only",
+    mode: "scoped_refresh",
     allowed: true,
-    resource: "choice_stock.refresh",
+    resource: "macro_toolkit.choice_stock",
     actions: ["history", "factor_snapshot"],
   },
   refresh: {
     status: "idle",
     trigger_mode: "idle",
-    permission: { mode: "identity_only", allowed: true },
+    permission: {
+      mode: "scoped_refresh",
+      allowed: true,
+      resource: "macro_toolkit.choice_stock",
+      actions: ["history", "factor_snapshot"],
+    },
   },
   daily_observation: {
     materialized: true,

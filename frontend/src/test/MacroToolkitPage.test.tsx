@@ -130,6 +130,14 @@ describe("MacroToolkitPage", () => {
     expect(movingAverageCard).toHaveTextContent("因子来源缺失");
     expect(await screen.findByText("多因子选股")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /刷新股票数据/ })).toBeInTheDocument();
+    const permissionLabel = await screen.findByText("刷新权限");
+    const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
+    expect(permissionTile).not.toBeNull();
+    expect(permissionTile).toHaveTextContent("已授权");
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      "resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
+    );
     expect(await screen.findByText("低拥挤度择时多因子")).toBeInTheDocument();
     expect((await screen.findAllByText(/M7/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/M16/)).length).toBeGreaterThan(0);

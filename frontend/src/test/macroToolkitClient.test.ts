@@ -73,7 +73,14 @@ describe("macroToolkitClient", () => {
           result_meta: { basis: "analytical" },
           result: {
             refresh: { status: "queued", run_id: "choice_stock_refresh:test" },
-            choice_stock_refresh: { permission: { mode: "identity_only" } },
+            choice_stock_refresh: {
+              permission: {
+                mode: "scoped_refresh",
+                allowed: true,
+                resource: "macro_toolkit.choice_stock",
+                actions: ["history", "factor_snapshot"],
+              },
+            },
           },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
