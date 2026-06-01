@@ -926,8 +926,9 @@ function buildResearchReportRows(
       state: displayState("empty", "债券/宏观研报暂无数据"),
     };
   }
+  const sourceStatus = payload?.source_status;
   const mappedState =
-    payload.source_status === "stale"
+    sourceStatus === "stale"
       ? displayState("partial", "报告日前无研报 · 展示最新")
       : displayState("ready", "已接入");
   return {
