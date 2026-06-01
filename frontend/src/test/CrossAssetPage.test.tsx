@@ -106,15 +106,19 @@ describe("CrossAssetPage", () => {
     const livermoreStatus = await screen.findByTestId("cross-asset-livermore-status");
     const observationSupport = await screen.findByTestId("cross-asset-observation-support-grid");
     const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
+    const momentumScoreboard = await screen.findByTestId("cross-asset-momentum-scoreboard");
+    const correlationHeatmap = await screen.findByTestId("cross-asset-correlation-heatmap");
+    const momentumTable = await screen.findByTestId("cross-asset-momentum-table-wrap");
+    const correlationMatrix = await screen.findByTestId("cross-asset-correlation-matrix-wrap");
 
     expect(hero).toHaveTextContent("外部变量怎样传导到债券");
     expect(statusStrip).toHaveTextContent("宏观最新质量");
     expect(firstScreenGrid).toContainElement(researchViews);
     expect(firstScreenGrid).toContainElement(headlineKpis);
-    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-momentum-scoreboard"));
-    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-correlation-heatmap"));
-    expect(screen.getByTestId("cross-asset-momentum-table-wrap")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-correlation-matrix-wrap")).toBeInTheDocument();
+    expect(observationSupport).toContainElement(momentumScoreboard);
+    expect(observationSupport).toContainElement(correlationHeatmap);
+    expect(momentumTable).toBeInTheDocument();
+    expect(correlationMatrix).toBeInTheDocument();
     expect(waterfallEvidence).toHaveTextContent("综合");
     expect(headlineKpis.querySelectorAll(".cross-asset-drivers-page__mini-kpi")).toHaveLength(4);
     expect(Boolean(researchViews.compareDocumentPosition(fullKpiBand) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
