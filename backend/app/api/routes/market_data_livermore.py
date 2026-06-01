@@ -16,7 +16,7 @@ from backend.app.services.livermore_gate_supplement_compute_service import (
 from backend.app.services.livermore_signal_confluence_service import (
     build_livermore_signal_confluence,
 )
-from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
+from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
     livermore_candidate_history_envelope,
@@ -266,7 +266,7 @@ def livermore_signal_confluence(as_of_date: str | None = Query(None)) -> dict[st
     macro_meta: dict[str, object] = {}
     macro_payload: dict[str, object] = {}
     if resolved_as_of_date:
-        macro_envelope = get_macro_bond_linkage(date.fromisoformat(resolved_as_of_date))
+        macro_envelope = get_macro_environment_context(date.fromisoformat(resolved_as_of_date))
         macro_meta = _mapping(macro_envelope.get("result_meta"))
         macro_payload = _dict_payload(macro_envelope.get("result"))
     adversarial_payload, adversarial_meta = load_macro_adversarial_signal_payload(output_dir=None)

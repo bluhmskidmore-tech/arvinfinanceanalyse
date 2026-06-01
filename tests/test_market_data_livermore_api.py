@@ -882,7 +882,76 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monk
     get_settings.cache_clear()
 
 
-def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates(monkeypatch) -> None:
+def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candidates_in_overheat(
+    monkeypatch,
+) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    stock_snapshot_called = False
+    compute_called = False
+
+    monkeypatch.setattr(
+        service,
+        "_load_sector_rank_inputs",
+        lambda **_kwargs: ([object()], ["choice_stock_sector_membership"], [], []),
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(
+            ready=True,
+            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+        ),
+    )
+
+    def fake_load_stock_candidate_snapshots(**_kwargs):
+        nonlocal stock_snapshot_called
+        stock_snapshot_called = True
+        raise AssertionError("inactive exp3b policy should skip stock snapshot loading in OVERHEAT")
+
+    def fake_compute_stock_candidates(**_kwargs):
+        nonlocal compute_called
+        compute_called = True
+        raise AssertionError("inactive exp3b policy should skip stock candidate computation in OVERHEAT")
+
+    monkeypatch.setattr(service, "_load_stock_candidate_snapshots", fake_load_stock_candidate_snapshots)
+    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="factor rows unavailable in policy unit test.",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-05-13",
+        market_state="OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        backfill_mode=True,
+    )
+
+    assert stock_snapshot_called is False
+    assert compute_called is False
+    assert outputs.stock_candidates_payload is None
+    assert "exp3b" in outputs.stock_candidate_block_reason
+    assert "OVERHEAT" in outputs.stock_candidate_block_reason
+
+
+def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates_in_warm(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     seen_policies: list[str] = []
@@ -934,7 +1003,7 @@ def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candid
     outputs = service._load_choice_stock_outputs(
         duckdb_path="unused.duckdb",
         as_of_date="2026-05-13",
-        market_state="OVERHEAT",
+        market_state="WARM",
         stock_readiness=_ready_choice_stock_readiness(),
         backfill_mode=True,
     )
@@ -1772,7 +1841,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: stock_readiness)
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", fake_livermore_strategy_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", fake_get_macro_bond_linkage)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", fake_get_macro_bond_linkage)
     monkeypatch.setattr(
         route_module,
         "load_macro_adversarial_signal_payload",
@@ -1943,7 +2012,7 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -2048,7 +2117,7 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2163,7 +2232,7 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2239,7 +2308,7 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2334,7 +2403,7 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monke
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",

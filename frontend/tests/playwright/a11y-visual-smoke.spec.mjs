@@ -24,7 +24,7 @@ const smokePages = [
   {
     slug: "dashboard",
     path: "/",
-    readySelector: '[data-testid="bond-dashboard-page"]',
+    readySelector: '[data-testid="dashboard-home-page"]',
   },
   {
     slug: "balance-analysis",

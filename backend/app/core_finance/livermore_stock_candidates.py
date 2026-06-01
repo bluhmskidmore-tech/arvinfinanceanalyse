@@ -98,6 +98,14 @@ _POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
 ACTIVE_MARKET_STATES = set(_POLICY_BY_NAME[DEFAULT_STOCK_CANDIDATE_POLICY].active_market_states)
 
 
+def stock_candidate_policy_active_market_states(policy_name: str) -> frozenset[str]:
+    return _resolve_policy(policy_name).active_market_states
+
+
+def is_stock_candidate_policy_active(*, policy_name: str, market_state: str) -> bool:
+    return market_state in stock_candidate_policy_active_market_states(policy_name)
+
+
 def compute_stock_candidates(
     *,
     as_of_date: str,
@@ -125,10 +133,10 @@ def compute_stock_candidates(
     excluded_stock_count = 0
     insufficient_history_count = 0
     for snapshot in snapshots:
-        candidate = _candidate_row(snapshot, market_state=market_state, policy=policy)
+        candidate, insufficient_history = _candidate_row(snapshot, market_state=market_state, policy=policy)
         if candidate is None:
             excluded_stock_count += 1
-            if _is_insufficient_history(snapshot):
+            if insufficient_history:
                 insufficient_history_count += 1
             continue
         items.append(candidate)
@@ -169,11 +177,11 @@ def _candidate_row(
     *,
     market_state: str,
     policy: _StockCandidatePolicy,
-) -> dict[str, object] | None:
+) -> tuple[dict[str, object] | None, bool]:
     closes = _float_series(snapshot.close_history)
     turns = _float_series(snapshot.turnover_history)
     if closes is None or turns is None or len(closes) < MIN_HISTORY or len(turns) < MIN_HISTORY:
-        return None
+        return None, True
 
     sector_rank = _valid_int(snapshot.sector_rank)
     open_value = _valid_float(snapshot.open_value)
@@ -191,16 +199,16 @@ def _candidate_row(
         or turnover_free is None
         or limit_ratio is None
     ):
-        return None
+        return None, False
     if sector_rank > 3:
-        return None
+        return None, False
     if limit_ratio <= 0:
-        return None
+        return None, False
     if snapshot.one_word_board or snapshot.closed_up_limit:
-        return None
+        return None, False
 
     breakout_level = max(closes[-56:-1])
-    ema10 = _ema(closes, EMA_WINDOW)[-1]
+    ema10 = _ema_latest(closes, EMA_WINDOW)
     ma20 = _moving_average(closes, 20)
     ma60 = _moving_average(closes, 60)
     ma120 = _moving_average(closes, 120)
@@ -214,7 +222,7 @@ def _candidate_row(
     abnormal_turnover = _abnormal_turnover(turnover_free=turnover_free, turns=turns)
 
     if sector_rank == 1 and abnormal_turnover >= CROWDED_LEADER_TURNOVER_BLOCK:
-        return None
+        return None, False
 
     atu_in_band = policy.abnormal_turnover_min <= abnormal_turnover
     if policy.abnormal_turnover_max == ABNORMAL_TURNOVER_MAX_V7:
@@ -234,7 +242,7 @@ def _candidate_row(
         and atu_in_band
     )
     if not signal:
-        return None
+        return None, False
 
     return {
         "stock_code": snapshot.stock_code,
@@ -262,7 +270,7 @@ def _candidate_row(
         "twelve_month_return": _round_optional(snapshot.twelve_month_return),
         "volatility": _round_optional(snapshot.volatility),
         "dividend_yield": _round_optional(snapshot.dividend_yield),
-    }
+    }, False
 
 
 def _build_payload(
@@ -323,15 +331,13 @@ def _moving_average(values: list[float], window: int) -> float:
     return sum(values[-window:]) / window
 
 
-def _ema(values: list[float], window: int) -> list[float]:
+def _ema_latest(values: list[float], window: int) -> float:
     alpha = 2.0 / (window + 1.0)
-    ema: list[float] = []
-    for value in values:
-        if not ema:
-            ema.append(value)
-        else:
-            ema.append(alpha * value + (1.0 - alpha) * ema[-1])
-    return ema
+    iterator = iter(values)
+    latest = next(iterator)
+    for value in iterator:
+        latest = alpha * value + (1.0 - alpha) * latest
+    return latest
 
 
 def _close_strength(*, close: float, low: float, high: float) -> float:

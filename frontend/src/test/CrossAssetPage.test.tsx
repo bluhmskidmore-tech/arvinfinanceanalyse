@@ -94,6 +94,42 @@ describe("CrossAssetPage", () => {
     expect(broadIndex).toHaveTextContent("Tushare");
   });
 
+  it("uses the displayed cross-asset data date for linkage analysis", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const latestPayload = await client.getChoiceMacroLatest();
+    const baseCsi300 = latestPayload.result.series.find((point) => point.series_id === "CA.CSI300")!;
+    const getMacroBondLinkageAnalysis = vi.spyOn(client, "getMacroBondLinkageAnalysis");
+
+    vi.spyOn(client, "getChoiceMacroLatest").mockResolvedValue({
+      ...latestPayload,
+      result: {
+        ...latestPayload.result,
+        series: [
+          ...latestPayload.result.series.map((point) =>
+            ["E1000180", "E1003238", "EM1", "CA.DR007", "CA.CSI300"].includes(point.series_id)
+              ? { ...point, trade_date: "2026-05-29" }
+              : point,
+          ),
+          {
+            ...baseCsi300,
+            series_id: "NON_HEADLINE_MACRO",
+            series_name: "非首屏宏观序列",
+            trade_date: "2026-05-30",
+          },
+        ],
+      },
+    });
+
+    renderPage(client);
+
+    const hero = await screen.findByTestId("cross-asset-decision-hero");
+    await waitFor(() => {
+      expect(hero).toHaveTextContent("数据日期 2026-05-29");
+      expect(getMacroBondLinkageAnalysis).toHaveBeenCalledWith({ reportDate: "2026-05-29" });
+    });
+    expect(getMacroBondLinkageAnalysis).not.toHaveBeenCalledWith({ reportDate: "2026-05-30" });
+  });
+
   it("renders the compact decision cockpit before the deep evidence stack", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
@@ -105,16 +141,20 @@ describe("CrossAssetPage", () => {
     const livermoreStatus = await screen.findByTestId("cross-asset-livermore-status");
     const observationSupport = await screen.findByTestId("cross-asset-observation-support-grid");
     const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
+    const momentumScoreboard = await screen.findByTestId("cross-asset-momentum-scoreboard");
+    const correlationHeatmap = await screen.findByTestId("cross-asset-correlation-heatmap");
+    const momentumTable = await screen.findByTestId("cross-asset-momentum-table-wrap");
+    const correlationMatrix = await screen.findByTestId("cross-asset-correlation-matrix-wrap");
 
     expect(hero).toHaveTextContent("外部变量今天怎样传导到债券");
     expect(statusStrip).toHaveTextContent("宏观");
     expect(statusStrip).toHaveTextContent("联动");
     expect(firstScreenGrid).toContainElement(researchViews);
     expect(screen.queryByTestId("cross-asset-headline-kpis")).not.toBeInTheDocument();
-    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-momentum-scoreboard"));
-    expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-correlation-heatmap"));
-    expect(screen.getByTestId("cross-asset-momentum-table-wrap")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-correlation-matrix-wrap")).toBeInTheDocument();
+    expect(observationSupport).toContainElement(momentumScoreboard);
+    expect(observationSupport).toContainElement(correlationHeatmap);
+    expect(momentumTable).toBeInTheDocument();
+    expect(correlationMatrix).toBeInTheDocument();
     expect(waterfallEvidence).toHaveTextContent("综合");
     expect(fullKpiBand.querySelectorAll(".cross-asset-drivers-page__mini-kpi").length).toBeGreaterThanOrEqual(4);
     expect(Boolean(researchViews.compareDocumentPosition(fullKpiBand) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
