@@ -394,6 +394,45 @@ def test_alignment_modes_differ_for_low_frequency_macro_vs_daily_yield():
     assert market_timing[0].direction == "positive"
 
 
+def test_compute_macro_bond_correlations_reuses_sorted_alignment_inputs(monkeypatch):
+    mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_series = {
+        f"macro_{series_index}": [
+            (start + timedelta(days=offset), float(offset + series_index))
+            for offset in range(120)
+        ]
+        for series_index in range(3)
+    }
+    yield_series = {
+        f"treasury_{tenor}Y": [
+            (start + timedelta(days=offset), float(offset * 2 + tenor))
+            for offset in range(120)
+        ]
+        for tenor in (5, 10)
+    }
+    original_sorted = sorted
+    date_map_sort_count = 0
+
+    def counting_sorted(iterable, *args, **kwargs):
+        nonlocal date_map_sort_count
+        if isinstance(iterable, dict) and all(isinstance(item, date) for item in iterable):
+            date_map_sort_count += 1
+        return original_sorted(iterable, *args, **kwargs)
+
+    monkeypatch.setattr(mod, "sorted", counting_sorted, raising=False)
+
+    results = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
+        alignment_mode="market_timing",
+    )
+
+    assert len(results) == 6
+    assert date_map_sort_count <= len(macro_series) + len(yield_series)
+
+
 def test_compute_macro_bond_correlations_is_scale_invariant_without_zscore_flag():
     mod = _core_module()
     start = date(2026, 1, 1)
@@ -1303,6 +1342,63 @@ def test_service_conservative_top_correlations_mirror_method_variant(tmp_path, m
     assert result["report_date"] == REPORT_DATE.isoformat()
     assert "computed_at" in result
 
+    get_settings.cache_clear()
+
+
+def test_service_reuses_macro_components_without_reusing_request_envelope(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-linkage-components-cache.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+    macro_load_count = 0
+    original_load_macro_inputs = svc._load_macro_inputs
+
+    def counting_load_macro_inputs(*args: object, **kwargs: object):
+        nonlocal macro_load_count
+        macro_load_count += 1
+        return original_load_macro_inputs(*args, **kwargs)
+
+    monkeypatch.setattr(svc, "_load_macro_inputs", counting_load_macro_inputs)
+
+    first = svc.get_macro_bond_linkage(REPORT_DATE)
+    second = svc.get_macro_bond_linkage(REPORT_DATE)
+
+    assert macro_load_count == 1
+    assert first["result"]["top_correlations"] == second["result"]["top_correlations"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_environment_context_skips_full_correlation_analysis(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-environment-context.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_environment_context")
+
+    def fail_full_correlation_analysis(*_args: object, **_kwargs: object):
+        raise AssertionError("lightweight macro context should not compute macro-bond correlations")
+
+    monkeypatch.setattr(svc, "compute_macro_bond_correlations", fail_full_correlation_analysis)
+
+    envelope = svc.get_macro_environment_context(REPORT_DATE)
+
+    assert envelope["result_meta"]["result_kind"] == "macro_bond_linkage.environment_context"
+    assert envelope["result"]["environment_score"]["composite_score"] is not None
+    assert "top_correlations" not in envelope["result"]
+
+    clear_runtime_cache("macro_environment_context")
     get_settings.cache_clear()
 
 
