@@ -1667,7 +1667,7 @@ function choiceStockFallbackText(
   if (table?.fallback_mode !== "latest_available" || !table.fallback_date) {
     return "";
   }
-  return `最近可用 ${table.fallback_date}`;
+  return `fallback ${table.fallback_mode} · 最近可用 ${table.fallback_date}`;
 }
 
 function formatSignedRatio(value: number | null | undefined) {

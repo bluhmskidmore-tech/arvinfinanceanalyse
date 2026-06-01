@@ -693,7 +693,7 @@ describe("MacroToolkitPage", () => {
     expect(strategySupply).toHaveTextContent("部分链路 0");
     expect(strategySupply).toHaveTextContent("股票历史 2026-04-30 · 已对齐");
     expect(strategySupply).toHaveTextContent("因子快照 2026-04-30 · 陈旧");
-    expect(strategySupply).toHaveTextContent("最近可用 2026-04-27");
+    expect(strategySupply).toHaveTextContent("fallback latest_available · 最近可用 2026-04-27");
     const multiFactorTitle = await screen.findByText("多因子选股");
     const multiFactorCard = multiFactorTitle.closest(".macro-toolkit-strategy-card");
     expect(multiFactorCard).not.toBeNull();
