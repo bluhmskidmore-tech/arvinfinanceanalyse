@@ -800,4 +800,32 @@ describe("mapToHomeView", () => {
     expect(dv01Mini?.footTone).toBe("down");
     expect(view.riskMinis.find((mini) => mini.id === "concentration")?.foot).toBe("—");
   });
+
+  it("labels terminal PnL as monthly and displays credit ratio as a percent", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      attribution: {
+        title: "经营贡献拆解",
+        total: numeric(273_237_604.39366686, "+2.73 亿"),
+        segments: [],
+      },
+      riskIndicators: {
+        report_date: "2026-04-30",
+        total_market_value: numeric(348_819_181_969.6323, "3,488.19 亿"),
+        total_dv01: numeric(108_230_899.46003927, "108,230,899.46", "dv01"),
+        weighted_duration: numeric(4.42922856, "4.43", "ratio"),
+        credit_ratio: numeric(0.29543613, "0.30", "ratio"),
+        weighted_convexity: numeric(27.60155099, "27.60", "ratio"),
+        total_spread_dv01: numeric(27_117_248.92176532, "27,117,248.92", "dv01"),
+        reinvestment_ratio_1y: numeric(0.36137719, "0.36", "ratio"),
+      },
+    });
+
+    const pnl = view.terminalKpis.find((kpi) => kpi.id === "day-pnl");
+    const creditRatio = view.terminalKpis.find((kpi) => kpi.id === "credit-ratio");
+
+    expect(pnl?.label).toBe("月度盈亏（本月）");
+    expect(creditRatio?.value).toBe("29.54");
+    expect(creditRatio?.unit).toBe("%");
+  });
 });

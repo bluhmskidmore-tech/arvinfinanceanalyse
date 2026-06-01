@@ -563,6 +563,20 @@ function formatRatio(raw: number): string {
   });
 }
 
+function ratioAsPercentNumeric(value: NumericLike): NumericLike {
+  const raw = numericRaw(value);
+  if (raw == null) {
+    return value;
+  }
+  return {
+    raw,
+    unit: "pct",
+    display: formatPct(raw, false),
+    precision: 2,
+    sign_aware: false,
+  };
+}
+
 function formatDv01(raw: number): string {
   return raw.toLocaleString("en-US", {
     maximumFractionDigits: 2,
@@ -1172,7 +1186,7 @@ function buildTerminalKpis(args: {
     }),
     terminalKpiFromNumeric({
       id: "day-pnl",
-      label: "今日盈亏（当日）",
+      label: "月度盈亏（本月）",
       value: args.attribution?.total,
       sparkline: flatSparkline(0.9),
       unitHint: "yuan",
@@ -1197,10 +1211,10 @@ function buildTerminalKpis(args: {
     terminalKpiFromNumeric({
       id: "credit-ratio",
       label: "信用占比",
-      value: creditRatio,
+      value: ratioAsPercentNumeric(creditRatio),
       sparkline: flatSparkline(0.95),
       state: args.riskIndicators ? riskMetricState : undefined,
-      unitHint: "ratio",
+      unitHint: "pct",
     }),
   ];
 }
@@ -1510,7 +1524,7 @@ function buildMockView(): DashboardHomeView {
       },
       {
         id: "day-pnl",
-        label: "今日盈亏（当日）",
+        label: "月度盈亏（本月）",
         value: "+0.85",
         unit: "亿",
         delta: "样例模式",
