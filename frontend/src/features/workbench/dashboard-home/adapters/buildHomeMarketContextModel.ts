@@ -201,6 +201,10 @@ function strongestNegativeMoney(components: readonly MoneyComponent[]): MoneyCom
   }, null);
 }
 
+function moneyComponentBreakdown(components: readonly MoneyComponent[]): string {
+  return `四因子 ${components.map((item) => `${item.label} ${formatYiSigned(item.raw)}`).join(" · ")}`;
+}
+
 function buildPnlBlock(
   campisiFourEffects: CampisiFourEffectsPayload | null | undefined,
   returnDecomposition: ReturnDecompositionPayload | null | undefined,
@@ -224,10 +228,10 @@ function buildPnlBlock(
       label: "PnL归因",
       title: contribution
         ? `最大贡献 ${contribution.label} ${formatYiSigned(contribution.raw)}`
-        : "暂无正贡献项",
+        : "无正贡献项",
       detail: drag
-        ? `最大拖累 ${drag.label} ${formatYiSigned(drag.raw)}`
-        : "暂无负贡献项",
+        ? `最大拖累 ${drag.label} ${formatYiSigned(drag.raw)}；${moneyComponentBreakdown(components)}`
+        : `无负贡献项；${moneyComponentBreakdown(components)}`,
       foot: `Campisi 总收益 ${formatYiSigned(totals.total_return)}${closure}`,
     };
   }
@@ -258,10 +262,10 @@ function buildPnlBlock(
     label: "PnL归因",
     title: contribution
       ? `最大贡献 ${contribution.label} ${numericDisplay(contribution.value)}`
-      : "暂无正贡献项",
+      : "无正贡献项",
     detail: drag
       ? `最大拖累 ${drag.label} ${numericDisplay(drag.value)}`
-      : "暂无负贡献项",
+      : "无负贡献项",
     foot: `解释PnL ${numericDisplay(returnDecomposition.explained_pnl)} / 实际 ${numericDisplay(returnDecomposition.actual_pnl)}`,
   };
 }

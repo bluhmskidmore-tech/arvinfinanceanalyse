@@ -22,6 +22,8 @@ import type {
   KRDCurveRiskPayload,
   IndustryDistPayload,
   MaturityStructurePayload,
+  Numeric,
+  NumericUnit,
   PortfolioComparisonPayload,
   ReturnDecompositionPayload,
   RiskIndicatorsPayload,
@@ -180,6 +182,130 @@ export type BondDashboardClientFactoryOptions = {
 export type BondAnalyticsClientFactoryOptions = BondDashboardClientFactoryOptions & {
   requestActionJson: RequestActionJson;
 };
+
+function isNumeric(value: unknown): value is Numeric {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "raw" in value &&
+      "unit" in value &&
+      "display" in value &&
+      "precision" in value &&
+      "sign_aware" in value,
+  );
+}
+
+function decimalRaw(value: unknown): number | null {
+  if (isNumeric(value)) {
+    return value.raw;
+  }
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const raw = typeof value === "number" ? value : Number.parseFloat(String(value));
+  return Number.isFinite(raw) ? raw : null;
+}
+
+function normalizeNumeric(
+  value: unknown,
+  unit: NumericUnit,
+  signAware: boolean,
+  precision?: number,
+): Numeric {
+  if (isNumeric(value)) {
+    return value;
+  }
+  return formatRawAsNumeric({
+    raw: decimalRaw(value),
+    unit,
+    sign_aware: signAware,
+    precision,
+  });
+}
+
+function normalizeConcentration(
+  value: unknown,
+): CreditSpreadMigrationPayload["concentration_by_rating"] {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const source = value as Record<string, unknown>;
+  const topItems = Array.isArray(source.top_items) ? source.top_items : [];
+  return {
+    ...source,
+    dimension: String(source.dimension ?? ""),
+    hhi: normalizeNumeric(source.hhi, "ratio", false),
+    top5_concentration: normalizeNumeric(source.top5_concentration, "ratio", false),
+    top_items: topItems.map((item) => {
+      const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      return {
+        ...row,
+        name: String(row.name ?? ""),
+        weight: normalizeNumeric(row.weight, "ratio", false),
+        market_value: normalizeNumeric(row.market_value, "yuan", false),
+      };
+    }),
+  };
+}
+
+function normalizeCreditSpreadMigrationEnvelope(
+  envelope: ApiEnvelope<CreditSpreadMigrationPayload>,
+): ApiEnvelope<CreditSpreadMigrationPayload> {
+  const source = envelope.result as unknown as Record<string, unknown>;
+  const spreadScenarios = Array.isArray(source.spread_scenarios) ? source.spread_scenarios : [];
+  const migrationScenarios = Array.isArray(source.migration_scenarios) ? source.migration_scenarios : [];
+  const bondDetails = Array.isArray(source.bond_details) ? source.bond_details : undefined;
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      credit_market_value: normalizeNumeric(source.credit_market_value, "yuan", false),
+      credit_weight: normalizeNumeric(source.credit_weight, "ratio", false),
+      rating_aa_and_below_weight: normalizeNumeric(source.rating_aa_and_below_weight, "ratio", false),
+      spread_dv01: normalizeNumeric(source.spread_dv01, "dv01", false),
+      weighted_avg_spread: normalizeNumeric(source.weighted_avg_spread, "bp", false, 2),
+      weighted_avg_spread_duration: normalizeNumeric(source.weighted_avg_spread_duration, "ratio", false),
+      spread_scenarios: spreadScenarios.map((item) => {
+        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        return {
+          ...row,
+          scenario_name: String(row.scenario_name ?? ""),
+          spread_change_bp: normalizeNumeric(row.spread_change_bp, "bp", true),
+          pnl_impact: normalizeNumeric(row.pnl_impact, "yuan", true),
+          oci_impact: normalizeNumeric(row.oci_impact, "yuan", true),
+          tpl_impact: normalizeNumeric(row.tpl_impact, "yuan", true),
+        };
+      }),
+      migration_scenarios: migrationScenarios.map((item) => {
+        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        return {
+          ...row,
+          scenario_name: String(row.scenario_name ?? ""),
+          from_rating: String(row.from_rating ?? ""),
+          to_rating: String(row.to_rating ?? ""),
+          affected_bonds: Number(row.affected_bonds ?? 0),
+          affected_market_value: normalizeNumeric(row.affected_market_value, "yuan", false),
+          pnl_impact: normalizeNumeric(row.pnl_impact, "yuan", true),
+          oci_impact: normalizeNumeric(row.oci_impact, "yuan", true),
+        };
+      }),
+      concentration_by_issuer: normalizeConcentration(source.concentration_by_issuer),
+      concentration_by_industry: normalizeConcentration(source.concentration_by_industry),
+      concentration_by_rating: normalizeConcentration(source.concentration_by_rating),
+      concentration_by_tenor: normalizeConcentration(source.concentration_by_tenor),
+      bond_details: bondDetails?.map((item) => {
+        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        return {
+          ...row,
+          market_value: normalizeNumeric(row.market_value, "yuan", false),
+        };
+      }),
+      oci_credit_exposure: normalizeNumeric(source.oci_credit_exposure, "yuan", false),
+      oci_spread_dv01: normalizeNumeric(source.oci_spread_dv01, "dv01", false),
+      oci_sensitivity_25bp: normalizeNumeric(source.oci_sensitivity_25bp, "yuan", true),
+    },
+  };
+}
 
 export function createDemoBondAnalyticsClient(
   delay: Delay,
@@ -899,7 +1025,7 @@ export function createRealBondAnalyticsClient(
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/credit-spread-migration?${params.toString()}`,
-      );
+      ).then(normalizeCreditSpreadMigrationEnvelope);
     },
     getBondAnalyticsPortfolioHeadlines: (reportDate: string) =>
       requestJson<BondPortfolioHeadlinesPayload>(

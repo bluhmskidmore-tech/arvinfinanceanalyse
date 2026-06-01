@@ -110,6 +110,46 @@ export const apiQueryKeys = {
       normalizeReportDate(reportDate),
       spreadScenarios,
     ] as const,
+  bondAnalyticsReturnDecomposition: (
+    mode: string,
+    reportDate: string | null | undefined,
+    periodType: string,
+    assetClass = "all",
+    accountingClass = "all",
+  ) =>
+    [
+      "bond-analytics",
+      "return-decomposition",
+      mode,
+      normalizeReportDate(reportDate),
+      periodType,
+      assetClass,
+      accountingClass,
+    ] as const,
+  bondAnalyticsYieldCurveTermStructure: (
+    mode: string,
+    reportDate: string | null | undefined,
+    curveTypes: string,
+  ) =>
+    [
+      "bond-analytics",
+      "yield-curve-term-structure",
+      mode,
+      normalizeReportDate(reportDate),
+      curveTypes,
+    ] as const,
+  pnlCampisiFourEffects: (
+    mode: string,
+    reportDate: string | null | undefined,
+    lookbackDays: number,
+  ) =>
+    [
+      "pnl-attribution",
+      "campisi-four-effects",
+      mode,
+      normalizeReportDate(reportDate),
+      lookbackDays,
+    ] as const,
   balanceAnalysisDecisionItems: (
     mode: string,
     reportDate: string | null | undefined,

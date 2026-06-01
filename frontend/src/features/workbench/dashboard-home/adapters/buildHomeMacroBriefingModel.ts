@@ -1,7 +1,14 @@
 import macroReleaseCalendarRaw from "../../../../../../config/dashboard_macro_release_calendar_2026.json";
 import type { ChoiceNewsEvent } from "../../../../api/contracts";
-import { dashboardMacroNewsTopicLabel } from "../../dashboard/dashboardMacroNewsTopics";
+import {
+  dashboardMacroNewsFallbackTopicLabel,
+  dashboardMacroNewsTopicLabel,
+} from "../../dashboard/dashboardMacroNewsTopics";
 import { addDaysToIsoDate } from "../../pages/dashboardPageHelpers";
+import {
+  shouldIncludeMacroNewsEvent,
+  summarizeMacroNewsEvent,
+} from "./macroNewsPresentation";
 import type { HomeResearchCalendarModel } from "./buildHomeResearchCalendarModel";
 
 export type HomeMacroReleaseItem = {
@@ -59,11 +66,17 @@ type MacroReleaseCalendarRow = {
   source_url: string;
 };
 
+type MacroNewsItemsResult = Pick<
+  HomeMacroBriefingModel,
+  "newsItems" | "newsMessage" | "newsStale" | "newsFreshnessLabel" | "newsSourceLabel" | "newsAsOfLabel" | "newsStatusLabel" | "newsRefreshLabel"
+>;
+
 const RELEASE_WINDOW_DAYS = 45;
 const RELEASE_LIMIT = 6;
 const NEWS_LIMIT = 6;
 const NEWS_STALE_DAYS = 7;
-const MACRO_NEWS_SOURCE_LABEL = "来源：Choice 宏观新闻";
+const MACRO_NEWS_CHOICE_SOURCE_LABEL = "来源：Choice 宏观新闻";
+const MACRO_NEWS_FALLBACK_SOURCE_LABEL = "来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）";
 const MACRO_NEWS_REFRESH_LABEL = "刷新：随页面查询自动更新";
 const macroReleaseCalendar = macroReleaseCalendarRaw as readonly MacroReleaseCalendarRow[];
 
@@ -85,10 +98,14 @@ function dateLabel(date: string): string {
 }
 
 function dateTimeLabel(value: string): string {
-  if (value.length >= 16) {
-    return `${value.slice(5, 10)} ${value.slice(11, 16)}`;
+  const normalized = value.trim();
+  if (!normalized || normalized === "—") {
+    return "时间待核";
   }
-  return dateLabel(value);
+  if (normalized.length >= 16) {
+    return `${normalized.slice(5, 10)} ${normalized.slice(11, 16)}`;
+  }
+  return dateLabel(normalized);
 }
 
 function daysBetween(leftIso: string, rightIso: string): number | null {
@@ -117,26 +134,6 @@ function daysUntilLabel(date: string, todayIsoDate: string): string {
   return `${Math.abs(days)}天前`;
 }
 
-function summarizeNewsEvent(event: ChoiceNewsEvent): string {
-  const payloadText = event.payload_text?.trim();
-  if (payloadText) {
-    return payloadText;
-  }
-  const payloadJson = event.payload_json?.trim();
-  if (!payloadJson) {
-    return "";
-  }
-  try {
-    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
-    const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
-    const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-    const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
-    return [headline || title, summary].filter(Boolean).join(" - ") || payloadJson;
-  } catch {
-    return payloadJson;
-  }
-}
-
 function buildReleaseItems(todayIsoDate: string): HomeMacroReleaseItem[] {
   const windowEndDate = addDaysToIsoDate(todayIsoDate, RELEASE_WINDOW_DAYS);
   return macroReleaseCalendar
@@ -159,48 +156,27 @@ function buildReleaseItems(todayIsoDate: string): HomeMacroReleaseItem[] {
     }));
 }
 
-function buildNewsItems(input: {
+function buildNewsItemsFromEvents(input: {
   events?: readonly ChoiceNewsEvent[] | null;
   todayIsoDate: string;
-  isLoading: boolean;
-  isError: boolean;
-}): Pick<
-  HomeMacroBriefingModel,
-  "newsItems" | "newsMessage" | "newsStale" | "newsFreshnessLabel" | "newsSourceLabel" | "newsAsOfLabel" | "newsStatusLabel" | "newsRefreshLabel"
-> {
-  if (input.isError) {
-    return {
-      newsItems: [],
-      newsMessage: "宏观新闻加载失败，请稍后刷新。",
-      newsStale: false,
-      newsFreshnessLabel: "新闻源异常",
-      newsSourceLabel: MACRO_NEWS_SOURCE_LABEL,
-      newsAsOfLabel: "数据截至：不可用",
-      newsStatusLabel: "来源状态：异常",
-      newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
-    };
-  }
-  if (input.isLoading && !input.events?.length) {
-    return {
-      newsItems: [],
-      newsMessage: "正在加载国内外宏观新闻…",
-      newsStale: false,
-      newsFreshnessLabel: "加载中",
-      newsSourceLabel: MACRO_NEWS_SOURCE_LABEL,
-      newsAsOfLabel: "数据截至：加载中",
-      newsStatusLabel: "来源状态：加载中",
-      newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
-    };
-  }
-
+  topicLabel: (topicCode: string) => string;
+  sourceLabel: string;
+  emptyMessage: string;
+  statusWhenFresh: string;
+  statusWhenStale: string;
+  statusWhenEmpty: string;
+  requireMacroRelevance?: boolean;
+}): MacroNewsItemsResult {
   const seenTitles = new Set<string>();
   const sortedEvents = (input.events ?? [])
-    .filter((event) => event.error_code === 0)
+    .filter((event) =>
+      shouldIncludeMacroNewsEvent(event, { requireMacroRelevance: Boolean(input.requireMacroRelevance) }),
+    )
     .slice()
     .sort((left, right) => right.received_at.localeCompare(left.received_at));
   const newsItems = sortedEvents
     .flatMap((event) => {
-      const title = summarizeNewsEvent(event);
+      const title = summarizeMacroNewsEvent(event);
       const key = title.trim().toLowerCase();
       if (!title || seenTitles.has(key)) {
         return [];
@@ -211,7 +187,7 @@ function buildNewsItems(input: {
         {
           id: event.event_key,
           timeLabel,
-          topicLabel: dashboardMacroNewsTopicLabel(event.topic_code),
+          topicLabel: input.topicLabel(event.topic_code),
           title,
           freshnessLabel: `最近更新 ${timeLabel}`,
         },
@@ -219,7 +195,7 @@ function buildNewsItems(input: {
     })
     .slice(0, NEWS_LIMIT);
 
-  const latestDate = newsItems.length > 0 ? sortedEvents[0]?.received_at.slice(0, 10) : "";
+  const latestDate = sortedEvents[0]?.received_at.slice(0, 10) ?? "";
   const staleDays = latestDate ? daysBetween(input.todayIsoDate, latestDate) : null;
   const newsStale = staleDays != null && staleDays > NEWS_STALE_DAYS;
   const newsFreshnessLabel = newsItems[0]?.freshnessLabel ?? "暂无更新";
@@ -227,14 +203,88 @@ function buildNewsItems(input: {
 
   return {
     newsItems,
-    newsMessage: newsItems.length > 0 ? null : "暂无可展示的宏观新闻。",
+    newsMessage: newsItems.length > 0 ? null : input.emptyMessage,
     newsStale,
     newsFreshnessLabel,
-    newsSourceLabel: MACRO_NEWS_SOURCE_LABEL,
+    newsSourceLabel: input.sourceLabel,
     newsAsOfLabel,
-    newsStatusLabel: newsItems.length > 0 ? (newsStale ? "来源状态：偏旧" : "来源状态：正常") : "来源状态：暂无数据",
+    newsStatusLabel:
+      newsItems.length > 0 ? (newsStale ? input.statusWhenStale : input.statusWhenFresh) : input.statusWhenEmpty,
     newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
   };
+}
+
+export function shouldUseMacroNewsFallback(choiceNews: MacroNewsItemsResult): boolean {
+  if (choiceNews.newsItems.length === 0) {
+    return true;
+  }
+  return choiceNews.newsStale;
+}
+
+export function resolveHomeMacroNewsBriefing(input: {
+  choiceEvents?: readonly ChoiceNewsEvent[] | null;
+  fallbackEvents?: readonly ChoiceNewsEvent[] | null;
+  todayIsoDate: string;
+  isLoading: boolean;
+  isError: boolean;
+}): MacroNewsItemsResult {
+  if (input.isError) {
+    return {
+      newsItems: [],
+      newsMessage: "宏观新闻加载失败，请稍后刷新。",
+      newsStale: false,
+      newsFreshnessLabel: "新闻源异常",
+      newsSourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+      newsAsOfLabel: "数据截至：不可用",
+      newsStatusLabel: "来源状态：异常",
+      newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    };
+  }
+  if (input.isLoading && !input.choiceEvents?.length && !input.fallbackEvents?.length) {
+    return {
+      newsItems: [],
+      newsMessage: "正在加载国内外宏观新闻…",
+      newsStale: false,
+      newsFreshnessLabel: "加载中",
+      newsSourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+      newsAsOfLabel: "数据截至：加载中",
+      newsStatusLabel: "来源状态：加载中",
+      newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    };
+  }
+
+  const choiceNews = buildNewsItemsFromEvents({
+    events: input.choiceEvents,
+    todayIsoDate: input.todayIsoDate,
+    topicLabel: dashboardMacroNewsTopicLabel,
+    sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+    emptyMessage: "暂无可展示的宏观新闻。",
+    statusWhenFresh: "来源状态：正常",
+    statusWhenStale: "来源状态：偏旧",
+    statusWhenEmpty: "来源状态：暂无数据",
+  });
+
+  if (!shouldUseMacroNewsFallback(choiceNews)) {
+    return choiceNews;
+  }
+
+  const fallbackNews = buildNewsItemsFromEvents({
+    events: input.fallbackEvents,
+    todayIsoDate: input.todayIsoDate,
+    topicLabel: dashboardMacroNewsFallbackTopicLabel,
+    sourceLabel: MACRO_NEWS_FALLBACK_SOURCE_LABEL,
+    emptyMessage: "暂无可展示的宏观新闻。",
+    statusWhenFresh: "来源状态：Tushare 兜底",
+    statusWhenStale: "来源状态：偏旧",
+    statusWhenEmpty: "来源状态：暂无数据",
+    requireMacroRelevance: true,
+  });
+
+  if (fallbackNews.newsItems.length > 0) {
+    return fallbackNews;
+  }
+
+  return choiceNews;
 }
 
 function buildSupplyItems(calendar: HomeResearchCalendarModel): HomeMacroSupplyItem[] {
@@ -256,13 +306,15 @@ function buildSupplyItems(calendar: HomeResearchCalendarModel): HomeMacroSupplyI
 export function buildHomeMacroBriefingModel(input: {
   todayIsoDate: string;
   newsEvents?: readonly ChoiceNewsEvent[] | null;
+  fallbackNewsEvents?: readonly ChoiceNewsEvent[] | null;
   newsLoading: boolean;
   newsError: boolean;
   supplyCalendar: HomeResearchCalendarModel;
 }): HomeMacroBriefingModel {
   const releaseItems = buildReleaseItems(input.todayIsoDate);
-  const news = buildNewsItems({
-    events: input.newsEvents,
+  const news = resolveHomeMacroNewsBriefing({
+    choiceEvents: input.newsEvents,
+    fallbackEvents: input.fallbackNewsEvents,
     todayIsoDate: input.todayIsoDate,
     isLoading: input.newsLoading,
     isError: input.newsError,

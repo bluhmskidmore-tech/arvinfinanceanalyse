@@ -12,6 +12,9 @@ export type DashboardApiClient = Pick<
   | "getBondAnalyticsPortfolioHeadlines"
   | "getBondDashboardPortfolioComparison"
   | "getBondAnalyticsCreditSpreadMigration"
+  | "getBondAnalyticsReturnDecomposition"
+  | "getBondAnalyticsYieldCurveTermStructure"
+  | "getPnlCampisiFourEffects"
   | "getPnlByBusinessAnalysis"
   | "getBalanceAnalysisDecisionItems"
   | "getResearchCalendarEvents"
@@ -63,6 +66,35 @@ export function getCreditRiskOverview(
   return client.getBondAnalyticsCreditSpreadMigration(reportDate);
 }
 
+export function getReturnDecompositionContext(
+  client: DashboardApiClient,
+  reportDate: string,
+) {
+  return client.getBondAnalyticsReturnDecomposition(reportDate, "MoM", {
+    assetClass: "all",
+    accountingClass: "all",
+  });
+}
+
+export function getCampisiAttributionContext(
+  client: DashboardApiClient,
+  reportDate: string,
+) {
+  return client.getPnlCampisiFourEffects({
+    endDate: reportDate,
+    lookbackDays: 30,
+  });
+}
+
+export function getYieldCurveContext(
+  client: DashboardApiClient,
+  reportDate: string,
+) {
+  return client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
+    curveTypes: "treasury,cdb,aaa_credit",
+  });
+}
+
 export function getBondBucketYield(
   client: DashboardApiClient,
   reportDate: string,
@@ -98,4 +130,3 @@ export function getRiskControlOverview(
     currencyBasis: "CNY",
   });
 }
-

@@ -49,6 +49,7 @@ export default function DashboardHomePage() {
     decisionItemsQuery,
     researchCalendarQuery,
     macroNewsQueries,
+    macroNewsFallbackQueries,
     calendarStartDate,
     calendarEndDate,
   } = useDashboardData({
@@ -162,8 +163,18 @@ export default function DashboardHomePage() {
     () => macroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
     [macroNewsQueries],
   );
-  const macroNewsLoading = macroNewsQueries.some((query) => query.isLoading);
-  const macroNewsError = macroNewsQueries.length > 0 && macroNewsQueries.every((query) => query.isError);
+  const macroNewsFallbackEvents = useMemo(
+    () => macroNewsFallbackQueries.flatMap((query) => query.data?.result.events ?? []),
+    [macroNewsFallbackQueries],
+  );
+  const macroNewsLoading =
+    macroNewsQueries.some((query) => query.isLoading) ||
+    macroNewsFallbackQueries.some((query) => query.isLoading);
+  const macroNewsError =
+    macroNewsQueries.length > 0 &&
+    macroNewsFallbackQueries.length > 0 &&
+    macroNewsQueries.every((query) => query.isError) &&
+    macroNewsFallbackQueries.every((query) => query.isError);
 
   const effectiveReportDate =
     snapshotResult?.report_date?.trim() || initialEffectiveReportDate || reportDate.trim();
@@ -226,6 +237,7 @@ export default function DashboardHomePage() {
         calendarEndDate,
         todayIsoDate: dashboardTodayIsoDate,
         macroNewsEvents,
+        macroNewsFallbackEvents,
         macroNewsLoading,
         macroNewsError,
         snapshotMeta,
@@ -276,6 +288,7 @@ export default function DashboardHomePage() {
       dashboardTodayIsoDate,
       macroNewsError,
       macroNewsEvents,
+      macroNewsFallbackEvents,
       macroNewsLoading,
       researchCalendarQuery.data,
       researchCalendarQuery.isError,

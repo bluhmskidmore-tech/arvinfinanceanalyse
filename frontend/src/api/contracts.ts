@@ -165,6 +165,7 @@ export type HomeResearchReportItem = {
   published_at: string;
   link: string | null;
   source: string;
+  institution?: string | null;
   source_status: "ready" | "empty" | "stale";
   summary?: string | null;
 };

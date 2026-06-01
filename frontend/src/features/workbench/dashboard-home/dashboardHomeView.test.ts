@@ -163,6 +163,162 @@ describe("mapToHomeView", () => {
     expect(view.macroBriefing.supplyItems[0]?.label).toBe("供给/招标：当前窗口无事件");
   });
 
+  it("falls back to Tushare macro news when Choice feed is stale", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      todayIsoDate: "2026-06-01",
+      macroNewsEvents: [
+        {
+          event_key: "choice-stale",
+          received_at: "2026-04-21T15:06:30+08:00",
+          group_id: "news_cmd1",
+          content_type: "sectornews",
+          serial_id: 1,
+          request_id: 1,
+          error_code: 0,
+          error_msg: "",
+          topic_code: "S888005004API",
+          item_index: 0,
+          payload_text: "旧 Choice 新闻",
+          payload_json: null,
+        },
+      ],
+      macroNewsFallbackEvents: [
+        {
+          event_key: "tushare-fresh",
+          received_at: "2026-06-01T08:19:56+00:00",
+          group_id: "tushare_news",
+          content_type: "news",
+          serial_id: 1,
+          request_id: 1,
+          error_code: 0,
+          error_msg: "",
+          topic_code: "tushare.news.sina",
+          item_index: 0,
+          payload_text: "央行开展逆回购操作，市场快讯更新",
+          payload_json: null,
+        },
+      ],
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.macroBriefing.newsItems[0]?.title).toBe("央行开展逆回购操作，市场快讯更新");
+    expect(view.macroBriefing.newsSourceLabel).toContain("Tushare");
+    expect(view.macroBriefing.newsStatusLabel).toBe("来源状态：Tushare 兜底");
+    expect(view.macroBriefing.newsStale).toBe(false);
+  });
+
+  it("uses governed macro news as research-info fallback when report feed is empty", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      todayIsoDate: "2026-06-01",
+      researchReports: {
+        report_date: "2026-04-30",
+        source_status: "empty",
+        warnings: ["No research reports found on or before report_date."],
+        items: [],
+      },
+      macroNewsEvents: [
+        {
+          event_key: "choice-fresh",
+          received_at: "2026-06-01T09:30:00+08:00",
+          group_id: "news_cmd1",
+          content_type: "sectornews",
+          serial_id: 1,
+          request_id: 1,
+          error_code: 0,
+          error_msg: "",
+          topic_code: "S888005004API",
+          item_index: 0,
+          payload_text: "央行公开市场净投放保持平稳",
+          payload_json: null,
+        },
+      ],
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.researchReportsState.kind).toBe("partial");
+    expect(view.researchReportsState.label).toBe("研报源暂无 · 新闻补位");
+    expect(view.researchReports[0]?.title).toBe("央行公开市场净投放保持平稳");
+    expect(view.researchReports[0]?.category).toBe("新闻补位 · 国际资讯");
+    expect(view.researchReports[0]?.summary).toContain("Choice 宏观新闻");
+  });
+
+  it("shows latest research reports when report feed is stale fallback", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      researchReports: {
+        report_date: "2026-04-30",
+        source_status: "stale",
+        warnings: ["No research reports on or before 2026-04-30; showing latest ingested research reports."],
+        items: [
+          {
+            id: "research-1",
+            title: "6月利率债周报",
+            category: "fixed_income",
+            published_at: "2026-06-01T09:00:00+00:00",
+            link: "https://example.com/june-research.pdf",
+            source: "tushare_research",
+            source_status: "ready",
+            summary: "关注曲线陡峭化",
+            institution: "中信固收",
+          },
+          {
+            id: "research-2",
+            title: "6月电力设备行业跟踪周报",
+            category: "行业研报",
+            published_at: "2026-06-02T09:00:00+00:00",
+            link: "https://example.com/power-research.pdf",
+            source: "tushare_research",
+            source_status: "ready",
+            summary: "锂电和工控需求持续向上",
+          },
+        ],
+      },
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.researchReportsState.kind).toBe("partial");
+    expect(view.researchReportsState.label).toBe("报告日前无研报 · 展示最新");
+    expect(view.researchReports).toHaveLength(1);
+    expect(view.researchReports[0]?.title).toBe("6月利率债周报");
+    expect(view.researchReports[0]?.institution).toBe("中信固收");
+    expect(view.researchReports[0]?.isNewsFallback).toBe(false);
+  });
+
+  it("marks missing rate-bond ratings as not applicable instead of a gap", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      topHoldings: {
+        report_date: "2026-04-30",
+        top_n: 1,
+        total_market_value: numeric(100_000_000, "1.00 yi"),
+        warnings: [],
+        computed_at: "2026-04-30T10:00:00Z",
+        items: [
+          {
+            instrument_code: "240001.IB",
+            instrument_name: "国开债",
+            issuer_name: "国家开发银行",
+            rating: null,
+            asset_class: "rate",
+            market_value: numeric(100_000_000, "1.00 yi"),
+            face_value: numeric(100_000_000, "1.00 yi"),
+            ytm: numeric(0.021, "2.10%", "pct"),
+            modified_duration: numeric(5.2, "5.20", "ratio"),
+            weight: numeric(0.1, "10.00%", "ratio"),
+          },
+        ],
+      },
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.holdingRows[0]?.assetClass).toBe("利率债");
+    expect(view.holdingRows[0]?.rating).toBe("不适用");
+  });
+
   it("builds market context from formal attribution, curve and credit spread data", () => {
     const view = mapToHomeView({
       ...baseRealInput,
@@ -293,6 +449,9 @@ describe("mapToHomeView", () => {
     ]);
     expect(view.marketContext.contextBlocks[0]?.title).toContain("最大贡献 Carry/Income +1.79 亿");
     expect(view.marketContext.contextBlocks[0]?.detail).toContain("最大拖累 个券选择/残差 -0.05 亿");
+    expect(view.marketContext.contextBlocks[0]?.detail).toContain(
+      "四因子 Carry/Income +1.79 亿 · 利率曲线 -0.03 亿 · 信用利差 +0.12 亿 · 个券选择/残差 -0.05 亿",
+    );
     expect(view.marketContext.contextBlocks[1]?.title).toContain("CDB 10Y 2.60%");
     expect(view.marketContext.contextBlocks[2]?.detail).toContain("AA及以下 18.00%");
     expect(view.marketContext.aiSummary).toEqual(
@@ -305,10 +464,29 @@ describe("mapToHomeView", () => {
     expect(view.marketContext.sourceLabel).toBe("来源：收益归因 / yield_curve_term_structure / credit_spread_migration");
     expect(view.marketContext.asOfLabel).toBe("数据截至 2026-04-30");
     expect(view.marketContext.statusLabel).toBe("来源状态：正式链路");
+    expect(view.attributionWaterfall.map((item) => item.label)).toEqual([
+      "Carry/Income",
+      "利率曲线",
+      "信用利差",
+      "个券选择/残差",
+    ]);
+    expect(view.attributionWaterfall.map((item) => item.value)).toEqual([
+      "+17,900.00",
+      "-300.00",
+      "+1,200.00",
+      "-500.00",
+    ]);
     expect(view.decisionRail.maxContributionLabel).toBe("Carry/Income");
     expect(view.decisionRail.maxContributionValue).toBe("+1.79 亿");
     expect(view.decisionRail.maxDragLabel).toBe("个券选择/残差");
     expect(view.decisionRail.maxDragValue).toBe("-0.05 亿");
+    expect(view.decisionRail.conclusion).toContain("最大贡献 Carry/Income +1.79 亿");
+    expect(view.decisionRail.conclusion).toContain("CDB 10Y 2.60%");
+    expect(view.decisionRail.keyRisk).toContain("信用利差");
+    expect(view.decisionRail.keyRisk).toContain("25bp -0.03 亿");
+    expect(view.decisionRail.suggestions[0]).toContain("复核收益来源");
+    expect(view.decisionRail.suggestions[1]).toContain("关注曲线变化");
+    expect(view.decisionRail.suggestions[2]).toContain("跟踪信用压力");
   });
 
   it("names missing credit spread context fields instead of showing generic dashes", () => {
@@ -342,6 +520,44 @@ describe("mapToHomeView", () => {
     expect(creditBlock?.detail).toContain("AA及以下 缺评级分布");
     expect(creditBlock?.detail).toContain("25bp 缺25bp情景");
     expect(creditBlock?.foot).toContain("占比 缺信用债占比");
+  });
+
+  it("shows explicit no-drag state when formal attribution has no negative component", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      campisiFourEffects: {
+        report_date: "2026-04-30",
+        period_start: "2026-04-01",
+        period_end: "2026-04-30",
+        num_days: 30,
+        totals: {
+          income_return: 529_000_000,
+          treasury_effect: 0,
+          spread_effect: 0,
+          selection_effect: 6_000_000,
+          total_return: 535_000_000,
+          market_value_start: 300_000_000_000,
+        },
+        by_asset_class: [],
+        by_bond: [],
+        formal_closure: {
+          basis: "pnl.bridge.total_actual_pnl",
+          report_date: "2026-04-30",
+          status: "closed",
+          campisi_total_return: 535_000_000,
+          formal_actual_pnl: 535_000_000,
+          residual_to_formal_pnl: 0,
+          residual_ratio: 0,
+          message: "closed",
+        },
+        warnings: [],
+      },
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.decisionRail.maxDragLabel).toBe("无负贡献项");
+    expect(view.decisionRail.maxDragValue).toBe("0.00 亿");
   });
 
   it("maps ready income trend into portfolio benchmark and excess lines", () => {

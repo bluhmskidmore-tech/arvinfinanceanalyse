@@ -19,6 +19,7 @@ import type {
   DashboardHomeView,
   HomeDataStateKind,
   HomeDistributionSlice,
+  HomeResearchReportRow,
   HomeTerminalListState,
 } from "./dashboardHomeView";
 import { resolveDeltaClass } from "./dashboardHomeView";
@@ -479,40 +480,126 @@ function PositionChangesPanel({ view }: { view: DashboardHomeView }) {
   );
 }
 
+function formatResearchMonthDay(publishedAt: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(publishedAt.trim());
+  if (match) {
+    return `${match[2]}-${match[3]}`;
+  }
+  return publishedAt.trim() || "—";
+}
+
+function formatResearchCategoryLabel(category: string): string {
+  const trimmed = category.trim();
+  if (!trimmed || trimmed === "research") {
+    return "研报";
+  }
+  if (trimmed === "fixed_income") {
+    return "固收";
+  }
+  return trimmed;
+}
+
+function isResearchSummaryVisible(summary: string): boolean {
+  const text = summary.trim();
+  return text.length > 0 && text !== "—";
+}
+
+function formatResearchInstitution(row: HomeResearchReportRow): string | null {
+  const institution = row.institution.trim();
+  if (institution && institution !== "—") {
+    return institution;
+  }
+  const source = row.source.trim();
+  if (source && source !== "—" && source !== "tushare_research") {
+    return source;
+  }
+  return null;
+}
+
+function buildResearchMetaLine(row: HomeResearchReportRow): string {
+  return [formatResearchInstitution(row), formatResearchCategoryLabel(row.category)].filter(Boolean).join(" · ");
+}
+
+function ResearchReportFeatured({ row }: { row: HomeResearchReportRow }) {
+  const className = `${styles.dhTerminalReportFeatured}${row.isNewsFallback ? ` ${styles.dhTerminalReportFallback}` : ""}`;
+  const content = (
+    <>
+      <span className={styles.dhTerminalReportFeaturedDate}>
+        <b>{formatResearchMonthDay(row.publishedAt)}</b>
+        <small>{row.isNewsFallback ? "补位" : "最新"}</small>
+      </span>
+      <span className={styles.dhTerminalReportFeaturedBody}>
+        <span className={styles.dhTerminalReportFeaturedTitle}>{row.title}</span>
+        {isResearchSummaryVisible(row.summary) ? (
+          <span className={styles.dhTerminalReportFeaturedSummary}>{row.summary}</span>
+        ) : null}
+        <span className={styles.dhTerminalReportMetaRow}>
+          <span className={styles.dhTerminalReportMetaText}>{buildResearchMetaLine(row)}</span>
+          {row.link ? <span className={styles.dhTerminalReportPdfTag}>PDF</span> : null}
+        </span>
+      </span>
+    </>
+  );
+  return row.link ? (
+    <a className={className} href={row.link} target="_blank" rel="noreferrer" data-testid="dashboard-home-research-featured">
+      {content}
+    </a>
+  ) : (
+    <div className={className} data-testid="dashboard-home-research-featured">
+      {content}
+    </div>
+  );
+}
+
+function ResearchReportCompactRow({ row }: { row: HomeResearchReportRow }) {
+  const className = `${styles.dhTerminalReportCompactRow}${row.isNewsFallback ? ` ${styles.dhTerminalReportFallback}` : ""}`;
+  const content = (
+    <>
+      <span className={styles.dhTerminalReportCompactDate}>{formatResearchMonthDay(row.publishedAt)}</span>
+      <span className={styles.dhTerminalReportCompactTitle}>{row.title}</span>
+      <span className={styles.dhTerminalReportCompactInstitution}>
+        {formatResearchInstitution(row) ?? "—"}
+      </span>
+      <span className={styles.dhTerminalReportTypeTag}>{formatResearchCategoryLabel(row.category)}</span>
+      {row.link ? <span className={styles.dhTerminalReportPdfTag}>PDF</span> : <span className={styles.dhTerminalReportPdfSpacer} />}
+    </>
+  );
+  return row.link ? (
+    <a className={className} href={row.link} target="_blank" rel="noreferrer" data-testid="dashboard-home-research-row">
+      {content}
+    </a>
+  ) : (
+    <div className={className} data-testid="dashboard-home-research-row">
+      {content}
+    </div>
+  );
+}
+
 function ResearchReportsPanel({ view }: { view: DashboardHomeView }) {
-  const hasRows = view.researchReportsState.kind === "ready" && view.researchReports.length > 0;
+  const hasRows =
+    (view.researchReportsState.kind === "ready" || view.researchReportsState.kind === "partial") &&
+    view.researchReports.length > 0;
+  const panelTitle = view.researchReportsState.label.includes("新闻补位") ? "研究资讯" : "券商研报";
+  const [featured, ...compactRows] = view.researchReports;
   return (
     <article
       data-testid="dashboard-home-research-reports"
       className={`${styles.dhCard} ${styles.dhTerminalPanel} ${styles.dhTerminalReportsPanel}`}
     >
       <div className={styles.dhTerminalPanelHead}>
-        <h3>研究报告</h3>
+        <h3>{panelTitle}</h3>
         <DataStateBadge kind={view.researchReportsState.kind} label={view.researchReportsState.label} />
       </div>
-      {hasRows ? (
-        <div className={styles.dhTerminalReportList}>
-          {view.researchReports.map((row) => {
-            const content = (
-              <>
-                <span className={styles.dhTerminalReportMeta}>
-                  {row.category}
-                  <em>{row.publishedAt}</em>
-                </span>
-                <b>{row.title}</b>
-                <small>{row.summary}</small>
-              </>
-            );
-            return row.link ? (
-              <a key={row.id} className={styles.dhTerminalReportItem} href={row.link} target="_blank" rel="noreferrer">
-                {content}
-              </a>
-            ) : (
-              <div key={row.id} className={styles.dhTerminalReportItem}>
-                {content}
-              </div>
-            );
-          })}
+      {hasRows && featured ? (
+        <div className={styles.dhTerminalReportStack}>
+          <ResearchReportFeatured row={featured} />
+          {compactRows.length > 0 ? (
+            <div className={styles.dhTerminalReportCompactList}>
+              {compactRows.map((row) => (
+                <ResearchReportCompactRow key={row.id} row={row} />
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : (
         <StateSurface state={view.researchReportsState} />

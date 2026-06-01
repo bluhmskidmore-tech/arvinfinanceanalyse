@@ -5,6 +5,7 @@ import { apiQueryKeys } from "../../../../api/queryKeys";
 import type { DashboardResearchCalendarQueryResult } from "../../pages/useDashboardResearchCalendarQuery";
 import { useDashboardResearchCalendarQuery } from "../../pages/useDashboardResearchCalendarQuery";
 import {
+  DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
   DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
   DASHBOARD_MACRO_NEWS_TOPICS,
 } from "../dashboardMacroNewsTopics";
@@ -217,6 +218,20 @@ export function useDashboardData({
     })),
   });
 
+  const macroNewsFallbackQueries = useQueries({
+    queries: DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => ({
+      queryKey: ["dashboard", "macro-news-fallback", dataClient.mode, topic.code],
+      queryFn: () =>
+        dataClient.getChoiceNewsEvents({
+          limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
+          offset: 0,
+          topicCode: topic.code,
+        }),
+      retry: false,
+      staleTime: 60_000,
+    })),
+  });
+
   return {
     coreMetricsQuery,
     dailyChangesQuery,
@@ -233,6 +248,7 @@ export function useDashboardData({
     decisionItemsQuery,
     researchCalendarQuery: researchCalendar.researchCalendarQuery,
     macroNewsQueries,
+    macroNewsFallbackQueries,
     calendarStartDate: researchCalendar.calendarStartDate,
     calendarEndDate: researchCalendar.calendarEndDate,
   } satisfies DashboardResearchCalendarQueryResult & {
@@ -250,5 +266,6 @@ export function useDashboardData({
     bondBucketMonthlyTrendQuery: typeof bondBucketMonthlyTrendQuery;
     decisionItemsQuery: typeof decisionItemsQuery;
     macroNewsQueries: typeof macroNewsQueries;
+    macroNewsFallbackQueries: typeof macroNewsFallbackQueries;
   };
 }

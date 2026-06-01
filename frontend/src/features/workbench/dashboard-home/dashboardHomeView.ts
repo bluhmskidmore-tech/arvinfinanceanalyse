@@ -52,6 +52,7 @@ import { buildHomeAttributionTabs } from "./adapters/buildHomeAttributionTabs";
 import {
   buildHomeMacroBriefingModel,
   type HomeMacroBriefingModel,
+  type HomeMacroNewsItem,
 } from "./adapters/buildHomeMacroBriefingModel";
 import {
   buildHomeMarketContextModel,
@@ -216,8 +217,10 @@ export type HomeResearchReportRow = {
   category: string;
   publishedAt: string;
   source: string;
+  institution: string;
   summary: string;
   link: string | null;
+  isNewsFallback: boolean;
 };
 
 export type HomeIncomeTrendRow = {
@@ -385,6 +388,7 @@ export type MapToHomeViewInput = {
   calendarEndDate: string;
   todayIsoDate?: string;
   macroNewsEvents?: readonly ChoiceNewsEvent[] | null;
+  macroNewsFallbackEvents?: readonly ChoiceNewsEvent[] | null;
   macroNewsLoading?: boolean;
   macroNewsError?: boolean;
   snapshotMeta: ResultMeta | null;
@@ -396,6 +400,32 @@ export type MapToHomeViewInput = {
 
 const GAP = "—";
 type NumericLike = Numeric | string | number | null | undefined;
+const HOME_RESEARCH_REPORT_FOCUS_TERMS = [
+  "fixed_income",
+  "bond",
+  "bonds",
+  "duration",
+  "curve",
+  "rates",
+  "macro",
+  "债",
+  "利率",
+  "国债",
+  "政金债",
+  "金融债",
+  "信用债",
+  "城投",
+  "二永",
+  "存单",
+  "固收",
+  "久期",
+  "曲线",
+  "利差",
+  "收益率",
+  "货币",
+  "央行",
+  "宏观",
+] as const;
 
 const BALANCE_METRIC_SPECS: ReadonlyArray<{
   id: string;
@@ -507,6 +537,14 @@ function formatYi(rawYuan: number, signAware: boolean): string {
 
 function formatYiSigned(rawYuan: number): string {
   return formatYi(rawYuan, true);
+}
+
+function formatWanSigned(rawYuan: number): string {
+  const wan = rawYuan / 10_000;
+  return `${wan >= 0 ? "+" : ""}${wan.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatPct(raw: number, signAware: boolean): string {
@@ -836,7 +874,7 @@ function buildHoldingRows(
       weight: numericValueOrGap(item.weight, "pct"),
       ytm: numericValueOrGap(item.ytm, "pct"),
       duration: numericValueOrGap(item.modified_duration, "ratio"),
-      rating: item.rating?.trim() || GAP,
+      rating: holdingRatingLabel(item.rating, item.asset_class),
     })),
   };
 }
@@ -880,23 +918,59 @@ function buildResearchReportRows(
   payload: HomeResearchReportsPayload | null | undefined,
   expectedReportDate: string,
 ): { rows: HomeResearchReportRow[]; state: HomeTerminalListState } {
-  const state = reportDateState(expectedReportDate, payload?.report_date, "研究报告暂无数据");
-  if (state.kind !== "ready" || payload?.source_status !== "ready" || !payload.items.length) {
+  void expectedReportDate;
+  const relevantItems = (payload?.items ?? []).filter(isHomeResearchReportRelevant);
+  if (relevantItems.length === 0 || payload?.source_status === "empty") {
     return {
       rows: [],
-      state: payload?.items.length ? state : displayState("empty", "研究报告暂无数据"),
+      state: displayState("empty", "债券/宏观研报暂无数据"),
     };
   }
+  const mappedState =
+    payload.source_status === "stale"
+      ? displayState("partial", "报告日前无研报 · 展示最新")
+      : displayState("ready", "已接入");
   return {
-    state,
-    rows: payload.items.slice(0, 5).map((item) => ({
+    state: mappedState,
+    rows: relevantItems.slice(0, 5).map((item) => ({
       id: item.id,
       title: item.title.trim() || GAP,
       category: item.category.trim() || "research",
       publishedAt: item.published_at.slice(0, 10) || GAP,
       source: item.source.trim() || GAP,
+      institution: item.institution?.trim() || GAP,
       summary: item.summary?.trim() || GAP,
       link: item.link,
+      isNewsFallback: false,
+    })),
+  };
+}
+
+function isHomeResearchReportRelevant(item: HomeResearchReportsPayload["items"][number]): boolean {
+  const haystack = `${item.title} ${item.category} ${item.institution ?? ""}`.toLowerCase();
+  return HOME_RESEARCH_REPORT_FOCUS_TERMS.some((term) => haystack.includes(term));
+}
+
+function buildResearchNewsFallbackRows(
+  newsItems: readonly HomeMacroNewsItem[],
+  sourceLabel: string,
+): { rows: HomeResearchReportRow[]; state: HomeTerminalListState } | null {
+  if (newsItems.length === 0) {
+    return null;
+  }
+  const source = sourceLabel.replace(/^来源：/, "").trim() || "宏观新闻";
+  return {
+    state: displayState("partial", "研报源暂无 · 新闻补位"),
+    rows: newsItems.slice(0, 5).map((item) => ({
+      id: `macro-news-${item.id}`,
+      title: item.title,
+      category: `新闻补位 · ${item.topicLabel}`,
+      publishedAt: item.timeLabel,
+      source,
+      institution: source,
+      summary: `${source} · ${item.freshnessLabel}`,
+      link: null,
+      isNewsFallback: true,
     })),
   };
 }
@@ -997,6 +1071,14 @@ function localizeAssetClass(value: string | null | undefined): string {
     return "其他";
   }
   return value?.trim() || GAP;
+}
+
+function holdingRatingLabel(rating: string | null | undefined, assetClass: string | null | undefined): string {
+  const trimmedRating = rating?.trim();
+  if (trimmedRating) {
+    return trimmedRating;
+  }
+  return assetClass?.trim().toLowerCase() === "rate" ? "不适用" : GAP;
 }
 
 function buildRiskExposureMetrics(
@@ -1536,6 +1618,120 @@ function segmentsToWaterfall(attribution: DashboardPnlAttributionVM | null): Hom
   }));
 }
 
+function waterfallTone(raw: number): HomeWaterfallItem["tone"] {
+  if (raw > 0) return "positive";
+  if (raw < 0) return "negative";
+  return "neutral";
+}
+
+function rawYuanFromNumeric(value: NumericLike): number | null {
+  const raw = numericRaw(value);
+  return raw == null ? null : raw;
+}
+
+function formalAttributionWaterfallItem(
+  id: string,
+  label: string,
+  raw: number | null,
+): HomeWaterfallItem | null {
+  if (raw == null || !Number.isFinite(raw)) {
+    return null;
+  }
+  return {
+    id,
+    label,
+    value: formatWanSigned(raw),
+    tone: waterfallTone(raw),
+  };
+}
+
+function buildFormalAttributionWaterfall(input: {
+  campisiFourEffects: CampisiFourEffectsPayload | null | undefined;
+  returnDecomposition: ReturnDecompositionPayload | null | undefined;
+}): HomeWaterfallItem[] {
+  if (input.campisiFourEffects) {
+    const totals = input.campisiFourEffects.totals;
+    return [
+      formalAttributionWaterfallItem("formal-carry-income", "Carry/Income", totals.income_return),
+      formalAttributionWaterfallItem("formal-rate-curve", "利率曲线", totals.treasury_effect),
+      formalAttributionWaterfallItem("formal-credit-spread", "信用利差", totals.spread_effect),
+      formalAttributionWaterfallItem("formal-selection-residual", "个券选择/残差", totals.selection_effect),
+    ].filter((item): item is HomeWaterfallItem => item != null);
+  }
+  const payload = input.returnDecomposition;
+  if (!payload) {
+    return [];
+  }
+  return [
+    formalAttributionWaterfallItem("formal-carry-income", "Carry/Income", rawYuanFromNumeric(payload.carry)),
+    formalAttributionWaterfallItem("formal-rate-curve", "利率曲线", rawYuanFromNumeric(payload.rate_effect)),
+    formalAttributionWaterfallItem("formal-credit-spread", "信用利差", rawYuanFromNumeric(payload.spread_effect)),
+    formalAttributionWaterfallItem("formal-selection-residual", "个券选择/残差", rawYuanFromNumeric(payload.trading)),
+  ].filter((item): item is HomeWaterfallItem => item != null);
+}
+
+function marketContextBlockById(
+  marketContext: HomeMarketContextModel,
+  id: HomeMarketContextModel["contextBlocks"][number]["id"],
+) {
+  return marketContext.contextBlocks.find((block) => block.id === id) ?? null;
+}
+
+function isDecisionUsableMarketBlock(
+  block: HomeMarketContextModel["contextBlocks"][number] | null,
+): block is HomeMarketContextModel["contextBlocks"][number] {
+  if (!block) {
+    return false;
+  }
+  return !/等待|未收到/.test(`${block.title} ${block.detail}`);
+}
+
+function buildDecisionRailConclusion(
+  verdict: VerdictPayload | null | undefined,
+  marketContext: HomeMarketContextModel,
+): string {
+  const parts = [
+    marketContextBlockById(marketContext, "pnl")?.title,
+    marketContextBlockById(marketContext, "curve")?.title,
+    marketContextBlockById(marketContext, "credit")?.title,
+  ].filter((item): item is string => Boolean(item && !/等待|未收到/.test(item)));
+  if (parts.length > 0) {
+    return parts.slice(0, 3).join("；");
+  }
+  return verdict?.conclusion?.trim() || "数据待同步";
+}
+
+function buildDecisionRailKeyRisk(
+  verdict: VerdictPayload | null | undefined,
+  marketContext: HomeMarketContextModel,
+): string {
+  const credit = marketContextBlockById(marketContext, "credit");
+  if (isDecisionUsableMarketBlock(credit)) {
+    return `${credit.label}：${credit.detail}`;
+  }
+  const curve = marketContextBlockById(marketContext, "curve");
+  if (isDecisionUsableMarketBlock(curve)) {
+    return `${curve.label}：${curve.detail}`;
+  }
+  return verdict?.reasons?.[0]?.label ?? GAP;
+}
+
+function buildDecisionRailSuggestions(
+  verdictSuggestions: readonly string[],
+  marketContext: HomeMarketContextModel,
+): string[] {
+  const pnl = marketContextBlockById(marketContext, "pnl");
+  const curve = marketContextBlockById(marketContext, "curve");
+  const credit = marketContextBlockById(marketContext, "credit");
+  const suggestions = [
+    isDecisionUsableMarketBlock(pnl) ? `复核收益来源：${pnl.title}` : "",
+    isDecisionUsableMarketBlock(curve) ? `关注曲线变化：${curve.title}` : "",
+    isDecisionUsableMarketBlock(credit) ? `跟踪信用压力：${credit.title}` : "",
+    ...verdictSuggestions,
+  ].filter(Boolean);
+  return suggestions.length > 0 ? suggestions.slice(0, 3) : ["数据待同步"];
+}
+
 function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
   const reportDate = cleanDate(input.reportDate) || GAP;
   const dataStatusKind = input.snapshotUnavailable ? "error" : input.snapshotStale ? "stale" : "ok";
@@ -1557,7 +1753,12 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
   const headline = headlineOk ? input.bondHeadline : null;
   const portfolio = portfolioOk ? input.portfolio : null;
 
-  const waterfall = segmentsToWaterfall(input.attribution);
+  const formalWaterfall = buildFormalAttributionWaterfall({
+    campisiFourEffects: input.campisiFourEffects,
+    returnDecomposition: input.returnDecomposition,
+  });
+  const waterfall =
+    formalWaterfall.length > 0 ? formalWaterfall : segmentsToWaterfall(input.attribution);
   const extremes = findAttributionExtremes(waterfall);
   const formalAttributionExtremes = buildFormalAttributionExtremes({
     campisiFourEffects: input.campisiFourEffects,
@@ -1681,6 +1882,7 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
   const macroBriefing = buildHomeMacroBriefingModel({
     todayIsoDate,
     newsEvents: input.macroNewsEvents,
+    fallbackNewsEvents: input.macroNewsFallbackEvents,
     newsLoading: Boolean(input.macroNewsLoading),
     newsError: Boolean(input.macroNewsError),
     supplyCalendar: researchCalendar,
@@ -1700,6 +1902,19 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
       maxContributionLabel: extremes.maxContribution?.label ?? GAP,
     },
   });
+  const hasFormalAttribution = Boolean(input.campisiFourEffects || input.returnDecomposition);
+  const decisionMaxDragLabel =
+    formalAttributionExtremes?.maxDragLabel && formalAttributionExtremes.maxDragLabel !== GAP
+      ? formalAttributionExtremes.maxDragLabel
+      : hasFormalAttribution
+        ? "无负贡献项"
+        : extremes.maxDrag?.label ?? GAP;
+  const decisionMaxDragValue =
+    formalAttributionExtremes?.maxDragValue && formalAttributionExtremes.maxDragValue !== GAP
+      ? formalAttributionExtremes.maxDragValue
+      : hasFormalAttribution
+        ? "0.00 亿"
+        : extremes.maxDrag?.value ?? GAP;
   const riskExposure = buildRiskExposureMetrics(input.riskIndicators, reportDate);
   const riskIndicatorsForTerminal =
     riskExposure.state.kind === "ready" ? input.riskIndicators : null;
@@ -1713,11 +1928,15 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     : input.positionChangesError
       ? { rows: [], state: displayState("error", "增减仓加载失败") }
       : buildPositionChangeRows(input.positionChanges, reportDate);
-  const researchReportsMapped = input.researchReportsLoading
+  const researchReportsBase = input.researchReportsLoading
     ? { rows: [], state: displayState("loading", "研究报告加载中") }
     : input.researchReportsError
       ? { rows: [], state: displayState("error", "研究报告加载失败") }
       : buildResearchReportRows(input.researchReports, reportDate);
+  const researchReportsMapped =
+    researchReportsBase.state.kind === "empty"
+      ? buildResearchNewsFallbackRows(macroBriefing.newsItems, macroBriefing.newsSourceLabel) ?? researchReportsBase
+      : researchReportsBase;
   const incomeTrendMapped = input.incomeTrendLoading
     ? { rows: [], state: displayState("loading", "收益趋势加载中") }
     : input.incomeTrendError
@@ -1920,15 +2139,15 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     marketContext,
     liabilityWatchBasisNote: cockpitWatchlist.basisNote,
     decisionRail: {
-      conclusion: verdict?.conclusion?.trim() || "数据待同步",
-      maxDragLabel: formalAttributionExtremes?.maxDragLabel ?? extremes.maxDrag?.label ?? GAP,
-      maxDragValue: formalAttributionExtremes?.maxDragValue ?? extremes.maxDrag?.value ?? GAP,
+      conclusion: buildDecisionRailConclusion(verdict, marketContext),
+      maxDragLabel: decisionMaxDragLabel,
+      maxDragValue: decisionMaxDragValue,
       maxContributionLabel:
         formalAttributionExtremes?.maxContributionLabel ?? extremes.maxContribution?.label ?? GAP,
       maxContributionValue:
         formalAttributionExtremes?.maxContributionValue ?? extremes.maxContribution?.value ?? GAP,
-      keyRisk: verdict?.reasons?.[0]?.label ?? GAP,
-      suggestions: suggestions.length > 0 ? suggestions : ["数据待同步"],
+      keyRisk: buildDecisionRailKeyRisk(verdict, marketContext),
+      suggestions: buildDecisionRailSuggestions(suggestions, marketContext),
       pendingSummary: `${input.decisionItems?.length ?? 0} 项`,
       reportDate,
       dataUpdatedAt,

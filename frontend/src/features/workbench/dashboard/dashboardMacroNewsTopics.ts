@@ -9,10 +9,33 @@ export const DASHBOARD_MACRO_NEWS_TOPICS = [
   { code: "C000003002", label: "央行动态" },
 ] as const;
 
+/** Tushare streams landed in `choice_news_event` when Choice sectornews is unavailable. */
+export const DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS = [
+  { code: "tushare.major_news", label: "重大新闻" },
+  { code: "tushare.news.sina", label: "市场快讯" },
+  { code: "tushare.npr", label: "政策要闻" },
+] as const;
+
 const DASHBOARD_MACRO_NEWS_TOPIC_LABELS: ReadonlyMap<string, string> = new Map(
   DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => [topic.code, topic.label] as const),
 );
 
+const DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_LABELS: ReadonlyMap<string, string> = new Map(
+  DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => [topic.code, topic.label] as const),
+);
+
 export function dashboardMacroNewsTopicLabel(topicCode: string): string {
-  return DASHBOARD_MACRO_NEWS_TOPIC_LABELS.get(topicCode) ?? topicCode;
+  const normalized = topicCode.trim();
+  if (!normalized || normalized === "—") {
+    return "宏观新闻";
+  }
+  return DASHBOARD_MACRO_NEWS_TOPIC_LABELS.get(normalized) ?? "宏观新闻";
+}
+
+export function dashboardMacroNewsFallbackTopicLabel(topicCode: string): string {
+  const normalized = topicCode.trim();
+  if (!normalized || normalized === "—") {
+    return "市场新闻";
+  }
+  return DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_LABELS.get(normalized) ?? "市场新闻";
 }
