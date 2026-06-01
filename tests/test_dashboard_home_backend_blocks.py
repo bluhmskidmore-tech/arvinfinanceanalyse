@@ -387,7 +387,7 @@ def test_home_income_trend_endpoint_derives_cdb_benchmark_and_excess_pnl(tmp_pat
                 "benchmark_id": benchmark_id,
                 "portfolio_return": numeric(Decimal("0.012")),
                 "benchmark_return": numeric(Decimal("0.008")),
-                "excess_return": numeric(Decimal("0.4"), "bp"),
+                "excess_return": numeric(Decimal("40"), "bp"),
                 "warnings": [],
             },
             "result_meta": {
@@ -420,6 +420,11 @@ def test_home_income_trend_endpoint_derives_cdb_benchmark_and_excess_pnl(tmp_pat
         assert Decimal(str(result["points"][0]["portfolio_pnl"]["raw"])) == Decimal("120000000.0")
         assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
         assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
+        assert (
+            Decimal(str(result["points"][0]["benchmark_pnl"]["raw"]))
+            + Decimal(str(result["points"][0]["excess_pnl"]["raw"]))
+            - Decimal(str(result["points"][0]["portfolio_pnl"]["raw"]))
+        ).copy_abs() <= Decimal("1")
         assert payload["result_meta"]["filters_applied"]["benchmark_id"] == "CDB_INDEX"
         assert "rv_benchmark_excess_test" in payload["result_meta"]["rule_version"]
     finally:
@@ -451,7 +456,7 @@ def test_home_income_trend_endpoint_accepts_bounded_cdb_curve_fallback(tmp_path,
                 "benchmark_id": benchmark_id,
                 "portfolio_return": numeric(Decimal("0.012")),
                 "benchmark_return": numeric(Decimal("0.008")),
-                "excess_return": numeric(Decimal("0.4"), "bp"),
+                "excess_return": numeric(Decimal("40"), "bp"),
                 "warnings": [
                     "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve "
                     f"from trade_date={resolved_date} for requested_trade_date={requested_date}."
@@ -502,9 +507,9 @@ def test_home_income_trend_endpoint_accepts_flat_numeric_benchmark_returns(tmp_p
             "result": {
                 "report_date": report_date.isoformat(),
                 "benchmark_id": benchmark_id,
-                "portfolio_return": "0.012",
-                "benchmark_return": "0.008",
-                "excess_return": "0.4",
+                "portfolio_return": "1.2",
+                "benchmark_return": "0.8",
+                "excess_return": "40",
                 "warnings": [],
             },
             "result_meta": {
@@ -561,7 +566,7 @@ def test_home_income_trend_endpoint_keeps_partial_when_cdb_curve_fallback_too_st
                 "benchmark_id": benchmark_id,
                 "portfolio_return": numeric(Decimal("0.012")),
                 "benchmark_return": numeric(Decimal("0.008")),
-                "excess_return": numeric(Decimal("0.4"), "bp"),
+                "excess_return": numeric(Decimal("40"), "bp"),
                 "warnings": [
                     "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve "
                     "from trade_date=2025-12-31 for requested_trade_date=2026-03-01."

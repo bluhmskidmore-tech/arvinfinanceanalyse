@@ -2373,19 +2373,41 @@ def _home_income_null_pnl() -> Numeric:
     )
 
 
-def _numeric_raw_from_payload(value: object) -> float | None:
+def _numeric_raw_and_unit_from_payload(value: object) -> tuple[float | None, str | None]:
     if isinstance(value, Numeric):
-        return value.raw
+        return value.raw, value.unit
     if isinstance(value, dict):
         raw_value = value.get("raw")
+        unit_value = value.get("unit")
     else:
         raw_value = getattr(value, "raw", value)
+        unit_value = getattr(value, "unit", None)
     if raw_value is None:
-        return None
+        return None, str(unit_value) if unit_value else None
     try:
-        return float(raw_value)
+        return float(raw_value), str(unit_value) if unit_value else None
     except (TypeError, ValueError):
+        return None, str(unit_value) if unit_value else None
+
+
+def _home_income_pct_points_from_payload(value: object) -> float | None:
+    raw, unit = _numeric_raw_and_unit_from_payload(value)
+    if raw is None:
         return None
+    if unit == "pct":
+        return raw * _BASIS_POINTS_PER_PERCENT
+    if unit == "bp":
+        return raw / _BASIS_POINTS_PER_PERCENT
+    return raw
+
+
+def _home_income_bp_points_from_payload(value: object) -> float | None:
+    raw, unit = _numeric_raw_and_unit_from_payload(value)
+    if raw is None:
+        return None
+    if unit == "pct":
+        return raw * _BASIS_POINTS_PER_PERCENT
+    return raw / _BASIS_POINTS_PER_PERCENT
 
 
 def _home_income_benchmark_warning(point_date: str, reason: object) -> str:
@@ -2525,9 +2547,9 @@ def home_income_trend_envelope(
                 reasons = blocking_reasons or [f"vendor_status={vendor_status}"]
                 warnings.extend(_home_income_benchmark_warning(point_date, reason) for reason in reasons)
             elif isinstance(benchmark_result, dict):
-                portfolio_return = _numeric_raw_from_payload(benchmark_result.get("portfolio_return"))
-                benchmark_return = _numeric_raw_from_payload(benchmark_result.get("benchmark_return"))
-                excess_return = _numeric_raw_from_payload(benchmark_result.get("excess_return"))
+                portfolio_return = _home_income_pct_points_from_payload(benchmark_result.get("portfolio_return"))
+                benchmark_return = _home_income_pct_points_from_payload(benchmark_result.get("benchmark_return"))
+                excess_return = _home_income_bp_points_from_payload(benchmark_result.get("excess_return"))
                 if (
                     portfolio_pnl.raw is not None
                     and portfolio_return is not None
@@ -2537,7 +2559,7 @@ def home_income_trend_envelope(
                 ):
                     pnl_base = portfolio_pnl.raw / portfolio_return
                     benchmark_pnl = _fmt_yi_amount(pnl_base * benchmark_return, signed=True)
-                    excess_pnl = _fmt_yi_amount(pnl_base * (excess_return / _BASIS_POINTS_PER_PERCENT), signed=True)
+                    excess_pnl = _fmt_yi_amount(pnl_base * excess_return, signed=True)
                     point_status = "ready"
                 else:
                     warnings.append(
