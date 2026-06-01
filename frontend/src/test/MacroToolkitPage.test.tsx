@@ -52,8 +52,11 @@ describe("MacroToolkitPage", () => {
     expect(await screen.findByTestId("macro-toolkit-hason-module-market_state")).toHaveTextContent(
       "market_state",
     );
+    expect(await screen.findByTestId("macro-toolkit-hason-module-market_state")).toHaveTextContent(
+      "script-chain complete",
+    );
     const allocationModule = await screen.findByTestId("macro-toolkit-hason-module-allocation");
-    expect(allocationModule).toHaveTextContent("partial");
+    expect(allocationModule).toHaveTextContent("script-chain partial");
     expect(allocationModule).toHaveTextContent("risk_parity_cn");
     expect(allocationModule).toHaveTextContent("rebalance_cn");
     expect(await screen.findByTestId("macro-toolkit-hason-runtime-gaps")).toHaveTextContent(

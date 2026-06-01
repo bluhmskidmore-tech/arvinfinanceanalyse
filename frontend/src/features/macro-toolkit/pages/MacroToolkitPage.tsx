@@ -1411,7 +1411,7 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
           >
             <div className="macro-toolkit-capability-result-head">
               <span>{module.key}</span>
-              <Tag color={statusColor(module.status)}>{module.status}</Tag>
+              <Tag color={hasonModuleStatusColor(module.status)}>{hasonModuleStatusLabel(module.status)}</Tag>
             </div>
             <strong>{module.label}</strong>
             <small>可用脚本：{module.available_scripts.join(" / ") || "无"}</small>
@@ -1471,6 +1471,20 @@ function hasonFreshnessBasisLabel(basis: string) {
     missing: "file missing",
   };
   return labels[basis] ?? basis;
+}
+
+function hasonModuleStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    integrated: "script-chain complete",
+    partial: "script-chain partial",
+    missing: "script-chain missing",
+  };
+  return labels[status] ?? status;
+}
+
+function hasonModuleStatusColor(status: string) {
+  if (status === "integrated") return "default";
+  return statusColor(status);
 }
 
 function formatHasonTraceScript(item: MacroToolkitHasonStrategy["source_trace"][number]) {

@@ -408,7 +408,7 @@ export type MacroToolkitHasonStrategy = {
     filename: string | null;
     group: string | null;
     available: boolean;
-    modules: string[];
+    modules?: string[];
   }>;
 };
 
