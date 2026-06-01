@@ -13,14 +13,15 @@ import duckdb
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+import backend.app.api.routes.macro_toolkit as macro_toolkit_route
+from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.core_finance.macro.crisis_score import (
     classify_crisis_score,
     compute_crisis_indicators,
     compute_crisis_score,
     compute_crisis_score_payload,
 )
-import backend.app.api.routes.macro_toolkit as macro_toolkit_route
-from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.core_finance.macro.toolkit import get_toolkit_script, iter_toolkit_scripts
 from backend.app.core_finance.macro.toolkit.runner import OMITTED_SOURCE_SCRIPTS, SCRIPTS_DIR, TOOLKIT_ROOT
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias, load_system_macro_frame
@@ -736,6 +737,60 @@ def test_hason_summary_marks_mixed_csv_content_dates_unknown(tmp_path, monkeypat
     assert final_signal["content_date"] == "2026-04-30"
     assert final_signal["content_date_min"] == "2026-04-29"
     assert final_signal["content_date_max"] == "2026-04-30"
+
+
+def test_hason_output_content_dates_reads_latest_row_beyond_preview_window(tmp_path) -> None:
+    output_path = tmp_path / "final_signal.csv"
+    rows = ["品种,日期,最终信号"]
+    rows.extend(f"T{index},2026-04-29,空仓" for index in range(500))
+    rows.append("T500,2026-04-30,空仓")
+    output_path.write_text("\n".join(rows) + "\n", encoding="utf-8-sig")
+
+    content_dates = macro_toolkit_route._hason_output_content_dates({"path": str(output_path)})
+
+    assert content_dates == {"min": "2026-04-29", "max": "2026-04-30", "invalid_count": 0}
+
+
+def test_hason_summary_marks_invalid_csv_content_dates_unknown(tmp_path, monkeypatch) -> None:
+    scripts = []
+    for module in macro_toolkit_route._HASON_MODULES:
+        for name in module["scripts"]:
+            script_name = str(name)
+            path = tmp_path / f"{script_name}.py"
+            path.write_text("# available", encoding="utf-8")
+            scripts.append(
+                SimpleNamespace(
+                    name=script_name,
+                    path=path,
+                    filename=f"{script_name}.py",
+                    group="macro",
+                )
+            )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    final_signal_path = tmp_path / "final_signal.csv"
+    crowding_path = tmp_path / "crowding_latest.csv"
+    final_signal_path.write_text(
+        "品种,日期,最终信号\nT,2026-04-30,空仓\nTL,not-a-date,空仓\n",
+        encoding="utf-8-sig",
+    )
+    crowding_path.write_text("品种,日期,C\nT,2026-04-30,0.5\nTL,2026-04-30,0.6\n", encoding="utf-8-sig")
+    current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [
+            {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
+            {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
+        ],
+        analysis_date="2026-04-30",
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["runtime_output_status"] == "unknown"
+    assert payload["runtime_output_gaps"] == ["final_signal.csv"]
+    final_signal = payload["runtime_outputs"][0]
+    assert final_signal["freshness_status"] == "invalid_date"
+    assert final_signal["content_date_invalid_count"] == 1
 
 
 def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkeypatch) -> None:

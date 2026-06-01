@@ -8,6 +8,9 @@ from typing import Annotated
 
 import duckdb
 import pandas as pd
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
 from backend.app.core_finance.macro import (
     analyze_cross_market_linkage,
     classify_low_crowding_market_regime,
@@ -30,8 +33,8 @@ from backend.app.core_finance.macro.a_share_stampede_risk import (
     compute_a_share_stampede_risk,
     load_a_share_stampede_risk_config,
 )
-from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
 from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
+from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
 from backend.app.core_finance.macro.helpers import (
     build_curve_history,
     enrich_wide_with_curve_market_fields,
@@ -52,8 +55,6 @@ from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRA
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
 from backend.app.services.formal_result_runtime import build_result_envelope
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
 
@@ -3019,6 +3020,7 @@ def _hason_runtime_output_payload(
             "content_date": None,
             "content_date_min": None,
             "content_date_max": None,
+            "content_date_invalid_count": 0,
             "reference_date": analysis_date,
         }
     modified_at = str(file_payload.get("modified_at") or "").strip() or None
@@ -3027,9 +3029,12 @@ def _hason_runtime_output_payload(
     content_date = content_dates["max"]
     content_date_min = content_dates["min"]
     content_date_max = content_dates["max"]
+    content_date_invalid_count = int(content_dates["invalid_count"] or 0)
     freshness_basis = "csv_content" if content_date else "file_modified_date"
     freshness_status = (
-        "mixed"
+        "invalid_date"
+        if content_date_invalid_count
+        else "mixed"
         if content_date_min and content_date_max and content_date_min != content_date_max
         else _hason_output_freshness(content_date or modified_date, analysis_date)
     )
@@ -3042,6 +3047,7 @@ def _hason_runtime_output_payload(
         "content_date": content_date,
         "content_date_min": content_date_min,
         "content_date_max": content_date_max,
+        "content_date_invalid_count": content_date_invalid_count,
         "reference_date": analysis_date,
     }
 
@@ -3058,31 +3064,34 @@ def _hason_output_modified_date(modified_at: str | None) -> str | None:
     return parsed.astimezone(_HASON_BUSINESS_TZ).date().isoformat()
 
 
-def _hason_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | None]:
+def _hason_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | int | None]:
     path_value = file_payload.get("path")
     if not path_value:
-        return {"min": None, "max": None}
+        return {"min": None, "max": None, "invalid_count": 0}
     path = Path(str(path_value))
     if not path.is_file():
-        return {"min": None, "max": None}
+        return {"min": None, "max": None, "invalid_count": 0}
     try:
-        frame = pd.read_csv(path, nrows=500)
+        columns = pd.read_csv(path, nrows=0).columns
+        date_column = next((column for column in _HASON_OUTPUT_DATE_COLUMNS if column in columns), None)
+        if date_column is None:
+            return {"min": None, "max": None, "invalid_count": 0}
+        frame = pd.read_csv(path, usecols=[date_column])
     except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return {"min": None, "max": None}
+        return {"min": None, "max": None, "invalid_count": 0}
     if frame.empty:
-        return {"min": None, "max": None}
-    for column in _HASON_OUTPUT_DATE_COLUMNS:
-        if column not in frame.columns:
-            continue
-        parsed = pd.to_datetime(frame[column], errors="coerce")
-        parsed = parsed.dropna()
-        if parsed.empty:
-            continue
-        return {
-            "min": parsed.min().date().isoformat(),
-            "max": parsed.max().date().isoformat(),
-        }
-    return {"min": None, "max": None}
+        return {"min": None, "max": None, "invalid_count": 0}
+    raw_dates = frame[date_column].dropna()
+    parsed = pd.to_datetime(raw_dates, errors="coerce")
+    invalid_count = int(parsed.isna().sum())
+    parsed = parsed.dropna()
+    if parsed.empty:
+        return {"min": None, "max": None, "invalid_count": invalid_count}
+    return {
+        "min": parsed.min().date().isoformat(),
+        "max": parsed.max().date().isoformat(),
+        "invalid_count": invalid_count,
+    }
 
 
 def _hason_output_freshness(modified_date: str | None, analysis_date: str | None) -> str:
@@ -3106,7 +3115,7 @@ def _hason_runtime_output_status(runtime_outputs: list[dict[str, object]]) -> st
         return "missing"
     if "stale" in statuses:
         return "stale"
-    if "unknown" in statuses or "future" in statuses or "mixed" in statuses:
+    if "unknown" in statuses or "future" in statuses or "mixed" in statuses or "invalid_date" in statuses:
         return "unknown"
     if statuses == {"current"}:
         return "current"
