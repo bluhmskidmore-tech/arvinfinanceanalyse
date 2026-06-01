@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 PROVISIONAL_FORMULA_VERSION = "rv_livermore_sector_rank_provisional_v1"
 MIN_RANKABLE_SECTORS = 3
+DEFAULT_LEADER_CONSTITUENTS_PER_SECTOR = 3
+LEADER_CONSTITUENT_METHOD = "top_turn_same_day"
 
 
 @dataclass(frozen=True)
@@ -15,6 +17,7 @@ class SectorRankConstituent:
     pctchange: object
     turn: object
     amplitude: object
+    stock_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ def compute_sector_rank(
     *,
     as_of_date: str,
     rows: list[SectorRankConstituent],
+    leader_constituents_per_sector: int = DEFAULT_LEADER_CONSTITUENTS_PER_SECTOR,
 ) -> SectorRankResult:
     grouped: dict[tuple[str, str], list[tuple[float, float, float]]] = {}
     seen_sector_keys: set[tuple[str, str]] = set()
@@ -71,6 +75,10 @@ def compute_sector_rank(
         )
 
     score_by_sector = _score_aggregates(aggregates)
+    leaders_by_sector = _select_sector_leader_constituents(
+        rows,
+        per_sector_limit=max(1, leader_constituents_per_sector),
+    )
     ordered = sorted(
         aggregates,
         key=lambda row: (
@@ -90,6 +98,7 @@ def compute_sector_rank(
             "avg_turn": round(row.avg_turn, 6),
             "avg_amplitude": round(row.avg_amplitude, 6),
             "constituent_count": row.constituent_count,
+            "leader_constituents": leaders_by_sector.get((row.sector_code, row.sector_name), []),
         }
         for index, row in enumerate(ordered, start=1)
     ]
@@ -102,12 +111,56 @@ def compute_sector_rank(
             "sector_count": len(items),
             "excluded_constituent_count": excluded_constituents,
             "excluded_sector_count": excluded_sectors,
+            "leader_constituent_limit": max(1, leader_constituents_per_sector),
+            "leader_constituent_method": LEADER_CONSTITUENT_METHOD,
             "items": items,
         },
         rankable_sector_count=len(items),
         excluded_constituent_count=excluded_constituents,
         excluded_sector_count=excluded_sectors,
     )
+
+
+def _select_sector_leader_constituents(
+    rows: list[SectorRankConstituent],
+    *,
+    per_sector_limit: int,
+) -> dict[tuple[str, str], list[dict[str, object]]]:
+    grouped: dict[tuple[str, str], list[SectorRankConstituent]] = {}
+    for row in rows:
+        sector_code = row.sector_code.strip()
+        sector_name = row.sector_name.strip()
+        if not sector_code or not sector_name:
+            continue
+        pctchange = _valid_float(row.pctchange)
+        turn = _valid_float(row.turn)
+        amplitude = _valid_float(row.amplitude)
+        if pctchange is None or turn is None or amplitude is None:
+            continue
+        grouped.setdefault((sector_code, sector_name), []).append(row)
+
+    leaders_by_sector: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for key, sector_rows in grouped.items():
+        ordered = sorted(
+            sector_rows,
+            key=lambda item: (
+                -(_valid_float(item.turn) or 0.0),
+                -(_valid_float(item.pctchange) or 0.0),
+                item.stock_code,
+            ),
+        )[:per_sector_limit]
+        leaders_by_sector[key] = [
+            {
+                "rank": index,
+                "stock_code": item.stock_code,
+                "stock_name": item.stock_name.strip() or item.stock_code,
+                "pctchange": round(_valid_float(item.pctchange) or 0.0, 6),
+                "turn": round(_valid_float(item.turn) or 0.0, 6),
+                "amplitude": round(_valid_float(item.amplitude) or 0.0, 6),
+            }
+            for index, item in enumerate(ordered, start=1)
+        ]
+    return leaders_by_sector
 
 
 def _aggregate_sector(

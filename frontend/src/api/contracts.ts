@@ -1251,6 +1251,15 @@ export type LivermoreUnsupportedOutput = {
   reason: string;
 };
 
+export type LivermoreSectorRankLeaderConstituent = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  pctchange: number;
+  turn: number;
+  amplitude: number;
+};
+
 export type LivermoreSectorRankItem = {
   rank: number;
   sector_code: string;
@@ -1260,6 +1269,7 @@ export type LivermoreSectorRankItem = {
   avg_turn: number;
   avg_amplitude: number;
   constituent_count: number;
+  leader_constituents?: LivermoreSectorRankLeaderConstituent[];
 };
 
 export type LivermoreSectorRankPayload = {
@@ -1269,6 +1279,8 @@ export type LivermoreSectorRankPayload = {
   sector_count: number;
   excluded_constituent_count: number;
   excluded_sector_count: number;
+  leader_constituent_limit?: number;
+  leader_constituent_method?: string;
   items: LivermoreSectorRankItem[];
 };
 

@@ -11,8 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from backend.app.repositories.choice_client import ChoiceClient
+from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from tests.helpers import load_module
 
 
@@ -1348,6 +1348,85 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_pat
     assert "choice_stock_factor_snapshot" in tables_used
     assert "choice_stock_universe" in tables_used
     assert "choice_stock_sector_membership" in tables_used
+
+
+def test_livermore_sector_rank_loader_attaches_universe_stock_names(tmp_path) -> None:
+    from backend.app.services.market_data_livermore_service import _load_sector_rank_inputs
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              sw2021code varchar,
+              sw2021 varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              pctchange double,
+              turn double,
+              amplitude double,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_universe values ('2026-05-08', '000001.SZ', 'Alpha Bank', 'sv_u', 'vv_u')"
+        )
+        conn.execute(
+            "insert into choice_stock_universe values ('2026-05-09', '000001.SZ', 'Future Alpha', 'sv_u_future', 'vv_u_future')"
+        )
+        conn.executemany(
+            "insert into choice_stock_sector_membership values (?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-08", "000001.SZ", "801780", "Bank", "sv_s", "vv_s"),
+                ("2026-05-08", "600000.SH", "801780", "Bank", "sv_s", "vv_s"),
+            ],
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-08", "000001.SZ", 4.0, 4.0, 4.0, "sv_d", "vv_d"),
+                ("2026-05-08", "600000.SH", 5.0, 6.0, 5.0, "sv_d", "vv_d"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    rows, tables_used, source_versions, vendor_versions = _load_sector_rank_inputs(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+    )
+
+    by_code = {row.stock_code: row for row in rows}
+    assert by_code["000001.SZ"].stock_name == "Alpha Bank"
+    assert by_code["600000.SH"].stock_name == "600000.SH"
+    assert "Future Alpha" not in {row.stock_name for row in rows}
+    assert "choice_stock_universe" in tables_used
+    assert {"sv_d", "sv_s"} <= set(source_versions)
+    assert {"vv_d", "vv_s"} <= set(vendor_versions)
 
 
 def test_livermore_stock_candidate_loader_attaches_latest_factor_snapshot(tmp_path) -> None:

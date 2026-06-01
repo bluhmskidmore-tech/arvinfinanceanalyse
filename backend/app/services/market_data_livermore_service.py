@@ -8,6 +8,23 @@ from pathlib import Path
 from typing import cast
 
 import duckdb
+
+from backend.app.core_finance.cycle_macro_score import (
+    CN10Y_SERIES_ID,
+    CSI300_PE_SERIES_ID,
+    M2_YOY_SERIES_ID,
+    PMI_SERIES_ID,
+    SOCIAL_FINANCING_YOY_SERIES_ID,
+    CycleMacroSnapshot,
+    build_cycle_macro_snapshot,
+)
+from backend.app.core_finance.factor_screen_candidates import (
+    compute_factor_screen_candidates,
+)
+from backend.app.core_finance.hybrid_fusion_candidates import (
+    compute_hybrid_fusion_candidates,
+)
+from backend.app.core_finance.hybrid_fusion_config import load_hybrid_fusion_thresholds
 from backend.app.core_finance.livermore_risk_exit import (
     MVP_RULE_LABEL,
     RiskExitSnapshot,
@@ -25,34 +42,18 @@ from backend.app.core_finance.livermore_stock_candidates import (
     StockCandidateSnapshot,
     compute_stock_candidates,
 )
-from backend.app.core_finance.cycle_macro_score import (
-    CN10Y_SERIES_ID,
-    CSI300_PE_SERIES_ID,
-    M2_YOY_SERIES_ID,
-    PMI_SERIES_ID,
-    SOCIAL_FINANCING_YOY_SERIES_ID,
-    CycleMacroSnapshot,
-    build_cycle_macro_snapshot,
-)
-from backend.app.core_finance.factor_screen_candidates import (
-    compute_factor_screen_candidates,
-)
-from backend.app.core_finance.hybrid_fusion_config import load_hybrid_fusion_thresholds
-from backend.app.core_finance.hybrid_fusion_candidates import (
-    compute_hybrid_fusion_candidates,
-)
-from backend.app.core_finance.mean_reversion_candidates import (
-    MeanReversionSnapshot,
-    compute_mean_reversion_candidates,
+from backend.app.core_finance.livermore_strategy import (
+    BroadIndexObservation,
+    MarketGateSupplement,
+    evaluate_market_gate,
 )
 from backend.app.core_finance.livermore_theme_breakout import (
     ThemeBreakoutSnapshot,
     compute_theme_breakout,
 )
-from backend.app.core_finance.livermore_strategy import (
-    BroadIndexObservation,
-    MarketGateSupplement,
-    evaluate_market_gate,
+from backend.app.core_finance.mean_reversion_candidates import (
+    MeanReversionSnapshot,
+    compute_mean_reversion_candidates,
 )
 from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockReadiness,
@@ -461,7 +462,6 @@ def _load_cycle_input_evidence(
     evidence_rows = 0
     try:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
-        price_spread_ready = False
         price_spread_evidence = ""
         pe_value: float | None = None
         cn10y_value: float | None = None
@@ -517,7 +517,6 @@ def _load_cycle_input_evidence(
                 if pe_value > 0:
                     earnings_yield = 100.0 / pe_value
                     spread = earnings_yield - cn10y_value
-                    price_spread_ready = True
                     price_spread_evidence = (
                         f"{CSI300_PE_SERIES_ID} {pe_value:.2f} and {CN10Y_SERIES_ID} 10Y yield {cn10y_value:.2f}% "
                         f"landed by {as_of_date.isoformat()}; proxy price_spread is {spread:.2f}ppt."
@@ -981,10 +980,37 @@ def _load_sector_rank_inputs(
         )
         if membership_snapshot_date is None:
             return [], list(required_tables), [], []
-        rows = conn.execute(
+        universe_snapshot_date = None
+        if "choice_stock_universe" in tables:
+            universe_snapshot_date = _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_universe",
+                column_name="as_of_date",
+                as_of_date=as_of_date,
+            )
+        stock_name_expr = (
+            "coalesce(universe.stock_name, membership.stock_code)"
+            if universe_snapshot_date is not None
+            else "membership.stock_code"
+        )
+        universe_join = (
             """
+            left join choice_stock_universe universe
+              on universe.stock_code = membership.stock_code
+             and universe.as_of_date = ?
+            """
+            if universe_snapshot_date is not None
+            else ""
+        )
+        params: list[object] = [as_of_date]
+        if universe_snapshot_date is not None:
+            params.append(universe_snapshot_date)
+        params.append(membership_snapshot_date)
+        rows = conn.execute(
+            f"""
             select
               membership.stock_code,
+              {stock_name_expr} as stock_name,
               membership.sw2021code,
               membership.sw2021,
               daily.pctchange,
@@ -998,9 +1024,10 @@ def _load_sector_rank_inputs(
             join choice_stock_daily_observation daily
               on daily.stock_code = membership.stock_code
              and cast(daily.trade_date as date) = cast(? as date)
+            {universe_join}
             where membership.as_of_date = ?
             """,
-            [as_of_date, membership_snapshot_date],
+            params,
         ).fetchall()
     except duckdb.Error:
         return [], ["choice_stock_sector_membership", "choice_stock_daily_observation"], [], []
@@ -1010,17 +1037,21 @@ def _load_sector_rank_inputs(
     constituents = [
         SectorRankConstituent(
             stock_code=str(row[0] or ""),
-            sector_code=str(row[1] or ""),
-            sector_name=str(row[2] or ""),
-            pctchange=row[3],
-            turn=row[4],
-            amplitude=row[5],
+            sector_code=str(row[2] or ""),
+            sector_name=str(row[3] or ""),
+            pctchange=row[4],
+            turn=row[5],
+            amplitude=row[6],
+            stock_name=str(row[1] or ""),
         )
         for row in rows
     ]
-    source_versions = [str(value) for row in rows for value in (row[6], row[8]) if value]
-    vendor_versions = [str(value) for row in rows for value in (row[7], row[9]) if value]
-    return constituents, ["choice_stock_sector_membership", "choice_stock_daily_observation"], source_versions, vendor_versions
+    source_versions = [str(value) for row in rows for value in (row[7], row[9]) if value]
+    vendor_versions = [str(value) for row in rows for value in (row[8], row[10]) if value]
+    tables_used = ["choice_stock_sector_membership", "choice_stock_daily_observation"]
+    if universe_snapshot_date is not None:
+        tables_used.append("choice_stock_universe")
+    return constituents, tables_used, source_versions, vendor_versions
 
 
 def _load_stock_candidate_snapshots(
@@ -1574,7 +1605,7 @@ def _load_factor_screen_rows(
             "sector_code",
             "sector_name",
         ]
-        mapped_rows = [dict(zip(cols, row)) for row in rows]
+        mapped_rows = [dict(zip(cols, row, strict=False)) for row in rows]
         if not mapped_rows:
             return _FactorScreenLoadResult(
                 rows=[],

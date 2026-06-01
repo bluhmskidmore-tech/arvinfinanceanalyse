@@ -633,6 +633,8 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
       sector_count: 3,
       excluded_constituent_count: 0,
       excluded_sector_count: 0,
+      leader_constituent_limit: 3,
+      leader_constituent_method: "top_turn_same_day",
       items: [
         {
           rank: 1,
@@ -643,6 +645,16 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           avg_turn: 3,
           avg_amplitude: 3.5,
           constituent_count: 12,
+          leader_constituents: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              pctchange: 5.2,
+              turn: 4.8,
+              amplitude: 3.1,
+            },
+          ],
         },
         {
           rank: 2,
@@ -653,6 +665,16 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           avg_turn: 2.2,
           avg_amplitude: 2.4,
           constituent_count: 10,
+          leader_constituents: [
+            {
+              rank: 1,
+              stock_code: "000002.SZ",
+              stock_name: "Beta",
+              pctchange: 2.4,
+              turn: 3.6,
+              amplitude: 2.8,
+            },
+          ],
         },
       ],
     },
