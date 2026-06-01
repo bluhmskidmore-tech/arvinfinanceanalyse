@@ -2096,6 +2096,56 @@ def test_tushare_cross_asset_loader_maps_index_daily_basic_and_weight(monkeypatc
     assert by_key[("CA.MEGA_CAP_TOP5_WEIGHT", "2026-04-10")] == pytest.approx(13.7)
 
 
+def test_tushare_commodity_futures_loader_maps_copper_and_aluminum(monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    class _FakePro:
+        def fut_daily(self, **kwargs):
+            assert kwargs["end_date"] == "20260410"
+            if kwargs["ts_code"] == "CU.SHF":
+                return pd.DataFrame(
+                    [
+                        {"trade_date": "20260409", "close": 81000.0, "settle": 80900.0},
+                        {"trade_date": "20260410", "close": None, "settle": 81234.5},
+                    ]
+                )
+            if kwargs["ts_code"] == "AL.SHF":
+                return pd.DataFrame(
+                    [
+                        {"trade_date": "20260410", "close": 24430.0, "settle": 24410.0},
+                        {"trade_date": "20260411", "close": 24500.0, "settle": 24480.0},
+                    ]
+                )
+            raise AssertionError(kwargs["ts_code"])
+
+    class _FakeTushare:
+        def pro_api(self, token):
+            assert token == "test-token"
+            return _FakePro()
+
+    monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setattr(task_module, "import_tushare_pro", lambda: _FakeTushare())
+
+    rows = task_module._fetch_tushare_commodity_futures_cross_asset_history_rows(
+        duckdb_path="unused.duckdb",
+        report_date=date(2026, 4, 10),
+        lookback_days=7,
+    )
+    by_key = {(row["series_id"], row["trade_date"]): row for row in rows}
+
+    assert by_key[("CA.COPPER", "2026-04-09")]["value_numeric"] == 81000.0
+    assert by_key[("CA.COPPER", "2026-04-10")]["value_numeric"] == 81234.5
+    assert by_key[("CA.ALUMINUM", "2026-04-10")]["value_numeric"] == 24430.0
+    assert ("CA.ALUMINUM", "2026-04-11") not in by_key
+    assert by_key[("CA.COPPER", "2026-04-10")]["vendor_version"] == "vv_tushare_fut_daily_CU_SHF_20260410"
+    assert by_key[("CA.ALUMINUM", "2026-04-10")]["source_version"].startswith("sv_tushare_fut_daily_AL.SHF_")
+
+
 def test_tushare_ncd_shibor_loader_maps_required_tenors(monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.choice_macro")
     if task_module is None:

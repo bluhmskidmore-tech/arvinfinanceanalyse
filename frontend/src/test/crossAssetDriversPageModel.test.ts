@@ -419,6 +419,22 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines[0].explanation).toContain("治理后的权益期权输入尚不可用");
   });
 
+  it("treats a landed latest value as usable even without sparkline history", () => {
+    const kpis = resolveCrossAssetKpis([
+      makePoint("CA.BRENT", "Brent", 82.3, {
+        latest_change: undefined,
+        recent_points: [],
+      }),
+    ]);
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: [] });
+    const energy = rows.find((row) => row.key === "commodities")?.lines.find((line) => line.key === "energy");
+
+    expect(energy?.status).toBe("ready");
+    expect(energy?.stateLabel).toBe("ready");
+    expect(energy?.dataLabel).toContain("82.3");
+  });
+
   it("marks nonferrous commodities ready when governed copper and aluminum inputs exist", () => {
     const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
     const kpis = resolveCrossAssetKpis([

@@ -12,6 +12,7 @@ from pathlib import Path
 import dramatiq
 import duckdb
 import requests
+
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
@@ -233,6 +234,28 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
         "is_core": True,
         "tags": ["public", "macro", "market", "commodity", "steel", "cross_asset"],
         "policy_note": "public cross-asset headline supplement via 99qh spot_price_qh",
+    },
+    "CA.COPPER": {
+        "series_name": "铜主力期货收盘价",
+        "vendor_name": "tushare",
+        "vendor_series_code": "fut_daily:CU.SHF.close",
+        "frequency": "daily",
+        "unit": "CNY/t",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "macro", "market", "commodity", "copper", "cross_asset"],
+        "policy_note": "Tushare fut_daily supplement for copper cross-asset nonferrous lane",
+    },
+    "CA.ALUMINUM": {
+        "series_name": "铝主力期货收盘价",
+        "vendor_name": "tushare",
+        "vendor_series_code": "fut_daily:AL.SHF.close",
+        "frequency": "daily",
+        "unit": "CNY/t",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "macro", "market", "commodity", "aluminum", "cross_asset"],
+        "policy_note": "Tushare fut_daily supplement for aluminum cross-asset nonferrous lane",
     },
     "EMM00058124": {
         "series_name": "中间价:美元兑人民币",
@@ -1477,6 +1500,7 @@ def _load_public_cross_asset_history_rows(
         _fetch_public_bond_zh_us_history_rows,
         _fetch_public_dr007_history_rows,
         _fetch_tushare_cross_asset_history_rows,
+        _fetch_tushare_commodity_futures_cross_asset_history_rows,
         _fetch_public_brent_history_rows,
         _fetch_public_steel_history_rows,
         _fetch_public_fx_history_rows,
@@ -1675,6 +1699,42 @@ def _fetch_tushare_cross_asset_history_rows(
                 )
             )
 
+    return rows
+
+
+def _fetch_tushare_commodity_futures_cross_asset_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    settings = get_settings()
+    token = resolve_tushare_token_with_settings_fallback(settings)
+    if not token:
+        raise RuntimeError("MOSS_TUSHARE_TOKEN is not configured.")
+
+    ts = import_tushare_pro()
+    pro = ts.pro_api(token)
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).strftime("%Y%m%d")
+    end_date = report_date.strftime("%Y%m%d")
+    rows: list[dict[str, object]] = []
+    for series_id, ts_code in (("CA.COPPER", "CU.SHF"), ("CA.ALUMINUM", "AL.SHF")):
+        records = _records_from_tushare_frame(
+            pro.fut_daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        )
+        vendor_version = f"vv_tushare_fut_daily_{ts_code.replace('.', '_')}_{end_date}"
+        source_version = _source_version_from_records(f"tushare_fut_daily_{ts_code}", records)
+        for record in records:
+            trade_date = _coerce_public_trade_date(record.get("trade_date"))
+            if trade_date is None or trade_date > report_date.isoformat():
+                continue
+            close = _coerce_public_number(record.get("close"))
+            if close is None:
+                close = _coerce_public_number(record.get("settle"))
+            if close is None:
+                continue
+            rows.append(_public_history_row(series_id, trade_date, close, vendor_version, source_version))
     return rows
 
 

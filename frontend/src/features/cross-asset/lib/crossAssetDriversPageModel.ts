@@ -638,7 +638,11 @@ function explanationFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: str
 }
 
 function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined): kpi is ResolvedCrossAssetKpi {
-  return Boolean(kpi && (kpi.sparkline.length > 0 || kpi.changeTone !== "default"));
+  if (!kpi || kpi.sourceKind === "missing") {
+    return false;
+  }
+  // A landed latest value is usable even when change/sparkline history is temporarily thin.
+  return kpi.valueLabel !== "—";
 }
 
 function kpiDateSuffix(kpi: ResolvedCrossAssetKpi) {
