@@ -4003,21 +4003,21 @@ export default function StockAnalysisPage() {
                                   <li key={d.code}>{d.message}</li>
                                 ))}
                             </ul>
-                            <Typography.Title level={5}>data_gaps</Typography.Title>
+                            <Typography.Title level={5}>数据缺口</Typography.Title>
                             <ul>
                               {strategyPayload.data_gaps.map((g) => (
                                 <li key={`${g.input_family}-${g.status}`}>
-                                  <strong>{g.input_family}</strong> {g.status}: {g.evidence}
+                                  <strong>{dataGapFamilyLabel(g.input_family)}</strong> {statusLabel(g.status)}: {g.evidence}
                                 </li>
                               ))}
                             </ul>
-                            <Typography.Title level={5}>supported_outputs</Typography.Title>
-                            <p>{strategyPayload.supported_outputs.join(", ") || "无"}</p>
-                            <Typography.Title level={5}>unsupported_outputs</Typography.Title>
+                            <Typography.Title level={5}>可用输出</Typography.Title>
+                            <p>{strategyPayload.supported_outputs.map(outputKeyLabel).join("、") || "无"}</p>
+                            <Typography.Title level={5}>阻断输出</Typography.Title>
                             <ul>
                               {strategyPayload.unsupported_outputs.map((u) => (
                                 <li key={u.key}>
-                                  <strong>{u.key}</strong>: {u.reason}
+                                  <strong>{outputKeyLabel(u.key)}</strong>: {u.reason}
                                 </li>
                               ))}
                             </ul>

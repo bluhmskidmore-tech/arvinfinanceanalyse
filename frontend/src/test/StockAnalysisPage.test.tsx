@@ -2032,10 +2032,12 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
     expect(screen.getByText("警告 / Warning")).toBeInTheDocument();
     expect(screen.getAllByText("Breadth inputs are unavailable.").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("data_gaps")).toBeInTheDocument();
+    expect(screen.getByText("数据缺口")).toBeInTheDocument();
     expect(screen.getAllByText(/breadth/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("supported_outputs")).toBeInTheDocument();
-    expect(screen.getByText("unsupported_outputs")).toBeInTheDocument();
+    expect(screen.getByText("可用输出")).toBeInTheDocument();
+    expect(screen.getByText("阻断输出")).toBeInTheDocument();
+    expect(screen.queryByText("data_gaps")).not.toBeInTheDocument();
+    expect(screen.queryByText("unsupported_outputs")).not.toBeInTheDocument();
   });
 
   it("renders event monitoring with business labels instead of raw backend fields", async () => {

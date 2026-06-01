@@ -656,7 +656,6 @@ function localizeBasisLabel(basis: string | null | undefined): string {
 export type StockAnalysisPagePurpose = {
   eyebrow: string;
   title: string;
-  subtitle: string;
   asOfLine: string;
   dataStatusLine: string;
 };
@@ -673,7 +672,6 @@ export function buildStockAnalysisPagePurpose(
   return {
     eyebrow: "Livermore 策略 · 只读复核台",
     title: "股票策略复核台",
-    subtitle: "查看今日门控、候选队列与证据是否齐全；仅作只读复核，不执行任何交易操作。",
     asOfLine: `观察日 ${asOf}`,
     dataStatusLine: aligned
       ? `数据状态：已对齐（${asOf}）`
