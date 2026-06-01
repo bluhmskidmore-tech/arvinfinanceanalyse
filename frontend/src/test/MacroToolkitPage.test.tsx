@@ -707,6 +707,53 @@ describe("MacroToolkitPage", () => {
     expect(multiFactorCard).toHaveTextContent("run-factor");
   });
 
+  it("shows scoped Choice refresh permission as authorized with trace detail", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const strategyEnvelope = await baseClient.getMacroToolkitStrategySummaries();
+    const choiceStockRefresh = strategyEnvelope.result.choice_stock_refresh!;
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          strategy_summaries: [],
+        },
+      }),
+      getMacroToolkitStrategySummaries: async () => ({
+        ...strategyEnvelope,
+        result: {
+          ...strategyEnvelope.result,
+          choice_stock_refresh: {
+            ...choiceStockRefresh,
+            permission: {
+              mode: "scoped_refresh",
+              allowed: true,
+              user_id: "stock-refresh-user",
+              role: "viewer",
+              identity_source: "header",
+              resource: "macro_toolkit.choice_stock",
+              actions: ["history", "factor_snapshot"],
+            },
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const permissionLabel = await screen.findByText("刷新权限");
+    const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
+    expect(permissionTile).not.toBeNull();
+    expect(permissionTile).toHaveTextContent("已授权");
+    expect(permissionTile).not.toHaveTextContent("待确认");
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      "resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user stock-refresh-user",
+    );
+  });
+
   it("shows price source versions when factor strategy is degraded", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();

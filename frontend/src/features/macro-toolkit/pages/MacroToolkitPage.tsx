@@ -25,6 +25,7 @@ import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
   MacroToolkitChoiceStockRefreshRun,
+  MacroToolkitChoiceStockRefreshPermission,
   MacroToolkitAShareRiskPayload,
   MacroToolkitHasonStrategy,
   MacroToolkitIndicator,
@@ -944,8 +945,8 @@ export default function MacroToolkitPage() {
                 />
                 <MetricTile
                   label="刷新权限"
-                  value={choiceStockRefresh?.permission?.mode === "identity_only" ? "已开放" : "待确认"}
-                  detail={choiceStockRefresh?.permission?.resource ?? "choice_stock.refresh"}
+                  value={choiceStockPermissionValue(choiceStockRefresh?.permission)}
+                  detail={choiceStockPermissionDetail(choiceStockRefresh?.permission)}
                 />
               </div>
               <div className="macro-toolkit-cffex-actions">
@@ -1668,6 +1669,27 @@ function choiceStockFallbackText(
     return "";
   }
   return `fallback ${table.fallback_mode} · 最近可用 ${table.fallback_date}`;
+}
+
+function choiceStockPermissionValue(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
+  if (!permission) {
+    return "待确认";
+  }
+  if (permission.allowed === false) {
+    return "未授权";
+  }
+  return permission.allowed === true || permission.mode === "identity_only" ? "已授权" : "待确认";
+}
+
+function choiceStockPermissionDetail(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
+  if (!permission) {
+    return "resource choice_stock.refresh";
+  }
+  const resource = permission.resource ?? "choice_stock.refresh";
+  const mode = permission.mode || "unknown";
+  const actions = permission.actions?.length ? permission.actions.join(" / ") : "unknown";
+  const user = permission.user_id || "anonymous";
+  return `resource ${resource} · mode ${mode} · actions ${actions} · user ${user}`;
 }
 
 function formatSignedRatio(value: number | null | undefined) {
