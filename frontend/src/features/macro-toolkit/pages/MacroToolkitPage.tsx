@@ -1348,8 +1348,8 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
     : runtimeOutputsCurrent
       ? "none"
       : "freshness not confirmed";
-  const availableTracedScripts = strategy.source_trace.filter((item) => item.available);
-  const tracedScriptPreview = availableTracedScripts.slice(0, 5);
+  const tracedScripts = strategy.source_trace;
+  const tracedScriptPreview = tracedScripts.slice(0, 5);
   return (
     <section className="macro-toolkit-section macro-toolkit-hason-strategy" data-testid="macro-toolkit-hason-strategy">
       <div className="macro-toolkit-hason-strategy__head">
@@ -1395,7 +1395,7 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
         <MetricTile
           icon={<ToolOutlined />}
           label="Script trace"
-          value={availableTracedScripts.length}
+          value={tracedScripts.length}
           detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "no script available"}
           tone="neutral"
           testId="macro-toolkit-hason-script-trace"
@@ -1475,7 +1475,8 @@ function hasonFreshnessBasisLabel(basis: string) {
 
 function formatHasonTraceScript(item: MacroToolkitHasonStrategy["source_trace"][number]) {
   const modules = Array.isArray(item.modules) ? item.modules : [];
-  return modules.length ? `${item.script}[${modules.join("+")}]` : item.script;
+  const moduleText = modules.length ? `[${modules.join("+")}]` : "";
+  return `${item.script}${moduleText}${item.available ? "" : ":missing"}`;
 }
 
 function ReadinessTile({

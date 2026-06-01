@@ -469,6 +469,9 @@ describe("MacroToolkitPage", () => {
     expect(hasonStrategyPanel.querySelector(".macro-toolkit-metric:nth-child(4)")).not.toHaveClass(
       "macro-toolkit-metric--positive",
     );
+    const marketStateModule = await screen.findByTestId("macro-toolkit-hason-module-market_state");
+    expect(marketStateModule).toHaveTextContent("script-chain complete");
+    expect(marketStateModule).not.toHaveTextContent("integrated");
   });
 
   it("counts all available Hason source trace scripts while keeping the detail preview bounded", async () => {
@@ -537,7 +540,7 @@ describe("MacroToolkitPage", () => {
                 group: "legacy",
                 available: true,
               },
-            ] as typeof hasonStrategy.source_trace,
+            ],
           },
         },
       }),
@@ -547,6 +550,51 @@ describe("MacroToolkitPage", () => {
 
     const scriptTraceMetric = await screen.findByTestId("macro-toolkit-hason-script-trace");
     expect(scriptTraceMetric).toHaveTextContent("legacy_trace");
+  });
+
+  it("keeps missing Hason scripts in the trace preview with module context", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            source_trace: [
+              {
+                script: "rebalance_cn",
+                filename: null,
+                group: null,
+                available: false,
+                modules: ["allocation"],
+              },
+              {
+                script: "risk_parity_cn",
+                filename: "risk_parity_cn.py",
+                group: "allocation",
+                available: true,
+                modules: ["allocation"],
+              },
+            ],
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const scriptTraceMetric = await screen.findByTestId("macro-toolkit-hason-script-trace");
+    expect(scriptTraceMetric).toHaveTextContent("2");
+    const scriptTraceDetail = scriptTraceMetric.querySelector("small");
+    expect(scriptTraceDetail).toHaveAttribute("title", expect.stringContaining("rebalance_cn[allocation]:missing"));
+    expect(scriptTraceDetail).toHaveAttribute("title", expect.stringContaining("risk_parity_cn[allocation]"));
   });
 
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {
