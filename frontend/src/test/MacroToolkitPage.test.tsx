@@ -296,6 +296,109 @@ describe("MacroToolkitPage", () => {
     expect(await screen.findByTestId("macro-toolkit-hason-strategy")).toHaveTextContent("unknown · 1");
   });
 
+  it("shows Hason invalid CSV content date counts", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            status: "degraded",
+            runtime_output_status: "unknown",
+            runtime_output_gaps: ["final_signal.csv"],
+            runtime_outputs: hasonStrategy.runtime_outputs.map((item) =>
+              item.name === "final_signal.csv"
+                ? {
+                    ...item,
+                    freshness_status: "invalid_date",
+                    content_date: "2026-04-30",
+                    content_date_min: "2026-04-30",
+                    content_date_max: "2026-04-30",
+                    content_date_invalid_count: 1,
+                  }
+                : {
+                    ...item,
+                    freshness_status: "current",
+                    content_date: "2026-04-30",
+                    content_date_min: "2026-04-30",
+                    content_date_max: "2026-04-30",
+                    content_date_invalid_count: 0,
+                  },
+            ),
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const runtimeGaps = await screen.findByTestId("macro-toolkit-hason-runtime-gaps");
+    expect(runtimeGaps).toHaveTextContent("invalid_date");
+    expect(runtimeGaps).toHaveTextContent("1 invalid date");
+    expect(await screen.findByTestId("macro-toolkit-hason-strategy")).toHaveTextContent("unknown · 1");
+  });
+
+  it("shows Hason unknown CSV content freshness without treating file time as proof", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            status: "degraded",
+            runtime_output_status: "unknown",
+            runtime_output_gaps: ["final_signal.csv"],
+            runtime_outputs: hasonStrategy.runtime_outputs.map((item) =>
+              item.name === "final_signal.csv"
+                ? {
+                    ...item,
+                    freshness_status: "unknown",
+                    freshness_basis: "csv_content",
+                    content_date: null,
+                    content_date_min: null,
+                    content_date_max: null,
+                    content_date_invalid_count: 0,
+                    modified_date: "2026-04-30",
+                  }
+                : {
+                    ...item,
+                    freshness_status: "current",
+                    freshness_basis: "csv_content",
+                    content_date: "2026-04-30",
+                    content_date_min: "2026-04-30",
+                    content_date_max: "2026-04-30",
+                    content_date_invalid_count: 0,
+                  },
+            ),
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const runtimeGaps = await screen.findByTestId("macro-toolkit-hason-runtime-gaps");
+    expect(runtimeGaps).toHaveTextContent("final_signal.csv: unknown CSV content date");
+    expect(runtimeGaps).toHaveTextContent("file 2026-04-30");
+    expect(await screen.findByTestId("macro-toolkit-hason-strategy")).toHaveTextContent("unknown · 1");
+  });
+
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const client = {

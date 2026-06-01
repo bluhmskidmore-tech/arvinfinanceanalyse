@@ -1441,6 +1441,7 @@ function formatHasonRuntimeOutput(item: MacroToolkitHasonStrategy["runtime_outpu
   return (
     `${item.name}: ${item.freshness_status} ${hasonFreshnessBasisLabel(item.freshness_basis)}` +
     `${hasonContentDateText(item)}` +
+    `${hasonInvalidDateText(item)}` +
     `${item.modified_date ? ` file ${item.modified_date}` : ""}`
   );
 }
@@ -1450,6 +1451,10 @@ function hasonContentDateText(item: MacroToolkitHasonStrategy["runtime_outputs"]
     return ` content ${item.content_date_min}..${item.content_date_max}`;
   }
   return item.content_date ? ` content ${item.content_date}` : "";
+}
+
+function hasonInvalidDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
+  return item.content_date_invalid_count > 0 ? ` ${item.content_date_invalid_count} invalid date` : "";
 }
 
 function hasonFreshnessBasisLabel(basis: string) {

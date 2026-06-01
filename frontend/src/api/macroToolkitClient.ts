@@ -395,6 +395,7 @@ export type MacroToolkitHasonStrategy = {
     content_date: string | null;
     content_date_min: string | null;
     content_date_max: string | null;
+    content_date_invalid_count: number;
     reference_date: string | null;
   }>;
   required_runtime_outputs: string[];
@@ -823,6 +824,7 @@ const MOCK_HASON_STRATEGY: MacroToolkitHasonStrategy = {
       content_date: "2026-04-29",
       content_date_min: "2026-04-29",
       content_date_max: "2026-04-29",
+      content_date_invalid_count: 0,
       reference_date: "2026-04-30",
     },
     {
@@ -834,6 +836,7 @@ const MOCK_HASON_STRATEGY: MacroToolkitHasonStrategy = {
       content_date: "2026-04-29",
       content_date_min: "2026-04-29",
       content_date_max: "2026-04-29",
+      content_date_invalid_count: 0,
       reference_date: "2026-04-30",
     },
   ],

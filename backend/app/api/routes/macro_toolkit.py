@@ -3030,12 +3030,15 @@ def _hason_runtime_output_payload(
     content_date_min = content_dates["min"]
     content_date_max = content_dates["max"]
     content_date_invalid_count = int(content_dates["invalid_count"] or 0)
-    freshness_basis = "csv_content" if content_date else "file_modified_date"
+    has_content_date_column = bool(content_dates["date_column"])
+    freshness_basis = "csv_content" if has_content_date_column else "file_modified_date"
     freshness_status = (
         "invalid_date"
         if content_date_invalid_count
         else "mixed"
         if content_date_min and content_date_max and content_date_min != content_date_max
+        else "unknown"
+        if has_content_date_column and not content_date
         else _hason_output_freshness(content_date or modified_date, analysis_date)
     )
     return {
@@ -3067,30 +3070,31 @@ def _hason_output_modified_date(modified_at: str | None) -> str | None:
 def _hason_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | int | None]:
     path_value = file_payload.get("path")
     if not path_value:
-        return {"min": None, "max": None, "invalid_count": 0}
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
     path = Path(str(path_value))
     if not path.is_file():
-        return {"min": None, "max": None, "invalid_count": 0}
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
     try:
         columns = pd.read_csv(path, nrows=0).columns
         date_column = next((column for column in _HASON_OUTPUT_DATE_COLUMNS if column in columns), None)
         if date_column is None:
-            return {"min": None, "max": None, "invalid_count": 0}
+            return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
         frame = pd.read_csv(path, usecols=[date_column])
     except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return {"min": None, "max": None, "invalid_count": 0}
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
     if frame.empty:
-        return {"min": None, "max": None, "invalid_count": 0}
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": date_column}
     raw_dates = frame[date_column].dropna()
     parsed = pd.to_datetime(raw_dates, errors="coerce")
     invalid_count = int(parsed.isna().sum())
     parsed = parsed.dropna()
     if parsed.empty:
-        return {"min": None, "max": None, "invalid_count": invalid_count}
+        return {"min": None, "max": None, "invalid_count": invalid_count, "date_column": date_column}
     return {
         "min": parsed.min().date().isoformat(),
         "max": parsed.max().date().isoformat(),
         "invalid_count": invalid_count,
+        "date_column": date_column,
     }
 
 
