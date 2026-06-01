@@ -408,6 +408,7 @@ export type MacroToolkitHasonStrategy = {
     filename: string | null;
     group: string | null;
     available: boolean;
+    modules: string[];
   }>;
 };
 
@@ -846,9 +847,27 @@ const MOCK_HASON_STRATEGY: MacroToolkitHasonStrategy = {
   stale_runtime_outputs: ["final_signal.csv", "crowding_latest.csv"],
   boundary: "Analytical macro toolkit display only; not a formal MTR metric, trade order, or portfolio execution engine.",
   source_trace: [
-    { script: "signal_aggregator", filename: "signal_aggregator.py", group: "macro_signal", available: true },
-    { script: "risk_parity_cn", filename: "risk_parity_cn.py", group: "allocation", available: true },
-    { script: "crisis_score_cn", filename: "crisis_score_cn.py", group: "macro_signal", available: true },
+    {
+      script: "signal_aggregator",
+      filename: "signal_aggregator.py",
+      group: "macro_signal",
+      available: true,
+      modules: ["strategy_selection"],
+    },
+    {
+      script: "risk_parity_cn",
+      filename: "risk_parity_cn.py",
+      group: "allocation",
+      available: true,
+      modules: ["allocation"],
+    },
+    {
+      script: "crisis_score_cn",
+      filename: "crisis_score_cn.py",
+      group: "macro_signal",
+      available: true,
+      modules: ["risk_management"],
+    },
   ],
 };
 

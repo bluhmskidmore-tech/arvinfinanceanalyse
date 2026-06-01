@@ -3151,6 +3151,11 @@ def _hason_source_trace(
 ) -> list[dict[str, object]]:
     traced: list[dict[str, object]] = []
     seen: set[str] = set()
+    module_keys_by_script: dict[str, list[str]] = {}
+    for module in modules:
+        module_key = str(module["key"])
+        for script_name in module["scripts"]:
+            module_keys_by_script.setdefault(str(script_name), []).append(module_key)
     for module in modules:
         for script_name in module["scripts"]:
             name = str(script_name)
@@ -3164,6 +3169,7 @@ def _hason_source_trace(
                     "filename": script.filename if script else None,
                     "group": script.group if script else None,
                     "available": bool(script and script.path.exists()),
+                    "modules": module_keys_by_script.get(name, []),
                 }
             )
     return traced

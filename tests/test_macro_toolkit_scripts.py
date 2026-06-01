@@ -555,6 +555,35 @@ def test_hason_summary_counts_shared_missing_script_once(tmp_path, monkeypatch) 
     assert payload["readiness"]["missing_script_count"] == 1
 
 
+def test_hason_source_trace_keeps_shared_script_module_context(tmp_path, monkeypatch) -> None:
+    script_names = {
+        str(script_name)
+        for module in macro_toolkit_route._HASON_MODULES
+        for script_name in module["scripts"]
+    }
+    scripts = []
+    for name in script_names:
+        path = tmp_path / f"{name}.py"
+        path.write_text("# available", encoding="utf-8")
+        scripts.append(
+            SimpleNamespace(
+                name=name,
+                path=path,
+                filename=f"{name}.py",
+                group="macro",
+            )
+        )
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
+
+    payload = macro_toolkit_route._hason_macro_strategy_summary(
+        [{"name": "final_signal.csv"}, {"name": "crowding_latest.csv"}]
+    )
+
+    trace_by_script = {item["script"]: item for item in payload["source_trace"]}
+    assert trace_by_script["dcc_garch_cn"]["modules"] == ["market_state", "risk_management"]
+    assert trace_by_script["risk_parity_cn"]["modules"] == ["allocation"]
+
+
 def test_hason_summary_marks_existing_outputs_stale_against_analysis_date(tmp_path, monkeypatch) -> None:
     scripts = []
     for module in macro_toolkit_route._HASON_MODULES:

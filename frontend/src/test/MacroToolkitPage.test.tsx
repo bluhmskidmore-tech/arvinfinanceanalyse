@@ -483,6 +483,7 @@ describe("MacroToolkitPage", () => {
       filename: `trace_script_${index + 1}.py`,
       group: "Hason",
       available: true,
+      modules: index === 0 ? ["market_state", "risk_management"] : ["market_state"],
     }));
     const client = {
       ...baseClient,
@@ -506,8 +507,46 @@ describe("MacroToolkitPage", () => {
     expect(scriptTraceMetric).toHaveTextContent("7");
     expect(scriptTraceMetric).toHaveTextContent("trace_script_1");
     const scriptTraceDetail = scriptTraceMetric?.querySelector("small");
+    expect(scriptTraceDetail).toHaveAttribute(
+      "title",
+      expect.stringContaining("trace_script_1[market_state+risk_management]"),
+    );
     expect(scriptTraceDetail).toHaveAttribute("title", expect.stringContaining("trace_script_5"));
     expect(scriptTraceDetail).not.toHaveAttribute("title", expect.stringContaining("trace_script_6"));
+  });
+
+  it("renders legacy Hason source trace entries without module context", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            source_trace: [
+              {
+                script: "legacy_trace",
+                filename: "legacy_trace.py",
+                group: "legacy",
+                available: true,
+              },
+            ] as typeof hasonStrategy.source_trace,
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const scriptTraceMetric = await screen.findByTestId("macro-toolkit-hason-script-trace");
+    expect(scriptTraceMetric).toHaveTextContent("legacy_trace");
   });
 
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {

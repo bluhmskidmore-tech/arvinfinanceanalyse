@@ -1396,7 +1396,7 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
           icon={<ToolOutlined />}
           label="Script trace"
           value={availableTracedScripts.length}
-          detail={tracedScriptPreview.map((item) => item.script).join(" / ") || "no script available"}
+          detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "no script available"}
           tone="neutral"
           testId="macro-toolkit-hason-script-trace"
         />
@@ -1471,6 +1471,11 @@ function hasonFreshnessBasisLabel(basis: string) {
     missing: "file missing",
   };
   return labels[basis] ?? basis;
+}
+
+function formatHasonTraceScript(item: MacroToolkitHasonStrategy["source_trace"][number]) {
+  const modules = Array.isArray(item.modules) ? item.modules : [];
+  return modules.length ? `${item.script}[${modules.join("+")}]` : item.script;
 }
 
 function ReadinessTile({
