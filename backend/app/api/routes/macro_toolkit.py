@@ -2959,7 +2959,7 @@ def _hason_macro_strategy_summary(
     )
     readiness_ratio = round(ready_modules / len(modules), 4) if modules else 0
     status = (
-        "integrated"
+        "observation_ready"
         if runtime_output_status == "current" and ready_modules == len(modules)
         else "degraded"
     )

@@ -399,6 +399,69 @@ describe("MacroToolkitPage", () => {
     expect(await screen.findByTestId("macro-toolkit-hason-strategy")).toHaveTextContent("unknown · 1");
   });
 
+  it("labels fully current Hason output as observation-ready, not formal use", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            status: "observation_ready",
+            readiness: {
+              ...hasonStrategy.readiness,
+              ready_modules: hasonStrategy.readiness.total_modules,
+              partial_modules: 0,
+              missing_modules: 0,
+              missing_script_count: 0,
+              ratio: 1,
+            },
+            modules: hasonStrategy.modules.map((module) => ({
+              ...module,
+              status: "integrated",
+              available_scripts: module.scripts,
+              missing_scripts: [],
+            })),
+            runtime_output_status: "current",
+            runtime_output_gaps: [],
+            missing_runtime_outputs: [],
+            stale_runtime_outputs: [],
+            runtime_outputs: hasonStrategy.runtime_outputs.map((item) => ({
+              ...item,
+              freshness_status: "current",
+              freshness_basis: "csv_content",
+              content_date: "2026-04-30",
+              content_date_min: "2026-04-30",
+              content_date_max: "2026-04-30",
+              content_date_invalid_count: 0,
+              modified_date: "2026-04-30",
+            })),
+            observation_only: true,
+            formal_use_allowed: false,
+            formal_metric_id: null,
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const hasonStrategyPanel = await screen.findByTestId("macro-toolkit-hason-strategy");
+    expect(hasonStrategyPanel).toHaveTextContent("observation-ready");
+    expect(hasonStrategyPanel).toHaveTextContent("observation-only");
+    expect(hasonStrategyPanel).toHaveTextContent("no formal MTR");
+    expect(hasonStrategyPanel).toHaveTextContent("Runtime outputs");
+    expect(hasonStrategyPanel).toHaveTextContent("Runtime outputscurrent");
+    expect(hasonStrategyPanel).not.toHaveTextContent("Runtime outputsready");
+  });
+
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const client = {

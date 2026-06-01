@@ -613,10 +613,12 @@ def test_hason_summary_compares_output_freshness_in_cn_business_date(tmp_path, m
         analysis_date="2026-04-30",
     )
 
-    assert payload["status"] == "integrated"
+    assert payload["status"] == "observation_ready"
     assert payload["runtime_output_status"] == "current"
     assert payload["stale_runtime_outputs"] == []
     assert all(item["modified_date"] == "2026-04-30" for item in payload["runtime_outputs"])
+    assert payload["observation_only"] is True
+    assert payload["formal_use_allowed"] is False
 
 
 def test_hason_summary_prefers_csv_content_date_over_file_modified_date(tmp_path, monkeypatch) -> None:

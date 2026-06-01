@@ -135,6 +135,7 @@ function statusLabel(status: string) {
     not_wired: "未接线",
     planned: "待接入",
     sample_only: "样例展示",
+    observation_ready: "observation-ready",
   };
   return labels[status] ?? status;
 }
@@ -143,7 +144,11 @@ function statusColor(status: string) {
   if (["current", "ready", "library_ready", "complete", "wired", "visible"].includes(status)) {
     return "green";
   }
-  if (["lagging", "partial", "planned", "degraded", "sample_only", "deferred", "loading"].includes(status)) {
+  if (
+    ["lagging", "partial", "planned", "degraded", "sample_only", "deferred", "loading", "observation_ready"].includes(
+      status,
+    )
+  ) {
     return "gold";
   }
   if (["stale", "missing", "not_wired", "unavailable", "failed"].includes(status)) return "red";
@@ -1353,7 +1358,7 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
           <small>{strategy.boundary}</small>
         </div>
         <div className="macro-toolkit-tag-row">
-          <Tag color={statusColor(strategy.status)}>{strategy.status}</Tag>
+          <Tag color={statusColor(strategy.status)}>{statusLabel(strategy.status)}</Tag>
           <Tag color="blue">{strategy.basis}</Tag>
           <Tag color={strategy.observation_only ? "gold" : "green"}>
             {strategy.observation_only ? "observation-only" : "actionable"}
