@@ -211,3 +211,69 @@ def test_daily_pretrade_refresh_dry_run_reports_missing_steps(tmp_path: Path, mo
         "sync_livermore_position_snapshot",
         "materialize_livermore_candidate_history",
     ]
+
+
+def test_monitor_livermore_daily_pretrade_refresh_retries_until_completed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _load_refresh_module()
+    db_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(db_path), read_only=False).close()
+    attempts = [
+        {"status": "not_ready", "reason": "target_market_data_not_landed"},
+        {"status": "completed", "pretrade_output_paths": {"json": "out.json"}},
+    ]
+    calls: list[dict[str, object]] = []
+    sleeps: list[float] = []
+
+    def fake_run(**kwargs):
+        calls.append(kwargs)
+        return attempts.pop(0)
+
+    monkeypatch.setattr(module, "run_livermore_daily_pretrade_refresh", fake_run)
+
+    result = module.monitor_livermore_daily_pretrade_refresh(
+        duckdb_path=db_path,
+        target_date="2026-06-01",
+        max_attempts=3,
+        poll_interval_seconds=5,
+        sleep_func=sleeps.append,
+    )
+
+    assert result["status"] == "completed"
+    assert result["attempt_count"] == 2
+    assert sleeps == [5]
+    assert [call["target_date"] for call in calls] == ["2026-06-01", "2026-06-01"]
+
+
+def test_monitor_livermore_daily_pretrade_refresh_stops_after_max_attempts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _load_refresh_module()
+    db_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(db_path), read_only=False).close()
+    sleeps: list[float] = []
+    calls: list[dict[str, object]] = []
+
+    def fake_run(**kwargs):
+        calls.append(kwargs)
+        return {"status": "not_ready", "reason": "target_market_data_not_landed"}
+
+    monkeypatch.setattr(module, "run_livermore_daily_pretrade_refresh", fake_run)
+
+    result = module.monitor_livermore_daily_pretrade_refresh(
+        duckdb_path=db_path,
+        target_date="2026-06-01",
+        max_attempts=2,
+        poll_interval_seconds=7,
+        sleep_func=sleeps.append,
+    )
+
+    assert result["status"] == "not_ready"
+    assert result["reason"] == "max_attempts_exhausted"
+    assert result["attempt_count"] == 2
+    assert len(result["attempts"]) == 2
+    assert sleeps == [7]
+    assert len(calls) == 2

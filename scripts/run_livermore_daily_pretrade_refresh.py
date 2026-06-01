@@ -3,9 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -164,6 +165,55 @@ def run_livermore_daily_pretrade_refresh(
         "steps": steps,
         "pretrade_output_paths": pretrade_payload.get("output_paths"),
         "pretrade_decision": pretrade_payload.get("decision"),
+    }
+
+
+def monitor_livermore_daily_pretrade_refresh(
+    *,
+    duckdb_path: str | Path,
+    target_date: str | None = None,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+    top_n: int = 10,
+    lookback_days: int = 90,
+    stock_candidate_policy: str | None = None,
+    sample_stock_code: str = DEFAULT_SAMPLE_STOCK_CODE,
+    dry_run: bool = False,
+    skip_upstream_probe: bool = False,
+    max_attempts: int = 12,
+    poll_interval_seconds: float = 600,
+    sleep_func: Callable[[float], None] = time.sleep,
+) -> dict[str, object]:
+    attempts: list[dict[str, object]] = []
+    attempt_limit = max(1, int(max_attempts))
+    interval = max(0.0, float(poll_interval_seconds))
+    last_result: dict[str, object] | None = None
+    for attempt in range(1, attempt_limit + 1):
+        result = run_livermore_daily_pretrade_refresh(
+            duckdb_path=duckdb_path,
+            target_date=target_date,
+            output_dir=output_dir,
+            top_n=top_n,
+            lookback_days=lookback_days,
+            stock_candidate_policy=stock_candidate_policy,
+            sample_stock_code=sample_stock_code,
+            dry_run=dry_run,
+            skip_upstream_probe=skip_upstream_probe,
+        )
+        last_result = result
+        attempts.append(_compact_monitor_attempt(attempt, result))
+        if result.get("status") != "not_ready":
+            monitored = dict(result)
+            monitored["attempt_count"] = attempt
+            monitored["attempts"] = attempts
+            return monitored
+        if attempt < attempt_limit:
+            sleep_func(interval)
+    return {
+        "status": "not_ready",
+        "reason": "max_attempts_exhausted",
+        "attempt_count": attempt_limit,
+        "attempts": attempts,
+        "last_result": last_result,
     }
 
 
@@ -409,6 +459,17 @@ def _compact_pretrade_result(payload: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _compact_monitor_attempt(attempt: int, payload: dict[str, object]) -> dict[str, object]:
+    compact: dict[str, object] = {
+        "attempt": attempt,
+        "status": payload.get("status"),
+    }
+    for key in ("target_date", "reason", "pretrade_output_paths", "pretrade_decision"):
+        if key in payload:
+            compact[key] = payload.get(key)
+    return compact
+
+
 def _resolve_duckdb_path(path_value: str | Path) -> Path:
     path = Path(path_value)
     if not path.is_absolute():
@@ -453,19 +514,30 @@ def main() -> int:
     parser.add_argument("--sample-stock-code", default=DEFAULT_SAMPLE_STOCK_CODE)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-upstream-probe", action="store_true")
+    parser.add_argument("--monitor", action="store_true", help="Retry until data lands or max attempts is reached.")
+    parser.add_argument("--max-attempts", type=int, default=12)
+    parser.add_argument("--poll-interval-seconds", type=float, default=600)
     args = parser.parse_args()
     try:
-        result = run_livermore_daily_pretrade_refresh(
-            duckdb_path=args.duckdb_path,
-            target_date=args.target_date.strip() or None,
-            output_dir=args.output_dir,
-            top_n=args.top_n,
-            lookback_days=max(7, int(args.lookback_days)),
-            stock_candidate_policy=args.stock_candidate_policy,
-            sample_stock_code=args.sample_stock_code,
-            dry_run=args.dry_run,
-            skip_upstream_probe=args.skip_upstream_probe,
-        )
+        options = {
+            "duckdb_path": args.duckdb_path,
+            "target_date": args.target_date.strip() or None,
+            "output_dir": args.output_dir,
+            "top_n": args.top_n,
+            "lookback_days": max(7, int(args.lookback_days)),
+            "stock_candidate_policy": args.stock_candidate_policy,
+            "sample_stock_code": args.sample_stock_code,
+            "dry_run": args.dry_run,
+            "skip_upstream_probe": args.skip_upstream_probe,
+        }
+        if args.monitor:
+            result = monitor_livermore_daily_pretrade_refresh(
+                **options,
+                max_attempts=args.max_attempts,
+                poll_interval_seconds=args.poll_interval_seconds,
+            )
+        else:
+            result = run_livermore_daily_pretrade_refresh(**options)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
