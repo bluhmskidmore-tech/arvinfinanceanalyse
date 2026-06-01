@@ -166,6 +166,65 @@ def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.Monk
         conn.close()
 
 
+def test_ingest_strips_html_from_news_payload_and_warehouse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setitem(
+        ingest_tushare_npr_to_choice_news.__globals__,
+        "_resolve_tushare_token",
+        lambda: "test-token",
+    )
+    recent_day = datetime.now().date().strftime("%Y-%m-%d")
+    pro = _FakePro(
+        news_rows=[
+            {
+                "datetime": f"{recent_day} 11:00:00",
+                "title": "<span>Rates &amp; Credit</span>",
+                "content": "<p>Yield&nbsp;<b>down</b></p>",
+            }
+        ]
+    )
+    _install_fake(monkeypatch, pro)
+
+    db = tmp_path / "news-html.duckdb"
+    result = ingest_tushare_npr_to_choice_news(
+        str(db),
+        limit=1,
+        news_limit=1,
+        cctv_lookback_days=1,
+        major_lookback_hours=1,
+        research_lookback_days=1,
+    )
+
+    assert result["news"]["inserted"] == 1
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        payload_text = conn.execute(
+            "select payload_text from choice_news_event where group_id = 'tushare_news'"
+        ).fetchone()[0]
+        assert "<" not in str(payload_text)
+        assert ">" not in str(payload_text)
+        assert "Rates & Credit" in str(payload_text)
+        assert "Yield down" in str(payload_text)
+
+        title, content, summary = conn.execute(
+            """
+            select title, content, summary
+            from fact_news_event
+            where source = 'tushare_news'
+            limit 1
+            """
+        ).fetchone()
+        warehouse_text = " ".join(str(value or "") for value in (title, content, summary))
+        assert "<" not in warehouse_text
+        assert ">" not in warehouse_text
+        assert "Rates & Credit" in warehouse_text
+        assert "Yield down" in warehouse_text
+    finally:
+        conn.close()
+
+
 def test_one_block_failure_does_not_break_others(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

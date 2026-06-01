@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import logging
-
-logger = logging.getLogger(__name__)
 import json
+import logging
 import os
+import re
 from datetime import UTC, datetime, timedelta
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,8 @@ from backend.app.repositories.tushare_adapter import (
     resolve_tushare_token_with_settings_fallback,
 )
 from backend.app.tasks.choice_news import ensure_choice_news_event_schema
+
+logger = logging.getLogger(__name__)
 
 # TUSHARE_TOKEN_ENV: single source tushare_adapter; re-imported for legacy imports of this module.
 TUSHARE_NEWS_SRC_ENV = "MOSS_TUSHARE_NEWS_SRC"
@@ -127,12 +129,19 @@ def _first_nonempty(record: dict[str, Any], keys: list[str]) -> str:
     return ""
 
 
+def _strip_html(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"<[^>]+>", " ", unescape(text))
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def _extract_content_for_warehouse(record: dict[str, Any]) -> str:
     for key in ("content", "content_html", "abstr", "abstract", "summary"):
         value = record.get(key)
         if value is None:
             continue
-        text = str(value).strip()
+        text = _strip_html(str(value).strip())
         if text and text.lower() != "nan":
             return text
     return ""
@@ -180,8 +189,8 @@ def _ingest_simple_block(
         if int(exists_row[0] if exists_row is not None else 0) > 0:
             skipped += 1
             continue
-        title = _first_nonempty(record, title_keys)
-        body = _first_nonempty(record, body_keys)
+        title = _strip_html(_first_nonempty(record, title_keys))
+        body = _strip_html(_first_nonempty(record, body_keys))
         if title and body:
             payload_text = f"{title} — {body[:280]}{'…' if len(body) > 280 else ''}"
         else:
@@ -354,8 +363,8 @@ def _ingest_news_block(
         if int(exists_row[0] if exists_row is not None else 0) > 0:
             skipped += 1
             continue
-        title = str(record.get("title") or "").strip()
-        content = str(record.get("content") or "").strip()
+        title = _strip_html(str(record.get("title") or "").strip())
+        content = _strip_html(str(record.get("content") or "").strip())
         payload_text = title if not content else f"{title} — {content[:280]}{'…' if len(content) > 280 else ''}"
         payload_json = json.dumps(record, ensure_ascii=False, default=str)
         received_at = _normalize_received_at(record.get("datetime"))
