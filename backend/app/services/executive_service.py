@@ -2309,27 +2309,14 @@ def home_research_reports_envelope(
         warnings.append("DuckDB news warehouse is not available; research reports are empty.")
     else:
         try:
-            repo = NewsWarehouseRepository(duckdb_path)
-            rows = repo.list_research_reports(
+            rows = NewsWarehouseRepository(duckdb_path).list_research_reports(
                 report_date=normalized,
                 limit=limit,
             )
-            if not rows:
-                rows = repo.list_latest_research_reports(limit=limit)
-                if rows:
-                    research_date_mode = "latest_fallback"
-                    warnings.append(
-                        f"No research reports on or before {normalized}; showing latest ingested research reports."
-                    )
         except (OSError, RuntimeError, ValueError) as exc:
             warnings.append(f"Research reports unavailable from fact_news_event: {exc}")
 
-    if rows and research_date_mode == "on_or_before_report_date":
-        source_status: Literal["ready", "empty", "stale"] = "ready"
-    elif rows:
-        source_status = "stale"
-    else:
-        source_status = "empty"
+    source_status: Literal["ready", "empty"] = "ready" if rows else "empty"
     if not rows and not warnings:
         warnings.append("No research reports found on or before report_date.")
 
@@ -2355,11 +2342,7 @@ def home_research_reports_envelope(
         requested_report_date=normalized,
         resolved_report_date=normalized,
         as_of_date=normalized,
-        date_basis=(
-            "fact_news_event.latest_ingested"
-            if research_date_mode == "latest_fallback"
-            else "fact_news_event.pub_time_lte_report_date"
-        ),
+        date_basis="fact_news_event.pub_time_lte_report_date",
     )
 
 

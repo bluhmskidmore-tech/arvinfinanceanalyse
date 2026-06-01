@@ -194,7 +194,7 @@ def test_home_research_reports_endpoint_reads_research_news_only(tmp_path, monke
         get_settings.cache_clear()
 
 
-def test_home_research_reports_falls_back_to_latest_when_report_date_has_no_rows(
+def test_home_research_reports_does_not_fallback_to_future_rows(
     tmp_path, monkeypatch
 ) -> None:
     duckdb_path = tmp_path / "research-reports-fallback.duckdb"
@@ -248,12 +248,14 @@ def test_home_research_reports_falls_back_to_latest_when_report_date_has_no_rows
         )
 
         assert response.status_code == 200, response.text
-        result = response.json()["result"]
+        payload = response.json()
+        result = payload["result"]
         assert result["report_date"] == REPORT_DATE
-        assert result["source_status"] == "stale"
-        assert len(result["items"]) == 1
-        assert result["items"][0]["title"] == "6月利率债周报"
-        assert any("latest ingested" in warning for warning in result["warnings"])
+        assert result["source_status"] == "empty"
+        assert result["items"] == []
+        assert any("on or before report_date" in warning for warning in result["warnings"])
+        assert not any("latest ingested" in warning for warning in result["warnings"])
+        assert payload["result_meta"]["filters_applied"]["research_date_mode"] == "on_or_before_report_date"
     finally:
         get_settings.cache_clear()
 
