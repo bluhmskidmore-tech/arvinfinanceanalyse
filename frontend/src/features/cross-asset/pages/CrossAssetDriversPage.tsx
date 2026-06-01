@@ -1832,11 +1832,14 @@ export default function CrossAssetDriversPage() {
 
   const crossAssetDataDate = useMemo(() => maxCrossAssetHeadlineTradeDate(latestSeries), [latestSeries]);
   const linkageReportDate = useMemo(() => {
+    if (crossAssetDataDate) {
+      return crossAssetDataDate;
+    }
     if (latestSeries.length === 0) {
       return "";
     }
     return latestSeries.map((point) => point.trade_date).sort((left, right) => right.localeCompare(left))[0];
-  }, [latestSeries]);
+  }, [crossAssetDataDate, latestSeries]);
 
   const researchCalendarQuery = useQuery({
     queryKey: ["cross-asset", "research-calendar", client.mode, linkageReportDate],
