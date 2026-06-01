@@ -1132,13 +1132,15 @@ describe("StockAnalysisPage", () => {
     expect(page.querySelector(".stock-analysis-page")).toHaveAttribute("data-data-viz-rev", "2026-05-31e");
     const cockpit = await screen.findByTestId("stock-analysis-tailwind-cockpit");
     expect(cockpit.className).toContain("bg-white");
-    expect(cockpit).toHaveTextContent("后端供数");
-    expect(cockpit).toHaveTextContent("门控 WARM");
+    expect(cockpit).toHaveTextContent("数据日");
+    expect(cockpit).toHaveTextContent("门控 温和");
     expect(cockpit).toHaveTextContent("条件 2/4");
     expect(cockpit).toHaveTextContent("缺口 1");
     expect(cockpit).toHaveTextContent("阻断 0");
     expect(cockpit).not.toHaveTextContent("查看今日门控、候选队列与证据是否齐全");
     expect(cockpit).not.toHaveTextContent("TAILWIND");
+    expect(cockpit).not.toHaveTextContent("后端供数");
+    expect(cockpit).not.toHaveTextContent("门控 WARM");
 
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("复核队列");
@@ -1205,18 +1207,23 @@ describe("StockAnalysisPage", () => {
     });
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
-    expect(decisionPanel).toHaveTextContent("后端供数");
-    expect(decisionPanel).toHaveTextContent("门控 WARM");
+    expect(decisionPanel).toHaveTextContent("数据日");
+    expect(decisionPanel).toHaveTextContent("门控 温和");
     expect(decisionPanel).toHaveTextContent("暴露 40%");
     expect(decisionPanel).toHaveTextContent("就绪 0/1");
     expect(decisionPanel).toHaveTextContent("可用 4");
     expect(decisionPanel).toHaveTextContent("阻断 0");
-    expect(decisionPanel).toHaveTextContent("质量 warning");
+    expect(decisionPanel).toHaveTextContent("质量 需复核");
+    expect(decisionPanel).not.toHaveTextContent("后端供数");
+    expect(decisionPanel).not.toHaveTextContent("门控 WARM");
 
     const supplyStatus = await screen.findByTestId("stock-analysis-backend-supply-status");
-    expect(supplyStatus).toHaveTextContent("Market gate");
-    expect(supplyStatus).toHaveTextContent("partial");
-    expect(supplyStatus).toHaveTextContent("breadth");
+    expect(supplyStatus).toHaveTextContent("市场门控");
+    expect(supplyStatus).toHaveTextContent("部分");
+    expect(supplyStatus).toHaveTextContent("市场宽度");
+    expect(supplyStatus).not.toHaveTextContent("Market gate");
+    expect(supplyStatus).not.toHaveTextContent("partial");
+    expect(supplyStatus).not.toHaveTextContent("breadth");
 
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("多因子");
@@ -1402,11 +1409,24 @@ describe("StockAnalysisPage", () => {
 
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("A股景气周期选股与行业轮动");
-    expect(framework).toHaveTextContent("CycleScore");
-    expect(framework).toHaveTextContent("Macro direction");
+    expect(framework).toHaveTextContent("轮动规则");
+    expect(framework).toHaveTextContent("宏观方向 30%");
+    expect(framework).toHaveTextContent("行业景气 35%");
+    expect(framework).toHaveTextContent("宏观层");
     expect(framework).toHaveTextContent("PMI");
-    expect(framework).toHaveTextContent("industry cap 25%");
+    expect(framework).toHaveTextContent("信用脉冲");
+    expect(framework).toHaveTextContent("行业上限 25%");
     expect(framework).toHaveTextContent("证据待齐");
+    expect(framework).toHaveTextContent("输入待补");
+    expect(framework).toHaveTextContent("市场门控已接入");
+    expect(framework).toHaveTextContent("板块强弱已接入");
+    expect(framework).not.toHaveTextContent("CycleScore");
+    expect(framework).not.toHaveTextContent("Available:");
+    expect(framework).not.toHaveTextContent("Missing:");
+    expect(framework).not.toHaveTextContent("missing_inputs");
+    expect(framework).not.toHaveTextContent("industry cap 25%");
+    expect(framework).not.toHaveTextContent("Market gate is available");
+    expect(framework).not.toHaveTextContent("sector_rank is available");
     expect(within(framework).getByTestId("stock-analysis-candidate-history-portfolio-backtest")).toHaveTextContent("组合回测");
     expect(within(framework).getByTestId("stock-analysis-cycle-proxy-backtest")).toHaveTextContent("代理回测");
     await waitFor(() => expect(framework).toHaveTextContent("-18.42%"));
@@ -1520,12 +1540,15 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-theme-breakout");
     expect(section).toHaveTextContent("题材突变观察");
-    expect(section).toHaveTextContent("Semiconductor proxy");
-    expect(section).toHaveTextContent("Electronic #9");
+    expect(section).toHaveTextContent("半导体");
+    expect(section).toHaveTextContent("电子 #9");
     expect(section).toHaveTextContent("代理题材观察");
     expect(section).toHaveTextContent("Alpha Semiconductor");
-    expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("catalog_unconfirmed");
-    expect(screen.getByTestId("stock-analysis-theme-review-items")).toHaveTextContent("insufficient_cluster_strength");
+    expect(section).not.toHaveTextContent("Semiconductor proxy");
+    expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("目录待确认");
+    expect(screen.getByTestId("stock-analysis-theme-review-items")).toHaveTextContent("簇强度不足");
+    expect(screen.getByTestId("stock-analysis-theme-evidence-state")).not.toHaveTextContent("catalog_unconfirmed");
+    expect(screen.getByTestId("stock-analysis-theme-review-items")).not.toHaveTextContent("insufficient_cluster_strength");
     expect(section).not.toHaveTextContent("买入");
   });
 
@@ -1680,8 +1703,9 @@ describe("StockAnalysisPage", () => {
     });
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
-    expect(decisionPanel).toHaveTextContent("质量 ok");
-    expect(decisionPanel).toHaveTextContent("回退 latest_snapshot");
+    expect(decisionPanel).toHaveTextContent("质量 正常");
+    expect(decisionPanel).toHaveTextContent("回退快照");
+    expect(decisionPanel).not.toHaveTextContent("latest_snapshot");
     expect(await screen.findByTestId("stock-analysis-stale-banner")).toHaveTextContent(
       "仅供复核参考",
     );
@@ -1781,7 +1805,7 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toHaveTextContent("闭环阻断，先复核约束项");
     expect(verdict).not.toHaveTextContent("保持仅观察输出");
     expect(decisionPanel).toHaveTextContent("供数明细与闭环");
-    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 温和");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("闭环阻断，先复核约束项");
     expect(summary).toHaveTextContent("拦截");
@@ -1791,7 +1815,8 @@ describe("StockAnalysisPage", () => {
     expect(summary).toHaveTextContent("依据明细");
     expect(summary).not.toHaveTextContent("crowded leaders without breadth confirmation");
     await userEvent.click(within(verdict).getByText("依据明细"));
-    expect(summary).toHaveTextContent("crowded leaders without breadth confirmation");
+    expect(summary).toHaveTextContent("强势样本拥挤，市场宽度未确认。");
+    expect(summary).not.toHaveTextContent("crowded leaders without breadth confirmation");
     expect(summary).not.toHaveTextContent("买入");
     expect(summary).not.toHaveTextContent("卖出");
   });
@@ -1817,7 +1842,7 @@ describe("StockAnalysisPage", () => {
     await userEvent.click(within(verdict).getByText("依据明细"));
     expect(verdict).toHaveTextContent("先补齐宏观反拥挤");
     expect(decisionPanel).toHaveTextContent("供数明细与闭环");
-    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 温和");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("证据不足，不形成有效观察结论");
     expect(summary).toHaveTextContent("数据不足");
@@ -1827,7 +1852,8 @@ describe("StockAnalysisPage", () => {
     await userEvent.click(within(summary).getAllByText("明细")[1]);
     expect(summary).toHaveTextContent("不能视为中性证明");
     await userEvent.click(within(summary).getAllByText("明细")[4]);
-    expect(summary).toHaveTextContent("latest_snapshot");
+    expect(summary).toHaveTextContent("回退快照");
+    expect(summary).not.toHaveTextContent("latest_snapshot");
   });
 
   it("renders degraded closed-loop evidence as pause on the first decision surface", async () => {
@@ -1858,7 +1884,7 @@ describe("StockAnalysisPage", () => {
     });
     expect(verdict).toHaveTextContent("暂缓复核，存在降级边界");
     expect(verdict).not.toHaveTextContent("保留观察队列");
-    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
+    expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 温和");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("暂缓复核，存在降级边界");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(summary).toHaveTextContent("暂缓");
@@ -1927,17 +1953,21 @@ describe("StockAnalysisPage", () => {
     });
     expect(replayStatus).not.toHaveTextContent("2026-04-30");
     await userEvent.click(within(replayStatus).getByText("明细"));
-    expect(replayStatus).toHaveTextContent("missing_daily_limit_flags");
+    expect(replayStatus).toHaveTextContent("涨跌停标记缺失");
     expect(replayStatus).toHaveTextContent("2026-05-08");
-    expect(replayStatus).toHaveTextContent("forward_returns_pending");
+    expect(replayStatus).toHaveTextContent("远期收益待成熟");
     expect(replayStatus).toHaveTextContent("2026-05-07");
-    expect(replayStatus).toHaveTextContent("proxy_theme_only");
-    expect(replayStatus).toHaveTextContent("completed zero-signal dates: 2026-05-06");
-    expect(replayStatus).toHaveTextContent("do not infer strategy efficacy");
-    expect(replayStatus).toHaveTextContent("completed dates 1");
-    expect(replayStatus).toHaveTextContent("pending dates 1");
-    expect(replayStatus).toHaveTextContent("unsupported dates 1");
-    expect(replayStatus).toHaveTextContent("proxy-only dates 1");
+    expect(replayStatus).toHaveTextContent("仅代理题材");
+    expect(replayStatus).toHaveTextContent("完成但无信号日期：2026-05-06");
+    expect(replayStatus).toHaveTextContent("仅作观察，不推导策略有效性");
+    expect(replayStatus).toHaveTextContent("完成 1日");
+    expect(replayStatus).toHaveTextContent("待成熟 1日");
+    expect(replayStatus).toHaveTextContent("不可用 1日");
+    expect(replayStatus).toHaveTextContent("代理观察 1日");
+    expect(replayStatus).not.toHaveTextContent("proxy_theme_only");
+    expect(replayStatus).not.toHaveTextContent("do not infer strategy efficacy");
+    expect(replayStatus).not.toHaveTextContent("unsupported dates");
+    expect(replayStatus).not.toHaveTextContent("proxy-only dates");
   });
 
   it("renders refresh control and exposes as-of picker", async () => {
@@ -2031,9 +2061,10 @@ describe("StockAnalysisPage", () => {
 
     expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
     expect(screen.getByText("警告 / Warning")).toBeInTheDocument();
-    expect(screen.getAllByText("Breadth inputs are unavailable.").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("市场宽度输入不可用。").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("数据缺口")).toBeInTheDocument();
-    expect(screen.getAllByText(/breadth/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/市场宽度/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryAllByText(/breadth/)).toHaveLength(0);
     expect(screen.getByText("可用输出")).toBeInTheDocument();
     expect(screen.getByText("阻断输出")).toBeInTheDocument();
     expect(screen.queryByText("data_gaps")).not.toBeInTheDocument();
@@ -2151,7 +2182,7 @@ describe("StockAnalysisPage", () => {
     await user.click(await screen.findByText("供数明细与闭环"));
 
     const details = await screen.findByTestId("stock-analysis-decision-panel");
-    const supplyRow = within(details).getByLabelText("后端供数首屏摘要");
+    const supplyRow = within(details).getByLabelText("供数首屏摘要");
     expect(supplyRow).toHaveTextContent("阻断");
     expect(supplyRow).toHaveTextContent("风险退出");
     expect(supplyRow).not.toHaveTextContent("risk_exit");
@@ -2168,8 +2199,10 @@ describe("StockAnalysisPage", () => {
 
     expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("stock-analysis-sector-strength-panel")).not.toHaveTextContent("avg_pctchange");
+    expect(screen.getByTestId("stock-analysis-sector-strength-panel")).not.toHaveTextContent("unsupported_notes");
 
-    await user.click(screen.getByText("多日累计强度（窗口聚合）"));
+    await user.click(screen.getByText("多日强弱"));
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalled();
@@ -2188,7 +2221,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client });
 
     expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
-    await user.click(screen.getByText("多日累计强度（窗口聚合）"));
+    await user.click(screen.getByText("多日强弱"));
 
     expect(await screen.findByText("多日板块序列加载失败")).toBeInTheDocument();
     expect(screen.getByText("series fetch failed")).toBeInTheDocument();
@@ -2664,13 +2697,13 @@ describe("StockAnalysisPage", () => {
     expect(marketStateTable).toHaveTextContent(/策略/);
 
     const warmRow = within(screen.getByTestId("stock-analysis-strategy-backtest-market-state-WARM-stock_candidate"));
-    expect(warmRow.getByText(/WARM/)).toBeInTheDocument();
+    expect(warmRow.getByText(/温和/)).toBeInTheDocument();
     expect(warmRow.getByText("趋势突破")).toBeInTheDocument();
     expect(warmRow.getByText("75.0% / +3.21% / 12条")).toBeInTheDocument();
     expect(warmRow.getByText("50.0% / -1.11% / 4条")).toBeInTheDocument();
 
     const hotRow = within(screen.getByTestId("stock-analysis-strategy-backtest-market-state-HOT-factor_screen"));
-    expect(hotRow.getByText(/HOT/)).toBeInTheDocument();
+    expect(hotRow.getByText(/偏热/)).toBeInTheDocument();
     expect(hotRow.getByText("多因子")).toBeInTheDocument();
     expect(hotRow.getByText("25.0% / -2.10% / 8条")).toBeInTheDocument();
     expect(hotRow.getByText("50.0% / +1.40% / 6条")).toBeInTheDocument();

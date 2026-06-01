@@ -69,6 +69,8 @@ import {
   buildThemeEvidenceStateRows,
   buildStockAnalysisPagePurpose,
   buildReviewQueueEmptyState,
+  localizeStockBackendText,
+  localizeStockDataFamily,
   localizeImplementationStage,
   localizeMarketDataStatus,
   localizeThemeRadarBadge,
@@ -112,10 +114,60 @@ function statusLabel(status: string) {
   const labels: Record<string, string> = {
     pass: "通过",
     fail: "未通过",
+    ready: "就绪",
+    partial: "部分",
+    blocked: "阻断",
+    unsupported: "不可用",
+    available: "已接入",
+    complete: "完整",
+    pending: "待补",
     missing: "缺数据",
     stale: "已陈旧",
+    ok: "正常",
+    warning: "需复核",
   };
   return labels[status] ?? status;
+}
+
+function supplyQualityLabel(value: string | null | undefined) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ok: "正常",
+    warning: "需复核",
+    stale: "陈旧",
+    error: "异常",
+    pending: "待确认",
+  };
+  return labels[normalized] ?? value ?? "待确认";
+}
+
+function supplyVendorLabel(value: string | null | undefined) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ok: "正常",
+    degraded: "降级",
+    error: "异常",
+    pending: "待确认",
+  };
+  return labels[normalized] ?? value ?? "待确认";
+}
+
+function supplyFallbackLabel(value: string | null | undefined) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized || normalized === "none") return "无回退";
+  const labels: Record<string, string> = {
+    latest_snapshot: "回退快照",
+    cache: "缓存回退",
+    mock: "模拟回退",
+  };
+  return labels[normalized] ?? `回退 ${value}`;
+}
+
+function supplyBasisLabel(value: string | null | undefined) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "analytical") return "分析口径";
+  if (normalized === "formal") return "正式口径";
+  return value ?? "口径待补";
 }
 
 function compactText(text: string | null | undefined, maxLength = 28) {
@@ -510,7 +562,7 @@ function eventImpactLabel(row: { source: string; impact: string }) {
   if (row.source === "data_gap") return dataGapFamilyLabel(row.impact);
   if (row.source === "unsupported" || row.source === "risk_exit") return outputKeyLabel(row.impact);
   if (row.source === "signal_confluence") return "联动观察";
-  return row.impact.replace(/_/g, " ");
+  return localizeStockDataFamily(row.impact);
 }
 
 function eventNameLabel(row: { source: string; event: string; impact: string }) {
@@ -561,16 +613,169 @@ function outputKeyLabel(key: string | null | undefined) {
 }
 
 function dataGapFamilyLabel(inputFamily: string | null | undefined) {
+  return localizeStockDataFamily(inputFamily);
+}
+
+type CycleLayer = NonNullable<LivermoreStrategyPayload["cycle_rotation_framework"]>["layers"][number];
+
+function cycleInputLabel(input: string | null | undefined) {
+  if (!input) return "待补";
+  const normalized = input.trim().toLowerCase().replace(/[\s-]+/g, "_");
   const labels: Record<string, string> = {
+    market_gate: "市场门控",
+    sector_rank: "板块强弱",
+    stock_candidates: "股票候选",
+    pmi: "PMI",
+    credit_impulse: "信用脉冲",
+    profit_cycle: "盈利周期",
+    market_flow: "市场流动",
+    valuation_support: "估值支撑",
     breadth: "市场宽度",
     limit_up_quality: "涨停质量",
-    sector_strength: "板块强度",
-    stock_universe: "股票池",
-    position_risk: "持仓风险",
-    PMI: "PMI",
-    credit_impulse: "信用脉冲",
+    macro_score: "宏观分",
+    price_spread: "价差",
+    factor_screen: "多因子",
+    factor_screen_candidates: "多因子",
+    theme_breakout: "题材观察",
+    stock_candidate: "趋势候选",
+    stock_candidates: "趋势候选",
+    hybrid_fusion: "融合池",
+    social_text_raw: "社交文本",
+    ocr_asr_pipeline: "图文识别",
+    bot_spam_detection: "噪声过滤",
+    industry_profit: "行业盈利",
+    industry_profit_cycle: "行业盈利",
+    industry_revenue_cycle: "行业收入",
+    turnover_persistence: "换手持续",
+    turnover_proxy: "换手代理",
+    valuation_percentile_history: "估值分位",
+    transaction_cost: "交易成本",
+    disclosure_lag: "披露滞后",
+    liquidity_floor: "流动性底线",
+    risk_exit: "风险退出",
+    margin_balance: "两融余额",
+    unlock_event_panel: "解禁事件",
+    sector_rank_for_regime: "板块强弱",
+    fund_flow: "资金流",
+    northbound_flow: "北向资金",
+    earnings_revision: "业绩修正",
   };
-  return inputFamily ? (labels[inputFamily] ?? inputFamily.replace(/_/g, " ")) : "待补";
+  return labels[normalized] ?? input.replace(/[_-]+/g, " ");
+}
+
+function compactCycleInputs(inputs: string[]) {
+  return inputs.map(cycleInputLabel).slice(0, 3).join("、") || "无";
+}
+
+function cycleInputSummary(availableInputs: string[], missingInputs: string[]) {
+  const parts = [];
+  if (availableInputs.length > 0) {
+    parts.push(`已接入 ${compactCycleInputs(availableInputs)}`);
+  }
+  if (missingInputs.length > 0) {
+    parts.push(`待补 ${compactCycleInputs(missingInputs)}`);
+  }
+  return parts.join(" · ") || "输入待补";
+}
+
+function cycleLayerTitleLabel(layer: CycleLayer) {
+  const labels: Record<CycleLayer["key"], string> = {
+    macro_direction: "宏观方向",
+    industry_cycle: "行业景气",
+    market_flow: "市场流动",
+    valuation_support: "估值支撑",
+    execution_constraints: "执行边界",
+  };
+  return labels[layer.key] ?? layer.title;
+}
+
+function cycleLayerWeightLabel(layer: CycleLayer) {
+  return layer.weight == null ? "边界" : `${Math.round(layer.weight * 100)}%`;
+}
+
+function cycleRuleSummary(layers: CycleLayer[]) {
+  const weighted = layers.filter((layer) => layer.weight != null);
+  if (weighted.length === 0) return "权重待补";
+  return weighted.map((layer) => `${cycleLayerTitleLabel(layer)} ${cycleLayerWeightLabel(layer)}`).join(" · ");
+}
+
+function cycleCadenceLabel(cadence: string | null | undefined) {
+  const normalized = (cadence ?? "").toLowerCase();
+  if (normalized.includes("monthly") && normalized.includes("weekly")) {
+    return "月度核心复核 · 周度跟踪";
+  }
+  if (normalized.includes("monthly")) return "月度复核";
+  if (normalized.includes("weekly")) return "周度复核";
+  return cadence?.trim() || "节奏待补";
+}
+
+function cycleGapLabel(gap: string) {
+  const [input, rawStatus] = gap.split("(");
+  const status = rawStatus?.replace(")", "").trim();
+  return `${cycleInputLabel(input)} ${statusLabel(status || "missing")}`;
+}
+
+function cycleConstraintLabel(constraint: string) {
+  const industryCap = constraint.match(/industry cap\s+(\d+%)/i);
+  if (industryCap) return `行业上限 ${industryCap[1]}`;
+  const stockCap = constraint.match(/(?:single\s+)?stock cap\s+(\d+%)/i);
+  if (stockCap) return `个股上限 ${stockCap[1]}`;
+  if (/exclude st and suspended stocks/i.test(constraint)) return "排除 ST / 停牌";
+  if (/monthly core review.*weekly satellite monitoring/i.test(constraint)) return "月度核心复核 · 周度跟踪";
+  if (/exclude bottom\s+(\d+%).*liquidity/i.test(constraint)) {
+    return `排除低流动性后 ${constraint.match(/bottom\s+(\d+%)/i)?.[1] ?? ""}`.trim();
+  }
+  if (/require\s+(\d+)\s+trading-day history/i.test(constraint)) {
+    return `历史样本不少于 ${constraint.match(/require\s+(\d+)/i)?.[1] ?? "250"} 日`;
+  }
+  if (/lifecourtscore.*top\s+(\d+%)/i.test(constraint)) {
+    return `生命法庭分位前 ${constraint.match(/top\s+(\d+%)/i)?.[1] ?? ""}`.trim();
+  }
+  if (/pconf.*top\s+(\d+%)/i.test(constraint)) {
+    return `价格确认前 ${constraint.match(/top\s+(\d+%)/i)?.[1] ?? ""}`.trim();
+  }
+  if (/crowd.*below\s+(\d+)/i.test(constraint)) {
+    const percentile = constraint.match(/below\s+(\d+)/i)?.[1] ?? "阈值";
+    return percentile === "阈值" ? "拥挤度低于阈值" : `拥挤度低于 ${percentile} 分位`;
+  }
+  if (/hygiene\s*>\s*0/i.test(constraint)) return "数据卫生通过";
+  return constraint.replace(/_/g, " ");
+}
+
+function cycleEvidenceLabel(text: string | null | undefined) {
+  const value = text?.trim();
+  if (!value) return "证据待补";
+  const lower = value.toLowerCase();
+  if (lower.includes("market gate") && lower.includes("pmi") && lower.includes("credit impulse")) {
+    return "市场门控已接入；PMI 与信用脉冲待补。";
+  }
+  if (lower.includes("sector_rank")) return "板块强弱已接入。";
+  if (lower.includes("pricespread") || lower.includes("price_spread") || lower.includes("macroscore")) {
+    return "价差与宏观分已接入。";
+  }
+  if (lower.includes("stock candidate review") || lower.includes("choice stock daily observation")) {
+    return "候选复核与换手观察已接入。";
+  }
+  if (lower.includes("factor_screen_candidates") || lower.includes("valuation")) {
+    return "多因子与估值支撑已接入。";
+  }
+  if (lower.includes("risk-exit evidence") || lower.includes("sizing") || lower.includes("liquidity controls")) {
+    return "风险退出证据已接入；仓位、成本与流动性回放待补。";
+  }
+  if (lower.includes("not landed") || lower.includes("missing")) return "输入未完全落地。";
+  if (lower.includes("available")) return "证据已接入。";
+  return value.replace(/_/g, " ");
+}
+
+function cycleBoundaryLabel(text: string | null | undefined) {
+  const value = text?.trim();
+  if (!value) return "边界待补";
+  const lower = value.toLowerCase();
+  if (lower.includes("lifecourt") || lower.includes("proxy-reconstructed") || lower.includes("influencer")) {
+    return "生命法庭层为量化重建口径，原始文本规则尚未完整接入。";
+  }
+  if (lower.includes("proxy")) return "当前为代理观察口径，需复核后使用。";
+  return value.replace(/_/g, " ");
 }
 
 function buildBackendSupplyOverview(
@@ -595,7 +800,7 @@ function buildBackendSupplyOverview(
   return {
     asOfLabel: payload.as_of_date ?? payload.requested_as_of_date ?? "日期待补",
     requestedAsOfLabel: payload.requested_as_of_date ?? "默认",
-    gateLabel: `门控 ${gate.state}`,
+    gateLabel: `门控 ${localizeMarketDataStatus(gate.state)}`,
     exposureLabel: `暴露 ${formatSupplyPercent(gate.exposure)}`,
     conditionLabel: `条件 ${gate.passed_conditions}/${gate.required_conditions}`,
     availableConditionLabel: `可评估 ${gate.available_conditions}`,
@@ -614,10 +819,10 @@ function buildBackendSupplyOverview(
     riskSupplyLabel: `风险 ${risk?.signal_count ?? 0}`,
     riskSupplyValueLabel: `${risk?.signal_count ?? 0}`,
     riskDetailLabel: `持仓 ${risk?.position_count ?? 0} / 触发 ${risk?.signal_count ?? 0} / 观察 ${watchCount}`,
-    qualityLabel: `质量 ${meta.quality_flag ?? "待补"}`,
-    vendorLabel: `通道 ${meta.vendor_status ?? "待补"}`,
-    fallbackLabel: `回退 ${meta.fallback_mode ?? "待补"}`,
-    basisLabel: payload.basis,
+    qualityLabel: `质量 ${supplyQualityLabel(meta.quality_flag)}`,
+    vendorLabel: `通道 ${supplyVendorLabel(meta.vendor_status)}`,
+    fallbackLabel: supplyFallbackLabel(meta.fallback_mode),
+    basisLabel: supplyBasisLabel(payload.basis),
     strategyName: payload.strategy_name,
     readinessRows,
     dataGapRows: dataGaps,
@@ -1980,7 +2185,7 @@ export default function StockAnalysisPage() {
                     data-testid="stock-analysis-stale-banner"
                     role="status"
                   >
-                    数据陈旧、通道异常或使用回退快照（quality_flag / vendor_status / fallback_mode）。下方结论仅供复核参考。
+                    数据陈旧、通道异常或使用回退快照。下方结论仅供复核参考。
                   </div>
                 ) : null}
 
@@ -2018,12 +2223,13 @@ export default function StockAnalysisPage() {
                           </span>
                           {backendSupplyOverview ? (
                             <span className="stock-analysis-page__dh-hero-meta">
-                              后端供数 {backendSupplyOverview.asOfLabel}
+                              数据日 {backendSupplyOverview.asOfLabel}
                             </span>
                           ) : null}
                         </div>
                         <h1 className="stock-analysis-page__dh-hero-title">
-                          {backendSupplyOverview?.gateLabel ?? `门控 ${strategyPayload?.market_gate.state}`}
+                          {backendSupplyOverview?.gateLabel ??
+                            `门控 ${localizeMarketDataStatus(strategyPayload?.market_gate.state)}`}
                           {" · "}
                           {decisionSummary.exposureLabel}
                         </h1>
@@ -2074,7 +2280,7 @@ export default function StockAnalysisPage() {
                       <div className="mt-3 space-y-3 px-1">
                       <div
                       className="stock-analysis-page__supply-kpi-row"
-                      aria-label="后端供数首屏摘要"
+                      aria-label="供数首屏摘要"
                     >
                       <article className="stock-analysis-page__supply-kpi-card">
                         <div className="stock-analysis-page__mini-panel-head">
@@ -2250,10 +2456,10 @@ export default function StockAnalysisPage() {
                                   <StatusIcon tone={readinessTone(item.status)}>
                                     <SafetyCertificateOutlined />
                                   </StatusIcon>
-                                  {item.title}
+                                  {cycleInputLabel(item.key) || item.title}
                                 </span>
                                 <strong className="text-right text-[11px] leading-tight text-neutral-900">
-                                  {item.status}
+                                  {statusLabel(item.status)}
                                 </strong>
                               </div>
                             ))}
@@ -2267,10 +2473,10 @@ export default function StockAnalysisPage() {
                                   <StatusIcon tone={gapTone(item.status)}>
                                     <DatabaseOutlined />
                                   </StatusIcon>
-                                  {item.input_family}
+                                  {dataGapFamilyLabel(item.input_family)}
                                 </span>
                                 <strong className="text-right text-[11px] leading-tight text-neutral-900">
-                                  {item.status}
+                                  {statusLabel(item.status)}
                                 </strong>
                               </div>
                             ))}
@@ -2279,7 +2485,7 @@ export default function StockAnalysisPage() {
                       ) : null}
                       <div
                         className="grid grid-cols-2 gap-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-50 sm:grid-cols-3 xl:grid-cols-6"
-                        aria-label="后端供数摘要"
+                        aria-label="供数摘要"
                       >
                         {[
                           backendSupplyOverview?.gateLabel ?? decisionSummary.gateLabel,
@@ -2375,7 +2581,7 @@ export default function StockAnalysisPage() {
                                   key={warning}
                                   className="border-l-[3px] border-warning-300 py-1 pl-2.5 text-sm leading-relaxed text-neutral-500"
                                 >
-                                  {warning}
+                                  {localizeStockBackendText(warning)}
                                 </li>
                               ))}
                             </ul>
@@ -2646,7 +2852,7 @@ export default function StockAnalysisPage() {
                             },
                             {
                               key: "raw",
-                              label: "原始字段",
+                              label: "指标明细",
                               children: (
                                 <dl className="stock-analysis-page__raw-grid">
                                   {card.rawFields.map((field) => (
@@ -2850,7 +3056,7 @@ export default function StockAnalysisPage() {
                       <div className="stock-analysis-page__observation-preview-panel">
                         <h3>超跌反弹 {meanReversionMarketActive ? "Top" : ""}</h3>
                         {!meanReversionMarketActive ? (
-                          <p className="stock-analysis-page__empty">当前门控非 WARM，超跌反弹池暂停。</p>
+                          <p className="stock-analysis-page__empty">当前门控不适合超跌反弹，观察池暂停。</p>
                         ) : !meanReversionPayload ? (
                           <p className="stock-analysis-page__empty">超跌反弹池未就绪。</p>
                         ) : meanReversionPreviewItems.length === 0 ? (
@@ -2925,7 +3131,7 @@ export default function StockAnalysisPage() {
                         <p className={SA_SECTION_EYEBROW}>题材突变</p>
                         <h2 className={SA_CARD_TITLE}>题材突破 Leader 股</h2>
                         <p className={SA_SECTION_DESC}>
-                          来自题材雷达 proxy 簇的龙头样本；点击行查看 K 线与多策略排名。
+                          题材簇内强势样本；点击行查看 K 线与多策略排名。
                         </p>
                       </div>
                       <span className={SA_PILL}>
@@ -2937,8 +3143,9 @@ export default function StockAnalysisPage() {
 
                     {themeLeaderPreviewItems.length === 0 ? (
                       <p className="stock-analysis-page__empty">
-                        {themeBreakoutUnsupported?.reason ??
-                          "当前无题材突破 Leader；可展开下方深度区查看题材雷达明细。"}
+                        {themeBreakoutUnsupported?.reason
+                          ? localizeStockBackendText(themeBreakoutUnsupported.reason, themeBreakoutUnsupported.key)
+                          : "当前无题材突破 Leader；可展开下方深度区查看题材雷达明细。"}
                       </p>
                     ) : (
                       <div className="stock-analysis-page__table-wrap">
@@ -3339,7 +3546,7 @@ export default function StockAnalysisPage() {
                       板块强弱
                     </h2>
                     <p className={SA_SECTION_DESC}>
-                      {sectorRowsFull.length} 个板块 / Top-Bottom 对比 / 点击筛选候选。
+                      {sectorRowsFull.length} 个板块 / 强弱对比 / 点击筛选候选。
                     </p>
                   </div>
                   <span className={SA_PILL}>
@@ -3465,7 +3672,7 @@ export default function StockAnalysisPage() {
                       </div>
                     </div>
                     <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
-                      视图切换不重拉接口；条形图为单日截面，多日窗口可看下方聚合表（运行时聚合，sum 累加未复利）。
+                      单日截面 · 点击行业筛选候选
                     </p>
 
                     <Collapse
@@ -3474,7 +3681,7 @@ export default function StockAnalysisPage() {
                       items={[
                         {
                           key: "sector-detail-table",
-                          label: "展开看明细表格",
+                          label: "行业明细",
                           children: (
                             <div className="stock-analysis-page__table-wrap">
                               <table className="stock-analysis-page__table">
@@ -3584,15 +3791,14 @@ export default function StockAnalysisPage() {
                       items={[
                         {
                           key: "sector-rank-series-multi",
-                          label: "多日累计强度（窗口聚合）",
+                          label: "多日强弱",
                           children: (
                             <div
                               className="stock-analysis-page__sector-series-wrap"
                               data-testid="stock-analysis-sector-series-panel"
                             >
                               <p className="stock-analysis-page__sector-series-note">
-                                窗口内对每日 avg_pctchange 做 sum 累加（未做复利）；动量持续度与资金流向暂不可用（见接口
-                                unsupported_notes）。
+                                按交易日累计展示强弱变化；资金流向待补。
                               </p>
                               <Tabs
                                 size="small"
@@ -3974,7 +4180,7 @@ export default function StockAnalysisPage() {
                               {strategyPayload.diagnostics
                                 .filter((d) => d.severity === "error")
                                 .map((d) => (
-                                  <li key={d.code}>{d.message}</li>
+                                  <li key={d.code}>{localizeStockBackendText(d.message, d.input_family)}</li>
                                 ))}
                               {strategyPayload.diagnostics.filter((d) => d.severity === "error").length === 0 ? (
                                 <li>暂无</li>
@@ -3987,7 +4193,7 @@ export default function StockAnalysisPage() {
                               {strategyPayload.diagnostics
                                 .filter((d) => d.severity === "warning")
                                 .map((d) => (
-                                  <li key={d.code}>{d.message}</li>
+                                  <li key={d.code}>{localizeStockBackendText(d.message, d.input_family)}</li>
                                 ))}
                               {strategyPayload.diagnostics.filter((d) => d.severity === "warning").length === 0 ? (
                                 <li>暂无</li>
@@ -4000,14 +4206,15 @@ export default function StockAnalysisPage() {
                               {strategyPayload.diagnostics
                                 .filter((d) => d.severity === "info")
                                 .map((d) => (
-                                  <li key={d.code}>{d.message}</li>
+                                  <li key={d.code}>{localizeStockBackendText(d.message, d.input_family)}</li>
                                 ))}
                             </ul>
                             <Typography.Title level={5}>数据缺口</Typography.Title>
                             <ul>
                               {strategyPayload.data_gaps.map((g) => (
                                 <li key={`${g.input_family}-${g.status}`}>
-                                  <strong>{dataGapFamilyLabel(g.input_family)}</strong> {statusLabel(g.status)}: {g.evidence}
+                                  <strong>{dataGapFamilyLabel(g.input_family)}</strong> {statusLabel(g.status)}:{" "}
+                                  {localizeStockBackendText(g.evidence, g.input_family)}
                                 </li>
                               ))}
                             </ul>
@@ -4017,7 +4224,7 @@ export default function StockAnalysisPage() {
                             <ul>
                               {strategyPayload.unsupported_outputs.map((u) => (
                                 <li key={u.key}>
-                                  <strong>{outputKeyLabel(u.key)}</strong>: {u.reason}
+                                  <strong>{outputKeyLabel(u.key)}</strong>: {localizeStockBackendText(u.reason, u.key)}
                                 </li>
                               ))}
                             </ul>
@@ -4042,7 +4249,7 @@ export default function StockAnalysisPage() {
                   >
                     {deepAnalysisGateSummary.line}
                   </p>
-                  <p className="m-0 text-xs text-neutral-500">后端字段 / 历史复核 / 风险边界</p>
+                  <p className="m-0 text-xs text-neutral-500">供数状态 · 回测复核 · 风险边界</p>
                 </div>
               <div className="stock-analysis-strategy-card-grid">
               {cycleRotationFramework ? (
@@ -4068,17 +4275,10 @@ export default function StockAnalysisPage() {
                     testId="stock-analysis-cycle-panel-compliance"
                   />
                   <div className="stock-analysis-page__cycle-formulas">
-                    <strong>{cycleRotationFramework.score_formula}</strong>
-                    {cycleRotationFramework.macro_formula ? (
-                      <span>{cycleRotationFramework.macro_formula}</span>
-                    ) : null}
-                    {cycleRotationFramework.lifecourt_formula ? (
-                      <span>{cycleRotationFramework.lifecourt_formula}</span>
-                    ) : null}
-                    {cycleRotationFramework.fusion_formula ? (
-                      <span>{cycleRotationFramework.fusion_formula}</span>
-                    ) : null}
-                    <small>{cycleRotationFramework.rebalance_cadence}</small>
+                    <strong>轮动规则</strong>
+                    <span>{cycleRuleSummary(cycleRotationFramework.layers)}</span>
+                    {cycleRotationFramework.observation_only ? <small>只读观察，不生成交易指令</small> : null}
+                    <small>{cycleCadenceLabel(cycleRotationFramework.rebalance_cadence)}</small>
                   </div>
                   {cycleMacroLayerSummary ? (
                     <div
@@ -4086,21 +4286,22 @@ export default function StockAnalysisPage() {
                       data-testid="stock-analysis-cycle-macro-layer"
                     >
                       <div className={SA_SECTION_HEAD}>
-                        <strong>宏观层 MacroScore</strong>
+                        <strong>宏观层</strong>
                         <span className={SA_PILL}>
                           {cycleMacroLayerSummary.statusLabel}
                         </span>
                       </div>
                       <p>
-                        MacroScore {cycleMacroLayerSummary.macroScoreLabel} · 融合公式{" "}
-                        {cycleMacroLayerSummary.formulaVersionLabel}
+                        宏观分 {cycleMacroLayerSummary.macroScoreLabel}
                       </p>
-                      <p>{cycleMacroLayerSummary.evidence}</p>
-                      <small>{cycleMacroLayerSummary.detailLabel}</small>
+                      <p>{cycleEvidenceLabel(cycleMacroLayerSummary.evidence)}</p>
+                      <small>
+                        {cycleInputSummary(cycleMacroLayerSummary.availableInputs, cycleMacroLayerSummary.missingInputs)}
+                      </small>
                       {cycleMacroLayerSummary.macroGapLabels.length > 0 ? (
                         <div className="stock-analysis-page__cycle-constraints">
                           {cycleMacroLayerSummary.macroGapLabels.map((gap) => (
-                            <span key={gap}>{gap}</span>
+                            <span key={gap}>{cycleGapLabel(gap)}</span>
                           ))}
                         </div>
                       ) : null}
@@ -4109,14 +4310,16 @@ export default function StockAnalysisPage() {
                   {cycleRotationFramework.lifecourt_overlay ? (
                     <div className="stock-analysis-page__cycle-lifecourt-overlay">
                       <strong>{cycleRotationFramework.lifecourt_overlay.display_name}</strong>
-                      <p>{cycleRotationFramework.lifecourt_overlay.boundary}</p>
+                      <p>{cycleBoundaryLabel(cycleRotationFramework.lifecourt_overlay.boundary)}</p>
                       <small>
-                        Available: {cycleRotationFramework.lifecourt_overlay.available_inputs.join(", ") || "-"} /
-                        Missing: {cycleRotationFramework.lifecourt_overlay.missing_inputs.join(", ") || "-"}
+                        {cycleInputSummary(
+                          cycleRotationFramework.lifecourt_overlay.available_inputs,
+                          cycleRotationFramework.lifecourt_overlay.missing_inputs,
+                        )}
                       </small>
                       <div className="stock-analysis-page__cycle-constraints">
                         {cycleRotationFramework.lifecourt_overlay.life_long_gates.map((gate) => (
-                          <span key={gate}>{gate}</span>
+                          <span key={gate}>{cycleConstraintLabel(gate)}</span>
                         ))}
                       </div>
                     </div>
@@ -4125,21 +4328,20 @@ export default function StockAnalysisPage() {
                     {cycleRotationFramework.layers.map((layer) => (
                       <article className="stock-analysis-page__cycle-layer" key={layer.key}>
                         <div>
-                          <span>{layer.title}</span>
-                          <strong>{layer.weight == null ? "guardrail" : `${Math.round(layer.weight * 100)}%`}</strong>
+                          <span>{cycleLayerTitleLabel(layer)}</span>
+                          <strong>{cycleLayerWeightLabel(layer)}</strong>
                         </div>
-                        <em>{layer.status}</em>
-                        <p>{layer.evidence}</p>
+                        <em>{localizeImplementationStage(layer.status)}</em>
+                        <p>{cycleEvidenceLabel(layer.evidence)}</p>
                         <small>
-                          Available: {layer.available_inputs.join(", ") || "-"} / Missing:{" "}
-                          {layer.missing_inputs.join(", ") || "-"}
+                          {cycleInputSummary(layer.available_inputs, layer.missing_inputs)}
                         </small>
                       </article>
                     ))}
                   </div>
                   <div className="stock-analysis-page__cycle-constraints">
                     {cycleRotationFramework.constraints.map((constraint) => (
-                      <span key={constraint}>{constraint}</span>
+                      <span key={constraint}>{cycleConstraintLabel(constraint)}</span>
                     ))}
                   </div>
                   <div
@@ -4344,7 +4546,7 @@ export default function StockAnalysisPage() {
                           <span>
                             <strong>{row.label}</strong>
                             <small>
-                              {row.status} / {row.rowCountLabel}
+                              {row.statusLabel} / {row.rowCountLabel}
                             </small>
                           </span>
                           <em>{row.detail}</em>
@@ -4822,7 +5024,7 @@ export default function StockAnalysisPage() {
                                   key={`${row.marketState}:${row.kind}`}
                                   data-testid={`stock-analysis-strategy-backtest-market-state-${row.marketState}-${row.kind}`}
                                 >
-                                  <td>{row.marketState}</td>
+                                  <td>{localizeMarketDataStatus(row.marketState)}</td>
                                   <td>{row.label}</td>
                                   {strategyBacktestHorizons.map((horizon) => (
                                     <td className="stock-analysis-page__table-number" key={horizon}>
@@ -4974,8 +5176,8 @@ export default function StockAnalysisPage() {
 
               <StrategyModuleCard
                 id="observation-pools"
-                title="Observation Pools"
-                subtitle="超跌 / 多因子 / 融合 · WARM 激活观察"
+                title="多策略观察池"
+                subtitle="超跌 / 多因子 / 融合 · 条件触发观察"
                 badgeLabel={observationPoolsPanelSummary.badgeLabel ?? "观察池"}
                 summary={observationPoolsPanelSummary}
                 summaryTestId="stock-analysis-observation-pools-panel-summary"
@@ -4987,10 +5189,10 @@ export default function StockAnalysisPage() {
                 <div className="stock-analysis-page__mean-reversion">
                   <div className={SA_SECTION_HEAD}>
                     <strong>超跌反弹观察池</strong>
-                    <span className={SA_PILL}>WARM 激活</span>
+                    <span className={SA_PILL}>条件触发</span>
                   </div>
                           {gateState && !meanReversionMarketActive ? (
-                            <p className="stock-analysis-page__empty">当前不是 WARM 市场，超跌反弹观察池暂停。</p>
+                            <p className="stock-analysis-page__empty">当前门控不适合超跌反弹，观察池暂停。</p>
                           ) : null}
                           {meanReversionMarketActive && !meanReversionPayload ? (
                             <p className="stock-analysis-page__empty">数据未就绪。</p>
@@ -5064,7 +5266,7 @@ export default function StockAnalysisPage() {
                           ) : null}
                           <p className="stock-analysis-page__footnote">
                             超跌反弹观察：基于价格回撤、企稳信号和放量特征的技术面筛选，仅作复核观察，不给出操作动作提示。市场状态
-                            HOT/OVERHEAT 时自动停用。
+                            过热或门控转弱时自动停用。
                           </p>
                         </div>
                 <div className="stock-analysis-page__factor-screen">

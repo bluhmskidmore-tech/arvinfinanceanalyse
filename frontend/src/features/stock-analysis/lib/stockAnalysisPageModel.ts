@@ -509,7 +509,7 @@ function buildHybridFusionEvidenceCards(
       { key: "formula_version", label: "公式版本", value: formula },
     ];
     const sourceKinds = Array.isArray(item.evidence?.source_kinds)
-      ? item.evidence.source_kinds.map((value) => String(value)).join(" / ")
+      ? item.evidence.source_kinds.map(sectorHeavyweightSourceLabel).join(" / ")
       : "待补";
     const evidence = evidenceBullets.map((bullet) => `${bullet.label}：${bullet.value}`);
 
@@ -531,25 +531,25 @@ function buildHybridFusionEvidenceCards(
         `来源命中：${sourceKinds}`,
       ],
       invalidationRules: [
-        "市场状态离开 WARM/HOT、题材/趋势/因子来源失效或拥挤惩罚上升时，需要降级复核。",
-        "数据质量为 stale / missing 时，不得解释为有效观察。",
+        "市场门控转弱、题材/趋势/因子来源失效或拥挤惩罚上升时，需要降级复核。",
+        "数据质量陈旧或缺失时，不得解释为有效观察。",
       ],
       rawFields: [
-        { key: "fusion_score", label: "fusion_score", value: formatNumber(item.fusion_score, 6) },
-        { key: "cycle_score", label: "cycle_score", value: formatNumber(item.cycle_score, 6) },
+        { key: "fusion_score", label: "融合分", value: formatNumber(item.fusion_score, 6) },
+        { key: "cycle_score", label: "景气周期", value: formatNumber(item.cycle_score, 6) },
         {
           key: "lifecourt_proxy_score",
-          label: "lifecourt_proxy_score",
+          label: "生命法庭代理",
           value: formatNumber(item.lifecourt_proxy_score, 6),
         },
-        { key: "attention_score", label: "attention_score", value: formatNumber(item.attention_score, 6) },
+        { key: "attention_score", label: "关注代理", value: formatNumber(item.attention_score, 6) },
         {
           key: "price_confirm_score",
-          label: "price_confirm_score",
+          label: "价格确认",
           value: formatNumber(item.price_confirm_score, 6),
         },
-        { key: "crowding_penalty", label: "crowding_penalty", value: formatNumber(item.crowding_penalty, 6) },
-        { key: "confidence", label: "confidence", value: item.confidence },
+        { key: "crowding_penalty", label: "拥挤惩罚", value: formatNumber(item.crowding_penalty, 6) },
+        { key: "confidence", label: "置信度", value: fusionConfidenceLabel(item.confidence) },
       ],
     };
   });
@@ -618,8 +618,8 @@ function metricValueForView(row: StockSectorRow, view: StockSectorViewKind): num
 function formatFreshnessLabel(meta: StockViewModelMeta = {}): string {
   const quality = meta.quality_flag ?? "pending";
   const vendor = meta.vendor_status ?? "pending";
-  const fallback = meta.fallback_mode && meta.fallback_mode !== "none" ? ` / 回退 ${meta.fallback_mode}` : "";
-  return `新鲜度 ${quality} / ${vendor}${fallback}`;
+  const fallback = meta.fallback_mode && meta.fallback_mode !== "none" ? ` / ${localizeFallbackMode(meta.fallback_mode)}` : "";
+  return `新鲜度 ${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${fallback}`;
 }
 
 function localizeMetaQualityFlag(value: string | undefined): string {
@@ -643,6 +643,93 @@ function localizeMetaVendorStatus(value: string | undefined): string {
     pending: "通道待确认",
   };
   return labels[normalized] ?? "通道待确认";
+}
+
+function localizeFallbackMode(value: string | undefined): string {
+  const normalized = (value ?? "none").trim().toLowerCase();
+  if (!normalized || normalized === "none") return "无回退";
+  const labels: Record<string, string> = {
+    latest_snapshot: "回退快照",
+    cache: "缓存回退",
+    mock: "模拟回退",
+  };
+  return labels[normalized] ?? `回退 ${value}`;
+}
+
+export function localizeStockDataFamily(inputFamily: string | null | undefined): string {
+  const value = inputFamily?.trim();
+  if (!value) return "待补";
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    breadth: "市场宽度",
+    limit_up_quality: "涨停质量",
+    sector_strength: "板块强弱",
+    sector_rank: "板块强弱",
+    stock_universe: "股票池",
+    stock_candidates: "趋势候选",
+    stock_candidate: "趋势候选",
+    mean_reversion_candidates: "超跌池",
+    factor_screen_candidates: "多因子",
+    factor_screen: "多因子",
+    theme_breakout: "题材观察",
+    hybrid_fusion: "融合池",
+    risk_exit: "风险退出",
+    position_risk: "持仓风险",
+    market_gate: "市场门控",
+    pmi: "PMI",
+    credit_impulse: "信用脉冲",
+    macro_score: "宏观分",
+    price_spread: "价差",
+  };
+  return labels[normalized] ?? value.replace(/[_-]+/g, " ");
+}
+
+function localizeDataGapStatus(status: string | null | undefined): string {
+  const normalized = (status ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ready: "已就绪",
+    missing: "缺数据",
+    stale: "已陈旧",
+    partial: "部分",
+    blocked: "阻断",
+  };
+  return labels[normalized] ?? (status || "待补");
+}
+
+export function localizeStockBackendText(
+  text: string | null | undefined,
+  inputFamily?: string | null,
+): string {
+  const value = text?.trim();
+  if (!value) return "说明待补";
+  const lower = value.toLowerCase();
+  if (lower.includes("breadth inputs are unavailable")) {
+    return "市场宽度输入不可用。";
+  }
+  if (lower.includes("5-day breadth input family is not landed")) {
+    return "5日市场宽度输入未落地。";
+  }
+  if (lower.includes("crowded leaders without breadth confirmation")) {
+    return "强势样本拥挤，市场宽度未确认。";
+  }
+  if (lower.includes("market gate is available") && lower.includes("pmi") && lower.includes("credit impulse")) {
+    return "市场门控已接入，PMI 与信用脉冲待补。";
+  }
+  if (lower.includes("sector_rank is available")) {
+    return "板块强弱已接入。";
+  }
+  const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
+  return value
+    .replace(/\bbreadth\b/gi, familyLabel || "市场宽度")
+    .replace(/\bmarket gate\b/gi, "市场门控")
+    .replace(/\binput family\b/gi, "输入")
+    .replace(/\bnot landed\b/gi, "未落地")
+    .replace(/\bmissing\b/gi, "缺数据")
+    .replace(/\bunsupported\b/gi, "不可用")
+    .replace(/\bfallback\b/gi, "回退")
+    .replace(/\bproxy-only\b/gi, "仅代理观察")
+    .replace(/\bproxy\b/gi, "代理观察")
+    .replace(/_/g, " ");
 }
 
 function localizeBasisLabel(basis: string | null | undefined): string {
@@ -828,9 +915,17 @@ export function buildDataBoundarySummary(
   const dataGaps = payload.data_gaps.filter((gap) => gap.status !== "ready");
   const unsupported = payload.unsupported_outputs;
   const topMessages = [
-    ...diagnostics.map((item) => item.message),
-    ...dataGaps.map((gap) => `${gap.input_family} ${gap.status}: ${gap.evidence}`),
-    ...unsupported.map((item) => `${item.key}: ${item.reason}`),
+    ...diagnostics.map((item) => localizeStockBackendText(item.message, item.input_family)),
+    ...dataGaps.map(
+      (gap) =>
+        `${localizeStockDataFamily(gap.input_family)} ${localizeDataGapStatus(gap.status)}：${localizeStockBackendText(
+          gap.evidence,
+          gap.input_family,
+        )}`,
+    ),
+    ...unsupported.map(
+      (item) => `${localizeStockDataFamily(item.key)}：${localizeStockBackendText(item.reason, item.key)}`,
+    ),
   ].slice(0, 4);
   const freshnessLabel = formatFreshnessLabel(meta);
   const boundaryCount = diagnostics.length + dataGaps.length + unsupported.length;
@@ -1307,7 +1402,7 @@ export function buildStrategyLensItems(
       key: "mean_reversion",
       label: "超跌反弹",
       value: String(consensus.strategyCounts.mean_reversion),
-      detail: payload.market_gate.state === "WARM" ? "WARM 激活" : "门控暂停",
+      detail: payload.market_gate.state === "WARM" ? "条件触发" : "门控暂停",
       tone:
         payload.market_gate.state === "WARM" && consensus.strategyCounts.mean_reversion > 0
           ? "positive"
@@ -1357,19 +1452,19 @@ export function buildStockAnalysisEvidenceStatus(
       label: "数据日期",
       statusLabel: payload.as_of_date ?? "待补",
       tone: payload.as_of_date ? "positive" : "warning",
-      detail: payload.requested_as_of_date ? `请求日期 ${payload.requested_as_of_date}` : "使用接口返回日期",
+      detail: payload.requested_as_of_date ? `请求日期 ${payload.requested_as_of_date}` : "使用最新可用交易日",
     },
     {
       key: "lineage",
       label: "来源版本",
       statusLabel: lineageLabel,
       tone: lineageLabel === "待补" ? "warning" : "positive",
-      detail: meta.trace_id ? `trace ${meta.trace_id}` : "trace 待补",
+      detail: meta.trace_id ? `链路 ${meta.trace_id}` : "链路待补",
     },
     {
       key: "basis",
       label: "计算口径",
-      statusLabel: payload.basis ?? "待补",
+      statusLabel: localizeBasisLabel(payload.basis),
       tone: evidenceToneForStatus(payload.basis ?? "pending"),
       detail: payload.strategy_name,
     },
@@ -1378,14 +1473,16 @@ export function buildStockAnalysisEvidenceStatus(
       label: "规则版本",
       statusLabel: ruleVersion,
       tone: ruleVersion === "待补" ? "warning" : "positive",
-      detail: `supported ${payload.supported_outputs.length} / unsupported ${payload.unsupported_outputs.length}`,
+      detail: `可用 ${payload.supported_outputs.length} / 阻断 ${payload.unsupported_outputs.length}`,
     },
     {
       key: "quality",
       label: "数据质量",
       statusLabel: qualityTone === "positive" ? "正常" : "需复核",
       tone: qualityTone,
-      detail: `${quality} / ${vendor}${fallback !== "none" ? ` / fallback ${fallback}` : ""}`,
+      detail: `${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${
+        fallback !== "none" ? ` / ${localizeFallbackMode(fallback)}` : ""
+      }`,
     },
     {
       key: "exceptions",
@@ -1410,7 +1507,7 @@ export function buildStockAnalysisEventMonitorRows(
       level: eventLevelFromSeverity(item.severity),
       event: item.code,
       impact: item.input_family ?? "strategy",
-      detail: item.message,
+      detail: localizeStockBackendText(item.message, item.input_family),
     });
   }
 
@@ -1421,7 +1518,7 @@ export function buildStockAnalysisEventMonitorRows(
       level: gap.status === "stale" ? "warning" : "error",
       event: gap.status,
       impact: gap.input_family,
-      detail: gap.evidence,
+      detail: localizeStockBackendText(gap.evidence, gap.input_family),
     });
   }
 
@@ -1432,7 +1529,7 @@ export function buildStockAnalysisEventMonitorRows(
       level: "warning",
       event: `${item.key}: ${item.reason}`,
       impact: item.key,
-      detail: item.reason,
+      detail: localizeStockBackendText(item.reason, item.key),
     });
   }
 
@@ -1525,6 +1622,38 @@ export function buildCandidateReviewQueue(
   }));
 }
 
+function localizeThemeName(name: string | null | undefined): string {
+  const value = name?.trim();
+  if (!value) return "题材待补";
+  const withoutTechnicalSuffix = value
+    .replace(/\bproxy\b/gi, "")
+    .replace(/\breview\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const labels: Record<string, string> = {
+    semiconductor: "半导体",
+    electronic: "电子",
+  };
+  const normalized = withoutTechnicalSuffix.toLowerCase();
+  return labels[normalized] ?? (withoutTechnicalSuffix || "题材待补");
+}
+
+function localizeThemeText(text: string | null | undefined): string {
+  const value = text?.trim();
+  if (!value) return "原因待补";
+  const lower = value.toLowerCase();
+  if (lower.includes("observation-only") && lower.includes("leaders")) return "强势样本进入观察。";
+  if (lower.includes("review-only") && lower.includes("below gate")) return "强势样本未达门槛，保留复核。";
+  return value.replace(/\bproxy\b/gi, "代理观察").replace(/_/g, " ");
+}
+
+function localizeThemeGateLabel(gate: string): string {
+  const labels: Record<string, string> = {
+    insufficient_cluster_strength: "簇强度不足",
+  };
+  return labels[gate] ?? gate.replace(/_/g, " ");
+}
+
 export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): StockThemeBreakoutCard[] {
   const isProxy = payload.theme_breakout?.is_proxy ?? true;
   return sortedThemeBreakoutItems(payload).map((item) => {
@@ -1559,10 +1688,10 @@ export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): Stoc
     return {
       rank: item.rank,
       themeKey: item.theme_key,
-      themeName: item.theme_name,
-      parentSectorLabel: `${item.parent_sector_name} #${item.parent_sector_rank}`,
+      themeName: localizeThemeName(item.theme_name),
+      parentSectorLabel: `${localizeThemeName(item.parent_sector_name)} #${item.parent_sector_rank}`,
       summary: `${item.member_count} 只观察股，${item.strong_stock_count} 只强势，${item.limit_stock_count} 只涨停。`,
-      reason: item.reason,
+      reason: localizeThemeText(item.reason),
       boundaryLabel,
       strongCountLabel: `强势 ${item.strong_stock_count}`,
       limitCountLabel: `涨停 ${item.limit_stock_count}`,
@@ -1576,16 +1705,29 @@ export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): Stoc
 }
 
 const themeEvidenceInputLabels: Record<string, string> = {
-  concept_membership: "Concept membership",
-  intraday_movement: "Intraday movement",
+  concept_membership: "概念成分",
+  intraday_movement: "盘中异动",
 };
 
 const themeEvidenceStatusLabels: Record<string, string> = {
-  catalog_unconfirmed: "catalog unconfirmed",
-  table_missing: "table missing",
-  landed_no_rows: "landed no rows",
-  matched_rows: "matched rows",
+  catalog_unconfirmed: "目录待确认",
+  table_missing: "数据表缺失",
+  landed_no_rows: "已接入无行",
+  matched_rows: "已匹配",
 };
+
+function localizeThemeEvidenceDetail(row: LivermoreThemeEvidenceInputState, inputFamily: string, status: string): string {
+  const label = themeEvidenceInputLabels[inputFamily] ?? inputFamily;
+  const statusLabel = themeEvidenceStatusLabels[status] ?? status;
+  const message = row.message?.trim().toLowerCase() ?? "";
+  if (message.includes("concept membership") || status === "catalog_unconfirmed") {
+    return `${label}：${statusLabel}`;
+  }
+  if (message.includes("intraday movement") || status === "table_missing") {
+    return `${label}：${statusLabel}`;
+  }
+  return `${label}：${statusLabel}`;
+}
 
 function themeEvidenceInputs(payload: LivermoreStrategyPayload): LivermoreThemeEvidenceInputState[] {
   const state = payload.theme_breakout?.evidence_state;
@@ -1622,14 +1764,13 @@ export function buildThemeEvidenceStateRows(payload: LivermoreStrategyPayload): 
     const rowCount = finiteCount(row.row_count ?? row.date_row_count);
     const matchedCount = finiteCount(row.matched_row_count);
     const status = String(row.status ?? row.state ?? "unknown");
-    const tableText = row.table ?? row.table_name ? ` / ${row.table ?? row.table_name}` : "";
     return {
       key: inputFamily,
       label: themeEvidenceInputLabels[inputFamily] ?? inputFamily,
       status,
       statusLabel: themeEvidenceStatusLabels[status] ?? status,
-      detail: row.message?.trim() || `${inputFamily}${tableText} status ${status}.`,
-      rowCountLabel: `rows ${rowCount} / matched ${matchedCount}`,
+      detail: localizeThemeEvidenceDetail(row, inputFamily, status),
+      rowCountLabel: `行 ${rowCount} / 命中 ${matchedCount}`,
     };
   });
 }
@@ -1665,18 +1806,18 @@ export function buildThemeBreakoutReviewItems(payload: LivermoreStrategyPayload)
       return {
         rank: item.rank ?? index + 1,
         themeKey: item.theme_key,
-        themeName: item.theme_name,
+        themeName: localizeThemeName(item.theme_name),
         sourceKindLabel: localizeThemeSourceKind(
           item.source_kind,
           payload.theme_breakout?.is_proxy ?? true,
         ),
-        parentSectorLabel: `${item.parent_sector_name} #${item.parent_sector_rank}`,
-        summary: `${item.member_count} review rows, ${item.strong_stock_count} strong, ${
+        parentSectorLabel: `${localizeThemeName(item.parent_sector_name)} #${item.parent_sector_rank}`,
+        summary: `${item.member_count} 只复核样本，${item.strong_stock_count} 只强势，${
           item.limit_stock_count
-        } limit-up, avg ${formatPercent(item.avg_pctchange)}`,
+        } 只涨停，均涨跌 ${formatPercent(item.avg_pctchange)}`,
         failedGateLabel:
-          failedGates.length > 0 ? `未过门槛：${failedGates.join("、")}` : "门槛待确认",
-        reason: item.reason,
+          failedGates.length > 0 ? `未过门槛：${failedGates.map(localizeThemeGateLabel).join("、")}` : "门槛待确认",
+        reason: localizeThemeText(item.reason),
         leaders: themeReviewLeaders(item),
       };
     });
@@ -1697,7 +1838,7 @@ export function buildDecisionSummary(
   const vendorStatus = meta.vendor_status ?? "待补";
   const fallbackMode = meta.fallback_mode ?? "none";
   const isFallback = fallbackMode !== "none";
-  const fallbackLabel = isFallback ? ` / 回退 ${fallbackMode}` : "";
+  const fallbackLabel = isFallback ? ` / ${localizeFallbackMode(fallbackMode)}` : "";
   const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok" && !isFallback;
   const candidateCount =
     payload.hybrid_fusion_candidates?.candidate_count ??
@@ -1712,7 +1853,9 @@ export function buildDecisionSummary(
     strongestSectorLabel: strip.strongestSectorChip,
     weakestSectorLabel: strip.weakestSectorChip,
     candidateCountLabel: `候选 ${candidateCount}`,
-    dataFreshnessLabel: `${dataFreshnessOk ? "数据正常" : "数据需复核"} ${qualityFlag} / ${vendorStatus}${fallbackLabel}`,
+    dataFreshnessLabel: `${dataFreshnessOk ? "数据正常" : "数据需复核"} ${localizeMetaQualityFlag(
+      qualityFlag,
+    )} / ${localizeMetaVendorStatus(vendorStatus)}${fallbackLabel}`,
     boundaryLabel: boundaryCount > 0 ? `${boundaryCount} 条边界` : "边界清晰",
     nextReviewAction: firstReview
       ? `下一步：先复核 ${firstReview.stockName}（${firstReview.stockCode}），${firstReview.sectorName}，距观察位 ${firstReview.distanceToBreakoutPct}。`
@@ -1760,10 +1903,15 @@ export function buildMarketStateCard(
   const warnings = [
     ...payload.diagnostics
       .filter((item) => item.severity !== "info")
-      .map((item) => item.message),
+      .map((item) => localizeStockBackendText(item.message, item.input_family)),
     ...payload.data_gaps
       .filter((gap) => gap.status !== "ready")
-      .map((gap) => `${gap.input_family} ${gap.status}: ${gap.evidence}`),
+      .map(
+        (gap) =>
+          `${localizeStockDataFamily(gap.input_family)} ${localizeDataGapStatus(
+            gap.status,
+          )}：${localizeStockBackendText(gap.evidence, gap.input_family)}`,
+      ),
   ];
 
   return {
@@ -1771,7 +1919,7 @@ export function buildMarketStateCard(
     state: gate.state,
     exposureLabel: formatRatioAsPercent(gate.exposure),
     passedLabel: `${gate.passed_conditions} / ${gate.required_conditions} 条件通过`,
-    basisLabel: `basis: ${payload.basis}`,
+    basisLabel: localizeBasisLabel(payload.basis),
     warnings,
     conditions: gate.conditions.map((condition) => ({
       key: condition.key,
@@ -1989,32 +2137,32 @@ export function buildCandidateEvidenceCards(
       invalidationRules: [
         `收盘跌破 10EMA ${formatNumber(item.ema10)} 或突破观察位 ${formatNumber(item.breakout_level)} 后需要降级复核。`,
         "所属行业强度跌出前列需要重新复核。",
-        "涨跌停状态、停牌状态或数据质量为 stale / missing 时，不得继续解释为有效观察。",
+        "涨跌停状态、停牌状态或数据质量陈旧/缺失时，不得继续解释为有效观察。",
       ],
       rawFields: [
-        { key: "ema10", label: "ema10", value: formatNumber(item.ema10) },
-        { key: "ma20", label: "ma20", value: formatNumber(item.ma20) },
-        { key: "ma60", label: "ma60", value: formatNumber(item.ma60) },
-        { key: "ma120", label: "ma120", value: formatNumber(item.ma120) },
-        { key: "abnormal_turnover", label: "abnormal_turnover", value: formatNumber(item.abnormal_turnover, 4) },
-        { key: "gap_norm", label: "gap_norm", value: item.gap_norm != null ? String(item.gap_norm) : "待补" },
+        { key: "ema10", label: "10日均线", value: formatNumber(item.ema10) },
+        { key: "ma20", label: "20日均线", value: formatNumber(item.ma20) },
+        { key: "ma60", label: "60日均线", value: formatNumber(item.ma60) },
+        { key: "ma120", label: "120日均线", value: formatNumber(item.ma120) },
+        { key: "abnormal_turnover", label: "换手观察", value: formatNumber(item.abnormal_turnover, 4) },
+        { key: "gap_norm", label: "跳空观察", value: item.gap_norm != null ? String(item.gap_norm) : "待补" },
         {
           key: "breakout_extension_norm",
-          label: "breakout_extension_norm",
+          label: "突破延展",
           value: formatNumber(item.breakout_extension_norm, 4),
         },
-        { key: "close_strength", label: "close_strength", value: formatNumber(item.close_strength, 4) },
-        { key: "factor_score", label: "factor_score", value: formatNumber(item.factor_score, 4) },
+        { key: "close_strength", label: "收盘强度", value: formatNumber(item.close_strength, 4) },
+        { key: "factor_score", label: "因子分", value: formatNumber(item.factor_score, 4) },
         {
           key: "factor_overlay_rank",
-          label: "factor_overlay_rank",
+          label: "因子叠加排名",
           value: item.factor_overlay_rank != null ? String(item.factor_overlay_rank) : "待补",
         },
-        { key: "pe", label: "pe", value: formatNumber(item.pe, 4) },
-        { key: "pb", label: "pb", value: formatNumber(item.pb, 4) },
-        { key: "ps", label: "ps", value: formatNumber(item.ps, 4) },
-        { key: "roe", label: "roe", value: formatNumber(item.roe, 4) },
-        { key: "gross_margin", label: "gross_margin", value: formatNumber(item.gross_margin, 4) },
+        { key: "pe", label: "PE", value: formatNumber(item.pe, 4) },
+        { key: "pb", label: "PB", value: formatNumber(item.pb, 4) },
+        { key: "ps", label: "PS", value: formatNumber(item.ps, 4) },
+        { key: "roe", label: "ROE", value: formatNumber(item.roe, 4) },
+        { key: "gross_margin", label: "毛利率", value: formatNumber(item.gross_margin, 4) },
       ],
     };
   });
@@ -2141,7 +2289,10 @@ export function buildClosedLoopSummary(
       detail:
         entryStatus === "missing"
           ? "待补：闭环入场状态未接通"
-          : `市场门控 ${payload.market_gate.state} / 宏观 ${confluence?.macro_context.status ?? "missing"}`,
+          : `市场门控 ${localizeMarketDataStatus(payload.market_gate.state)} / 宏观 ${closedLoopStatusLabel(
+              "entry_gate",
+              confluence?.macro_context.status ?? "missing",
+            )}`,
     },
     {
       key: "adversarial_gate",
@@ -2152,7 +2303,7 @@ export function buildClosedLoopSummary(
       detail:
         adversarialStatus === "missing"
           ? "待补：反拥挤证据缺失，不能视为中性证明"
-          : adversarial?.strongest_block_reason ||
+          : localizeStockBackendText(adversarial?.strongest_block_reason) ||
             `${adversarial?.mode ?? "anti-crowding"} / 状态 ${adversarial?.status ?? "missing"}`,
     },
     {
@@ -2181,8 +2332,10 @@ export function buildClosedLoopSummary(
       status: lineageStatus,
       statusLabel: closedLoopStatusLabel("lineage", lineageStatus),
       tone: closedLoopTone("lineage", lineageStatus),
-      detail: `质量 ${meta.quality_flag ?? "pending"} / 供应 ${meta.vendor_status ?? "pending"}${
-        fallbackMode !== "none" ? ` / fallback ${fallbackMode}` : ""
+      detail: `质量 ${localizeMetaQualityFlag(meta.quality_flag)} / 通道 ${localizeMetaVendorStatus(
+        meta.vendor_status,
+      )}${
+        fallbackMode !== "none" ? ` / ${localizeFallbackMode(fallbackMode)}` : ""
       }`,
     },
   ];
@@ -2242,7 +2395,7 @@ function buildClosedLoopVerdict(
       label: rating.label,
       headline: "暂缓复核，存在降级边界",
       primaryReason: primaryItem?.detail ?? rating.detail,
-      nextStep: "保留观察队列，但先复核降级、fallback、proxy-only 或 pending 日期。",
+      nextStep: "保留观察队列，但先复核降级、回退、代理观察或待成熟日期。",
       evidence,
     };
   }
@@ -2269,20 +2422,22 @@ function closedLoopReplayDetail(
   const windowStatus = replayStatusWindow(replayStatusRaw);
   if (windowStatus) {
     const excludedDates = windowStatus.blocked_dates.map((item) => item.trade_date);
-    const blockedReasons = windowStatus.blocked_dates.map((item) => `${item.trade_date} ${item.reason_code}`);
+    const blockedReasons = windowStatus.blocked_dates.map(
+      (item) => `${item.trade_date} ${localizeReplayReasonCode(item.reason_code)}`,
+    );
     const detailParts = [
       windowStatus.has_decision_usable_completed_stats
-        ? `included completed stats dates: ${windowStatus.included_completed_stats_dates.join(", ") || "none"}`
-        : "no decision-usable completed replay dates",
+        ? `已纳入完成日期：${windowStatus.included_completed_stats_dates.join("、") || "无"}`
+        : "暂无可用于判断的完成回放日",
       excludedDates.length > 0
-        ? `excluded from completed stats: ${excludedDates.join(", ")}`
-        : "no dates excluded from completed stats",
+        ? `剔除日期：${excludedDates.join("、")}`
+        : "无剔除日期",
       ...blockedReasons,
     ];
     if (windowStatus.completed_zero_signal_dates.length > 0) {
-      detailParts.push(`completed zero-signal dates: ${windowStatus.completed_zero_signal_dates.join(", ")}`);
+      detailParts.push(`完成但无信号日期：${windowStatus.completed_zero_signal_dates.join("、")}`);
     }
-    detailParts.push("observation only: do not infer strategy efficacy");
+    detailParts.push("仅作观察，不推导策略有效性");
     return detailParts.join(" / ");
   }
   if (replayStatus === "missing") {
@@ -2310,12 +2465,24 @@ function closedLoopReplayBadges(
     return undefined;
   }
   return [
-    `completed dates ${windowStatus.completed_dates}`,
-    `pending dates ${windowStatus.pending_dates}`,
-    `unsupported dates ${windowStatus.unsupported_dates}`,
-    `proxy-only dates ${windowStatus.proxy_only_dates}`,
-    `completed rows ${windowStatus.completed_candidate_rows}`,
+    `完成 ${windowStatus.completed_dates}日`,
+    `待成熟 ${windowStatus.pending_dates}日`,
+    `不可用 ${windowStatus.unsupported_dates}日`,
+    `代理观察 ${windowStatus.proxy_only_dates}日`,
+    `完成样本 ${windowStatus.completed_candidate_rows}`,
   ];
+}
+
+function localizeReplayReasonCode(reasonCode: string | null | undefined): string {
+  const normalized = (reasonCode ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    missing_daily_limit_flags: "涨跌停标记缺失",
+    forward_returns_pending: "远期收益待成熟",
+    proxy_theme_only: "仅代理题材",
+    real_theme_inputs_unconfirmed: "真实题材输入待确认",
+  };
+  if (!normalized) return "原因待补";
+  return labels[normalized] ?? reasonCode!.replace(/_/g, " ");
 }
 
 function normalizeClosedLoopStatus(value: unknown, defaultValue: string): string {
@@ -2855,7 +3022,9 @@ export function buildCycleRotationPanelSummary(input: {
   return {
     headline,
     detail,
-    complianceDetail: input.framework.boundary,
+    complianceDetail: input.framework.observation_only
+      ? "研究观察口径：只读证据已接入；缺失输入补齐前，不生成收益、仓位或执行结论。"
+      : "策略口径已接入；仍需结合回测和风险边界复核。",
     badgeLabel: stageLabel,
     stats,
     tone: input.macroLayer?.tone ?? "neutral",
@@ -2879,7 +3048,7 @@ export function buildThemeBreakoutPanelSummary(input: {
     return {
       headline: "题材雷达未开放",
       detail: localized.detail,
-      complianceDetail: input.unsupportedReason,
+      complianceDetail: localized.detail,
       badgeLabel: "暂停",
       stats: [{ key: "status", label: "状态", value: "未开放", valueTone: "warning" }],
       tone: "warning",
@@ -2928,9 +3097,7 @@ export function buildThemeBreakoutPanelSummary(input: {
         : isProxy
           ? "代理观察：日线+涨停+名称簇，非正式概念库。"
           : "真实概念观察：已落地成分与异动，仍只读复核。",
-    complianceDetail: isProxy
-      ? "Proxy theme radar: daily bars, limit-up flags and name clustering; not a formal concept catalog."
-      : undefined,
+    complianceDetail: isProxy ? "代理题材口径：日线、涨停与名称簇观察；不是正式概念库。" : undefined,
     badgeLabel: input.cards.length > 0 ? "已就绪" : isProxy ? "代理观察" : "概念库",
     stats,
     tone: input.cards.length > 0 ? "positive" : "neutral",
@@ -3219,7 +3386,7 @@ export function buildObservationPoolsPanelSummary(input: {
     headline,
     detail:
       input.meanReversionActive && input.gateState === "WARM"
-        ? "WARM 激活超跌反弹；融合/超跌明细见展开区。"
+        ? "条件触发超跌反弹；融合/超跌明细见展开区。"
         : "融合/超跌明细见展开区。",
     badgeLabel: total > 0 ? "已就绪" : "待补",
     stats: [
@@ -3265,7 +3432,7 @@ export function buildEventsMonitoringPanelSummary(
 
   return {
     headline: `${rows.length} 条待复核`,
-    detail: `最高优先：${eventMonitorSourceLabel(top.source)} / ${top.impact.replace(/_/g, " ")}`,
+    detail: `最高优先：${eventMonitorSourceLabel(top.source)} / ${localizeStockDataFamily(top.impact)}`,
     badgeLabel: errorCount > 0 ? "待补" : warningCount > 0 ? "待复核" : "已就绪",
     stats: [
       { key: "error", label: "错误", value: `${errorCount}`, tone: errorCount > 0 ? "negative" : "positive" },
