@@ -93,6 +93,7 @@ describe("sanitizeMetricCopy", () => {
     const metric = {
       id: "aum",
       label: "债券资产规模（zqtz）",
+      caliber_label: "本币资产口径",
       detail:
         "来自 fact_formal_zqtz_balance_daily，在 2026-02-28 的 CNY 资产口径市值合计。",
       tone: "positive" as const,
@@ -100,6 +101,7 @@ describe("sanitizeMetricCopy", () => {
     expect(sanitizeMetricCopy(metric)).toEqual({
       id: "aum",
       label: "债券资产规模",
+      caliber_label: "本币资产口径",
       detail: "在 2026-02-28 的本币资产口径市值合计。",
       tone: "positive",
     });

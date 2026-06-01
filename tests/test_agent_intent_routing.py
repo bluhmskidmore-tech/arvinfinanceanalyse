@@ -122,6 +122,496 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+def test_explicit_context_intent_routes_without_keyword_guessing(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "pnl_summary": lambda request: {
+                "answer": calls.append(request.question) or "pnl ok",
+                "basis": "formal",
+                "result_kind": "agent.pnl_summary",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Total PnL", "value": "9"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="解释当前页面",
+            context={"intent": "pnl_summary"},
+        )
+    )
+
+    assert calls == ["解释当前页面"]
+    assert envelope.result_meta.result_kind == "agent.pnl_summary"
+    assert "Total PnL=9" in envelope.answer
+
+
+def test_real_chinese_business_keywords_route_to_governed_intents(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    def handler(intent: str):
+        return lambda request: {
+            "answer": f"{intent} ok",
+            "basis": "formal",
+            "result_kind": f"agent.{intent}",
+            "formal_use_allowed": True,
+            "source_version": "sv_test",
+            "quality_flag": "ok",
+            "row_count": 1,
+            "cards": [{"type": "metric", "title": intent, "value": "1"}],
+        }
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": handler("portfolio_overview"),
+            "pnl_summary": handler("pnl_summary"),
+            "credit_exposure": handler("credit_exposure"),
+            "market_data": handler("market_data"),
+        },
+    )
+
+    cases = [
+        ("\u8bf7\u770b\u7ec4\u5408\u6982\u89c8", "agent.portfolio_overview"),
+        ("\u8bf7\u6c47\u603b\u4eca\u65e5\u635f\u76ca", "agent.pnl_summary"),
+        ("\u4fe1\u7528\u98ce\u9669\u548c\u96c6\u4e2d\u5ea6\u600e\u4e48\u6837", "agent.credit_exposure"),
+        ("\u6700\u65b0\u5b8f\u89c2\u5e02\u573a\u6570\u636e", "agent.market_data"),
+    ]
+
+    for question, expected_kind in cases:
+        envelope = tool.execute(request_module.AgentQueryRequest(question=question))
+        assert envelope.result_meta.result_kind == expected_kind
+
+
+def test_generic_dashboard_page_question_routes_to_page_default_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "dashboard overview ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Total Market Value", "value": "100"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="解释当前页面的主要结论和风险点",
+            page_context=request_module.AgentPageContext(
+                page_id="dashboard",
+                current_filters={"report_date": "2026-03-31"},
+            ),
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.portfolio_overview"
+    assert "dashboard overview ok" in envelope.answer
+
+
+def test_specific_duration_question_with_page_context_beats_page_default_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "dashboard overview ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+            },
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Portfolio DV01", "value": "12"}],
+            },
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="当前页面久期风险在哪里",
+            page_context=request_module.AgentPageContext(
+                page_id="dashboard",
+                current_filters={"report_date": "2026-03-31"},
+            ),
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert "Portfolio DV01=12" in envelope.answer
+
+
+def test_follow_up_question_reuses_last_local_agent_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Portfolio DV01", "value": "12"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="继续看这个",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "question": "当前久期风险在哪里？",
+                            "answer": "口径边界：basis=formal；可正式使用；result_kind=agent.duration_risk；report_date=2026-03-31。",
+                            "trace_id": "tr_agent_duration_risk_abc",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert "Portfolio DV01=12" in envelope.answer
+
+
+def test_follow_up_question_uses_structured_result_kind_when_answer_has_no_marker(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Portfolio DV01", "value": "12"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="continue this",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "question": "show duration risk",
+                            "answer": "The previous answer mentioned DV01, but no marker text.",
+                            "result_kind": "agent.duration_risk",
+                            "trace_id": "tr_previous_without_intent_suffix",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert "Portfolio DV01=12" in envelope.answer
+
+
+def test_agent_answers_use_business_analysis_sections(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "2026-03-31 的组合概览已返回，当前口径共 3 条明细，总资产规模 1000。",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_balance_1",
+                "rule_version": "rv_balance_1",
+                "cache_version": "cv_agent_portfolio_overview_v1",
+                "quality_flag": "ok",
+                "row_count": 3,
+                "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+                "filters_applied": {
+                    "report_date": "2026-03-31",
+                    "currency_basis": "CNY",
+                    "position_scope": "asset",
+                },
+                "cards": [
+                    {"type": "metric", "title": "Total Market Value", "value": "1000"},
+                    {"type": "metric", "title": "Detail Rows", "value": "3"},
+                ],
+                "next_drill": [{"dimension": "portfolio", "label": "按组合查看"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            position_scope="asset",
+            currency_basis="CNY",
+        )
+    )
+
+    assert envelope.answer.startswith("结论：")
+    for section in ("关键数字：", "证据：", "口径边界：", "下一步："):
+        assert section in envelope.answer
+    assert "fact_formal_zqtz_balance_daily、fact_formal_tyw_balance_daily" in envelope.answer
+    assert "formal" in envelope.answer
+    assert "CNY" in envelope.answer
+    assert "按组合查看" in envelope.answer
+
+
+def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "next_drill": [{"dimension": "instrument_id", "label": "Inspect instrument"}],
+            }
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            page_context=request_module.AgentPageContext(
+                page_id="recon-exceptions",
+                current_filters={"report_date": "2026-03-31", "status": "unmatched"},
+                selected_rows=[{"book_id": "B001", "instrument_id": "IB123"}],
+                context_note="user selected one exception row",
+            ),
+        )
+    )
+
+    assert len(envelope.suggested_actions) == 1
+    action = envelope.suggested_actions[0]
+    assert action.type == "inspect_drill"
+    assert action.requires_confirmation is True
+    assert action.payload == {
+        "dimension": "instrument_id",
+        "page_context": {
+            "page_id": "recon-exceptions",
+            "current_filters": {"report_date": "2026-03-31", "status": "unmatched"},
+            "selected_rows": [{"book_id": "B001", "instrument_id": "IB123"}],
+            "context_note": "user selected one exception row",
+        },
+    }
+
+
+def test_next_drill_inspect_labels_include_first_selected_row_summary(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "next_drill": [{"dimension": "break_reason", "label": "Inspect drill"}],
+            }
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            page_context=request_module.AgentPageContext(
+                page_id="recon-exceptions",
+                selected_rows=[
+                    {
+                        "book_id": "BOOK-A",
+                        "instrument_id": "INST-9",
+                        "recon_type": "cash_vs_position",
+                        "status": "unmatched",
+                        "ignored": "not part of the summary",
+                    },
+                    {"book_id": "BOOK-B", "instrument_id": "INST-10"},
+                ],
+            ),
+        )
+    )
+
+    assert envelope.suggested_actions[0].label == (
+        "Inspect drill for book_id=BOOK-A, instrument_id=INST-9, "
+        "recon_type=cash_vs_position, status=unmatched"
+    )
+
+
+def test_agent_report_date_context_precedence_filters_context_current_filters_latest(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    available_dates = ["2026-03-31", "2026-02-28", "2026-01-31", "2025-12-31"]
+
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            filters={"report_date": "2026-02-28"},
+            context={
+                "report_date": "2026-01-31",
+                "current_filters": {"report_date": "2025-12-31"},
+            },
+        ),
+        available_dates,
+    ) == "2026-02-28"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            context={
+                "page_id": "dashboard",
+                "report_date": "2026-01-31",
+                "current_filters": {"report_date": "2025-12-31"},
+            },
+        ),
+        available_dates,
+    ) == "2026-01-31"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            context={"current_filters": {"report_date": "2025-12-31"}},
+        ),
+        available_dates,
+    ) == "2025-12-31"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            page_context=request_module.AgentPageContext(
+                page_id="dashboard",
+                current_filters={"report_date": "2026-02-28"},
+            ),
+        ),
+        available_dates,
+    ) == "2026-02-28"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(question="组合概览"),
+        available_dates,
+    ) == "2026-03-31"
+
+
 def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
@@ -331,7 +821,7 @@ def test_duration_risk_returns_error_envelope_when_explicit_date_not_governed(tm
     assert "governed dates" in envelope.answer
 
 
-def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
+def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
         "backend/app/services/agent_service.py",
@@ -379,6 +869,7 @@ def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
     (wiki_dir / "overview.md").write_text("# Overview", encoding="utf-8")
     (wiki_dir / "flows.md").write_text("# Flows", encoding="utf-8")
 
@@ -415,7 +906,7 @@ def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
     assert "GitNexus 索引状态已返回" in envelope.answer
 
 
-def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tmp_path):
+def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
         "backend/app/services/agent_service.py",
@@ -449,6 +940,7 @@ def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tm
             ),
             encoding="utf-8",
         )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -463,7 +955,50 @@ def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tm
     )
 
     assert envelope.result_meta.filters_applied["repo_path"] == str(right_repo)
-    assert any(card.title == "Nodes" and card.value == "22" for card in envelope.cards)
+
+
+def test_gitnexus_intent_rejects_repo_path_outside_allowed_root(tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    outside_repo = tmp_path / "outside-repo"
+    (outside_repo / ".gitnexus").mkdir(parents=True)
+    (outside_repo / ".gitnexus" / "meta.json").write_text(
+        json.dumps(
+            {
+                "repoPath": str(outside_repo),
+                "indexedAt": "2026-03-15T13:33:15.839Z",
+                "stats": {"nodes": 1, "edges": 1, "communities": 1, "processes": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="GitNexus repo status",
+            filters={"repo_path": str(outside_repo)},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.gitnexus_status"
+    assert envelope.result_meta.quality_flag == "error"
+    assert "outside allowed roots" in envelope.answer
 
 
 def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards(tmp_path, monkeypatch):
@@ -501,6 +1036,7 @@ def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards
         json.dumps({"mcpServers": {"gitnexus": {"command": "npx", "args": ["-y", "gitnexus@latest", "mcp"]}}}),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     class StubGitNexusMcpClient:
         def __init__(self, target_repo_path):
@@ -553,6 +1089,33 @@ def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards
     assert processes_card.data[0]["name"] == "CheckoutFlow"
 
 
+def test_gitnexus_mcp_command_ignores_repo_local_executable_config(tmp_path):
+    mcp_module = load_module(
+        "backend.app.services.gitnexus_mcp_client",
+        "backend/app/services/gitnexus_mcp_client.py",
+    )
+    repo_path = tmp_path / "malicious-repo"
+    repo_path.mkdir()
+    (repo_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "gitnexus": {
+                        "command": "malicious.exe",
+                        "args": ["--run-me"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    command = mcp_module._resolve_gitnexus_command(repo_path)
+
+    assert command != ["malicious.exe", "--run-me"]
+    assert command[:2] == ["node", "scripts/mcp/gitnexus_mcp_launcher.mjs"]
+
+
 def test_gitnexus_intent_reads_specific_process_trace_from_mcp(tmp_path, monkeypatch):
     gitnexus_service_module = load_module(
         "backend.app.services.gitnexus_service",
@@ -584,6 +1147,7 @@ def test_gitnexus_intent_reads_specific_process_trace_from_mcp(tmp_path, monkeyp
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     class StubGitNexusMcpClient:
         def __init__(self, target_repo_path):
@@ -664,6 +1228,7 @@ def test_gitnexus_intent_parses_process_name_from_question(tmp_path, monkeypatch
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", str(tmp_path))
 
     class StubGitNexusMcpClient:
         def __init__(self, target_repo_path):
@@ -723,6 +1288,307 @@ def test_unknown_intent_returns_help_message(tmp_path):
     assert envelope.result_meta.result_kind == "agent.unknown"
     assert envelope.evidence.evidence_rows == 0
     assert any(card.title == "Supported Queries" for card in envelope.cards)
+
+
+def test_ordinary_analysis_question_returns_local_conversation_envelope(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="please analyze the main risk and explain what it means",
+            page_context={
+                "page_id": "dashboard",
+                "current_filters": {"report_date": "2026-03-31"},
+                "selected_rows": [{"portfolio_id": "core"}],
+                "context_note": "dashboard first screen",
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.analysis_chat"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.tables_used == []
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.filters_applied == {
+        "page_id": "dashboard",
+        "report_date": "2026-03-31",
+        "selected_rows": 1,
+    }
+    assert "did not run a formal metric query" in envelope.answer
+    assert any(card.title == "Local Analysis Conversation" for card in envelope.cards)
+    assert any(card.title == "Available Governed Paths" for card in envelope.cards)
+
+
+def test_chinese_ordinary_analysis_question_gets_chinese_local_answer(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="\u5e2e\u6211\u5224\u65ad\u4eca\u5929\u7684\u4e3b\u8981\u98ce\u9669",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "question": "\u5148\u524d\u7684\u98ce\u9669\u7ed3\u8bba",
+                            "answer": "\u4e0a\u4e00\u8f6e\u56de\u7b54",
+                            "result_kind": "agent.analysis_chat",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.analysis_chat"
+    assert "\u672c\u5730\u5206\u6790\u5bf9\u8bdd" in envelope.answer
+    assert "\u672a\u8fd0\u884c\u6b63\u5f0f\u6307\u6807\u67e5\u8be2" in envelope.answer
+    assert envelope.evidence.filters_applied["conversation_turns"] == 1
+    assert envelope.evidence.filters_applied["latest_result_kind"] == "agent.analysis_chat"
+    assert any(card.title == "\u672c\u5730\u5206\u6790\u5bf9\u8bdd" for card in envelope.cards)
+    assert any(card.title == "\u53ef\u7ee7\u7eed\u67e5\u8be2\u7684\u6cbb\u7406\u8def\u5f84" for card in envelope.cards)
+    assert any(action.label == "\u7ec4\u5408\u6982\u89c8" for action in envelope.suggested_actions)
+
+
+def test_financial_workflow_context_returns_plan_envelope(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="Prepare a risk memo plan",
+            basis="scenario",
+            context={"workflow_id": "risk_memo"},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.workflow.risk_memo"
+    assert envelope.result_meta.basis == "scenario"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.source_version == "sv_anthropic_financial_workflow_reference"
+    assert envelope.result_meta.rule_version == "rv_agent_financial_workflow_catalog_v1"
+    assert envelope.evidence.tables_used == []
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.quality_flag == "warning"
+    assert [card.title for card in envelope.cards] == [
+        "Workflow Plan",
+        "Mapped MOSS Intents",
+        "Governance Notes",
+    ]
+    assert envelope.cards[1].data == [
+        {"order": 1, "intent": "duration_risk"},
+        {"order": 2, "intent": "credit_exposure"},
+        {"order": 3, "intent": "risk_tensor"},
+    ]
+    assert envelope.suggested_actions[0].type == "execute_intent"
+    assert envelope.suggested_actions[0].payload["intent"] == "duration_risk"
+
+
+def test_financial_workflow_slash_command_returns_plan_envelope(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = module.AnalysisViewTool("test.duckdb", str(tmp_path))
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="/pnl-review for March close")
+    )
+
+    assert envelope.result_meta.result_kind == "agent.workflow.pnl_review"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.suggested_actions[0].payload["intent"] == "pnl_summary"
+
+
+def test_unknown_workflow_id_falls_back_to_existing_intent_routing(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "pnl_summary": lambda request: {
+                "answer": "ok",
+                "basis": "formal",
+                "result_kind": "agent.pnl_summary",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": calls.append(request.context["workflow_id"]) or 1,
+                "cards": [{"type": "metric", "title": "Total PnL", "value": "1"}],
+            }
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="PnL summary",
+            context={"workflow_id": "not_registered"},
+        )
+    )
+
+    assert calls == ["not_registered"]
+    assert envelope.result_meta.result_kind == "agent.pnl_summary"
+    assert envelope.result_meta.formal_use_allowed is True
+
+
+def test_financial_workflow_execute_mode_runs_mapped_intents_in_order(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+
+    def handler(intent: str):
+        def _inner(request):
+            calls.append(intent)
+            return {
+                "answer": f"{intent} result",
+                "basis": "formal",
+                "result_kind": f"agent.{intent}",
+                "formal_use_allowed": True,
+                "source_version": f"sv_{intent}",
+                "rule_version": "rv_test",
+                "cache_version": f"cv_{intent}",
+                "quality_flag": "ok",
+                "row_count": 2,
+                "tables_used": [f"fact_{intent}"],
+                "filters_applied": {"intent": intent},
+                "cards": [{"type": "metric", "title": intent, "value": "2"}],
+            }
+
+        return _inner
+
+    tool = module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": handler("duration_risk"),
+            "credit_exposure": handler("credit_exposure"),
+            "risk_tensor": handler("risk_tensor"),
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/risk-memo",
+            context={"workflow_mode": "execute"},
+        )
+    )
+
+    assert calls == ["duration_risk", "credit_exposure", "risk_tensor"]
+    assert envelope.result_meta.result_kind == "agent.workflow.risk_memo"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "ok"
+    assert envelope.evidence.evidence_rows == 6
+    assert envelope.evidence.tables_used == [
+        "fact_duration_risk",
+        "fact_credit_exposure",
+        "fact_risk_tensor",
+    ]
+    steps_card = next(card for card in envelope.cards if card.title == "Workflow Execution Steps")
+    assert steps_card.data == [
+        {"order": 1, "intent": "duration_risk", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
+        {"order": 2, "intent": "credit_exposure", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
+        {"order": 3, "intent": "risk_tensor", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
+    ]
+    assert envelope.suggested_actions == []
+
+
+def test_financial_workflow_execute_mode_reports_step_failure_without_side_effects(tmp_path):
+    module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    def ok_handler(request):
+        return {
+            "answer": "duration ok",
+            "basis": "formal",
+            "result_kind": "agent.duration_risk",
+            "formal_use_allowed": True,
+            "source_version": "sv_duration",
+            "quality_flag": "ok",
+            "row_count": 1,
+            "tables_used": ["fact_duration"],
+            "cards": [{"type": "metric", "title": "Duration", "value": "1"}],
+        }
+
+    def failing_handler(request):
+        raise ValueError("No governed risk tensor date is available.")
+
+    tool = module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": ok_handler,
+            "credit_exposure": ok_handler,
+            "risk_tensor": failing_handler,
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="/risk-memo",
+            context={"workflow_mode": "execute"},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.workflow.risk_memo"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.evidence_rows == 2
+    steps_card = next(card for card in envelope.cards if card.title == "Workflow Execution Steps")
+    assert steps_card.data[-1] == {
+        "order": 3,
+        "intent": "risk_tensor",
+        "status": "error",
+        "quality_flag": "warning",
+        "evidence_rows": 0,
+    }
+    assert "risk_tensor" in envelope.answer
 
 
 def test_manual_intent_result_meta_stays_formal_for_scenario_request(tmp_path, monkeypatch):

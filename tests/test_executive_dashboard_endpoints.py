@@ -1,10 +1,20 @@
 import uuid
 
+import logging
 import pytest
+from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def _load_executive_routes_module():
@@ -13,6 +23,49 @@ def _load_executive_routes_module():
         f"tests._exec_routes.executive_{uuid.uuid4().hex}",
         "backend/app/api/routes/executive.py",
     )
+
+
+def _ok_payload(result_kind: str) -> dict[str, object]:
+    return {
+        "result_meta": {
+            "result_kind": result_kind,
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "vendor_status": "ok",
+        },
+        "result": {},
+    }
+
+
+def _client_with_stubbed_executive_services(monkeypatch):
+    module = _load_executive_routes_module()
+    monkeypatch.setattr(module, "executive_overview", lambda report_date=None: _ok_payload("executive.overview"))
+    monkeypatch.setattr(module, "executive_summary", lambda report_date=None: _ok_payload("executive.summary"))
+    monkeypatch.setattr(
+        module,
+        "executive_pnl_attribution",
+        lambda report_date=None: _ok_payload("executive.pnl-attribution"),
+    )
+    monkeypatch.setattr(module, "home_snapshot_envelope", lambda **_kwargs: _ok_payload("home.snapshot"))
+    app = FastAPI()
+    app.include_router(module.router)
+    return module, TestClient(app)
+
+
+def test_home_snapshot_route_logs_api_perf(monkeypatch, caplog):
+    _module, client = _client_with_stubbed_executive_services(monkeypatch)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get("/ui/home/snapshot", params={"report_date": "2025-11-20"})
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/home/snapshot")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "home.snapshot"
 
 
 def test_fastapi_application_exposes_executive_dashboard_routes():
@@ -28,8 +81,8 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
     assert "/ui/home/alerts" in paths
 
 
-def test_executive_dashboard_endpoints_return_result_meta_envelopes():
-    module = _load_executive_routes_module()
+def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch):
+    module, _client = _client_with_stubbed_executive_services(monkeypatch)
 
     for name in ("overview", "summary", "pnl_attribution"):
         payload = getattr(module, name)()
@@ -43,9 +96,8 @@ def test_executive_dashboard_endpoints_return_result_meta_envelopes():
         assert exc_info.value.status_code == 503
 
 
-def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200():
-    main = load_module("backend.app.main", "backend/app/main.py")
-    client = TestClient(main.app)
+def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200(monkeypatch):
+    _module, client = _client_with_stubbed_executive_services(monkeypatch)
     ok_paths = [
         "/ui/home/overview",
         "/ui/home/summary",
@@ -112,18 +164,6 @@ def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailabl
 def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):
     module = _load_executive_routes_module()
 
-    def _ok_payload(result_kind: str) -> dict[str, object]:
-        return {
-            "result_meta": {
-                "result_kind": result_kind,
-                "basis": "analytical",
-                "formal_use_allowed": False,
-                "scenario_flag": False,
-                "vendor_status": "ok",
-            },
-            "result": {},
-        }
-
     monkeypatch.setattr(
         module,
         "executive_risk_overview",
@@ -178,9 +218,6 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
         ("overview", "2025-11-20"),
         ("summary", "2025-11-20"),
         ("pnl-attribution", "2025-11-20"),
-        ("risk-overview", "2025-11-20"),
-        ("contribution", "2025-11-20"),
-        ("alerts", "2025-11-20"),
     ]
 
 
@@ -191,9 +228,18 @@ def test_executive_dashboard_http_routes_reject_invalid_report_date():
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
+    ):
+        response = client.get(path, params={"report_date": "2025-99-99"})
+        assert response.status_code == 422, path
+
+    response = client.get("/ui/home/snapshot", params={"report_date": "2025-99-99"})
+    assert response.status_code == 422, "/ui/home/snapshot"
+
+    for path in (
         "/ui/risk/overview",
         "/ui/home/contribution",
         "/ui/home/alerts",
     ):
         response = client.get(path, params={"report_date": "2025-99-99"})
-        assert response.status_code == 422, path
+        assert response.status_code == 503, path
+        assert "reserved" in response.text.lower()

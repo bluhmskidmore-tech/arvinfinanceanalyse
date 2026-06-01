@@ -85,6 +85,40 @@ describe("runPollingTask", () => {
     });
   });
 
+  it("uses a dynamic interval when provided", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const start = vi.fn(async () => ({
+      status: "queued",
+      run_id: "job:queued",
+    }));
+    const getStatus = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "running",
+        run_id: "job:queued",
+      })
+      .mockResolvedValueOnce({
+        status: "completed",
+        run_id: "job:queued",
+      });
+
+    try {
+      const payload = await runPollingTask({
+        start,
+        getStatus,
+        intervalMs: 999,
+        getIntervalMs: () => 0,
+        maxAttempts: 3,
+      });
+
+      expect(payload.status).toBe("completed");
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 0);
+      expect(setTimeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 999);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
   it("throws a timeout error that includes the last run id and status", async () => {
     const start = vi.fn(async () => ({
       status: "queued",

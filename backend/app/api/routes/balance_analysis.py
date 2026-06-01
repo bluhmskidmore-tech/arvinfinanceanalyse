@@ -9,6 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
@@ -55,9 +56,12 @@ def _require_balance_analysis_report_date_qs(report_date: str) -> str:
 def dates() -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_dates_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
+        return timed_api_call(
+            "/ui/balance-analysis/dates",
+            lambda: balance_analysis_dates_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+            ),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -71,12 +75,15 @@ def detail(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_detail_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis",
+            lambda: balance_analysis_detail_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -92,12 +99,15 @@ def overview(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_overview_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/overview",
+            lambda: balance_analysis_overview_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -115,14 +125,17 @@ def summary(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_summary_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-            limit=limit,
-            offset=offset,
+        return timed_api_call(
+            "/ui/balance-analysis/summary",
+            lambda: balance_analysis_summary_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+                limit=limit,
+                offset=offset,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -138,12 +151,15 @@ def summary_by_basis(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_basis_breakdown_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/summary-by-basis",
+            lambda: balance_analysis_basis_breakdown_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -188,12 +204,15 @@ def workbook(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_workbook_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/workbook",
+            lambda: balance_analysis_workbook_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -220,12 +239,15 @@ def decision_items(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_decision_items_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/decision-items",
+            lambda: balance_analysis_decision_items_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -321,10 +343,21 @@ def export_workbook(
 
 
 @router.post("/refresh")
-def refresh(report_date: str = Query(...)) -> dict[str, object]:
+def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+) -> dict[str, object]:
     settings = get_settings()
     try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="balance_analysis",
+            action="refresh",
+        )
         return refresh_balance_analysis(settings, report_date=report_date)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except BalanceAnalysisRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BalanceAnalysisRefreshServiceError as exc:

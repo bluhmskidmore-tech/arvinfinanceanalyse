@@ -3,6 +3,68 @@
 import { createApiClient } from "../api/client";
 
 describe("createApiClient", () => {
+  it("keeps mock health endpoints available", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getHealth()).resolves.toEqual({ status: "ok" });
+    await expect(client.getHealthLive()).resolves.toEqual({ status: "ok" });
+    await expect(client.getHealthSummary()).resolves.toEqual({ status: "ok" });
+  });
+
+  it("uses real mode to fetch health endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ status: "ok" }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getHealth();
+    await client.getHealthLive();
+    await client.getHealthSummary();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/health/ready",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/health/live",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/health",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps real health failures actionable", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.getHealthLive()).rejects.toThrow(
+      "Request failed: /health/live (503)",
+    );
+  });
+
   it("uses mock mode by default", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -19,6 +81,47 @@ describe("createApiClient", () => {
 
     expect(payload.result_meta.vendor_status).toBe("ok");
     expect(payload.result_meta.fallback_mode).toBe("none");
+  });
+
+  it("keeps mock balance-analysis overview, detail, basis, and summary amounts consistent", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const overview = await client.getBalanceAnalysisOverview({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    const summary = await client.getBalanceAnalysisSummary({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+      limit: 10,
+      offset: 0,
+    });
+    const basis = await client.getBalanceAnalysisSummaryByBasis({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+
+    expect(summary.result.rows).toHaveLength(3);
+    expect(overview.result.summary_row_count).toBe(summary.result.total_rows);
+    expect(overview.result.detail_row_count).toBe(6);
+    expect(overview.result.total_market_value_amount).toBe("120200000000.00");
+    expect(overview.result.total_amortized_cost_amount).toBe("112300000000.00");
+    expect(overview.result.total_accrued_interest_amount).toBe("7040000000.00");
+
+    const detail = await client.getBalanceAnalysisDetail({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    expect(detail.result.details).toHaveLength(6);
+    expect(detail.result.summary).toHaveLength(summary.result.rows.length);
+    expect(detail.result.summary[0]?.market_value_amount).toBe("72000000000.00");
+    expect(detail.result.summary[1]?.market_value_amount).toBe("7200000000.00");
+    expect(detail.result.summary[2]?.market_value_amount).toBe("41000000000.00");
+    expect(basis.result.rows).toHaveLength(summary.result.rows.length);
+    expect(basis.result.rows[2]?.market_value_amount).toBe("41000000000.00");
   });
 
   it("keeps mock manual-adjustment current state reduced while exposing full timeline", async () => {
@@ -165,7 +268,7 @@ describe("createApiClient", () => {
   });
 
   it("uses real mode to fetch executive endpoints", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
       ok: true,
       json: async () => ({
         result_meta: {
@@ -237,6 +340,8 @@ describe("createApiClient", () => {
           total_avg_assets: 175000000,
           total_spot_liabilities: 0,
           total_avg_liabilities: 0,
+          total_avg_interbank_assets: 25000000,
+          total_avg_interbank_liabilities: 0,
           asset_yield: 3.3571,
           liability_cost: null,
           net_interest_margin: null,
@@ -256,6 +361,9 @@ describe("createApiClient", () => {
 
     expect(payload).not.toHaveProperty("assets");
     expect(payload).not.toHaveProperty("liabilities");
+    expect(payload.result_meta?.result_kind).toBe("adb.comparison");
+    expect(payload.result_meta?.source_version).toBe("sv_adb");
+    expect(payload.accounting_basis_daily_avg).toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
@@ -386,6 +494,66 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch bank ledger endpoints with canonical query names", async () => {
+    const ledgerResponse = {
+      data: {},
+      metadata: {
+        source_version: "sv_ledger",
+        rule_version: "position_key_contract_v1",
+        batch_id: 1,
+        stale: false,
+        fallback: false,
+        no_data: false,
+      },
+      trace: {
+        request_id: "req_ledger",
+        batch_id: 1,
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ledgerResponse,
+    });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLedgerDates();
+    await client.getLedgerDashboard("2026-03-17");
+    await client.getLedgerPositions({
+      asOfDate: "2026-03-17",
+      direction: "ASSET",
+      accountCategoryStd: "银行账户",
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/ledger/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/ledger/dashboard?as_of_date=2026-03-17",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/ledger/positions?as_of_date=2026-03-17&direction=ASSET&account_category_std=%E9%93%B6%E8%A1%8C%E8%B4%A6%E6%88%B7&page=1&page_size=20",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch detailed Campisi drill-down endpoints", async () => {
     const fetchMock = vi
       .fn()
@@ -497,6 +665,89 @@ describe("createApiClient", () => {
             },
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_campisi_decision",
+            basis: "formal",
+            result_kind: "campisi.decision_grade",
+            formal_use_allowed: true,
+            source_version: "sv_campisi",
+            vendor_version: "vv_none",
+            rule_version: "rv_campisi",
+            cache_version: "cv_campisi",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            basis: "campisi_decision_grade_v1",
+            report_date: "2026-03-31",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            num_days: 30,
+            summary: {
+              formal_actual_pnl: 10,
+              explained_pnl: 10,
+              residual_noise: 0,
+              residual_ratio: 0,
+              valuation_change_516: 1,
+              fvoci_valuation_change_516: 0,
+              fvtpl_valuation_change_516: 1,
+              main_driver: "carry",
+              quality_flag: "ok",
+              bond_scope_row_count: 1,
+              out_of_scope_pnl_row_count: 0,
+            },
+            formal_pnl_view: {
+              total_actual_pnl: 10,
+              explained_pnl: 10,
+              residual_noise: 0,
+              components: {
+                carry: 10,
+                rate_level_effect: 0,
+                curve_shape_effect: 0,
+                credit_spread_effect: 0,
+                convexity_effect: 0,
+                realized_trading: 0,
+                manual_adjustment: 0,
+                selection_proxy: 0,
+                residual_noise: 0,
+              },
+              closure: {
+                status: "closed",
+                difference: 0,
+                basis: "fact_formal_pnl_fi.total_pnl",
+              },
+            },
+            valuation_oci_view: {
+              total_valuation_change_516: 1,
+              fvoci_valuation_change_516: 0,
+              fvtpl_valuation_change_516: 1,
+              rows_by_accounting_basis: [],
+              reinvestment: { implemented: false, message: "数据源不足" },
+            },
+            effects: [],
+            accounting_matrix: {},
+            ability_matrix: [],
+            risk_tensor_check: {},
+            residual_diagnostics: {
+              missing_curve_count: 0,
+              missing_spread_count: 0,
+              duplicate_position_keys: 0,
+              aggregated_position_groups: 1,
+              unmatched_pnl_rows: 0,
+              stale_curve_fallback_count: 0,
+              warnings: [],
+            },
+            warnings: [],
+            method_notes: [],
+          },
+        }),
       });
 
     const client = createApiClient({
@@ -508,6 +759,7 @@ describe("createApiClient", () => {
     await client.getPnlCampisiFourEffects({ endDate: "2026-03-31", lookbackDays: 30 });
     await client.getPnlCampisiEnhanced({ endDate: "2026-03-31", lookbackDays: 30 });
     await client.getPnlCampisiMaturityBuckets({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiDecisionGrade({ endDate: "2026-03-31", lookbackDays: 30 });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -526,6 +778,13 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://localhost:8000/api/pnl-attribution/campisi/maturity-buckets?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/pnl-attribution/campisi/decision-grade?end_date=2026-03-31&lookback_days=30",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -803,6 +1062,85 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
       "http://localhost:8000/api/bond-analytics/accounting-class-audit?report_date=2026-03-31",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("uses real mode for the bond analytics DV01 risk endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_risk",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          accounting_class: "OCI",
+          total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          position_count: 0,
+          shock_scenarios: [],
+          tenor_buckets: [],
+          top_bonds: [],
+          top_issuers: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01Risk("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+      shockBps: "5,25",
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_risk");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-risk?report_date=2026-03-31&accounting_class=all&top_n=50&shock_bps=5%2C25",
       expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
     );
   });
@@ -1374,7 +1712,7 @@ describe("createApiClient", () => {
 
     expect(filtered.result.total_rows).toBe(1);
     expect(filtered.result.events[0]?.topic_code).toBe("S888010007API");
-    expect(paged.result.total_rows).toBe(3);
+    expect(paged.result.total_rows).toBe(8);
     expect(paged.result.events[0]?.event_key).toBe("ce_mock_003");
     expect(errorOnly.result.total_rows).toBe(1);
     expect(errorOnly.result.events[0]?.error_code).toBe(101);
@@ -1419,13 +1757,14 @@ describe("createApiClient", () => {
       offset: 0,
       groupId: "news_cmd1",
       topicCode: "S888010007API",
+      stockCode: "000001.SZ",
       errorOnly: true,
       receivedFrom: "2026-04-10T08:00:00Z",
       receivedTo: "2026-04-10T10:00:00Z",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
+      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&stock_code=000001.SZ&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
@@ -1579,6 +1918,33 @@ describe("createApiClient", () => {
           }),
         };
       }
+      if (url.includes("/api/pnl/v1-data?date=2026-02-28")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_v1_data",
+              basis: "formal",
+              result_kind: "pnl.v1_data",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_date: "2026-02-28",
+              source_tables: ["data_input/pnl"],
+              rows: [],
+            },
+          }),
+        };
+      }
       return {
         ok: true,
         json: async () => ({
@@ -1619,7 +1985,11 @@ describe("createApiClient", () => {
 
     await client.getFormalPnlDates();
     await client.getFormalPnlData("2026-02-28");
+    await client.getPnlV1Data("2026-02-28");
     await client.getFormalPnlOverview("2026-02-28");
+    await client.getPnlByBusiness("2026-02-28");
+    await client.getPnlByBusinessYtd(2026, "2026-03-31");
+    await client.getPnlYearlyBusinessSummary(2026);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1641,7 +2011,43 @@ describe("createApiClient", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
+      "http://localhost:8000/api/pnl/v1-data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       "http://localhost:8000/api/pnl/overview?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/pnl/by-business?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/pnl/by-business-ytd?year=2026&as_of_date=2026-03-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/pnl/yearly-summary?year=2026",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
@@ -1956,6 +2362,64 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to serialize explicit null optional amount fields on manual adjustment create", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        adjustment_id: "pca-test-null-1",
+        created_at: "2026-04-10T09:40:00Z",
+        stream: "product_category_pnl_adjustments",
+        report_date: "2026-02-28",
+        operator: "DELTA",
+        approval_status: "approved",
+        account_code: "13304010001",
+        currency: "CNX",
+        account_name: "测试科目",
+        monthly_pnl: "5",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.createProductCategoryManualAdjustment({
+      report_date: "2026-02-28",
+      operator: "DELTA",
+      approval_status: "approved",
+      account_code: "13304010001",
+      currency: "CNX",
+      account_name: "测试科目",
+      beginning_balance: null,
+      ending_balance: null,
+      monthly_pnl: "5",
+      daily_avg_balance: null,
+      annual_avg_balance: null,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/pnl/product-category/manual-adjustments",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "13304010001",
+          currency: "CNX",
+          account_name: "测试科目",
+          beginning_balance: null,
+          ending_balance: null,
+          monthly_pnl: "5",
+          daily_avg_balance: null,
+          annual_avg_balance: null,
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch product-category manual adjustments", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -2034,13 +2498,15 @@ describe("createApiClient", () => {
   });
 
   it("uses real mode to export filtered product-category manual adjustments as csv", async () => {
+    const responseBodyText =
+      "Current State,unit-6\n\"pca-1\",\"-12.12345678901234\"\nEvent Timeline\n...";
     const fetchMock = vi.fn(async () => ({
       ok: true,
       headers: new Headers({
         "Content-Disposition":
           'attachment; filename="product-category-audit-2026-02-28.csv"',
       }),
-      text: async () => "Current State\n...",
+      text: async () => responseBodyText,
     }));
 
     const client = createApiClient({
@@ -2064,7 +2530,10 @@ describe("createApiClient", () => {
     });
 
     expect(payload.filename).toBe("product-category-audit-2026-02-28.csv");
-    expect(payload.content).toContain("Current State");
+    // Unit 6: real client returns the response body as `content` with no reformatting.
+    expect(payload.content).toBe(responseBodyText);
+    // When the server does not lead with a UTF-8 BOM, the client does not add one.
+    expect(payload.content.codePointAt(0)).not.toBe(0xfeff);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/ui/pnl/product-category/manual-adjustments/export?report_date=2026-02-28&adjustment_id=pca-1&adjustment_id_exact=true&account_code=5140&approval_status=approved&event_type=edited&current_sort_field=account_code&current_sort_dir=asc&event_sort_field=event_type&event_sort_dir=desc&created_at_from=2026-04-10T00%3A00%3A00Z&created_at_to=2026-04-10T23%3A59%3A59Z",
       expect.objectContaining({
@@ -2073,6 +2542,74 @@ describe("createApiClient", () => {
         }),
       }),
     );
+  });
+
+  it("uses the same filter and sort query keys for real-mode list and export (export omits pagination only)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        report_date: "2026-02-28",
+        adjustment_count: 0,
+        adjustment_limit: 5,
+        adjustment_offset: 10,
+        event_total: 0,
+        event_limit: 10,
+        event_offset: 20,
+        adjustments: [],
+        events: [],
+      }),
+      headers: new Headers({
+        "Content-Disposition": 'attachment; filename="x.csv"',
+      }),
+      text: async () => "",
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const shared = {
+      adjustmentId: "pca-1",
+      adjustmentIdExact: true,
+      accountCode: "5140",
+      approvalStatus: "approved",
+      eventType: "edited",
+      currentSortField: "account_code" as const,
+      currentSortDir: "asc" as const,
+      eventSortField: "event_type" as const,
+      eventSortDir: "desc" as const,
+      createdAtFrom: "2026-04-10T00:00:00Z",
+      createdAtTo: "2026-04-10T23:59:59Z",
+    };
+
+    await client.getProductCategoryManualAdjustments("2026-02-28", {
+      ...shared,
+      adjustmentLimit: 5,
+      adjustmentOffset: 10,
+      limit: 10,
+      offset: 20,
+    });
+    await client.exportProductCategoryManualAdjustmentsCsv("2026-02-28", shared);
+
+    const fetchCalls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit?]>;
+    const listUrl = new URL(String(fetchCalls[0]?.[0]));
+    const exportUrl = new URL(String(fetchCalls[1]?.[0]));
+    const listParams = listUrl.searchParams;
+    const exportParams = exportUrl.searchParams;
+
+    for (const key of exportParams.keys()) {
+      expect(exportParams.get(key)).toBe(listParams.get(key));
+    }
+    expect(listParams.get("adjustment_limit")).toBe("5");
+    expect(listParams.get("adjustment_offset")).toBe("10");
+    expect(listParams.get("limit")).toBe("10");
+    expect(listParams.get("offset")).toBe("20");
+    expect(exportParams.has("adjustment_limit")).toBe(false);
+    expect(exportParams.has("adjustment_offset")).toBe(false);
+    expect(exportParams.has("limit")).toBe(false);
+    expect(exportParams.has("offset")).toBe(false);
   });
 
   it("uses real mode to revoke a product-category manual adjustment", async () => {
@@ -2801,6 +3338,562 @@ describe("createApiClient", () => {
     });
 
     expect(exported.filename).toBe("balance-analysis-summary.csv");
+  });
+
+  it("returns mock research calendar events for the supply and auction feed", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const events = await client.getResearchCalendarEvents({ reportDate: "2026-03-31" });
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0]).toEqual(
+      expect.objectContaining({
+        id: "rc_supply_001",
+        date: "2026-03-31",
+        title: "国债净融资节奏",
+        kind: "supply",
+        severity: "low",
+        amount_label: "净融资 180 亿元",
+        note: "供给节奏",
+      }),
+    );
+    const auction = events.find((e) => e.kind === "auction");
+    expect(auction).toEqual(
+      expect.objectContaining({
+        id: "rc_auction_002",
+        kind: "auction",
+        severity: "high",
+        amount_label: "420 亿元",
+        issuer: "国开行",
+      }),
+    );
+  });
+
+  it("uses real mode to read research calendar events for a report date", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_supply_auction_calendar",
+          basis: "analytical",
+          result_kind: "calendar.supply_auctions",
+          formal_use_allowed: false,
+          source_version: "sv_supply_auction_test",
+          vendor_version: "vv_supply_auction_test",
+          rule_version: "rv_supply_auction_v1",
+          cache_version: "cv_supply_auction_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-23T07:00:00Z",
+        },
+        result: {
+          series_id: "research.calendar.supply_auction",
+          total_rows: 1,
+          limit: 50,
+          offset: 0,
+          events: [
+            {
+              event_id: "rc_auction_001",
+              series_id: "research.calendar.supply_auction",
+              event_date: "2026-03-31",
+              event_kind: "auction",
+              title: "政策性金融债招标",
+              source_family: "research_calendar",
+              severity: "high",
+              issuer: "国开行",
+              instrument_type: "政策性金融债",
+              term_label: "10Y",
+              amount: 420,
+              amount_unit: "亿元",
+              currency: "CNY",
+              status: "scheduled",
+              headline_text: null,
+              headline_url: null,
+              headline_published_at: null,
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const events = await client.getResearchCalendarEvents({ reportDate: "2026-03-31" });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "rc_auction_001",
+        date: "2026-03-31",
+        title: "政策性金融债招标",
+        kind: "auction",
+        severity: "high",
+        amount_label: "420 亿元",
+        issuer: "国开行",
+        note: "10Y · 已排期 · 政策性金融债 · 币种 CNY",
+        source_url: null,
+        source_label: null,
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/calendar/supply-auctions?end_date=2026-03-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("maps forward-window research calendar requests with start_date and end_date while preserving event mapping", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_supply_auction_window",
+          basis: "analytical",
+          result_kind: "calendar.supply_auctions",
+          formal_use_allowed: false,
+          source_version: "sv_supply_auction_test",
+          vendor_version: "vv_supply_auction_test",
+          rule_version: "rv_supply_auction_v1",
+          cache_version: "cv_supply_auction_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-23T07:00:00Z",
+        },
+        result: {
+          series_id: "research.calendar.supply_auction",
+          total_rows: 1,
+          limit: 50,
+          offset: 0,
+          events: [
+            {
+              event_id: "rc_macro_001",
+              series_id: "research.calendar.supply_auction",
+              event_date: "2026-04-02",
+              event_kind: "supply",
+              title: "Quarter-opening net supply",
+              source_family: "research_calendar",
+              severity: "medium",
+              issuer: "MOF",
+              instrument_type: "Treasury",
+              term_label: "5Y",
+              amount: 180,
+              amount_unit: "bn",
+              currency: "CNY",
+              status: "scheduled",
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const events = await client.getResearchCalendarEvents({
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "rc_macro_001",
+        date: "2026-04-02",
+        title: "Quarter-opening net supply",
+        kind: "supply",
+        severity: "medium",
+        amount_label: "180 bn",
+        issuer: "MOF",
+        note: "5Y · 已排期 · 国债 · 币种 CNY",
+        source_url: null,
+        source_label: null,
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/calendar/supply-auctions?start_date=2026-04-01&end_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("returns a clearly labeled NCD funding proxy in mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getNcdFundingProxy();
+    expect(envelope.result.is_actual_ncd_matrix).toBe(false);
+    expect(envelope.result.rows).toHaveLength(1);
+    expect(envelope.result.rows[0].label).toBe("Shibor fixing");
+    expect(envelope.result.rows.some((row) => row.row_key === "quote_median")).toBe(false);
+    expect(envelope.result.warnings.join(" ")).toMatch(
+      /warehouse|landed|quote medians unavailable/i,
+    );
+  });
+
+  it("uses real mode to fetch NCD funding proxy", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_ncd_proxy",
+          basis: "analytical",
+          result_kind: "market_data.ncd_proxy",
+          formal_use_allowed: false,
+          source_version: "sv_ncd",
+          vendor_version: "vv_ncd",
+          rule_version: "rv_ncd_proxy",
+          cache_version: "cv_ncd",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-24T00:00:00Z",
+        },
+        result: {
+          as_of_date: "2026-04-24",
+          proxy_label: "Test proxy",
+          is_actual_ncd_matrix: false,
+          rows: [],
+          warnings: ["Not the issuance matrix."],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getNcdFundingProxy();
+    expect(envelope.result.is_actual_ncd_matrix).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/ncd-funding-proxy",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("returns a governed Livermore analytical payload in mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const envelope = await client.getLivermoreStrategy({ asOfDate: "2026-04-29" });
+
+    expect(envelope.result_meta.basis).toBe("analytical");
+    expect(envelope.result.basis).toBe("analytical");
+    expect(envelope.result.requested_as_of_date).toBe("2026-04-29");
+    expect(envelope.result.supported_outputs).toEqual([
+      "market_gate",
+      "sector_rank",
+      "stock_candidates",
+      "risk_exit",
+    ]);
+    expect(envelope.result.stock_candidates?.candidate_count).toBe(2);
+    expect(envelope.result.risk_exit?.signal_count).toBe(1);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(false);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "risk_exit")).toBe(false);
+  });
+
+  it("uses real mode to fetch Livermore strategy with and without as_of_date", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_livermore_with_date",
+            basis: "analytical",
+            result_kind: "market_data.livermore",
+            formal_use_allowed: false,
+            source_version: "sv_livermore",
+            vendor_version: "vv_none",
+            rule_version: "rv_livermore",
+            cache_version: "cv_livermore",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-29T00:00:00Z",
+          },
+          result: {
+            as_of_date: "2026-04-29",
+            requested_as_of_date: "2026-04-29",
+            strategy_name: "Livermore A股趋势门控",
+            basis: "analytical",
+            market_gate: {
+              state: "WARM",
+              exposure: 0.4,
+              passed_conditions: 2,
+              available_conditions: 2,
+              required_conditions: 2,
+              conditions: [],
+            },
+            rule_readiness: [],
+            diagnostics: [],
+            data_gaps: [],
+            supported_outputs: ["market_gate"],
+            unsupported_outputs: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_livermore_latest",
+            basis: "analytical",
+            result_kind: "market_data.livermore",
+            formal_use_allowed: false,
+            source_version: "sv_livermore",
+            vendor_version: "vv_none",
+            rule_version: "rv_livermore",
+            cache_version: "cv_livermore",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-29T00:00:00Z",
+          },
+          result: {
+            as_of_date: "2026-04-29",
+            requested_as_of_date: null,
+            strategy_name: "Livermore A股趋势门控",
+            basis: "analytical",
+            market_gate: {
+              state: "WARM",
+              exposure: 0.4,
+              passed_conditions: 2,
+              available_conditions: 2,
+              required_conditions: 2,
+              conditions: [],
+            },
+            rule_readiness: [],
+            diagnostics: [],
+            data_gaps: [],
+            supported_outputs: ["market_gate"],
+            unsupported_outputs: [],
+          },
+        }),
+      });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLivermoreStrategy({ asOfDate: "2026-04-29" });
+    await client.getLivermoreStrategy();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/market-data/livermore?as_of_date=2026-04-29",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/market-data/livermore",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch Livermore signal confluence", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_livermore_signal_confluence",
+          basis: "analytical",
+          result_kind: "market_data.livermore.signal_confluence",
+          formal_use_allowed: false,
+          source_version: "sv_livermore__sv_macro",
+          vendor_version: "vv_livermore__vv_macro",
+          rule_version: "rv_livermore_signal_confluence_v1",
+          cache_version: "cv_livermore_signal_confluence_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+          scenario_flag: false,
+          generated_at: "2026-04-29T00:00:00Z",
+        },
+        result: {
+          as_of_date: "2026-04-29",
+          macro_context: {
+            status: "neutral",
+            composite_score: 0,
+            multiplier: 0.5,
+          },
+          strategy_context: {
+            market_gate_state: "WARM",
+            market_gate_exposure: 0.4,
+            allows_new_entry_observations: true,
+          },
+          position_size_hint: 0.2,
+          entry_observations: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              action: "observe_entry_setup",
+              trigger_price: 21.8,
+              current_price: 21.9,
+              invalidation_reference_price: 20.6,
+            },
+          ],
+          exit_observations: [],
+          diagnostics: [
+            "Observation-only output. This service does not generate trading instructions.",
+          ],
+          disclaimer: "Observation-only output. This service does not generate trading instructions.",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getLivermoreSignalConfluence({ asOfDate: "2026-04-29" });
+
+    expect(envelope.result.as_of_date).toBe("2026-04-29");
+    expect(envelope.result.strategy_context.market_gate_state).toBe("WARM");
+    expect(envelope.result.entry_observations[0]?.action).toBe("observe_entry_setup");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/signal-confluence?as_of_date=2026-04-29",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["unit_test_position_book"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_csv_test",
+        csv_path: "livermore/positions.csv",
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermorePositionSnapshot({
+      asOfDate: "2026-04-30",
+      csvPath: "livermore/positions.csv",
+    });
+
+    expect(payload.risk_exit_input_status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          csv_path: "livermore/positions.csv",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize manual Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        input_mode: "manual",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["livermore_position_snapshot_manual"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_manual_test",
+        csv_path: null,
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermoreManualPositionSnapshot({
+      asOfDate: "2026-04-30",
+      positions: [
+        {
+          stockCode: "000001.SZ",
+          stockName: "Alpha",
+          entryCost: 10.5,
+          barsSinceEntry: 6,
+          positionQuantity: 10000,
+        },
+      ],
+    });
+
+    expect(payload.input_mode).toBe("manual");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot/manual",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          positions: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              entry_cost: 10.5,
+              bars_since_entry: 6,
+              position_quantity: 10000,
+            },
+          ],
+        }),
+      }),
+    );
   });
 
   it("reads workbook right-rail sections from the existing workbook endpoint", async () => {

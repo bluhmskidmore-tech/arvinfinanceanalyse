@@ -2,10 +2,10 @@ import { shellTokens as t } from "../../../theme/tokens";
 
 type AgentGenericCard = {
   title: string;
-  value?: string;
+  value?: string | null;
   type: string;
-  data?: Record<string, unknown>[] | Record<string, unknown>;
-  spec?: Record<string, unknown>;
+  data?: Record<string, unknown>[] | Record<string, unknown> | null;
+  spec?: Record<string, unknown> | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -26,6 +26,17 @@ function columnsForCard(card: AgentGenericCard) {
     return Object.keys(card.data);
   }
   return [];
+}
+
+function formatCardType(type: string) {
+  const typeLabels: Record<string, string> = {
+    duration: "久期",
+    risk: "风险",
+    metric: "指标",
+    table: "表格",
+    resource: "资源",
+  };
+  return typeLabels[type] ?? type;
 }
 
 function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unknown) => string) {
@@ -157,7 +168,7 @@ function renderScalarCard(card: AgentGenericCard) {
           letterSpacing: "0.02em",
         }}
       >
-        {card.type}
+        {formatCardType(card.type)}
       </div>
     </div>
   );

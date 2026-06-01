@@ -6,8 +6,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Query
 
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_asset_structure,
+    get_bond_dashboard_business_type_metrics,
     get_bond_dashboard_dates,
     get_bond_dashboard_headline_kpis,
     get_bond_dashboard_industry_distribution,
@@ -25,12 +27,18 @@ AssetGroupBy = Literal["bond_type", "rating", "portfolio_name", "tenor_bucket"]
 
 @router.get("/dates")
 def dashboard_dates():
-    return get_bond_dashboard_dates()
+    return timed_api_call(
+        "/api/bond-dashboard/dates",
+        get_bond_dashboard_dates,
+    )
 
 
 @router.get("/headline-kpis")
 def headline_kpis(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
-    return get_bond_dashboard_headline_kpis(report_date)
+    return timed_api_call(
+        "/api/bond-dashboard/headline-kpis",
+        lambda: get_bond_dashboard_headline_kpis(report_date),
+    )
 
 
 @router.get("/asset-structure")
@@ -38,27 +46,42 @@ def asset_structure(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     group_by: AssetGroupBy = Query("bond_type", description="bond_type | rating | portfolio_name | tenor_bucket"),
 ):
-    return get_bond_dashboard_asset_structure(report_date, group_by)
+    return timed_api_call(
+        "/api/bond-dashboard/asset-structure",
+        lambda: get_bond_dashboard_asset_structure(report_date, group_by),
+    )
 
 
 @router.get("/yield-distribution")
 def yield_distribution(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
-    return get_bond_dashboard_yield_distribution(report_date)
+    return timed_api_call(
+        "/api/bond-dashboard/yield-distribution",
+        lambda: get_bond_dashboard_yield_distribution(report_date),
+    )
 
 
 @router.get("/portfolio-comparison")
 def portfolio_comparison(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
-    return get_bond_dashboard_portfolio_comparison(report_date)
+    return timed_api_call(
+        "/api/bond-dashboard/portfolio-comparison",
+        lambda: get_bond_dashboard_portfolio_comparison(report_date),
+    )
 
 
 @router.get("/spread-analysis")
 def spread_analysis(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
-    return get_bond_dashboard_spread_analysis(report_date)
+    return timed_api_call(
+        "/api/bond-dashboard/spread-analysis",
+        lambda: get_bond_dashboard_spread_analysis(report_date),
+    )
 
 
 @router.get("/maturity-structure")
 def maturity_structure(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
-    return get_bond_dashboard_maturity_structure(report_date)
+    return timed_api_call(
+        "/api/bond-dashboard/maturity-structure",
+        lambda: get_bond_dashboard_maturity_structure(report_date),
+    )
 
 
 @router.get("/industry-distribution")
@@ -66,9 +89,23 @@ def industry_distribution(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     top_n: int = Query(10, ge=1, le=500, description="Top industries by market value"),
 ):
-    return get_bond_dashboard_industry_distribution(report_date, top_n)
+    return timed_api_call(
+        "/api/bond-dashboard/industry-distribution",
+        lambda: get_bond_dashboard_industry_distribution(report_date, top_n),
+    )
 
 
 @router.get("/risk-indicators")
 def risk_indicators(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
-    return get_bond_dashboard_risk_indicators(report_date)
+    return timed_api_call(
+        "/api/bond-dashboard/risk-indicators",
+        lambda: get_bond_dashboard_risk_indicators(report_date),
+    )
+
+
+@router.get("/business-type-metrics")
+def business_type_metrics(report_date: date = Query(..., description="Report date (YYYY-MM-DD)")):
+    return timed_api_call(
+        "/api/bond-dashboard/business-type-metrics",
+        lambda: get_bond_dashboard_business_type_metrics(report_date),
+    )

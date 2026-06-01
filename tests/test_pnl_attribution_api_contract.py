@@ -12,6 +12,7 @@ _ENDPOINTS: list[tuple[str, dict[str, str | int | bool]]] = [
     ("/api/pnl-attribution/volume-rate", {}),
     ("/api/pnl-attribution/volume-rate", {"compare_type": "yoy"}),
     ("/api/pnl-attribution/tpl-market", {"months": 6}),
+    ("/api/pnl-attribution/tpl-market", {"months": 6, "report_date": "2026-04-30"}),
     ("/api/pnl-attribution/composition", {}),
     ("/api/pnl-attribution/composition", {"include_trend": "false", "trend_months": 3}),
     ("/api/pnl-attribution/summary", {}),

@@ -1,13 +1,48 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ProductCategoryManualAdjustmentQuery } from "../api/contracts";
+import { buildProductCategoryAuditListExportQuery } from "../features/product-category-pnl/pages/productCategoryAdjustmentAuditPageModel";
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
+
+function manualAdjustmentListOptionsWithoutPagination(
+  options: ProductCategoryManualAdjustmentQuery & {
+    adjustmentLimit?: number;
+    adjustmentOffset?: number;
+    limit?: number;
+    offset?: number;
+  },
+) {
+  const { adjustmentLimit: _a, adjustmentOffset: _b, limit: _l, offset: _o, ...rest } = options;
+  return rest;
+}
+
+describe("buildProductCategoryAuditListExportQuery", () => {
+  it("keeps the same filter + current_sort_* + event_sort_* fields the list call uses, without pagination", () => {
+    const applied: ProductCategoryManualAdjustmentQuery = {
+      adjustmentId: "x",
+      adjustmentIdExact: true,
+      accountCode: "5140",
+      approvalStatus: "approved",
+      eventType: "edited",
+      currentSortField: "approval_status",
+      currentSortDir: "asc",
+      eventSortField: "event_type",
+      eventSortDir: "asc",
+      createdAtFrom: "2026-01-01T00:00:00Z",
+      createdAtTo: "2026-12-31T00:00:00Z",
+    };
+    const listPayload = { ...applied, adjustmentLimit: 3, adjustmentOffset: 2, limit: 5, offset: 1 };
+    expect(manualAdjustmentListOptionsWithoutPagination(listPayload)).toEqual(
+      buildProductCategoryAuditListExportQuery(applied),
+    );
+  });
+});
 
 function renderAuditPageWithClient(client: ReturnType<typeof createApiClient>) {
   const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit"]);
@@ -92,7 +127,7 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("product-category-audit-boundary-copy")).toHaveTextContent(
       "查看产品类别损益",
     );
-    expect(screen.getByText(/Audit view records adjustment events/)).toBeInTheDocument();
+    expect(screen.getByText(/审计视图只记录调整事件与刷新证据/)).toBeInTheDocument();
     expect(screen.getByTestId("product-category-audit-filter-lead")).toHaveTextContent(
       "审计筛选与排序",
     );
@@ -107,6 +142,201 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByText("audit-account")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-pca-audit-1-edited")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-pca-audit-1-created")).toBeInTheDocument();
+  });
+
+  it("Unit 5: list/timeline failure surfaces AsyncSection error, hides current+event bodies, and retry refetches", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let failList = true;
+    const successAfterRetry = {
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 0,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [
+        {
+          adjustment_id: "pca-audit-retry-1",
+          event_type: "created",
+          created_at: "2026-04-10T12:00:00Z",
+          stream: "product_category_pnl_adjustments",
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "51402010001",
+          currency: "CNX",
+          account_name: "after-retry-row",
+          monthly_pnl: "1",
+        },
+      ],
+      events: [],
+    };
+    const listSpy = vi.fn(async () => {
+      if (failList) {
+        throw new Error("audit-list-initial-failure");
+      }
+      return successAfterRetry;
+    });
+
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: listSpy,
+    });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("审计-报表月份") as HTMLSelectElement).value).toBeTruthy();
+    });
+
+    const listAsyncRegion = await screen.findByTestId("product-category-audit-list-timeline-async");
+    const retryButton = await within(listAsyncRegion).findByRole("button", { name: "重试" });
+    expect(within(listAsyncRegion).getByText(/数据载入失败/)).toBeInTheDocument();
+    expect(within(listAsyncRegion).getByText(/当前页面保留重试入口/)).toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-current-state")).not.toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-event-list")).not.toBeInTheDocument();
+
+    failList = false;
+    await user.click(retryButton);
+
+    await waitFor(() => {
+      expect(listSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(await screen.findByTestId("audit-current-state")).toBeInTheDocument();
+    expect(screen.getByText("after-retry-row")).toBeInTheDocument();
+  });
+
+  it("Unit 5: failed list refetch does not leave prior current-state or timeline rows visible", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const listSpy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        report_date: "2026-02-28",
+        adjustment_count: 1,
+        adjustment_limit: 20,
+        adjustment_offset: 0,
+        event_total: 2,
+        event_limit: 20,
+        event_offset: 0,
+        adjustments: [
+          {
+            adjustment_id: "pca-audit-stale-1",
+            event_type: "edited",
+            created_at: "2026-04-10T11:00:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: "unit5-stale-marker",
+            monthly_pnl: "8",
+          },
+        ],
+        events: [
+          {
+            adjustment_id: "pca-audit-stale-1",
+            event_type: "edited",
+            created_at: "2026-04-10T11:00:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: "unit5-stale-marker",
+            monthly_pnl: "8",
+          },
+          {
+            adjustment_id: "pca-audit-stale-1",
+            event_type: "created",
+            created_at: "2026-04-10T10:30:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: "unit5-stale-marker",
+            monthly_pnl: "5",
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("audit-list-refetch-failure"));
+
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: listSpy,
+    });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("审计-报表月份") as HTMLSelectElement).value).toBeTruthy();
+    });
+
+    expect(await screen.findByText("unit5-stale-marker")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-event-pca-audit-stale-1-edited")).toBeInTheDocument();
+
+    await user.type(screen.getByTestId("audit-filter-account-code"), "5140");
+    await user.click(screen.getByTestId("audit-apply-filters"));
+
+    await waitFor(() => {
+      expect(listSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const listAsyncRegion = await screen.findByTestId("product-category-audit-list-timeline-async");
+    await within(listAsyncRegion).findByRole("button", { name: "重试" });
+    expect(within(listAsyncRegion).getByText(/数据载入失败/)).toBeInTheDocument();
+    expect(screen.queryByText("unit5-stale-marker")).not.toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-current-state")).not.toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-event-list")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("audit-event-pca-audit-stale-1-edited")).not.toBeInTheDocument();
+  });
+
+  it("disables audit revoke/restore by approval_status and states lifecycle refresh in the timeline lead", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const rowBase = {
+      created_at: "2026-04-10T09:00:00Z",
+      stream: "product_category_pnl_adjustments" as const,
+      report_date: "2026-02-28",
+      operator: "DELTA" as const,
+      account_code: "51402010001",
+      currency: "CNX" as const,
+      account_name: "x",
+      event_type: "created" as const,
+      monthly_pnl: "1",
+    };
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: async () => ({
+        report_date: "2026-02-28",
+        adjustment_count: 3,
+        adjustment_limit: 20,
+        adjustment_offset: 0,
+        event_total: 0,
+        event_limit: 20,
+        event_offset: 0,
+        adjustments: [
+          { ...rowBase, adjustment_id: "pca-audit-ap", approval_status: "approved" as const },
+          { ...rowBase, adjustment_id: "pca-audit-pe", approval_status: "pending" as const },
+          { ...rowBase, adjustment_id: "pca-audit-rj", approval_status: "rejected" as const },
+        ],
+        events: [],
+      }),
+    });
+
+    const lead = await screen.findByTestId("product-category-audit-timeline-lead");
+    expect(lead).toHaveTextContent("仅当审批通过可撤销");
+    expect(lead).toHaveTextContent("刷新工作流再拉列表");
+    expect(lead).toHaveTextContent("整页刷新置灰");
+
+    await screen.findByTestId("audit-revoke-pca-audit-ap");
+    expect(screen.getByTestId("audit-revoke-pca-audit-ap")).not.toBeDisabled();
+    expect(screen.getByTestId("audit-restore-pca-audit-ap")).toBeDisabled();
+    expect(screen.getByTestId("audit-revoke-pca-audit-pe")).toBeDisabled();
+    expect(screen.getByTestId("audit-restore-pca-audit-pe")).toBeDisabled();
+    expect(screen.getByTestId("audit-revoke-pca-audit-rj")).toBeDisabled();
+    expect(screen.getByTestId("audit-restore-pca-audit-rj")).not.toBeDisabled();
+    expect(screen.getByTestId("audit-edit-pca-audit-ap")).not.toBeDisabled();
   });
 
   it("applies audit filters and paginates timeline requests", async () => {
@@ -276,6 +506,340 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
         offset: 2,
       });
     });
+  });
+
+  it("CSV export uses the same applied filter+sort as the list request (omits only pagination options)", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const exportSpy = vi.fn(async () => ({
+      filename: "export.csv",
+      content: "x",
+    }));
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    const createObjectUrl = vi.fn(() => "blob:export-query");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const element = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          value: clickSpy,
+          configurable: true,
+        });
+      }
+      return element as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+    const listSpy = vi.fn(async (_reportDate: string, _options?: ProductCategoryManualAdjustmentQuery) => ({
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 0,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [
+        {
+          adjustment_id: "pca-dummy",
+          event_type: "created",
+          created_at: "2026-04-10T10:00:00Z",
+          stream: "product_category_pnl_adjustments",
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "51400000000",
+          currency: "CNX",
+          account_name: "dummy",
+        },
+      ],
+      events: [],
+    }));
+
+    try {
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      await screen.findByTestId("audit-current-state");
+      await user.selectOptions(screen.getByTestId("audit-current-sort-field"), "account_code");
+      await user.selectOptions(screen.getByTestId("audit-current-sort-dir"), "asc");
+      await user.selectOptions(screen.getByTestId("audit-event-sort-field"), "event_type");
+      await user.selectOptions(screen.getByTestId("audit-event-sort-dir"), "asc");
+      await user.type(screen.getByTestId("audit-filter-account-code"), "5140");
+      await user.click(screen.getByTestId("audit-apply-filters"));
+
+      await waitFor(() => {
+        expect(listSpy).toHaveBeenCalled();
+      });
+      const listArgs = listSpy.mock.calls.at(-1);
+      expect(listArgs?.[0]).toBe("2026-02-28");
+      expect(exportSpy).not.toHaveBeenCalled();
+
+      await user.click(screen.getByTestId("audit-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalledWith("2026-02-28", {
+          adjustmentId: "",
+          adjustmentIdExact: false,
+          accountCode: "5140",
+          approvalStatus: "",
+          eventType: "",
+          currentSortField: "account_code",
+          currentSortDir: "asc",
+          eventSortField: "event_type",
+          eventSortDir: "asc",
+          createdAtFrom: "",
+          createdAtTo: "",
+        });
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(
+        manualAdjustmentListOptionsWithoutPagination(listArgs![1] as ProductCategoryManualAdjustmentQuery & {
+          adjustmentLimit?: number;
+          adjustmentOffset?: number;
+          limit?: number;
+          offset?: number;
+        }),
+      ).toEqual(
+        buildProductCategoryAuditListExportQuery({
+          adjustmentId: "",
+          adjustmentIdExact: false,
+          accountCode: "5140",
+          approvalStatus: "",
+          eventType: "",
+          currentSortField: "account_code",
+          currentSortDir: "asc",
+          eventSortField: "event_type",
+          eventSortDir: "asc",
+          createdAtFrom: "",
+          createdAtTo: "",
+        }),
+      );
+    } finally {
+      createElementSpy.mockRestore();
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
+  it("Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const exportCsv = "a,b,unit-6-raw\n\"x\",12.12345678901234,\"-0.0\"\n";
+    const exportSpy = vi.fn(async () => ({
+      filename: "unit-6-blob-passthrough.csv",
+      content: exportCsv,
+    }));
+    const listSpy = vi.fn(async () => ({
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 0,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [
+        {
+          adjustment_id: "pca-dummy",
+          event_type: "created",
+          created_at: "2026-04-10T10:00:00Z",
+          stream: "product_category_pnl_adjustments",
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "51400000000",
+          currency: "CNX",
+          account_name: "unit-6-blob",
+        },
+      ],
+      events: [],
+    }));
+    const OriginalBlob = globalThis.Blob;
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    let capturedBody = "";
+    class MockBlob {
+      readonly size: number;
+      readonly type: string;
+
+      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+        capturedBody = parts.map((part) => String(part)).join("");
+        this.size = capturedBody.length;
+        this.type = options?.type ?? "";
+      }
+    }
+    globalThis.Blob = MockBlob as unknown as typeof Blob;
+    const createObjectUrl = vi.fn(() => "blob:unit-6");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const el = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(el, "click", { value: clickSpy, configurable: true });
+      }
+      return el as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+
+    try {
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      await screen.findByTestId("audit-current-state");
+      await user.click(screen.getByTestId("audit-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalled();
+        expect(clickSpy).toHaveBeenCalled();
+      });
+      expect(capturedBody).toBe(exportCsv);
+      expect(capturedBody.codePointAt(0)).not.toBe(0xfeff);
+    } finally {
+      createElementSpy.mockRestore();
+      globalThis.Blob = OriginalBlob;
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
+  it("Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const fixtureRow = {
+      adjustment_id: "pca-audit-unit6-row",
+      event_type: "created",
+      created_at: "2026-04-10T10:30:00Z",
+      stream: "product_category_pnl_adjustments",
+      report_date: "2026-02-28",
+      operator: "DELTA",
+      approval_status: "approved",
+      account_code: "51402010001",
+      currency: "CNX",
+      account_name: "unit-6-visible-row",
+    } as const;
+    const exportCsvRow = [
+      fixtureRow.adjustment_id,
+      fixtureRow.event_type,
+      fixtureRow.created_at,
+      fixtureRow.report_date,
+      fixtureRow.operator,
+      fixtureRow.approval_status,
+      fixtureRow.account_code,
+      fixtureRow.currency,
+      fixtureRow.account_name,
+    ]
+      .map((value) => `"${value}"`)
+      .join(",");
+    const exportCsv = [
+      "Current State",
+      "adjustment_id,event_type,created_at,report_date,operator,approval_status,account_code,currency,account_name",
+      exportCsvRow,
+      "",
+      "Event Timeline",
+      "adjustment_id,event_type,created_at,report_date,operator,approval_status,account_code,currency,account_name",
+      exportCsvRow,
+    ].join("\n");
+    const exportSpy = vi.fn(async () => ({
+      filename: "unit-6-ui-csv-consistency.csv",
+      content: exportCsv,
+    }));
+    const listSpy = vi.fn(async () => ({
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 1,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [fixtureRow],
+      events: [fixtureRow],
+    }));
+    const OriginalBlob = globalThis.Blob;
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    let capturedCsv = "";
+    class MockBlob {
+      readonly size: number;
+      readonly type: string;
+
+      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+        capturedCsv = parts.map((part) => String(part)).join("");
+        this.size = capturedCsv.length;
+        this.type = options?.type ?? "";
+      }
+    }
+    globalThis.Blob = MockBlob as unknown as typeof Blob;
+    const createObjectUrl = vi.fn(() => "blob:unit-6-ui-csv");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const element = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          value: clickSpy,
+          configurable: true,
+        });
+      }
+      return element as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+
+    try {
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      await screen.findByTestId("audit-current-state");
+      const rowContainer = screen
+        .getByTestId(`audit-edit-${fixtureRow.adjustment_id}`)
+        .closest("div");
+      expect(rowContainer).not.toBeNull();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.account_code)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.account_name)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.currency)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.operator)).toBeInTheDocument();
+      expect(within(rowContainer as HTMLElement).getByText(fixtureRow.approval_status)).toBeInTheDocument();
+
+      await user.click(screen.getByTestId("audit-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalledWith("2026-02-28", {
+          adjustmentId: "",
+          adjustmentIdExact: false,
+          accountCode: "",
+          approvalStatus: "",
+          eventType: "",
+          currentSortField: "created_at",
+          currentSortDir: "desc",
+          eventSortField: "created_at",
+          eventSortDir: "desc",
+          createdAtFrom: "",
+          createdAtTo: "",
+        });
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+      });
+
+      expect(capturedCsv).toContain(exportCsvRow);
+    } finally {
+      createElementSpy.mockRestore();
+      globalThis.Blob = OriginalBlob;
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
   });
 
   it("pages current-state rows and exports the filtered audit dataset", async () => {
@@ -869,7 +1433,7 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("monthly-operating-analysis-audit-boundary-copy")).toHaveTextContent(
       "手工调整",
     );
-    expect(screen.getByText(/preserves separation from legacy product-category formal results/)).toBeInTheDocument();
+    expect(screen.getByText(/保持与产品分类正式结果分离/)).toBeInTheDocument();
     expect(screen.getByTestId("monthly-operating-analysis-audit-form-lead")).toHaveTextContent(
       "月度经营调整录入",
     );

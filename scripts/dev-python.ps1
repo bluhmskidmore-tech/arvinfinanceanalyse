@@ -5,11 +5,13 @@ function Resolve-DevPython {
 
   $root = Split-Path -Parent $PSScriptRoot
   $venvPython = Join-Path $root ".venv\Scripts\python.exe"
-  $systemPython = (Get-Command python -ErrorAction Stop).Source
   $candidates = @()
-  $candidates += $systemPython
   if (Test-Path $venvPython) {
     $candidates += $venvPython
+  }
+  $systemPythonCommand = Get-Command python -ErrorAction SilentlyContinue
+  if ($systemPythonCommand) {
+    $candidates += $systemPythonCommand.Source
   }
   $check = "import importlib, sys; [importlib.import_module(name) for name in sys.argv[1:]]"
   foreach ($candidate in ($candidates | Select-Object -Unique)) {

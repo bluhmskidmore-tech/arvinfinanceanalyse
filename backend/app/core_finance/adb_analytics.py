@@ -75,9 +75,13 @@ def aggregate_daily_totals(
 
 def enrich_bonds_asset_frame(bonds_assets_df: pd.DataFrame) -> pd.DataFrame:
     """Add category / balance / rate_decimal / weighted columns to bond asset frame."""
-    from backend.app.core_finance.adb_analytics import _clean_cat_local  # avoid circular — defined below
+    from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
+
     df = bonds_assets_df.copy()
-    df["category"] = df["sub_type"].apply(_clean_cat_local)
+    if "bond_category" in df.columns:
+        df["category"] = df["bond_category"].apply(_clean_cat_local)
+    else:
+        df["category"] = df.apply(lambda r: classify_zqtz_asset_bond_label(r.to_dict()), axis=1)
     df["balance"] = pd.to_numeric(df["market_value"], errors="coerce").fillna(0.0)
     df["rate_decimal"] = normalize_rate_values(df["yield_to_maturity"].tolist(), "yield_to_maturity")
     df["weighted"] = df["balance"] * df["rate_decimal"]
@@ -86,9 +90,11 @@ def enrich_bonds_asset_frame(bonds_assets_df: pd.DataFrame) -> pd.DataFrame:
 
 def enrich_bonds_liability_frame(bonds_liab_df: pd.DataFrame) -> pd.DataFrame:
     """Add category / balance / rate_decimal / weighted columns to bond liability frame."""
-    from backend.app.core_finance.adb_analytics import _clean_cat_local
     df = bonds_liab_df.copy()
-    df["category"] = df["sub_type"].apply(_clean_cat_local)
+    if "bond_category" in df.columns:
+        df["category"] = df["bond_category"].apply(_clean_cat_local)
+    else:
+        df["category"] = df["sub_type"].apply(_clean_cat_local)
     df["balance"] = pd.to_numeric(df["market_value"], errors="coerce").fillna(0.0)
     normalized = normalize_rate_values(df["coupon_rate"].tolist(), "coupon_rate")
     df["rate_decimal"] = [
@@ -157,12 +163,15 @@ def build_comparison_rows(
     spot_map: dict[str, Decimal],
     sum_map: dict[str, Decimal],
     num_days_dec: Decimal,
-    top_n: int,
+    top_n: int | None,
     simulated: bool,
     end_date: date,
     stable_factor_fn: Any,
 ) -> list[dict[str, float]]:
-    """Rank categories by deviation magnitude for the spot-vs-avg comparison view."""
+    """Build per-category spot/period-avg rows; sort by average balance (desc) for classification tables.
+
+    When ``top_n`` is None, returns all categories (caller trims for display and totals).
+    """
     categories = set(spot_map.keys()) | set(sum_map.keys())
     rows: list[dict[str, float]] = []
     for category in categories:
@@ -183,7 +192,9 @@ def build_comparison_rows(
                 "deviation": float(deviation),
             }
         )
-    rows.sort(key=lambda r: (abs(r.get("deviation") or 0.0), r.get("spot") or 0.0), reverse=True)
+    rows.sort(key=lambda r: (r.get("avg") or 0.0, r.get("spot") or 0.0), reverse=True)
+    if top_n is None:
+        return rows
     return rows[: max(int(top_n), 0)]
 
 
@@ -241,10 +252,14 @@ def compute_weighted_rate(total_weighted: float, total_amount: float) -> float |
 
 
 def month_date_range(year: int, month: int) -> tuple[date, date]:
-    """Return (month_start, month_end) capped at today."""
+    """Return (month_start, month_end) for the given calendar month.
+
+    No truncation to today — callers that need a "not beyond today" cap should
+    apply it themselves so historical queries remain reproducible.
+    """
     month_start = date(year, month, 1)
     if month == 12:
         month_end = date(year, 12, 31)
     else:
         month_end = date(year, month + 1, 1) - timedelta(days=1)
-    return month_start, min(month_end, date.today())
+    return month_start, month_end

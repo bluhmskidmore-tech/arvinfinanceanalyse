@@ -6,6 +6,8 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
@@ -16,13 +18,130 @@ from tests.test_balance_analysis_materialize_flow import _patch_skip_fx_refresh
 BOND_ASSET_CLASS = "\u503a\u5238\u7c7b"
 BOND_GOV = "\u56fd\u503a"
 BOND_CORP = "\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a"
+# bond_type BOND_CORP is classified as 非金融企业债券 (zqtz_asset_bond_category)
+BOND_CORP_ZQTZ_CATEGORY = "\u975e\u91d1\u878d\u4f01\u4e1a\u503a\u5238"
 BOND_CERT = "\u51ed\u8bc1\u5f0f\u56fd\u503a"
+# 凭证式国债在 ZQTZ 资产类目中的 row_label
+BOND_CERT_ZQTZ_CATEGORY = (
+    "\u56fd\u503a\uff08\u542b\u51ed\u8bc1\u5f0f\u56fd\u503a\uff09"
+)
 INTERBANK_PLACE = "\u540c\u4e1a\u5b58\u653e"
 POSITION_ASSET = "\u8d44\u4ea7"
 POSITION_LIABILITY = "\u8d1f\u503a"
 INTEREST_FIXED = "\u56fa\u5b9a"
 MONTH_LABEL_JAN = "2025\u5e741\u6708"
 MONTH_LABEL_FEB = "2025\u5e742\u6708"
+
+
+def test_assign_zqtz_bond_categories_reuses_duplicate_asset_classifications(monkeypatch) -> None:
+    from backend.app.services import adb_analysis_service
+
+    calls: list[dict[str, object]] = []
+
+    def _fake_classifier(row: dict[str, object]) -> str:
+        calls.append(row)
+        return f"asset-category-{row.get('bond_type')}-{row.get('instrument_code')}"
+
+    monkeypatch.setattr(adb_analysis_service, "classify_zqtz_asset_bond_label", _fake_classifier)
+
+    rows = [
+        {
+            "report_date": "2026-01-01",
+            "market_value": Decimal("100"),
+            "yield_to_maturity": Decimal("2.1"),
+            "coupon_rate": Decimal("2.0"),
+            "interest_rate": 0.0,
+            "asset_class": "asset",
+            "bond_type": "gov",
+            "sub_type": "",
+            "business_type_primary": "primary-a",
+            "business_type_final": "final-a",
+            "instrument_code": "BOND-001",
+            "instrument_name": "Bond 001",
+            "currency_code": "CNY",
+            "accounting_basis": "FVOCI",
+            "is_issuance_like": False,
+        },
+        {
+            "report_date": "2026-01-02",
+            "market_value": Decimal("110"),
+            "yield_to_maturity": Decimal("2.2"),
+            "coupon_rate": Decimal("2.0"),
+            "interest_rate": 0.0,
+            "asset_class": "asset",
+            "bond_type": "gov",
+            "sub_type": "",
+            "business_type_primary": "primary-a",
+            "business_type_final": "final-a",
+            "instrument_code": "BOND-001",
+            "instrument_name": "Bond 001",
+            "currency_code": "CNY",
+            "accounting_basis": "FVOCI",
+            "is_issuance_like": False,
+        },
+        {
+            "report_date": "2026-01-03",
+            "market_value": Decimal("120"),
+            "yield_to_maturity": Decimal("2.3"),
+            "coupon_rate": Decimal("2.0"),
+            "interest_rate": 0.0,
+            "asset_class": "asset",
+            "bond_type": "gov",
+            "sub_type": "",
+            "business_type_primary": "primary-a",
+            "business_type_final": "final-a",
+            "instrument_code": "BOND-001",
+            "instrument_name": "Bond 001",
+            "currency_code": "CNY",
+            "accounting_basis": "FVOCI",
+            "is_issuance_like": False,
+        },
+        {
+            "report_date": "2026-01-01",
+            "market_value": Decimal("200"),
+            "yield_to_maturity": Decimal("2.5"),
+            "coupon_rate": Decimal("2.4"),
+            "interest_rate": 0.0,
+            "asset_class": "asset",
+            "bond_type": "policy",
+            "sub_type": "",
+            "business_type_primary": "primary-b",
+            "business_type_final": "final-b",
+            "instrument_code": "BOND-002",
+            "instrument_name": "Bond 002",
+            "currency_code": "CNY",
+            "accounting_basis": "FVOCI",
+            "is_issuance_like": False,
+        },
+        {
+            "report_date": "2026-01-01",
+            "market_value": Decimal("300"),
+            "yield_to_maturity": Decimal("2.8"),
+            "coupon_rate": Decimal("2.7"),
+            "interest_rate": 0.0,
+            "asset_class": "asset",
+            "bond_type": "liability-bond",
+            "sub_type": "issued-sub-type",
+            "business_type_primary": "",
+            "business_type_final": "",
+            "instrument_code": "ISS-001",
+            "instrument_name": "Issued 001",
+            "currency_code": "CNY",
+            "accounting_basis": "FVOCI",
+            "is_issuance_like": True,
+        },
+    ]
+
+    result = adb_analysis_service._assign_zqtz_bond_categories(pd.DataFrame(rows))
+
+    assert list(result["bond_category"]) == [
+        "asset-category-gov-BOND-001",
+        "asset-category-gov-BOND-001",
+        "asset-category-gov-BOND-001",
+        "asset-category-policy-BOND-002",
+        "issued-sub-type",
+    ]
+    assert len(calls) == 2
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -224,9 +343,15 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "deviation" not in payload["assets_breakdown"][0]
     assert "total_spot_assets" in payload
     assert "total_avg_assets" in payload
+    assert payload["total_avg_interbank_assets"] == pytest.approx(25_000_000.0)
+    assert payload["total_avg_interbank_liabilities"] == pytest.approx(0.0)
     assert "asset_yield" in payload
     assert "liability_cost" in payload
     assert "net_interest_margin" in payload
+    assert payload["adb_denominator_basis"] == "formal_calendar"
+    assert payload["coverage_days"] == 2
+    assert payload["sample_filled"] is False
+    assert payload["calendar_days_inclusive"] == 2
 
     alias = client.get(
         "/api/analysis/adb/comparison",
@@ -240,9 +365,17 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
 
     monthly = client.get("/api/analysis/adb/monthly", params={"year": 2025})
     assert monthly.status_code == 200, monthly.text
-    monthly_payload = monthly.json()
-    assert monthly_payload["result_meta"]["basis"] == "analytical"
-    monthly_payload = monthly_payload["result"]
+    monthly_json = monthly.json()
+    assert monthly_json["result_meta"]["basis"] == "analytical"
+    assert monthly_json["result_meta"]["result_kind"] == "adb.monthly"
+    assert "filters_applied" in monthly_json["result_meta"]
+    assert monthly_json["result_meta"]["filters_applied"].get("year") == 2025
+    assert "tables_used" in monthly_json["result_meta"] and set(monthly_json["result_meta"]["tables_used"]) == {
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    }
+    monthly_payload = monthly_json["result"]
+    assert len(monthly_payload["months"]) == 1
     assert monthly_payload["year"] == 2025
     assert "months" in monthly_payload and "ytd_avg_assets" in monthly_payload
     assert "ytd_nim" in monthly_payload
@@ -253,6 +386,7 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "mom_change_pct_liabilities" in monthly_payload["months"][0]
     assert "assets_mom_change" not in monthly_payload["months"][0]
     assert "liabilities_mom_change" not in monthly_payload["months"][0]
+    assert "accounting_basis_daily_avg_trend" not in monthly_payload
 
 
 def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
@@ -310,7 +444,7 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
     assert response.status_code == 200, response.text
     payload = response.json()["result"]
     assert payload["simulated"] is True
-    assert payload["assets_breakdown"][0]["category"] == BOND_CORP
+    assert payload["assets_breakdown"][0]["category"] == BOND_CORP_ZQTZ_CATEGORY
     assert payload["assets_breakdown"][0]["weighted_rate"] == 2.4
     assert payload["asset_yield"] == 2.4
 
@@ -410,7 +544,9 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
     assert "ytd_net_interest_margin" not in payload
 
     null_rate_item = next(
-        item for item in first_month["breakdown_assets"] if item["category"] == BOND_CERT
+        item
+        for item in first_month["breakdown_assets"]
+        if item["category"] == BOND_CERT_ZQTZ_CATEGORY
     )
     assert null_rate_item["weighted_rate"] is None
 
@@ -481,3 +617,170 @@ def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Pat
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result"]["report_date"] == "2025-12-31"
     assert payload["result"]["total_avg_assets"] > 0
+
+
+def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Path, monkeypatch) -> None:
+    """ADB 不读 snapshot：无 formal 表时仅有快照行也不会出数（须物化 formal）。"""
+    db_path = tmp_path / "adb_snapshot_fallback.duckdb"
+    governance_dir = tmp_path / "governance_snap"
+    governance_dir.mkdir()
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        conn.execute("drop table if exists fact_formal_zqtz_balance_daily")
+        conn.execute("drop table if exists fact_formal_tyw_balance_daily")
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="SB1",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_tyw(
+            conn,
+            report_date="2025-06-02",
+            position_id="ST1",
+            product_type=INTERBANK_PLACE,
+            position_side=POSITION_ASSET,
+            principal=Decimal("50000000"),
+            rate=Decimal("2.5"),
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    settings_mod = load_module("backend.app.governance.settings", "backend/app/governance/settings.py")
+    settings_mod.get_settings.cache_clear()
+
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-02", "top_n": 10},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    assert payload["adb_denominator_basis"] == "snapshot_calendar"
+    assert payload["total_avg_assets"] == 0.0
+    assert payload["total_avg_interbank_assets"] == 0.0
+    assert payload["coverage_days"] == 0
+
+
+def test_adb_comparison_denominator_uses_calendar_span(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """宽日历区间、仅部分日期有 formal 余额：分母为日历区间天数，样本补齐后日均与 formal CNY 一致。"""
+    db_path = tmp_path / "adb_distinct_days.duckdb"
+    governance_dir = tmp_path / "governance_adb_dd"
+    report_dates = ["2025-01-01", "2025-01-03", "2025-01-05", "2025-01-07", "2025-01-09"]
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        for i, rd in enumerate(report_dates):
+            _insert_zqtz(
+                conn,
+                report_date=rd,
+                instrument_code=f"B-SP-{i}",
+                bond_type=BOND_GOV,
+                market_value=Decimal("100000000"),
+                is_issuance_like=False,
+            )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=report_dates)
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb-comparison",
+        params={"start_date": "2025-01-01", "end_date": "2025-01-10", "top_n": 20},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    assert payload["calendar_days_inclusive"] == 10
+    assert payload["num_days"] == 10
+    assert payload["coverage_days"] == 5
+    assert payload["adb_denominator_basis"] == "formal_calendar"
+    assert payload["sample_filled"] is True
+    assert payload["sample_fill_method"] == "observed_days_scaled_to_calendar"
+    # 样本补齐：5 个观测日各 1 亿，扩展到 10 天窗口后日均仍保持 1 亿
+    assert payload["total_avg_assets"] == pytest.approx(100_000_000.0)
+
+
+def test_adb_comparison_liab_spot_locf_when_end_date_has_no_row(tmp_path: Path, monkeypatch) -> None:
+    """区间末日无快照时，负债分类期末时点用最近观测日结转（LOCF），避免 spot=0 而日均>0 的伪偏离。"""
+    db_path = tmp_path / "adb_locf_liab.duckdb"
+    governance_dir = tmp_path / "gov_locf_liab"
+    repo_product = "\u5356\u51fa\u56de\u8d2d\u8bc1\u5238"
+    principal = Decimal("16866000000")
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_tyw(
+            conn,
+            report_date="2025-06-02",
+            position_id="R-LOCF",
+            product_type=repo_product,
+            position_side=POSITION_LIABILITY,
+            principal=principal,
+            rate=Decimal("2.5"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=["2025-06-02"])
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    settings_mod = load_module("backend.app.governance.settings", "backend/app/governance/settings.py")
+    settings_mod.get_settings.cache_clear()
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 20},
+    )
+    assert response.status_code == 200, response.text
+    rows = response.json()["result"]["liabilities_breakdown"]
+    repo_row = next(r for r in rows if r["category"] == repo_product)
+    assert repo_row["spot_balance"] == pytest.approx(float(principal))
+    assert repo_row["avg_balance"] > 0
+
+
+def test_adb_comparison_liability_falls_back_past_blank_sub_type(tmp_path: Path, monkeypatch) -> None:
+    """发行类负债 sub_type 为空时，分类回退 bond_type，不整包挤进「其它」。"""
+    db_path = tmp_path / "adb_liab_fallback.duckdb"
+    governance_dir = tmp_path / "gov_liab_fb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-07-15",
+            instrument_code="ISS-FB-1",
+            bond_type=BOND_GOV,
+            market_value=Decimal("300000000"),
+            is_issuance_like=True,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=["2025-07-15"])
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    settings_mod = load_module("backend.app.governance.settings", "backend/app/governance/settings.py")
+    settings_mod.get_settings.cache_clear()
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-07-15", "end_date": "2025-07-15", "top_n": 20},
+    )
+    assert response.status_code == 200, response.text
+    rows = response.json()["result"]["liabilities_breakdown"]
+    assert any(r["category"] == BOND_GOV and r["avg_balance"] > 0 for r in rows)

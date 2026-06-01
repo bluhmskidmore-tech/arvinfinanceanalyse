@@ -18,9 +18,17 @@
 - `result_meta.cache_version == "cv_exec_dashboard_v1"`.
 - `result.title == "经营总览"`.
 - `result.metrics.length == 4`.
+- `result.metrics[id=aum].label == "总资产规模"`.
+- `result.metrics[id=aum].caliber_label == "本币资产口径"`.
+- `result.metrics[id=yield].label == "年度损益（不扣FTP）"`.
+- `result.metrics[id=yield].caliber_label == "FI + 非标桥接"`.
+- `result.metrics[id=yield].detail` references `fact_formal_pnl_fi + fact_nonstd_pnl_bridge` and states the value does not deduct FTP.
+- `result.metrics[id=nim].caliber_label == null`.
+- `result.metrics[id=dv01].caliber_label == null`.
+- `result.metrics[id=dv01].detail` states the full portfolio DV01 basis and says AC/OCI/TPL splits are available in the risk view.
 - `MTR-EXEC-001 == "3,572.76 亿"`.
 - `MTR-EXEC-002 == "+4.69 亿"`.
-- `MTR-EXEC-003 == "+0.01%"`.
+- `MTR-EXEC-003 == "+1.00%"`.
 - `MTR-EXEC-004 == "13,826,218"`.
 
 ## Reconciliation

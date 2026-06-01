@@ -44,3 +44,12 @@ def summary(
         report_date=date,
         currency=currency,
     )
+
+
+@router.get("/ledger-pnl/formal-financial-indicators")
+def formal_financial_indicators(
+    report_month: str = Query(..., description="报告月份 YYYYMM"),
+) -> dict[str, object]:
+    return _svc().ledger_pnl_formal_financial_indicator_contract_envelope(
+        report_month=report_month,
+    )

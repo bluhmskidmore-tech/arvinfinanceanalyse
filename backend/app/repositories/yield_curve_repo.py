@@ -128,6 +128,29 @@ class YieldCurveRepository:
         finally:
             conn.close()
 
+    def fetch_prior_trade_date(self, curve_type: str, trade_date: str) -> str | None:
+        """Latest ``trade_date`` strictly before ``trade_date`` for ``curve_type`` (same read surface as snapshots)."""
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return None
+        try:
+            if not _relation_exists(conn, READ_VIEW):
+                return None
+            row = conn.execute(
+                f"""
+                select max(cast(trade_date as varchar))
+                from {READ_VIEW}
+                where curve_type = ?
+                  and cast(trade_date as varchar) < ?
+                """,
+                [curve_type, trade_date],
+            ).fetchone()
+            if row is None or row[0] in (None, ""):
+                return None
+            return str(row[0])
+        finally:
+            conn.close()
+
     def fetch_fx_rates(self, trade_date: str) -> dict[str, Decimal]:
         rates, _warning = self.fetch_fx_rates_with_fallback_warning(trade_date)
         return rates
@@ -314,6 +337,44 @@ def _connect(path: str, *, read_only: bool) -> duckdb.DuckDBPyConnection | None:
         return duckdb.connect(path, read_only=read_only)
     except duckdb.Error:
         return None
+
+
+def resolve_curve_snapshot(
+    repo: YieldCurveRepository,
+    *,
+    requested_trade_date: str,
+    curve_type: str,
+) -> tuple[dict[str, object] | None, str | None]:
+    """
+    Exact ``fetch_curve_snapshot`` for ``(requested_trade_date, curve_type)``; otherwise LOCF-on-or-before
+    via ``fetch_latest_trade_date_on_or_before`` with a stable warning. Raises if the view has points but
+    formal lineage is inconsistent (same contract as credit spread analysis).
+    """
+    exact_snapshot = repo.fetch_curve_snapshot(requested_trade_date, curve_type)
+    if exact_snapshot is not None:
+        return exact_snapshot, None
+    if repo.fetch_curve(requested_trade_date, curve_type):
+        raise RuntimeError(
+            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
+        )
+    latest_trade_date = repo.fetch_latest_trade_date_on_or_before(curve_type, requested_trade_date)
+    if latest_trade_date is None:
+        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+    latest_snapshot = repo.fetch_curve_snapshot(latest_trade_date, curve_type)
+    if latest_snapshot is None:
+        if repo.fetch_curve(latest_trade_date, curve_type):
+            raise RuntimeError(
+                f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={latest_trade_date}."
+            )
+        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+    return (
+        latest_snapshot,
+        format_yield_curve_latest_fallback_warning(
+            curve_type=curve_type,
+            resolved_trade_date=latest_trade_date,
+            requested_trade_date=requested_trade_date,
+        ),
+    )
 
 
 def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:

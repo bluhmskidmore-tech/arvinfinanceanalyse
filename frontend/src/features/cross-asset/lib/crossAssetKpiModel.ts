@@ -2,7 +2,7 @@ import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../ap
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
-/** 与 `config/choice_macro_catalog.json` 对齐（含 E100 系、EM1、EMG、EMM 等）；`CA.*` 为仅 mock 占位。 */
+/** 与 `config/choice_macro_catalog.json` 对齐；`CA.*` 为治理后的 Tushare/公共补充源。 */
 export type CrossAssetSingleSlot = {
   kind: "single";
   key: string;
@@ -75,6 +75,30 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
   },
   {
     kind: "single",
+    key: "csi300_pe",
+    label: "沪深300市盈率",
+    format: "plain",
+    tag: "估值",
+    candidateSeriesIds: ["CA.CSI300_PE"],
+  },
+  {
+    kind: "single",
+    key: "mega_cap_weight",
+    label: "沪深300前十大权重",
+    format: "percent",
+    tag: "大市值权重",
+    candidateSeriesIds: ["CA.MEGA_CAP_WEIGHT"],
+  },
+  {
+    kind: "single",
+    key: "mega_cap_top5_weight",
+    label: "沪深300前五大权重",
+    format: "percent",
+    tag: "大市值权重",
+    candidateSeriesIds: ["CA.MEGA_CAP_TOP5_WEIGHT"],
+  },
+  {
+    kind: "single",
     key: "brent",
     label: "布油",
     format: "plain",
@@ -88,6 +112,22 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
     format: "plain",
     tag: "内需",
     candidateSeriesIds: ["CA.STEEL"],
+  },
+  {
+    kind: "single",
+    key: "copper",
+    label: "铜主力期货",
+    format: "plain",
+    tag: "有色",
+    candidateSeriesIds: ["CA.COPPER"],
+  },
+  {
+    kind: "single",
+    key: "aluminum",
+    label: "铝主力期货",
+    format: "plain",
+    tag: "有色",
+    candidateSeriesIds: ["CA.ALUMINUM"],
   },
   {
     kind: "single",
@@ -106,6 +146,12 @@ export type ResolvedCrossAssetKpi = {
   tag: string;
   /** 单序列时为该 id；利差时为合成键 */
   resolvedSeriesId: string;
+  sourceKind: "choice" | "public" | "derived" | "missing";
+  vendorName?: string | null;
+  tradeDate: string | null;
+  unit: string | null;
+  qualityFlag?: ChoiceMacroLatestPoint["quality_flag"];
+  refreshTier?: ChoiceMacroLatestPoint["refresh_tier"];
   valueLabel: string;
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
@@ -116,13 +162,41 @@ function pickPoint(
   byId: Map<string, ChoiceMacroLatestPoint>,
   candidates: readonly string[],
 ): ChoiceMacroLatestPoint | undefined {
-  for (const id of candidates) {
-    const p = byId.get(id);
-    if (p) {
-      return p;
-    }
+  const ranked = candidates
+    .map((id, priority) => {
+      const point = byId.get(id);
+      return point ? { point, priority } : null;
+    })
+    .filter((item): item is { point: ChoiceMacroLatestPoint; priority: number } => Boolean(item));
+  const usable = ranked.filter((item) => item.point.quality_flag !== "stale");
+  const pool = usable.length ? usable : ranked;
+  return [...pool].sort((left, right) => {
+    const dateOrder = right.point.trade_date.localeCompare(left.point.trade_date);
+    return dateOrder || left.priority - right.priority;
+  })[0]?.point;
+}
+
+function sourceKindFromSeriesId(seriesId: string): ResolvedCrossAssetKpi["sourceKind"] {
+  if (seriesId.endsWith(":missing")) {
+    return "missing";
   }
-  return undefined;
+  if (seriesId.includes(":")) {
+    return "derived";
+  }
+  if (/^(E100|EMM|EMG|EMI|EM\d)/.test(seriesId)) {
+    return "choice";
+  }
+  if (seriesId.startsWith("CA.")) {
+    return "public";
+  }
+  return "missing";
+}
+
+function latestTradeDate(points: Array<ChoiceMacroLatestPoint | undefined>) {
+  const dates = points
+    .map((point) => point?.trade_date)
+    .filter((tradeDate): tradeDate is string => Boolean(tradeDate));
+  return dates.length > 0 ? dates.sort((left, right) => right.localeCompare(left))[0] : null;
 }
 
 function formatPercent(n: number) {
@@ -235,7 +309,7 @@ function changeLabelForSlot(
   }
   if (format === "index" || format === "plain") {
     const sign = delta > 0 ? "+" : "";
-    return `${sign}${delta.toFixed(2)}%`;
+    return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
   }
   if (format === "fx") {
     const sign = delta > 0 ? "+" : "";
@@ -280,6 +354,10 @@ function resolveSpreadSlot(
       format: "bp",
       tag: slot.tag,
       resolvedSeriesId: preBp.series_id,
+      sourceKind: sourceKindFromSeriesId(preBp.series_id),
+      vendorName: preBp.vendor_name,
+      tradeDate: preBp.trade_date,
+      unit: preBp.unit,
       valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
       changeLabel: changeLabelForSlot("bp", delta),
       changeTone: toneForChange("bp", delta),
@@ -315,6 +393,10 @@ function resolveSpreadSlot(
       format: "bp",
       tag: slot.tag,
       resolvedSeriesId: `${slot.key}:missing`,
+      sourceKind: "missing",
+      vendorName: null,
+      tradeDate: null,
+      unit: null,
       valueLabel: "—",
       changeLabel: "—",
       changeTone: "default",
@@ -332,6 +414,10 @@ function resolveSpreadSlot(
     format: "bp",
     tag: slot.tag,
     resolvedSeriesId: resolvedId,
+    sourceKind: sourceKindFromSeriesId(resolvedId),
+    vendorName: null,
+    tradeDate: latestTradeDate([hi, lo]),
+    unit: "bp",
     valueLabel: valueLabelForSlot("bp", vBp),
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
@@ -343,13 +429,24 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
   const delta = point?.latest_change ?? null;
-  const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  let label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  let tag = slot.tag;
+  if (slot.key === "financial_conditions" && point?.series_id === "CA.CSI300") {
+    label = "沪深300指数";
+    tag = "权益风险偏好";
+  }
   return {
     key: slot.key,
     label,
     format: slot.format,
-    tag: slot.tag,
+    tag,
     resolvedSeriesId: id,
+    sourceKind: sourceKindFromSeriesId(id),
+    vendorName: point?.vendor_name,
+    tradeDate: point?.trade_date ?? null,
+    unit: point?.unit ?? null,
+    qualityFlag: point?.quality_flag,
+    refreshTier: point?.refresh_tier,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),
@@ -368,6 +465,21 @@ export function resolveCrossAssetKpis(series: ChoiceMacroLatestPoint[]): Resolve
 }
 
 export type CrossAssetTrendLine = { name: string; dates: string[]; values: number[] };
+
+/** Same trade_date can appear more than once from upstream; keep last and enforce strictly increasing x. */
+function dedupeDateSeries(dates: string[], values: number[]): Pick<CrossAssetTrendLine, "dates" | "values"> {
+  const byDate = new Map<string, number>();
+  for (let i = 0; i < dates.length; i += 1) {
+    const d = dates[i];
+    const v = values[i];
+    if (typeof v !== "number" || Number.isNaN(v)) {
+      continue;
+    }
+    byDate.set(d, v);
+  }
+  const order = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
+  return { dates: order, values: order.map((d) => byDate.get(d)!) };
+}
 
 export function maxCrossAssetHeadlineTradeDate(series: ChoiceMacroLatestPoint[]): string {
   const byId = new Map(series.map((p) => [p.series_id, p]));
@@ -413,8 +525,10 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
       const sorted = [...p.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
       lines.push({
         name: slot.label,
-        dates: sorted.map((x) => x.trade_date),
-        values: sorted.map((x) => x.value_numeric),
+        ...dedupeDateSeries(
+          sorted.map((x) => x.trade_date),
+          sorted.map((x) => x.value_numeric),
+        ),
       });
       continue;
     }
@@ -424,8 +538,10 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
       const sorted = [...preBp.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
       lines.push({
         name: slot.labelCnUs,
-        dates: sorted.map((x) => x.trade_date),
-        values: sorted.map((x) => x.value_numeric),
+        ...dedupeDateSeries(
+          sorted.map((x) => x.trade_date),
+          sorted.map((x) => x.value_numeric),
+        ),
       });
       continue;
     }
@@ -454,8 +570,10 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
     }
     lines.push({
       name,
-      dates,
-      values: leftV.map((lv, i) => toSpreadBp(lv, rightV[i])),
+      ...dedupeDateSeries(
+        dates,
+        leftV.map((lv, i) => toSpreadBp(lv, rightV[i])),
+      ),
     });
   }
 

@@ -101,13 +101,16 @@ describe("AccountingClassAuditView", () => {
     expect(screen.getByText("映射为其他（other）")).toBeInTheDocument();
     expect(screen.getByText("覆盖市值")).toBeInTheDocument();
     expect(screen.getByTestId("accounting-audit-total-positions")).toHaveTextContent("100");
+    expect(screen.getByText("100.00 亿")).toBeInTheDocument();
+    expect(screen.getByText("3.00 亿")).toBeInTheDocument();
     expect(screen.getByText("分歧持仓数")).toBeInTheDocument();
     expect(screen.getByText("精确匹配")).toBeInTheDocument();
     expect(screen.getByText("模糊匹配")).toBeInTheDocument();
-    expect(screen.getAllByText(/infer_accounting_class/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/map_accounting_class/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("推断分类").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("映射分类").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("审计明细")).toBeInTheDocument();
     expect(screen.getByText("政策金债")).toBeInTheDocument();
+    expect(screen.getByText("20.00 亿")).toBeInTheDocument();
   });
 
   it("renders warning alert when warnings exist", async () => {

@@ -13,6 +13,7 @@ export type RunPollingTaskOptions<TPayload extends PollingTaskPayload> = {
   start: () => Promise<TPayload>;
   getStatus: (runId: string) => Promise<TPayload>;
   intervalMs?: number;
+  getIntervalMs?: (payload: TPayload, attempt: number) => number;
   maxAttempts?: number;
   isTerminal?: (status: string) => boolean;
   onUpdate?: (payload: TPayload) => void;
@@ -26,6 +27,7 @@ export async function runPollingTask<TPayload extends PollingTaskPayload>(
     start,
     getStatus,
     intervalMs = defaults.intervalMs,
+    getIntervalMs,
     maxAttempts = defaults.maxAttempts,
     isTerminal = (status: string) => status === "completed" || status === "failed",
     onUpdate,
@@ -47,7 +49,8 @@ export async function runPollingTask<TPayload extends PollingTaskPayload>(
     if (isTerminal(payload.status)) {
       return payload;
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    const nextIntervalMs = getIntervalMs?.(payload, attempt) ?? intervalMs;
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, nextIntervalMs)));
   }
 
   const rid = payload.run_id ?? "—";

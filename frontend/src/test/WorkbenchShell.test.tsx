@@ -9,6 +9,7 @@ import {
   primaryWorkbenchNavigationGroups,
   secondaryWorkbenchNavigation,
 } from "../mocks/navigation";
+import { shellTokens } from "../theme/tokens";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
@@ -40,9 +41,16 @@ function renderShellAt(path: string, client?: ApiClient) {
           { index: true, element: <div>shell body</div> },
           { path: "dashboard", element: <div>dashboard alias body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
+          { path: "cross-asset", element: <div>cross-asset body</div> },
+          { path: "stock-analysis", element: <div>stock-analysis body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
+          { path: "balance-analysis", element: <div>balance-analysis body</div> },
+          { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
+          { path: "liability-analytics", element: <div>liability-analytics body</div> },
           { path: "pnl", element: <div>pnl body</div> },
+          { path: "reports", element: <div>reports body</div> },
           { path: "platform-config", element: <div>platform body</div> },
+          { path: "cube-query", element: <div>cube-query body</div> },
           { path: "agent", element: <div>agent body</div> },
         ],
       },
@@ -58,6 +66,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(screen.getByTestId("workbench-group-nav")).toBeInTheDocument();
     expect(screen.getByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
   });
 
   it("renders a smaller set of grouped workspaces than live route entries", async () => {
@@ -70,9 +79,16 @@ describe("WorkbenchShell", () => {
     expect(primaryWorkbenchNavigationGroups.length).toBeLessThan(
       primaryWorkbenchNavigation.length,
     );
-    expect(
-      within(navigation).queryByRole("link", { name: "Agent Workbench" }),
-    ).not.toBeInTheDocument();
+  });
+
+  it("shows the Hermes Agent workbench in visible shell navigation", async () => {
+    renderShellAt("/");
+
+    const agentNav = await screen.findByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentLink).toHaveTextContent("Hermes");
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -82,75 +98,141 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config"]);
-    expect(hrefs).not.toContain("/cube-query");
+    expect(hrefs).toEqual(["/platform-config", "/cube-query", "/agent"]);
     expect(hrefs).not.toContain("/reports");
   });
 
-  it("renders a portfolio-specific decision surface when browsing the portfolio workbench", async () => {
+  it("keeps live portfolio pages focused on page content instead of shell guidance", async () => {
     renderShellAt("/pnl");
 
-    const lead = await screen.findByTestId("portfolio-workbench-lead");
-    expect(lead).toHaveTextContent("组合状态先看错配，再看损益，最后定位仓位与归因");
-    expect(lead).toHaveTextContent("资产负债分析");
+    expect(await screen.findByText("pnl body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
 
-    const flow = screen.getByTestId("portfolio-workbench-flow");
-    expect(flow).toHaveTextContent("先看资产负债");
-    expect(flow).toHaveTextContent("最后做原因解释");
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    expect(subnav).toHaveTextContent("全部已开放页面");
+    expect(within(subnav).getByRole("link", { name: /收益分析/ })).toHaveAttribute("href", "/pnl");
+  });
 
-    const board = screen.getByTestId("portfolio-workbench-board");
-    expect(board).toHaveTextContent("状态判断");
-    expect(board).toHaveTextContent("仓位与结构");
-    expect(board).toHaveTextContent("原因解释");
-    expect(board).toHaveTextContent("债券总览");
-    expect(board).toHaveTextContent("持仓透视");
-    expect(board).toHaveTextContent("损益桥接");
+  it("keeps live balance-analysis focused on page content without shell guidance", async () => {
+    renderShellAt("/balance-analysis");
+
+    expect(await screen.findByText("balance-analysis body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+  });
+
+  it("retains shell guidance and readiness warning for placeholder routes", async () => {
+    renderShellAt("/reports");
+
+    expect(await screen.findByText("reports body")).toBeInTheDocument();
+    expect(screen.getByText("当前只突出可验证的真实读链路")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-readiness-banner")).toHaveTextContent("当前页面仍是占位壳层");
+  });
+
+  it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
+    renderShellAt("/balance-movement-analysis");
+
+    expect(await screen.findByText("balance-movement body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    const hrefs = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/balance-movement-analysis");
+  });
+
+  it("keeps portfolio page selection while hiding helper chrome on liability-analytics", async () => {
+    renderShellAt("/liability-analytics");
+
+    expect(await screen.findByText("liability-analytics body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    const hrefs = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/liability-analytics");
   });
 
   it("suppresses the portfolio decision shell chrome for bond-analysis", async () => {
     renderShellAt("/bond-analysis");
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-sidebar-sections")).not.toBeInTheDocument();
   });
 
-  it("renders a global terminal bar that separates page context from shell market ticker", async () => {
-    renderShellAt("/bond-analysis?report_date=2026-03-31");
+  it("uses transparent main surface for cross-asset and keeps market workbench subnav", async () => {
+    renderShellAt("/cross-asset");
 
-    expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    const subnav = await screen.findByTestId("workbench-section-subnav");
+    const sectionLinks = within(subnav).getAllByRole("link");
+    const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/market-data",
+        "/macro-toolkit",
+        "/cross-asset",
+        "/stock-analysis",
+        "/news-events",
+      ]),
+    );
+    expect(subnav).toHaveTextContent("市场数据");
+    expect(subnav).toHaveTextContent("宏观工具");
+    expect(subnav).toHaveTextContent("跨资产驱动");
+    expect(subnav).toHaveTextContent("股票分析");
+    expect(subnav).toHaveTextContent("新闻事件");
+  });
+
+  it("renders a global terminal bar that separates page context from shell market ticker", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
 
     const terminalBar = screen.getByTestId("workbench-terminal-bar");
     const pageContext = within(terminalBar).getByTestId("workbench-page-context");
     const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
     const operatorZone = within(terminalBar).getByTestId("workbench-operator-zone");
 
-    expect(pageContext).toHaveTextContent("债券分析");
-    expect(pageContext).toHaveTextContent("2026-03-31");
+    expect(pageContext).toHaveTextContent("跨资产驱动");
+    expect(pageContext).toHaveTextContent("默认路由");
 
-    expect(marketTicker).toHaveTextContent("Shell Market Ticker");
-    expect(marketTicker).toHaveTextContent("10Y");
+    expect(marketTicker).toHaveTextContent("市场快讯");
+    expect(marketTicker).toHaveTextContent("10年国债");
     expect(marketTicker).toHaveTextContent("DR007");
-    expect(marketTicker).toHaveTextContent("USD/CNY");
+    expect(marketTicker).toHaveTextContent("美元/人民币");
 
     expect(operatorZone).toHaveTextContent("报表中心");
     expect(operatorZone).toHaveTextContent("中台配置");
   });
 
-  it("uses backend bond dates and macro latest endpoints for shell report date and ticker values", async () => {
+  it("keeps bond-analysis page-owned by suppressing shell date and ticker endpoints", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsDates: async () => ({
+      getBondAnalyticsDates: vi.fn(async () => ({
         result_meta: createResultMeta({
           result_kind: "bond_analytics.dates",
         }),
         result: {
           report_dates: ["2026-02-28"],
         },
-      }),
-      getChoiceMacroLatest: async () => ({
+      })),
+      getChoiceMacroLatest: vi.fn(async () => ({
         result_meta: createResultMeta({
           result_kind: "macro.choice.latest",
         }),
@@ -199,27 +281,29 @@ describe("WorkbenchShell", () => {
             },
           ],
         },
-      }),
+      })),
     };
 
     renderShellAt("/bond-analysis", client);
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
-    const terminalBar = screen.getByTestId("workbench-terminal-bar");
-    const pageContext = within(terminalBar).getByTestId("workbench-page-context");
-    const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
+    expect(client.getBondAnalyticsDates).not.toHaveBeenCalled();
+    expect(client.getChoiceMacroLatest).not.toHaveBeenCalled();
+  });
 
-    await waitFor(() => {
-      expect(pageContext).toHaveTextContent("2026-02-28");
-      expect(marketTicker).toHaveTextContent("1.88%");
-      expect(marketTicker).toHaveTextContent("-2bp");
-      expect(marketTicker).toHaveTextContent("1.81%");
-      expect(marketTicker).toHaveTextContent("-5bp");
-      expect(marketTicker).toHaveTextContent("1.75%");
-      expect(marketTicker).toHaveTextContent("+1bp");
-      expect(marketTicker).toHaveTextContent("7.18");
-      expect(marketTicker).toHaveTextContent("+0.02CNY/USD");
-    });
+  it("keeps shell ticker fallback when macro latest payload has no result", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getChoiceMacroLatest: async () => ({}),
+    } as unknown as ApiClient;
+
+    renderShellAt("/cross-asset", client);
+
+    const marketTicker = await screen.findByTestId("workbench-market-ticker");
+    expect(marketTicker).toHaveTextContent("10年国债");
+    expect(marketTicker).toHaveTextContent("DR007");
+    expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });
 
   it("prefers stable series_id matching for shell tickers before falling back to series_name", async () => {
@@ -277,7 +361,7 @@ describe("WorkbenchShell", () => {
       }),
     };
 
-    renderShellAt("/bond-analysis?report_date=2026-02-28", client);
+    renderShellAt("/cross-asset", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
 
@@ -418,14 +502,14 @@ describe("WorkbenchShell", () => {
       }),
     };
 
-    renderShellAt("/bond-analysis?report_date=2026-02-28", client);
+    renderShellAt("/cross-asset", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
 
     await waitFor(() => {
-      expect(marketTicker).toHaveTextContent("US 10Y");
-      expect(marketTicker).toHaveTextContent("CN-US 10Y");
-      expect(marketTicker).toHaveTextContent("Policy 10Y");
+      expect(marketTicker).toHaveTextContent("10年美债");
+      expect(marketTicker).toHaveTextContent("中美10年利差");
+      expect(marketTicker).toHaveTextContent("10年国开");
       expect(marketTicker).toHaveTextContent("4.12%");
       expect(marketTicker).toHaveTextContent("-205bp");
       expect(marketTicker).toHaveTextContent("2.09%");
@@ -452,6 +536,17 @@ describe("WorkbenchShell", () => {
     expect(supportHrefs).toContain("/reports");
   });
 
+  it("marks the active support entry in the homepage-aligned cockpit rail", async () => {
+    renderShellAt("/platform-config");
+
+    expect(await screen.findByText("platform body")).toBeInTheDocument();
+    const supportNav = screen.getByTestId("workbench-support-nav");
+    const platformLink = within(supportNav).getByRole("link", { name: /中台配置/ });
+
+    expect(platformLink).toHaveAttribute("href", "/platform-config");
+    expect(platformLink).toHaveAttribute("data-active", "true");
+  });
+
   it("does not render the portfolio decision surface outside the portfolio group", async () => {
     renderShellAt("/platform-config");
 
@@ -463,7 +558,7 @@ describe("WorkbenchShell", () => {
   it("renders the reserved modules section outside the grouped workspace nav", async () => {
     renderShellAt("/");
 
-    expect(await screen.findByText("Reserved Modules")).toBeInTheDocument();
+    expect(await screen.findByText("保留模块")).toBeInTheDocument();
     for (const section of secondaryWorkbenchNavigation) {
       const link = screen
         .getAllByRole("link")
@@ -472,26 +567,46 @@ describe("WorkbenchShell", () => {
       expect(link).toBeDefined();
       expect(link).toHaveTextContent(section.label);
     }
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
-  it("shows a readiness banner for gated routes", async () => {
+  it("does not render the overview hero card on the root dashboard route", async () => {
+    renderShellAt("/");
+
+    expect(await screen.findByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByText("Phase 1 Status")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
+  });
+
+  it("keeps the /agent route reachable from the visible shell shortcuts", async () => {
     renderShellAt("/agent");
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.getByText("当前页面尚未物化真实数据链路")).toBeInTheDocument();
-    expect(screen.getByText("agent body")).toBeInTheDocument();
+    expect(await screen.findByText("agent body")).toBeInTheDocument();
+    const agentNav = screen.getByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentLink).toHaveAttribute("data-active", "true");
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
-  it("treats /dashboard as the dashboard section inside the current group subnav", async () => {
+  it("lets /dashboard own the cockpit canvas without the group subnav", async () => {
     renderShellAt("/dashboard");
 
     expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
-    const subnav = screen.getByTestId("workbench-section-subnav");
-    const dashLink = within(subnav)
-      .getAllByRole("link")
-      .find((candidate) => candidate.getAttribute("href") === "/");
-    expect(dashLink).toBeDefined();
-    expect(dashLink).toHaveAttribute("href", "/");
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+  });
+
+  it("uses the cockpit shell frame on /dashboard with stable shell chrome hooks", async () => {
+    renderShellAt("/dashboard");
+
+    expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
+    const layoutRoot = screen.getByTestId("workbench-group-nav").closest(".workbench-shell-grid--cockpit");
+    expect(layoutRoot).not.toBeNull();
+    expect(screen.getByText("MOSS").closest("aside")).toHaveStyle({
+      background: shellTokens.railBg,
+    });
+    expect(screen.getByTestId("workbench-support-nav")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
   });
 
   it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {
@@ -500,6 +615,6 @@ describe("WorkbenchShell", () => {
     const banner = await screen.findByTestId("workbench-governance-banner");
     expect(banner).toBeInTheDocument();
     expect(screen.getByText("operations body")).toBeInTheDocument();
-    expect(banner).toHaveTextContent(/temporary exception/i);
+    expect(banner).toHaveTextContent(/临时例外/i);
   });
 });

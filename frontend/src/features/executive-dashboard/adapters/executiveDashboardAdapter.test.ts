@@ -6,7 +6,9 @@ import type {
   Numeric,
   OverviewPayload,
   PnlAttributionPayload,
+  ProductCategoryMonthlyHeadlinePayload,
   ResultMeta,
+  VerdictPayload,
 } from "../../../api/contracts";
 import { adaptDashboard } from "./executiveDashboardAdapter";
 
@@ -54,6 +56,7 @@ function makeOverviewEnv(
         {
           id: "aum",
           label: "资产规模",
+          caliber_label: "本币资产口径",
           value: makeNumeric({ raw: 123_456_000_000, display: "1,234.56 亿", sign_aware: false }),
           delta: makeNumeric({ raw: 0.023, unit: "pct", display: "+2.30%" }),
           tone: "positive",
@@ -108,7 +111,10 @@ describe("adaptDashboard · normal path", () => {
     expect(out.attribution.state.kind).toBe("ok");
     expect(out.overview.vm?.metrics).toHaveLength(1);
     expect(out.overview.vm?.metrics[0]?.value.raw).toBe(123_456_000_000);
+    expect(out.overview.vm?.metrics[0]?.caliberLabel).toBe("本币资产口径");
     expect(out.attribution.vm?.total.display).toBe("+32.00 亿");
+    expect(out.productCategoryYtd.state.kind).toBe("empty");
+    expect(out.productCategoryYtd.vm).toBeNull();
   });
 
   it("passes Numeric shape through untouched", () => {
@@ -295,6 +301,39 @@ describe("adaptDashboard · loading / error", () => {
   });
 });
 
+describe("adaptDashboard · verdict coercion", () => {
+  it("normalizes malformed verdict fields so list keys and JSX do not throw", () => {
+    const noProto = Object.create(null) as object;
+    const badVerdict = {
+      conclusion: "定调结论",
+      tone: "neutral" as const,
+      reasons: [
+        {
+          label: noProto,
+          value: noProto,
+          detail: noProto,
+          tone: "neutral" as const,
+        },
+      ],
+      suggestions: [{ text: noProto, link: null }],
+    };
+
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      verdictPayload: badVerdict as unknown as VerdictPayload,
+    });
+
+    expect(out.verdict?.suggestions[0]?.text).toBe("{}");
+    expect(out.verdict?.reasons[0]?.value).toBe("{}");
+    expect(out.verdict?.reasons[0]?.tone).toBe("neutral");
+  });
+});
+
 describe("adaptDashboard · mixed effective_date", () => {
   it("resolves effective_date as 'mixed' when multiple domains diverge", () => {
     const out = adaptDashboard({
@@ -321,5 +360,137 @@ describe("adaptDashboard · mixed effective_date", () => {
     if (out.overview.state.kind === "fallback") {
       expect(out.overview.state.effective_date).toBe("mixed");
     }
+  });
+});
+
+describe("adaptDashboard · domainsEffectiveDate / datesDiverged", () => {
+  it("datesDiverged=false when all calibers share the same date", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      domainsEffectiveDate: {
+        balance_sheet: "2026-04-18",
+        pnl: "2026-04-18",
+      },
+    });
+    expect(out.datesDiverged).toBe(false);
+    expect(out.domainsEffectiveDate).toEqual({
+      balance_sheet: "2026-04-18",
+      pnl: "2026-04-18",
+    });
+  });
+
+  it("datesDiverged=true when calibers have different dates", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      domainsEffectiveDate: {
+        balance_sheet: "2026-04-18",
+        pnl: "2026-04-17",
+      },
+    });
+    expect(out.datesDiverged).toBe(true);
+  });
+
+  it("datesDiverged=false and domainsEffectiveDate={} when input omitted", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+    });
+    expect(out.datesDiverged).toBe(false);
+    expect(out.domainsEffectiveDate).toEqual({});
+  });
+
+  it("datesDiverged=false when only one caliber has data", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      domainsEffectiveDate: {
+        balance_sheet: "2026-04-18",
+      },
+    });
+    expect(out.datesDiverged).toBe(false);
+    expect(out.domainsEffectiveDate).toEqual({ balance_sheet: "2026-04-18" });
+  });
+});
+
+describe("adaptDashboard · product_category_ytd", () => {
+  it("maps ytd headline into vm when snapshot includes block", () => {
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      productCategoryYtd: {
+        view: "ytd",
+        summary_pnl: makeNumeric({ raw: 1_325_000_000, display: "+13.25 亿" }),
+        summary_pnl_detail: "与产品分类损益汇总视图页脚 grand_total.business_net_income 一致。",
+        operating_income: makeNumeric({ raw: 1_325_000_000, display: "+13.25 亿" }),
+        operating_income_detail: "与产品分类损益页脚口径一致。",
+        intermediate_business_income: makeNumeric({ raw: 500_000_000, display: "+5.00 亿" }),
+        intermediate_business_income_detail: "中间业务收入 ytd。",
+      },
+    });
+    expect(out.productCategoryYtd.state.kind).toBe("ok");
+    expect(out.productCategoryYtd.vm?.summaryPnlLabel).toBe("汇总损益");
+    expect(out.productCategoryYtd.vm?.summaryPnlDisplay).toBe("+13.25 亿");
+    expect(out.productCategoryYtd.vm?.summaryPnlDetail).toContain("grand_total.business_net_income");
+    expect(out.productCategoryYtd.vm?.intermediateDisplay).toBe("+5.00 亿");
+  });
+
+  it("loading state for ytd mirrors overview loading", () => {
+    const out = adaptDashboard({
+      overviewEnv: undefined,
+      attributionEnv: undefined,
+      overviewLoading: true,
+      overviewError: false,
+      attributionLoading: true,
+      attributionError: false,
+    });
+    expect(out.productCategoryYtd.state.kind).toBe("loading");
+  });
+});
+
+describe("adaptDashboard · product_category_monthly", () => {
+  it("maps monthly headline into vm when snapshot includes block", () => {
+    const monthlyHeadline: ProductCategoryMonthlyHeadlinePayload = {
+      view: "monthly",
+      monthly_income: makeNumeric({ raw: 299_181_927.65, display: "+2.99 亿" }),
+      monthly_income_detail:
+        "与产品分类损益「月度视图」（view=monthly）页脚「全部市场科目 + 投资收益合计」一致。",
+    };
+
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      productCategoryMonthly: monthlyHeadline,
+    });
+
+    expect(out.productCategoryMonthly.state.kind).toBe("ok");
+    expect(out.productCategoryMonthly.vm?.monthlyIncomeLabel).toBe("月度损益");
+    expect(out.productCategoryMonthly.vm?.monthlyIncomeDisplay).toBe("+2.99 亿");
+    expect(out.productCategoryMonthly.vm?.monthlyIncomeDetail).toContain("view=monthly");
   });
 });

@@ -23,6 +23,23 @@ Not current priority:
 - If a metric definition is ambiguous, do not guess. Report the ambiguity with evidence.
 - Business correctness is more important than architectural elegance.
 
+## Large codebase navigation
+- Before broad repository exploration, scan `docs/agent_codebase_map.md` and the relevant subdirectory `CLAUDE.md` / `AGENTS.md`.
+- Keep root-level instructions for global constraints only; put path-specific commands and conventions in the closest subdirectory config.
+- Prefer starting work from the relevant subtree (`frontend/`, `backend/`, `tests/`, or `docs/`) instead of loading the whole repo from root.
+- Avoid vague repo-wide searches through generated data, build outputs, dependencies, caches, logs, and temporary directories.
+- Use GitNexus/MCP evidence for cross-page impact, metric definitions, source lineage, report dates, and governed data questions before editing shared business paths.
+- Scope lint, typecheck, tests, and browser checks to the changed page or workflow first; widen only when the change crosses shared boundaries.
+
+## Frontend debt guardrails
+- Do not grow `frontend/src/api/client.ts`. New or materially changed endpoint implementations must go into the relevant domain client module, with `client.ts` kept as a composition boundary only.
+- Do not add new mock payload blocks to `frontend/src/api/client.ts`. Put domain mock data near the domain client or existing mock module, and keep mock/real transport separated.
+- Do not add repeated `style={{ ... }}` layout blocks to pages. Reuse page primitives, design tokens, or a page-local styles module for repeated cards, grids, tables, banners, and metric blocks.
+- A small dynamic inline style is acceptable only when it is truly local and not repeated.
+- When touching a page or workflow with business metrics, add the smallest useful tests around the changed adapter, formatter, selector/computed model, or component path.
+- Before completing frontend work, run `npm run debt:audit` from `frontend/` when the change touches pages, API clients, mocks, adapters, formatters, or selectors.
+- `scripts/audit_frontend_debt.mjs` records the current debt as a no-growth baseline. Lower baselines after cleanup; do not raise them without explicit justification.
+
 ## Frontend data verification rules
 For every displayed metric, always trace:
 API response -> adapter/transformer -> store/state -> selector/computed -> component -> chart/table
@@ -39,6 +56,17 @@ Always check:
 - stale mock data or hard-coded fallback values
 - duplicate calculations in frontend
 - inconsistent filters across cards / charts / tables
+
+## MCP evidence workflow
+When touching a business metric page, workflow, adapter, formatter, selector, or data-fetch path, use the project MCP servers before deciding the implementation shape:
+
+- Use `moss-metric-contracts` to verify page contracts, metric definitions, units, calculation rules, and golden samples.
+- Use `moss-lineage-evidence` to verify source version, rule/cache lineage, fallback/stale status, and governance evidence.
+- Use `moss-data-catalog` to inspect available DuckDB tables, columns, and report dates through read-only catalog/date queries.
+- Use `gitnexus` to inspect relevant symbols, call paths, process traces, and impact before changing shared or cross-page code.
+- Use `playwright` for browser-level verification when the change affects visible frontend behavior.
+
+If an MCP server is unavailable, record which server was unavailable, what local evidence was used instead, and any residual risk. Do not guess metric definitions, units, dates, or source lineage when the required evidence is missing.
 
 ## UI and page rules
 - Each page must answer one primary business question first.

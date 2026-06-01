@@ -1,0 +1,118 @@
+param(
+  [ValidateSet("dashboard-home", "product-category-pnl")]
+  [string]$PageSlug = "product-category-pnl",
+
+  [switch]$Run,
+  [switch]$DryRun
+)
+
+$ErrorActionPreference = "Stop"
+
+$root = Split-Path -Parent $PSScriptRoot
+$frontendRoot = Join-Path $root "frontend"
+
+Set-Location $root
+
+Write-Output "Codex verify page: $PageSlug"
+
+$planOnly = $DryRun -or -not $Run
+
+$checks = @(
+  @{
+    Label = "MCP contract tests"
+    WorkingDirectory = $root
+    Command = "python"
+    Args = @("-m", "pytest", "tests/test_project_mcp_servers.py", "-q")
+  }
+)
+
+if ($PageSlug -eq "dashboard-home") {
+  $checks += @(
+    @{
+      Label = "Dashboard backend snapshot and API contract tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @("-m", "pytest", "tests/test_home_snapshot_endpoint.py", "tests/test_dashboard_api_contract.py", "tests/test_executive_dashboard_endpoints.py", "tests/test_executive_service_contract.py", "-q")
+    },
+    @{
+      Label = "Dashboard frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/DashboardPage.test.tsx",
+        "src/features/workbench/pages/useDashboardSnapshotBoundary.test.tsx",
+        "src/features/workbench/dashboard/dashboardHomeModel.test.ts",
+        "src/features/workbench/dashboard/dashboardCockpitHomeModel.test.ts",
+        "src/features/workbench/dashboard/sections/DashboardCockpitHeader.test.tsx"
+      )
+    }
+  )
+} elseif ($PageSlug -eq "product-category-pnl") {
+  $checks += @(
+    @{
+      Label = "Product-category backend flow and mapping tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @("-m", "pytest", "tests/test_product_category_pnl_flow.py", "tests/test_product_category_mapping_contract.py", "-q")
+    },
+    @{
+      Label = "Product-category frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/ProductCategoryPnlPage.test.tsx",
+        "src/test/ProductCategoryBranchSwitcher.test.tsx",
+        "src/test/ProductCategoryAdjustmentAuditPage.test.tsx",
+        "src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts"
+      )
+    }
+  )
+} else {
+  throw "Unsupported page slug: $PageSlug"
+}
+
+$checks += @(
+  @{
+    Label = "Frontend typecheck"
+    WorkingDirectory = $frontendRoot
+    Command = "npm.cmd"
+    Args = @("run", "typecheck")
+  },
+  @{
+    Label = "Frontend debt audit"
+    WorkingDirectory = $frontendRoot
+    Command = "npm.cmd"
+    Args = @("run", "debt:audit")
+  }
+)
+
+foreach ($check in $checks) {
+  $argsText = ($check.Args -join " ")
+  Write-Output "[$($check.Label)] $($check.Command) $argsText"
+
+  if ($planOnly) {
+    continue
+  }
+
+  Push-Location $check.WorkingDirectory
+  try {
+    & $check.Command @($check.Args)
+    if ($LASTEXITCODE -ne 0) {
+      throw "$($check.Label) failed with exit code $LASTEXITCODE"
+    }
+  } finally {
+    Pop-Location
+  }
+}
+
+if ($planOnly) {
+  Write-Output "Codex verify page dry run complete. Pass -Run to execute checks."
+} else {
+  Write-Output "Codex verify page checks passed."
+}

@@ -88,6 +88,39 @@ def _normalize_formal_runtime_payload(
     }
 
 
+def _resolve_materialization_ingest_batch_id(
+    *,
+    governance_dir: str | None,
+    source_families: list[str],
+    report_date: str,
+    requested_ingest_batch_id: str | None,
+) -> str | None:
+    if not requested_ingest_batch_id:
+        return None
+
+    settings = get_settings()
+    manifest_repo = SourceManifestRepository(
+        governance_repo=GovernanceRepository(
+            base_dir=Path(governance_dir or settings.governance_path),
+        ),
+    )
+    requested_rows = manifest_repo.select_for_snapshot_materialization(
+        source_families=source_families,
+        report_date=report_date,
+        ingest_batch_id=requested_ingest_batch_id,
+    )
+    if requested_rows:
+        return requested_ingest_batch_id
+
+    report_date_rows = manifest_repo.select_for_snapshot_materialization(
+        source_families=source_families,
+        report_date=report_date,
+    )
+    if report_date_rows:
+        return None
+    return requested_ingest_batch_id
+
+
 def _normalize_iso_date(value: str | None, *, field_name: str) -> date | None:
     text = str(value or "").strip()
     if not text:
@@ -194,24 +227,31 @@ def _run_formal_balance_pipeline(
 
     per_report_date: list[dict[str, object]] = []
     for current_report_date in report_dates:
+        materialization_ingest_batch_id = _resolve_materialization_ingest_batch_id(
+            governance_dir=governance_dir,
+            source_families=source_families,
+            report_date=current_report_date,
+            requested_ingest_batch_id=ingest_batch_id,
+        )
         snapshot_payload = materialize_standard_snapshots.fn(
             duckdb_path=duckdb_path,
             governance_dir=governance_dir,
             source_families=source_families,
-            ingest_batch_id=ingest_batch_id,
+            ingest_batch_id=materialization_ingest_batch_id,
             report_date=current_report_date,
         )
         balance_payload = materialize_balance_analysis_facts.fn(
             report_date=current_report_date,
             duckdb_path=duckdb_path,
             governance_dir=governance_dir,
-            ingest_batch_id=ingest_batch_id,
+            ingest_batch_id=materialization_ingest_batch_id,
             data_root=data_root,
             fx_source_path=fx_source_path,
         )
         per_report_date.append(
             {
                 "report_date": current_report_date,
+                "materialization_ingest_batch_id": materialization_ingest_batch_id,
                 "snapshot": snapshot_payload,
                 "balance": balance_payload,
                 "balance_runtime": _normalize_formal_runtime_payload(balance_payload),

@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/ui/pnl/product-category",
+  "params": {
+    "report_date": "2026-02-28",
+    "view": "monthly"
+  },
+  "basis": "formal"
+}

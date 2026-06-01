@@ -1,4 +1,5 @@
-﻿import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -57,7 +58,7 @@ function createActionAttributionResult(
     by_action_type: [
       {
         action_type: "ADD_DURATION",
-        action_type_name: "Add duration",
+        action_type_name: "加久期",
         action_count: 2,
         total_pnl_economic: yuan(1_500_000),
         total_pnl_accounting: yuan(1_500_000),
@@ -96,6 +97,22 @@ describe("ActionAttributionView", () => {
     vi.unstubAllGlobals();
   });
 
+  function renderActionAttributionView(client: ReturnType<typeof createApiClient>) {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false },
+      },
+    });
+
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+  }
+
   it("loads action attribution with KPI cards, by_action_type summary, and detail table", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
@@ -105,11 +122,7 @@ describe("ActionAttributionView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+    renderActionAttributionView(client);
 
     await waitFor(() =>
       expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM"),
@@ -118,33 +131,31 @@ describe("ActionAttributionView", () => {
     expect(await screen.findByTestId("action-attribution-meta")).toHaveTextContent("2026-03-31");
     expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("MoM");
     expect(await screen.findByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "Action Attribution",
+      "动作归因",
     );
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "Reads the governed action-attribution payload",
+      "读取治理后的动作归因结果",
     );
-    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent(
-      "Summary",
+    expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
+      "交易动作归因概览",
     );
-    expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent(
-      "鍔ㄤ綔鏄庣粏",
-    );
-    expect(await screen.findByText("鍔ㄤ綔鏁伴噺")).toBeInTheDocument();
-    expect(screen.getByText("鍔ㄤ綔璐＄尞鎹熺泭")).toBeInTheDocument();
-    expect(screen.getByText("涔呮湡鍙樺寲")).toBeInTheDocument();
-    expect(screen.getByText("DV01鍙樺寲")).toBeInTheDocument();
-    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("Summary");
-    expect(screen.getAllByText("Add duration").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Add duration").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/鍧囨/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("汇总");
+    expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent("动作明细");
+    expect(await screen.findByText("动作数量")).toBeInTheDocument();
+    expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
+    expect(screen.getByText("久期变化")).toBeInTheDocument();
+    expect(screen.getByText("DV01变化")).toBeInTheDocument();
+    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("动作汇总");
+    expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/均次/).length).toBeGreaterThan(0);
 
     expect(screen.getByText("Add rate position")).toBeInTheDocument();
-    expect(screen.getByText("Add rate position")).toBeInTheDocument();
-    expect(screen.getAllByText("娑夊強鍊哄埜").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("涉及债券").length).toBeGreaterThan(0);
     expect(screen.getByText("019547")).toBeInTheDocument();
-    expect(screen.getAllByText("鏈轰細鎴愭湰鍙ｅ緞").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_status");
+    expect(screen.getAllByText("机会成本口径").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商状态");
     expect(screen.getByText("shadow_bench")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/鍔|鎻|鏃|螖|鈫|锛|璇婚潰|鎶ュ憡/);
   });
 
   it("shows readiness metadata when backend returns component hints", async () => {
@@ -161,11 +172,7 @@ describe("ActionAttributionView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+    renderActionAttributionView(client);
 
     expect(await screen.findByTestId("action-attribution-readiness")).toHaveTextContent("partial");
     expect(screen.getByTestId("action-attribution-readiness")).toHaveTextContent("formal_positions");
@@ -177,20 +184,17 @@ describe("ActionAttributionView", () => {
       getBondAnalyticsActionAttribution: vi.fn(async () => ({
         result_meta: createResultMeta(),
         result: createActionAttributionResult({
-          warnings: ["绀轰緥锛氬姩浣滈摼璺湭瀹屽叏鎺ュ叆"],
+          warnings: ["示例：动作链路未完全接入"],
           by_action_type: [],
           action_details: [],
         }),
       })),
     };
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
 
-    expect(await screen.findByText("鎻愮ず")).toBeInTheDocument();
-    expect(screen.getByText("绀轰緥锛氬姩浣滈摼璺湭瀹屽叏鎺ュ叆")).toBeInTheDocument();
+    renderActionAttributionView(client);
+
+    expect(await screen.findByText("提示")).toBeInTheDocument();
+    expect(screen.getByText("示例：动作链路未完全接入")).toBeInTheDocument();
   });
 
   it("surfaces degraded provenance when result_meta is stale or fallback-backed", async () => {
@@ -206,18 +210,14 @@ describe("ActionAttributionView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
-      </ApiClientProvider>,
-    );
+    renderActionAttributionView(client);
 
     expect(await screen.findByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
-      "vendor_status=vendor_stale",
+      "供应商状态=供应商数据陈旧",
     );
     expect(screen.getByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
-      "fallback_mode=latest_snapshot",
+      "降级模式=最新快照降级",
     );
-    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_stale");
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商陈旧");
   });
 });

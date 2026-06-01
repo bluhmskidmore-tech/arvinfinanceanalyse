@@ -29,26 +29,28 @@ def _zqtz_snapshot_row_from_tuple(row: tuple) -> ZqtzSnapshotRow:
         account_category=row[5] or "",
         asset_class=row[6] or "",
         bond_type=row[7] or "",
-        issuer_name=row[8] or "",
-        industry_name=row[9] or "",
-        rating=row[10] or "",
-        currency_code=normalize_currency_code(row[11] or ""),
-        face_value_native=row[12],
-        market_value_native=row[13],
-        amortized_cost_native=row[14],
-        accrued_interest_native=row[15],
-        coupon_rate=row[16],
-        ytm_value=row[17],
-        maturity_date=row[18],
-        overdue_days=row[20],
-        value_date=row[27],
-        customer_attribute=str(row[28] or ""),
-        is_issuance_like=bool(row[21]),
-        interest_mode=row[22] or "",
-        source_version=row[23] or "",
-        rule_version=row[24] or "",
-        ingest_batch_id=row[25] or "",
-        trace_id=row[26] or "",
+        issuer_name=row[9] or "",
+        industry_name=row[10] or "",
+        rating=row[11] or "",
+        currency_code=normalize_currency_code(row[12] or ""),
+        face_value_native=row[13],
+        market_value_native=row[14],
+        amortized_cost_native=row[15],
+        accrued_interest_native=row[16],
+        coupon_rate=row[17],
+        ytm_value=row[18],
+        maturity_date=row[19],
+        overdue_days=row[21],
+        value_date=row[28],
+        customer_attribute=str(row[29] or ""),
+        is_issuance_like=bool(row[22]),
+        interest_mode=row[23] or "",
+        source_version=row[24] or "",
+        rule_version=row[25] or "",
+        ingest_batch_id=row[26] or "",
+        trace_id=row[27] or "",
+        business_type_primary=row[8] or "",
+        sub_type=str(row[30] or "").strip(),
     )
 
 
@@ -99,11 +101,12 @@ class BalanceAnalysisRepository(DuckDBRepository):
         rows = self._fetch_rows(
             f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                   account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+                   account_category, asset_class, bond_type, business_type_primary, issuer_name, industry_name, rating,
                    currency_code, face_value_native, market_value_native, amortized_cost_native,
                    accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
                    overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-                   ingest_batch_id, trace_id, value_date, customer_attribute
+                   ingest_batch_id, trace_id, value_date, customer_attribute,
+                   coalesce(sub_type, '') as sub_type
             from zqtz_bond_daily_snapshot
             where {' and '.join(where_parts)}
             order by instrument_code, portfolio_name, cost_center, currency_code
@@ -319,6 +322,8 @@ class BalanceAnalysisRepository(DuckDBRepository):
                       account_category,
                       asset_class,
                       bond_type,
+                      sub_type,
+                      business_type_primary,
                       issuer_name,
                       industry_name,
                       rating,
@@ -345,7 +350,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                       ingest_batch_id,
                       trace_id
                     ) values
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -357,6 +362,8 @@ class BalanceAnalysisRepository(DuckDBRepository):
                             row.account_category,
                             row.asset_class,
                             row.bond_type,
+                            row.sub_type,
+                            row.business_type_primary,
                             row.issuer_name,
                             row.industry_name,
                             row.rating,
@@ -441,6 +448,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                         for row in tyw_rows
                     ],
                 )
+            sync_zqtz_snapshot_market_value_cny_from_formal(conn, report_date)
             conn.execute("commit")
         except Exception:
             conn.execute("rollback")
@@ -501,7 +509,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
         rows = self._fetch_rows(
             f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                   account_category, asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+                   account_category, asset_class, bond_type, sub_type, business_type_primary, issuer_name, industry_name, rating, invest_type_std,
                    accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
                    market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
                    ytm_value, maturity_date, interest_mode, is_issuance_like, overdue_principal_days,
@@ -522,6 +530,8 @@ class BalanceAnalysisRepository(DuckDBRepository):
             "account_category",
             "asset_class",
             "bond_type",
+            "sub_type",
+            "business_type_primary",
             "issuer_name",
             "industry_name",
             "rating",
@@ -651,6 +661,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                   where {' and '.join(zqtz_where_parts)}
                 ),
                 tyw as (
+                  -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
                   select
                     count(*) as detail_row_count,
                     count(
@@ -765,6 +776,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                   where {' and '.join(zqtz_where_parts)}
                 ),
                 tyw as (
+                  -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
                   select
                     count(*) as detail_row_count,
                     count(
@@ -964,6 +976,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
 
               union all
 
+              -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
               select
                 'tyw' as source_family,
                 invest_type_std,
@@ -1036,6 +1049,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
 
               union all
 
+              -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
               select
                 'tyw:' || position_id || ':' || currency_basis || ':' || position_scope || ':' || invest_type_std || ':' || accounting_basis as row_key,
                 'tyw' as source_family,
@@ -1076,3 +1090,51 @@ def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
     ensure_balance_zqtz_legacy_columns(conn)
+
+
+def _zqtz_snapshot_table_exists(conn: duckdb.DuckDBPyConnection) -> bool:
+    row = conn.execute(
+        "select 1 from information_schema.tables where table_name = 'zqtz_bond_daily_snapshot' limit 1",
+    ).fetchone()
+    return row is not None
+
+
+def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnection, report_date: str) -> None:
+    """Balance 物化写入 formal 后：将同键 CNY 市值写回 snapshot（不改原币 market_value_native）。
+
+    便于只读 snapshot 的报表/对账与 formal CNY 对照；ADB 等分析应以 ``fact_formal_*`` 的
+    ``currency_basis = 'CNY'`` 为准，不依赖本列。
+    """
+    if not _zqtz_snapshot_table_exists(conn):
+        return
+    conn.execute(
+        "alter table zqtz_bond_daily_snapshot add column if not exists market_value_cny decimal(24, 8)"
+    )
+    conn.execute(
+        "update zqtz_bond_daily_snapshot set market_value_cny = null where cast(report_date as varchar) = ?",
+        [report_date],
+    )
+    conn.execute(
+        """
+        update zqtz_bond_daily_snapshot s
+        set market_value_cny = f.market_value_amount
+        from fact_formal_zqtz_balance_daily f
+        where cast(s.report_date as varchar) = f.report_date
+          and f.report_date = ?
+          and f.currency_basis = 'CNY'
+          and trim(coalesce(s.instrument_code, '')) = trim(coalesce(f.instrument_code, ''))
+          and trim(coalesce(s.portfolio_name, '')) = trim(coalesce(f.portfolio_name, ''))
+          and trim(coalesce(s.cost_center, '')) = trim(coalesce(f.cost_center, ''))
+          and trim(coalesce(s.account_category, '')) = trim(coalesce(f.account_category, ''))
+          and trim(coalesce(s.asset_class, '')) = trim(coalesce(f.asset_class, ''))
+          and trim(coalesce(s.bond_type, '')) = trim(coalesce(f.bond_type, ''))
+          and trim(coalesce(s.sub_type, '')) = trim(coalesce(f.sub_type, ''))
+          and trim(coalesce(s.business_type_primary, '')) = trim(coalesce(f.business_type_primary, ''))
+          and trim(coalesce(s.issuer_name, '')) = trim(coalesce(f.issuer_name, ''))
+          and trim(coalesce(s.industry_name, '')) = trim(coalesce(f.industry_name, ''))
+          and trim(coalesce(s.rating, '')) = trim(coalesce(f.rating, ''))
+          and coalesce(s.is_issuance_like, false) = coalesce(f.is_issuance_like, false)
+          and upper(trim(coalesce(s.currency_code, ''))) = upper(trim(coalesce(f.currency_code, '')))
+        """,
+        [report_date],
+    )

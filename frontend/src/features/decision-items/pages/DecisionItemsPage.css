@@ -1,0 +1,29 @@
+/* Compact cockpit alignment for the shared decision hero and status strip. */
+.decision-items-page .moss-page-v2-decision-hero {
+  padding: 14px 16px;
+  border: 1px solid rgba(115, 132, 153, 0.28);
+  border-left: 3px solid #1850a1;
+  border-radius: var(--moss-radius-sm);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 22px, rgba(115, 132, 153, 0.055) 22px 23px),
+    linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
+  box-shadow: 0 1px 5px rgba(15, 45, 80, 0.035);
+}
+
+.decision-items-page .moss-page-v2-decision-hero__question {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.decision-items-page .moss-page-v2-decision-hero__report strong {
+  color: #1850a1;
+}
+
+.decision-items-page .moss-page-v2-data-status {
+  padding: 8px 10px;
+  border: 1px solid rgba(115, 132, 153, 0.24);
+  border-left: 3px solid #2d8a5e;
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: none;
+}

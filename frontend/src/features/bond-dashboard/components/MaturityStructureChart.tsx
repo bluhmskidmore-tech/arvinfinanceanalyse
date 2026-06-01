@@ -14,13 +14,13 @@ export function MaturityStructureChart({
   const items = data?.items ?? [];
   const categories = items.map((i) => i.maturity_bucket);
   const barYi = items.map((i) => nativeToNumber(i.total_market_value) / 1e8);
-  const linePct = items.map((i) => nativeToNumber(i.percentage));
+  const linePct = items.map((i) => nativeToNumber(i.percentage) * 100);
 
   const option: EChartsOption = {
     color: ["#1677ff", "#ff7a45"],
     tooltip: { trigger: "axis" },
-    legend: { data: ["规模(亿)", "占比(%)"] },
-    grid: { left: 48, right: 56, top: 40, bottom: 40 },
+    legend: { data: ["规模(亿)", "占比(%)"], bottom: 4 },
+    grid: { left: 48, right: 56, top: 40, bottom: 68 },
     xAxis: { type: "category", data: categories, axisLabel: { rotate: 25, fontSize: 11 } },
     yAxis: [
       { type: "value", name: "亿元", splitLine: { lineStyle: { type: "dashed" } } },

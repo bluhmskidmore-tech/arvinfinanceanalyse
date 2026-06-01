@@ -147,7 +147,7 @@ class TPLMarketDataPoint(BaseModel):
         "tpl_total_pnl": ("yuan", True),
         "tpl_scale": ("yuan", False),
         "treasury_10y": ("pct", True),
-        "treasury_10y_change": ("pct", True),
+        "treasury_10y_change": ("bp", True),
         "dr007": ("pct", True),
     }
 
@@ -172,7 +172,7 @@ class TPLMarketCorrelationPayload(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "correlation_coefficient": ("ratio", True),
         "total_tpl_fv_change": ("yuan", True),
-        "avg_treasury_10y_change": ("pct", True),
+        "avg_treasury_10y_change": ("bp", True),
         "treasury_10y_total_change_bp": ("bp", True),
     }
 
@@ -324,7 +324,7 @@ class CarryRollDownItem(BaseModel):
         "carry": ("pct", True),
         "carry_pnl": ("yuan", True),
         "duration": ("ratio", False),
-        "curve_slope": ("ratio", True),
+        "curve_slope": ("bp", True),
         "rolldown": ("pct", True),
         "rolldown_pnl": ("yuan", True),
         "static_return": ("pct", True),
@@ -390,9 +390,9 @@ class SpreadAttributionItem(BaseModel):
         "market_value": ("yuan", False),
         "duration": ("ratio", False),
         "weight": ("ratio", False),
-        "yield_change": ("pct", True),
-        "treasury_change": ("pct", True),
-        "spread_change": ("pct", True),
+        "yield_change": ("bp", True),
+        "treasury_change": ("bp", True),
+        "spread_change": ("bp", True),
         "treasury_effect": ("yuan", True),
         "spread_effect": ("yuan", True),
         "total_price_effect": ("yuan", True),
@@ -425,7 +425,7 @@ class SpreadAttributionPayload(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "treasury_10y_start": ("pct", True),
         "treasury_10y_end": ("pct", True),
-        "treasury_10y_change": ("pct", True),
+        "treasury_10y_change": ("bp", True),
         "total_market_value": ("yuan", False),
         "portfolio_duration": ("ratio", False),
         "total_treasury_effect": ("yuan", True),

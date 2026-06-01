@@ -46,6 +46,87 @@ describe("crossAssetKpiModel", () => {
     const cn = kpis.find((k) => k.key === "cn_gov_10y");
     expect(cn?.valueLabel).toBe("1.88%");
     expect(cn?.resolvedSeriesId).toBe("E1000180");
+    expect(cn?.sourceKind).toBe("choice");
+    expect(cn?.tradeDate).toBe("2026-03-01");
+  });
+
+  it("uses the fresher Tushare/public CSI300 when the Choice financial-condition point is stale by date", () => {
+    const series = [
+      macroPoint("EMM01843735", -1.54, [
+        ["2025-12-30", -1.48],
+        ["2025-12-31", -1.54],
+      ], { refresh_tier: "fallback" }),
+      macroPoint("CA.CSI300", 4102.25, [
+        ["2026-04-09", 4085.12],
+        ["2026-04-10", 4102.25],
+      ], { vendor_version: "vv_tushare_index_daily" }),
+    ];
+
+    const financialConditions = resolveCrossAssetKpis(series).find((k) => k.key === "financial_conditions");
+
+    expect(financialConditions?.resolvedSeriesId).toBe("CA.CSI300");
+    expect(financialConditions?.sourceKind).toBe("public");
+    expect(financialConditions?.label).toBe("沪深300指数");
+    expect(financialConditions?.tradeDate).toBe("2026-04-10");
+  });
+
+  it("resolves CSI300 valuation and mega-cap concentration supplement slots", () => {
+    const series = [
+      macroPoint("CA.CSI300_PE", 14.58, [
+        ["2026-04-09", 14.42],
+        ["2026-04-10", 14.58],
+      ]),
+      macroPoint("CA.MEGA_CAP_WEIGHT", 23.5367, [
+        ["2026-03-01", 22.9],
+        ["2026-04-01", 23.5367],
+      ]),
+      macroPoint("CA.MEGA_CAP_TOP5_WEIGHT", 15.532, [
+        ["2026-03-01", 15.1],
+        ["2026-04-01", 15.532],
+      ]),
+    ];
+
+    const kpis = resolveCrossAssetKpis(series);
+
+    expect(kpis.find((k) => k.key === "csi300_pe")?.valueLabel).toBe("14.58");
+    expect(kpis.find((k) => k.key === "mega_cap_weight")?.valueLabel).toBe("23.54%");
+    expect(kpis.find((k) => k.key === "mega_cap_top5_weight")?.valueLabel).toBe("15.53%");
+  });
+
+  it("resolves governed copper and aluminum supplement slots", () => {
+    const series = [
+      macroPoint("CA.COPPER", 101030, [
+        ["2026-04-29", 101630],
+        ["2026-04-30", 101030],
+      ], { unit: "CNY/t", latest_change: -600, vendor_name: "tushare" }),
+      macroPoint("CA.ALUMINUM", 24430, [
+        ["2026-04-29", 24615],
+        ["2026-04-30", 24430],
+      ], { unit: "CNY/t", latest_change: -185, vendor_name: "tushare" }),
+    ];
+
+    const kpis = resolveCrossAssetKpis(series);
+
+    expect(kpis.find((k) => k.key === "copper")?.resolvedSeriesId).toBe("CA.COPPER");
+    expect(kpis.find((k) => k.key === "copper")?.valueLabel).toBe("101,030");
+    expect(kpis.find((k) => k.key === "aluminum")?.resolvedSeriesId).toBe("CA.ALUMINUM");
+    expect(kpis.find((k) => k.key === "aluminum")?.valueLabel).toBe("24,430");
+  });
+
+  it("keeps raw-point change labels unitless for index and valuation evidence", () => {
+    const kpis = resolveCrossAssetKpis([
+      macroPoint("CA.CSI300", 4102.25, [
+        ["2026-04-09", 4085.12],
+        ["2026-04-10", 4102.25],
+      ], { unit: "index", latest_change: 17.13, vendor_name: "tushare" }),
+      macroPoint("CA.CSI300_PE", 14.64, [
+        ["2026-04-09", 14.42],
+        ["2026-04-10", 14.64],
+      ], { unit: "x", latest_change: 0.22, vendor_name: "tushare" }),
+    ]);
+
+    expect(kpis.find((k) => k.key === "financial_conditions")?.changeLabel).toBe("+17.13");
+    expect(kpis.find((k) => k.key === "csi300_pe")?.changeLabel).toBe("+0.22");
   });
 
   it("prefers E1003238 over EMG for US 10Y", () => {
@@ -87,6 +168,8 @@ describe("crossAssetKpiModel", () => {
     expect(spread?.label).toBe("中美10Y利差");
     expect(spread?.valueLabel).toBe("-215bp");
     expect(spread?.resolvedSeriesId).toBe("EM1");
+    expect(spread?.sourceKind).toBe("choice");
+    expect(spread?.tradeDate).toBe("2026-03-01");
     expect(spread?.sparkline.length).toBeGreaterThan(0);
   });
 
@@ -104,6 +187,8 @@ describe("crossAssetKpiModel", () => {
     const spread = resolveCrossAssetKpis(series).find((k) => k.key === "gov_spread");
     expect(spread?.label).toBe("中美10Y利差");
     expect(spread?.valueLabel).toBe("-200bp");
+    expect(spread?.sourceKind).toBe("derived");
+    expect(spread?.tradeDate).toBe("2026-03-01");
     expect(spread?.sparkline.length).toBeGreaterThan(0);
   });
 
@@ -147,5 +232,6 @@ describe("crossAssetKpiModel", () => {
     const liquidity = resolveCrossAssetKpis(series).find((k) => k.key === "money_market_7d");
     expect(liquidity?.label).toBe("DR007");
     expect(liquidity?.resolvedSeriesId).toBe("CA.DR007");
+    expect(liquidity?.sourceKind).toBe("public");
   });
 });

@@ -10,25 +10,24 @@ import {
 } from "../mocks/navigation";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 
-const DashboardPage = lazy(
-  () => import("../features/workbench/pages/DashboardPage"),
+const DashboardHomePage = lazy(
+  () => import("../features/workbench/dashboard-home/DashboardHomePage"),
 );
 const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
-const SourcePreviewPage = lazy(
-  () => import("../features/source-preview/pages/SourcePreviewPage"),
-);
-const MarketDataPage = lazy(
-  () => import("../features/market-data/pages/MarketDataPage"),
-);
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
+const FormalPnlV1Page = lazy(() => import("../features/pnl/FormalPnlV1Page"));
+const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const PnlAttributionPage = lazy(
   () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
 );
 const BalanceAnalysisPage = lazy(
   () => import("../features/balance-analysis/pages/BalanceAnalysisPage"),
+);
+const BalanceMovementAnalysisPage = lazy(
+  () => import("../features/balance-movement-analysis/pages/BalanceMovementAnalysisPage"),
 );
 const LiabilityAnalyticsPage = lazy(
   () => import("../features/liability-analytics/pages/LiabilityAnalyticsPage"),
@@ -42,12 +41,6 @@ const ProductCategoryPnlPage = lazy(
 const WorkbenchPlaceholderPage = lazy(
   () => import("../features/workbench/pages/WorkbenchPlaceholderPage"),
 );
-const AgentWorkbenchPage = lazy(
-  () => import("../features/agent/AgentWorkbenchPage"),
-);
-const NewsEventsPage = lazy(
-  () => import("../features/news-events/NewsEventsPage"),
-);
 const RiskTensorPage = lazy(
   () => import("../features/risk-tensor/RiskTensorPage"),
 );
@@ -56,9 +49,6 @@ const ConcentrationMonitorPage = lazy(
 );
 const CashflowProjectionPage = lazy(
   () => import("../features/cashflow-projection/pages/CashflowProjectionPage"),
-);
-const RiskOverviewPage = lazy(
-  () => import("../features/risk-overview/RiskOverviewPage"),
 );
 const BondAnalyticsView = lazy(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
@@ -73,6 +63,9 @@ const AverageBalancePage = lazy(
 const LedgerPnlPage = lazy(
   () => import("../features/ledger-pnl/pages/LedgerPnlPage"),
 );
+const LedgerDashboardPage = lazy(
+  () => import("../features/ledger-dashboard/pages/LedgerDashboardPage"),
+);
 const KpiPerformancePage = lazy(
   () => import("../features/kpi-performance/pages/KpiPerformancePage"),
 );
@@ -82,8 +75,25 @@ const TeamPerformancePage = lazy(
 const PlatformConfigPage = lazy(
   () => import("../features/platform-config/PlatformConfigPage"),
 );
-const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
 const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
+const MarketDataPage = lazy(
+  () => import("../features/market-data/pages/MarketDataPage"),
+);
+const MacroToolkitPage = lazy(
+  () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
+);
+const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
+const StockAnalysisPage = lazy(
+  () => import("../features/stock-analysis/pages/StockAnalysisPage"),
+);
+const EquityCockpitPrototypePage = lazy(
+  () => import("../features/prototype/EquityCockpitPrototypePage"),
+);
+const DecisionItemsPage = lazy(
+  () => import("../features/decision-items/pages/DecisionItemsPage"),
+);
+const NewsEventsPage = lazy(() => import("../features/news-events/NewsEventsPage"));
+const AgentWorkbenchPage = lazy(() => import("../features/agent/AgentWorkbenchPage"));
 
 function routeElement(element: ReactNode) {
   return (
@@ -93,6 +103,14 @@ function routeElement(element: ReactNode) {
   );
 }
 
+function parseEnvDataSourceMode() {
+  const raw = import.meta.env.VITE_DATA_SOURCE;
+  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
+}
+
+const equityPrototypeRouteEnabled =
+  import.meta.env.DEV === true && parseEnvDataSourceMode() === "mock";
+
 function placeholderRoute(section: WorkbenchSection): RouteObject {
   return {
     path: section.path.slice(1),
@@ -100,27 +118,16 @@ function placeholderRoute(section: WorkbenchSection): RouteObject {
   };
 }
 
-/**
- * Workbench paths whose React pages are implemented while navigation readiness is still "placeholder".
- * The readiness gate would otherwise render WorkbenchPlaceholderPage for those paths; listing them here
- * bypasses that until the route is promoted to `live` in navigation metadata (then the entry is redundant
- * and should be removed). Currently only routes that remain placeholder in `navigation.ts` need to appear.
- */
-const READINESS_IMPLEMENTED_PATHS = new Set<string>(["/cube-query"]);
-
 function buildWorkbenchChildRoutes(): RouteObject[] {
   return workbenchNavigation.map((section) => {
     if (section.path === "/") {
       return {
         index: true,
-        element: routeElement(<DashboardPage />),
+        element: routeElement(<DashboardHomePage />),
       };
     }
 
-    const bypassReadiness =
-      section.path === "/agent" || READINESS_IMPLEMENTED_PATHS.has(section.path);
-
-    if (!bypassReadiness && section.readiness !== "live") {
+    if (section.readiness !== "live") {
       return placeholderRoute(section);
     }
 
@@ -131,24 +138,24 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.path === "/agent") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<AgentWorkbenchPage />),
-      };
-    }
-
-    if (section.path === "/news-events") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<NewsEventsPage />),
-      };
-    }
-
     if (section.path === "/balance-analysis") {
       return {
         path: section.path.slice(1),
         element: routeElement(<BalanceAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/balance-movement-analysis") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<BalanceMovementAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/decision-items") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<DecisionItemsPage />),
       };
     }
 
@@ -208,20 +215,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.path === "/risk-overview") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<RiskOverviewPage />),
-      };
-    }
-
-    if (section.path === "/market-data") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<MarketDataPage />),
-      };
-    }
-
     if (section.path === "/bond-dashboard") {
       return {
         path: section.path.slice(1),
@@ -240,6 +233,48 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<CrossAssetPage />),
+      };
+    }
+
+    if (section.path === "/market-data") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<MarketDataPage />),
+      };
+    }
+
+    if (section.path === "/macro-toolkit") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<MacroToolkitPage />),
+      };
+    }
+
+    if (section.path === "/cube-query") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<CubeQueryPage />),
+      };
+    }
+
+    if (section.path === "/stock-analysis") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<StockAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/news-events") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<NewsEventsPage />),
+      };
+    }
+
+    if (section.path === "/agent") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<AgentWorkbenchPage />),
       };
     }
 
@@ -264,6 +299,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/bank-ledger-dashboard") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<LedgerDashboardPage />),
+      };
+    }
+
     if (section.path === "/kpi") {
       return {
         path: section.path.slice(1),
@@ -275,13 +317,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<TeamPerformancePage />),
-      };
-    }
-
-    if (section.path === "/cube-query") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<CubeQueryPage />),
       };
     }
 
@@ -316,7 +351,11 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "pnl-by-business",
-        element: <Navigate to="/ledger-pnl" replace />,
+        element: routeElement(<PnlByBusinessPage />),
+      },
+      {
+        path: "pnl-formal-v1",
+        element: routeElement(<FormalPnlV1Page />),
       },
       {
         path: "liabilities",
@@ -335,17 +374,17 @@ export const workbenchRoutes: RouteObject[] = [
         element: <Navigate to="/market-data" replace />,
       },
       {
+        path: "cross-asset-drivers",
+        element: routeElement(<CrossAssetPage />),
+      },
+      {
         path: "assets",
         element: <Navigate to="/bond-dashboard" replace />,
       },
       ...buildWorkbenchChildRoutes(),
       {
         path: "dashboard",
-        element: routeElement(<DashboardPage />),
-      },
-      {
-        path: "source-preview",
-        element: routeElement(<SourcePreviewPage />),
+        element: routeElement(<DashboardHomePage />),
       },
       {
         path: "product-category-pnl/audit",
@@ -353,4 +392,12 @@ export const workbenchRoutes: RouteObject[] = [
       },
     ],
   },
+  ...(equityPrototypeRouteEnabled
+    ? [
+        {
+          path: "/prototype/equity-cockpit",
+          element: routeElement(<EquityCockpitPrototypePage />),
+        } satisfies RouteObject,
+      ]
+    : []),
 ];

@@ -54,3 +54,9 @@
 - 不把 mock 十六进制散落在 TSX（除领域模块内已过审的常量）。
 - 不把 **i18n / 暗色主题** 与本文件混谈——当前规范外；若立项再扩展 token。
 - 不在此文件堆业务名词；业务口径写在 feature 内的 adapter/注释。
+
+## Style Governance Commands
+
+- Run `npm run style:inventory` from `frontend/` before choosing the next page migration. It prints v2 primitive adoption, inline-style hotspots, hard-coded hex hotspots, gradient hotspots, and duplicate CSS token definitions.
+- Run `npm run style:audit` before completing frontend style/layout work. It fails on newly added non-token hex colors and private shadows, and warns on new `style=`, large-radius lines, and KPI/metric additions that need visible data-status review.
+- Run `npm run debt:audit` whenever touching pages, API clients, mocks, adapters, formatters, selectors, or shared layout surfaces. Keep the no-growth baseline flat unless a separate cleanup deliberately lowers it.

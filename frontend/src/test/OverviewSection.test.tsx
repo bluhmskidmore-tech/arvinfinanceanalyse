@@ -29,19 +29,23 @@ function overviewVm(): NonNullable<DashboardAdapterOutput["overview"]["vm"]> {
     metrics: [
       {
         id: "m1",
+        caliberLabel: null,
         label: "璧勪骇瑙勬ā",
         value: numeric(12_000_000_000, "120.00 浜?", "yuan", false),
         delta: numeric(0.021, "+2.10%", "pct"),
         tone: "positive",
         detail: "杈冧笂鏈堟湯",
+        history: null,
       },
       {
         id: "m2",
+        caliberLabel: null,
         label: "娴佸姩鎬ц鐩?",
         value: numeric(1.18, "118.00%", "pct", false),
         delta: numeric(0, "鎸佸钩", "pct", false),
         tone: "neutral",
         detail: "鐩戠鍙ｅ緞",
+        history: null,
       },
     ],
   };

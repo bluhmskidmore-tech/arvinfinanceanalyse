@@ -17,10 +17,10 @@ def _load_summary_mod():
     )
 
 
-def test_build_summary_has_all_5_rules() -> None:
+def test_build_summary_has_all_known_rules() -> None:
     mod = _load_summary_mod()
     s = mod.build_summary(project_root=ROOT)
-    assert len(s["rules"]) == 5
+    assert len(s["rules"]) == len(mod.KNOWN_RULES)
     assert set(s["rules"].keys()) == set(mod.KNOWN_RULES)
 
 
@@ -88,7 +88,7 @@ def test_main_default_writes_summary_file_to_target_dir(tmp_path: Path) -> None:
         assert dest.is_file()
         data = json.loads(dest.read_text(encoding="utf-8"))
         assert data["schema_version"] == 1
-        assert len(data["rules"]) == 5
+        assert len(data["rules"]) == len(mod.KNOWN_RULES)
     finally:
         if dest.is_file():
             dest.unlink()
@@ -112,13 +112,14 @@ def test_main_ci_mode_returns_zero_when_no_drift(tmp_path: Path) -> None:
             dest.unlink()
 
 
-def test_main_ci_mode_returns_one_when_high_count_regressed(tmp_path: Path) -> None:
+def test_main_ci_mode_returns_one_when_high_count_regressed(tmp_path: Path, monkeypatch) -> None:
     mod = _load_summary_mod()
     dest = tmp_path / mod.SUMMARY_FILENAME
     summary = mod.build_summary(project_root=ROOT)
-    # Artificially lower subject-rule high count so live scan shows a high-severity increase
     rid = "subject_514_516_517_merge"
-    summary["rules"][rid]["totals"]["high"] = 0
+    regressed = json.loads(json.dumps(summary))
+    regressed["rules"][rid]["totals"]["high"] = int(summary["rules"][rid]["totals"]["high"]) + 1
+    monkeypatch.setattr(mod, "build_summary", lambda project_root=None: regressed)
     mod.write_summary(summary, dest)
     try:
         code = mod.main(

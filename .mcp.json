@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "node",
+      "args": ["scripts/mcp/gitnexus_mcp_launcher.mjs"],
+      "cwd": "."
+    },
+    "moss-metric-contracts": {
+      "command": "cmd.exe",
+      "args": ["/d", "/s", "/c", "scripts\\mcp\\moss_contracts.cmd"],
+      "cwd": "."
+    },
+    "moss-lineage-evidence": {
+      "command": "cmd.exe",
+      "args": ["/d", "/s", "/c", "scripts\\mcp\\moss_lineage.cmd"],
+      "cwd": "."
+    },
+    "moss-data-catalog": {
+      "command": "cmd.exe",
+      "args": ["/d", "/s", "/c", "scripts\\mcp\\moss_catalog.cmd"],
+      "cwd": "."
+    },
+    "moss-data-quality": {
+      "command": "cmd.exe",
+      "args": ["/d", "/s", "/c", "scripts\\mcp\\moss_data_quality.cmd"],
+      "cwd": "."
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "cwd": "."
+    }
+  }
+}

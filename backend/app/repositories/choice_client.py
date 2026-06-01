@@ -18,8 +18,9 @@ class ChoiceClient:
         if cmod is None:
             raise ImportError("EmQuantAPI.c is unavailable. Configure CHOICE_EMQUANT_PARENT or config/settings.yaml first.")
         result = cmod.start(self.settings.choice_start_options)
-        if hasattr(result, "ErrorCode") and getattr(result, "ErrorCode") != 0:
-            raise RuntimeError(getattr(result, "ErrorMsg", f"Choice start failed: {getattr(result, 'ErrorCode', 'unknown')}"))
+        error_code = result.ErrorCode if hasattr(result, "ErrorCode") else 0
+        if error_code != 0:
+            raise RuntimeError(getattr(result, "ErrorMsg", f"Choice start failed: {error_code}"))
         self._started = True
         return result
 
@@ -40,16 +41,18 @@ class ChoiceClient:
         cmod = _get_em_c()
         merged = self._merge_request_options(options, include_recv_timeout=True)
         result = cmod.cnq(codes, content, merged, callback, userparams)
-        if hasattr(result, "ErrorCode") and getattr(result, "ErrorCode") != 0:
-            raise RuntimeError(getattr(result, "ErrorMsg", f"Choice cnq failed: {getattr(result, 'ErrorCode', 'unknown')}"))
+        error_code = result.ErrorCode if hasattr(result, "ErrorCode") else 0
+        if error_code != 0:
+            raise RuntimeError(getattr(result, "ErrorMsg", f"Choice cnq failed: {error_code}"))
         return result
 
     def cnqcancel(self, serial_id: int) -> Any:
         self.start()
         cmod = _get_em_c()
         result = cmod.cnqcancel(serial_id)
-        if hasattr(result, "ErrorCode") and getattr(result, "ErrorCode") != 0:
-            raise RuntimeError(getattr(result, "ErrorMsg", f"Choice cnqcancel failed: {getattr(result, 'ErrorCode', 'unknown')}"))
+        error_code = result.ErrorCode if hasattr(result, "ErrorCode") else 0
+        if error_code != 0:
+            raise RuntimeError(getattr(result, "ErrorMsg", f"Choice cnqcancel failed: {error_code}"))
         return result
 
     def cfn(self, *args: Any, options: str = "") -> Any:
@@ -81,6 +84,20 @@ class ChoiceClient:
         cmod = _get_em_c()
         merged = self._merge_request_options(options, include_recv_timeout=True)
         return cmod.csd(*args, merged)
+
+    def ctr(self, *args: Any, options: str = "") -> Any:
+        self.start()
+        cmod = _get_em_c()
+        merged = self._merge_request_options(options, include_recv_timeout=False)
+        return cmod.ctr(*args, merged)
+
+    def fut_transaction_rankings(self, symbols: str, trade_date: str = "", indicators: str = "volume,long,short") -> Any:
+        self.start()
+        cmod = _get_em_c()
+        fetcher = getattr(cmod, "fut_get_transaction_rankings", None)
+        if fetcher is None:
+            raise RuntimeError("Choice runtime does not expose fut_get_transaction_rankings.")
+        return fetcher(symbols, trade_date, indicators)
 
     def _merge_request_options(self, options: str, include_recv_timeout: bool) -> str:
         merged = ",".join(

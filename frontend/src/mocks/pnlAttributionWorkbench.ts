@@ -23,6 +23,9 @@ const yScale = (raw: number | null | undefined) =>
 const rp = (raw: number | null | undefined, sign_aware = false) =>
   formatRawAsNumeric({ raw, unit: "ratio", sign_aware });
 
+const pp = (raw: number | null | undefined, sign_aware = false) =>
+  formatRawAsNumeric({ raw: raw == null ? raw : raw / 100, unit: "pct", sign_aware });
+
 const rps = (raw: number | null | undefined) =>
   formatRawAsNumeric({ raw, unit: "ratio", sign_aware: true });
 
@@ -51,10 +54,10 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
       level: 0,
       current_scale: yScale(8_000_000_000),
       current_pnl: y(45_000_000),
-      current_yield: rp(2.85),
+      current_yield_pct: pp(2.85),
       previous_scale: yScale(7_800_000_000),
       previous_pnl: y(40_000_000),
-      previous_yield: rp(2.92),
+      previous_yield_pct: pp(2.92),
       pnl_change: y(5_000_000),
       pnl_change_pct: rp(12.5, true),
       volume_effect: y(2_800_000),
@@ -71,10 +74,10 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
       level: 0,
       current_scale: yScale(5_500_000_000),
       current_pnl: y(52_000_000),
-      current_yield: rp(3.45),
+      current_yield_pct: pp(3.45),
       previous_scale: yScale(5_200_000_000),
       previous_pnl: y(48_000_000),
-      previous_yield: rp(3.52),
+      previous_yield_pct: pp(3.52),
       pnl_change: y(4_000_000),
       pnl_change_pct: rp(8.3, true),
       volume_effect: y(2_200_000),
@@ -91,10 +94,10 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
       level: 0,
       current_scale: yScale(13_500_000_000),
       current_pnl: y(97_000_000),
-      current_yield: rp(3.1),
+      current_yield_pct: pp(3.1),
       previous_scale: yScale(13_000_000_000),
       previous_pnl: y(88_000_000),
-      previous_yield: rp(3.18),
+      previous_yield_pct: pp(3.18),
       pnl_change: y(9_000_000),
       pnl_change_pct: rp(10.2, true),
       volume_effect: y(5_000_000),
@@ -111,10 +114,10 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
       level: 0,
       current_scale: yScale(2_000_000_000),
       current_pnl: y(-18_000_000),
-      current_yield: rp(2.1),
+      current_yield_pct: pp(2.1),
       previous_scale: yScale(1_900_000_000),
       previous_pnl: y(-16_000_000),
-      previous_yield: rp(2.05),
+      previous_yield_pct: pp(2.05),
       pnl_change: y(-2_000_000),
       pnl_change_pct: rp(-12.5, true),
       volume_effect: y(-900_000),
@@ -131,10 +134,10 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
       level: 0,
       current_scale: yScale(2_000_000_000),
       current_pnl: y(-18_000_000),
-      current_yield: rp(2.1),
+      current_yield_pct: pp(2.1),
       previous_scale: yScale(1_900_000_000),
       previous_pnl: y(-16_000_000),
-      previous_yield: rp(2.05),
+      previous_yield_pct: pp(2.05),
       pnl_change: y(-2_000_000),
       pnl_change_pct: null,
       volume_effect: y(-900_000),
@@ -157,7 +160,7 @@ export const mockTplMarketCorrelation: TPLMarketCorrelationPayload = {
     "TPL 公允价值月度变动与 10Y 国债收益率变动呈负相关，方向与久期逻辑一致。",
   total_tpl_fv_change: y(42_000_000),
   avg_treasury_10y_change: bpv(-2.3),
-  treasury_10y_total_change: bpv(-28),
+  treasury_10y_total_change_bp: bpv(-28),
   analysis_summary: "样本期内利率整体下行，TPL 估值变动与利率走势大体同步。",
   data_points: [
     {
@@ -339,7 +342,7 @@ export const mockCarryRollDown: CarryRollDownPayload = {
       carry: rp(0.75),
       carry_pnl: y(10_000_000),
       duration: rp(4.2),
-      curve_slope: rps(-0.08),
+      curve_slope: bpv(-0.08),
       rolldown: rp(0.34),
       rolldown_pnl: y(2_400_000),
       static_return: rp(1.09),
@@ -356,7 +359,7 @@ export const mockCarryRollDown: CarryRollDownPayload = {
       carry: rp(1.65),
       carry_pnl: y(8_000_000),
       duration: rp(3.1),
-      curve_slope: rps(-0.06),
+      curve_slope: bpv(-0.06),
       rolldown: rp(0.19),
       rolldown_pnl: y(1_600_000),
       static_return: rp(1.84),

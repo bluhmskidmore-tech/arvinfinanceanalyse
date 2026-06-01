@@ -2,6 +2,8 @@
 
 > Status update (2026-04-17): this handoff now reflects the adopted default interpretation for repo-wide `Phase 2` formal-compute cutover, with explicit exclusions for non-cutover consumers and surfaces.
 
+> Repo-level current-state navigation now starts at `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`. This document remains the boundary-focused source linked from that entrypoint; it is not a catch-all operating log.
+
 ## 目的
 
 用一页文档对齐“当前代码状态”和“当前阶段边界”，避免把已落地薄切片、Phase 1 closeout、next-slice 计划、dated override 混为一谈。
@@ -29,16 +31,16 @@
   - `executive-consumer cutover v1` 当前仍排除：
     - `/ui/risk/overview`
     - `/ui/home/alerts`
-    - `/ui/home/contribution`
+  - `/ui/home/contribution`
   - Agent MVP / `/api/agent/query` / `/agent`
   - `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
-  - `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
-  - cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
+  - `qdb_gl_monthly_analysis` 等仍未晋升的 analytical-only / compatibility 模块
+  - broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
 - 当前排除面的公开行为应按“显式保留 / fail-closed”解释，而不是按“已晋升但缺数据”解释：
   - `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution` 当前返回显式 `503`
-  - `/api/cube/query` 与 `/api/cube/dimensions/*` 当前返回显式 `503 reserved surface`
-  - `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 当前返回显式 `503 reserved surface`
-  - 前端工作台当前将 `/risk-overview`、`/liability-analytics`、`/cube-query` 作为 placeholder / compat 入口，而不是 live primary navigation
+  - `/api/cube/query` 与 `/api/cube/dimensions/*` 已开放为受控 query surface；当前只按已覆盖事实表与 `result_meta` 声明查询结果口径
+  - `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 已开放为 analytical compatibility surface，不得误写为 formal balance/PnL truth
+  - 前端工作台当前仍将 `/risk-overview` 作为 placeholder；`/liability-analytics` 与 `/cube-query` 已按 live surface 暴露
 
 ## 当前代码状态
 
@@ -154,18 +156,18 @@
 - Agent 仍按 `Phase 1 Agent skeleton` 解释
 - Agent 明确不在本次 repo-wide `Phase 2` cutover 范围内
 
-### 8. Reserved compatibility / query surfaces
+### 8. Promoted compatibility / query surfaces
 
 已落地：
 
-- `cube_query_service`、`liability_analytics_compat` 等内部实现与测试资产仍保留
-- 对应前端页面/客户端代码仍保留后续恢复入口
+- `cube_query_service`、`liability_analytics_compat` 已作为受控 public surface 纳入当前测试与 release gate
+- 对应前端页面/客户端代码已按 live 入口暴露
 
 当前判断：
 
-- 这些能力当前只保留“代码资产 / 后续恢复点”语义
-- 公开 HTTP surface 当前按 reserved route 解释，并显式 `503 fail-closed`
-- 不得把“实现仍在仓库中”误读为“当前已纳入 repo-wide Phase 2 governed rollout”
+- `cube-query` 是 query surface，不是新增页面级正式指标真值面
+- `liability_analytics_compat` 是 analytical compatibility surface，必须继续显式披露 mixed-source / compat 边界
+- 不得把 live route 误读为全部结果均已晋升 formal balance/PnL truth
 
 ## 当前验证状态
 

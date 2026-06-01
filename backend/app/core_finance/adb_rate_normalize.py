@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import math
+
 import pandas as pd
 
+logger = logging.getLogger(__name__)
+
 RATE_INPUT_OVERRIDES: dict[str, str] = {
-    "yield_to_maturity": "auto",
-    "coupon_rate": "auto",
-    "interest_rate": "auto",
+    "yield_to_maturity": "percent",
+    "coupon_rate": "percent",
+    "interest_rate": "percent",  # position_interbank stores as percentage (2.55 = 2.55%)
     "interbank_interest_rate": "percent",
 }
 
@@ -18,16 +22,17 @@ def normalize_rate_values(
     field_name: str,
     override: str | None = None,
 ) -> list[float]:
-    if override is None:
-        override = RATE_INPUT_OVERRIDES.get(field_name, "auto")
-
-    if override == "percent":
+    mode = override or RATE_INPUT_OVERRIDES.get(field_name, "auto")
+    if mode == "auto":
+        logger.warning(
+            "auto rate normalization is deprecated for field=%s; specify 'percent' or 'decimal' explicitly",
+            field_name,
+        )
+    if mode == "percent":
         return [_normalize_percent_value(value) for value in values]
-    if override == "decimal":
+    if mode == "decimal":
         return [_normalize_decimal_value(value) for value in values]
-
-    if field_name == "interbank_interest_rate":
-        return [_normalize_percent_value(value) for value in values]
+    # auto fallback (deprecated)
     return [_normalize_auto_value(value) for value in values]
 
 
@@ -52,7 +57,7 @@ def _coerce_rate_number(value: object) -> float | None:
     if hasattr(candidate, "item"):
         try:
             candidate = candidate.item()
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             pass
 
     if isinstance(candidate, str):
@@ -61,7 +66,7 @@ def _coerce_rate_number(value: object) -> float | None:
             return None
 
     try:
-        number = float(candidate)
+        number = float(candidate) if isinstance(candidate, (int, float, str)) else float(str(candidate))
     except (TypeError, ValueError):
         return None
 
@@ -85,6 +90,10 @@ def _normalize_decimal_value(value: object) -> float:
 
 
 def _normalize_auto_value(value: object) -> float:
+    """Deprecated: heuristic percent vs decimal; prefer explicit percent/decimal in overrides."""
+    logger.warning(
+        "_normalize_auto_value is deprecated; use percent or decimal normalization explicitly"
+    )
     number = _coerce_rate_number(value)
     if number is None:
         return 0.0

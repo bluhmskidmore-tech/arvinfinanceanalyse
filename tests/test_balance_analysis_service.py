@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -125,6 +124,12 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
                 "total_market_value_amount": "100.00000000",
                 "total_amortized_cost_amount": "90.00000000",
                 "total_accrued_interest_amount": "5.00000000",
+                "asset_total_market_value_amount": "60.00000000",
+                "liability_total_market_value_amount": "40.00000000",
+                "asset_total_amortized_cost_amount": "55.00000000",
+                "liability_total_amortized_cost_amount": "35.00000000",
+                "asset_total_accrued_interest_amount": "3.00000000",
+                "liability_total_accrued_interest_amount": "2.00000000",
                 "rule_version": "rv_repo_fallback",
             }
 
@@ -164,6 +169,24 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
     assert payload["result"]["detail_row_count"] == 2
+    definitions = {item["key"]: item for item in payload["result"]["metric_definitions"]}
+    assert definitions["asset_total_market_value_amount"] == {
+        "key": "asset_total_market_value_amount",
+        "label": "资产市值合计",
+        "source_field": "market_value_amount",
+        "raw_unit": "yuan",
+        "display_unit": "yi_yuan",
+        "basis": "formal",
+        "source_surface": "formal_balance",
+        "applies_to": ["overview", "summary", "detail"],
+        "description": "正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+    }
+    assert definitions["liability_total_accrued_interest_amount"]["label"] == "负债应计利息合计"
+    assert definitions["liability_total_accrued_interest_amount"]["source_field"] == "accrued_interest_amount"
+    assert isinstance(payload["calibration"], dict)
+    assert payload["data_source"] == "balance_analysis_facts"
+    assert payload["calibration"]["data_basis"] == "formal_facts"
+    assert "zqtz" in payload["calibration"]["source_families"]
 
 
 def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_helper(monkeypatch):
@@ -239,6 +262,9 @@ def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_h
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
     assert payload["result"]["total_rows"] == 1
+    assert isinstance(payload["calibration"], dict)
+    assert payload["data_source"] == "balance_analysis_facts"
+    assert payload["calibration"]["currency_basis"] == "CNY"
 
 
 def test_balance_analysis_basis_breakdown_envelope_uses_shared_completed_build_lineage_helper(monkeypatch):
@@ -441,13 +467,13 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
                         "title": "Decision Items",
                         "section_kind": "decision_items",
                         "columns": [
-                            {"key": "title", "label": "Title"},
-                            {"key": "action_label", "label": "Action"},
-                            {"key": "severity", "label": "Severity"},
-                            {"key": "reason", "label": "Reason"},
-                            {"key": "source_section", "label": "Source Section"},
-                            {"key": "rule_id", "label": "Rule Id"},
-                            {"key": "rule_version", "label": "Rule Version"},
+                            {"key": "title", "label": "标题"},
+                            {"key": "action_label", "label": "动作"},
+                            {"key": "severity", "label": "等级"},
+                            {"key": "reason", "label": "原因"},
+                            {"key": "source_section", "label": "来源区块"},
+                            {"key": "rule_id", "label": "规则编号"},
+                            {"key": "rule_version", "label": "规则版本"},
                         ],
                         "rows": [
                             {
@@ -493,17 +519,17 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
 
     assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
     assert payload["result"]["columns"] == [
-        {"key": "title", "label": "Title"},
-        {"key": "action_label", "label": "Action"},
-        {"key": "severity", "label": "Severity"},
-        {"key": "reason", "label": "Reason"},
-        {"key": "source_section", "label": "Source Section"},
-        {"key": "rule_id", "label": "Rule Id"},
-        {"key": "rule_version", "label": "Rule Version"},
+        {"key": "title", "label": "标题"},
+        {"key": "action_label", "label": "动作"},
+        {"key": "severity", "label": "等级"},
+        {"key": "reason", "label": "原因"},
+        {"key": "source_section", "label": "来源区块"},
+        {"key": "rule_id", "label": "规则编号"},
+        {"key": "rule_version", "label": "规则版本"},
     ]
     assert payload["result"]["rows"] == [
         {
-            "decision_key": "bal_gap_rule::maturity_gap::Tighten duration gap",
+            "decision_key": "bal_gap_rule",
             "title": "Tighten duration gap",
             "action_label": "Review",
             "severity": "high",
@@ -512,7 +538,7 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
             "rule_id": "bal_gap_rule",
             "rule_version": "rv-test",
             "latest_status": {
-                "decision_key": "bal_gap_rule::maturity_gap::Tighten duration gap",
+                "decision_key": "bal_gap_rule",
                 "status": "pending",
                 "updated_at": None,
                 "updated_by": None,
@@ -769,6 +795,12 @@ def test_balance_analysis_overview_envelope_resolves_lineage_per_historical_repo
                 "total_market_value_amount": "10.00000000",
                 "total_amortized_cost_amount": "9.00000000",
                 "total_accrued_interest_amount": "0.10000000",
+                "asset_total_market_value_amount": "6.00000000",
+                "liability_total_market_value_amount": "4.00000000",
+                "asset_total_amortized_cost_amount": "5.40000000",
+                "liability_total_amortized_cost_amount": "3.60000000",
+                "asset_total_accrued_interest_amount": "0.06000000",
+                "liability_total_accrued_interest_amount": "0.04000000",
                 "rule_version": "rv_repo_fallback",
             }
 

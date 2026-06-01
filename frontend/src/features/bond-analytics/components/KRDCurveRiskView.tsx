@@ -5,7 +5,8 @@ import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
-import { formatWan } from "../utils/formatters";
+import { designTokens } from "../../../theme/designSystem";
+import { formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
@@ -129,7 +130,7 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
         rowKey="asset_class"
         pagination={false}
         size="small"
-        scroll={extraKeys.length > 2 ? { x: "max-content" } : undefined}
+        scroll={extraKeys.length > 2 ? { x: "max-content", y: 400 } : { y: 400 }}
       />
     </div>
   );
@@ -137,7 +138,7 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
 
 const assetClassColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
+  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
   {
     title: "久期",
     dataIndex: "duration",
@@ -159,12 +160,12 @@ const assetClassColumns = [
 ];
 
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
-  rate: "#1f5eff",
-  credit: "#ff7a45",
-  other: "#8c8c8c",
+  rate: designTokens.color.primary[600],
+  credit: designTokens.color.warning[500],
+  other: designTokens.color.neutral[500],
 };
 
-const DEFAULT_SLICE_COLOR = "#bfbfbf";
+const DEFAULT_SLICE_COLOR = designTokens.color.neutral[400];
 
 function sliceColorForAssetClass(assetClass: string): string {
   const key = assetClass.trim().toLowerCase();
@@ -188,7 +189,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
       }) => {
         const d = params.data;
         if (!d) return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
+        return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     graphic: {
@@ -200,7 +201,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
           style: {
             text: "资产结构",
             textAlign: "center" as const,
-            fill: "#262626",
+            fill: designTokens.color.neutral[900],
             fontSize: 14,
             fontWeight: 500,
           },
@@ -279,13 +280,13 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       xAxis: {
         type: "category",
         data: buckets.map((b) => b.tenor),
-        axisLabel: { color: "#5c6b82", fontSize: 11 },
+        axisLabel: { color: designTokens.color.neutral[600], fontSize: 11 },
         axisTick: { alignWithLabel: true },
       },
       yAxis: {
         type: "value",
         axisLabel: {
-          color: "#5c6b82",
+          color: designTokens.color.neutral[600],
           fontSize: 11,
           formatter: (v: number) => v.toFixed(3),
         },
@@ -297,7 +298,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           barMaxWidth: 48,
           data: buckets.map((b) => {
             const krd = bondNumericRaw(b.krd);
-            const color = krd >= 0 ? "#1f5eff" : "#ff4d4f";
+            const color = krd >= 0 ? designTokens.color.primary[600] : designTokens.color.semantic.loss;
             return {
               value: krd,
               itemStyle: { color },
@@ -305,7 +306,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
                 show: true,
                 position: krd >= 0 ? "top" : "bottom",
                 formatter: Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display,
-                color: "#333",
+                color: designTokens.color.neutral[800],
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
               },
@@ -328,9 +329,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionLead
-        eyebrow="KRD Curve Risk"
+        eyebrow="KRD 曲线风险"
         title="曲线风险概览"
-        description="按报告日读取后端 KRD curve risk read model；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
+        description="按报告日读取后端 KRD 曲线风险读模型；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
         testId="krd-curve-risk-shell-lead"
       />
       {data.computed_at ? (
@@ -362,9 +363,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       </Row>
 
       <SectionLead
-        eyebrow="Buckets"
+        eyebrow="分桶"
         title="KRD 桶位与情景冲击"
-        description="KRD 分布和情景冲击沿用后端返回的 krd_buckets 与 scenarios，前端仅做图表和表格展示。"
+        description="KRD 分布和情景冲击沿用后端返回的桶位与情景数据，前端仅做图表和表格展示。"
         testId="krd-curve-risk-buckets-lead"
       />
       {data.krd_buckets.length > 0 && krdChartOption && (
@@ -386,15 +387,16 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
             expandable={{ expandedRowRender: renderScenarioAssetClassBreakdown }}
           />
         </Card>
       )}
 
       <SectionLead
-        eyebrow="Asset Class"
+        eyebrow="资产类别"
         title="资产类别风险拆分"
-        description="资产结构饼图和 by_asset_class 表格保留后端语义，不调整市值、久期、DV01 或权重。"
+        description="资产结构饼图和按资产类别表格保留后端语义，不调整市值、久期、DV01 或权重。"
         testId="krd-curve-risk-asset-lead"
       />
       {data.by_asset_class.length > 0 && (
@@ -410,6 +412,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             rowKey="asset_class"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}

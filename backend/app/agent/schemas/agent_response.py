@@ -12,6 +12,13 @@ class AgentDrill(BaseModel):
     label: str
 
 
+class AgentSuggestedAction(BaseModel):
+    type: str
+    label: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    requires_confirmation: bool = True
+
+
 class AgentCard(BaseModel):
     type: str
     title: str
@@ -42,6 +49,7 @@ class AgentEnvelope(BaseModel):
     evidence: AgentEvidence
     result_meta: AgentResultMeta
     next_drill: list[AgentDrill] = Field(default_factory=list)
+    suggested_actions: list[AgentSuggestedAction] = Field(default_factory=list)
 
 
 class AgentDisabledResponse(BaseModel):

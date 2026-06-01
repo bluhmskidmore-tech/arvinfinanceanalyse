@@ -8,6 +8,16 @@
 
 ---
 
+## 大型代码库导航（Claude Code）
+
+- 先读 `docs/agent_codebase_map.md` 获取目录地图，再进入相关子目录。
+- 在 `frontend/`、`backend/`、`tests/` 等目录工作时，优先遵守就近的 `CLAUDE.md` / `AGENTS.md`。
+- 根级上下文只保留全局纪律；页面、后端、测试命令和局部惯例放到子目录配置里。
+- 不要用模糊问题直接做全仓库大范围搜索；先定位页面、路由、service、metric contract 或测试入口。
+- 对业务指标、血缘、日期、口径、fallback/stale 证据，优先使用项目 MCP / GitNexus，而不是把大型文档和原始数据整块塞进上下文。
+
+---
+
 ## 核心行为准则（Karpathy 四原则 + 本项目增强）
 
 ### 1) 先思考再编码（Think Before Coding）
@@ -112,3 +122,9 @@
 - 只重构目标模块，不触碰无关代码
 - 重构前后运行同一组测试并对比结果
 - 输出性能/可维护性收益与潜在回归点
+
+---
+
+## Design System
+
+改动任何界面的版式、颜色、字体、间距前，**先读仓库根目录 `DESIGN.md`**。字体、色板、密度与「债券分析 / 组合工作台」首页的区块顺序以该文件与 `frontend/src/theme/designSystem.ts` 为准；未经产品确认，不得偏离参考权威或改换主结论优先级。在 QA 或审查中，对明显违背 `DESIGN.md` 的实现应标出。

@@ -2,6 +2,7 @@ export type BondAnalyticsModuleKey =
   | "return-decomposition"
   | "benchmark-excess"
   | "krd-curve-risk"
+  | "dv01-risk"
   | "credit-spread"
   | "portfolio-headlines"
   | "top-holdings"
@@ -25,7 +26,7 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
   {
     key: "return-decomposition",
     label: "收益拆解",
-    description: "查看 carry、roll-down、利率和利差效应的拆解结果。",
+    description: "查看票息、骑乘、利率和利差效应的拆解结果。",
     detailHint: "从明细区继续看收益效应和损益对账。",
   },
   {
@@ -41,6 +42,12 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
     detailHint: "从明细区继续看 KRD 分布和曲线情景。",
   },
   {
+    key: "dv01-risk",
+    label: "DV01 风险",
+    description: "查看当前 DV01、利率冲击影响、期限桶、债券和发行人集中风险。",
+    detailHint: "从明细区继续看期限桶 DV01、Top 债券和 Top 发行人。",
+  },
+  {
     key: "credit-spread",
     label: "信用利差",
     description: "查看信用债利差敏感度、情景冲击和集中度。",
@@ -48,13 +55,13 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
   },
   {
     key: "portfolio-headlines",
-    label: "组合 headline KPI",
+    label: "组合头条指标",
     description: "规模、收益率、久期、DV01、信用占比与发行人集中度等首屏指标。",
     detailHint: "从明细区继续看资产类别风险分布表。",
   },
   {
     key: "top-holdings",
-    label: "持仓 TopN",
+    label: "重点持仓",
     description: "按市值排序的重点持仓与权重。",
     detailHint: "从明细区继续看持仓明细与合计权重。",
   },

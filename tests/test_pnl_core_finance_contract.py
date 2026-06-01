@@ -9,6 +9,7 @@ from backend.app.core_finance import (
     NonStdPnlBridgeRow,
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
+    compute_nonstd_signed_ledger_amount,
     normalize_fi_pnl_records,
     normalize_nonstd_journal_entries,
 )
@@ -102,3 +103,4 @@ def test_pnl_core_finance_contract_shapes_match_governed_field_names():
 def test_pnl_phase2_entrypoints_exist_for_phase2_execution():
     assert callable(build_nonstd_pnl_bridge_rows)
     assert callable(build_formal_pnl_fi_fact_rows)
+    assert callable(compute_nonstd_signed_ledger_amount)

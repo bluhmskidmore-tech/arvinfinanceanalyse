@@ -20,6 +20,8 @@ def test_balance_analysis_schema_defines_governed_payload_models():
     workbook_payload = getattr(module, "BalanceAnalysisWorkbookPayload")
     basis_row = getattr(module, "BalanceAnalysisBasisBreakdownRow")
     basis_payload = getattr(module, "BalanceAnalysisBasisBreakdownPayload")
+    metric_definition = getattr(module, "BalanceAnalysisMetricDefinition")
+    overview_payload = getattr(module, "BalanceAnalysisOverviewPayload")
 
     assert {
         "source_family",
@@ -68,6 +70,18 @@ def test_balance_analysis_schema_defines_governed_payload_models():
         "accrued_interest_amount",
     } <= set(basis_row.model_fields)
     assert {"report_date", "position_scope", "currency_basis", "rows"} <= set(basis_payload.model_fields)
+    assert {
+        "key",
+        "label",
+        "source_field",
+        "raw_unit",
+        "display_unit",
+        "basis",
+        "source_surface",
+        "applies_to",
+        "description",
+    } <= set(metric_definition.model_fields)
+    assert "metric_definitions" in overview_payload.model_fields
 
 
 def test_balance_analysis_core_exports_future_formal_fact_types():
@@ -110,6 +124,8 @@ def test_balance_analysis_core_exports_future_formal_fact_types():
         "rule_version",
         "ingest_batch_id",
         "trace_id",
+        "business_type_primary",
+        "sub_type",
     ]
     assert [field.name for field in fields(module.FormalTywBalanceFactRow)] == [
         "report_date",

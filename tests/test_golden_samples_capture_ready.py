@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -46,18 +47,31 @@ def _assert_paths_equal(
         assert _extract(actual, path) == _extract(expected, path), path
 
 
+def _row_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [str(row["category_id"]) for row in rows]
+
+
+def _rows_by_category(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(row["category_id"]): row for row in rows}
+
+
 def _clear_runtime_modules() -> None:
     for name in [
         "backend.app.main",
         "backend.app.api",
+        "backend.app.api.routes.bond_dashboard",
         "backend.app.api.routes.balance_analysis",
         "backend.app.api.routes.executive",
         "backend.app.api.routes.pnl",
+        "backend.app.api.routes.product_category_pnl",
         "backend.app.api.routes.risk_tensor",
         "backend.app.services.balance_analysis_service",
+        "backend.app.services.bond_dashboard_service",
         "backend.app.services.pnl_service",
         "backend.app.services.pnl_bridge_service",
+        "backend.app.services.product_category_pnl_service",
         "backend.app.services.risk_tensor_service",
+        "backend.app.tasks.product_category_pnl",
     ]:
         sys.modules.pop(name, None)
 
@@ -76,6 +90,37 @@ def _setup_pnl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_pnl_api_contract.py",
     )
     module._materialize_three_pnl_dates(tmp_path, monkeypatch)
+
+
+def _setup_product_category(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_module(
+        "tests._golden_product_category_flow",
+        "tests/test_product_category_pnl_flow.py",
+    )
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    module._write_month_pair(source_dir, "202601", january=True)
+    module._write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
 
 
 def _setup_risk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -112,6 +157,82 @@ def _setup_risk_warn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_risk_tensor_api.py",
     )
     module._configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch)
+
+
+def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    module = load_module(
+        "tests._golden_bond_dashboard_api",
+        "tests/test_bond_dashboard_api_contract.py",
+    )
+
+    duckdb_path = tmp_path / "bond-headline.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    repo.replace_bond_analytics_rows(
+        report_date="2026-03-30",
+        rows=[
+            module._make_bond_analytics_row(
+                report_date="2026-03-30",
+                instrument_code="RATE_PREV",
+                portfolio_name="P1",
+                asset_class_std="rate",
+                market_value=Decimal("120"),
+                ytm=Decimal("0.025"),
+                modified_duration=Decimal("3"),
+                bond_type_label="Gov",
+            ),
+            module._make_bond_analytics_row(
+                report_date="2026-03-30",
+                instrument_code="CREDIT_PREV",
+                portfolio_name="P2",
+                asset_class_std="credit",
+                market_value=Decimal("180"),
+                ytm=Decimal("0.035"),
+                modified_duration=Decimal("5"),
+                bond_type_label="Credit",
+            ),
+        ],
+    )
+    repo.replace_bond_analytics_rows(
+        report_date="2026-03-31",
+        rows=[
+            module._make_bond_analytics_row(
+                report_date="2026-03-31",
+                instrument_code="RATE_CUR",
+                portfolio_name="P1",
+                asset_class_std="rate",
+                market_value=Decimal("100"),
+                ytm=Decimal("0.02"),
+                modified_duration=Decimal("2"),
+                bond_type_label="Gov",
+            ),
+            module._make_bond_analytics_row(
+                report_date="2026-03-31",
+                instrument_code="CREDIT_CUR",
+                portfolio_name="P2",
+                asset_class_std="credit",
+                market_value=Decimal("300"),
+                ytm=Decimal("0.04"),
+                modified_duration=Decimal("6"),
+                bond_type_label="Credit",
+            ),
+            module._make_bond_analytics_row(
+                report_date="2026-03-31",
+                instrument_code="OTHER_CUR",
+                portfolio_name="P3",
+                asset_class_std="other",
+                market_value=Decimal("600"),
+                ytm=Decimal("0"),
+                modified_duration=Decimal("0"),
+                bond_type_label="Other",
+            ),
+        ],
+    )
 
 
 def _setup_exec_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -336,6 +457,14 @@ def _setup_exec_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     request = _load_json(sample_id, "request.json")
+    return _run_request_payload(request, tmp_path, monkeypatch)
+
+
+def _run_request_payload(
+    request: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
     _clear_runtime_modules()
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
@@ -456,6 +585,94 @@ def _validate_pnl_data(actual: dict[str, Any], expected: dict[str, Any]) -> None
     )
 
 
+def _validate_product_category(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result", "report_date"),
+            ("result", "view"),
+            ("result", "available_views"),
+            ("result", "scenario_rate_pct"),
+            ("result", "rows"),
+            ("result", "asset_total"),
+            ("result", "liability_total"),
+            ("result", "grand_total"),
+        ],
+    )
+    assert str(actual["result_meta"]["source_version"]).startswith("sv_product_category_")
+
+
+def _validate_product_category_scenario(
+    actual: dict[str, Any],
+    baseline_expected: dict[str, Any],
+) -> None:
+    assert actual["result_meta"]["basis"] == "scenario"
+    assert actual["result_meta"]["result_kind"] == "product_category_pnl.detail"
+    assert actual["result_meta"]["formal_use_allowed"] is False
+    assert actual["result_meta"]["vendor_version"] == "vv_none"
+    assert actual["result_meta"]["rule_version"] == "rv_product_category_pnl_v1"
+    assert actual["result_meta"]["cache_version"] == "cv_product_category_pnl_v1"
+    assert actual["result_meta"]["quality_flag"] == "ok"
+    assert actual["result_meta"]["vendor_status"] == "ok"
+    assert actual["result_meta"]["fallback_mode"] == "none"
+    assert actual["result_meta"]["scenario_flag"] is True
+    assert actual["result"]["report_date"] == "2026-02-28"
+    assert actual["result"]["view"] == "monthly"
+    assert actual["result"]["available_views"] == baseline_expected["result"]["available_views"]
+    assert actual["result"]["scenario_rate_pct"] == 2.5
+    actual_rows = actual["result"]["rows"]
+    baseline_rows = baseline_expected["result"]["rows"]
+    assert len(actual_rows) == len(baseline_rows)
+    assert _row_ids(actual_rows) == _row_ids(baseline_rows)
+
+    scenario_row_map = _rows_by_category(actual_rows)
+    baseline_row_map = _rows_by_category(baseline_rows)
+    scenario_only_fields = {
+        "cny_ftp",
+        "foreign_ftp",
+        "cny_net",
+        "foreign_net",
+        "business_net_income",
+        "scenario_rate_pct",
+    }
+
+    for actual_row, baseline_row in zip(actual_rows, baseline_rows, strict=True):
+        assert actual_row["children"] == baseline_row["children"], actual_row["category_id"]
+        for field, value in baseline_row.items():
+            if field not in scenario_only_fields:
+                assert actual_row[field] == value, (actual_row["category_id"], field)
+        assert Decimal(str(actual_row["scenario_rate_pct"])) == Decimal("2.5"), actual_row["category_id"]
+
+    for total_key in ("asset_total", "liability_total", "grand_total"):
+        assert actual["result"][total_key] == scenario_row_map[total_key]
+
+    assert scenario_row_map["bond_investment"]["children"] == baseline_row_map["bond_investment"]["children"]
+    assert Decimal(str(scenario_row_map["bond_tpl"]["cny_ftp"])) != Decimal(str(baseline_row_map["bond_tpl"]["cny_ftp"]))
+    assert Decimal(str(scenario_row_map["bond_ac"]["cny_ftp"])) != Decimal(str(baseline_row_map["bond_ac"]["cny_ftp"]))
+    assert Decimal(str(scenario_row_map["bond_valuation_spread"]["cny_ftp"])) == Decimal(
+        str(baseline_row_map["bond_valuation_spread"]["cny_ftp"])
+    )
+    assert scenario_row_map["bond_valuation_spread"]["weighted_yield"] is None
+    assert Decimal(str(scenario_row_map["asset_total"]["cny_ftp"])) != Decimal(str(baseline_row_map["asset_total"]["cny_ftp"]))
+    assert Decimal(str(actual["result"]["liability_total"]["cny_ftp"])) != Decimal(
+        str(baseline_expected["result"]["liability_total"]["cny_ftp"])
+    )
+    assert Decimal(str(actual["result"]["grand_total"]["cny_ftp"])) != Decimal(
+        str(baseline_expected["result"]["grand_total"]["cny_ftp"])
+    )
+
+
 def _validate_bridge(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -546,6 +763,33 @@ def _validate_risk_warn(actual: dict[str, Any], expected: dict[str, Any]) -> Non
     )
 
 
+def _validate_bond_headline(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("data_source",),
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result_meta", "next_drill"),
+            ("result_meta", "source_surface"),
+            ("result",),
+        ],
+    )
+
+
 def _validate_exec_overview(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -562,9 +806,33 @@ def _validate_exec_overview(actual: dict[str, Any], expected: dict[str, Any]) ->
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
-            ("result",),
+            ("result", "title"),
         ],
     )
+    actual_metrics = actual["result"]["metrics"]
+    expected_metrics = expected["result"]["metrics"]
+    assert len(actual_metrics) == len(expected_metrics) == 4
+
+    actual_by_id = {str(metric["id"]): metric for metric in actual_metrics}
+    expected_by_id = {str(metric["id"]): metric for metric in expected_metrics}
+    assert list(actual_by_id) == list(expected_by_id)
+
+    for metric_id, expected_metric in expected_by_id.items():
+        actual_metric = actual_by_id[metric_id]
+        assert "history" in actual_metric
+        _assert_paths_equal(
+            actual_metric,
+            expected_metric,
+            [
+                ("id",),
+                ("label",),
+                ("caliber_label",),
+                ("value", "display"),
+                ("delta", "display"),
+                ("tone",),
+                ("detail",),
+            ],
+        )
 
 
 def _validate_exec_pnl_attr(actual: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -620,10 +888,12 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-BAL-WORKBOOK-A": CaptureReadyCase(setup=_setup_balance, validator=_validate_balance_workbook),
     "GS-PNL-OVERVIEW-A": CaptureReadyCase(setup=_setup_pnl, validator=_validate_pnl_overview),
     "GS-PNL-DATA-A": CaptureReadyCase(setup=_setup_pnl, validator=_validate_pnl_data),
+    "GS-PROD-CAT-PNL-A": CaptureReadyCase(setup=_setup_product_category, validator=_validate_product_category),
     "GS-BRIDGE-A": CaptureReadyCase(setup=_setup_pnl, validator=_validate_bridge),
     "GS-RISK-A": CaptureReadyCase(setup=_setup_risk, validator=_validate_risk),
     "GS-BRIDGE-WARN-B": CaptureReadyCase(setup=_setup_bridge_warn, validator=_validate_bridge_warn),
     "GS-RISK-WARN-B": CaptureReadyCase(setup=_setup_risk_warn, validator=_validate_risk_warn),
+    "GS-BOND-HEADLINE-A": CaptureReadyCase(setup=_setup_bond_headline, validator=_validate_bond_headline),
     "GS-EXEC-OVERVIEW-A": CaptureReadyCase(setup=_setup_exec_overview, validator=_validate_exec_overview),
     "GS-EXEC-PNL-ATTR-A": CaptureReadyCase(setup=_setup_exec_pnl_attr, validator=_validate_exec_pnl_attr),
     "GS-EXEC-SUMMARY-A": CaptureReadyCase(setup=_setup_exec_summary, validator=_validate_exec_summary),
@@ -642,6 +912,29 @@ def test_capture_ready_golden_sample_metadata_is_in_expected_state() -> None:
         assert "captured-awaiting-approval" in approval
 
 
+def test_product_category_capture_ready_companion_scenario_files_exist() -> None:
+    for filename in ("scenario.request.json",):
+        assert _sample_file("GS-PROD-CAT-PNL-A", filename).exists()
+
+
+def test_product_category_sample_documents_headline_metric_boundary() -> None:
+    assertions = _read_text("GS-PROD-CAT-PNL-A", "assertions.md")
+    sample_doc = (ROOT / "docs" / "pnl" / "product-category-golden-sample-a.md").read_text(encoding="utf-8")
+    combined = "\n".join((assertions, sample_doc))
+
+    for metric_id in ("MTR-PCP-001", "MTR-PCP-002", "MTR-PCP-003"):
+        assert metric_id in combined
+
+    for required in (
+        "The approved sample-to-metric bindings are limited to the three headline totals:",
+        "Detail rows, `weighted_yield`, scale, and FTP fields are approved directionally by decision 3C, but they remain page/sample truth until the field matrix, numbering, dictionary rows, and tests make them active.",
+        "This sample is now bound to the three headline `metric_id` values; decision 3C approves detail metric expansion directionally, but concrete detail rows wait for the field matrix / numbering / dictionary tests.",
+    ):
+        assert required in combined
+
+    assert "not yet at approved `metric_id` level" not in combined
+
+
 @pytest.mark.parametrize("sample_id", sorted(CAPTURE_READY_CASES))
 def test_capture_ready_golden_sample_matches_selected_fields(
     sample_id: str,
@@ -654,5 +947,20 @@ def test_capture_ready_golden_sample_matches_selected_fields(
         actual = _run_sample_request(sample_id, tmp_path, monkeypatch)
         expected = _load_json(sample_id, "response.json")
         case.validator(actual, expected)
+    finally:
+        get_settings.cache_clear()
+
+
+def test_product_category_capture_ready_companion_scenario_matches_selected_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = CAPTURE_READY_CASES["GS-PROD-CAT-PNL-A"]
+    try:
+        case.setup(tmp_path, monkeypatch)
+        baseline_expected = _load_json("GS-PROD-CAT-PNL-A", "response.json")
+        scenario_request = _load_json("GS-PROD-CAT-PNL-A", "scenario.request.json")
+        actual = _run_request_payload(scenario_request, tmp_path, monkeypatch)
+        _validate_product_category_scenario(actual, baseline_expected)
     finally:
         get_settings.cache_clear()

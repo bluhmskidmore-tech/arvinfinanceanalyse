@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 import sys
 from types import SimpleNamespace
 
@@ -556,6 +555,16 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
         "build_bond_action_attribution_placeholder_envelope",
         fake_placeholder,
     )
+    service_module._action_attribution_cache.clear()
+
+    class EmptyBondAnalyticsRepository:
+        def list_report_dates(self):
+            return []
+
+        def fetch_bond_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+            return []
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", lambda *_args, **_kwargs: EmptyBondAnalyticsRepository())
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
 
@@ -625,6 +634,16 @@ def test_bond_action_service_uses_schema_default_status_when_summary_omits_it(mo
         "build_bond_action_attribution_placeholder_envelope",
         fake_placeholder,
     )
+    service_module._action_attribution_cache.clear()
+
+    class EmptyBondAnalyticsRepository:
+        def list_report_dates(self):
+            return []
+
+        def fetch_bond_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+            return []
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", lambda *_args, **_kwargs: EmptyBondAnalyticsRepository())
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
 

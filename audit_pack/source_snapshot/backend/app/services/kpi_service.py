@@ -1,0 +1,226 @@
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+
+from backend.app.repositories.kpi_repo import KpiRepository
+from backend.app.schemas.kpi import KpiOwnerListPayload, KpiOwnerPayload, KpiPeriodMetricSummaryPayload, KpiPeriodSummaryPayload
+
+
+class KpiAuthorityBlockedError(RuntimeError):
+    """Raised when KPI cannot be treated as a governed source in the current runtime."""
+
+
+def _safe_report_year(report_date: str | None) -> int | None:
+    if not report_date:
+        return None
+    try:
+        return date.fromisoformat(report_date).year
+    except ValueError:
+        return None
+
+
+def _load_active_owners(
+    *,
+    dsn: str,
+    year: int | None = None,
+) -> tuple[dict[str, object], KpiRepository | None, list[dict[str, object]]]:
+    if not str(dsn or "").strip():
+        return (
+            {"status": "blocked", "reason": "missing-dsn", "owner_count": 0, "year": year},
+            None,
+            [],
+        )
+    try:
+        repo = KpiRepository(dsn)
+        owners = repo.list_owners(year=year, is_active=True)
+    except Exception as exc:
+        return (
+            {
+                "status": "blocked",
+                "reason": f"repository-error:{exc.__class__.__name__}",
+                "owner_count": 0,
+                "year": year,
+            },
+            None,
+            [],
+        )
+    if not owners:
+        return (
+            {"status": "blocked", "reason": "no-active-owners", "owner_count": 0, "year": year},
+            repo,
+            [],
+        )
+    selected_year = year if year is not None else max(int(owner["year"]) for owner in owners)
+    return (
+        {
+            "status": "available",
+            "reason": "active-owners-present",
+            "owner_count": len(owners),
+            "year": selected_year,
+        },
+        repo,
+        owners,
+    )
+
+
+def resolve_kpi_authority_gate(
+    *,
+    dsn: str,
+    year: int | None = None,
+) -> dict[str, object]:
+    gate, _, _ = _load_active_owners(dsn=dsn, year=year)
+    return gate
+
+
+def kpi_owners_payload(
+    *,
+    dsn: str,
+    year: int | None = None,
+    is_active: bool | None = None,
+) -> dict[str, object]:
+    if is_active is not False:
+        gate = resolve_kpi_authority_gate(dsn=dsn, year=year)
+        if gate["status"] != "available":
+            raise KpiAuthorityBlockedError(
+                f"KPI authority unavailable: {gate['reason']}. "
+                "Load an authoritative KPI source before treating this surface as governed."
+            )
+    repo = KpiRepository(dsn)
+    owners = repo.list_owners(year=year, is_active=is_active)
+    return KpiOwnerListPayload(
+        owners=[KpiOwnerPayload.model_validate(item) for item in owners],
+        total=len(owners),
+    ).model_dump(mode="json")
+
+
+def kpi_period_summary_payload(
+    *,
+    dsn: str,
+    owner_id: int,
+    year: int,
+    period_type: str,
+    period_value: int | None = None,
+) -> dict[str, object]:
+    gate = resolve_kpi_authority_gate(dsn=dsn, year=year)
+    if gate["status"] != "available":
+        raise KpiAuthorityBlockedError(
+            f"KPI authority unavailable: {gate['reason']}. "
+            "Load an authoritative KPI source before treating this surface as governed."
+        )
+    repo = KpiRepository(dsn)
+    payload = repo.fetch_period_summary(
+        owner_id=owner_id,
+        year=year,
+        period_type=period_type,
+        period_value=period_value,
+    )
+    return KpiPeriodSummaryPayload(
+        owner_id=payload["owner_id"],
+        owner_name=payload["owner_name"],
+        year=payload["year"],
+        period_type=payload["period_type"],
+        period_value=payload["period_value"],
+        period_label=payload["period_label"],
+        period_start_date=payload["period_start_date"],
+        period_end_date=payload["period_end_date"],
+        metrics=[
+            KpiPeriodMetricSummaryPayload.model_validate(item)
+            for item in payload["metrics"]
+        ],
+        total=payload["total"],
+        total_weight=payload["total_weight"],
+        total_score=payload["total_score"],
+    ).model_dump(mode="json")
+
+
+def resolve_executive_kpi_metrics(
+    *,
+    dsn: str,
+    report_date: str | None,
+) -> list[dict[str, object]]:
+    target_year = _safe_report_year(report_date)
+    if report_date and target_year is None:
+        return []
+    gate, repo, owners = _load_active_owners(dsn=dsn, year=target_year)
+    if gate["status"] != "available" or repo is None:
+        return []
+    if target_year is not None:
+        selected_year = target_year
+    else:
+        selected_year = int(gate["year"])
+        owners = [owner for owner in owners if int(owner["year"]) == selected_year]
+    total_weight = Decimal("0")
+    total_score = Decimal("0")
+    owner_count = len(owners)
+    summaries: list[dict[str, object]] = []
+    try:
+        for owner in owners:
+            summary = repo.fetch_period_summary(
+                owner_id=int(owner["owner_id"]),
+                year=int(owner["year"]),
+                period_type="YEAR",
+            )
+            summaries.append(summary)
+            total_weight += Decimal(str(summary["total_weight"] or "0"))
+            total_score += Decimal(str(summary["total_score"] or "0"))
+    except Exception as exc:
+        raise RuntimeError("KPI metrics resolution failed after authority gate passed.") from exc
+    goal_completion = None
+    if total_weight > 0:
+        goal_completion = (total_score / total_weight) * Decimal("100")
+
+    risk_weight = Decimal("0")
+    risk_progress = Decimal("0")
+    for summary in summaries:
+        for metric in summary["metrics"]:
+            haystacks = [
+                str(metric.get("metric_code") or ""),
+                str(metric.get("metric_name") or ""),
+                str(metric.get("major_category") or ""),
+                str(metric.get("indicator_category") or ""),
+            ]
+            normalized = " ".join(haystacks).lower()
+            if not any(token in normalized for token in ("risk", "风险", "budget", "预算")):
+                continue
+            weight = Decimal(str(metric.get("score_weight") or "0"))
+            value = metric.get("period_progress_pct") or metric.get("period_completion_ratio")
+            if weight <= 0 or value in (None, ""):
+                continue
+            risk_weight += weight
+            risk_progress += weight * Decimal(str(value))
+
+    risk_budget_usage = None
+    if risk_weight > 0:
+        risk_budget_usage = risk_progress / risk_weight
+
+    result: list[dict[str, object]] = []
+    if goal_completion is not None:
+        result.append(
+            {
+                "id": "goal",
+                "label": "目标完成率",
+                "value": f"{float(goal_completion):.2f}%",
+                "delta": "governed",
+                "tone": "positive" if goal_completion >= 0 else "negative",
+                "detail": (
+                    f"来自 KPI 年度汇总读面：{selected_year} 年 {owner_count} 个 active owners 的 "
+                    "total_score / total_weight 加权汇总。"
+                ),
+            }
+        )
+    if risk_budget_usage is not None:
+        result.append(
+            {
+                "id": "risk-budget",
+                "label": "风险预算使用率",
+                "value": f"{float(risk_budget_usage):.2f}%",
+                "delta": "governed",
+                "tone": "warning",
+                "detail": (
+                    f"来自 KPI 年度汇总读面：{selected_year} 年 {owner_count} 个 active owners 的 "
+                    "风险类指标加权进度。"
+                ),
+            }
+        )
+    return result

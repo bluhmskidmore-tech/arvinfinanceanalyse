@@ -106,6 +106,7 @@ def test_bond_dashboard_dates_envelope_carries_bond_analytics_surface(tmp_path, 
     payload = service_mod.get_bond_dashboard_dates()
 
     assert payload["result_meta"]["source_surface"] == "bond_analytics"
+    assert payload.get("data_source") == "bond_analytics_facts"
     get_settings.cache_clear()
 
 

@@ -194,7 +194,7 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
     summary:
       "首页演示：可切换数据源适配器并消费后端契约；展示层只渲染返回结果，不推导业务口径。",
     highlights: [
-      "独立查询与 loading / empty / error / 重试。",
+      "独立查询与载入、空数据、错误、重试状态。",
       "懒加载分区降低首屏体积。",
       "其余菜单项保持薄占位页面。",
     ],
@@ -206,17 +206,17 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "risk-overview": {
     title: "风险总览",
-    summary: "风险总览路由已保留，但当前风险张量与 Bond Analytics 下钻物化结果尚未进入可用状态。",
-    highlights: ["formal risk tensor 表未落地", "Bond Analytics 下钻结果未就绪", "当前阶段只保留入口与状态说明"],
+    summary: "风险总览路由已保留，但当前风险张量与债券分析下钻物化结果尚未进入可用状态。",
+    highlights: ["正式风险张量表未落地", "债券分析下钻结果未就绪", "当前阶段只保留入口与状态说明"],
   },
   "liability-analytics": {
     title: "负债结构分析",
-    summary: "负债结构分析当前只保留 compatibility 入口，不宣称已进入 repo-wide Phase 2 的正式主链消费面。",
-    highlights: ["仍属 compatibility 模块", "不把 analytical 结果冒充 formal cutover", "待后续阶段定义后再晋升"],
+    summary: "负债结构分析当前只保留兼容入口，不宣称已进入全仓第二阶段的正式主链消费面。",
+    highlights: ["仍属兼容模块", "不把分析口径结果冒充正式切换", "待后续阶段定义后再晋升"],
   },
   "risk-tensor": {
     title: "风险张量",
-    summary: "风险张量页依赖的 formal risk tensor 表尚未物化，当前不展示失败查询结果，只保留阶段说明。",
+    summary: "风险张量页依赖的正式风险张量表尚未物化，当前不展示失败查询结果，只保留阶段说明。",
     highlights: ["依赖表未落地", "不在前端补算风险指标", "完成物化后再切回真实页面"],
   },
   "team-performance": {
@@ -231,22 +231,22 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "bond-analysis": {
     title: "债券分析",
-    summary: "债券分析驾驶舱仍未到可展示阶段，当前不直接暴露未完成的 Bond Analytics 页面。",
-    highlights: ["bond analytics 物化表未就绪", "入口保留但不触发失败接口", "待治理读模型稳定后恢复"],
+    summary: "债券分析驾驶舱仍未到可展示阶段，当前不直接暴露未完成的债券分析页面。",
+    highlights: ["债券分析物化表未就绪", "入口保留但不触发失败接口", "待治理读模型稳定后恢复"],
   },
   "product-category-pnl": {
     title: "产品损益",
-    summary: "产品损益页面路由已搭好，但当前 read model 还没有可消费报告日，因此先落回占位说明。",
-    highlights: ["report_dates 为空", "不展示空表和错误态", "等 read model 物化后恢复"],
+    summary: "产品损益页面路由已搭好，但当前读模型还没有可消费报告日，因此先落回占位说明。",
+    highlights: ["报告日列表为空", "不展示空表和错误态", "等读模型物化后恢复"],
   },
   pnl: {
     title: "损益明细",
-    summary: "PnL 明细依赖的 formal pnl 事实表尚未物化，当前页面不再发失败请求。",
-    highlights: ["fact_formal_pnl_fi 未落地", "fact_nonstd_pnl_bridge 未落地", "完成物化后恢复真实工作台"],
+    summary: "损益明细依赖的正式损益事实表尚未物化，当前页面不再发失败请求。",
+    highlights: ["正式固收损益事实表未落地", "非标损益桥接事实表未落地", "完成物化后恢复真实工作台"],
   },
   "pnl-bridge": {
     title: "损益桥接",
-    summary: "PnL bridge 仍处于预留阶段，当前只保留模块说明，避免把未完成页面当成可用功能。",
+    summary: "损益桥接仍处于预留阶段，当前只保留模块说明，避免把未完成页面当成可用功能。",
     highlights: ["桥接结果未稳定", "不暴露失败接口", "后续以正式读模型为准切回"],
   },
   "platform-config": {
@@ -256,8 +256,19 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "market-data": {
     title: "市场数据",
-    summary: placeholderSummary,
-    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+    summary: "Market-data preview/vendor/analytical surfaces are reserved in the current cutover boundary.",
+    highlights: ["Route shell retained", "Live market-data page not promoted", "Backend reserved responses stay explicit"],
+  },
+  "news-events": {
+    title: "新闻事件",
+    summary:
+      "工作台路由已接 NewsEventsPage（分析读面）；本占位文案仅保留给 WorkbenchPlaceholderPage 兼容，不代表当前路由仍为壳层。",
+    highlights: ["Choice 事件只读链路", "临时例外治理横幅", "分页与筛选以页面契约为准"],
+  },
+  "source-preview": {
+    title: "Source Preview",
+    summary: "Source preview is a hidden reserved route in the current cutover boundary.",
+    highlights: ["Hidden route retained", "Live source tables not promoted", "Backend reserved responses stay explicit"],
   },
   "cube-query": {
     title: "多维查询",
@@ -274,10 +285,50 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
   attribution: pnlAttributionPayload,
   domains_missing: [],
   domains_effective_date: {
-    balance: "2026-04-18",
+    balance_sheet: "2026-04-18",
     pnl: "2026-04-18",
-    liability: "2026-04-18",
-    bond: "2026-04-18",
   },
   verdict: mockVerdictPayload,
+  product_category_ytd: {
+    view: "ytd",
+    summary_pnl: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    summary_pnl_detail:
+      "演示：与产品分类损益「汇总视图」（ytd）页脚 grand_total.business_net_income 一致；当前为占位。",
+    operating_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    operating_income_detail:
+      "演示：与产品分类损益「汇总视图」（ytd）一致时，此处为 grand_total.business_net_income；当前为占位。",
+    intermediate_business_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    intermediate_business_income_detail:
+      "演示：与产品分类损益「中间业务收入」ytd 行一致时，此处为该行 business_net_income；当前为占位。",
+  },
+  product_category_monthly: {
+    view: "monthly",
+    monthly_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    monthly_income_detail:
+      "演示：与产品分类损益「月度视图」（monthly）页脚「全部市场科目 + 投资收益合计」一致；当前为占位。",
+  },
 };

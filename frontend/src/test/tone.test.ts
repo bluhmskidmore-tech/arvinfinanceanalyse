@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { TONE_COLOR, toneForStatus, toneFromNumeric, type Tone } from "../utils/tone";
 import type { Numeric } from "../api/contracts";
+import { designTokens } from "../theme/designSystem";
 
 describe("TONE_COLOR", () => {
   it("has all 4 tones", () => {
@@ -12,9 +13,9 @@ describe("TONE_COLOR", () => {
     }
   });
 
-  it("positive is green family, negative is red family (not swapped!)", () => {
-    expect(TONE_COLOR.positive).toMatch(/^#(2f|1[0-5]|2[0-4]).{4}/);
-    expect(TONE_COLOR.negative).toMatch(/^#(c[0-5]|b[0-5]|d[0-5]).{4}/i);
+  it("positive / negative align with design semantic tokens (not swapped!)", () => {
+    expect(TONE_COLOR.positive).toBe(designTokens.color.semantic.profit);
+    expect(TONE_COLOR.negative).toBe(designTokens.color.semantic.loss);
   });
 });
 

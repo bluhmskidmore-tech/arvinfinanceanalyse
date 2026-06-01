@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 import sys
 from typing import Any
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import (
@@ -21,6 +23,15 @@ from tests.test_bond_analytics_materialize_flow import (
 
 
 REPORT_DATE = "2026-03-31"
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
+
 
 _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
     (
@@ -44,6 +55,10 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
         {"report_date": REPORT_DATE},
     ),
     (
+        "/api/bond-analytics/dv01-risk",
+        {"report_date": REPORT_DATE, "accounting_class": "OCI", "top_n": "20", "shock_bps": "1,10,25,50"},
+    ),
+    (
         "/api/bond-analytics/credit-spread-migration",
         {"report_date": REPORT_DATE},
     ),
@@ -63,7 +78,19 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
         "/api/bond-analytics/top-holdings",
         {"report_date": REPORT_DATE, "top_n": "20"},
     ),
+    (
+        "/api/bond-analytics/yield-curve-term-structure",
+        {"report_date": REPORT_DATE, "curve_types": "treasury"},
+    ),
 ]
+
+
+def _setup_route_scope_store(tmp_path, monkeypatch) -> UserScopeRepository:
+    sqlite_path = tmp_path / "auth-scope-contract.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
 
 
 def _assert_envelope(payload: dict[str, Any]) -> None:
@@ -104,7 +131,7 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 9
+    assert len(paths) == len(set(paths)) == 11
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):
@@ -136,12 +163,88 @@ def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypat
     get_settings.cache_clear()
 
 
-def test_bond_analytics_refresh_queue_and_status_flow(tmp_path, monkeypatch):
+def test_bond_analytics_dv01_risk_returns_numeric_payload(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/api/bond-analytics/dv01-risk",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+            "top_n": 2,
+            "shock_bps": "10,25",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_risk"
+    result = payload["result"]
+    assert result["accounting_class"] == "OCI"
+    assert result["total_dv01"]["unit"] == "dv01"
+    assert result["total_face_value"]["unit"] == "yuan"
+    assert result["shock_scenarios"][0]["estimated_pnl"]["unit"] == "yuan"
+    assert result["tenor_buckets"][0]["dv01_share"]["unit"] == "ratio"
+    assert result["top_bonds"][0]["dv01"]["unit"] == "dv01"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_home_supplement_routes_log_api_perf(tmp_path, monkeypatch, caplog):
+    duckdb_path = tmp_path / "empty-bond-analytics-perf.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        credit = client.get(
+            "/api/bond-analytics/credit-spread-migration",
+            params={"report_date": REPORT_DATE},
+        )
+        portfolio = client.get(
+            "/api/bond-analytics/portfolio-headlines",
+            params={"report_date": REPORT_DATE},
+        )
+
+    assert credit.status_code == 200
+    assert portfolio.status_code == 200
+    credit_records = _perf_records(caplog, "/api/bond-analytics/credit-spread-migration")
+    portfolio_records = _perf_records(caplog, "/api/bond-analytics/portfolio-headlines")
+    assert credit_records
+    assert portfolio_records
+    assert getattr(credit_records[-1], "result_kind") == "bond_analytics.credit_spread_migration"
+    assert getattr(portfolio_records[-1], "result_kind") == "bond_analytics.portfolio_headlines"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_refresh_queue_and_status_flow(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    scope_repo = _setup_route_scope_store(tmp_path, monkeypatch)
+    scope_repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="refresh",
+    )
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
@@ -183,6 +286,55 @@ def test_bond_analytics_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_bond_analytics_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    scope_repo = _setup_route_scope_store(tmp_path, monkeypatch)
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+
+    calls: list[str] = []
+
+    def fake_refresh(settings, *, report_date):
+        calls.append(report_date)
+        return {"status": "queued", "run_id": "bond-analytics-refresh-auth-test"}
+
+    app = load_module("backend.app.main", "backend/app/main.py").app
+    import backend.app.api.routes.bond_analytics as route_module
+
+    monkeypatch.setattr(route_module, "refresh_bond_analytics", fake_refresh)
+    client = TestClient(
+        app,
+        raise_server_exceptions=False,
+    )
+
+    denied = client.post(
+        "/api/bond-analytics/refresh",
+        params={"report_date": REPORT_DATE},
+        headers={"X-User-Id": "bond-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    scope_repo.grant_scope(
+        user_id="bond-refresh-user",
+        role=None,
+        resource="bond_analytics",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/api/bond-analytics/refresh",
+        params={"report_date": REPORT_DATE},
+        headers={"X-User-Id": "bond-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["run_id"] == "bond-analytics-refresh-auth-test"
+    assert calls == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_refresh_status_returns_404_for_unknown_run(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -208,7 +360,13 @@ def test_bond_analytics_refresh_returns_409_when_report_date_is_already_inflight
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
-    get_settings.cache_clear()
+    scope_repo = _setup_route_scope_store(tmp_path, monkeypatch)
+    scope_repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="refresh",
+    )
     _seed_bond_snapshot_rows(str(duckdb_path))
 
     GovernanceRepository(base_dir=governance_dir).append(

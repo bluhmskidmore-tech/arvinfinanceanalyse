@@ -50,6 +50,7 @@ AKSHARE_FX_DATE_FIELD_CANDIDATES = ("trade_date", "日期", "date")
 AKSHARE_FX_SOURCE_FIELD_CANDIDATES = ("source_name", "source", "来源")
 
 CHOICE_CURVE_CODES = {
+    # ── 到期收益率（Par Yield）── 已有 ──
     "treasury": {
         "3M": "EMM00166455",
         "6M": "EMM00166456",
@@ -81,6 +82,40 @@ CHOICE_CURVE_CODES = {
         "6Y": "EMM00168470",
         "10Y": "EMM00166661",
     },
+    # ── 即期收益率（Spot / Zero-Coupon）── 中债国债即期收益率曲线 ──
+    "treasury_spot": {
+        "3M": "EMM00166471",
+        "6M": "EMM00166472",
+        "1Y": "EMM00166474",
+        "2Y": "EMM00588706",
+        "3Y": "EMM00166476",
+        "5Y": "EMM00166478",
+        "7Y": "EMM00166480",
+        "10Y": "EMM00166482",
+        "20Y": "EMM00166484",
+        "30Y": "EMM00166485",
+    },
+    # ── 中债政策性金融债即期收益率曲线（国开行）──
+    "cdb_spot": {
+        "6M": "EMM00166507",
+        "1Y": "EMM00166509",
+        "2Y": "EMM00166510",
+        "3Y": "EMM00166511",
+        "5Y": "EMM00166513",
+        "10Y": "EMM00166517",
+        "20Y": "EMM00166519",
+    },
+    # ── Shibor 各期限 ──
+    "shibor": {
+        "ON": "EMM00024825",
+        "1W": "EMM00024826",
+        "2W": "EMM00024827",
+        "1M": "EMM00024828",
+        "3M": "EMM00024829",
+        "6M": "EMM00024830",
+        "9M": "EMM00024831",
+        "1Y": "EMM00024832",
+    },
 }
 
 CHINABOND_GKH_URL = "https://yield.chinabond.com.cn/gkh/yield"
@@ -97,12 +132,18 @@ MIN_OBSERVED_TENORS_BY_TYPE = {
     "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
     "cdb": frozenset({"1Y", "3Y", "5Y", "10Y"}),
     "aaa_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "treasury_spot": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "cdb_spot": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "shibor": frozenset({"ON", "1M", "3M", "1Y"}),
 }
 
 MIN_REQUIRED_TENORS_BY_TYPE = {
     "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
     "cdb": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "10Y", "20Y", "30Y"}),
     "aaa_credit": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y"}),
+    "treasury_spot": frozenset({"1Y", "3Y", "5Y", "10Y", "30Y"}),
+    "cdb_spot": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "shibor": frozenset({"ON", "1M", "3M", "1Y"}),
 }
 
 
@@ -152,7 +193,7 @@ class VendorAdapter(VendorAdapterBase):
             )
         try:
             __import__("akshare")
-        except Exception:
+        except ImportError:
             return VendorPreflightResult(
                 vendor_name=self.vendor_name,
                 ok=False,
@@ -181,6 +222,18 @@ class VendorAdapter(VendorAdapterBase):
     ) -> YieldCurveSnapshot:
         normalized_curve_type = _normalize_curve_type(curve_type)
         normalized_trade_date = date.fromisoformat(str(trade_date)).isoformat()
+
+        # Choice-only series: spot rate curves and Shibor have no AkShare equivalent.
+        if normalized_curve_type in ("treasury_spot", "cdb_spot", "shibor"):
+            snapshot = self._fetch_choice_curve(
+                curve_type=normalized_curve_type,
+                trade_date=normalized_trade_date,
+            )
+            if snapshot is not None:
+                return snapshot
+            raise RuntimeError(
+                f"Choice returned no {normalized_curve_type} curve for trade_date={normalized_trade_date}."
+            )
 
         if normalized_curve_type == "aaa_credit":
             return self._fetch_aaa_credit_curve(normalized_trade_date)
@@ -537,7 +590,7 @@ class VendorAdapter(VendorAdapterBase):
 
 def _normalize_curve_type(curve_type: str) -> str:
     normalized = str(curve_type or "").strip().lower()
-    if normalized not in {"treasury", "cdb", "aaa_credit"}:
+    if normalized not in {"treasury", "cdb", "aaa_credit", "treasury_spot", "cdb_spot", "shibor"}:
         raise ValueError(f"Unsupported curve_type={curve_type!r}")
     return normalized
 
@@ -553,7 +606,7 @@ def _build_points_from_columns(
             continue
         try:
             points.append(YieldCurvePoint(tenor=tenor, rate_pct=Decimal(str(value))))
-        except Exception:
+        except (TypeError, ValueError, ArithmeticError):
             continue
     return points
 

@@ -31,6 +31,19 @@ describe("bondAnalyticsModuleRegistry", () => {
     expect(getBondAnalyticsModuleDefinition("action-attribution")).toEqual(target);
   });
 
+  it("registers the DV01 rate-risk module as a current detail tab", () => {
+    const target = BOND_ANALYTICS_CURRENT_MODULES.find((m) => m.key === "dv01-risk");
+
+    expect(target).toEqual(
+      expect.objectContaining({
+        key: "dv01-risk",
+        label: "DV01 风险",
+      }),
+    );
+    expect(target?.description).toContain("DV01");
+    expect(target?.detailHint).toContain("期限");
+  });
+
   it("falls back to the first current module for an unknown key", () => {
     const fallback = BOND_ANALYTICS_CURRENT_MODULES[0];
     expect(

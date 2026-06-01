@@ -149,6 +149,61 @@ def _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypa
     return duckdb_path, governance_dir, risk_task_mod
 
 
+def _replace_test_risk_tensor_row(
+    *,
+    repo,
+    core_mod,
+    report_date: str,
+    source_version: str,
+    upstream_source_version: str,
+    regulatory_dv01: str = "0.00000000",
+    krd_3y: str = "5.00000000",
+    krd_10y: str = "0.30000000",
+    krd_30y: str = "0.20000000",
+    cs01: str = "0.75000000",
+    portfolio_modified_duration: str = "1.50000000",
+    liquidity_gap_30d_ratio: str = "0.01000000",
+) -> None:
+    tensor = core_mod.PortfolioRiskTensor(
+        report_date=report_date,
+        portfolio_dv01=Decimal("8.00000000"),
+        regulatory_dv01=Decimal(regulatory_dv01),
+        krd_1y=Decimal("1.00000000"),
+        krd_3y=Decimal(krd_3y),
+        krd_5y=Decimal("1.00000000"),
+        krd_7y=Decimal("0.50000000"),
+        krd_10y=Decimal(krd_10y),
+        krd_30y=Decimal(krd_30y),
+        cs01=Decimal(cs01),
+        portfolio_convexity=Decimal("2.50000000"),
+        portfolio_modified_duration=Decimal(portfolio_modified_duration),
+        issuer_concentration_hhi=Decimal("0.50000000"),
+        issuer_top5_weight=Decimal("1.00000000"),
+        asset_cashflow_30d=Decimal("12.00000000"),
+        asset_cashflow_90d=Decimal("12.00000000"),
+        liability_cashflow_30d=Decimal("2.00000000"),
+        liability_cashflow_90d=Decimal("2.00000000"),
+        liquidity_gap_30d=Decimal("10.00000000"),
+        liquidity_gap_90d=Decimal("10.00000000"),
+        liquidity_gap_30d_ratio=Decimal(liquidity_gap_30d_ratio),
+        total_market_value=Decimal("100.00000000"),
+        bond_count=2,
+        quality_flag="ok",
+        warnings=[],
+    )
+    repo.replace_risk_tensor_row(
+        report_date=report_date,
+        tensor=tensor,
+        source_version=source_version,
+        upstream_source_version=upstream_source_version,
+        liability_source_version="",
+        liability_rule_version="",
+        rule_version="rv_risk_tensor_formal_materialize_v2",
+        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+        trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
+    )
+
+
 def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
     service_mod = load_module(
@@ -167,9 +222,14 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v1"
-    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2"
     assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "formal_snapshot"
+    assert payload["result_meta"]["fallback_date"] is None
 
     result = payload["result"]
     assert result["report_date"] == REPORT_DATE
@@ -189,9 +249,37 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     )
     assert result["issuer_top5_weight"]["raw"] == 1.0
     assert isinstance(result["portfolio_dv01"], dict)
+    assert isinstance(result["regulatory_dv01"], dict)
     assert isinstance(result["portfolio_convexity"], dict)
     assert result["portfolio_dv01"]["unit"] == "dv01"
+    assert result["regulatory_dv01"]["unit"] == "dv01"
+    assert result["regulatory_dv01"]["raw"] == result["portfolio_dv01"]["raw"]
     assert result["portfolio_convexity"]["unit"] == "ratio"
+    controls = result["dv01_controls"]
+    assert controls["basis"] == "regulatory_dv01"
+    assert controls["limit_status"] == "pending_configuration"
+    assert controls["approved_limit_dv01"] is None
+    assert controls["limit_usage_ratio"] is None
+    assert controls["volatility_status"] == "pending_market_volatility"
+    assert controls["dominant_krd_bucket"] in {"1Y", "3Y", "5Y", "7Y", "10Y", "30Y"}
+    assert controls["dominant_krd"]["unit"] == "ratio"
+    assert controls["operating_judgement"].startswith("当前监管口径 DV01")
+    assert controls["dominant_krd_bucket"] in controls["operating_judgement"]
+    control_actions = controls["control_actions"]
+    assert [action["key"] for action in control_actions] == [
+        "approved_dv01_limit",
+        "rate_volatility_input",
+        "bucket_sub_limits",
+        "stress_escalation",
+    ]
+    assert all(action["status"] == "required" for action in control_actions)
+    assert controls["stress_scenarios"][0]["shock_bp"]["raw"] == 10.0
+    assert controls["stress_scenarios"][0]["estimated_pnl_impact"]["unit"] == "yuan"
+    assert (
+        Decimal(str(controls["stress_scenarios"][0]["estimated_pnl_impact"]["raw"]))
+        == -Decimal(str(result["regulatory_dv01"]["raw"])) * Decimal("10")
+    )
+    assert "未接入正式限额源" in controls["control_message"]
     assert (
         Decimal(str(result["krd_1y"]["raw"]))
         + Decimal(str(result["krd_3y"]["raw"]))
@@ -206,6 +294,131 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     get_settings.cache_clear()
 
 
+def test_risk_tensor_service_returns_prior_period_change_when_comparable_row_exists(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    core_mod = load_module(
+        "backend.app.core_finance.risk_tensor",
+        "backend/app/core_finance/risk_tensor.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    repo = repo_mod.RiskTensorRepository(str(duckdb_path))
+    previous_report_date = "2026-02-28"
+    _replace_test_risk_tensor_row(
+        repo=repo,
+        core_mod=core_mod,
+        report_date=previous_report_date,
+        source_version="sv_risk_tensor__sv_prev_bond_snap",
+        upstream_source_version="sv_prev_bond_snap",
+    )
+
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "load_latest_bond_analytics_lineage_by_report_date",
+        lambda *, governance_dir: {
+            REPORT_DATE: {"source_version": "sv_bond_snap_1"},
+            previous_report_date: {"source_version": "sv_prev_bond_snap"},
+        },
+    )
+
+    payload = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+
+    prior_change = payload["result"]["prior_period_change"]
+    assert prior_change["status"] == "available"
+    assert prior_change["comparison_report_date"] == previous_report_date
+    assert "较上一报告日 2026-02-28" in prior_change["summary"]
+    assert prior_change["previous_dominant_krd_bucket"] == "3Y"
+    assert prior_change["dominant_krd_shifted"] is True
+    metrics = {metric["key"]: metric for metric in prior_change["metrics"]}
+    assert metrics["regulatory_dv01"]["delta"]["raw"] == (
+        payload["result"]["regulatory_dv01"]["raw"] - 0.0
+    )
+    assert metrics["regulatory_dv01"]["delta_display"].startswith("+")
+    duration_delta = metrics["portfolio_modified_duration"]["delta"]["raw"]
+    assert metrics["portfolio_modified_duration"]["delta_display"] == f"{duration_delta:+,.2f}"
+    assert not metrics["portfolio_modified_duration"]["delta_display"].endswith("%")
+    assert metrics["regulatory_dv01"]["tone"] == "warning"
+    assert metrics["liquidity_gap_30d_ratio"]["tone"] == "good"
+    assert metrics["liquidity_gap_30d_ratio"]["current_display"].endswith("%")
+
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_skips_stale_prior_period_for_change_comparison(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    core_mod = load_module(
+        "backend.app.core_finance.risk_tensor",
+        "backend/app/core_finance/risk_tensor.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    repo = repo_mod.RiskTensorRepository(str(duckdb_path))
+    stale_report_date = "2026-02-28"
+    older_report_date = "2026-01-31"
+    _replace_test_risk_tensor_row(
+        repo=repo,
+        core_mod=core_mod,
+        report_date=stale_report_date,
+        source_version="sv_risk_tensor__sv_stale_bond_snap_old",
+        upstream_source_version="sv_stale_bond_snap_old",
+        regulatory_dv01="1.00000000",
+        portfolio_modified_duration="9.00000000",
+        liquidity_gap_30d_ratio="0.90000000",
+    )
+    _replace_test_risk_tensor_row(
+        repo=repo,
+        core_mod=core_mod,
+        report_date=older_report_date,
+        source_version="sv_risk_tensor__sv_older_bond_snap",
+        upstream_source_version="sv_older_bond_snap",
+        regulatory_dv01="2.00000000",
+        portfolio_modified_duration="1.00000000",
+        liquidity_gap_30d_ratio="0.02000000",
+    )
+
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "load_latest_bond_analytics_lineage_by_report_date",
+        lambda *, governance_dir: {
+            REPORT_DATE: {"source_version": "sv_bond_snap_1"},
+            stale_report_date: {"source_version": "sv_stale_bond_snap_new"},
+            older_report_date: {"source_version": "sv_older_bond_snap"},
+        },
+    )
+
+    payload = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+
+    prior_change = payload["result"]["prior_period_change"]
+    assert prior_change["status"] == "available"
+    assert prior_change["comparison_report_date"] == older_report_date
+    assert stale_report_date not in prior_change["summary"]
+    metrics = {metric["key"]: metric for metric in prior_change["metrics"]}
+    assert metrics["portfolio_modified_duration"]["previous"]["raw"] == 1.0
+    assert metrics["liquidity_gap_30d_ratio"]["previous_display"] == "2.0%"
+
+    get_settings.cache_clear()
+
+
 def test_risk_tensor_service_uses_shared_formal_result_runtime_helper():
     path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "risk_tensor_service.py"
     src = path.read_text(encoding="utf-8")
@@ -213,6 +426,74 @@ def test_risk_tensor_service_uses_shared_formal_result_runtime_helper():
     assert "backend.app.services.formal_result_runtime" in src
     assert "build_formal_result_envelope_from_lineage" in src
     assert "build_formal_result_meta(" not in src
+
+
+def test_risk_tensor_repository_does_not_backfill_missing_regulatory_dv01_from_portfolio(tmp_path):
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "legacy-risk.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+              report_date varchar,
+              portfolio_dv01 decimal(24, 8),
+              krd_1y decimal(24, 8),
+              krd_3y decimal(24, 8),
+              krd_5y decimal(24, 8),
+              krd_7y decimal(24, 8),
+              krd_10y decimal(24, 8),
+              krd_30y decimal(24, 8),
+              cs01 decimal(24, 8),
+              portfolio_convexity decimal(24, 8),
+              portfolio_modified_duration decimal(24, 8),
+              issuer_concentration_hhi decimal(24, 8),
+              issuer_top5_weight decimal(24, 8),
+              liquidity_gap_30d decimal(24, 8),
+              liquidity_gap_90d decimal(24, 8),
+              liquidity_gap_30d_ratio decimal(24, 8),
+              total_market_value decimal(24, 8),
+              bond_count integer,
+              quality_flag varchar,
+              warnings_json varchar,
+              source_version varchar,
+              upstream_source_version varchar,
+              rule_version varchar,
+              cache_version varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_risk_tensor_daily (
+              report_date, portfolio_dv01, krd_1y, krd_3y, krd_5y, krd_7y,
+              krd_10y, krd_30y, cs01, portfolio_convexity, portfolio_modified_duration,
+              issuer_concentration_hhi, issuer_top5_weight, liquidity_gap_30d,
+              liquidity_gap_90d, liquidity_gap_30d_ratio, total_market_value,
+              bond_count, quality_flag, warnings_json, source_version,
+              upstream_source_version, rule_version, cache_version, trace_id
+            ) values (
+              ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100,
+              1, 'ok', '[]', 'sv_legacy', 'sv_bond_snap_1',
+              'rv_risk_tensor_formal_materialize_v2',
+              'cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2',
+              'tr_legacy'
+            )
+            """,
+            [REPORT_DATE, Decimal("12.34")],
+        )
+    finally:
+        conn.close()
+
+    row = repo_mod.RiskTensorRepository(str(duckdb_path)).fetch_risk_tensor_row(REPORT_DATE)
+
+    assert row is not None
+    assert row["portfolio_dv01"] == Decimal("12.34000000")
+    assert row["regulatory_dv01"] is None
 
 
 def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, monkeypatch):
@@ -247,6 +528,36 @@ def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, 
     get_settings.cache_clear()
 
 
+def test_risk_tensor_dates_envelope_wraps_governance_lock_timeout_as_service_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "load_latest_bond_analytics_lineage_by_report_date",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            TimeoutError("Timed out acquiring lock lock:governance:jsonl:test")
+        ),
+    )
+
+    try:
+        service_mod.risk_tensor_dates_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "Risk tensor lineage store is temporarily unavailable."
+    else:
+        raise AssertionError("Expected RuntimeError for governance lock timeout")
+
+    get_settings.cache_clear()
+
+
 def test_risk_tensor_dates_envelope_falls_back_to_upstream_source_version_when_manifest_missing(
     tmp_path,
     monkeypatch,
@@ -262,12 +573,48 @@ def test_risk_tensor_dates_envelope_falls_back_to_upstream_source_version_when_m
         "resolve_formal_manifest_lineage",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("missing manifest")),
     )
-    monkeypatch.setattr(
-        service_mod,
-        "load_latest_bond_analytics_lineage",
-        lambda **_kwargs: {
-            "source_version": "sv_bond_analytics_fallback",
-        },
+
+    payload = service_mod.risk_tensor_dates_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
+    assert payload["result_meta"]["rule_version"] == service_mod.RULE_VERSION
+    assert payload["result_meta"]["cache_version"] == service_mod.CACHE_VERSION
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_dates_envelope_blocks_stale_report_dates(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set source_version = ?
+            where report_date = ?
+              and instrument_code = 'CB-001'
+            """,
+            ["sv_bond_snap_2", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    bond_task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    bond_task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
     )
 
     payload = service_mod.risk_tensor_dates_envelope(
@@ -275,10 +622,13 @@ def test_risk_tensor_dates_envelope_falls_back_to_upstream_source_version_when_m
         governance_dir=str(governance_dir),
     )
 
-    assert payload["result_meta"]["source_version"] == "sv_bond_analytics_fallback"
-    assert payload["result_meta"]["rule_version"] == service_mod.RULE_VERSION
-    assert payload["result_meta"]["cache_version"] == service_mod.CACHE_VERSION
-    assert payload["result"]["report_dates"] == [REPORT_DATE]
+    assert payload["result"]["report_dates"] == []
+    assert payload["result"]["blocked_report_dates"] == [
+        {
+            "report_date": REPORT_DATE,
+            "reason": f"Risk tensor stale against bond analytics lineage for report_date={REPORT_DATE}.",
+        }
+    ]
     get_settings.cache_clear()
 
 
@@ -395,7 +745,11 @@ def test_risk_tensor_service_returns_non_empty_degraded_tensor_when_materialized
     assert result["bond_count"] == 3
     assert result["quality_flag"] == "warning"
     assert Decimal(str(result["portfolio_dv01"]["raw"])) > Decimal("0")
-    assert any("Unsupported tenor buckets" in warning for warning in result["warnings"])
+    assert result["duration_excluded_count"] >= 1
+    assert result["duration_excluded_market_value"]["raw"] > 0
+    assert result["rate_risk_market_value"]["raw"] < result["total_market_value"]["raw"]
+    assert result["rate_risk_modified_duration"]["raw"] == result["portfolio_modified_duration"]["raw"]
+    assert any("Non-standard tenor buckets remapped" in warning for warning in result["warnings"])
     assert any("without maturity_date" in warning for warning in result["warnings"])
 
     get_settings.cache_clear()

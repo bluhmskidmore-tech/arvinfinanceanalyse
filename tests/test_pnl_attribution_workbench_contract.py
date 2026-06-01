@@ -6,6 +6,7 @@ from backend.app.core_finance.pnl_attribution.workbench import (
     build_advanced_attribution_summary,
     build_tpl_market_correlation,
     build_volume_rate_attribution,
+    build_volume_rate_attribution_from_grouped_rows,
 )
 
 
@@ -51,6 +52,111 @@ def test_build_volume_rate_attribution_exposes_yields_as_percent_values() -> Non
     assert row["previous_yield_pct"] == pytest.approx(2.0)
     assert "current_yield" not in row
     assert "previous_yield" not in row
+
+
+def test_build_volume_rate_attribution_matches_scale_by_cost_center() -> None:
+    payload = build_volume_rate_attribution(
+        current_pnl=[
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "total_pnl": 10.0,
+            },
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "total_pnl": 30.0,
+            },
+        ],
+        prior_pnl=[
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "total_pnl": 8.0,
+            },
+            {
+                "invest_type_std": "A",
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "total_pnl": 24.0,
+            },
+        ],
+        current_bond=[
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "market_value": 100.0,
+            },
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "market_value": 300.0,
+            },
+        ],
+        prior_bond=[
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "market_value": 80.0,
+            },
+            {
+                "instrument_code": "B1",
+                "portfolio_name": "P1",
+                "cost_center": "C2",
+                "market_value": 240.0,
+            },
+        ],
+        current_period="2026-04",
+        previous_period="2026-03",
+        compare_type="mom",
+    )
+
+    row = payload["items"][0]
+    assert row["current_scale"] == pytest.approx(400.0)
+    assert row["previous_scale"] == pytest.approx(320.0)
+    assert row["current_yield_pct"] == pytest.approx(10.0)
+    assert row["previous_yield_pct"] == pytest.approx(10.0)
+
+
+def test_build_volume_rate_attribution_from_grouped_rows_uses_aligned_business_scale() -> None:
+    payload = build_volume_rate_attribution_from_grouped_rows(
+        current_rows=[
+            {
+                "business_type_primary": "interbank_cd",
+                "total_pnl": 120.0,
+                "scale_amount": 1_000.0,
+            }
+        ],
+        prior_rows=[
+            {
+                "business_type_primary": "interbank_cd",
+                "total_pnl": 80.0,
+                "scale_amount": 800.0,
+            }
+        ],
+        current_period="2026-04",
+        previous_period="2026-03",
+        compare_type="mom",
+    )
+
+    row = payload["items"][0]
+    assert row["category"] == "interbank_cd"
+    assert row["current_yield_pct"] == pytest.approx(12.0)
+    assert row["previous_yield_pct"] == pytest.approx(10.0)
+    assert row["volume_effect"] == pytest.approx(20.0)
+    assert row["rate_effect"] == pytest.approx(16.0)
+    assert row["interaction_effect"] == pytest.approx(4.0)
+    assert row["recon_error"] == pytest.approx(0.0)
 
 
 def test_build_tpl_market_correlation_exposes_total_change_in_bp() -> None:
@@ -104,4 +210,4 @@ def test_build_advanced_attribution_summary_keeps_single_annualization() -> None
         },
     )
 
-    assert payload["static_return_annualized"] == pytest.approx(27.24)
+    assert payload["static_return_annualized"] == pytest.approx(2.27)

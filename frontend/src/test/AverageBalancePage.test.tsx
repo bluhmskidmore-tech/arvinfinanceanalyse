@@ -31,7 +31,7 @@ describe("AverageBalancePage", () => {
     renderPage();
 
     expect(await screen.findByTestId("average-balance-page")).toBeInTheDocument();
-    expect(screen.getByTestId("average-balance-page-title")).toHaveTextContent("日均管理");
+    expect(screen.getByTestId("average-balance-page-title")).toHaveTextContent("日均分析");
     expect(screen.queryByRole("heading", { name: "ADB Analytical View" })).not.toBeInTheDocument();
   });
 });

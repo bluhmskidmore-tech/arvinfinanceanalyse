@@ -5,24 +5,31 @@ Reuses `read_models` aggregators where applicable (iron rule: no duplicate bucke
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
-from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_FVTPL
 
 from backend.app.core_finance.bond_analytics.read_models import (
-    build_asset_class_risk_summary,
     build_krd_distribution,
     summarize_portfolio_risk,
 )
+from backend.app.core_finance.bond_analytics.common import (
+    build_curve_points,
+    build_full_curve,
+    interpolate_rate,
+)
 
 CompareType = Literal["mom", "yoy"]
+PositionKey = tuple[str, str, str]
 DATA_FALLBACK_MSG = "数据尚未物化，当前展示空白结构。"
 
 
-def _f(x: object | None) -> float:
+def _f(x: object | None, _field_hint: str = "") -> float:
     if x is None:
         return 0.0
     if isinstance(x, Decimal):
@@ -30,6 +37,12 @@ def _f(x: object | None) -> float:
     try:
         return float(x)
     except (TypeError, ValueError):
+        logger.warning(
+            "_f: cannot convert %r (type=%s) to float%s, using 0.0",
+            x,
+            type(x).__name__,
+            f" [field={_field_hint}]" if _field_hint else "",
+        )
         return 0.0
 
 
@@ -64,81 +77,59 @@ def _category_type_for_invest(inv: str) -> str:
     return "asset"
 
 
-def mv_index(bond_rows: list[dict[str, Any]]) -> dict[tuple[str, str], float]:
-    out: dict[tuple[str, str], float] = defaultdict(float)
+def position_key(row: dict[str, Any]) -> PositionKey:
+    return (
+        str(row.get("instrument_code") or ""),
+        str(row.get("portfolio_name") or ""),
+        str(row.get("cost_center") or ""),
+    )
+
+
+def mv_index(bond_rows: list[dict[str, Any]]) -> dict[PositionKey, float]:
+    out: dict[PositionKey, float] = defaultdict(float)
     for r in bond_rows:
-        k = (str(r.get("instrument_code") or ""), str(r.get("portfolio_name") or ""))
-        out[k] += _f(r.get("market_value"))
+        out[position_key(r)] += _f(r.get("market_value"))
     return dict(out)
 
 
 def _aggregate_scale_pnl_by_group(
     pnl_rows: list[dict[str, Any]],
-    mv_by_key: dict[tuple[str, str], float],
+    mv_by_key: dict[PositionKey, float],
     group_field: str = "invest_type_std",
 ) -> dict[str, dict[str, float]]:
     agg: dict[str, dict[str, float]] = defaultdict(lambda: {"pnl": 0.0, "scale": 0.0})
     for r in pnl_rows:
         g = str(r.get(group_field) or "未分类")
-        k = (str(r.get("instrument_code") or ""), str(r.get("portfolio_name") or ""))
-        mv = mv_by_key.get(k, 0.0)
+        mv = mv_by_key.get(position_key(r), 0.0)
         agg[g]["pnl"] += _f(r.get("total_pnl"))
         agg[g]["scale"] += mv
     return dict(agg)
 
 
-def _treasury_10y_pct(curve: dict[str, Decimal]) -> float | None:
-    for key in ("10Y", "10y", "10"):
-        if key in curve:
-            return float(curve[key])
-    return None
-
-
-def _tenor_bucket_mid_years(tenor: str) -> float:
-    t = (tenor or "").strip().upper().replace(" ", "")
-    fixed = {"1Y": 1.0, "2Y": 2.0, "3Y": 3.0, "5Y": 5.0, "7Y": 7.0, "10Y": 10.0, "20Y": 20.0, "30Y": 30.0}
-    if t in fixed:
-        return fixed[t]
-    if "-" in t and t.endswith("Y"):
-        body = t[:-1]
-        parts = body.split("-")
-        if len(parts) == 2:
-            try:
-                return (float(parts[0]) + float(parts[1])) / 2.0
-            except ValueError:
-                pass
-    return 5.0
-
-
-def _weighted_ytm_decimal(rows: list[dict[str, Any]]) -> float | None:
-    num = sum(_f(r.get("market_value")) * _f(r.get("ytm")) for r in rows)
-    den = sum(_f(r.get("market_value")) for r in rows)
-    if den <= 0:
-        return None
-    return num / den
-
-
-def _rows_for_bucket(all_rows: list[dict[str, Any]], tenor_bucket: str) -> list[dict[str, Any]]:
-    return [r for r in all_rows if str(r.get("tenor_bucket") or "") == tenor_bucket]
-
-
-def build_volume_rate_attribution(
+def _aggregate_pnl_scale_rows_by_group(
+    rows: list[dict[str, Any]],
     *,
-    current_pnl: list[dict[str, Any]],
-    prior_pnl: list[dict[str, Any]] | None,
-    current_bond: list[dict[str, Any]],
-    prior_bond: list[dict[str, Any]] | None,
+    group_field: str,
+    pnl_field: str,
+    scale_field: str,
+) -> dict[str, dict[str, float]]:
+    agg: dict[str, dict[str, float]] = defaultdict(lambda: {"pnl": 0.0, "scale": 0.0})
+    for r in rows:
+        g = str(r.get(group_field) or r.get("business_type") or r.get("invest_type_std") or "Unclassified")
+        agg[g]["pnl"] += _f(r.get(pnl_field), pnl_field)
+        agg[g]["scale"] += _f(r.get(scale_field), scale_field)
+    return dict(agg)
+
+
+def _build_volume_rate_from_group_aggregates(
+    *,
+    cur: dict[str, dict[str, float]],
+    prev: dict[str, dict[str, float]],
+    has_prior: bool,
     current_period: str,
     previous_period: str,
     compare_type: CompareType,
 ) -> dict[str, Any]:
-    """Two-period volume / rate / interaction on scale×yield proxy (PnL FI + bond MV)."""
-    mv_c = mv_index(current_bond)
-    cur = _aggregate_scale_pnl_by_group(current_pnl, mv_c)
-    has_prior = bool(prior_pnl and prior_bond)
-    mv_p = mv_index(prior_bond) if has_prior else {}
-    prev = _aggregate_scale_pnl_by_group(prior_pnl or [], mv_p) if has_prior else {}
-
     items: list[dict[str, Any]] = []
     categories = sorted(set(cur) | set(prev))
     total_cur_pnl = sum(v["pnl"] for v in cur.values())
@@ -217,6 +208,131 @@ def build_volume_rate_attribution(
         "items": items,
         "has_previous_data": has_prior,
     }
+
+
+def _treasury_10y_pct(curve: dict[str, Decimal]) -> float | None:
+    for key in ("10Y", "10y", "10"):
+        if key in curve:
+            return float(curve[key])
+    return None
+
+
+def _tenor_bucket_mid_years(tenor: str) -> float:
+    t = (tenor or "").strip().upper().replace(" ", "")
+    fixed = {"1Y": 1.0, "2Y": 2.0, "3Y": 3.0, "5Y": 5.0, "7Y": 7.0, "10Y": 10.0, "20Y": 20.0, "30Y": 30.0}
+    if t in fixed:
+        return fixed[t]
+    if "-" in t and t.endswith("Y"):
+        body = t[:-1]
+        parts = body.split("-")
+        if len(parts) == 2:
+            try:
+                return (float(parts[0]) + float(parts[1])) / 2.0
+            except ValueError:
+                pass
+    return 5.0
+
+
+def _weighted_ytm_float(rows: list[dict[str, Any]]) -> float | None:
+    """Market-value-weighted average YTM; returns float (not Decimal) or None if no MV."""
+    num = sum(_f(r.get("market_value")) * _f(r.get("ytm")) for r in rows)
+    den = sum(_f(r.get("market_value")) for r in rows)
+    if den <= 0:
+        return None
+    return num / den
+
+
+# Legacy alias — remove once all callers are updated.
+_weighted_ytm_decimal = _weighted_ytm_float  # backward-compat alias — remove after all callers migrated
+
+
+def _curve_rate_pct(points: list[tuple[float, Decimal]], target_years: float) -> float:
+    return float(interpolate_rate(points, max(0.0, target_years)))
+
+
+def _roll_down_slope_bp(
+    row: dict[str, Any],
+    curve_points: list[tuple[float, Decimal]] | None,
+) -> float | None:
+    if not curve_points:
+        return None
+    years = _f(row.get("years_to_maturity"))
+    if years <= 0:
+        return None
+    rolled_years = max(0.0, years - 1.0)
+    current_rate = _curve_rate_pct(curve_points, years)
+    rolled_rate = _curve_rate_pct(curve_points, rolled_years)
+    return (current_rate - rolled_rate) * 100.0
+
+
+def _rows_for_bucket(all_rows: list[dict[str, Any]], tenor_bucket: str) -> list[dict[str, Any]]:
+    return [r for r in all_rows if str(r.get("tenor_bucket") or "") == tenor_bucket]
+
+
+def build_volume_rate_attribution(
+    *,
+    current_pnl: list[dict[str, Any]],
+    prior_pnl: list[dict[str, Any]] | None,
+    current_bond: list[dict[str, Any]],
+    prior_bond: list[dict[str, Any]] | None,
+    current_period: str,
+    previous_period: str,
+    compare_type: CompareType,
+) -> dict[str, Any]:
+    """Two-period volume / rate / interaction on scale×yield proxy (PnL FI + bond MV)."""
+    mv_c = mv_index(current_bond)
+    cur = _aggregate_scale_pnl_by_group(current_pnl, mv_c)
+    has_prior = bool(prior_pnl and prior_bond)
+    mv_p = mv_index(prior_bond) if has_prior else {}
+    prev = _aggregate_scale_pnl_by_group(prior_pnl or [], mv_p) if has_prior else {}
+
+    return _build_volume_rate_from_group_aggregates(
+        cur=cur,
+        prev=prev,
+        has_prior=has_prior,
+        current_period=current_period,
+        previous_period=previous_period,
+        compare_type=compare_type,
+    )
+
+
+def build_volume_rate_attribution_from_grouped_rows(
+    *,
+    current_rows: list[dict[str, Any]],
+    prior_rows: list[dict[str, Any]] | None,
+    current_period: str,
+    previous_period: str,
+    compare_type: CompareType,
+    group_field: str = "business_type_primary",
+    pnl_field: str = "total_pnl",
+    scale_field: str = "scale_amount",
+) -> dict[str, Any]:
+    """Two-period attribution when PnL and scale are already aligned by business group."""
+    cur = _aggregate_pnl_scale_rows_by_group(
+        current_rows,
+        group_field=group_field,
+        pnl_field=pnl_field,
+        scale_field=scale_field,
+    )
+    has_prior = bool(prior_rows)
+    prev = (
+        _aggregate_pnl_scale_rows_by_group(
+            prior_rows or [],
+            group_field=group_field,
+            pnl_field=pnl_field,
+            scale_field=scale_field,
+        )
+        if has_prior
+        else {}
+    )
+    return _build_volume_rate_from_group_aggregates(
+        cur=cur,
+        prev=prev,
+        has_prior=has_prior,
+        current_period=current_period,
+        previous_period=previous_period,
+        compare_type=compare_type,
+    )
 
 
 def build_tpl_market_correlation(
@@ -395,6 +511,7 @@ def build_carry_roll_down(
     bond_rows: list[dict[str, Any]],
     ftp_rate_pct: float,
     curve_slope_bp: float | None,
+    treasury_curve: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     """Grouped by asset_class_std; uses read-model-style weights from rows."""
     if not bond_rows:
@@ -420,6 +537,11 @@ def build_carry_roll_down(
     port_carry = port_roll = port_static = 0.0
     t_carry_pnl = t_roll_pnl = t_static_pnl = 0.0
     slope = curve_slope_bp if curve_slope_bp is not None else 0.0
+    curve_points = (
+        build_curve_points(build_full_curve(treasury_curve))
+        if treasury_curve
+        else None
+    )
 
     for ac, rows in sorted(by_ac.items()):
         mv = sum(_f(r.get("market_value")) for r in rows)
@@ -428,7 +550,7 @@ def build_carry_roll_down(
         den = mv
         coupon_dec = (num_c / den) if den > 0 else 0.0
         coupon_pct = coupon_dec * 100.0
-        ytm_dec = _weighted_ytm_decimal(rows)
+        ytm_dec = _weighted_ytm_float(rows)
         ytm_pct = ytm_dec * 100.0 if ytm_dec is not None else None
         num_d = sum(_f(r.get("market_value")) * _f(r.get("modified_duration")) for r in rows)
         dur = (num_d / den) if den > 0 else 0.0
@@ -436,7 +558,25 @@ def build_carry_roll_down(
         carry_pct = coupon_pct - funding
         carry_dec = carry_pct / 100.0
         carry_pnl = mv * carry_dec / 12.0
-        rolldown_pct = (slope / 100.0) * dur * -1.0
+        roll_num = 0.0
+        roll_den = 0.0
+        slope_num = 0.0
+        slope_den = 0.0
+        for r in rows:
+            row_mv = _f(r.get("market_value"))
+            if row_mv <= 0:
+                continue
+            row_dur = _f(r.get("modified_duration"))
+            row_slope = _roll_down_slope_bp(r, curve_points)
+            if row_slope is None:
+                row_slope = slope if curve_slope_bp is not None else 0.0
+            row_rolldown_pct = (row_slope / 100.0) * row_dur
+            roll_num += row_rolldown_pct * row_mv
+            roll_den += row_mv
+            slope_num += row_slope * row_mv
+            slope_den += row_mv
+        rolldown_pct = (roll_num / roll_den) if roll_den > 0 else 0.0
+        display_slope = (slope_num / slope_den) if slope_den > 0 else slope
         rolldown_pnl = mv * (rolldown_pct / 100.0) / 12.0
         static_pct = carry_pct + rolldown_pct
         static_pnl = carry_pnl + rolldown_pnl
@@ -459,7 +599,7 @@ def build_carry_roll_down(
                 "carry": round(carry_pct, 4),
                 "carry_pnl": round(carry_pnl, 4),
                 "duration": round(dur, 4),
-                "curve_slope": round(slope, 4) if curve_slope_bp is not None else None,
+                "curve_slope": round(display_slope, 4) if slope_den > 0 or curve_slope_bp is not None else None,
                 "rolldown": round(rolldown_pct, 4),
                 "rolldown_pnl": round(rolldown_pnl, 4),
                 "static_return": round(static_pct, 4),
@@ -503,8 +643,8 @@ def build_spread_attribution(
     dt_dec = (dt_pct / 100.0) if dt_pct is not None else None
     d_bp = (dt_pct * 100.0) if dt_pct is not None else None
 
-    y_end = _weighted_ytm_decimal(bond_rows_end)
-    y_start = _weighted_ytm_decimal(bond_rows_start)
+    y_end = _weighted_ytm_float(bond_rows_end)
+    y_start = _weighted_ytm_float(bond_rows_start)
     dy_bond_dec = (y_end - y_start) if y_end is not None and y_start is not None else None
     spread_chg_dec = (
         (dy_bond_dec - dt_dec) if dy_bond_dec is not None and dt_dec is not None else None
@@ -525,8 +665,8 @@ def build_spread_attribution(
         w = (mv / total_mv * 100.0) if total_mv > 0 else 0.0
         num_d = sum(_f(r.get("market_value")) * _f(r.get("modified_duration")) for r in rows_e)
         dur = (num_d / mv) if mv > 0 else 0.0
-        ye = _weighted_ytm_decimal(rows_e)
-        ys = _weighted_ytm_decimal(by_ac_s.get(ac, []))
+        ye = _weighted_ytm_float(rows_e)
+        ys = _weighted_ytm_float(by_ac_s.get(ac, []))
         ychg = ((ye - ys) * 10000.0) if ye is not None and ys is not None else None
         tchg_bp = (dt_pct * 100.0) if dt_pct is not None else None
         schg_bp = (
@@ -619,8 +759,8 @@ def build_krd_attribution(
         w = (mv / total_mv * 100.0) if total_mv > 0 else 0.0
         krd = float(b["krd"])
         rows_s = by_bucket_start.get(tenor, [])
-        ye = _weighted_ytm_decimal(_rows_for_bucket(bond_rows_end, tenor))
-        ys = _weighted_ytm_decimal(rows_s)
+        ye = _weighted_ytm_float(_rows_for_bucket(bond_rows_end, tenor))
+        ys = _weighted_ytm_float(rows_s)
         ychg = ((ye - ys) * 10000.0) if ye is not None and ys is not None else None
         contrib = -mv * krd * (shift_bp / 10000.0)
         total_dur_eff += contrib
@@ -682,7 +822,7 @@ def build_advanced_attribution_summary(
         "report_date": report_date,
         "portfolio_carry": float(carry_payload.get("portfolio_carry") or 0.0),
         "portfolio_rolldown": float(carry_payload.get("portfolio_rolldown") or 0.0),
-        "static_return_annualized": float(carry_payload.get("portfolio_static_return") or 0.0) * 12.0,
+        "static_return_annualized": float(carry_payload.get("portfolio_static_return") or 0.0),
         "treasury_effect_total": float(spread_payload.get("total_treasury_effect") or 0.0),
         "spread_effect_total": float(spread_payload.get("total_spread_effect") or 0.0),
         "spread_driver": str(spread_payload.get("primary_driver") or "unknown"),
@@ -692,113 +832,4 @@ def build_advanced_attribution_summary(
             "Carry / 骑乘与利差分解见高级归因各子图。",
             f"利差主导项归类为 {spread_payload.get('primary_driver') or 'unknown'}。",
         ],
-    }
-
-
-def build_campisi_attribution(
-    *,
-    report_date: str,
-    period_start: str,
-    period_end: str,
-    bond_rows: list[dict[str, Any]],
-    treasury_dy_decimal: float | None,
-) -> dict[str, Any]:
-    """Campisi-style split using `build_asset_class_risk_summary` buckets; selection as residual."""
-    if not bond_rows:
-        num_days_empty = 0
-        if period_start and period_end:
-            num_days_empty = max(
-                0,
-                (date.fromisoformat(period_end) - date.fromisoformat(period_start)).days + 1,
-            )
-        return {
-            "report_date": report_date,
-            "period_start": period_start,
-            "period_end": period_end,
-            "num_days": num_days_empty,
-            "total_market_value": 0.0,
-            "total_return": 0.0,
-            "total_return_pct": 0.0,
-            "total_income": 0.0,
-            "total_treasury_effect": 0.0,
-            "total_spread_effect": 0.0,
-            "total_selection_effect": 0.0,
-            "income_contribution_pct": 0.0,
-            "treasury_contribution_pct": 0.0,
-            "spread_contribution_pct": 0.0,
-            "selection_contribution_pct": 0.0,
-            "primary_driver": "unknown",
-            "interpretation": "缺债券持仓事实，Campisi 分解为空。",
-            "items": [],
-        }
-
-    days = max(1, (date.fromisoformat(period_end) - date.fromisoformat(period_start)).days + 1)
-    dy = treasury_dy_decimal if treasury_dy_decimal is not None else 0.0
-    summaries = build_asset_class_risk_summary(bond_rows)
-    total_mv = sum(float(s["market_value"]) for s in summaries)
-    items: list[dict[str, Any]] = []
-    tot_inc = tot_t = tot_s = tot_sel = 0.0
-    for s in summaries:
-        ac = str(s["asset_class"])
-        mv = float(s["market_value"])
-        d = float(s["duration"])
-        w = float(s["weight"]) * 100.0 if s.get("weight") is not None else (mv / total_mv * 100.0 if total_mv else 0.0)
-        rows = [r for r in bond_rows if str(r.get("asset_class_std") or "") == ac]
-        coupon_dec = (
-            sum(_f(r.get("market_value")) * _f(r.get("coupon_rate")) for r in rows) / mv if mv > 0 else 0.0
-        )
-        income = mv * coupon_dec * (days / 365.0)
-        tre = -mv * d * dy
-        spread = -mv * d * (0.0)
-        total_ret = income + tre + spread
-        sel = 0.0
-        tot_inc += income
-        tot_t += tre
-        tot_s += spread
-        tot_sel += sel
-        items.append(
-            {
-                "category": ac,
-                "market_value": mv,
-                "weight": round(w, 4),
-                "total_return": round(total_ret, 4),
-                "total_return_pct": round((total_ret / mv * 100.0) if mv else 0.0, 4),
-                "income_return": round(income, 4),
-                "income_return_pct": round((income / total_ret * 100.0) if total_ret else 0.0, 4),
-                "treasury_effect": round(tre, 4),
-                "treasury_effect_pct": round((tre / total_ret * 100.0) if total_ret else 0.0, 4),
-                "spread_effect": round(spread, 4),
-                "spread_effect_pct": round((spread / total_ret * 100.0) if total_ret else 0.0, 4),
-                "selection_effect": round(sel, 4),
-                "selection_effect_pct": 0.0,
-            }
-        )
-
-    total_return = tot_inc + tot_t + tot_s + tot_sel
-
-    def _share(part: float) -> float:
-        return (part / total_return * 100.0) if total_return else 0.0
-
-    parts = [("income", tot_inc), ("treasury", tot_t), ("spread", tot_s), ("selection", tot_sel)]
-    primary = max(parts, key=lambda x: abs(x[1]))[0]
-
-    return {
-        "report_date": report_date,
-        "period_start": period_start,
-        "period_end": period_end,
-        "num_days": days,
-        "total_market_value": total_mv,
-        "total_return": round(total_return, 4),
-        "total_return_pct": round((total_return / total_mv * 100.0) if total_mv else 0.0, 4),
-        "total_income": round(tot_inc, 4),
-        "total_treasury_effect": round(tot_t, 4),
-        "total_spread_effect": round(tot_s, 4),
-        "total_selection_effect": round(tot_sel, 4),
-        "income_contribution_pct": round(_share(tot_inc), 4),
-        "treasury_contribution_pct": round(_share(tot_t), 4),
-        "spread_contribution_pct": round(_share(tot_s), 4),
-        "selection_contribution_pct": round(_share(tot_sel), 4),
-        "primary_driver": primary,
-        "interpretation": "Campisi 四效应为收入、国债平移、利差与选择（此处利差/选择按简化残差框架可扩展）。",
-        "items": items,
     }

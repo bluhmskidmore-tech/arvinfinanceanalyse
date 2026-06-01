@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import duckdb
+
 from backend.app.duckdb_schema_bootstrap import upgrade_duckdb_schema_head
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
 from backend.app.repositories.legacy_catalog_seed import register_legacy_seed
+from backend.app.repositories.research_calendar_catalog_seed import (
+    register_research_calendar_v1_catalog_descriptors,
+)
 from backend.app.repositories.tushare_catalog_seed import register_tushare_m2a_catalog_descriptors
 
 
 def run_external_data_catalog_seed_once() -> dict[str, int | str]:
-    """Apply DuckDB head migrations, then upsert Tushare + legacy catalog entries."""
+    """Apply DuckDB head migrations, then upsert Tushare + research-calendar + legacy catalog entries."""
     upgrade_duckdb_schema_head()
     settings = get_settings()
     path = str(settings.duckdb_path)
@@ -19,7 +23,8 @@ def run_external_data_catalog_seed_once() -> dict[str, int | str]:
     try:
         repo = ExternalDataCatalogRepository(conn=conn)
         t = register_tushare_m2a_catalog_descriptors(repo)
+        rc = register_research_calendar_v1_catalog_descriptors(repo)
         leg = register_legacy_seed(repo)
     finally:
         conn.close()
-    return {"tushare_m2a": t, "legacy": leg, "duckdb_path": path}
+    return {"tushare_m2a": t, "research_calendar": rc, "legacy": leg, "duckdb_path": path}

@@ -1,0 +1,90 @@
+.card {
+  min-height: 104px;
+  padding: 9px 11px 8px;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  overflow: hidden;
+  background: var(--sa-dh-card, #ffffff);
+  border: 1px solid var(--sa-dh-line-soft, #eef2f7);
+  border-radius: 8px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.06);
+  transition:
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.card:hover {
+  border-color: rgba(24, 80, 161, 0.28);
+  box-shadow:
+    0 2px 4px rgba(15, 23, 42, 0.06),
+    0 12px 32px rgba(15, 23, 42, 0.1);
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  color: var(--sa-dh-ink-2, #2c3e5a);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.top > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.value {
+  margin-top: 8px;
+  color: var(--sa-dh-ink, #0c1c33);
+  font-size: 17px;
+  font-weight: 850;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sa-font-tabular, var(--moss-font-mono), monospace);
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -0.01em;
+}
+
+.delta {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deltaUp {
+  color: var(--sa-dh-red, #b94743);
+}
+
+.deltaDown {
+  color: var(--sa-dh-green, #1f7a55);
+}
+
+.deltaFlat {
+  color: var(--sa-dh-muted, #6b7d95);
+}
+
+.spark {
+  width: 100%;
+  height: 28px;
+  align-self: end;
+  margin-top: 4px;
+}
+
+.sparkPlaceholder {
+  width: 100%;
+  height: 28px;
+  align-self: end;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(24, 80, 161, 0.06), rgba(24, 80, 161, 0.02));
+}

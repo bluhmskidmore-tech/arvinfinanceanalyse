@@ -4,7 +4,7 @@ Mirrors the structure of `tests.test_macro_vendor_preflight` for the akshare ada
 - vendor_name is declared
 - fetch_snapshot returns a typed VendorSnapshot with the right vendor_name
 - preflight reports the three documented branches
-  (no token / token but no tushare package / token + tushare importable)
+  plus the settings-token fallback branch.
 """
 
 from __future__ import annotations
@@ -19,6 +19,11 @@ _ADAPTER_RELATIVE_PATH = "backend/app/repositories/tushare_adapter.py"
 _SCHEMA_MODULE_NAME = "backend.app.schemas.vendor"
 _SCHEMA_RELATIVE_PATH = "backend/app/schemas/vendor.py"
 _TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
+
+
+class _Cfg:
+    def __init__(self, tushare_token: str = ""):
+        self.tushare_token = tushare_token
 
 
 def _load_adapter_module():
@@ -51,6 +56,7 @@ def test_tushare_preflight_reports_missing_config_when_token_absent(monkeypatch)
     module = _load_adapter_module()
 
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
+    monkeypatch.setattr(module, "_load_settings_for_token_fallback", lambda: _Cfg())
 
     result = module.VendorAdapter().preflight()
 
@@ -66,6 +72,7 @@ def test_tushare_preflight_reports_missing_config_when_local_import_unavailable(
     module = _load_adapter_module()
 
     monkeypatch.setenv(_TOKEN_ENV, "test-token")
+    monkeypatch.setattr(module, "_load_settings_for_token_fallback", lambda: _Cfg())
     real_import = builtins.__import__
 
     def _fake_import(name, *args, **kwargs):
@@ -86,6 +93,28 @@ def test_tushare_preflight_ok_when_token_and_import_available(monkeypatch):
     module = _load_adapter_module()
 
     monkeypatch.setenv(_TOKEN_ENV, "test-token")
+    monkeypatch.setattr(module, "_load_settings_for_token_fallback", lambda: _Cfg())
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "tushare":
+            return object()
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    result = module.VendorAdapter().preflight()
+
+    assert result.ok is True
+    assert result.status == "config_present"
+    assert result.supports_live_fetch is True
+
+
+def test_tushare_preflight_ok_when_settings_token_and_import_available(monkeypatch):
+    module = _load_adapter_module()
+
+    monkeypatch.delenv(_TOKEN_ENV, raising=False)
+    monkeypatch.setattr(module, "_load_settings_for_token_fallback", lambda: _Cfg("settings-token"))
     real_import = builtins.__import__
 
     def _fake_import(name, *args, **kwargs):

@@ -3,29 +3,56 @@ from __future__ import annotations
 import pytest
 
 from backend.app.governance.settings import Settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.security.auth_stub import AuthContext, ensure_user_allowed, get_auth_context
 
 
-def test_get_auth_context_prefers_headers_over_env(monkeypatch):
-    monkeypatch.setenv("MOSS_USER_ID", "env-user")
-    monkeypatch.setenv("MOSS_USER_ROLE", "ops")
+def test_get_auth_context_defaults_to_anonymous_viewer(monkeypatch):
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
 
-    ctx = get_auth_context(x_user_id="header-user", x_user_role="reviewer")
+    ctx = get_auth_context()
 
-    assert ctx.user_id == "header-user"
-    assert ctx.role == "reviewer"
-    assert ctx.identity_source == "header"
+    assert ctx.user_id == "anonymous"
+    assert ctx.role == "viewer"
+    assert ctx.identity_source == "fallback"
 
 
 def test_get_auth_context_uses_env_when_headers_missing(monkeypatch):
     monkeypatch.setenv("MOSS_USER_ID", "env-user")
     monkeypatch.setenv("MOSS_USER_ROLE", "ops")
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
 
     ctx = get_auth_context()
 
     assert ctx.user_id == "env-user"
     assert ctx.role == "ops"
     assert ctx.identity_source == "env"
+
+
+def test_get_auth_context_ignores_role_header_by_default(monkeypatch):
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+
+    ctx = get_auth_context(x_user_id="header-user", x_user_role="reviewer")
+
+    assert ctx.user_id == "anonymous"
+    assert ctx.role == "viewer"
+    assert ctx.identity_source == "fallback"
+
+
+def test_get_auth_context_accepts_user_and_role_headers_only_when_enabled(monkeypatch):
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+
+    ctx = get_auth_context(x_user_id="header-user", x_user_role="reviewer")
+
+    assert ctx.user_id == "header-user"
+    assert ctx.role == "reviewer"
+    assert ctx.identity_source == "header"
 
 
 def test_ensure_user_allowed_raises_runtime_error_when_scope_store_is_unavailable(monkeypatch):

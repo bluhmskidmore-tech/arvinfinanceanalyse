@@ -1,0 +1,371 @@
+{
+  "sample_id": "GS-LEDGER-PNL-FIN-IND-202603-B",
+  "sample_status": "contract_fixture",
+  "surface": "/ledger-pnl formal financial indicator source contract",
+  "report_month": "202603",
+  "report_date": "2026-03-31",
+  "source_workbook": "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+  "source_sheet": "财务指标-汇总",
+  "source_basis": "Excel 2026-03 formal financial indicator table supplied by user",
+  "contract_note": "This fixture freezes the Excel formal-indicator sample and the current system source status. It is not approval to promote analytical QDB values to formal financial indicators.",
+  "mcp_evidence_status": {
+    "moss-metric-contracts": "unavailable_in_current_codex_app_context",
+    "moss-lineage-evidence": "unavailable_in_current_codex_app_context",
+    "moss-data-catalog": "unavailable_in_current_codex_app_context",
+    "gitnexus": "unavailable_in_current_codex_app_context"
+  },
+  "qdb_source_files": {
+    "general_ledger": "总账对账202603.xlsx",
+    "daily_average": "日均202603.xlsx"
+  },
+  "status_semantics": {
+    "formal_pending": "Excel has the formal indicator value, but the governed production source is not connected. System value must remain null, not zero.",
+    "candidate_qdb_aligned": "QDB analytical value aligns to the Excel value within display precision, but remains analytical until formally approved.",
+    "needs_reconciliation": "QDB has a related analytical value, but it does not reconcile to the Excel formal value."
+  },
+  "metrics": [
+    {
+      "metric_key": "group.operating_revenue",
+      "metric_name": "集团营业收入",
+      "scope": "group_consolidated",
+      "excel_value": "43.4194731314",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K5 -> 财务指标-计算表!K5",
+      "formula": "=4341947313.14/100000000",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "parent.operating_revenue.consolidated_basis",
+      "metric_name": "母公司营收（并表口径）",
+      "scope": "parent_company_consolidated_basis",
+      "excel_value": "40.5057623568",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K6 -> 财务指标-计算表!K52",
+      "formula": "external/formal calculation table input",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.business_admin_expense",
+      "metric_name": "业务及管理费",
+      "scope": "group_consolidated",
+      "excel_value": "9.7335327322",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K10 -> 财务指标-计算表!K10",
+      "formula": "=973353273.22/100000000",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.impairment_loss",
+      "metric_name": "减值损失",
+      "scope": "group_consolidated",
+      "excel_value": "13.8794270584",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K15 -> 财务指标-计算表!K15",
+      "formula": "=1387942705.84/100000000",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.loan_impairment_loss",
+      "metric_name": "贷款减值损失",
+      "scope": "group_consolidated",
+      "excel_value": "13.0832767606",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K17 -> 财务指标-计算表!K55",
+      "formula": "=13.0832767606",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.profit_before_tax",
+      "metric_name": "利润总额",
+      "scope": "group_consolidated",
+      "excel_value": "19.3364859160",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K21 -> 财务指标-计算表!K18",
+      "formula": "=1933648591.6/100000000",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.net_profit",
+      "metric_name": "净利润",
+      "scope": "group_consolidated",
+      "excel_value": "15.7131099579",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K25 -> 财务指标-计算表!K19",
+      "formula": "=1571310995.79/100000000",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "parent.net_profit",
+      "metric_name": "母公司净利润",
+      "scope": "parent_company",
+      "excel_value": "13.9118472050",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K26 -> 财务指标-计算表!K20",
+      "formula": "external/formal calculation table input",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.net_profit_attributable_to_parent",
+      "metric_name": "归母净利润",
+      "scope": "group_consolidated",
+      "excel_value": "15.2421024586",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K30 -> 财务指标-计算表!K24",
+      "formula": "=1524210245.86/100000000",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.cost_income_ratio",
+      "metric_name": "集团成本收入比",
+      "scope": "group_consolidated",
+      "excel_value": "22.4174363027",
+      "unit": "%",
+      "excel_ref": "财务指标-汇总!K31",
+      "formula": "财务指标-汇总!K31 = K10 / K5",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.roa",
+      "metric_name": "集团ROA",
+      "scope": "group_consolidated",
+      "excel_value": "0.7622345868",
+      "unit": "%",
+      "excel_ref": "财务指标-汇总!K32 -> 财务指标-计算表!K26",
+      "formula": "=+K19/((K30+L30)/2)*4",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.roe",
+      "metric_name": "集团ROE",
+      "scope": "group_consolidated",
+      "excel_value": "14.6348772016",
+      "unit": "%",
+      "excel_ref": "财务指标-汇总!K33 -> 财务指标-计算表!K27",
+      "formula": "=+(K24/3*12-K38)/(L32-L37+K24/2+K40/2)",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "group.total_assets",
+      "metric_name": "集团总资产",
+      "scope": "group_consolidated",
+      "excel_value": "8342.0254700000",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K35 -> 财务指标-计算表!K30",
+      "formula": "=834202547/100000",
+      "source_status": "needs_reconciliation",
+      "system_metric": "qdb.total_assets_ledger",
+      "system_value": "8144.05",
+      "reconciliation_gap": "197.97547"
+    },
+    {
+      "metric_key": "parent.loan_balance",
+      "metric_name": "贷款余额（母公司）",
+      "scope": "parent_company",
+      "excel_value": "4189.4674724087",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K39 -> 财务指标-计算表!K76",
+      "formula": "external/formal calculation table input",
+      "source_status": "candidate_qdb_aligned",
+      "system_metric": "qdb.loan_spot",
+      "system_value": "4189.47",
+      "reconciliation_gap": "0.0025275913"
+    },
+    {
+      "metric_key": "parent.deposit_balance",
+      "metric_name": "存款余额（母公司）",
+      "scope": "parent_company",
+      "excel_value": "5120.6380974646",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K40 -> 财务指标-计算表!K74",
+      "formula": "external/formal calculation table input",
+      "source_status": "needs_reconciliation",
+      "system_metric": "qdb.deposit_spot",
+      "system_value": "5115.96",
+      "reconciliation_gap": "4.6780974646"
+    },
+    {
+      "metric_key": "asset_quality.loan_loss_provision_balance",
+      "metric_name": "贷款减值准备余额",
+      "scope": "group_asset_quality",
+      "excel_value": "122.7295998170",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K50 -> 财务指标-计算表!K43",
+      "formula": "=+K79+K121",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "asset_quality.npl_balance",
+      "metric_name": "不良贷款额",
+      "scope": "group_asset_quality",
+      "excel_value": "40.1588772655",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K52 -> 财务指标-计算表!K42",
+      "formula": "external/formal calculation table input",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "asset_quality.loan_balance",
+      "metric_name": "贷款余额（集团资产质量口径）",
+      "scope": "group_asset_quality",
+      "excel_value": "4193.9954022127",
+      "unit": "亿元",
+      "excel_ref": "财务指标-汇总!K53 -> 财务指标-计算表!K41",
+      "formula": "=+K76+K119",
+      "source_status": "needs_reconciliation",
+      "system_metric": "qdb.loan_spot",
+      "system_value": "4189.47",
+      "reconciliation_gap": "4.5254022127"
+    },
+    {
+      "metric_key": "asset_quality.npl_ratio",
+      "metric_name": "不良贷款率",
+      "scope": "group_asset_quality",
+      "excel_value": "0.9575326965",
+      "unit": "%",
+      "excel_ref": "财务指标-汇总!K54 = K52 / K53",
+      "formula": "财务指标-汇总!K54 = K52 / K53",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    },
+    {
+      "metric_key": "asset_quality.loan_loss_reserve_ratio",
+      "metric_name": "拨贷比",
+      "scope": "group_asset_quality",
+      "excel_value": "2.9263169853",
+      "unit": "%",
+      "excel_ref": "财务指标-汇总!K55 = K50 / K53",
+      "formula": "财务指标-汇总!K55 = K50 / K53",
+      "source_status": "needs_reconciliation",
+      "system_metric": "qdb.loan_loss_reserve_ratio",
+      "system_value": "2.70",
+      "reconciliation_gap": "0.2263169853"
+    },
+    {
+      "metric_key": "asset_quality.provision_coverage_ratio",
+      "metric_name": "拨备覆盖率",
+      "scope": "group_asset_quality",
+      "excel_value": "305.6101369706",
+      "unit": "%",
+      "excel_ref": "财务指标-汇总!K56 = K50 / K52",
+      "formula": "财务指标-汇总!K56 = K50 / K52",
+      "source_status": "formal_pending",
+      "system_metric": null,
+      "system_value": null
+    }
+  ],
+  "qdb_probe": [
+    {
+      "metric_key": "qdb.total_assets_ledger",
+      "status_row_name": "总资产（QDB源）",
+      "system_value": "8144.05",
+      "unit": "亿元"
+    },
+    {
+      "metric_key": "qdb.total_liabilities_ledger",
+      "status_row_name": "总负债（QDB源）",
+      "system_value": "7651.02",
+      "unit": "亿元"
+    },
+    {
+      "metric_key": "qdb.loan_spot",
+      "status_row_name": "贷款总额（QDB源）",
+      "system_value": "4189.47",
+      "unit": "亿元"
+    },
+    {
+      "metric_key": "qdb.deposit_spot",
+      "status_row_name": "存款总额（QDB源）",
+      "system_value": "5115.96",
+      "unit": "亿元"
+    },
+    {
+      "metric_key": "qdb.investment_spot",
+      "status_row_name": "投资总额（QDB源）",
+      "system_value": "3386.16",
+      "unit": "亿元"
+    },
+    {
+      "metric_key": "qdb.loan_to_deposit_ratio",
+      "status_row_name": "存贷比（QDB源）",
+      "system_value": "81.89",
+      "unit": "%"
+    },
+    {
+      "metric_key": "qdb.loan_loss_reserve_ratio",
+      "status_row_name": "贷款减值准备率（QDB源）",
+      "system_value": "2.70",
+      "unit": "%"
+    }
+  ],
+  "formal_pending_status_probe": [
+    {
+      "metric_key": "group.operating_revenue",
+      "status_row_name": "集团营业收入"
+    },
+    {
+      "metric_key": "group.business_admin_expense",
+      "status_row_name": "业务及管理费"
+    },
+    {
+      "metric_key": "group.impairment_loss",
+      "status_row_name": "减值损失"
+    },
+    {
+      "metric_key": "group.profit_before_tax",
+      "status_row_name": "利润总额"
+    },
+    {
+      "metric_key": "group.net_profit",
+      "status_row_name": "净利润"
+    },
+    {
+      "metric_key": "group.net_profit_attributable_to_parent",
+      "status_row_name": "归母净利润"
+    },
+    {
+      "metric_key": "group.cost_income_ratio",
+      "status_row_name": "成本收入比"
+    },
+    {
+      "metric_key": "group.roa",
+      "status_row_name": "集团ROA"
+    },
+    {
+      "metric_key": "group.roe",
+      "status_row_name": "集团ROE"
+    },
+    {
+      "metric_key": "asset_quality.loan_loss_reserve_ratio",
+      "status_row_name": "正式拨贷比"
+    }
+  ]
+}

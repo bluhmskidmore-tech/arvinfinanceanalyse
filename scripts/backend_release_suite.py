@@ -15,6 +15,11 @@ if str(ROOT) not in sys.path:
 from scripts.audit_governance_lineage import audit_governance_lineage
 
 RELEASE_SUITE_NAME = "governed-phase2-backend-release-suite"
+EXECUTIVE_RELEASE_SAMPLE_IDS = [
+    "GS-EXEC-OVERVIEW-A",
+    "GS-EXEC-PNL-ATTR-A",
+    "GS-EXEC-SUMMARY-A",
+]
 RELEASE_SUITE_TESTS = [
     "tests/test_settings_contract.py",
     "tests/test_health_endpoints.py",
@@ -30,6 +35,11 @@ RELEASE_SUITE_TESTS = [
     "tests/test_result_meta_on_all_ui_endpoints.py",
     "tests/test_governance_doc_contract.py",
     "tests/test_golden_samples_capture_ready.py",
+    "tests/test_executive_release_contract.py",
+    "tests/test_golden_sample_release_matrix.py",
+    "tests/test_live_route_page_contract_completeness.py",
+    "tests/test_no_finance_logic_in_frontend.py",
+    "tests/test_project_mcp_servers.py",
 ]
 
 
@@ -37,6 +47,7 @@ def _release_suite_env() -> dict[str, str]:
     return {
         "MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS": "1",
         "MOSS_SKIP_POSTGRES_MIGRATIONS": "1",
+        "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST": "1",
     }
 
 
@@ -64,6 +75,7 @@ def build_release_suite_plan(
         "suite_name": RELEASE_SUITE_NAME,
         "governance_dir": governance_dir,
         "governance_audit_output": governance_audit_output,
+        "executive_release_sample_ids": EXECUTIVE_RELEASE_SAMPLE_IDS,
         "pytest_args": _pytest_args(),
         "env": _release_suite_env(),
     }
@@ -84,7 +96,7 @@ def run_release_suite(
     env = os.environ.copy()
     env.update(_release_suite_env())
     completed = subprocess.run(
-        ["python", *_pytest_args()],
+        [sys.executable, *_pytest_args()],
         cwd=root,
         env=env,
         check=False,

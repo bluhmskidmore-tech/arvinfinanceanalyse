@@ -26,11 +26,11 @@ describe("BondAnalyticsFuturePanel", () => {
     render(<BondAnalyticsFuturePanel futureVisibilityItems={items} />);
 
     expect(screen.getByTestId("bond-analysis-future-panel")).toBeInTheDocument();
-    expect(screen.getByText("Deferred / future")).toBeInTheDocument();
-    expect(screen.getByText("Keep the next cockpit layers visible")).toBeInTheDocument();
+    expect(screen.getByText("暂缓与后续")).toBeInTheDocument();
+    expect(screen.getByText("保留下阶段驾驶舱层级")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "These surfaces stay pinned in the top-right rail so users can see what is planned without confusing roadmap visibility with current governed truth.",
+        "这些页面保留在右上侧栏，用户可以看到规划范围，同时不会把路线图可见性误读成当前受治理事实。",
       ),
     ).toBeInTheDocument();
 

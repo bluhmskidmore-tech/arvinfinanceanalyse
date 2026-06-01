@@ -1,0 +1,501 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MCP_SCRIPT = REPO_ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
+CODEX_CONFIG = REPO_ROOT / ".codex" / "config.toml"
+
+
+class McpProcess:
+    def __init__(self, mode: str, env: dict[str, str] | None = None) -> None:
+        process_env = os.environ.copy()
+        process_env.update(env or {})
+        self.process = subprocess.Popen(
+            [sys.executable, str(MCP_SCRIPT), mode],
+            cwd=REPO_ROOT,
+            env=process_env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self._next_id = 1
+
+    def close(self) -> None:
+        self.process.terminate()
+        try:
+            self.process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+
+    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        request_id = self._next_id
+        self._next_id += 1
+        self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}})
+        response = self._read()
+        assert response["id"] == request_id
+        assert "error" not in response, response.get("error")
+        return dict(response["result"])
+
+    def request_error(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        request_id = self._next_id
+        self._next_id += 1
+        self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}})
+        response = self._read()
+        assert response["id"] == request_id
+        assert "error" in response, response
+        return dict(response["error"])
+
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        self._send({"jsonrpc": "2.0", "method": method, "params": params or {}})
+
+    def _send(self, payload: dict[str, Any]) -> None:
+        assert self.process.stdin is not None
+        body = json.dumps(payload).encode("utf-8")
+        self.process.stdin.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+        self.process.stdin.flush()
+
+    def _read(self) -> dict[str, Any]:
+        assert self.process.stdout is not None
+        headers = []
+        while True:
+            line = self.process.stdout.readline()
+            assert line, self._stderr()
+            if line in (b"\r\n", b"\n"):
+                break
+            headers.append(line.decode("ascii").strip())
+        length = None
+        for header in headers:
+            if header.lower().startswith("content-length:"):
+                length = int(header.split(":", 1)[1].strip())
+        assert length is not None
+        return json.loads(self.process.stdout.read(length).decode("utf-8"))
+
+    def _stderr(self) -> str:
+        if self.process.stderr is None:
+            return ""
+        return self.process.stderr.read().decode("utf-8", errors="replace")
+
+
+def _request_initialize(command: str, args: list[str], cwd: Path) -> dict[str, Any]:
+    process = subprocess.Popen(
+        [command, *args],
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}).encode("utf-8")
+        assert process.stdin is not None
+        process.stdin.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+        process.stdin.flush()
+
+        assert process.stdout is not None
+        headers = []
+        while True:
+            line = process.stdout.readline()
+            assert line, process.stderr.read().decode("utf-8", errors="replace") if process.stderr else ""
+            if line in (b"\r\n", b"\n"):
+                break
+            headers.append(line.decode("ascii").strip())
+        length = None
+        for header in headers:
+            if header.lower().startswith("content-length:"):
+                length = int(header.split(":", 1)[1].strip())
+        assert length is not None
+        return dict(json.loads(process.stdout.read(length).decode("utf-8")))
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def _resolve_config_cwd(raw_cwd: str) -> Path:
+    return (REPO_ROOT / raw_cwd).resolve()
+
+
+def test_project_mcp_config_declares_read_only_surfaces() -> None:
+    payload = json.loads((REPO_ROOT / ".mcp.json").read_text(encoding="utf-8"))
+    servers = payload["mcpServers"]
+
+    assert set(servers) >= {
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality",
+        "playwright",
+    }
+    assert servers["gitnexus"]["command"] == "node"
+    assert servers["gitnexus"]["args"] == ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+    if os.name != "nt":
+        return
+    assert servers["moss-metric-contracts"]["command"] == "cmd.exe"
+    assert servers["moss-metric-contracts"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_contracts.cmd",
+    ]
+    assert servers["moss-lineage-evidence"]["command"] == "cmd.exe"
+    assert servers["moss-lineage-evidence"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_lineage.cmd",
+    ]
+    assert servers["moss-data-catalog"]["command"] == "cmd.exe"
+    assert servers["moss-data-catalog"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_catalog.cmd",
+    ]
+    assert servers["moss-data-quality"]["command"] == "cmd.exe"
+    assert servers["moss-data-quality"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_data_quality.cmd",
+    ]
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+
+
+def test_project_mcp_config_pins_mcp_cwd_for_compatible_clients() -> None:
+    if os.name != "nt":
+        return
+
+    payload = json.loads((REPO_ROOT / ".mcp.json").read_text(encoding="utf-8"))
+    servers = payload["mcpServers"]
+
+    for name in (
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality",
+        "playwright",
+    ):
+        assert _resolve_config_cwd(servers[name]["cwd"]) == REPO_ROOT
+
+
+def test_project_codex_config_declares_read_only_surfaces() -> None:
+    payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
+    servers = payload["mcp_servers"]
+
+    assert set(servers) >= {
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality",
+        "playwright",
+    }
+    assert servers["gitnexus"]["command"] == "node"
+    assert servers["gitnexus"]["args"] == ["scripts/mcp/gitnexus_mcp_launcher.mjs"]
+    if os.name != "nt":
+        return
+    assert servers["moss-metric-contracts"]["command"] == "cmd.exe"
+    assert servers["moss-metric-contracts"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_contracts.cmd",
+    ]
+    assert servers["moss-lineage-evidence"]["command"] == "cmd.exe"
+    assert servers["moss-lineage-evidence"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_lineage.cmd",
+    ]
+    assert servers["moss-data-catalog"]["command"] == "cmd.exe"
+    assert servers["moss-data-catalog"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_catalog.cmd",
+    ]
+    assert servers["moss-data-quality"]["command"] == "cmd.exe"
+    assert servers["moss-data-quality"]["args"] == [
+        "/d",
+        "/s",
+        "/c",
+        "scripts\\mcp\\moss_data_quality.cmd",
+    ]
+    assert servers["playwright"]["command"] == "npx"
+    assert servers["playwright"]["args"][-1] == "@playwright/mcp@latest"
+
+
+def test_project_codex_config_pins_mcp_cwd_for_app_launches() -> None:
+    if os.name != "nt":
+        return
+
+    payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
+    servers = payload["mcp_servers"]
+
+    for name in (
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality",
+        "playwright",
+    ):
+        assert _resolve_config_cwd(servers[name]["cwd"]) == REPO_ROOT
+
+
+def test_moss_codex_mcp_entries_handshake_from_declared_cwd() -> None:
+    if os.name != "nt":
+        return
+
+    payload = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8"))
+    servers = payload["mcp_servers"]
+
+    for name, expected_server_info_name in (
+        ("moss-metric-contracts", "moss-metric-contracts"),
+        ("moss-lineage-evidence", "moss-lineage-evidence"),
+        ("moss-data-catalog", "moss-data-catalog"),
+        ("moss-data-quality", "moss-data-quality"),
+    ):
+        response = _request_initialize(
+            servers[name]["command"],
+            list(servers[name]["args"]),
+            _resolve_config_cwd(servers[name]["cwd"]),
+        )
+        assert response["result"]["serverInfo"]["name"] == expected_server_info_name
+
+
+def test_moss_launcher_handshake_is_cwd_independent() -> None:
+    response = _request_initialize(
+        sys.executable,
+        [str(REPO_ROOT / "scripts" / "mcp" / "moss_mcp_launcher.py"), "metric-contracts"],
+        REPO_ROOT / "tests",
+    )
+    assert response["result"]["serverInfo"]["name"] == "moss-metric-contracts"
+
+
+def test_metric_contracts_mcp_exposes_contract_docs() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        init = server.request("initialize")
+        server.notify("notifications/initialized")
+        assert init["serverInfo"]["name"] == "moss-metric-contracts"
+
+        resources = server.request("resources/list")["resources"]
+        assert any(item["uri"] == "moss://metric-contracts/summary" for item in resources)
+
+        summary = server.request("resources/read", {"uri": "moss://metric-contracts/summary"})
+        summary_payload = json.loads(summary["contents"][0]["text"])
+        assert any(doc["key"] == "page_contracts" and doc["exists"] for doc in summary_payload["documents"])
+
+        search = server.request(
+            "tools/call",
+            {"name": "search_contract_docs", "arguments": {"query": "product-category", "max_results": 5}},
+        )
+        search_payload = json.loads(search["content"][0]["text"])
+        assert search_payload["matches"]
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize(
+    (
+        "page_slug",
+        "frontend_route",
+        "primary_api",
+        "truth_marker",
+        "backend_touchpoint",
+        "frontend_touchpoint",
+        "test_touchpoint",
+        "golden_sample",
+        "guardrail_marker",
+        "alias",
+    ),
+    [
+        (
+            "product-category-pnl",
+            "/product-category-pnl",
+            "/ui/pnl/product-category",
+            "product_category_pnl_formal_read_model",
+            "backend/app/services/product_category_source_service.py",
+            "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+            "tests/test_product_category_pnl_flow.py",
+            "tests/golden_samples/GS-PROD-CAT-PNL-A",
+            "zqtz holdings-side logic",
+            "/product-category-pnl",
+        ),
+        (
+            "dashboard-home",
+            "/",
+            "/ui/home/snapshot",
+            "home_snapshot_envelope",
+            "backend/app/services/executive_service.py",
+            "frontend/src/features/workbench/pages/DashboardPage.tsx",
+            "tests/test_home_snapshot_endpoint.py",
+            "tests/golden_samples/GS-EXEC-OVERVIEW-A",
+            "formal metric truth",
+            "/dashboard",
+        ),
+    ],
+)
+def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
+    page_slug: str,
+    frontend_route: str,
+    primary_api: str,
+    truth_marker: str,
+    backend_touchpoint: str,
+    frontend_touchpoint: str,
+    test_touchpoint: str,
+    golden_sample: str,
+    guardrail_marker: str,
+    alias: str,
+) -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        tools = server.request("tools/list")["tools"]
+        assert any(tool["name"] == "get_page_trace_bundle" for tool in tools)
+
+        result = server.request(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": page_slug}},
+        )
+        payload = json.loads(result["content"][0]["text"])
+
+        assert payload["page_slug"] == page_slug
+        assert payload["frontend_route"] == frontend_route
+        assert payload["primary_api"] == primary_api
+        assert any(truth_marker in item for item in payload["truth_chain"])
+        assert backend_touchpoint in payload["backend_touchpoints"]
+        assert frontend_touchpoint in payload["frontend_touchpoints"]
+        assert test_touchpoint in payload["test_touchpoints"]
+        assert golden_sample in payload["golden_samples"]
+        assert all(str(sample).startswith("tests/golden_samples/") for sample in payload["golden_samples"])
+        assert payload["contract_docs"]
+        assert payload["supporting_apis"]
+        assert payload["verification_focus"]
+        assert payload["guardrails"]
+        assert any(guardrail_marker in guardrail for guardrail in payload["guardrails"])
+
+        alias_result = server.request(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+        )
+        alias_payload = json.loads(alias_result["content"][0]["text"])
+        assert alias_payload["page_slug"] == page_slug
+    finally:
+        server.close()
+
+
+def test_dashboard_home_trace_bundle_preserves_mixed_source_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in ("dashboard-home", "/", "/dashboard"):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "dashboard-home"
+
+        supporting_apis = set(payload["supporting_apis"])
+        assert "/ui/home/snapshot" == payload["primary_api"]
+        assert "/ui/risk/overview" not in supporting_apis
+        assert "/ui/home/alerts" not in supporting_apis
+        assert "/ui/home/contribution" not in supporting_apis
+        assert any("analytical/mixed-source" in item for item in payload["guardrails"])
+        assert any("not a full-page formal sample" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_pages() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        alias_result = server.request(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "/product-category-pnl"}},
+        )
+        alias_payload = json.loads(alias_result["content"][0]["text"])
+        assert alias_payload["page_slug"] == "product-category-pnl"
+
+        missing_slug = server.request_error(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": ""}},
+        )
+        assert missing_slug["code"] == -32602
+        assert "page_slug is required" in missing_slug["message"]
+
+        unknown_slug = server.request_error(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "risk-tensor"}},
+        )
+        assert unknown_slug["code"] == -32602
+        assert "Unknown page_slug: risk-tensor" in unknown_slug["message"]
+        assert "dashboard-home" in unknown_slug["message"]
+        assert "product-category-pnl" in unknown_slug["message"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_reads_governance_stream_status(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps({"report_date": "2026-03-31", "source_version": "sv_test"}) + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        summary = server.request("resources/read", {"uri": "moss://lineage/summary"})
+        payload = json.loads(summary["contents"][0]["text"])
+        assert payload["streams"]["cache_manifest"]["exists"] is True
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "2026-03-31", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+    finally:
+        server.close()
+
+
+def test_data_catalog_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None:
+    missing_duckdb = tmp_path / "missing.duckdb"
+    server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(missing_duckdb)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        summary = server.request("resources/read", {"uri": "moss://data-catalog/summary"})
+        payload = json.loads(summary["contents"][0]["text"])
+        assert payload["duckdb_exists"] is False
+        assert payload["tables"] == []
+        assert payload["schema_registry"]["exists"] is True
+    finally:
+        server.close()

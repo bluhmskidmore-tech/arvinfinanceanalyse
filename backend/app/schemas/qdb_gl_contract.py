@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class QdbGlLineage(BaseModel):
@@ -58,3 +58,21 @@ class QdbGlBaselineValidationEvidence(BaseModel):
     bound_currency_groups: list[str] = Field(default_factory=list)
     lineage: QdbGlLineage
     checks: list[QdbGlContractCheck] = Field(default_factory=list)
+
+
+class QdbGlMonthlyAnalysisManualAdjustmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_month: str
+    adjustment_class: Literal["mapping_adjustment", "analysis_adjustment"]
+    target: dict[str, object] = Field(min_length=1)
+    operator: Literal["ADD", "DELTA", "OVERRIDE"]
+    value: str = Field(min_length=1)
+    approval_status: Literal["approved", "pending", "rejected"]
+
+    @field_validator("report_month")
+    @classmethod
+    def validate_report_month(cls, value: str) -> str:
+        if len(value) != 6 or not value.isdigit():
+            raise ValueError("report_month must use YYYYMM format.")
+        return value

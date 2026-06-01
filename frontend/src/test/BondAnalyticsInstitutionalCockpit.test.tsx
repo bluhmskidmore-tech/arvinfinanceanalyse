@@ -1,11 +1,30 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
 import { BondAnalyticsInstitutionalCockpit } from "../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit";
+
+const COCKPIT_CSS = readFileSync(
+  resolve(
+    process.cwd(),
+    "src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css",
+  ),
+  "utf8",
+);
+
+function cssRuleBody(selector: string): string {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`${escapedSelector}\\s*\\{([\\s\\S]*?)\\}`).exec(
+    COCKPIT_CSS,
+  );
+  return match?.[1] ?? "";
+}
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -81,6 +100,18 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       }
       return base.getBondDashboardMaturityStructure(reportDate);
     });
+    const getBondAnalyticsTopHoldings = vi.fn(async (reportDate: string, limit?: number) => {
+      if (reportDate !== "2026-02-28") {
+        throw new Error(`unsupported holdings date ${reportDate}`);
+      }
+      return base.getBondAnalyticsTopHoldings(reportDate, limit);
+    });
+    const getBondAnalyticsPortfolioHeadlines = vi.fn(async (reportDate: string) => {
+      if (reportDate !== "2026-02-28") {
+        throw new Error(`unsupported portfolio-headlines date ${reportDate}`);
+      }
+      return base.getBondAnalyticsPortfolioHeadlines(reportDate);
+    });
 
     const client = {
       ...base,
@@ -88,6 +119,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       getBondDashboardHeadlineKpis,
       getBondDashboardSpreadAnalysis,
       getBondDashboardMaturityStructure,
+      getBondAnalyticsTopHoldings,
+      getBondAnalyticsPortfolioHeadlines,
     };
 
     renderCockpit(client);
@@ -99,10 +132,12 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-02-28");
       expect(getBondDashboardSpreadAnalysis).toHaveBeenCalledWith("2026-02-28");
       expect(getBondDashboardMaturityStructure).toHaveBeenCalledWith("2026-02-28");
+      expect(getBondAnalyticsTopHoldings).toHaveBeenCalledWith("2026-02-28", 10);
+      expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith("2026-02-28");
     });
 
     expect(screen.queryByText("部分驾驶舱指标未就绪")).not.toBeInTheDocument();
-    expect(screen.getByText("仪表盘快照使用 2026-02-28")).toBeInTheDocument();
+    expect(screen.getAllByText("快照回退 2026-02-28").length).toBeGreaterThan(0);
   });
 
   it("shows controlled module fallback copy when portfolio headlines fail", async () => {
@@ -119,11 +154,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("backend 503 for portfolio headlines")).not.toBeInTheDocument();
-      expect(screen.queryByText("Request error")).not.toBeInTheDocument();
-      expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
-      expect(
-        screen.getByText("组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。"),
-      ).toBeInTheDocument();
+      expect(screen.queryByText("请求失败")).not.toBeInTheDocument();
+      expect(screen.queryByText("不可用")).not.toBeInTheDocument();
       expect(
         screen.getByText("组合信用摘要暂未返回，资产结构稍后补齐。"),
       ).toBeInTheDocument();
@@ -147,8 +179,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("backend 503 for top holdings")).not.toBeInTheDocument();
-      expect(screen.queryByText("Request error")).not.toBeInTheDocument();
-      expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+      expect(screen.queryByText("请求失败")).not.toBeInTheDocument();
+      expect(screen.queryByText("不可用")).not.toBeInTheDocument();
       expect(
         screen.getByText("前十大持仓暂未返回，首页先保留组合规模与浮盈快照。"),
       ).toBeInTheDocument();
@@ -173,5 +205,34 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       await screen.findByTestId("bond-analysis-home-open-top-holdings"),
     );
     expect(onOpenModuleDetail).toHaveBeenCalledWith("top-holdings");
+  });
+
+  it("renders the reference-style portfolio dashboard hierarchy on the first screen", async () => {
+    renderCockpit(createApiClient({ mode: "mock" }));
+
+    const dashboard = await screen.findByTestId("bond-analysis-reference-dashboard");
+
+    expect(within(dashboard).getAllByText("组合总览").length).toBeGreaterThan(0);
+    expect(within(dashboard).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
+    expect(within(dashboard).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("债券总市值");
+
+    const distributionGrid = screen.getByTestId("bond-analysis-distribution-grid");
+    expect(distributionGrid).toHaveTextContent("资产分布");
+    expect(distributionGrid).toHaveTextContent("到期结构");
+    expect(distributionGrid).toHaveTextContent("地区分布");
+
+    expect(screen.getByTestId("bond-analysis-holdings-table")).toHaveTextContent("持仓明细");
+    expect(screen.getByTestId("bond-analysis-risk-guardrails")).toHaveTextContent("风险指标");
+  });
+
+  it("keeps the reference topbar and current conclusion visible in the desktop first screen grid", () => {
+    const dashboardRule = cssRuleBody(".referenceDashboard");
+    const topbarRule = cssRuleBody(".referenceTopbar");
+    const signalRule = cssRuleBody(".referenceSignalStrip");
+
+    expect(dashboardRule).toContain('"topbar topbar"');
+    expect(dashboardRule).toContain('"signal signal"');
+    expect(topbarRule).not.toMatch(/display:\s*none/);
+    expect(signalRule).not.toMatch(/display:\s*none/);
   });
 });

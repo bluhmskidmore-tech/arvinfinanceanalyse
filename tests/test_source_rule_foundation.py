@@ -1,6 +1,5 @@
-from pathlib import Path
 
-from tests.helpers import ROOT, load_module
+from tests.helpers import load_module
 
 
 def test_ingest_scan_enriches_manifest_with_source_family_and_report_date(tmp_path):

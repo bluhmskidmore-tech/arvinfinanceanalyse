@@ -8,16 +8,19 @@ Yield-curve **enterprise AAA** (and other curve types) for `fact_formal_yield_cu
 
 import math
 from dataclasses import dataclass
+from typing import Any, cast
 
 from backend.app.config.choice_runtime import _get_em_c, configure_emquant_parent, load_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.schemas.macro_vendor import (
-    ChoiceMacroSeriesConfig,
     ChoiceMacroPoint,
+    ChoiceMacroSeriesConfig,
     ChoiceMacroSnapshot,
 )
 from backend.app.schemas.vendor import (
     VendorAdapter as VendorAdapterBase,
+)
+from backend.app.schemas.vendor import (
     VendorPreflightResult,
     VendorSnapshot,
 )
@@ -100,12 +103,12 @@ class VendorAdapter(VendorAdapterBase):
                 vendor_series_code=str(item["vendor_series_code"]),
                 vendor_name=self.vendor_name,
                 trade_date=str(item["trade_date"]),
-                value_numeric=float(item["value_numeric"]),
+                value_numeric=float(str(item["value_numeric"])),
                 frequency=str(item["frequency"]),
                 unit=str(item["unit"]),
                 vendor_version=vendor_version,
             )
-            for item in raw_payload.get("series", [])
+            for item in cast(list[dict[str, object]], raw_payload.get("series", []))
         ]
 
         return ChoiceMacroSnapshot(
@@ -127,7 +130,7 @@ def _em_data_to_macro_payload(
 
     codes = [str(code) for code in getattr(result, "Codes", [])]
     dates = [_normalize_emquant_date(str(date)) for date in getattr(result, "Dates", [])]
-    data = getattr(result, "Data", {})
+    data = cast(dict[str, Any], getattr(result, "Data", {}))
     if not dates:
         raise RuntimeError("Choice edb returned no dates.")
 
@@ -169,12 +172,13 @@ def _pandas_edb_to_macro_payload(
     frame: object,
     series: list[ChoiceMacroSeriesConfig],
 ) -> dict[str, object]:
+    frame_any = cast(Any, frame)
     config_by_vendor_code = {item.vendor_series_code: item for item in series}
     normalized: list[dict[str, object]] = []
     latest_trade_date = ""
 
     for vendor_code, config in config_by_vendor_code.items():
-        rows = frame.loc[[vendor_code]] if vendor_code in frame.index else None
+        rows = frame_any.loc[[vendor_code]] if vendor_code in frame_any.index else None
         if rows is None or len(rows) == 0:
             continue
         latest = rows.iloc[-1]

@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+import { displayTokens } from "../theme/displayTokens";
 
 export type KpiCardProps = {
   /** @deprecated Prefer `label`; kept for existing call sites. */
@@ -17,23 +19,24 @@ export type KpiCardProps = {
   sparklineData?: number[];
   status?: "normal" | "warning" | "danger";
   onClick?: () => void;
+  /** For tests / QA; forwarded as `data-testid` on the card root. */
+  testId?: string;
 };
 
 type ToneKey = NonNullable<KpiCardProps["tone"]>;
 
-const TITLE_COLOR = "#64748b";
-const UNIT_COLOR = "#94a3b8";
-const DETAIL_COLOR = "#94a3b8";
+const TITLE_COLOR = displayTokens.kpi.label;
+const UNIT_COLOR = displayTokens.kpi.unit;
+const DETAIL_COLOR = displayTokens.kpi.detail;
+const CARD_SHADOW = displayTokens.kpi.cardShadow;
 
 const VALUE_COLORS: Record<ToneKey, string> = {
-  default: "#1e293b",
-  positive: "#15803d",
-  negative: "#dc2626",
-  warning: "#d97706",
-  error: "#dc2626",
+  default: displayTokens.kpi.valueDefault,
+  positive: displayTokens.kpi.valuePositive,
+  negative: displayTokens.kpi.valueNegative,
+  warning: displayTokens.kpi.valueWarning,
+  error: displayTokens.kpi.valueNegative,
 };
-
-const CARD_SHADOW = "0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05)";
 
 function resolveToneFromHints(props: Pick<KpiCardProps, "status" | "trend">): ToneKey {
   if (props.status === "warning") {
@@ -71,7 +74,7 @@ function MiniSparkline({ data }: { data: number[] }) {
     <svg width={w} height={h} aria-hidden style={{ flexShrink: 0 }}>
       <polyline
         fill="none"
-        stroke="#94a3b8"
+        stroke={displayTokens.kpi.sparklineStroke}
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -96,6 +99,7 @@ export function KpiCard({
   sparklineData,
   status: _status,
   onClick,
+  testId,
 }: KpiCardProps) {
   const heading = title ?? label ?? "";
   const tone = toneProp !== "default" ? toneProp : resolveToneFromHints({ status: _status, trend });
@@ -110,8 +114,117 @@ export function KpiCard({
       ? `${change > 0 ? "+" : ""}${change.toLocaleString("zh-CN")}`
       : null;
 
-  const outer = (
+  const iconWrapperStyle = {
+    flexShrink: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    background: displayTokens.kpi.iconBg,
+    color: displayTokens.kpi.iconFg,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 18,
+  } satisfies CSSProperties;
+
+  const cardStyle = {
+    minHeight: isMetric ? 152 : 132,
+    minWidth: 0,
+    padding: "18px 18px 16px",
+    borderRadius: 12,
+    background: displayTokens.kpi.cardBg,
+    border: displayTokens.kpi.cardBorder,
+    boxShadow: CARD_SHADOW,
+    display: "flex",
+    flexDirection: "column",
+    cursor: onClick ? "pointer" : undefined,
+    overflow: "visible",
+  } satisfies CSSProperties;
+
+  const headerStyle = {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: isMetric ? 12 : 8,
+  } satisfies CSSProperties;
+
+  const titleStyle = {
+    color: TITLE_COLOR,
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    flex: 1,
+    minWidth: 0,
+    paddingTop: icon ? 2 : 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  } satisfies CSSProperties;
+
+  const bodyStyle = {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: isMetric ? "center" : "stretch",
+    textAlign: isMetric ? "center" : "left",
+  } satisfies CSSProperties;
+
+  const valueWrapperStyle = {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "baseline",
+    justifyContent: isMetric ? "center" : "flex-start",
+    gap: "4px 8px",
+    width: "100%",
+  } satisfies CSSProperties;
+
+  const titleTextStyle = {
+    flex: "1 1 auto",
+    minWidth: 0,
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
+  } satisfies CSSProperties;
+
+  const valueStyle = {
+    color: valueColor,
+    fontSize: isMetric ? 24 : 16,
+    fontWeight: 700,
+    letterSpacing: isMetric ? "-0.02em" : "normal",
+    lineHeight: isMetric ? 1.15 : 1.5,
+  };
+
+  const unitStyle = {
+    color: UNIT_COLOR,
+    fontSize: 14,
+    fontWeight: 600,
+  };
+
+  const secondaryTextStyle = {
+    margin: 0,
+    color: DETAIL_COLOR,
+    fontSize: 12,
+    lineHeight: 1.45,
+    textAlign: isMetric ? "center" : "left",
+    width: "100%",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+  } satisfies CSSProperties;
+
+  const changeStyle = {
+    ...secondaryTextStyle,
+    marginTop: 6,
+  };
+
+  const detailStyle = {
+    ...secondaryTextStyle,
+    marginTop: "auto",
+    paddingTop: isMetric ? 10 : 8,
+  };
+
+  return (
     <div
+      data-testid={testId}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
@@ -125,119 +238,26 @@ export function KpiCard({
             }
           : undefined
       }
-      style={{
-        minHeight: isMetric ? 152 : 132,
-        minWidth: 0,
-        padding: "18px 18px 16px",
-        borderRadius: 12,
-        background: "#ffffff",
-        border: "1px solid #e2e8f0",
-        boxShadow: CARD_SHADOW,
-        display: "flex",
-        flexDirection: "column",
-        cursor: onClick ? "pointer" : undefined,
-        overflow: "visible",
-      }}
+      style={cardStyle}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 10,
-          marginBottom: isMetric ? 12 : 8,
-        }}
-      >
+      <div style={headerStyle}>
         {icon ? (
-          <div
-            aria-hidden
-            style={{
-              flexShrink: 0,
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "#f1f5f9",
-              color: "#64748b",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 18,
-            }}
-          >
+          <div aria-hidden style={iconWrapperStyle}>
             {icon}
           </div>
         ) : null}
-        <div
-          style={{
-            color: TITLE_COLOR,
-            fontSize: 12,
-            fontWeight: 600,
-            lineHeight: 1.35,
-            flex: 1,
-            minWidth: 0,
-            paddingTop: icon ? 2 : 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <span
-            style={{
-              flex: "1 1 auto",
-              minWidth: 0,
-              overflowWrap: "break-word",
-              wordBreak: "break-word",
-            }}
-          >
-            {heading}
-          </span>
+        <div style={titleStyle}>
+          <span style={titleTextStyle}>{heading}</span>
           {sparklineData && sparklineData.length > 0 ? (
             <MiniSparkline data={sparklineData} />
           ) : null}
         </div>
       </div>
 
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: isMetric ? "center" : "stretch",
-          textAlign: isMetric ? "center" : "left",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "baseline",
-            justifyContent: isMetric ? "center" : "flex-start",
-            gap: "4px 8px",
-            width: "100%",
-          }}
-        >
-          <span
-            style={{
-              fontSize: isMetric ? 24 : 16,
-              fontWeight: 700,
-              color: valueColor,
-              letterSpacing: isMetric ? "-0.02em" : "normal",
-              lineHeight: isMetric ? 1.15 : 1.5,
-            }}
-          >
-            {value}
-          </span>
-          {unit ? (
-            <span
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: UNIT_COLOR,
-              }}
-            >
-              {unit}
-            </span>
-          ) : null}
+      <div style={bodyStyle}>
+        <div style={valueWrapperStyle}>
+          <span style={valueStyle}>{value}</span>
+          {unit ? <span style={unitStyle}>{unit}</span> : null}
           {trendGlyph ? (
             <span style={{ fontSize: 14, color: valueColor }} aria-hidden>
               {trendGlyph}
@@ -246,45 +266,14 @@ export function KpiCard({
         </div>
 
         {changeText || changeLabel ? (
-          <p
-            style={{
-              margin: 0,
-              marginTop: 6,
-              color: DETAIL_COLOR,
-              fontSize: 12,
-              lineHeight: 1.45,
-              textAlign: isMetric ? "center" : "left",
-              width: "100%",
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-            }}
-          >
+          <p style={changeStyle}>
             {changeLabel ? `${changeLabel} ` : null}
             {changeText}
           </p>
         ) : null}
 
-        {detail ? (
-          <p
-            style={{
-              margin: 0,
-              marginTop: "auto",
-              paddingTop: isMetric ? 10 : 8,
-              color: DETAIL_COLOR,
-              fontSize: 12,
-              lineHeight: 1.45,
-              textAlign: isMetric ? "center" : "left",
-              width: "100%",
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-            }}
-          >
-            {detail}
-          </p>
-        ) : null}
+        {detail ? <p style={detailStyle}>{detail}</p> : null}
       </div>
     </div>
   );
-
-  return outer;
 }

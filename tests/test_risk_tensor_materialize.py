@@ -105,6 +105,7 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     assert row["upstream_source_version"] == "sv_bond_snap_1"
     assert row["cache_version"] == risk_task_mod.CACHE_VERSION
     assert row["bond_count"] == 3
+    assert row["regulatory_dv01"] == row["portfolio_dv01"]
     assert row["asset_cashflow_30d"] == row["liquidity_gap_30d"]
     assert row["asset_cashflow_90d"] == row["liquidity_gap_90d"]
     assert row["liability_cashflow_30d"] == 0
@@ -124,6 +125,37 @@ def test_risk_tensor_materialize_requires_completed_upstream_lineage(tmp_path):
     )
 
     with pytest.raises(RuntimeError, match="requires completed bond_analytics lineage"):
+        risk_task_mod.materialize_risk_tensor_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_risk_tensor_materialize_fails_closed_on_pct_style_bond_rates(tmp_path):
+    duckdb_path, governance_dir, _bond_task_mod = _configure_upstream(tmp_path)
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+
+    import duckdb
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_bond_analytics_daily
+            set coupon_rate = ?
+            where report_date = ?
+              and instrument_code = 'CB-001'
+            """,
+            ["2.5", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(RuntimeError, match="decimal-form bond analytics rates"):
         risk_task_mod.materialize_risk_tensor_facts.fn(
             report_date=REPORT_DATE,
             duckdb_path=str(duckdb_path),

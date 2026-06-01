@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card } from "antd";
+import { Card, Tooltip } from "antd";
+import "../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
-import type { CellClassParams, ColDef } from "ag-grid-community";
+import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
@@ -13,10 +14,14 @@ import { DataSection } from "../../components/DataSection";
 import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { SectionLead } from "../../components/page/SectionLead";
+import { controlBarStyle, modeBadgeStyle, summaryGridStyle } from "../../components/page/pageStyles";
 import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
+import { designTokens } from "../../theme/designSystem";
+import { displayTokens } from "../../theme/displayTokens";
 import { shellTokens } from "../../theme/tokens";
 import { toneFromNumeric } from "../../utils/tone";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
@@ -28,12 +33,6 @@ function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
   if (tone === "negative") return "negative";
   return "default";
 }
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: 16,
-} as const;
 
 const pageHeaderStyle = {
   display: "flex",
@@ -47,75 +46,27 @@ const pageSubtitleStyle = {
   marginTop: 10,
   marginBottom: 0,
   maxWidth: 860,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
-} as const;
-
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginBottom: 16,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
 } as const;
 
 const controlStyle = {
   minWidth: 180,
   padding: "10px 12px",
   borderRadius: 12,
-  border: "1px solid #d7dfea",
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
   background: "#ffffff",
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const formalOnlyNoteStyle = {
   marginBottom: 18,
   padding: "12px 14px",
   borderRadius: 14,
-  border: "1px solid #d7dfea",
-  background: "#f7f9fc",
-  color: "#5c6b82",
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: designTokens.color.neutral[50],
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.65,
 } as const;
@@ -173,23 +124,23 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     if (value >= 0) {
       helperRaw.push(running);
       valueRaw.push(value);
-      barColors.push("#cf1322");
+      barColors.push(designTokens.color.semantic.loss);
       running += value;
     } else {
       helperRaw.push(running + value);
       valueRaw.push(-value);
-      barColors.push("#3f8600");
+      barColors.push(designTokens.color.semantic.profit);
       running += value;
     }
   }
 
   helperRaw.push(0);
   valueRaw.push(summary.total_explained_pnl.raw ?? 0);
-  barColors.push("#1f5eff");
+  barColors.push(designTokens.color.primary[600]);
 
   helperRaw.push(0);
   valueRaw.push(summary.total_actual_pnl.raw ?? 0);
-  barColors.push("#1f5eff");
+  barColors.push(designTokens.color.primary[600]);
 
   return {
     tooltip: {
@@ -207,12 +158,12 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     xAxis: {
       type: "category",
       data: [...BRIDGE_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: "#5c6b82" },
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: designTokens.color.neutral[600] },
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { type: "dashed" as const, color: "#e4ebf5" } },
-      axisLabel: { fontSize: 11, color: "#5c6b82" },
+      splitLine: { lineStyle: { type: "dashed" as const, color: designTokens.color.neutral[200] } },
+      axisLabel: { fontSize: 11, color: designTokens.color.neutral[600] },
     },
     series: [
       {
@@ -244,26 +195,25 @@ function cellText(value: string | number | null | undefined) {
   return String(value);
 }
 
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
+function qualityLabel(value: PnlBridgeQuality | null | undefined) {
+  if (value === "ok") {
+    return "正常";
+  }
+  if (value === "warning") {
+    return "预警";
+  }
+  if (value === "error") {
+    return "错误";
+  }
+  return "—";
 }
 
 function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
   if (!summary) {
     return {
-      title: "当前结论",
-      body: "正式桥接结果待载入，先确认报告日与上游物化状态。",
-      detail: "读模型返回后再判断 explained PnL 与 actual PnL 的贴合程度。",
+      title: "闭合校验结果",
+      body: "等待正式桥接结果，先确认报告日与上游物化状态。",
+      detail: "读模型返回后会校验解释损益、实际损益和残差是否闭合。",
     };
   }
 
@@ -275,25 +225,33 @@ function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
 
   if (summary.quality_flag === "error" || residualRatio > 0.1) {
     return {
-      title: "当前结论",
-      body: "解释损益与实际损益存在明显偏离，需要优先检查残差来源。",
-      detail: `当前 residual ${summary.total_residual.display}，已高于首屏可接受阈值。`,
+      title: "闭合校验结果",
+      body: "校验未通过：解释损益与实际损益存在明显偏离。",
+      detail: `当前残差 ${summary.total_residual.display}，已高于首屏可接受阈值。`,
     };
   }
 
   if (summary.quality_flag === "warning" || residualRatio > 0.02) {
     return {
-      title: "当前结论",
-      body: "解释损益基本贴近实际损益，但仍有残差需要跟踪。",
-      detail: `当前 residual ${summary.total_residual.display}，建议结合 warning 与明细表继续核对。`,
+      title: "闭合校验结果",
+      body: "校验预警：解释损益基本贴近实际损益，但仍有残差需要跟踪。",
+      detail: `当前残差 ${summary.total_residual.display}，建议结合预警与明细表继续核对。`,
     };
   }
 
   return {
-    title: "当前结论",
-    body: "解释损益与实际损益基本一致，残差可控。",
-    detail: `当前 residual ${summary.total_residual.display}，formal bridge 可作为首屏结论阅读。`,
+    title: "闭合校验结果",
+    body: "校验通过：解释损益与实际损益基本一致，残差可控。",
+    detail: `当前残差 ${summary.total_residual.display}，正式桥接结果可以作为首屏结论阅读。`,
   };
+}
+
+function PnlBridgeBalanceScopeHeader(props: IHeaderParams) {
+  return (
+    <Tooltip title="仅资产端，人民币口径">
+      <span style={{ cursor: "help" }}>{props.displayName}</span>
+    </Tooltip>
+  );
 }
 
 function numericNumericCol(
@@ -323,10 +281,14 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
   { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
   { field: "portfolio_name", headerName: "组合", width: 120 },
   { field: "accounting_basis", headerName: "会计分类", width: 100 },
-  numericNumericCol("beginning_dirty_mv", "期初脏价市值", 140),
-  numericNumericCol("ending_dirty_mv", "期末脏价市值", 140),
-  numericNumericCol("carry", "Carry", 110),
-  numericNumericCol("roll_down", "Roll-down", 110),
+  numericNumericCol("beginning_dirty_mv", "期初脏价市值", 140, {
+    headerComponent: PnlBridgeBalanceScopeHeader,
+  }),
+  numericNumericCol("ending_dirty_mv", "期末脏价市值", 140, {
+    headerComponent: PnlBridgeBalanceScopeHeader,
+  }),
+  numericNumericCol("carry", "持有收益", 110),
+  numericNumericCol("roll_down", "骑乘", 110),
   numericNumericCol("treasury_curve", "国债曲线", 110),
   numericNumericCol("credit_spread", "信用利差", 110),
   numericNumericCol("fx_translation", "汇兑效应", 110),
@@ -340,6 +302,7 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
     field: "quality_flag",
     headerName: "质量",
     width: 80,
+    valueFormatter: (params) => qualityLabel(params.value),
     cellStyle: (params: CellClassParams<PnlBridgeRow, PnlBridgeQuality>) => ({
       color:
         params.value === "ok"
@@ -464,7 +427,7 @@ export default function PnlBridgePage() {
       }
       await Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
     } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : "刷新 PnL Bridge 失败");
+      setRefreshError(error instanceof Error ? error.message : "刷新损益桥接失败");
     } finally {
       setIsRefreshing(false);
     }
@@ -483,13 +446,13 @@ export default function PnlBridgePage() {
               letterSpacing: "-0.03em",
             }}
           >
-            正式损益解释
+            正式损益闭合校验
           </h1>
           <p
             data-testid="pnl-bridge-page-subtitle"
             style={pageSubtitleStyle}
           >
-            查看 actual PnL 与 explained PnL 的差异，以及 carry、roll-down、利率、利差等桥接效应。
+            校验实际损益是否能被票息、骑乘、曲线、利差、汇兑和公允价值变动解释清楚，重点看残差、质量和数据状态。
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -497,18 +460,22 @@ export default function PnlBridgePage() {
             data-testid="pnl-bridge-page-role-badge"
             style={{
               ...modeBadgeStyle,
-              background: "#f7f9fc",
-              color: "#162033",
-              border: "1px solid #d7dfea",
+              background: designTokens.color.neutral[50],
+              color: designTokens.color.neutral[900],
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
-            Formal Explain
+            闭合校验
           </span>
           <span
             style={{
               ...modeBadgeStyle,
-              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
             }}
           >
             {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
@@ -518,7 +485,7 @@ export default function PnlBridgePage() {
 
       <FilterBar style={controlBarStyle}>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             aria-label="pnl-bridge-report-date"
             value={selectedReportDate}
@@ -551,14 +518,14 @@ export default function PnlBridgePage() {
       <PnlRefreshStatus testId="pnl-bridge-refresh-status" status={refreshStatus} error={refreshError} />
 
       <div data-testid="pnl-bridge-formal-only-note" style={formalOnlyNoteStyle}>
-        本页当前只提供 formal-only 的桥接读模型；analytical 口径不在此页展开。
+        本页当前只校验正式口径的损益桥接闭合；分析口径不在此页展开。
       </div>
 
       <div data-testid="pnl-bridge-summary-section" data-state={summaryState.kind} style={{ marginBottom: 24 }}>
         <SectionLead
-          eyebrow="Overview"
-          title="正式桥接汇总"
-          description="先确认报告日与刷新状态，再阅读 explained PnL、actual PnL、residual 和质量标识；所有数值均来自后端 bridge read model。"
+          eyebrow="总览"
+          title="损益闭合校验汇总"
+          description="先看校验是否通过，再核对解释损益、实际损益、残差和质量标识；所有数值均来自后端正式桥接读模型。"
         />
         <DataSection
           title="汇总"
@@ -575,56 +542,77 @@ export default function PnlBridgePage() {
                 style={{
                   marginBottom: 20,
                   borderRadius: 16,
-                  border: "1px solid #dbe7f5",
-                  background: "#f7fbff",
-                  boxShadow: "0 10px 24px rgba(31, 94, 255, 0.06)",
+                  border: `1px solid ${designTokens.color.primary[200]}`,
+                  background: designTokens.color.primary[50],
+                  boxShadow: designTokens.shadow.card,
                 }}
               >
                 <div style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7f99" }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: designTokens.color.neutral[600],
+                    }}
+                  >
                     {conclusion.title}
                   </span>
-                  <div style={{ fontSize: 20, fontWeight: 600, color: "#162033", lineHeight: 1.4 }}>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 600,
+                      color: designTokens.color.neutral[900],
+                      lineHeight: 1.4,
+                    }}
+                  >
                     {conclusion.body}
                   </div>
-                  <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+                  <div style={{ color: designTokens.color.neutral[600], fontSize: 13, lineHeight: 1.7 }}>
                     {conclusion.detail}
                   </div>
                 </div>
               </Card>
 
-              <div data-testid="pnl-bridge-summary-cards" style={summaryGridStyle}>
-                <KpiCard title="行数" value={cellText(summary.row_count)} detail="summary.row_count" unit="行" />
-                <KpiCard title="质量 ok" value={cellText(summary.ok_count)} detail="summary.ok_count" tone="default" />
+              <div
+                data-testid="pnl-bridge-summary-cards"
+                style={{
+                  ...summaryGridStyle,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                }}
+              >
+                <KpiCard title="行数" value={cellText(summary.row_count)} detail="汇总行数" unit="行" />
+                <KpiCard title="质量正常" value={cellText(summary.ok_count)} detail="正常行数" tone="default" />
                 <KpiCard
-                  title="质量 warning"
+                  title="质量预警"
                   value={cellText(summary.warning_count)}
-                  detail="summary.warning_count"
+                  detail="预警行数"
                   tone="warning"
                 />
-                <KpiCard title="质量 error" value={cellText(summary.error_count)} detail="summary.error_count" tone="error" />
+                <KpiCard title="质量错误" value={cellText(summary.error_count)} detail="错误行数" tone="error" />
                 <KpiCard
-                  title="合计 explained PnL"
+                  title="合计解释损益"
                   value={summary.total_explained_pnl.display}
-                  detail="summary.total_explained_pnl"
+                  detail="合计解释损益"
                   tone={kpiToneFromNumeric(summary.total_explained_pnl)}
                 />
                 <KpiCard
-                  title="合计 actual PnL"
+                  title="合计实际损益"
                   value={summary.total_actual_pnl.display}
-                  detail="summary.total_actual_pnl"
+                  detail="合计实际损益"
                   tone={kpiToneFromNumeric(summary.total_actual_pnl)}
                 />
                 <KpiCard
-                  title="合计 residual"
+                  title="合计残差"
                   value={summary.total_residual.display}
-                  detail="summary.total_residual"
+                  detail="实际损益 - 可解释损益"
                   tone={kpiToneFromNumeric(summary.total_residual)}
                 />
                 <KpiCard
-                  title="质量 quality_flag"
-                  value={summary.quality_flag}
-                  detail="summary.quality_flag（取各行最差等级）"
+                  title="校验状态"
+                  value={qualityLabel(summary.quality_flag)}
+                  detail="按残差质量取各行最差等级。"
                   tone={pnlSurfaceQualityToTone(summary.quality_flag)}
                 />
               </div>
@@ -632,13 +620,13 @@ export default function PnlBridgePage() {
               {chartOption ? (
                 <Card
                   data-testid="pnl-bridge-waterfall-card"
-                  title="PnL Bridge 效应拆解"
+                  title="解释因子拆解（用于校验闭合）"
                   size="small"
                   style={{
                     marginTop: 24,
                     borderRadius: 18,
-                    border: "1px solid #e8edf4",
-                    boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+                    border: `1px solid ${designTokens.color.neutral[200]}`,
+                    boxShadow: designTokens.shadow.card,
                     background: "#ffffff",
                   }}
                   styles={{ body: { padding: "12px 16px 16px" } }}
@@ -656,12 +644,14 @@ export default function PnlBridgePage() {
                     marginTop: 24,
                     padding: 16,
                     borderRadius: 14,
-                    background: "#fffbeb",
-                    border: "1px solid #f5e0a8",
+                    background: designTokens.color.warning[50],
+                    border: `1px solid ${designTokens.color.warning[200]}`,
                   }}
                 >
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: "#92400e" }}>Warnings</div>
-                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: designTokens.color.warning[800] }}>
+                    预警
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: designTokens.color.neutral[600] }}>
                     {warnings.map((warning) => (
                       <li key={warning} style={{ marginBottom: 6 }}>
                         {warning}
@@ -677,9 +667,9 @@ export default function PnlBridgePage() {
 
       <div data-testid="pnl-bridge-detail-section" data-state={detailState.kind}>
         <SectionLead
-          eyebrow="Details"
-          title="桥接明细与归因瀑布"
-          description="瀑布图和明细表共用当前报告日，保留原有图表、AG Grid、分页和 result_meta 调试链路，不改变正式桥接契约。"
+          eyebrow="明细"
+          title="闭合明细与归因瀑布"
+          description="逐行查看债券、组合、会计分类的可解释损益、实际损益和残差，用来定位没有闭合的来源。"
         />
         <DataSection
           title="桥接明细"

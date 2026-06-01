@@ -1,0 +1,3 @@
+# Ignore archived/generated snapshots that are not the active backend contract source.
+audit_pack/**
+backend/data/**

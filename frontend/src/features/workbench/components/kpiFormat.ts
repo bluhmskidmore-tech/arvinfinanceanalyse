@@ -1,4 +1,4 @@
-import type { KpiCardProps } from "./KpiCard";
+import type { KpiCardProps } from "../../../components/KpiCard";
 
 export type KpiTone = NonNullable<KpiCardProps["tone"]>;
 

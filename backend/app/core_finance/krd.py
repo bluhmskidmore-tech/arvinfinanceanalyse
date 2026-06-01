@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Iterable, Mapping
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -133,12 +136,14 @@ def _coerce_date(value: Any) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -146,8 +151,13 @@ def _coerce_date(value: Any) -> date | None:
 def _optional_decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
-    converted = safe_decimal(value)
-    return converted if converted != Decimal("0") else None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        return value if isinstance(value, Decimal) else Decimal(str(value))
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("_optional_decimal: failed to convert %r", type(value).__name__)
+        return None
 
 
 def classify_asset_class(bond_type: str | None) -> str:
@@ -205,6 +215,22 @@ def _get_market_value(position: Any) -> Decimal:
     )
 
 
+def _get_face_value(position: Any, *, fallback_market_value: Decimal) -> Decimal:
+    face_value = safe_decimal(
+        _get_value(
+            position,
+            "face_value_cny",
+            "face_value",
+            "face_value_amount",
+            "face_value_end",
+            "face_value_start",
+            "face_value_native",
+            default=Decimal("0"),
+        )
+    )
+    return face_value if face_value > Decimal("0") else fallback_market_value
+
+
 def _get_coupon_frequency(position: Any) -> int:
     explicit = _get_value(position, "coupon_frequency")
     if explicit is not None:
@@ -256,6 +282,7 @@ def build_krd_position_metrics(
         market_value = _get_market_value(position)
         if market_value <= Decimal("0"):
             continue
+        face_value = _get_face_value(position, fallback_market_value=market_value)
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
@@ -275,27 +302,38 @@ def build_krd_position_metrics(
             wind_metrics={bond_code: wind_bond} if wind_bond else None,
             coupon_frequency=coupon_frequency,
         )
-        modified_duration = modified_duration_from_macaulay(
-            duration=duration,
-            ytm=ytm,
-            coupon_frequency=max(coupon_frequency, 1),
-            wind_mod_dur=_optional_decimal(wind_bond.get("mod_duration")),
+        wind_mod_duration = _optional_decimal(wind_bond.get("mod_duration"))
+        modified_duration = (
+            wind_mod_duration
+            if wind_mod_duration is not None
+            else modified_duration_from_macaulay(
+                duration=duration,
+                ytm=ytm,
+                coupon_frequency=max(coupon_frequency, 1),
+                wind_mod_dur=None,
+            )
         )
-        convexity = estimate_convexity_bond(
-            duration=duration,
-            ytm=ytm,
-            wind_convexity=_optional_decimal(wind_bond.get("convexity")),
-            coupon_frequency=max(coupon_frequency, 1),
+        wind_convexity = _optional_decimal(wind_bond.get("convexity"))
+        convexity = (
+            wind_convexity
+            if wind_convexity is not None
+            else estimate_convexity_bond(
+                duration=duration,
+                ytm=ytm,
+                wind_convexity=None,
+                coupon_frequency=max(coupon_frequency, 1),
+            )
         )
         weight = market_value / total_market_value if total_market_value > 0 else Decimal("0")
         metrics.append(
             {
                 "bond_code": bond_code,
                 "market_value": market_value,
+                "face_value": face_value,
                 "duration": duration,
                 "modified_duration": modified_duration,
                 "convexity": convexity,
-                "dv01": market_value * modified_duration / Decimal("10000"),
+                "dv01": face_value * modified_duration / Decimal("10000"),
                 "weight": weight,
                 "tenor_bucket": _get_tenor_from_position(
                     position,
@@ -343,7 +381,7 @@ def compute_krd_by_tenor(
         tenor_bucket = metric["tenor_bucket"]
         if tenor_bucket not in tenor_map:
             continue
-        tenor_map[tenor_bucket]["krd"] += metric["weight"] * safe_decimal(metric["duration"])
+        tenor_map[tenor_bucket]["krd"] += metric["weight"] * safe_decimal(metric["modified_duration"])
         tenor_map[tenor_bucket]["dv01"] += safe_decimal(metric["dv01"])
         tenor_map[tenor_bucket]["market_value_weight"] += (
             safe_decimal(metric["market_value"]) / total_market_value

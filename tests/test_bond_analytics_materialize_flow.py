@@ -181,6 +181,77 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
         conn.close()
 
 
+def _seed_formal_zqtz_balance_for_cb001(duckdb_path: str, *, market_value_amount: Decimal) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              instrument_name varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              account_category varchar,
+              asset_class varchar,
+              bond_type varchar,
+              sub_type varchar,
+              business_type_primary varchar,
+              issuer_name varchar,
+              industry_name varchar,
+              rating varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              face_value_amount decimal(24, 8),
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date varchar,
+              interest_mode varchar,
+              is_issuance_like boolean,
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              issuer_name, industry_name, rating, invest_type_std, accounting_basis,
+              position_scope, currency_basis, currency_code, face_value_amount, market_value_amount,
+              amortized_cost_amount, accrued_interest_amount, coupon_rate, ytm_value, maturity_date,
+              interest_mode, is_issuance_like, source_version, rule_version, ingest_batch_id, trace_id
+            )
+            select
+              cast(report_date as varchar), instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, coalesce(sub_type, ''), coalesce(business_type_primary, ''),
+              issuer_name, industry_name, rating, 'A', 'FVOCI',
+              'asset', 'CNY', currency_code, face_value_native, ?,
+              amortized_cost_native, accrued_interest_native, coupon_rate, ytm_value, cast(maturity_date as varchar),
+              interest_mode, is_issuance_like, 'sv_formal_balance', 'rv_formal_balance', ingest_batch_id, trace_id
+            from zqtz_bond_daily_snapshot
+            where instrument_code = 'CB-001'
+            """,
+            [market_value_amount],
+        )
+    finally:
+        conn.close()
+
+
+def _seed_duplicate_formal_zqtz_balance_for_cb001(duckdb_path: str) -> None:
+    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("1900"))
+    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("-1900"))
+
+
 BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
 
 
@@ -303,6 +374,15 @@ def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp
     assert risk["bond_count"] == 3
     assert risk["total_market_value"] == Decimal("429.00000000")
     assert risk["portfolio_dv01"] > Decimal("0")
+    overview = repo.fetch_risk_overview_snapshot(report_date=REPORT_DATE)
+    assert overview is not None
+    split_total = (
+        overview["ac_dv01"]
+        + overview["oci_dv01"]
+        + overview["tpl_dv01"]
+        + overview["other_dv01"]
+    )
+    assert split_total == overview["portfolio_dv01"]
 
     krd = repo.fetch_krd_distribution(report_date=REPORT_DATE)
     assert [row["tenor_bucket"] for row in krd] == ["10Y", "1Y", "5Y"]
@@ -442,7 +522,7 @@ def test_bond_analytics_materialize_computes_expected_duration_for_one_year_rate
         conn.close()
 
     expected_modified_duration = (Decimal("1") / Decimal("1.018")).quantize(Decimal("0.00000001"))
-    expected_dv01 = (Decimal("99") * expected_modified_duration / Decimal("10000")).quantize(Decimal("0.00000001"))
+    expected_dv01 = (Decimal("100") * expected_modified_duration / Decimal("10000")).quantize(Decimal("0.00000001"))
 
     assert tb_001 == (
         Decimal("1.00000000"),
@@ -463,19 +543,19 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
         {
             "tenor_bucket": "10Y",
             "market_value": Decimal("140.00000000"),
-            "dv01": Decimal("0.11250583"),
+            "dv01": Decimal("0.12054196"),
             "krd": Decimal("8.03613072"),
         },
         {
             "tenor_bucket": "1Y",
             "market_value": Decimal("99.00000000"),
-            "dv01": Decimal("0.00972495"),
+            "dv01": Decimal("0.00982318"),
             "krd": Decimal("0.98231827"),
         },
         {
             "tenor_bucket": "5Y",
             "market_value": Decimal("190.00000000"),
-            "dv01": Decimal("0.08681798"),
+            "dv01": Decimal("0.09138735"),
             "krd": Decimal("4.56936732"),
         },
     ]
@@ -503,6 +583,57 @@ def test_bond_analytics_materialize_credit_filters_return_expected_fact_subset(t
         asset_class="rate",
         accounting_class="TPL",
     ) == []
+
+
+def test_bond_analytics_materialize_uses_formal_basis_but_keeps_cny_native_market_value(tmp_path):
+    repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    _seed_formal_zqtz_balance_for_cb001(str(duckdb_path), market_value_amount=Decimal("1900"))
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
+    row = next(
+        row
+        for row in repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)
+        if row["instrument_code"] == "CB-001"
+    )
+    assert row["accounting_class"] == "OCI"
+    assert row["market_value_native"] == Decimal("190.00000000")
+    assert row["market_value"] == Decimal("190.00000000")
+    expected_dv01 = (row["face_value"] * row["modified_duration"] / Decimal("10000")).quantize(
+        Decimal("0.00000001")
+    )
+    assert row["dv01"] == expected_dv01
+
+
+def test_bond_analytics_materialize_does_not_duplicate_snapshot_rows_when_formal_balance_has_duplicate_keys(tmp_path):
+    repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    _seed_duplicate_formal_zqtz_balance_for_cb001(str(duckdb_path))
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
+    rows = repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)
+    cb001_rows = [row for row in rows if row["instrument_code"] == "CB-001"]
+    assert payload["row_count"] == 3
+    assert len(cb001_rows) == 1
+    assert cb001_rows[0]["accounting_class"] == "OCI"
 
 
 def test_bond_analytics_materialize_accounting_audit_exposes_rule_trace_by_asset_class(tmp_path):

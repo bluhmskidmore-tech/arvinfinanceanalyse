@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
@@ -28,7 +29,7 @@ RISK_TENSOR_MODULE = ensure_formal_module(
         # Governed downstream derivative of bond_analytics formal facts.
         input_sources=("fact_formal_bond_analytics_daily", "fact_formal_tyw_balance_daily"),
         fact_tables=("fact_formal_risk_tensor_daily",),
-        rule_version="rv_risk_tensor_formal_materialize_v1",
+        rule_version="rv_risk_tensor_formal_materialize_v2",
         result_kind_family="risk-tensor",
         supports_standard_queries=True,
         supports_custom_queries=False,
@@ -65,6 +66,19 @@ def _load_liability_rows(*, duckdb_file: Path, report_date: str) -> list[dict[st
         raise
 
 
+def _rate_unit_violations(rows: list[dict[str, object]]) -> list[str]:
+    violations: list[str] = []
+    for row in rows:
+        instrument_code = str(row.get("instrument_code") or "").strip() or "<unknown>"
+        value = row.get("coupon_rate")
+        if value is None or str(value).strip() == "":
+            continue
+        rate = Decimal(str(value))
+        if abs(rate) > Decimal("1"):
+            violations.append(f"{instrument_code}.coupon_rate={rate}")
+    return violations
+
+
 def _execute_risk_tensor_materialization(
     *,
     report_date: str,
@@ -91,16 +105,29 @@ def _execute_risk_tensor_materialization(
         duckdb_file=duckdb_file,
         report_date=report_date,
     )
-    tensor = compute_portfolio_risk_tensor(
-        rows,
-        date.fromisoformat(report_date),
-        liability_rows=liability_rows,
-    )
     source_version = _build_source_version(
         upstream_lineage["source_version"],
         liability_source_versions=[
             str(row.get("source_version") or "").strip() for row in liability_rows
         ],
+    )
+    rate_unit_violations = _rate_unit_violations(rows)
+    if rate_unit_violations:
+        raise FormalComputeMaterializeFailure(
+            source_version=source_version,
+            vendor_version="vv_none",
+            message=(
+                "risk_tensor requires decimal-form bond analytics rates; "
+                "rebuild bond_analytics before materializing risk_tensor. "
+                f"report_date={report_date}; violations="
+                + ", ".join(rate_unit_violations[:5])
+            ),
+        )
+
+    tensor = compute_portfolio_risk_tensor(
+        rows,
+        date.fromisoformat(report_date),
+        liability_rows=liability_rows,
     )
     liability_source_version = "__".join(
         sorted(
