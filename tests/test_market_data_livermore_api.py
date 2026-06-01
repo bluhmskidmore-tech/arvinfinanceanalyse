@@ -882,7 +882,76 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monk
     get_settings.cache_clear()
 
 
-def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates(monkeypatch) -> None:
+def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candidates_in_overheat(
+    monkeypatch,
+) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    stock_snapshot_called = False
+    compute_called = False
+
+    monkeypatch.setattr(
+        service,
+        "_load_sector_rank_inputs",
+        lambda **_kwargs: ([object()], ["choice_stock_sector_membership"], [], []),
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(
+            ready=True,
+            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+        ),
+    )
+
+    def fake_load_stock_candidate_snapshots(**_kwargs):
+        nonlocal stock_snapshot_called
+        stock_snapshot_called = True
+        raise AssertionError("inactive exp3b policy should skip stock snapshot loading in OVERHEAT")
+
+    def fake_compute_stock_candidates(**_kwargs):
+        nonlocal compute_called
+        compute_called = True
+        raise AssertionError("inactive exp3b policy should skip stock candidate computation in OVERHEAT")
+
+    monkeypatch.setattr(service, "_load_stock_candidate_snapshots", fake_load_stock_candidate_snapshots)
+    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="factor rows unavailable in policy unit test.",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-05-13",
+        market_state="OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        backfill_mode=True,
+    )
+
+    assert stock_snapshot_called is False
+    assert compute_called is False
+    assert outputs.stock_candidates_payload is None
+    assert "exp3b" in outputs.stock_candidate_block_reason
+    assert "OVERHEAT" in outputs.stock_candidate_block_reason
+
+
+def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates_in_warm(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     seen_policies: list[str] = []
@@ -934,7 +1003,7 @@ def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candid
     outputs = service._load_choice_stock_outputs(
         duckdb_path="unused.duckdb",
         as_of_date="2026-05-13",
-        market_state="OVERHEAT",
+        market_state="WARM",
         stock_readiness=_ready_choice_stock_readiness(),
         backfill_mode=True,
     )

@@ -98,6 +98,14 @@ _POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
 ACTIVE_MARKET_STATES = set(_POLICY_BY_NAME[DEFAULT_STOCK_CANDIDATE_POLICY].active_market_states)
 
 
+def stock_candidate_policy_active_market_states(policy_name: str) -> frozenset[str]:
+    return _resolve_policy(policy_name).active_market_states
+
+
+def is_stock_candidate_policy_active(*, policy_name: str, market_state: str) -> bool:
+    return market_state in stock_candidate_policy_active_market_states(policy_name)
+
+
 def compute_stock_candidates(
     *,
     as_of_date: str,

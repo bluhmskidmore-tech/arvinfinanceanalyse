@@ -8,6 +8,22 @@ from pathlib import Path
 from typing import cast
 
 import duckdb
+from backend.app.core_finance.cycle_macro_score import (
+    CN10Y_SERIES_ID,
+    CSI300_PE_SERIES_ID,
+    M2_YOY_SERIES_ID,
+    PMI_SERIES_ID,
+    SOCIAL_FINANCING_YOY_SERIES_ID,
+    CycleMacroSnapshot,
+    build_cycle_macro_snapshot,
+)
+from backend.app.core_finance.factor_screen_candidates import (
+    compute_factor_screen_candidates,
+)
+from backend.app.core_finance.hybrid_fusion_candidates import (
+    compute_hybrid_fusion_candidates,
+)
+from backend.app.core_finance.hybrid_fusion_config import load_hybrid_fusion_thresholds
 from backend.app.core_finance.livermore_risk_exit import (
     MVP_RULE_LABEL,
     RiskExitSnapshot,
@@ -24,35 +40,21 @@ from backend.app.core_finance.livermore_stock_candidates import (
     EXP3B_STOCK_CANDIDATE_POLICY,
     StockCandidateSnapshot,
     compute_stock_candidates,
-)
-from backend.app.core_finance.cycle_macro_score import (
-    CN10Y_SERIES_ID,
-    CSI300_PE_SERIES_ID,
-    M2_YOY_SERIES_ID,
-    PMI_SERIES_ID,
-    SOCIAL_FINANCING_YOY_SERIES_ID,
-    CycleMacroSnapshot,
-    build_cycle_macro_snapshot,
-)
-from backend.app.core_finance.factor_screen_candidates import (
-    compute_factor_screen_candidates,
-)
-from backend.app.core_finance.hybrid_fusion_config import load_hybrid_fusion_thresholds
-from backend.app.core_finance.hybrid_fusion_candidates import (
-    compute_hybrid_fusion_candidates,
-)
-from backend.app.core_finance.mean_reversion_candidates import (
-    MeanReversionSnapshot,
-    compute_mean_reversion_candidates,
-)
-from backend.app.core_finance.livermore_theme_breakout import (
-    ThemeBreakoutSnapshot,
-    compute_theme_breakout,
+    is_stock_candidate_policy_active,
+    stock_candidate_policy_active_market_states,
 )
 from backend.app.core_finance.livermore_strategy import (
     BroadIndexObservation,
     MarketGateSupplement,
     evaluate_market_gate,
+)
+from backend.app.core_finance.livermore_theme_breakout import (
+    ThemeBreakoutSnapshot,
+    compute_theme_breakout,
+)
+from backend.app.core_finance.mean_reversion_candidates import (
+    MeanReversionSnapshot,
+    compute_mean_reversion_candidates,
 )
 from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockReadiness,
@@ -86,6 +88,8 @@ HISTORY_LIMIT = 260
 STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON = (
     "No price-field or rule-derived limit_ratio source is available for Livermore stock pivot filters."
 )
+STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY = "stock_candidate_policy"
+STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX = "Stock candidate policy "
 MAINBOARD_RISK_WARNING_LIMIT_RATIO_10_START = date(2026, 7, 6)
 SECTOR_REQUIRED_ITEMS: tuple[tuple[str, str], ...] = (
     ("sector_membership", "sw2021_industry_membership"),
@@ -461,7 +465,6 @@ def _load_cycle_input_evidence(
     evidence_rows = 0
     try:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
-        price_spread_ready = False
         price_spread_evidence = ""
         pe_value: float | None = None
         cn10y_value: float | None = None
@@ -517,7 +520,6 @@ def _load_cycle_input_evidence(
                 if pe_value > 0:
                     earnings_yield = 100.0 / pe_value
                     spread = earnings_yield - cn10y_value
-                    price_spread_ready = True
                     price_spread_evidence = (
                         f"{CSI300_PE_SERIES_ID} {pe_value:.2f} and {CN10Y_SERIES_ID} 10Y yield {cn10y_value:.2f}% "
                         f"landed by {as_of_date.isoformat()}; proxy price_spread is {spread:.2f}ppt."
@@ -796,31 +798,40 @@ def _load_choice_stock_outputs(
 
     stock_candidates_payload: dict[str, object] | None = None
     stock_candidate_block_reason = ""
+    resolved_stock_candidate_policy = stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY
     if (
         stock_coverage.full_coverage
         and sector_rank_payload is not None
         and market_state not in {"NO_DATA", "PENDING_DATA", "STALE"}
     ):
-        snapshots, stock_tables, stock_sources, stock_vendors = _load_stock_candidate_snapshots(
-            duckdb_path=duckdb_path,
-            as_of_date=as_of_date,
-            sector_rank_payload=sector_rank_payload,
-        )
-        evidence_rows += len(snapshots)
-        tables_used.extend(stock_tables)
-        source_versions.extend(stock_sources)
-        vendor_versions.extend(stock_vendors)
-        if snapshots and not any(_safe_float(snapshot.limit_ratio) is not None for snapshot in snapshots):
-            stock_candidate_block_reason = STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON
-        else:
-            resolved_stock_candidate_policy = stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY
-            stock_candidates_payload = compute_stock_candidates(
-                as_of_date=as_of_date,
-                market_state=market_state,
-                snapshots=snapshots,
-                include_universe=backfill_mode,
+        if not is_stock_candidate_policy_active(
+            policy_name=resolved_stock_candidate_policy,
+            market_state=market_state,
+        ):
+            stock_candidate_block_reason = _stock_candidate_policy_inactive_reason(
                 policy_name=resolved_stock_candidate_policy,
-            ).payload
+                market_state=market_state,
+            )
+        else:
+            snapshots, stock_tables, stock_sources, stock_vendors = _load_stock_candidate_snapshots(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                sector_rank_payload=sector_rank_payload,
+            )
+            evidence_rows += len(snapshots)
+            tables_used.extend(stock_tables)
+            source_versions.extend(stock_sources)
+            vendor_versions.extend(stock_vendors)
+            if snapshots and not any(_safe_float(snapshot.limit_ratio) is not None for snapshot in snapshots):
+                stock_candidate_block_reason = STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON
+            else:
+                stock_candidates_payload = compute_stock_candidates(
+                    as_of_date=as_of_date,
+                    market_state=market_state,
+                    snapshots=snapshots,
+                    include_universe=backfill_mode,
+                    policy_name=resolved_stock_candidate_policy,
+                ).payload
 
     mean_reversion_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"OFF", "WARM"}:
@@ -1574,7 +1585,7 @@ def _load_factor_screen_rows(
             "sector_code",
             "sector_name",
         ]
-        mapped_rows = [dict(zip(cols, row)) for row in rows]
+        mapped_rows = [dict(zip(cols, row, strict=False)) for row in rows]
         if not mapped_rows:
             return _FactorScreenLoadResult(
                 rows=[],
@@ -2644,6 +2655,7 @@ def _build_rule_readiness(
                 "limit_up_quality",
                 "sector_rank",
                 "market_gate",
+                STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY,
             ],
             "missing_inputs": stock_missing_inputs,
         },
@@ -3053,6 +3065,18 @@ def _stock_unavailable_reason(
     return ""
 
 
+def _stock_candidate_policy_inactive_reason(*, policy_name: str, market_state: str) -> str:
+    active_states = "/".join(sorted(stock_candidate_policy_active_market_states(policy_name)))
+    return (
+        f"{STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX}{policy_name} is inactive in {market_state}; "
+        f"active market states are {active_states}."
+    )
+
+
+def _is_stock_candidate_policy_inactive_reason(reason: str) -> bool:
+    return reason.startswith(STOCK_CANDIDATE_POLICY_INACTIVE_REASON_PREFIX)
+
+
 def _theme_breakout_evidence_entries(payload: dict[str, object]) -> list[dict[str, object]]:
     evidence_state = payload.get("evidence_state")
     if not isinstance(evidence_state, dict):
@@ -3178,6 +3202,8 @@ def _theme_breakout_stock_item_count(payload: dict[str, object] | None) -> int:
 
 def _stock_unavailable_input_family(stock_outputs: _ChoiceStockOutputs) -> str:
     if stock_outputs.stock_candidate_block_reason:
+        if _is_stock_candidate_policy_inactive_reason(stock_outputs.stock_candidate_block_reason):
+            return STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY
         return "limit_up_quality"
     return "stock_universe"
 
@@ -3273,7 +3299,9 @@ def _stock_missing_inputs(
         )
     elif stock_outputs.stock_coverage is not None and not stock_outputs.stock_coverage.full_coverage:
         missing_inputs.extend(_missing_families_from_request_items(stock_outputs.stock_coverage.missing_request_items))
-    if stock_outputs.stock_candidate_block_reason and "limit_ratio" not in missing_inputs:
+    if _is_stock_candidate_policy_inactive_reason(stock_outputs.stock_candidate_block_reason):
+        missing_inputs.append(STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY)
+    elif stock_outputs.stock_candidate_block_reason and "limit_ratio" not in missing_inputs:
         missing_inputs.append("limit_ratio")
     if stock_outputs.sector_rank_payload is None and "sector_rank" not in missing_inputs:
         missing_inputs.append("sector_rank")
