@@ -460,9 +460,54 @@ describe("MacroToolkitPage", () => {
     expect(hasonStrategyPanel).toHaveTextContent("Runtime outputs");
     expect(hasonStrategyPanel).toHaveTextContent("current");
     expect(hasonStrategyPanel).not.toHaveTextContent("Runtime outputsready");
+    expect(hasonStrategyPanel.querySelector(".macro-toolkit-metric:nth-child(1)")).not.toHaveClass(
+      "macro-toolkit-metric--positive",
+    );
+    expect(hasonStrategyPanel.querySelector(".macro-toolkit-metric:nth-child(2)")).not.toHaveClass(
+      "macro-toolkit-metric--positive",
+    );
     expect(hasonStrategyPanel.querySelector(".macro-toolkit-metric:nth-child(4)")).not.toHaveClass(
       "macro-toolkit-metric--positive",
     );
+  });
+
+  it("counts all available Hason source trace scripts while keeping the detail preview bounded", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const hasonStrategy = analysisEnvelope.result.hason_strategy;
+    if (!hasonStrategy) {
+      throw new Error("mock analysis is missing hason_strategy");
+    }
+    const sourceTrace = Array.from({ length: 7 }, (_, index) => ({
+      script: `trace_script_${index + 1}`,
+      filename: `trace_script_${index + 1}.py`,
+      group: "Hason",
+      available: true,
+    }));
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          hason_strategy: {
+            ...hasonStrategy,
+            source_trace: sourceTrace,
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const hasonStrategyPanel = await screen.findByTestId("macro-toolkit-hason-strategy");
+    const scriptTraceMetric = hasonStrategyPanel.querySelector("[data-testid='macro-toolkit-hason-script-trace']");
+    expect(scriptTraceMetric).toHaveTextContent("Script trace");
+    expect(scriptTraceMetric).toHaveTextContent("7");
+    expect(scriptTraceMetric).toHaveTextContent("trace_script_1");
+    const scriptTraceDetail = scriptTraceMetric?.querySelector("small");
+    expect(scriptTraceDetail).toHaveAttribute("title", expect.stringContaining("trace_script_5"));
+    expect(scriptTraceDetail).not.toHaveAttribute("title", expect.stringContaining("trace_script_6"));
   });
 
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {

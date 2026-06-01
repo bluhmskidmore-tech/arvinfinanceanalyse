@@ -1348,7 +1348,8 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
     : runtimeOutputsCurrent
       ? "none"
       : "freshness not confirmed";
-  const tracedScripts = strategy.source_trace.filter((item) => item.available).slice(0, 5);
+  const availableTracedScripts = strategy.source_trace.filter((item) => item.available);
+  const tracedScriptPreview = availableTracedScripts.slice(0, 5);
   return (
     <section className="macro-toolkit-section macro-toolkit-hason-strategy" data-testid="macro-toolkit-hason-strategy">
       <div className="macro-toolkit-hason-strategy__head">
@@ -1375,14 +1376,14 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
           label="Readiness"
           value={readinessText}
           detail={`${formatPercent(readiness.ratio)} module coverage`}
-          tone={readiness.ready_modules === readiness.total_modules ? "positive" : "neutral"}
+          tone="neutral"
         />
         <MetricTile
           icon={<ToolOutlined />}
           label="Module gaps"
           value={`${readiness.missing_script_count} missing script`}
           detail={`${readiness.partial_modules} partial / ${readiness.missing_modules} missing module`}
-          tone={readiness.partial_modules || readiness.missing_modules ? "neutral" : "positive"}
+          tone="neutral"
         />
         <MetricTile
           icon={<DatabaseOutlined />}
@@ -1394,9 +1395,10 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
         <MetricTile
           icon={<ToolOutlined />}
           label="Script trace"
-          value={tracedScripts.length}
-          detail={tracedScripts.map((item) => item.script).join(" / ") || "no script available"}
+          value={availableTracedScripts.length}
+          detail={tracedScriptPreview.map((item) => item.script).join(" / ") || "no script available"}
           tone="neutral"
+          testId="macro-toolkit-hason-script-trace"
         />
       </div>
 
@@ -2312,15 +2314,17 @@ function MetricTile({
   value,
   detail,
   tone = "neutral",
+  testId,
 }: {
   icon?: ReactNode;
   label: string;
   value: string | number;
   detail: string;
   tone?: "neutral" | "positive";
+  testId?: string;
 }) {
   return (
-    <div className={`macro-toolkit-metric macro-toolkit-metric--${tone}`}>
+    <div className={`macro-toolkit-metric macro-toolkit-metric--${tone}`} data-testid={testId}>
       <span>
         <MacroStatusIcon tone={tone}>{icon ?? <InfoCircleOutlined />}</MacroStatusIcon>
         {label}
