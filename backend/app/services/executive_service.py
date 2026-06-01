@@ -50,6 +50,7 @@ from backend.app.schemas.executive_dashboard import (
     VerdictSuggestion,
     VerdictTone,
 )
+from backend.app.services.bond_analytics_service import get_benchmark_excess
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.kpi_service import (
     resolve_executive_kpi_metrics,
@@ -64,6 +65,10 @@ from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
 
+_HOME_INCOME_BENCHMARK_ID = "CDB_INDEX"
+_HOME_INCOME_BENCHMARK_PERIOD_TYPE = "MoM"
+_HOME_INCOME_CURVE_FALLBACK_PREFIX = "YIELD_CURVE_LATEST_FALLBACK"
+_HOME_INCOME_MAX_CURVE_FALLBACK_DAYS = 7
 _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
@@ -73,6 +78,7 @@ _logger = logging.getLogger(__name__)
 
 # Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
 _YUAN_PER_YI: float = 1e8
+_BASIS_POINTS_PER_PERCENT: float = 100.0
 
 
 def _normalize_report_date(report_date: str | None) -> str | None:
@@ -2297,19 +2303,33 @@ def home_research_reports_envelope(
     duckdb_path = str(settings.duckdb_path)
     rows: list[dict[str, object]] = []
     warnings: list[str] = []
+    research_date_mode = "on_or_before_report_date"
 
     if not Path(duckdb_path).exists():
         warnings.append("DuckDB news warehouse is not available; research reports are empty.")
     else:
         try:
-            rows = NewsWarehouseRepository(duckdb_path).list_research_reports(
+            repo = NewsWarehouseRepository(duckdb_path)
+            rows = repo.list_research_reports(
                 report_date=normalized,
                 limit=limit,
             )
+            if not rows:
+                rows = repo.list_latest_research_reports(limit=limit)
+                if rows:
+                    research_date_mode = "latest_fallback"
+                    warnings.append(
+                        f"No research reports on or before {normalized}; showing latest ingested research reports."
+                    )
         except (OSError, RuntimeError, ValueError) as exc:
             warnings.append(f"Research reports unavailable from fact_news_event: {exc}")
 
-    source_status: Literal["ready", "empty", "stale"] = "ready" if rows else "empty"
+    if rows and research_date_mode == "on_or_before_report_date":
+        source_status: Literal["ready", "empty", "stale"] = "ready"
+    elif rows:
+        source_status = "stale"
+    else:
+        source_status = "empty"
     if not rows and not warnings:
         warnings.append("No research reports found on or before report_date.")
 
@@ -2330,12 +2350,89 @@ def home_research_reports_envelope(
             "report_date": normalized,
             "limit": limit,
             "source_kind": "research",
+            "research_date_mode": research_date_mode,
         },
         requested_report_date=normalized,
         resolved_report_date=normalized,
         as_of_date=normalized,
-        date_basis="fact_news_event.pub_time_lte_report_date",
+        date_basis=(
+            "fact_news_event.latest_ingested"
+            if research_date_mode == "latest_fallback"
+            else "fact_news_event.pub_time_lte_report_date"
+        ),
     )
+
+
+def _home_income_null_pnl() -> Numeric:
+    return Numeric(
+        raw=None,
+        unit="yuan",
+        display="-",
+        precision=2,
+        sign_aware=True,
+    )
+
+
+def _numeric_raw_from_payload(value: object) -> float | None:
+    if isinstance(value, Numeric):
+        return value.raw
+    if isinstance(value, dict):
+        raw_value = value.get("raw")
+    else:
+        raw_value = getattr(value, "raw", value)
+    if raw_value is None:
+        return None
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _home_income_benchmark_warning(point_date: str, reason: object) -> str:
+    text = str(reason or "").strip()
+    if not text:
+        text = "benchmark/excess return unavailable"
+    return f"{point_date} {_HOME_INCOME_BENCHMARK_ID}: {text}"
+
+
+def _home_income_warning_date(text: str, marker: str) -> date | None:
+    marker_index = text.find(marker)
+    if marker_index < 0:
+        return None
+    try:
+        return date.fromisoformat(text[marker_index + len(marker): marker_index + len(marker) + 10])
+    except ValueError:
+        return None
+
+
+def _is_bounded_home_income_curve_fallback(reason: object) -> bool:
+    text = str(reason or "")
+    if _HOME_INCOME_CURVE_FALLBACK_PREFIX not in text:
+        return False
+    resolved_date = _home_income_warning_date(text, "from trade_date=")
+    requested_date = _home_income_warning_date(text, "requested_trade_date=")
+    if resolved_date is None or requested_date is None:
+        return False
+    fallback_days = (requested_date - resolved_date).days
+    return 0 <= fallback_days <= _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS
+
+
+def _home_income_blocking_benchmark_reasons(
+    benchmark_warnings: list[object],
+    *,
+    vendor_status: str,
+) -> list[object]:
+    blocking_reasons: list[object] = [
+        warning
+        for warning in benchmark_warnings
+        if not _is_bounded_home_income_curve_fallback(warning)
+    ]
+    bounded_fallback_only = bool(benchmark_warnings) and not blocking_reasons
+    if vendor_status != "ok" and not (
+        vendor_status == "vendor_stale" and bounded_fallback_only
+    ):
+        blocking_reasons.append(f"vendor_status={vendor_status}")
+    return blocking_reasons
 
 
 def home_income_trend_envelope(
@@ -2345,9 +2442,10 @@ def home_income_trend_envelope(
 ) -> dict[str, object]:
     """Return recent monthly portfolio PnL points from the governed product-category read model.
 
-    The available source currently provides portfolio PnL only. Benchmark and
-    excess PnL stay explicit null Numerics so the frontend can show a partial
-    data state without fabricating missing metrics.
+    Portfolio PnL comes from product-category monthly grand_total. Benchmark
+    and excess PnL are derived only when the governed CDB benchmark-excess
+    surface returns a source-backed return set for the same point. Bounded
+    previous-curve fallback is accepted as verified business-day fallback.
     """
 
     normalized = _normalize_report_date(report_date)
@@ -2377,36 +2475,97 @@ def home_income_trend_envelope(
     except (RuntimeError, OSError, TypeError, ValueError, KeyError) as exc:
         warnings.append(f"Income trend unavailable from product_category_pnl_formal_read_model: {exc}")
 
-    missing_components = ["benchmark_pnl", "excess_pnl"]
-    source_status: Literal["partial", "empty"] = "partial" if rows else "empty"
+    missing_components: list[str] = []
+    benchmark_source_versions: list[str] = []
+    benchmark_rule_versions: list[str] = []
+    source_status: Literal["ready", "partial", "empty"] = "empty"
     if not rows and not warnings:
         warnings.append("No monthly grand_total rows found on or before report_date.")
-    if rows:
-        warnings.append("Benchmark and excess PnL are not available in the current governed source.")
 
-    null_pnl = Numeric(
-        raw=None,
-        unit="yuan",
-        display="-",
-        precision=2,
-        sign_aware=True,
-    )
-    points = [
-        HomeIncomeTrendPoint(
-            date=str(row.get("report_date") or ""),
-            portfolio_pnl=_fmt_yi_amount(
-                float(row["business_net_income"])
-                if row.get("business_net_income") is not None
-                else None,
-                signed=True,
-            ),
-            benchmark_pnl=null_pnl,
-            excess_pnl=null_pnl,
-            basis="product_category_pnl_monthly",
-            source_status=source_status,
+    points: list[HomeIncomeTrendPoint] = []
+    for row in sorted(rows, key=lambda item: str(item.get("report_date") or "")):
+        point_date = str(row.get("report_date") or "")
+        portfolio_pnl = _fmt_yi_amount(
+            float(row["business_net_income"])
+            if row.get("business_net_income") is not None
+            else None,
+            signed=True,
         )
-        for row in sorted(rows, key=lambda item: str(item.get("report_date") or ""))
-    ]
+        benchmark_pnl = _home_income_null_pnl()
+        excess_pnl = _home_income_null_pnl()
+        point_status: Literal["ready", "partial"] = "partial"
+
+        try:
+            benchmark_envelope = get_benchmark_excess(
+                date.fromisoformat(point_date),
+                _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
+                _HOME_INCOME_BENCHMARK_ID,
+            )
+            benchmark_result = benchmark_envelope.get("result") if isinstance(benchmark_envelope, dict) else None
+            benchmark_meta = benchmark_envelope.get("result_meta") if isinstance(benchmark_envelope, dict) else None
+            if isinstance(benchmark_meta, dict):
+                benchmark_source_versions.extend(_lineage_tokens(benchmark_meta.get("source_version")))
+                benchmark_rule_versions.extend(_lineage_tokens(benchmark_meta.get("rule_version")))
+
+            benchmark_warnings = (
+                list(benchmark_result.get("warnings") or [])
+                if isinstance(benchmark_result, dict)
+                else ["benchmark/excess result missing"]
+            )
+            vendor_status = (
+                str(benchmark_meta.get("vendor_status") or "ok")
+                if isinstance(benchmark_meta, dict)
+                else "vendor_unavailable"
+            )
+            blocking_reasons = _home_income_blocking_benchmark_reasons(
+                benchmark_warnings,
+                vendor_status=vendor_status,
+            )
+            if blocking_reasons:
+                reasons = blocking_reasons or [f"vendor_status={vendor_status}"]
+                warnings.extend(_home_income_benchmark_warning(point_date, reason) for reason in reasons)
+            elif isinstance(benchmark_result, dict):
+                portfolio_return = _numeric_raw_from_payload(benchmark_result.get("portfolio_return"))
+                benchmark_return = _numeric_raw_from_payload(benchmark_result.get("benchmark_return"))
+                excess_return = _numeric_raw_from_payload(benchmark_result.get("excess_return"))
+                if (
+                    portfolio_pnl.raw is not None
+                    and portfolio_return is not None
+                    and abs(portfolio_return) > 1e-12
+                    and benchmark_return is not None
+                    and excess_return is not None
+                ):
+                    pnl_base = portfolio_pnl.raw / portfolio_return
+                    benchmark_pnl = _fmt_yi_amount(pnl_base * benchmark_return, signed=True)
+                    excess_pnl = _fmt_yi_amount(pnl_base * (excess_return / _BASIS_POINTS_PER_PERCENT), signed=True)
+                    point_status = "ready"
+                else:
+                    warnings.append(
+                        _home_income_benchmark_warning(
+                            point_date,
+                            "portfolio_return, benchmark_return or excess_return is missing/zero",
+                        )
+                    )
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError) as exc:
+            warnings.append(_home_income_benchmark_warning(point_date, exc))
+
+        points.append(
+            HomeIncomeTrendPoint(
+                date=point_date,
+                portfolio_pnl=portfolio_pnl,
+                benchmark_pnl=benchmark_pnl,
+                excess_pnl=excess_pnl,
+                basis="product_category_pnl_monthly",
+                source_status=point_status,
+            )
+        )
+
+    if points:
+        source_status = "ready" if all(point.source_status == "ready" for point in points) else "partial"
+    if source_status == "partial":
+        missing_components = ["benchmark_pnl", "excess_pnl"]
+    warnings = _lineage_tokens(*warnings)
+
     payload = HomeIncomeTrendPayload(
         report_date=normalized,
         window=bounded_window,
@@ -2421,20 +2580,29 @@ def home_income_trend_envelope(
         quality_flag="warning" if source_status != "ready" else "ok",
         vendor_status="ok" if rows else "vendor_unavailable",
         source_version=(
-            _join_lineage_tokens(*_lineage_tokens_from_rows(rows, "source_version"))
+            _join_lineage_tokens(
+                *_lineage_tokens_from_rows(rows, "source_version"),
+                *benchmark_source_versions,
+            )
             if rows
             else "sv_home_income_trend_empty_v1"
         ),
         rule_version=(
-            _join_lineage_tokens("rv_home_income_trend_v1", *_lineage_tokens_from_rows(rows, "rule_version"))
+            _join_lineage_tokens(
+                "rv_home_income_trend_v2",
+                *_lineage_tokens_from_rows(rows, "rule_version"),
+                *benchmark_rule_versions,
+            )
             if rows
-            else "rv_home_income_trend_v1"
+            else "rv_home_income_trend_v2"
         ),
         filters_applied={
             "report_date": normalized,
             "window": bounded_window,
             "view": "monthly",
             "category_id": "grand_total",
+            "benchmark_id": _HOME_INCOME_BENCHMARK_ID,
+            "benchmark_period_type": _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
         },
         requested_report_date=normalized,
         resolved_report_date=points[-1].date if points else normalized,

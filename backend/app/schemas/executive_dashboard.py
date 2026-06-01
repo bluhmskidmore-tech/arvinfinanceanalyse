@@ -243,6 +243,7 @@ class HomeResearchReportItem(BaseModel):
     published_at: str
     link: str | None = None
     source: str
+    institution: str | None = None
     source_status: Literal["ready", "empty", "stale"] = "ready"
     summary: str | None = None
 

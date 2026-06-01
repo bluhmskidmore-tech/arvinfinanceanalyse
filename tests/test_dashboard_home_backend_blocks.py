@@ -11,7 +11,6 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.news_warehouse_repo import ensure_news_warehouse_schema, upsert_news_event
 from tests.helpers import load_module
 
-
 REPORT_DATE = "2026-03-31"
 PREV_REPORT_DATE = "2026-03-30"
 
@@ -195,6 +194,70 @@ def test_home_research_reports_endpoint_reads_research_news_only(tmp_path, monke
         get_settings.cache_clear()
 
 
+def test_home_research_reports_falls_back_to_latest_when_report_date_has_no_rows(
+    tmp_path, monkeypatch
+) -> None:
+    duckdb_path = tmp_path / "research-reports-fallback.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_news_warehouse_schema(conn)
+        upsert_news_event(
+            conn,
+            source="tushare_research",
+            source_kind="research",
+            title="6月利率债周报",
+            url="https://example.com/june-research.pdf",
+            content=None,
+            summary="关注曲线陡峭化",
+            pub_time_iso="2026-06-01T09:00:00+00:00",
+            extra={"category": "fixed_income"},
+        )
+        upsert_news_event(
+            conn,
+            source="tushare_research",
+            source_kind="research",
+            title="6月电力设备行业跟踪周报",
+            url="https://example.com/power-research.pdf",
+            content=None,
+            summary="锂电和工控需求持续向上",
+            pub_time_iso="2026-06-02T09:00:00+00:00",
+            extra={"category": "行业研报"},
+        )
+        upsert_news_event(
+            conn,
+            source="tushare_research",
+            source_kind="research",
+            title="证券行业报告：流动性宽松支撑业绩",
+            url="https://example.com/broker-research.pdf",
+            content=None,
+            summary="非固收研报",
+            pub_time_iso="2026-06-03T09:00:00+00:00",
+            extra={"category": "行业研报"},
+        )
+    finally:
+        conn.close()
+
+    try:
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        response = client.get(
+            "/ui/home/research-reports",
+            params={"report_date": REPORT_DATE, "limit": 5},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["report_date"] == REPORT_DATE
+        assert result["source_status"] == "stale"
+        assert len(result["items"]) == 1
+        assert result["items"][0]["title"] == "6月利率债周报"
+        assert any("latest ingested" in warning for warning in result["warnings"])
+    finally:
+        get_settings.cache_clear()
+
+
 def _seed_product_category_income_trend(duckdb_path: Any) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -295,5 +358,299 @@ def test_home_income_trend_endpoint_reads_product_category_monthly_grand_total(t
         assert result["points"][0]["excess_pnl"]["raw"] is None
         assert result["points"][0]["basis"] == "product_category_pnl_monthly"
         assert result["points"][0]["source_status"] == "partial"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_endpoint_derives_cdb_benchmark_and_excess_pnl(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-benchmark.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        assert period_type == "MoM"
+        assert benchmark_id == "CDB_INDEX"
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": numeric(Decimal("0.012")),
+                "benchmark_return": numeric(Decimal("0.008")),
+                "excess_return": numeric(Decimal("0.4"), "bp"),
+                "warnings": [],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "ok",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+
+    try:
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        result = payload["result"]
+        assert result["source_status"] == "ready"
+        assert result["missing_components"] == []
+        assert result["warnings"] == []
+        assert [point["source_status"] for point in result["points"]] == ["ready", "ready"]
+        assert Decimal(str(result["points"][0]["portfolio_pnl"]["raw"])) == Decimal("120000000.0")
+        assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
+        assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
+        assert payload["result_meta"]["filters_applied"]["benchmark_id"] == "CDB_INDEX"
+        assert "rv_benchmark_excess_test" in payload["result_meta"]["rule_version"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_endpoint_accepts_bounded_cdb_curve_fallback(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-bounded-benchmark-fallback.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        requested_date = "2026-02-01" if report_date.isoformat() == "2026-02-28" else "2026-03-01"
+        resolved_date = "2026-01-31" if requested_date == "2026-02-01" else "2026-02-28"
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": numeric(Decimal("0.012")),
+                "benchmark_return": numeric(Decimal("0.008")),
+                "excess_return": numeric(Decimal("0.4"), "bp"),
+                "warnings": [
+                    "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve "
+                    f"from trade_date={resolved_date} for requested_trade_date={requested_date}."
+                ],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "vendor_stale",
+                "fallback_mode": "latest_snapshot",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+
+    try:
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["source_status"] == "ready"
+        assert result["missing_components"] == []
+        assert result["warnings"] == []
+        assert [point["source_status"] for point in result["points"]] == ["ready", "ready"]
+        assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
+        assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_endpoint_accepts_flat_numeric_benchmark_returns(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-flat-benchmark-returns.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def fake_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": "0.012",
+                "benchmark_return": "0.008",
+                "excess_return": "0.4",
+                "warnings": [],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "ok",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+
+    try:
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["source_status"] == "ready"
+        assert result["missing_components"] == []
+        assert result["warnings"] == []
+        assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
+        assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_endpoint_keeps_partial_when_cdb_curve_fallback_too_stale(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-stale-benchmark-fallback.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": numeric(Decimal("0.012")),
+                "benchmark_return": numeric(Decimal("0.008")),
+                "excess_return": numeric(Decimal("0.4"), "bp"),
+                "warnings": [
+                    "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve "
+                    "from trade_date=2025-12-31 for requested_trade_date=2026-03-01."
+                ],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "vendor_stale",
+                "fallback_mode": "latest_snapshot",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+
+    try:
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["source_status"] == "partial"
+        assert result["missing_components"] == ["benchmark_pnl", "excess_pnl"]
+        assert result["points"][0]["benchmark_pnl"]["raw"] is None
+        assert result["points"][0]["excess_pnl"]["raw"] is None
+        assert any("YIELD_CURVE_LATEST_FALLBACK" in warning for warning in result["warnings"])
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_endpoint_keeps_partial_when_cdb_benchmark_missing(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-missing-benchmark.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": numeric(Decimal("0.012")),
+                "benchmark_return": numeric(Decimal("0")),
+                "excess_return": numeric(Decimal("0")),
+                "warnings": ["CDB_INDEX benchmark curve unavailable"],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_missing_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "vendor_unavailable",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+
+    try:
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["source_status"] == "partial"
+        assert result["missing_components"] == ["benchmark_pnl", "excess_pnl"]
+        assert result["points"][0]["benchmark_pnl"]["raw"] is None
+        assert result["points"][0]["excess_pnl"]["raw"] is None
+        assert any("CDB_INDEX" in warning for warning in result["warnings"])
     finally:
         get_settings.cache_clear()

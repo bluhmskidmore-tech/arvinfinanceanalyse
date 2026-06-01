@@ -11,8 +11,8 @@ from typing import Any
 
 import duckdb
 
-from backend.app.repositories.duckdb_repo import DuckDBRepository
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import DuckDBRepository
 
 _URL_KEY_CANDIDATES = (
     "url",
@@ -248,6 +248,67 @@ def _research_category(extra: dict[str, object]) -> str:
     return "research"
 
 
+def _research_institution(extra: dict[str, object]) -> str | None:
+    for key in ("inst_csname", "inst_name", "org_name", "author"):
+        value = extra.get(key)
+        text = str(value or "").strip()
+        if text:
+            return text
+    return None
+
+
+_RESEARCH_FOCUS_TERMS = (
+    "fixed_income",
+    "bond",
+    "bonds",
+    "duration",
+    "curve",
+    "rates",
+    "macro",
+    "债",
+    "利率",
+    "国债",
+    "政金债",
+    "金融债",
+    "信用债",
+    "城投",
+    "二永",
+    "存单",
+    "固收",
+    "久期",
+    "曲线",
+    "利差",
+    "收益率",
+    "货币",
+    "央行",
+    "宏观",
+)
+
+
+def _research_focus_clause() -> tuple[str, list[str]]:
+    category_expr = """
+        lower(coalesce(
+            json_extract_string(extra_json, '$.category'),
+            json_extract_string(extra_json, '$.category_name'),
+            json_extract_string(extra_json, '$.report_type'),
+            json_extract_string(extra_json, '$.research_type'),
+            ''
+        ))
+    """
+    fields = (
+        "lower(coalesce(title, ''))",
+        category_expr,
+    )
+    predicates: list[str] = []
+    params: list[str] = []
+    for term in _RESEARCH_FOCUS_TERMS:
+        pattern = f"%{term.lower()}%"
+        for field in fields:
+            predicates.append(f"{field} like ?")
+            params.append(pattern)
+    return " and (" + " or ".join(predicates) + ")", params
+
+
 @dataclass
 class NewsWarehouseRepository(DuckDBRepository):
     guard_path_exists: bool = True
@@ -274,27 +335,30 @@ class NewsWarehouseRepository(DuckDBRepository):
         finally:
             conn.close()
 
+    def list_latest_research_reports(
+        self,
+        *,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        if self.guard_path_exists and not Path(self.path).exists():
+            return []
+        conn = self._connect_read_only()
+        if conn is None:
+            return []
+        try:
+            return list_latest_research_reports(
+                conn,
+                limit=limit,
+                offset=offset,
+            )
+        finally:
+            conn.close()
 
-def list_research_reports(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    report_date: str,
-    limit: int = 5,
-    offset: int = 0,
+
+def _research_report_rows(
+    rows: list[tuple[object, ...]],
 ) -> list[dict[str, object]]:
-    lim = max(1, int(limit))
-    off = max(0, int(offset))
-    rows = conn.execute(
-        """
-        select news_key, source, title, url, summary, pub_time, ingested_at, extra_json
-        from fact_news_event
-        where source_kind = 'research'
-          and (pub_time is null or cast(pub_time as date) <= cast(? as date))
-        order by pub_time desc nulls last, ingested_at desc
-        limit ? offset ?
-        """,
-        [report_date, lim, off],
-    ).fetchall()
     out: list[dict[str, object]] = []
     for news_key, source, title, url, summary, pub_time, ingested_at, extra_json in rows:
         extra = _parse_extra_json(extra_json)
@@ -307,11 +371,60 @@ def list_research_reports(
                 "published_at": published.isoformat() if isinstance(published, datetime) else "",
                 "link": (str(url).strip() or None) if url is not None else None,
                 "source": str(source or "").strip(),
+                "institution": _research_institution(extra),
                 "summary": (str(summary).strip() or None) if summary is not None else None,
                 "source_status": "ready",
             }
         )
     return out
+
+
+def list_research_reports(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    limit: int = 5,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    lim = max(1, int(limit))
+    off = max(0, int(offset))
+    focus_clause, focus_params = _research_focus_clause()
+    rows = conn.execute(
+        f"""
+        select news_key, source, title, url, summary, pub_time, ingested_at, extra_json
+        from fact_news_event
+        where source_kind = 'research'
+          {focus_clause}
+          and (pub_time is null or cast(pub_time as date) <= cast(? as date))
+        order by pub_time desc nulls last, ingested_at desc
+        limit ? offset ?
+        """,
+        [*focus_params, report_date, lim, off],
+    ).fetchall()
+    return _research_report_rows(rows)
+
+
+def list_latest_research_reports(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    limit: int = 5,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    lim = max(1, int(limit))
+    off = max(0, int(offset))
+    focus_clause, focus_params = _research_focus_clause()
+    rows = conn.execute(
+        f"""
+        select news_key, source, title, url, summary, pub_time, ingested_at, extra_json
+        from fact_news_event
+        where source_kind = 'research'
+          {focus_clause}
+        order by pub_time desc nulls last, ingested_at desc
+        limit ? offset ?
+        """,
+        [*focus_params, lim, off],
+    ).fetchall()
+    return _research_report_rows(rows)
 
 
 def backfill_from_choice_news_event(
