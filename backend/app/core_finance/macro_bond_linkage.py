@@ -265,32 +265,36 @@ def compute_macro_bond_correlations(
     validated_tail_fraction = _validate_winsorize_tail_fraction(winsorize_tail_fraction)
 
     prepared_macro = {
-        series_id: _series_to_map(points, lookback_days=lookback_days)
+        series_id: _prepare_series_map(points, lookback_days=lookback_days)
         for series_id, points in macro_series.items()
     }
     prepared_yields = {
-        target_name: _series_to_map(points, lookback_days=lookback_days)
+        target_name: _prepare_series_map(points, lookback_days=lookback_days)
         for target_name, points in yield_series.items()
     }
 
     results: list[MacroBondCorrelation] = []
     for series_id in sorted(prepared_macro):
-        macro_map = prepared_macro[series_id]
+        macro_map, macro_dates = prepared_macro[series_id]
         if len(macro_map) < 2:
             continue
         series_name = SERIES_NAME_OVERRIDES.get(series_id, series_id)
         for target_name in sorted(prepared_yields):
-            target_map = prepared_yields[target_name]
+            target_map, target_dates = prepared_yields[target_name]
             if len(target_map) < 2:
                 continue
             latest_date = _latest_alignment_date(
                 macro_map,
                 target_map,
+                macro_dates=macro_dates,
+                target_dates=target_dates,
                 alignment_mode=alignment_mode,
             )
             corr_3m, corr_6m, corr_1y = _compute_correlations(
                 macro_map,
                 target_map,
+                macro_dates=macro_dates,
+                target_dates=target_dates,
                 latest_date=latest_date,
                 alignment_mode=alignment_mode,
                 winsorize_tail_fraction=validated_tail_fraction,
@@ -298,12 +302,16 @@ def compute_macro_bond_correlations(
             lead_lag_days, best_correlation, sample_size, lead_lag_confidence = _compute_lead_lag(
                 macro_map,
                 target_map,
+                macro_dates=macro_dates,
+                target_dates=target_dates,
                 alignment_mode=alignment_mode,
                 winsorize_tail_fraction=validated_tail_fraction,
             )
             effective_observation_span_days = _alignment_span_days(
                 macro_map,
                 target_map,
+                macro_dates=macro_dates,
+                target_dates=target_dates,
                 latest_date=latest_date,
                 window_days=_WINDOW_1Y_DAYS,
                 alignment_mode=alignment_mode,
@@ -334,34 +342,34 @@ def _compute_correlations(
     macro_map: dict[date, float],
     target_map: dict[date, float],
     *,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
     latest_date: date,
     alignment_mode: str,
     winsorize_tail_fraction: float | None,
 ) -> tuple[float | None, float | None, float | None]:
     """Return (corr_3m, corr_6m, corr_1y) for a macro/yield pair."""
-    corr_3m = _window_correlation(
+    start_date_1y = latest_date - timedelta(days=max(_WINDOW_1Y_DAYS - 1, 0))
+    aligned_pairs_1y = _align_series_pairs(
         macro_map=macro_map,
         target_map=target_map,
-        latest_date=latest_date,
+        macro_dates=macro_dates,
+        target_dates=target_dates,
         alignment_mode=alignment_mode,
-        winsorize_tail_fraction=winsorize_tail_fraction,
-        window_days=_WINDOW_3M_DAYS,
+        start_date=start_date_1y,
+        end_date=latest_date,
     )
-    corr_6m = _window_correlation(
-        macro_map=macro_map,
-        target_map=target_map,
-        latest_date=latest_date,
-        alignment_mode=alignment_mode,
+    corr_3m = _aligned_pairs_correlation(
+        _pairs_from_window_start(aligned_pairs_1y, latest_date, _WINDOW_3M_DAYS),
         winsorize_tail_fraction=winsorize_tail_fraction,
-        window_days=_WINDOW_6M_DAYS,
     )
-    corr_1y = _window_correlation(
-        macro_map=macro_map,
-        target_map=target_map,
-        latest_date=latest_date,
-        alignment_mode=alignment_mode,
+    corr_6m = _aligned_pairs_correlation(
+        _pairs_from_window_start(aligned_pairs_1y, latest_date, _WINDOW_6M_DAYS),
         winsorize_tail_fraction=winsorize_tail_fraction,
-        window_days=_WINDOW_1Y_DAYS,
+    )
+    corr_1y = _aligned_pairs_correlation(
+        aligned_pairs_1y,
+        winsorize_tail_fraction=winsorize_tail_fraction,
     )
     return corr_3m, corr_6m, corr_1y
 
@@ -370,6 +378,8 @@ def _compute_lead_lag(
     macro_map: dict[date, float],
     target_map: dict[date, float],
     *,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
     alignment_mode: str,
     winsorize_tail_fraction: float | None,
 ) -> tuple[int, float | None, int | None, float | None]:
@@ -377,6 +387,8 @@ def _compute_lead_lag(
     lead_details = _best_lead_lag_details(
         macro_map,
         target_map,
+        macro_dates=macro_dates,
+        target_dates=target_dates,
         alignment_mode=alignment_mode,
         winsorize_tail_fraction=winsorize_tail_fraction,
     )
@@ -504,13 +516,22 @@ def _series_to_map(
     }
 
 
+def _prepare_series_map(
+    points: Iterable[tuple[date, float]],
+    *,
+    lookback_days: int,
+) -> tuple[dict[date, float], tuple[date, ...]]:
+    values_by_date = _series_to_map(points, lookback_days=lookback_days)
+    return values_by_date, tuple(sorted(values_by_date))
+
+
 def _latest_common_date(
     macro_map: dict[date, float],
     target_map: dict[date, float],
 ) -> date:
-    common_dates = sorted(set(macro_map) & set(target_map))
+    common_dates = set(macro_map) & set(target_map)
     if common_dates:
-        return common_dates[-1]
+        return max(common_dates)
     return max(max(macro_map), max(target_map))
 
 
@@ -518,10 +539,12 @@ def _latest_alignment_date(
     macro_map: dict[date, float],
     target_map: dict[date, float],
     *,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
     alignment_mode: str,
 ) -> date:
     if alignment_mode == "market_timing" and target_map:
-        return max(target_map)
+        return target_dates[-1] if target_dates else max(target_map)
     return _latest_common_date(macro_map, target_map)
 
 
@@ -529,6 +552,8 @@ def _alignment_span_days(
     macro_map: dict[date, float],
     target_map: dict[date, float],
     *,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
     latest_date: date,
     window_days: int,
     alignment_mode: str,
@@ -538,6 +563,8 @@ def _alignment_span_days(
     aligned_pairs = _align_series_pairs(
         macro_map,
         target_map,
+        macro_dates=macro_dates,
+        target_dates=target_dates,
         alignment_mode=alignment_mode,
         lag_days=lag_days,
         start_date=start_date,
@@ -557,17 +584,55 @@ def _window_correlation(
     window_days: int,
     alignment_mode: str = "conservative",
     winsorize_tail_fraction: float | None = None,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
 ) -> float | None:
     start_date = latest_date - timedelta(days=max(window_days - 1, 0))
     aligned_pairs = _align_series_pairs(
         macro_map,
         target_map,
+        macro_dates=macro_dates,
+        target_dates=target_dates,
         alignment_mode=alignment_mode,
         start_date=start_date,
         end_date=latest_date,
     )
+    return _aligned_pairs_correlation(
+        aligned_pairs,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+
+
+def _pairs_from_window_start(
+    aligned_pairs: Sequence[tuple[date, float, float]],
+    latest_date: date,
+    window_days: int,
+) -> list[tuple[date, float, float]]:
+    start_date = latest_date - timedelta(days=max(window_days - 1, 0))
+    return [pair for pair in aligned_pairs if pair[0] >= start_date]
+
+
+def _aligned_pairs_correlation(
+    aligned_pairs: Sequence[tuple[date, float, float]],
+    *,
+    winsorize_tail_fraction: float | None = None,
+) -> float | None:
+    correlation = _aligned_pairs_pearson(
+        aligned_pairs,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    return round(correlation, 6) if correlation is not None else None
+
+
+def _aligned_pairs_pearson(
+    aligned_pairs: Sequence[tuple[date, float, float]],
+    *,
+    winsorize_tail_fraction: float | None = None,
+) -> float | None:
     if len(aligned_pairs) < 2:
         return None
+    if winsorize_tail_fraction is None:
+        return _pearson_from_aligned_pairs(aligned_pairs)
     macro_values = _prepare_series_values(
         [macro_value for _current_date, macro_value, _target_value in aligned_pairs],
         winsorize_tail_fraction=winsorize_tail_fraction,
@@ -576,8 +641,46 @@ def _window_correlation(
         [target_value for _current_date, _macro_value, target_value in aligned_pairs],
         winsorize_tail_fraction=winsorize_tail_fraction,
     )
-    correlation = pearson_correlation(macro_values, target_values)
-    return round(correlation, 6) if correlation is not None else None
+    return pearson_correlation(macro_values, target_values)
+
+
+def _pearson_from_aligned_pairs(
+    aligned_pairs: Sequence[tuple[date, float, float]],
+) -> float | None:
+    count = 0
+    sum_macro = 0.0
+    sum_target = 0.0
+    sum_macro_sq = 0.0
+    sum_target_sq = 0.0
+    sum_product = 0.0
+    for _current_date, macro_value, target_value in aligned_pairs:
+        macro_float = float(macro_value)
+        target_float = float(target_value)
+        count += 1
+        sum_macro += macro_float
+        sum_target += target_float
+        sum_macro_sq += macro_float * macro_float
+        sum_target_sq += target_float * target_float
+        sum_product += macro_float * target_float
+    if count < 2:
+        return None
+
+    covariance = sum_product - (sum_macro * sum_target / count)
+    variance_macro = sum_macro_sq - (sum_macro * sum_macro / count)
+    variance_target = sum_target_sq - (sum_target * sum_target / count)
+    if variance_macro <= EPSILON or variance_target <= EPSILON:
+        return None
+
+    correlation = covariance / ((variance_macro**0.5) * (variance_target**0.5))
+    if abs(correlation - 1.0) <= EPSILON:
+        return 1.0
+    if abs(correlation + 1.0) <= EPSILON:
+        return -1.0
+    if correlation > 1:
+        return 1.0
+    if correlation < -1:
+        return -1.0
+    return correlation
 
 
 def _align_series_pairs(
@@ -588,6 +691,8 @@ def _align_series_pairs(
     lag_days: int = 0,
     start_date: date | None = None,
     end_date: date | None = None,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
 ) -> list[tuple[date, float, float]]:
     if alignment_mode not in {"conservative", "market_timing"}:
         raise ValueError(f"Unsupported alignment mode: {alignment_mode}")
@@ -596,7 +701,8 @@ def _align_series_pairs(
 
     if alignment_mode == "conservative":
         aligned_pairs: list[tuple[date, float, float]] = []
-        for macro_date in sorted(macro_map):
+        ordered_macro_dates = macro_dates if macro_dates is not None else sorted(macro_map)
+        for macro_date in ordered_macro_dates:
             target_date = macro_date + timedelta(days=lag_days)
             if target_date not in target_map:
                 continue
@@ -607,12 +713,13 @@ def _align_series_pairs(
             aligned_pairs.append((macro_date, macro_map[macro_date], target_map[target_date]))
         return aligned_pairs
 
-    ordered_macro_dates = sorted(macro_map)
+    ordered_macro_dates = macro_dates if macro_dates is not None else sorted(macro_map)
+    ordered_target_dates = target_dates if target_dates is not None else sorted(target_map)
     macro_index = 0
     last_macro_date: date | None = None
     last_macro_value: float | None = None
     aligned_pairs = []
-    for target_date in sorted(target_map):
+    for target_date in ordered_target_dates:
         if start_date is not None and target_date < start_date:
             continue
         if end_date is not None and target_date > end_date:
@@ -688,6 +795,8 @@ def _best_lead_lag_details(
     macro_map: dict[date, float],
     target_map: dict[date, float],
     *,
+    macro_dates: Sequence[date] | None = None,
+    target_dates: Sequence[date] | None = None,
     alignment_mode: str = "conservative",
     winsorize_tail_fraction: float | None = None,
     max_lag_days: int = 30,
@@ -699,20 +808,17 @@ def _best_lead_lag_details(
         aligned_pairs = _align_series_pairs(
             macro_map,
             target_map,
+            macro_dates=macro_dates,
+            target_dates=target_dates,
             alignment_mode=alignment_mode,
             lag_days=lag_days,
         )
         if len(aligned_pairs) < 2:
             continue
-        macro_values = _prepare_series_values(
-            [macro_value for _current_date, macro_value, _target_value in aligned_pairs],
+        correlation = _aligned_pairs_pearson(
+            aligned_pairs,
             winsorize_tail_fraction=winsorize_tail_fraction,
         )
-        target_values = _prepare_series_values(
-            [target_value for _current_date, _macro_value, target_value in aligned_pairs],
-            winsorize_tail_fraction=winsorize_tail_fraction,
-        )
-        correlation = pearson_correlation(macro_values, target_values)
         if correlation is None:
             continue
         candidate = {

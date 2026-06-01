@@ -1693,7 +1693,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: stock_readiness)
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", fake_livermore_strategy_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", fake_get_macro_bond_linkage)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", fake_get_macro_bond_linkage)
     monkeypatch.setattr(
         route_module,
         "load_macro_adversarial_signal_payload",
@@ -1864,7 +1864,7 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -1969,7 +1969,7 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2084,7 +2084,7 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2160,7 +2160,7 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2255,7 +2255,7 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monke
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_bond_linkage", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",

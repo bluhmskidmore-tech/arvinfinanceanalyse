@@ -28,6 +28,7 @@ from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
 )
+from backend.app.services.runtime_cache import get_runtime_cache
 
 RULE_VERSION = "rv_macro_bond_linkage_v1"
 CACHE_VERSION = "cv_macro_bond_linkage_v1"
@@ -36,13 +37,219 @@ EMPTY_SOURCE_VERSION = "sv_macro_bond_linkage_empty"
 LOOKBACK_DAYS = 365
 MIN_TRADE_DATES = 30
 TOP_CORRELATION_LIMIT = 10
+MACRO_BOND_LINKAGE_COMPONENTS_CACHE_NAME = "macro_bond_linkage_components"
+MACRO_BOND_LINKAGE_COMPONENTS_CACHE_TTL_SECONDS = 300.0
+MACRO_ENVIRONMENT_CONTEXT_RESULT_KIND = "macro_bond_linkage.environment_context"
+MACRO_ENVIRONMENT_CONTEXT_CACHE_VERSION = "cv_macro_environment_context_v1"
+MACRO_ENVIRONMENT_CONTEXT_CACHE_NAME = "macro_environment_context"
+MACRO_ENVIRONMENT_CONTEXT_CACHE_TTL_SECONDS = 300.0
 
 
 def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
+    cache_key = _macro_bond_linkage_components_cache_key(
+        duckdb_path=duckdb_path,
+        report_date=report_date,
+    )
+    if cache_key is not None:
+        cache = get_runtime_cache(
+            MACRO_BOND_LINKAGE_COMPONENTS_CACHE_NAME,
+            ttl_seconds=MACRO_BOND_LINKAGE_COMPONENTS_CACHE_TTL_SECONDS,
+        )
+        envelope = cache.get_or_set(
+            cache_key,
+            lambda: _get_macro_bond_linkage_uncached(
+                report_date=report_date,
+                duckdb_path=duckdb_path,
+            ),
+        )
+        return _refresh_macro_bond_linkage_envelope(envelope)
+
+    return _get_macro_bond_linkage_uncached(
+        report_date=report_date,
+        duckdb_path=duckdb_path,
+    )
+
+
+def get_macro_environment_context(report_date: date) -> dict[str, object]:
+    settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
+    cache_key = _macro_environment_context_cache_key(
+        duckdb_path=duckdb_path,
+        report_date=report_date,
+    )
+    if cache_key is not None:
+        cache = get_runtime_cache(
+            MACRO_ENVIRONMENT_CONTEXT_CACHE_NAME,
+            ttl_seconds=MACRO_ENVIRONMENT_CONTEXT_CACHE_TTL_SECONDS,
+        )
+        envelope = cache.get_or_set(
+            cache_key,
+            lambda: _get_macro_environment_context_uncached(
+                report_date=report_date,
+                duckdb_path=duckdb_path,
+            ),
+        )
+        return _refresh_macro_bond_linkage_envelope(envelope)
+
+    return _get_macro_environment_context_uncached(
+        report_date=report_date,
+        duckdb_path=duckdb_path,
+    )
+
+
+def _macro_environment_context_cache_key(
+    *,
+    duckdb_path: str,
+    report_date: date,
+) -> tuple[str, int, int, str, str, str] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        resolved_path = str(path.resolve())
+    except OSError:
+        return None
+    return (
+        resolved_path,
+        stat.st_mtime_ns,
+        stat.st_size,
+        report_date.isoformat(),
+        RULE_VERSION,
+        MACRO_ENVIRONMENT_CONTEXT_CACHE_VERSION,
+    )
+
+
+def _get_macro_environment_context_uncached(
+    *,
+    report_date: date,
+    duckdb_path: str,
+) -> dict[str, object]:
     computed_at = datetime.now(UTC).isoformat()
     warnings: list[str] = []
-    duckdb_path = str(settings.duckdb_path)
+    conn = _connect_read_only(duckdb_path)
+    if conn is None:
+        warnings.append("DuckDB 只读连接不可用，暂无法生成宏观环境评分。")
+        return _build_macro_environment_context_envelope(
+            report_date=report_date,
+            computed_at=computed_at,
+            environment_score={},
+            warnings=warnings,
+            source_versions=[EMPTY_SOURCE_VERSION],
+            vendor_versions=["vv_none"],
+            upstream_rule_versions=[],
+            evidence_rows=0,
+        )
+
+    try:
+        macro_inputs = _load_macro_inputs(conn, report_date)
+    finally:
+        conn.close()
+
+    environment_score_payload: dict[str, Any] = {}
+    if macro_inputs["trade_date_count"] < MIN_TRADE_DATES:
+        warnings.append("fact_choice_macro_daily 数据点不足（少于 30 个交易日），暂不生成宏观环境评分。")
+    elif not macro_inputs["series"]:
+        warnings.append("fact_choice_macro_daily 缺少可用宏观序列。")
+    else:
+        environment_score = compute_macro_environment_score(
+            macro_latest=macro_inputs["latest"],
+            macro_history=macro_inputs["series"],
+            lookback_days=90,
+        )
+        warnings.extend(environment_score.warnings)
+        environment_score_payload = _json_safe(environment_score)
+
+    return _build_macro_environment_context_envelope(
+        report_date=report_date,
+        computed_at=computed_at,
+        environment_score=environment_score_payload,
+        warnings=_dedupe_preserve_order(warnings),
+        source_versions=[*macro_inputs["source_versions"]],
+        vendor_versions=[*macro_inputs["vendor_versions"]],
+        upstream_rule_versions=[*macro_inputs["rule_versions"]],
+        evidence_rows=int(macro_inputs["trade_date_count"]),
+    )
+
+
+def _macro_bond_linkage_components_cache_key(
+    *,
+    duckdb_path: str,
+    report_date: date,
+) -> tuple[str, int, int, str, str, str] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        resolved_path = str(path.resolve())
+    except OSError:
+        return None
+    return (
+        resolved_path,
+        stat.st_mtime_ns,
+        stat.st_size,
+        report_date.isoformat(),
+        RULE_VERSION,
+        CACHE_VERSION,
+    )
+
+
+def _refresh_macro_bond_linkage_envelope(envelope: dict[str, object]) -> dict[str, object]:
+    refreshed = dict(envelope)
+    result_meta = dict(cast(dict[str, object], refreshed.get("result_meta") or {}))
+    result = dict(cast(dict[str, object], refreshed.get("result") or {}))
+    result_meta["trace_id"] = _trace_id()
+    result["computed_at"] = datetime.now(UTC).isoformat()
+    refreshed["result_meta"] = result_meta
+    refreshed["result"] = result
+    return refreshed
+
+
+def _build_macro_environment_context_envelope(
+    *,
+    report_date: date,
+    computed_at: str,
+    environment_score: dict[str, Any],
+    warnings: list[str],
+    source_versions: list[str],
+    vendor_versions: list[str],
+    upstream_rule_versions: list[str],
+    evidence_rows: int,
+) -> dict[str, object]:
+    meta = build_analytical_result_meta(
+        trace_id=_trace_id(),
+        result_kind=MACRO_ENVIRONMENT_CONTEXT_RESULT_KIND,
+        cache_version=MACRO_ENVIRONMENT_CONTEXT_CACHE_VERSION,
+        source_version=_aggregate_lineage(source_versions, EMPTY_SOURCE_VERSION),
+        rule_version=_aggregate_lineage([RULE_VERSION, *upstream_rule_versions], RULE_VERSION),
+        vendor_version=_aggregate_lineage(vendor_versions, "vv_none"),
+        quality_flag="warning" if warnings else "ok",
+        vendor_status="vendor_unavailable" if not environment_score else "ok",
+        fallback_mode="none",
+        tables_used=["fact_choice_macro_daily"],
+        evidence_rows=evidence_rows,
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={
+            "report_date": report_date.isoformat(),
+            "environment_score": environment_score,
+            "warnings": warnings,
+            "computed_at": computed_at,
+        },
+    )
+
+
+def _get_macro_bond_linkage_uncached(
+    *,
+    report_date: date,
+    duckdb_path: str,
+) -> dict[str, object]:
+    computed_at = datetime.now(UTC).isoformat()
+    warnings: list[str] = []
     conn = _connect_read_only(duckdb_path)
     if conn is None:
         warnings.append("DuckDB 只读连接不可用，暂无法生成宏观-债市联动分析。")
