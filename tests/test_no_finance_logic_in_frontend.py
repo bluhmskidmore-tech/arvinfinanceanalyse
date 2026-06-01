@@ -53,6 +53,11 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
         'id: "convexity"',
         "payload.weighted_convexity",
     ),
+    "features/workbench/dashboard-home/adapters/buildHomeMarketContextModel.ts": (
+        # Home market context formats backend-provided credit-spread sensitivity
+        # only; keep this exception to the single display line.
+        'detail: `spread DV01 ${displayOrMissing(payload.spread_dv01, "缺spread_dv01")} · AA及以下 ${ratioPercentOrMissing(payload.rating_aa_and_below_weight, "缺评级分布")} · 25bp ${displayOrMissing(scenario25, "缺25bp情景")}`',
+    ),
 }
 
 DISPLAY_ONLY_FILE_LINE_PREFIXES = {
