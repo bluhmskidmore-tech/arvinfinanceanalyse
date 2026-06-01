@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -11,9 +11,8 @@ import type {
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
 } from "../../../api/contracts";
-import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../../components/AsyncSection";
-import { DataStatusStrip, PageDecisionHero, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
 import { StatusPill } from "../../../components/StatusPill";
 import ReactECharts from "../../../lib/echarts";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -75,6 +74,25 @@ import "./CrossAssetDriversPage.css";
 const t = designTokens;
 
 const crossAssetPanelClass = "cross-asset-drivers-page__panel";
+
+function CrossAssetDecisionZone({
+  testId,
+  title,
+  children,
+}: {
+  testId: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section data-testid={testId} className="cross-asset-decision-zone" aria-labelledby={`${testId}-title`}>
+      <h2 id={`${testId}-title`} className="cross-asset-decision-zone__title">
+        {title}
+      </h2>
+      <div className="cross-asset-decision-zone__body cross-asset-decision-zone__body--flat">{children}</div>
+    </section>
+  );
+}
 
 const sparkStroke: Record<ResolvedCrossAssetKpi["changeTone"], string> = {
   positive: t.color.semantic.profit,
@@ -855,10 +873,13 @@ function PercentileGauge({ sparkline }: { sparkline: number[] }) {
   );
 }
 
-function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
+function MiniKpiCard({ kpi, compact = false }: { kpi: ResolvedCrossAssetKpi; compact?: boolean }) {
   const stroke = sparkStroke[kpi.changeTone];
   return (
-    <article className="cross-asset-drivers-page__mini-kpi" aria-label={kpi.label}>
+    <article
+      className={`cross-asset-drivers-page__mini-kpi${compact ? " cross-asset-drivers-page__mini-kpi--headline" : ""}`}
+      aria-label={kpi.label}
+    >
       <div className="cross-asset-drivers-page__mini-kpi-main">
         <div className="cross-asset-drivers-page__mini-kpi-copy">
           <div className="cross-asset-drivers-page__mini-kpi-label">{kpi.label}</div>
@@ -868,12 +889,14 @@ function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
           <div className="cross-asset-drivers-page__mini-kpi-delta" style={{ color: stroke }}>
             {kpi.changeLabel}
           </div>
-          <PercentileGauge sparkline={kpi.sparkline} />
-          {kpi.tag ? <div className="cross-asset-drivers-page__mini-kpi-tag">{kpi.tag}</div> : null}
+          {compact ? null : <PercentileGauge sparkline={kpi.sparkline} />}
+          {compact || !kpi.tag ? null : <div className="cross-asset-drivers-page__mini-kpi-tag">{kpi.tag}</div>}
         </div>
-        <div className="cross-asset-drivers-page__mini-kpi-chart">
-          <CrossAssetSparkline values={kpi.sparkline} stroke={stroke} height={40} />
-        </div>
+        {compact ? null : (
+          <div className="cross-asset-drivers-page__mini-kpi-chart">
+            <CrossAssetSparkline values={kpi.sparkline} stroke={stroke} height={40} />
+          </div>
+        )}
       </div>
     </article>
   );
@@ -881,30 +904,18 @@ function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
 
 function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
   return (
-    <section data-testid="cross-asset-research-views" className={`${crossAssetPanelClass} cross-asset-research-views`}>
-      <div className="cross-asset-panel-head">
-        <h2 className="cross-asset-drivers-page__panel-title">投资研究判断</h2>
-        <p className="cross-asset-panel-note">
-          第一屏先给出久期、曲线、信用和工具结论，再往下看证据和执行观察。
-        </p>
-      </div>
+    <section data-testid="cross-asset-research-views" className="cross-asset-research-views">
+      <h2 className="cross-asset-cockpit__title">投资研究判断</h2>
       <div className="cross-asset-research-views__grid">
         {rows.map((row) => (
           <article
             key={row.key}
             data-testid={`cross-asset-research-card-${row.key}`}
-            className="cross-asset-research-views__card"
+            className="cross-asset-research-views__card cross-asset-research-views__card--compact"
           >
             <div className="cross-asset-research-views__card-top">
               <div className="cross-asset-research-views__label">{row.label}</div>
-              <div className="cross-asset-research-views__pills">
-                <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={researchStatusLabel(row.status)} />
-                <StatusPill status={row.source === "backend" ? "normal" : "warning"} label={researchSourceLabel(row.source)} />
-              </div>
-            </div>
-            <div className="cross-asset-drivers-page__chip-row">
               <StatusPill status="normal" label={row.stance} />
-              <StatusPill status="caution" label={row.confidence} />
             </div>
             <p className="cross-asset-research-views__summary">{row.summary}</p>
             <div className="cross-asset-research-views__meta">
@@ -915,20 +926,15 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
                 证据：{row.evidence[0]}
               </div>
             ) : null}
+            <div className="cross-asset-drivers-page__chip-row">
+              <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={researchStatusLabel(row.status)} />
+              <StatusPill status={row.source === "backend" ? "normal" : "warning"} label={researchSourceLabel(row.source)} />
+              <StatusPill status="caution" label={row.confidence} />
+            </div>
           </article>
         ))}
       </div>
     </section>
-  );
-}
-
-function HeadlineKpiDeck({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
-  return (
-    <div className="cross-asset-headline-kpis" data-testid="cross-asset-headline-kpis">
-      {kpis.map((kpi) => (
-        <MiniKpiCard key={kpi.key} kpi={kpi} />
-      ))}
-    </div>
   );
 }
 
@@ -995,13 +1001,8 @@ function NcdProxyEvidencePanel({
 
 function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[] }) {
   return (
-    <section data-testid="cross-asset-transmission-axes" className={`${crossAssetPanelClass} cross-asset-transmission-axes`}>
-      <div className="cross-asset-panel-head">
-        <h2 className="cross-asset-drivers-page__panel-title">传导主线</h2>
-        <p className="cross-asset-panel-note">
-          缺数据的主线会标为「待信号」，不会用无关序列去硬猜结论。
-        </p>
-      </div>
+    <section data-testid="cross-asset-transmission-axes" className="cross-asset-transmission-axes">
+      <h3 className="cross-asset-decision-zone__block-title">传导主线</h3>
       <div className="cross-asset-transmission-axes__grid">
         {rows.map((row) => (
           <article
@@ -2023,7 +2024,9 @@ export default function CrossAssetDriversPage() {
     ],
   );
   const statusFlags = useMemo(() => {
-    if (latestQuery.isLoading || (Boolean(linkageReportDate) && macroBondLinkageQuery.isLoading)) {
+    const linkageStillLoading = Boolean(linkageReportDate) && macroBondLinkageQuery.isLoading;
+    const hasLoadingFailure = latestQuery.isError || macroBondLinkageQuery.isError;
+    if ((latestQuery.isLoading || linkageStillLoading) && !hasLoadingFailure) {
       return [];
     }
     return buildCrossAssetStatusFlags({
@@ -2066,12 +2069,12 @@ export default function CrossAssetDriversPage() {
           className="cross-asset-decision-hero"
           title="跨资产驱动"
           eyebrow="市场工作台"
-          businessQuestion="外部变量怎样传导到债券？只保留判断、告警和候选动作，不替代正式执行与风控口径。"
+          businessQuestion="外部变量今天怎样传导到债券？首屏只看体制、四维判断与关键指标。"
           reportDateSlot={
             <span>
               数据日期 <strong style={tabularNumsStyle}>{crossAssetDataDate || linkageReportDate || "—"}</strong>
               {" · "}
-              完整序列请转到 <Link to="/market-data">市场数据</Link>
+              <Link to="/market-data">市场数据</Link>
             </span>
           }
           conclusion={
@@ -2082,71 +2085,69 @@ export default function CrossAssetDriversPage() {
             </span>
           }
           actions={
-            <div className="cross-asset-decision-hero__actions">
-              <span className="cross-asset-mode-badge">
-                {client.mode === "real" ? "真实分析口径读链路" : "本地模拟合约回放"}
-              </span>
-              <Link to="/market-data" className="cross-asset-market-link">
-                市场数据
-              </Link>
-            </div>
+            client.mode !== "real" ? (
+              <span className="cross-asset-mode-badge">本地模拟</span>
+            ) : null
           }
         />
 
-        <DataStatusStrip testId="cross-asset-data-status-strip" className="cross-asset-data-status-strip">
-          <div className="cross-asset-data-status-strip__flags" data-testid="cross-asset-status-flags">
-            {statusFlags.length === 0 ? (
-              <span className="cross-asset-data-status-strip__empty">当前没有额外状态告警</span>
-            ) : (
-              statusFlags.map((flag) => (
-                <span key={flag.id} className="cross-asset-data-status-strip__flag">
-                  <StatusPill status={flag.tone} label={flag.label} />
-                  <span>{flag.detail}</span>
-                </span>
-              ))
-            )}
-          </div>
-          <div className="cross-asset-data-status-strip__meta">
-            <span>宏观最新质量 {resultMetaQualityLabel(latestMeta?.quality_flag)}</span>
-            <span>联动质量 {resultMetaQualityLabel(linkageMeta?.quality_flag)}</span>
-            <span>宏观生成 {latestMeta?.generated_at ?? "待定"}</span>
-            <span>联动生成 {linkageMeta?.generated_at ?? "待定"}</span>
-          </div>
-        </DataStatusStrip>
+        <div className="cross-asset-status-region" data-testid="cross-asset-data-status-strip">
+          {statusFlags.length > 0 ? (
+            <DataStatusStrip testId="cross-asset-alert-status-strip" className="cross-asset-data-status-strip">
+              <div className="cross-asset-data-status-strip__flags" data-testid="cross-asset-status-flags">
+                {statusFlags.map((flag) => (
+                  <span key={flag.id} className="cross-asset-data-status-strip__flag" title={flag.detail}>
+                    <StatusPill status={flag.tone} label={flag.label} />
+                    <span>{flag.detail}</span>
+                  </span>
+                ))}
+              </div>
+            </DataStatusStrip>
+          ) : null}
+
+          <p className="cross-asset-page-meta">
+            <span>宏观 {resultMetaQualityLabel(latestMeta?.quality_flag)}</span>
+            <span>联动 {resultMetaQualityLabel(linkageMeta?.quality_flag)}</span>
+            <span>宏观更新 {latestMeta?.generated_at ?? "待定"}</span>
+            <span>联动更新 {linkageMeta?.generated_at ?? "待定"}</span>
+          </p>
+        </div>
 
         <div className="cross-asset-drivers-page__flow">
-          <div className="cross-asset-first-screen-grid" data-testid="cross-asset-first-screen-grid">
-            <section className={`${crossAssetPanelClass} cross-asset-market-decision`}>
-              <div className="cross-asset-panel-head">
-                <h2 className="cross-asset-drivers-page__panel-title">市场判断</h2>
-                <p className="cross-asset-panel-note">
-                  先读体制与主导因素，再看右侧四个投研判断，避免被底层行情噪音牵走。
-                </p>
-              </div>
+          <section className="cross-asset-cockpit" data-testid="cross-asset-first-screen-grid">
+            <div className="cross-asset-cockpit__judgment">
+              <h2 className="cross-asset-cockpit__title">市场判断</h2>
               <MarketRegimePanel kpis={kpis} />
-              <p className="cross-asset-drivers-page__panel-prose">
-                {macroBondLinkageQuery.isLoading || latestQuery.isLoading
-                  ? "正在加载联动分析…"
-                  : env.signal_description ?? "当前暂无可用摘要；请确认数据日期与联动分析是否已就绪。"}
-              </p>
               <div className="cross-asset-drivers-page__chip-row">
-                <StatusPill status="normal" label={`主导因素 · ${envTags.primary}`} />
-                <StatusPill status="caution" label={`次要因素 · ${envTags.secondary}`} />
+                <StatusPill status="normal" label={`主导 · ${envTags.primary}`} />
+                <StatusPill status="caution" label={`次要 · ${envTags.secondary}`} />
                 <StatusPill status="warning" label={`风格 · ${envTags.style}`} />
               </div>
-            </section>
-
+            </div>
             <ResearchViewsPanel rows={researchViewCards} />
-            <HeadlineKpiDeck kpis={headlineKpis} />
+          </section>
 
-            <section className={`${crossAssetPanelClass} cross-asset-correlation-panel`}>
-              <div className="cross-asset-panel-head">
-                <h2 className="cross-asset-drivers-page__panel-title">宏观 — 债市相关性（前列）</h2>
-                <p className="cross-asset-panel-note">
-                  使用联动分析中的滚动相关结果作参考，不替代个券估值分位或正式风险结论。
-                </p>
+          <div className="cross-asset-decision-board" data-testid="cross-asset-decision-display">
+            <CrossAssetDecisionZone testId="cross-asset-zone-evidence" title="证据与指标">
+              <div className="cross-asset-metric-strip" data-testid="cross-asset-kpi-band">
+                {kpis.map((kpi) => (
+                  <MiniKpiCard
+                    key={kpi.key}
+                    kpi={kpi}
+                    compact={headlineKpis.some((headline) => headline.key === kpi.key)}
+                  />
+                ))}
+                {remainder !== 0
+                  ? Array.from({ length: kpiPlaceholderCount }, (_, index) => (
+                      <div
+                        key={`kpi-placeholder-${index}`}
+                        className="cross-asset-drivers-page__kpi-placeholder"
+                        aria-hidden={true}
+                      />
+                    ))
+                  : null}
               </div>
-              <table className="cross-asset-drivers-page__heatmap">
+              <table className="cross-asset-drivers-page__heatmap cross-asset-drivers-page__heatmap--flat">
                 <thead>
                   <tr>
                     <th>指标</th>
@@ -2166,78 +2167,47 @@ export default function CrossAssetDriversPage() {
                   ))}
                 </tbody>
               </table>
-            </section>
-          </div>
+            </CrossAssetDecisionZone>
 
-          <div className="cross-asset-drivers-page__lede cross-asset-drivers-page__lede--tight">
-            <PageSectionLead
-              eyebrow="环境上下文"
-              title="完整指标带"
-              description="首屏只展示 4 个关键 headline；这里保留全部跨资产头线条目，仍来自同一条宏观序列链路。"
-            />
-          </div>
-          <div className="cross-asset-drivers-page__kpi-grid" data-testid="cross-asset-kpi-band">
-            {kpis.map((kpi) => (
-              <MiniKpiCard key={kpi.key} kpi={kpi} />
-            ))}
-            {remainder !== 0
-              ? Array.from({ length: kpiPlaceholderCount }, (_, index) => (
-                  <div
-                    key={`kpi-placeholder-${index}`}
-                    className="cross-asset-drivers-page__kpi-placeholder"
-                    aria-hidden={true}
-                  />
-                ))
-              : null}
-          </div>
-
-          <TransmissionAxesPanel rows={transmissionAxisRows} />
-          <AssetClassAnalysisPanel rows={assetClassAnalysisRows} equityEvidenceItems={equityEvidenceItems} />
-
-          <section className={`${crossAssetPanelClass} cross-asset-drivers-page__drivers`}>
-            <h2 className="cross-asset-drivers-page__panel-title">驱动拆解</h2>
-            <div className="cross-asset-drivers-page__drivers-grid">
-              {drivers.map((col) => {
-                const stanceStyle = driverStanceStyle(col.tone);
-                return (
-                  <div key={col.title} className="cross-asset-drivers-page__driver-cell">
-                    <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
-                    <div
-                      className="cross-asset-drivers-page__driver-stance"
-                      style={{ background: stanceStyle.bg, color: stanceStyle.color }}
-                    >
-                      {col.stance}
+            <CrossAssetDecisionZone testId="cross-asset-zone-transmission" title="传导与行动">
+              <TransmissionAxesPanel rows={transmissionAxisRows} />
+              <AssetClassAnalysisPanel rows={assetClassAnalysisRows} equityEvidenceItems={equityEvidenceItems} />
+              <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
+                {drivers.map((col) => {
+                  const stanceStyle = driverStanceStyle(col.tone);
+                  return (
+                    <div key={col.title} className="cross-asset-drivers-page__driver-cell">
+                      <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
+                      <div
+                        className="cross-asset-drivers-page__driver-stance"
+                        style={{ background: stanceStyle.bg, color: stanceStyle.color }}
+                      >
+                        {col.stance}
+                      </div>
+                      <ul className="cross-asset-drivers-page__driver-list">
+                        {col.bullets.map((bullet) => (
+                          <li key={bullet}>{bullet}</li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="cross-asset-drivers-page__driver-list">
-                      {col.bullets.map((bullet) => (
-                        <li key={bullet}>{bullet}</li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-            <DriverWaterfallPanel bars={waterfallBars} env={env} />
+                  );
+                })}
+              </div>
+              <div className="cross-asset-zone-analytics-grid">
+                <DriverWaterfallPanel bars={waterfallBars} env={env} />
+                <div className="cross-asset-risk-snapshot-grid">
+                  <VolatilityClusteringPanel alert={volAlert} />
+                  <EquityBondERPPanel erp={erpData} />
+                </div>
+              </div>
+              <MarketCandidateActions rows={candidateActions} />
+              <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
+            </CrossAssetDecisionZone>
 
-            <div className="cross-asset-risk-snapshot-grid">
-              <VolatilityClusteringPanel alert={volAlert} />
-              <EquityBondERPPanel erp={erpData} />
-            </div>
-
-            <MarketCandidateActions rows={candidateActions} />
-
-            <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
-
-            <div className="cross-asset-drivers-page__lede">
-              <PageSectionLead
-                eyebrow="观察项"
-                title="走势、事件与观察"
-                description="完成研究判断后，再查看价格走势、事件流和观察名单，避免把短噪音误当成主结论。"
-              />
-            </div>
+            <CrossAssetDecisionZone testId="cross-asset-zone-observation" title="走势与观察">
             <div data-testid="cross-asset-trend-panel" className="cross-asset-trend-panel">
-              <SectionCard title="跨资产走势（近 20 日，统一基准 = 100）" style={{ minWidth: 0 }}>
+              <h3 className="cross-asset-decision-zone__block-title">跨资产走势（近 20 日，基准 = 100）</h3>
+              <div className="cross-asset-trend-panel__body">
                 <TrendGroupToggle active={trendGroup} onChange={setTrendGroup} />
                 {trendSummary ? (
                   <div className={`cross-asset-trend-panel__summary cross-asset-trend-panel__summary--${trendSummary.tone}`} data-testid="cross-asset-trend-summary">
@@ -2252,10 +2222,13 @@ export default function CrossAssetDriversPage() {
                     </div>
                   </div>
                 ) : null}
-                <p className="cross-asset-trend-panel__note">
-                  各资产发布日与休市不同，在统一时间轴上先对缺失日沿用「上一有效观测」(LOCF)，再按窗口内首次观测 = 100
-                  归一化；否则多市场下会出现大段空档与碎线。曲线在两次真实更新之间为水平持有，不代表日内波动。
-                </p>
+                <details className="cross-asset-trend-panel__method">
+                  <summary>口径说明（LOCF 归一化）</summary>
+                  <p className="cross-asset-trend-panel__note">
+                    各资产发布日与休市不同，在统一时间轴上先对缺失日沿用「上一有效观测」(LOCF)，再按窗口内首次观测 = 100
+                    归一化。曲线在两次真实更新之间为水平持有，不代表日内波动。
+                  </p>
+                </details>
                 {latestQuery.isLoading ? (
                   <div className="cross-asset-trend-panel__loading">
                     <div className="cross-asset-trend-panel__spinner" />
@@ -2290,7 +2263,7 @@ export default function CrossAssetDriversPage() {
                     当前没有足够历史点，无法绘制跨资产走势。
                   </div>
                 )}
-              </SectionCard>
+              </div>
             </div>
 
             <div className="cross-asset-observation-support-grid" data-testid="cross-asset-observation-support-grid">
@@ -2303,13 +2276,8 @@ export default function CrossAssetDriversPage() {
               <WatchList rows={watchRows} />
             </div>
 
-            <div className="cross-asset-drivers-page__lede cross-asset-drivers-page__lede--tight">
-              <PageSectionLead
-                eyebrow="附加观察"
-                title="A股策略与跨资产观察"
-                description="股票策略面板保留在下游复核区，作为补充观察，不打断跨资产到债券的主判断链路。"
-              />
-            </div>
+            <div className="cross-asset-decision-appendix">
+            <h3 className="cross-asset-decision-zone__title">补充复核</h3>
             <LivermoreStrategyStatusPanel
               payload={livermoreStrategyPayload}
               isLoading={livermoreStrategyQuery.isLoading}
@@ -2328,14 +2296,6 @@ export default function CrossAssetDriversPage() {
               isError={livermoreSignalConfluenceQuery.isError}
               asOfDate={livermoreStrategyResolvedAsOfDate}
             />
-
-            <div className="cross-asset-drivers-page__lede">
-              <PageSectionLead
-                eyebrow="分析结果"
-                title="宏观联动与输出"
-                description="以下为联动评分与组合影响的分析口径，仅供决策参考，不替代正式风控与会计口径。"
-              />
-            </div>
             <AsyncSection
               title="宏观 - 债券联动（评分与组合影响）"
               isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
@@ -2451,18 +2411,24 @@ export default function CrossAssetDriversPage() {
               )}
             </AsyncSection>
 
-            <div data-testid="cross-asset-page-output">
-              <PageOutput
-                envTags={envTags}
-                signalPreview={env.signal_description ?? null}
-                linkageWarnings={macroBondLinkageWarnings}
-                topCorrelationSummary={
-                  macroBondLinkage.top_correlations?.[0]
-                    ? `${macroBondLinkage.top_correlations[0].series_name} -> ${macroBondLinkage.top_correlations[0].target_family}${macroBondLinkage.top_correlations[0].target_tenor ? ` ${macroBondLinkage.top_correlations[0].target_tenor}` : ""}`
-                    : null
-                }
-              />
+            <details className="cross-asset-structured-output">
+              <summary>结构化输出与联动摘要</summary>
+              <div data-testid="cross-asset-page-output">
+                <PageOutput
+                  envTags={envTags}
+                  signalPreview={env.signal_description ?? null}
+                  linkageWarnings={macroBondLinkageWarnings}
+                  topCorrelationSummary={
+                    macroBondLinkage.top_correlations?.[0]
+                      ? `${macroBondLinkage.top_correlations[0].series_name} -> ${macroBondLinkage.top_correlations[0].target_family}${macroBondLinkage.top_correlations[0].target_tenor ? ` ${macroBondLinkage.top_correlations[0].target_tenor}` : ""}`
+                      : null
+                  }
+                />
+              </div>
+            </details>
             </div>
+            </CrossAssetDecisionZone>
+          </div>
         </div>
       </div>
     </section>

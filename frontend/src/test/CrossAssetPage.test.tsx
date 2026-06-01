@@ -101,22 +101,22 @@ describe("CrossAssetPage", () => {
     const statusStrip = await screen.findByTestId("cross-asset-data-status-strip");
     const firstScreenGrid = await screen.findByTestId("cross-asset-first-screen-grid");
     const researchViews = await screen.findByTestId("cross-asset-research-views");
-    const headlineKpis = await screen.findByTestId("cross-asset-headline-kpis");
     const fullKpiBand = await screen.findByTestId("cross-asset-kpi-band");
     const livermoreStatus = await screen.findByTestId("cross-asset-livermore-status");
     const observationSupport = await screen.findByTestId("cross-asset-observation-support-grid");
     const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
 
-    expect(hero).toHaveTextContent("外部变量怎样传导到债券");
-    expect(statusStrip).toHaveTextContent("宏观最新质量");
+    expect(hero).toHaveTextContent("外部变量今天怎样传导到债券");
+    expect(statusStrip).toHaveTextContent("宏观");
+    expect(statusStrip).toHaveTextContent("联动");
     expect(firstScreenGrid).toContainElement(researchViews);
-    expect(firstScreenGrid).toContainElement(headlineKpis);
+    expect(screen.queryByTestId("cross-asset-headline-kpis")).not.toBeInTheDocument();
     expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-momentum-scoreboard"));
     expect(observationSupport).toContainElement(screen.getByTestId("cross-asset-correlation-heatmap"));
     expect(screen.getByTestId("cross-asset-momentum-table-wrap")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-correlation-matrix-wrap")).toBeInTheDocument();
     expect(waterfallEvidence).toHaveTextContent("综合");
-    expect(headlineKpis.querySelectorAll(".cross-asset-drivers-page__mini-kpi")).toHaveLength(4);
+    expect(fullKpiBand.querySelectorAll(".cross-asset-drivers-page__mini-kpi").length).toBeGreaterThanOrEqual(4);
     expect(Boolean(researchViews.compareDocumentPosition(fullKpiBand) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(fullKpiBand.compareDocumentPosition(livermoreStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
@@ -734,7 +734,9 @@ describe("CrossAssetPage", () => {
 
     expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
     const firstScreenFlags = await screen.findByTestId("cross-asset-status-flags");
-    expect(firstScreenFlags).toHaveTextContent("加载失败");
+    await waitFor(() => {
+      expect(firstScreenFlags).toHaveTextContent("加载失败");
+    });
     expect(firstScreenFlags).toHaveTextContent("choice_macro.latest");
   });
 });
