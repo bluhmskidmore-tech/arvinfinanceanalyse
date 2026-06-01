@@ -458,8 +458,11 @@ describe("MacroToolkitPage", () => {
     expect(hasonStrategyPanel).toHaveTextContent("observation-only");
     expect(hasonStrategyPanel).toHaveTextContent("no formal MTR");
     expect(hasonStrategyPanel).toHaveTextContent("Runtime outputs");
-    expect(hasonStrategyPanel).toHaveTextContent("Runtime outputscurrent");
+    expect(hasonStrategyPanel).toHaveTextContent("current");
     expect(hasonStrategyPanel).not.toHaveTextContent("Runtime outputsready");
+    expect(hasonStrategyPanel.querySelector(".macro-toolkit-metric:nth-child(4)")).not.toHaveClass(
+      "macro-toolkit-metric--positive",
+    );
   });
 
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {

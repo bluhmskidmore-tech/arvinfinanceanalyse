@@ -1338,7 +1338,7 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
   const runtimeOutputsCurrent = strategy.runtime_output_status === "current";
   const runtimeOutputGaps = strategy.runtime_output_gaps;
   const runtimeOutputValue = runtimeOutputsCurrent
-    ? "ready"
+    ? "current"
     : `${strategy.runtime_output_status} · ${runtimeOutputGaps.length}`;
   const runtimeOutputDetail = runtimeOutputGaps.length
     ? runtimeOutputGaps.join(" / ")
@@ -1389,14 +1389,14 @@ function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStra
           label="Runtime outputs"
           value={runtimeOutputValue}
           detail={runtimeOutputDetail}
-          tone={runtimeOutputsCurrent ? "positive" : "neutral"}
+          tone="neutral"
         />
         <MetricTile
           icon={<ToolOutlined />}
           label="Script trace"
           value={tracedScripts.length}
           detail={tracedScripts.map((item) => item.script).join(" / ") || "no script available"}
-          tone={tracedScripts.length ? "positive" : "neutral"}
+          tone="neutral"
         />
       </div>
 
