@@ -1,6 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
-import { PlusOutlined } from "@ant-design/icons";
+import { CheckOutlined, CopyOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
 import type {
   AgentConversationContext,
@@ -81,6 +81,7 @@ type AgentConversationTurn = {
   question: string;
   conversationContext?: AgentConversationContext;
   retryMode?: "ordinary";
+  stopped?: boolean;
   agentRun: AgentRunPayload | null;
   result: AgentQueryResult | null;
   error: AgentQueryError | null;
@@ -424,6 +425,7 @@ function createAgentConversationTurn(
     question,
     conversationContext,
     retryMode,
+    stopped: false,
     agentRun: null,
     result: null,
     error: null,
@@ -902,6 +904,21 @@ const RESEARCH_SHORTCUTS: ResearchShortcut[] = [
   },
 ];
 
+const AGENT_FOLLOW_UP_CHIPS = [
+  {
+    label: "展开依据",
+    question: "请基于上一轮回答展开证据依据和关键假设。",
+  },
+  {
+    label: "给下一步",
+    question: "请基于上一轮回答给出最值得执行的下一步行动。",
+  },
+  {
+    label: "转检查清单",
+    question: "请把上一轮回答转成可执行的复核检查清单。",
+  },
+] as const;
+
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const MAX_RECENT_REPO_PATHS = 5;
@@ -1257,6 +1274,8 @@ export function EmbeddedAgentCopilot({
   const shouldFocusComposerRef = useRef(false);
   const processStateRequestVersionRef = useRef(0);
   const conversationSessionRef = useRef(0);
+  const copyFeedbackTimerRef = useRef<number | null>(null);
+  const [copiedAnswerTurnId, setCopiedAnswerTurnId] = useState<string | null>(null);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
@@ -1295,6 +1314,10 @@ export function EmbeddedAgentCopilot({
 
   function resetConversationSession() {
     conversationSessionRef.current += 1;
+  }
+
+  function invalidateActiveRequest() {
+    processStateRequestVersionRef.current += 1;
   }
 
   function canCommitProcessState(requestVersion: number, requestRepoPath: string) {
@@ -1452,6 +1475,14 @@ export function EmbeddedAgentCopilot({
     };
   }, [shouldPersistConversation]);
 
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
   async function fetchAgentRunStatus(runId: string): Promise<AgentRunPayload> {
     const response = await fetch(`/api/agent/runs/${encodeURIComponent(runId)}`, {
       method: "GET",
@@ -1533,6 +1564,9 @@ export function EmbeddedAgentCopilot({
       const finalPayload = await runPollingTask<AgentRunPayload>({
         start: async () => {
           const payload = await createAgentRun(requestBody);
+          if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+            return payload;
+          }
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           setConversationTurns((currentTurns) => {
@@ -1551,6 +1585,9 @@ export function EmbeddedAgentCopilot({
         getIntervalMs: getAgentRunPollIntervalMs,
         maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
         onUpdate: (payload) => {
+          if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+            return;
+          }
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           updateConversationTurn(turnId, (turn) => ({
@@ -1806,8 +1843,12 @@ export function EmbeddedAgentCopilot({
     return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.error);
   }
 
-  async function retryAgentTurn(turn: AgentConversationTurn) {
-    if (loading || !canRetryAgentTurn(turn)) {
+  function canRegenerateAgentTurn(turn: AgentConversationTurn) {
+    return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.result);
+  }
+
+  async function rerunOrdinaryTurn(turn: AgentConversationTurn) {
+    if (loading) {
       return;
     }
 
@@ -1822,6 +1863,7 @@ export function EmbeddedAgentCopilot({
       agentRun: null,
       result: null,
       error: null,
+      stopped: false,
       activeSuggestedActionPayload: null,
     }));
 
@@ -1830,6 +1872,42 @@ export function EmbeddedAgentCopilot({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function retryAgentTurn(turn: AgentConversationTurn) {
+    if (!canRetryAgentTurn(turn)) {
+      return;
+    }
+    await rerunOrdinaryTurn(turn);
+  }
+
+  async function regenerateAgentTurn(turn: AgentConversationTurn) {
+    if (!canRegenerateAgentTurn(turn)) {
+      return;
+    }
+    await rerunOrdinaryTurn(turn);
+  }
+
+  function stopActiveAgentTurn() {
+    if (!loading || !latestConversationTurn) {
+      return;
+    }
+
+    invalidateActiveRequest();
+    setLoading(false);
+    setAgentWaitSeconds(0);
+    setAgentRun(null);
+    setResult(null);
+    setError(null);
+    shouldFocusComposerRef.current = true;
+    updateConversationTurn(latestConversationTurn.id, (turn) => ({
+      ...turn,
+      agentRun: null,
+      result: null,
+      error: null,
+      stopped: true,
+      activeSuggestedActionPayload: null,
+    }));
   }
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
@@ -1880,6 +1958,7 @@ export function EmbeddedAgentCopilot({
       {
         ...turn,
         agentRun: pendingWorkflowRun,
+        stopped: false,
       },
     ]);
     setLoading(true);
@@ -1966,6 +2045,7 @@ export function EmbeddedAgentCopilot({
       {
         ...turn,
         agentRun: pendingRun,
+        stopped: false,
       },
     ]);
     setLoading(true);
@@ -2104,6 +2184,7 @@ export function EmbeddedAgentCopilot({
             },
             result: payload,
             error: null,
+            stopped: false,
             activeSuggestedActionPayload: null,
           },
         ]);
@@ -2142,6 +2223,7 @@ export function EmbeddedAgentCopilot({
       {
         ...turn,
         agentRun: pendingSyncRun,
+        stopped: false,
       },
     ]);
     setAgentWaitSeconds(0);
@@ -2165,6 +2247,7 @@ export function EmbeddedAgentCopilot({
           },
           result: payload,
           error: null,
+          stopped: false,
           activeSuggestedActionPayload: null,
         }));
       }
@@ -2232,6 +2315,30 @@ export function EmbeddedAgentCopilot({
       ...turn,
       activeSuggestedActionPayload: action.payload,
     }));
+  }
+
+  async function copyAgentAnswer(turn: AgentConversationTurn) {
+    const answer = turn.result?.answer.trim();
+    const writeText = typeof navigator === "undefined" ? undefined : navigator.clipboard?.writeText;
+    if (!answer || typeof writeText !== "function") {
+      return;
+    }
+
+    await writeText.call(navigator.clipboard, answer);
+    setCopiedAnswerTurnId(turn.id);
+    if (copyFeedbackTimerRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimerRef.current);
+    }
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopiedAnswerTurnId((currentTurnId) => (currentTurnId === turn.id ? null : currentTurnId));
+      copyFeedbackTimerRef.current = null;
+    }, 1800);
+  }
+
+  function applyFollowUpChip(question: string) {
+    setQuery(question);
+    setError(null);
+    focusComposerInput();
   }
 
   function renderFinancialWorkflowPanel() {
@@ -2303,6 +2410,28 @@ export function EmbeddedAgentCopilot({
         {hasRenderableResult(turnResult) ? (
           <div className="agent-result-grid">
             <div className="agent-result-main">
+              <div className="agent-result-toolbar" aria-label="assistant-answer-actions">
+                {canRegenerateAgentTurn(turn) ? (
+                  <button
+                    type="button"
+                    className="agent-result-toolbar__button"
+                    onClick={() => void regenerateAgentTurn(turn)}
+                    disabled={loading}
+                  >
+                    <ReloadOutlined aria-hidden="true" />
+                    <span>重新生成</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="agent-result-toolbar__button"
+                  onClick={() => void copyAgentAnswer(turn)}
+                  disabled={!turnResult.answer.trim()}
+                >
+                  {copiedAnswerTurnId === turn.id ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
+                  <span>{copiedAnswerTurnId === turn.id ? "已复制" : "复制回答"}</span>
+                </button>
+              </div>
               <AgentAnswerPanel
                 answer={turnResult.answer}
                 testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
@@ -2339,6 +2468,20 @@ export function EmbeddedAgentCopilot({
                 activePayload={turn.activeSuggestedActionPayload}
                 onActionClick={(action) => handleSuggestedAction(turn.id, action)}
               />
+
+              <div className="agent-follow-up-chips" aria-label="assistant-follow-up-suggestions">
+                {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    className="agent-follow-up-chips__button"
+                    onClick={() => applyFollowUpChip(chip.question)}
+                    disabled={loading}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <aside className="agent-result-side">
@@ -2554,34 +2697,66 @@ export function EmbeddedAgentCopilot({
 
       {hasConversation ? (
         <section className="agent-conversation" aria-label="agent-conversation" ref={conversationRef}>
-          {conversationTurns.map((turn) => (
-            <div key={turn.id} className="agent-turn">
-              <div className="agent-message agent-message--user">
-                <div className="agent-message__speaker">我</div>
-                <div className="agent-message__body">{turn.question}</div>
-              </div>
+          {conversationTurns.map((turn) => {
+            const isLatestLoadingTurn = turn === latestConversationTurn && loading;
+            const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error;
+            return (
+              <div key={turn.id} className="agent-turn">
+                <div className="agent-message agent-message--user">
+                  <div className="agent-message__speaker">我</div>
+                  <div className="agent-message__body">{turn.question}</div>
+                </div>
 
-              <div className="agent-message agent-message--assistant">
-                <div className="agent-message__speaker">智能体</div>
-                <div className="agent-message__body">
-                  {(turn === latestConversationTurn && loading) || turn.agentRun ? (
-                    <div className="agent-wait-status" role="status" aria-live="polite">
-                      <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
-                      <div className="agent-wait-status__detail">
-                        <span>{formatAgentWaitPhase(turn.agentRun)}</span>
-                        <span>已等待 {formatAgentRunElapsed(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)} 秒</span>
-                        {shouldDisplayAgentRunId(turn.agentRun) ? <span>run_id: {turn.agentRun?.run_id}</span> : null}
-                        <span>{formatAgentWaitHint(turn.agentRun, turn === latestConversationTurn ? agentWaitSeconds : 0)}</span>
+                <div className="agent-message agent-message--assistant">
+                  <div className="agent-message__speaker">智能体</div>
+                  <div className="agent-message__body">
+                    {isLatestLoadingTurn || turn.agentRun ? (
+                      <div className="agent-wait-status" role="status" aria-live="polite">
+                        <div className="agent-wait-status__copy">
+                          {showThinkingPlaceholder ? (
+                            <div className="agent-thinking">
+                              <span className="agent-thinking__label">正在思考</span>
+                              <span className="agent-thinking__text">我先接住问题，拿到运行状态后继续更新。</span>
+                              <span className="agent-thinking__dots" aria-hidden="true">
+                                <span />
+                                <span />
+                                <span />
+                              </span>
+                            </div>
+                          ) : null}
+                          <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
+                        </div>
+                        <div className="agent-wait-status__detail">
+                          <span>{formatAgentWaitPhase(turn.agentRun)}</span>
+                          <span>已等待 {formatAgentRunElapsed(turn.agentRun, isLatestLoadingTurn ? agentWaitSeconds : 0)} 秒</span>
+                          {shouldDisplayAgentRunId(turn.agentRun) ? <span>run_id: {turn.agentRun?.run_id}</span> : null}
+                          <span>{formatAgentWaitHint(turn.agentRun, isLatestLoadingTurn ? agentWaitSeconds : 0)}</span>
+                          {isLatestLoadingTurn ? (
+                            <button
+                              type="button"
+                              className="agent-wait-status__stop"
+                              onClick={stopActiveAgentTurn}
+                            >
+                              停止
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
+                    ) : null}
+                    {turn.stopped ? (
+                      <div className="agent-callout agent-callout--stopped" role="status">
+                        <strong>已停止</strong>
+                        <span>已停止等待这次回答。</span>
+                      </div>
+                    ) : null}
 
-                  {renderAgentTurnError(turn)}
-                  {renderAgentTurnResult(turn)}
+                    {renderAgentTurnError(turn)}
+                    {renderAgentTurnResult(turn)}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {conversationTurns.length === 0 && error ? (
             <div className="agent-message agent-message--assistant">

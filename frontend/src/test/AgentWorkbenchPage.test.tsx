@@ -1889,6 +1889,155 @@ describe("AgentWorkbenchPage", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("agent-question-input"));
   });
 
+  it("copies a completed assistant answer from the chat turn", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockManagedRunResult(fetchMock, {
+      answer: "可复制的助手回答，只包含结论文本。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_copy_answer",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "copy this answer");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("可复制的助手回答，只包含结论文本。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "复制回答" }));
+
+    expect(writeText).toHaveBeenCalledWith("可复制的助手回答，只包含结论文本。");
+    expect(await screen.findByText("已复制")).toBeInTheDocument();
+  });
+
+  it("fills a focused follow-up question from assistant quick chips", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(fetchMock, {
+      answer: "回答里已经给出主要结论。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_followup_chip",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "need a follow-up chip");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("回答里已经给出主要结论。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开依据" }));
+
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("请基于上一轮回答展开证据依据和关键假设。");
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("regenerates a completed ordinary answer in the same chat turn", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "第一版回答。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_regenerate_first",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:regenerate-first",
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "重新生成后的回答。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_regenerate_second",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:regenerate-second",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "regenerate this");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("第一版回答。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新生成" }));
+
+    expect(await screen.findByText("重新生成后的回答。")).toBeInTheDocument();
+    expect(screen.queryByText("第一版回答。")).not.toBeInTheDocument();
+    expect(screen.getAllByText("regenerate this")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
+  });
+
   it("sends recent turn context with the next follow-up question", async () => {
     const user = userEvent.setup();
     mockManagedRunResult(
@@ -2338,6 +2487,8 @@ describe("AgentWorkbenchPage", () => {
 
       const conversation = await screen.findByLabelText("agent-conversation");
       expect(conversation).toHaveTextContent("先给我一个响应");
+      expect(conversation).toHaveTextContent("正在思考");
+      expect(conversation).toHaveTextContent("我先接住问题，拿到运行状态后继续更新。");
       expect(conversation).toHaveTextContent("已收到问题");
       expect(conversation).toHaveTextContent("正在交给托管运行时");
       expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
@@ -2345,6 +2496,62 @@ describe("AgentWorkbenchPage", () => {
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+
+  it("stops waiting for a pending answer and ignores a late managed result", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "stop this pending answer");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("stop this pending answer")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "停止" }));
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).not.toBeDisabled();
+
+    await act(async () => {
+      resolveCreateRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "迟到的托管结果不应该显示。",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_late_after_stop",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:late-after-stop",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("迟到的托管结果不应该显示。")).not.toBeInTheDocument();
+    expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
   });
 
   it("restores the latest managed Hermes run after a refresh", async () => {
