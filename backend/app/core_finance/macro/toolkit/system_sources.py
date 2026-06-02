@@ -95,6 +95,7 @@ def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFra
             _load_choice_frame(conn),
             _load_choice_snapshot_frame(conn),
             _load_external_macro_frame(conn),
+            _load_commodity_daily_frame(conn),
             _load_fx_frame(conn),
             _load_legacy_yield_curve_frame(conn),
         ]
@@ -254,6 +255,54 @@ def _load_external_macro_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         std = std.drop(columns=["catalog_series_name"])
 
     return _normalize_frame(std)
+
+
+def _load_commodity_daily_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    if not _table_exists(conn, "fact_commodity_futures_daily"):
+        return _empty_frame()
+
+    commodity = conn.execute(
+        """
+        select
+          case
+            when upper(product_code) = 'NHCI' then 'NHCI.NH'
+            when upper(product_code) = 'NHII' then 'NHII.NH'
+            when upper(product_code) = 'CU' then 'CA.COPPER'
+            when upper(product_code) = 'AL' then 'CA.ALUMINUM'
+            else 'COMMODITY.' || upper(product_code)
+          end as series_id,
+          case
+            when upper(product_code) = 'NHCI' then 'Nanhua commodity index'
+            when upper(product_code) = 'NHII' then 'Nanhua industrial index'
+            else upper(product_code) || ' commodity futures close'
+          end as series_name,
+          case
+            when lower(coalesce(vendor_version, '')) like 'vv_akshare%' then 'akshare'
+            else 'tushare'
+          end as vendor_name,
+          trade_date,
+          cast(close_value as double) as value_numeric,
+          'daily' as frequency,
+          case
+            when upper(product_code) in ('NHCI', 'NHII') then 'index'
+            else 'price'
+          end as unit,
+          source_version,
+          vendor_version,
+          rule_version,
+          source_version as run_id,
+          case
+            when upper(product_code) in ('NHCI', 'NHII')
+              then 'tushare.index_daily.' || coalesce(nullif(contract_code, ''), upper(product_code) || '.NH') || '.close'
+            else 'fut_daily:' || upper(product_code) || '.' || upper(coalesce(exchange, '')) || '.close'
+          end as vendor_series_code
+        from fact_commodity_futures_daily
+        where close_value is not null
+        """
+    ).fetchdf()
+    if commodity.empty:
+        return _empty_frame()
+    return _normalize_frame(commodity)
 
 
 def _load_fx_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:

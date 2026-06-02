@@ -246,6 +246,59 @@ def test_system_source_layer_reads_crisis_external_backfill_aliases(tmp_path, mo
     get_settings.cache_clear()
 
 
+def test_system_source_layer_reads_nanhua_from_commodity_daily_table(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values
+              ('2026-05-29', 'NHCI', 'NHCI.NH', 'NH',
+               2980.0, 3005.0, 2970.0, 2989.18, null,
+               null, null, 'sv_tushare_index_daily_nhci', 'vv_tushare_index_daily_NHCI_20260602',
+               'rv_commodity_daily_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    nanhua = load_series_by_alias("NH0100.NHF", start="2026-05-01", end="2026-05-31")
+
+    assert nanhua["series_id"].tolist() == ["NHCI.NH"]
+    assert nanhua["vendor_name"].tolist() == ["tushare"]
+    assert nanhua["value"].tolist() == [2989.18]
+    get_settings.cache_clear()
+
+
 def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
