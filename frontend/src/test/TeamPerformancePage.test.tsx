@@ -530,6 +530,8 @@ describe("TeamPerformancePage", () => {
     const q1Caliber = await screen.findByTestId("team-performance-q1-caliber");
     expect(q1Caliber).toHaveTextContent("2026 Q1实际口径拆解");
     expect(q1Caliber).toHaveTextContent("只展示实际证据");
+    expect(q1Caliber).toHaveTextContent("产品分类业务净收入/币种拆分展示");
+    expect(q1Caliber).toHaveTextContent("汇兑损益及衍生聚合行仅作待拆参考");
     expect(q1Caliber).toHaveTextContent("FTP后净损益");
     expect(q1Caliber).toHaveTextContent("ftp_net_pnl");
     expect(q1Caliber).toHaveTextContent("自营中心");
@@ -566,6 +568,10 @@ describe("TeamPerformancePage", () => {
     expect(await screen.findByTestId("team-performance-empty")).toHaveTextContent(
       "正式日期列表未包含 2025-12-31",
     );
+    const q1Caliber = await screen.findByTestId("team-performance-q1-caliber");
+    expect(q1Caliber).toHaveTextContent("产品分类业务净收入/币种拆分展示");
+    expect(q1Caliber).toHaveTextContent("正式日期列表暂未同时满足2025底稿和2026Q1证据");
+    expect(q1Caliber).toHaveTextContent("汇兑损益及衍生聚合行仅作待拆参考");
     expect(screen.getByLabelText("team-performance-report-date")).toHaveValue("");
     expect(getPnlByBusinessYtd).not.toHaveBeenCalled();
     expect(getProductCategoryPnl).not.toHaveBeenCalled();
