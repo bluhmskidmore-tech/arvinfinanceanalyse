@@ -1,24 +1,37 @@
-import { shellTokens as t } from "../../../theme/tokens";
+import type { CSSProperties } from "react";
 
 export function AgentAnswerPanel({ answer, testId }: { answer: string; testId?: string }) {
-  if (!answer.trim()) {
+  const segments = splitAnswerIntoSegments(answer);
+
+  if (segments.length === 0) {
     return null;
   }
 
   return (
-    <div
-      data-testid={testId}
-      style={{
-        padding: 20,
-        borderRadius: 16,
-        border: `1px solid ${t.colorBorderSoft}`,
-        background: t.colorBgCanvas,
-        color: t.colorTextPrimary,
-        fontSize: 15,
-        lineHeight: 1.75,
-      }}
-    >
-      {answer}
+    <div data-testid={testId} className="agent-answer-panel">
+      {segments.map((segment, index) => (
+        <p
+          key={`${index}-${segment}`}
+          data-testid="agent-answer-segment"
+          style={{ "--agent-answer-segment-delay": `${index * 70}ms` } as CSSProperties}
+        >
+          {segment}
+        </p>
+      ))}
     </div>
   );
+}
+
+function splitAnswerIntoSegments(answer: string) {
+  const paragraphs = answer
+    .split(/\n{2,}/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (paragraphs.length > 1) {
+    return paragraphs;
+  }
+
+  const trimmedAnswer = answer.trim();
+  return trimmedAnswer ? [trimmedAnswer] : [];
 }

@@ -73,6 +73,30 @@ describe("PositionsView", () => {
     expect(screen.getByRole("tab", { name: "债券持仓" })).toBeInTheDocument();
   });
 
+  it("surfaces candidate list metric boundaries for GAP-POS-LIST", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter>
+            <PositionsView />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const boundary = await screen.findByTestId("positions-list-candidate-boundary");
+    expect(boundary).toHaveTextContent("GAP-POS-LIST");
+    expect(boundary).toHaveTextContent("MTR-POS-001");
+    expect(boundary).toHaveTextContent("MTR-POS-002");
+    expect(boundary).toHaveTextContent("pending_confirmation=true");
+    expect(boundary).toHaveTextContent("bound_sample_id=none");
+  });
+
   it("renders duplicate bond codes without duplicate React row-key warnings", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const client = createApiClient({ mode: "mock" });

@@ -35,6 +35,10 @@
   align-items: flex-start;
 }
 
+.positions-view__candidate-boundary {
+  margin-bottom: 16px;
+}
+
 .positions-view__control-card {
   margin-bottom: 10px;
 }

@@ -1,4 +1,4 @@
-import { Button, Card } from "antd";
+import { Alert, Button, Card } from "antd";
 
 import type { Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
 import { formatDv01Wan, formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
@@ -33,6 +33,13 @@ export function RiskIndicatorsPanel({
       style={{ borderRadius: 8 }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Alert
+          data-testid="bond-dashboard-risk-source-boundary"
+          type="warning"
+          showIcon
+          message="风险卡边界"
+          description="GAP-BOND-DASH-RISK 尚未冻结 MTR-RSK-* 同源关系；本面板不自动继承 GS-RISK-A。"
+        />
         {ROWS.map((r) => (
           <div
             key={r.key}

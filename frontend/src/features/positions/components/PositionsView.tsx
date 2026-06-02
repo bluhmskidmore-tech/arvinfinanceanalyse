@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -502,11 +503,21 @@ export default function PositionsView() {
           </span>
         }
         conclusion={
-          <DataStatusStrip testId="positions-data-status">
-            <span>日均分母=有数据 report_date 数</span>
-            <span>{tab === "bonds" ? "当前：债券持仓" : "当前：同业持仓"}</span>
-            <span>{activeScopeLabel}</span>
-          </DataStatusStrip>
+          <>
+            <Alert
+              data-testid="positions-list-candidate-boundary"
+              className="positions-view__candidate-boundary"
+              type="warning"
+              showIcon
+              message="持仓列表指标边界"
+              description="GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=none。"
+            />
+            <DataStatusStrip testId="positions-data-status">
+              <span>日均分母=有数据 report_date 数</span>
+              <span>{tab === "bonds" ? "当前：债券持仓" : "当前：同业持仓"}</span>
+              <span>{activeScopeLabel}</span>
+            </DataStatusStrip>
+          </>
         }
       >
         <KpiBand testId="positions-kpi-band">

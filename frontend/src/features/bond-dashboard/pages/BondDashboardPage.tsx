@@ -213,6 +213,16 @@ export default function BondDashboardPage() {
           />
         ) : null}
 
+        {!datesEmpty ? (
+          <Alert
+            data-testid="bond-dashboard-headline-candidate-boundary"
+            type="warning"
+            showIcon
+            message="候选指标边界"
+            description="MTR-BOND-001~004 仍为 candidate，pending_confirmation=true；GS-BOND-HEADLINE-A 是页面样本，非字典级批准。"
+          />
+        ) : null}
+
         {!datesEmpty && conclusion ? (
           <Card
             data-testid="bond-dashboard-conclusion"

@@ -296,6 +296,31 @@ describe("BondDashboardPage", () => {
     });
   });
 
+  it("surfaces candidate metric and risk-source boundaries on the governed dashboard", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const headlineBoundary = await screen.findByTestId("bond-dashboard-headline-candidate-boundary");
+    expect(headlineBoundary).toHaveTextContent("MTR-BOND-001");
+    expect(headlineBoundary).toHaveTextContent("pending_confirmation=true");
+    expect(headlineBoundary).toHaveTextContent("GS-BOND-HEADLINE-A");
+    expect(headlineBoundary).toHaveTextContent("非字典级批准");
+
+    const riskBoundary = await screen.findByTestId("bond-dashboard-risk-source-boundary");
+    expect(riskBoundary).toHaveTextContent("GAP-BOND-DASH-RISK");
+    expect(riskBoundary).toHaveTextContent("不自动继承 GS-RISK-A");
+  });
+
   it("renders credit-rating percentages from ratio Numeric values", () => {
     render(
       <CreditRatingBlocks
