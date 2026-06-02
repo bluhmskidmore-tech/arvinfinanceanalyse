@@ -2644,46 +2644,49 @@ export function EmbeddedAgentCopilot({
     const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
     const copyStatusMessage =
       copyStatus === "success" ? "回答已复制" : copyStatus === "error" ? "复制失败，请手动选择回答文本。" : "";
+    const resultMetaEntries = buildResultMetaEntries(turnResult.result_meta);
 
     return (
       <div className="agent-result-shell">
         {hasRenderableResult(turnResult) ? (
           <div className="agent-result-grid">
             <div className="agent-result-main">
-              <AgentAnswerPanel
-                answer={turnResult.answer}
-                testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
-              />
-              <div className="agent-result-toolbar" aria-label="assistant-answer-actions">
-                {canRegenerateAgentTurn(turn) ? (
+              <div className="agent-answer-message">
+                <AgentAnswerPanel
+                  answer={turnResult.answer}
+                  testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
+                />
+                <div className="agent-result-toolbar" aria-label="assistant-answer-actions">
+                  {canRegenerateAgentTurn(turn) ? (
+                    <button
+                      type="button"
+                      className="agent-result-toolbar__button"
+                      onClick={() => void regenerateAgentTurn(turn)}
+                      disabled={loading}
+                    >
+                      <ReloadOutlined aria-hidden="true" />
+                      <span>重新生成</span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="agent-result-toolbar__button"
-                    onClick={() => void regenerateAgentTurn(turn)}
-                    disabled={loading}
+                    onClick={() => void copyAgentAnswer(turn)}
+                    disabled={!turnResult.answer.trim()}
                   >
-                    <ReloadOutlined aria-hidden="true" />
-                    <span>重新生成</span>
+                    {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
+                    <span>{copyLabel}</span>
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="agent-result-toolbar__button"
-                  onClick={() => void copyAgentAnswer(turn)}
-                  disabled={!turnResult.answer.trim()}
-                >
-                  {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
-                  <span>{copyLabel}</span>
-                </button>
-                {copyStatus ? (
-                  <span
-                    aria-label="复制状态"
-                    role="status"
-                    className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
-                  >
-                    {copyStatusMessage}
-                  </span>
-                ) : null}
+                  {copyStatus ? (
+                    <span
+                      aria-label="复制状态"
+                      role="status"
+                      className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
+                    >
+                      {copyStatusMessage}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               {turnResult.cards.length > 0 ? (
@@ -2721,23 +2724,28 @@ export function EmbeddedAgentCopilot({
               <div className="agent-follow-up-chips" aria-label="assistant-follow-up-suggestions">
                 <button
                   type="button"
-                  className="agent-follow-up-chips__button"
+                  className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
                   onClick={focusComposerInput}
                   disabled={loading}
                 >
                   继续输入
                 </button>
-                {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
-                  <button
-                    key={chip.label}
-                    type="button"
-                    className="agent-follow-up-chips__button"
-                    onClick={() => applyFollowUpChip(chip.question)}
-                    disabled={loading}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
+                <details className="agent-follow-up-chips__details">
+                  <summary>更多追问</summary>
+                  <div className="agent-follow-up-chips__options">
+                    {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
+                      <button
+                        key={chip.label}
+                        type="button"
+                        className="agent-follow-up-chips__button"
+                        onClick={() => applyFollowUpChip(chip.question)}
+                        disabled={loading}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
 
@@ -2751,7 +2759,7 @@ export function EmbeddedAgentCopilot({
                 />
               ) : null}
               <AgentResultMetaPanel
-                entries={buildResultMetaEntries(turnResult.result_meta)}
+                entries={resultMetaEntries}
                 formatValue={formatMetaValue}
               />
             </aside>
@@ -2775,9 +2783,9 @@ export function EmbeddedAgentCopilot({
 
         {!hasRenderableResult(turnResult) ? (
           <details className="agent-result-details">
-            <summary>结果细节</summary>
+            <summary>查看依据 · {resultMetaEntries.length} 项</summary>
             <AgentResultMetaPanel
-              entries={buildResultMetaEntries(turnResult.result_meta)}
+              entries={resultMetaEntries}
               formatValue={formatMetaValue}
             />
           </details>
@@ -2867,9 +2875,20 @@ export function EmbeddedAgentCopilot({
     });
   }
 
+  function getPageContextSummaryLabel(context: AgentPageContext) {
+    const attachmentCount = [
+      context.page_id,
+      Object.keys(context.current_filters).length > 0,
+      context.selected_rows.length > 0,
+      context.context_note?.trim(),
+    ].filter(Boolean).length;
+    return `上下文 · ${attachmentCount} 项`;
+  }
+
   const shellClassName = isEmbedded
     ? "agent-workbench-shell agent-workbench-shell--embedded dashboard-home-panel agent-panel"
     : "agent-workbench-shell";
+  const runtimeStateLabel = loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问";
 
   return (
     <section className={shellClassName} data-testid={isEmbedded ? "agent-panel" : undefined}>
@@ -2917,12 +2936,12 @@ export function EmbeddedAgentCopilot({
         <div className="agent-runtime-strip__summary">
           <div className="agent-runtime-strip__state">
             <span className={loading ? "agent-runtime-strip__dot agent-runtime-strip__dot--active" : "agent-runtime-strip__dot"} />
-            <span>{loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问"}</span>
+            <span>{runtimeStateLabel}</span>
+            <span className="agent-runtime-strip__provider">{runtimeStatus.provider}</span>
           </div>
-          <span className="agent-runtime-strip__provider">{runtimeStatus.provider}</span>
         </div>
         <details className="agent-runtime-strip__details">
-          <summary>运行环境</summary>
+          <summary>运行详情</summary>
           <div className="agent-runtime-strip__detail-grid">
             <div className="agent-runtime-strip__item">
               <span>Engine</span>
@@ -2950,7 +2969,7 @@ export function EmbeddedAgentCopilot({
 
       {pageContext ? (
         <details className="agent-page-context">
-          <summary>页面上下文</summary>
+          <summary>{getPageContextSummaryLabel(pageContext)}</summary>
           <code className="agent-page-context__code">{formatPageContextSummary(pageContext)}</code>
         </details>
       ) : null}

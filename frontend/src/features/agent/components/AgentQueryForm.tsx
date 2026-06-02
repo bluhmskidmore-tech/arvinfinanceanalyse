@@ -224,7 +224,7 @@ export function AgentQueryForm({
 
       {showAdvancedTools ? (
         <details className="agent-chat-composer__advanced">
-          <summary>高级工具：GitNexus / 流程图谱</summary>
+          <summary>GitNexus 工具</summary>
           <div className="agent-chat-composer__advanced-body">
             <label className="agent-chat-composer__field">
               <span>GitNexus 仓库路径</span>
@@ -265,41 +265,44 @@ export function AgentQueryForm({
               </button>
             </div>
 
-            <div className="agent-chat-composer__process-grid">
-              <label className="agent-chat-composer__field">
-                <span>流程搜索</span>
-                <input
-                  aria-label="process-search-input"
-                  type="text"
-                  placeholder="按流程名过滤"
-                  value={processSearch}
-                  onChange={(event) => onProcessSearchChange(event.target.value)}
-                />
-              </label>
-              <label className="agent-chat-composer__field">
-                <span>流程名称</span>
-                <select
-                  aria-label="process-name-select"
-                  value={selectedProcess}
-                  onChange={(event) => onSelectedProcessChange(event.target.value)}
+            <details className="agent-chat-composer__process-details">
+              <summary>{filteredProcesses.length > 0 ? `流程筛选与查看 · ${filteredProcesses.length} 项` : "流程筛选与查看"}</summary>
+              <div className="agent-chat-composer__process-grid">
+                <label className="agent-chat-composer__field">
+                  <span>流程搜索</span>
+                  <input
+                    aria-label="process-search-input"
+                    type="text"
+                    placeholder="按流程名过滤"
+                    value={processSearch}
+                    onChange={(event) => onProcessSearchChange(event.target.value)}
+                  />
+                </label>
+                <label className="agent-chat-composer__field">
+                  <span>流程名称</span>
+                  <select
+                    aria-label="process-name-select"
+                    value={selectedProcess}
+                    onChange={(event) => onSelectedProcessChange(event.target.value)}
+                  >
+                    <option value="">请选择流程</option>
+                    {filteredProcesses.map((processName) => (
+                      <option key={processName} value={processName}>
+                        {processName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="agent-chat-composer__secondary-action"
+                  onClick={onViewSelectedProcess}
+                  disabled={!selectedProcess || loading}
                 >
-                  <option value="">请选择流程</option>
-                  {filteredProcesses.map((processName) => (
-                    <option key={processName} value={processName}>
-                      {processName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="agent-chat-composer__secondary-action"
-                onClick={onViewSelectedProcess}
-                disabled={!selectedProcess || loading}
-              >
-                查看所选流程
-              </button>
-            </div>
+                  查看所选流程
+                </button>
+              </div>
+            </details>
           </div>
         </details>
       ) : null}

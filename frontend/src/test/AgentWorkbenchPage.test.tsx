@@ -18,6 +18,24 @@ const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
 const AGENT_COMPOSER_DRAFT_KEY = "moss.agent.composerDraft.v1";
 const MAX_PINNED_REPO_PATHS = 5;
 
+function openGitNexusTools() {
+  const summary = screen.getByText("GitNexus 工具");
+  const details = summary.closest("details");
+  if (!details?.hasAttribute("open")) {
+    fireEvent.click(summary);
+  }
+  return details;
+}
+
+function openProcessTools() {
+  const summary = screen.getByText(/流程筛选与查看/);
+  const details = summary.closest("details");
+  if (!details?.hasAttribute("open")) {
+    fireEvent.click(summary);
+  }
+  return details;
+}
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -286,16 +304,32 @@ describe("AgentWorkbenchPage", () => {
 
     expect(screen.queryByRole("heading", { name: "智能体对话" })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toBeInTheDocument();
+    openGitNexusTools();
     expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
   });
 
   it("renders explicit repo_path input and GitNexus quick examples", () => {
     render(<AgentWorkbenchPage />);
 
+    const advancedDetails = screen.getByText("GitNexus 工具").closest("details");
+    expect(advancedDetails).not.toBeNull();
+    expect(advancedDetails).not.toHaveAttribute("open");
+    openGitNexusTools();
+    expect(advancedDetails).toHaveAttribute("open");
     expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
-    expect(screen.getByLabelText("process-search-input")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "固定当前仓库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "读取流程" })).toBeInTheDocument();
+    const processDetails = screen.getByText("流程筛选与查看").closest("details");
+    expect(processDetails).not.toBeNull();
+    expect(processDetails).not.toHaveAttribute("open");
+    const viewProcessButton = screen.getByText("查看所选流程").closest("button");
+    expect(viewProcessButton).not.toBeNull();
+    expect(screen.getByLabelText("process-search-input")).not.toBeVisible();
+    expect(viewProcessButton).not.toBeVisible();
+    openProcessTools();
+    expect(processDetails).toHaveAttribute("open");
+    expect(screen.getByLabelText("process-search-input")).toBeVisible();
+    expect(viewProcessButton).toBeVisible();
     expect(screen.getByLabelText("process-name-select")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解释当前页面的主要结论和风险点" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /组合概览/ })).toBeInTheDocument();
@@ -309,7 +343,7 @@ describe("AgentWorkbenchPage", () => {
 
     const runtimeStatus = screen.getByLabelText("agent-runtime-status");
     expect(runtimeStatus).toHaveTextContent("待提问");
-    expect(within(runtimeStatus).getByText("运行环境")).toBeVisible();
+    expect(within(runtimeStatus).getByText("运行详情")).toBeVisible();
     expect(within(runtimeStatus).getByText("Engine")).not.toBeVisible();
   });
 
@@ -827,6 +861,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.clear(screen.getByLabelText("repo-path-input"));
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\PINNED-MOSS");
     await user.click(screen.getByRole("button", { name: "固定当前仓库" }));
@@ -948,6 +983,8 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
+    expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("repo-path-input"), {
       target: { value: "F:\\MOSS-SYSTEM-V1" },
     });
@@ -987,12 +1024,13 @@ describe("AgentWorkbenchPage", () => {
       />,
     );
 
-    const pageContextDetails = screen.getByText("页面上下文").closest("details");
+    const pageContextSummary = screen.getByText("上下文 · 4 项");
+    const pageContextDetails = pageContextSummary.closest("details");
     expect(pageContextDetails).not.toBeNull();
     expect(pageContextDetails).not.toHaveAttribute("open");
     expect(screen.getByText(/risk-dashboard/)).not.toBeVisible();
     expect(screen.getByText(/selected from risk table/)).not.toBeVisible();
-    fireEvent.click(screen.getByText("页面上下文"));
+    fireEvent.click(pageContextSummary);
     expect(pageContextDetails).toHaveAttribute("open");
     expect(screen.getByText(/risk-dashboard/)).toBeVisible();
     expect(screen.getByText(/selected from risk table/)).toBeVisible();
@@ -1051,8 +1089,10 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
+    openProcessTools();
 
     await waitFor(() => {
       const select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
@@ -1120,14 +1160,19 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
+    openProcessTools();
     await waitFor(() => expect(screen.getByRole("option", { name: "CheckoutFlow" })).toBeInTheDocument());
 
     const processSelect = screen.getByLabelText("process-name-select");
+    const viewProcessButton = screen.getByRole("button", { name: "查看所选流程" });
+    expect(viewProcessButton).toBeDisabled();
     await user.selectOptions(processSelect, "CheckoutFlow");
     await waitFor(() => expect(processSelect).toHaveValue("CheckoutFlow"));
-    await user.click(screen.getByRole("button", { name: "查看所选流程" }));
+    expect(viewProcessButton).not.toBeDisabled();
+    await user.click(viewProcessButton);
 
     await waitFor(() => {
       const expectedBody = JSON.stringify({
@@ -1164,6 +1209,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: /读取流程/ }));
 
@@ -1196,6 +1242,7 @@ describe("AgentWorkbenchPage", () => {
       await Promise.resolve();
     });
 
+    openProcessTools();
     await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
     await user.click(screen.getByRole("button", { name: /查看所选流程/ }));
 
@@ -1242,8 +1289,10 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
+    openProcessTools();
     await waitFor(() => expect(screen.getByRole("option", { name: "AuditFlow" })).toBeInTheDocument());
 
     await user.type(screen.getByLabelText("process-search-input"), "Audit");
@@ -1268,6 +1317,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     fireEvent.change(screen.getByLabelText("repo-path-input"), {
       target: { value: "F:\\MOSS-SYSTEM-V1" },
     });
@@ -1319,6 +1369,7 @@ describe("AgentWorkbenchPage", () => {
       await Promise.resolve()
     });
 
+    openProcessTools();
     let select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
     expect(select).toHaveValue("NewestManualFlow");
     expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "NewestManualFlow"]);
@@ -1380,6 +1431,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.type(
       screen.getByPlaceholderText(AGENT_PLACEHOLDER),
@@ -1411,6 +1463,7 @@ describe("AgentWorkbenchPage", () => {
     const user = userEvent.setup();
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.click(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON }));
 
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue("请给我看 GitNexus processes");
@@ -1424,6 +1477,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     expect(screen.getByLabelText("repo-path-input")).toHaveValue("F:\\MOSS-SYSTEM-V1");
     expect(screen.getByRole("button", { name: "F:\\MOSS-SYSTEM-V1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "F:\\NEWMOSS" })).toBeInTheDocument();
@@ -1452,6 +1506,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "GitNexus context");
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -2061,8 +2116,9 @@ describe("AgentWorkbenchPage", () => {
     expect(copyStatus).toHaveClass("agent-copy-feedback");
     const toolbar = copyStatus.closest(".agent-result-toolbar");
     expect(toolbar).not.toBeNull();
-    const resultMain = toolbar?.closest(".agent-result-main");
-    const answerPanel = resultMain?.querySelector(".agent-answer-panel");
+    const answerMessage = toolbar?.closest(".agent-answer-message");
+    expect(answerMessage).not.toBeNull();
+    const answerPanel = answerMessage?.querySelector(".agent-answer-panel");
     expect(answerPanel).not.toBeNull();
     expect(
       (answerPanel?.compareDocumentPosition(toolbar as Element) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2232,6 +2288,13 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "need a follow-up chip");
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("回答里已经给出主要结论。")).toBeInTheDocument();
+
+    const moreFollowUps = screen.getByText("更多追问");
+    const followUpDetails = moreFollowUps.closest("details");
+    expect(followUpDetails).not.toBeNull();
+    expect(followUpDetails).not.toHaveAttribute("open");
+    fireEvent.click(moreFollowUps);
+    expect(followUpDetails).toHaveAttribute("open");
 
     await user.click(screen.getByRole("button", { name: "展开依据" }));
 
@@ -3910,6 +3973,8 @@ describe("AgentWorkbenchPage", () => {
           trace_id: "tr_1",
           basis: "formal",
           generated_at: "2026-04-12T09:00:00Z",
+          source_version: "sv_agent_test",
+          rule_version: "rv_agent_test",
         },
         next_drill: [
           { dimension: "portfolio", label: "按组合下钻" },
@@ -3956,21 +4021,24 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("4.27")).toBeInTheDocument();
     expect(screen.getAllByText("久期").length).toBeGreaterThan(0);
-    expect(screen.getByText("证据链")).toBeInTheDocument();
-    expect(
-      screen.getByText(/表：fact_risk_tensor, dim_portfolio/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/筛选：\{"currency_basis":"CNY"\}/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/行数：42/)).toBeInTheDocument();
-    expect(screen.getByText(/质量：ok/)).toBeInTheDocument();
+    const evidencePanel = screen.getByText("回答依据").closest(".agent-side-panel");
+    expect(evidencePanel).not.toBeNull();
+    expect(evidencePanel).toHaveTextContent("来源");
+    expect(evidencePanel).toHaveTextContent("fact_risk_tensor, dim_portfolio");
+    expect(evidencePanel).toHaveTextContent("过滤");
+    expect(evidencePanel).toHaveTextContent("currency_basis: CNY");
+    expect(evidencePanel).toHaveTextContent("证据行数");
+    expect(evidencePanel).toHaveTextContent("42 行");
+    expect(evidencePanel).toHaveTextContent("质量");
+    expect(evidencePanel).toHaveTextContent("正常");
+    expect(screen.getByText("查看筛选参数")).toBeInTheDocument();
     expect(screen.getByText("按组合下钻")).toBeInTheDocument();
     expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();
-    expect(screen.getByText("建议动作")).toBeInTheDocument();
+    expect(screen.getByText("接下来可以做")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "继续下钻期限桶" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看血缘" })).toBeInTheDocument();
     expect(screen.getAllByText("需确认后执行")).toHaveLength(2);
+    expect(screen.getAllByText("查看参数")).toHaveLength(2);
     expect(screen.getByText(/inspect_drill/)).toBeInTheDocument();
     expect(screen.getByText(/inspect_lineage/)).toBeInTheDocument();
 
@@ -3979,17 +4047,23 @@ describe("AgentWorkbenchPage", () => {
       "请基于当前 evidence 继续下钻：继续下钻期限桶",
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("动作载荷 / 血缘信息")).not.toBeInTheDocument();
+    expect(screen.queryByText("已选择的参数")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "查看血缘" }));
-    expect(screen.getByText("动作载荷 / 血缘信息")).toBeInTheDocument();
+    expect(screen.getByText("已选择的参数")).toBeInTheDocument();
     expect(screen.getAllByText(/fact_risk_tensor/).length).toBeGreaterThanOrEqual(2);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    expect(screen.getByText("结果元信息")).toBeInTheDocument();
-    expect(screen.getByText(/追踪编号: tr_1/)).toBeInTheDocument();
-    expect(screen.getByText(/口径: 正式口径/)).toBeInTheDocument();
-    expect(screen.getByText(/生成时间: 2026-04-12T09:00:00Z/)).toBeInTheDocument();
+    const metaPanel = screen.getByText("运行信息").closest(".agent-side-panel");
+    expect(metaPanel).not.toBeNull();
+    expect(metaPanel).toHaveTextContent("追踪编号");
+    expect(metaPanel).toHaveTextContent("tr_1");
+    expect(metaPanel).toHaveTextContent("口径");
+    expect(metaPanel).toHaveTextContent("正式口径");
+    expect(metaPanel).toHaveTextContent("生成时间");
+    expect(metaPanel).toHaveTextContent("2026-04-12T09:00:00Z");
+    expect(metaPanel).toHaveTextContent("sv_agent_test");
+    expect(metaPanel).toHaveTextContent("rv_agent_test");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -4034,7 +4108,8 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getAllByText("pong").length).toBeGreaterThan(0);
     expect(screen.getByText("Hermes Agent")).toBeInTheDocument();
     expect(screen.getByText("Provider")).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === "结果类型: agent.hermes")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("查看全部运行信息"));
+    expect(screen.getByText("agent.hermes")).toBeVisible();
     expect(screen.queryByText("智能体返回结果格式无效。")).not.toBeInTheDocument();
   });
 
@@ -4158,13 +4233,14 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("status", { name: "空结果状态" })).toHaveTextContent(
       "本次查询未返回可展示结果。请调整问题后重试。",
     );
-    const emptyResultDetails = screen.getByText("结果细节").closest("details");
+    const emptyResultSummary = screen.getByText("查看依据 · 1 项");
+    const emptyResultDetails = emptyResultSummary.closest("details");
     expect(emptyResultDetails).not.toBeNull();
     expect(emptyResultDetails).not.toHaveAttribute("open");
-    expect(screen.getByText(/追踪编号: tr_empty/)).not.toBeVisible();
-    fireEvent.click(screen.getByText("结果细节"));
+    expect(screen.getByText("tr_empty")).not.toBeVisible();
+    fireEvent.click(emptyResultSummary);
     expect(emptyResultDetails).toHaveAttribute("open");
-    expect(screen.getByText(/追踪编号: tr_empty/)).toBeVisible();
+    expect(screen.getByText("tr_empty")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "重新生成" }));
     expect(await screen.findByText("empty fallback regenerated answer")).toBeInTheDocument();
   });
