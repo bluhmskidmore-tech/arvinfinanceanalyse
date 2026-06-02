@@ -15,7 +15,7 @@ import {
   ToolOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Select, Table, Tag } from "antd";
+import { Alert, Button, Checkbox, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -71,6 +71,16 @@ const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
 const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
 const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = ["macro-toolkit", "analysis", "full"] as const;
+const MACRO_COMMODITY_PRODUCT_OPTIONS = [
+  { value: "RB", label: "螺纹钢", description: "黑色链条" },
+  { value: "I", label: "铁矿石", description: "黑色链条" },
+  { value: "CU", label: "铜", description: "有色金属" },
+  { value: "AL", label: "铝", description: "有色金属" },
+  { value: "SC", label: "原油", description: "能源" },
+  { value: "AU", label: "黄金", description: "避险资产" },
+  { value: "NHCI", label: "南华指数", description: "Crisis Score 输入" },
+] as const;
+const DEFAULT_MACRO_COMMODITY_PRODUCTS = MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => option.value);
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
@@ -311,6 +321,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [commodityRefreshResult, setCommodityRefreshResult] = useState<string | null>(null);
   const [commodityRefreshError, setCommodityRefreshError] = useState<string | null>(null);
   const [isRefreshingCommodity, setIsRefreshingCommodity] = useState(false);
+  const [selectedCommodityProducts, setSelectedCommodityProducts] = useState<string[]>([
+    ...DEFAULT_MACRO_COMMODITY_PRODUCTS,
+  ]);
   const [isRunning, setIsRunning] = useState(false);
   const [fullAnalysisEnvelope, setFullAnalysisEnvelope] =
     useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(null);
@@ -599,16 +612,27 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     }
   }, [analysis?.as_of_date, analysisQuery, clearFullAnalysisCache, client, scriptsQuery, strategyQuery]);
 
-  const refreshCommodityFutures = useCallback(async () => {
+  const refreshCommodityFutures = useCallback(async (options?: { dryRun?: boolean }) => {
+    const dryRun = options?.dryRun ?? false;
+    if (selectedCommodityProducts.length === 0) {
+      setCommodityRefreshError("请至少选择一个商品期货品种");
+      setCommodityRefreshResult(null);
+      return;
+    }
     setIsRefreshingCommodity(true);
     setCommodityRefreshError(null);
     setCommodityRefreshResult(null);
-    const shouldReloadFullAnalysis = !isCoreAnalysis;
+    const shouldReloadFullAnalysis = !dryRun && !isCoreAnalysis;
     try {
       const response = await client.refreshCommodityFutures({
         endDate: analysis?.as_of_date ?? undefined,
+        products: selectedCommodityProducts,
+        dryRun,
       });
       setCommodityRefreshResult(formatCommodityRefreshResult(response.result.refresh));
+      if (dryRun) {
+        return;
+      }
       await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       if (shouldReloadFullAnalysis) {
@@ -627,6 +651,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     isCoreAnalysis,
     loadFullAnalysis,
     scriptsQuery,
+    selectedCommodityProducts,
     strategyQuery,
   ]);
 
@@ -1404,13 +1429,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               title="商品期货状态"
               description="刷新南华指数和宏观旁证商品期货；Crisis Score 公式仍只读取南华输入。"
             />
-            <div className="macro-toolkit-cffex-panel">
+            <div className="macro-toolkit-cffex-panel" aria-label="商品期货刷新">
               <div className="macro-toolkit-cffex-metrics">
                 <MetricTile
                   icon={<DatabaseOutlined />}
-                  label="刷新范围"
-                  value="RB / I / CU / AL / SC / AU / NHCI"
-                  detail="覆盖黑色、有色、原油、黄金和南华指数"
+                  label="已选品种"
+                  value={`${selectedCommodityProducts.length}/${MACRO_COMMODITY_PRODUCT_OPTIONS.length}`}
+                  detail={
+                    selectedCommodityProducts.length === MACRO_COMMODITY_PRODUCT_OPTIONS.length
+                      ? "默认全选，可缩小范围"
+                      : selectedCommodityProducts.join(" / ") || "未选择"
+                  }
                 />
                 <MetricTile
                   icon={<SafetyCertificateOutlined />}
@@ -1419,11 +1448,43 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   detail="刷新后重新读取完整分析证据"
                 />
               </div>
+              <div className="macro-toolkit-commodity-selector">
+                <span className="macro-toolkit-commodity-selector-label">刷新品种</span>
+                <Checkbox.Group
+                  className="macro-toolkit-commodity-products"
+                  value={selectedCommodityProducts}
+                  onChange={(values) => {
+                    setSelectedCommodityProducts(values.map(String));
+                    setCommodityRefreshResult(null);
+                    setCommodityRefreshError(null);
+                  }}
+                >
+                  {MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => (
+                    <Checkbox key={option.value} value={option.value}>
+                      <span className="macro-toolkit-commodity-product-text">
+                        <span>{option.label}</span>
+                        <small>
+                          {option.value} · {option.description}
+                        </small>
+                      </span>
+                    </Checkbox>
+                  ))}
+                </Checkbox.Group>
+              </div>
               <div className="macro-toolkit-cffex-actions">
+                <Button
+                  icon={<InfoCircleOutlined />}
+                  loading={isRefreshingCommodity}
+                  disabled={selectedCommodityProducts.length === 0}
+                  onClick={() => void refreshCommodityFutures({ dryRun: true })}
+                >
+                  预估商品期货
+                </Button>
                 <Button
                   icon={<ReloadOutlined />}
                   loading={isRefreshingCommodity}
-                  onClick={() => void refreshCommodityFutures()}
+                  disabled={selectedCommodityProducts.length === 0}
+                  onClick={() => void refreshCommodityFutures({ dryRun: false })}
                 >
                   刷新商品期货
                 </Button>
@@ -2418,9 +2479,13 @@ function choiceStockTableSummary(
 
 function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefreshRun) {
   const productCount = refresh.product_count ?? refresh.products?.length ?? 0;
-  const rowCount = refresh.row_count ?? refresh.estimated_total_rows ?? 0;
-  const action = refresh.status === "dry_run" ? "预估完成" : "刷新完成";
-  return `商品期货${action}：${productCount} 个品种，${rowCount} 行`;
+  const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
+  const rowCount = isDryRun
+    ? refresh.estimated_total_rows ?? refresh.row_count ?? 0
+    : refresh.row_count ?? refresh.estimated_total_rows ?? 0;
+  const action = isDryRun ? "预估完成" : "刷新完成";
+  const tradingDays = isDryRun && refresh.estimated_trading_days ? `，约 ${refresh.estimated_trading_days} 个交易日` : "";
+  return `商品期货${action}：${productCount} 个品种，${rowCount} 行${tradingDays}`;
 }
 
 function choiceStockFallbackText(

@@ -809,7 +809,7 @@ describe("MacroToolkitPage", () => {
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2));
   });
 
-  it("refreshes commodity futures from the operations panel and reloads full evidence", async () => {
+  it("previews selected commodity futures before refreshing full evidence", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
     const calls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
@@ -822,6 +822,8 @@ describe("MacroToolkitPage", () => {
       },
       refreshCommodityFutures: async (options) => {
         refreshCalls.push(options);
+        const products = options?.products ?? ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"];
+        const isDryRun = options?.dryRun ?? false;
         return {
           result_meta: {
             ...analysisEnvelope.result_meta,
@@ -829,13 +831,15 @@ describe("MacroToolkitPage", () => {
           },
           result: {
             refresh: {
-              status: "completed",
-              dry_run: false,
+              status: isDryRun ? "dry_run" : "completed",
+              dry_run: isDryRun,
               start_date: "2026-04-01",
               end_date: "2026-04-30",
-              product_count: 7,
-              row_count: 154,
-              products: [{ product_code: "RB", row_count: 22 }],
+              product_count: products.length,
+              row_count: isDryRun ? 0 : products.length * 22,
+              estimated_total_rows: isDryRun ? products.length * 22 : undefined,
+              estimated_trading_days: isDryRun ? 22 : undefined,
+              products: products.map((product) => ({ product_code: product, row_count: isDryRun ? undefined : 22 })),
               table: "fact_commodity_futures_daily",
               rule_version: "rv_commodity_daily_v1",
             },
@@ -847,10 +851,31 @@ describe("MacroToolkitPage", () => {
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    await user.click(await screen.findByRole("button", { name: /刷新商品期货/ }));
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    expect(within(commodityPanel).getByRole("checkbox", { name: /南华指数/ })).toBeChecked();
+    await user.click(within(commodityPanel).getByRole("checkbox", { name: /螺纹钢/ }));
+    await user.click(within(commodityPanel).getByRole("checkbox", { name: /^铁矿石/ }));
+    await user.click(within(commodityPanel).getByRole("checkbox", { name: /铝/ }));
 
-    expect(refreshCalls).toEqual([{ endDate: "2026-04-30" }]);
-    expect(await screen.findByText(/商品期货刷新完成/)).toHaveTextContent("7 个品种，154 行");
+    await user.click(within(commodityPanel).getByRole("button", { name: /预估商品期货/ }));
+
+    expect(refreshCalls[0]).toEqual({
+      endDate: "2026-04-30",
+      products: ["CU", "SC", "AU", "NHCI"],
+      dryRun: true,
+    });
+    expect(await screen.findByText(/商品期货预估完成/)).toHaveTextContent("4 个品种，88 行");
+    expect(screen.getByText(/商品期货预估完成/)).toHaveTextContent("22 个交易日");
+    expect(calls.filter((item) => item?.detail === "full")).toHaveLength(0);
+
+    await user.click(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ }));
+
+    expect(refreshCalls[1]).toEqual({
+      endDate: "2026-04-30",
+      products: ["CU", "SC", "AU", "NHCI"],
+      dryRun: false,
+    });
+    expect(await screen.findByText(/商品期货刷新完成/)).toHaveTextContent("4 个品种，88 行");
     await waitFor(() => expect(calls).toContainEqual({ detail: "full" }));
   });
 

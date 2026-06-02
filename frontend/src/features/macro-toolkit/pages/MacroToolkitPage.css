@@ -1309,6 +1309,57 @@
   align-items: center;
 }
 
+.macro-toolkit-commodity-selector {
+  display: grid;
+  gap: 8px;
+}
+
+.macro-toolkit-commodity-selector-label {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.macro-toolkit-commodity-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+  gap: 8px;
+}
+
+.macro-toolkit-commodity-products .ant-checkbox-wrapper {
+  min-width: 0;
+  margin-inline-start: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 92%, var(--moss-color-info-50));
+  align-items: flex-start;
+}
+
+.macro-toolkit-commodity-product-text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  line-height: 1.25;
+}
+
+.macro-toolkit-commodity-product-text span,
+.macro-toolkit-commodity-product-text small {
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-commodity-product-text span {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.macro-toolkit-commodity-product-text small {
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
 .macro-toolkit-strategy-supply-strip {
   display: flex;
   flex-wrap: wrap;

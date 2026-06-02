@@ -622,8 +622,13 @@ def macro_toolkit_refresh_commodity_futures(
 
 
 def _macro_commodity_refresh_products(products: list[str] | None) -> tuple[str, ...]:
-    requested = products or list(_DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS)
+    requested = list(_DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS) if products is None else products
     normalized = tuple(str(product).strip().upper() for product in requested)
+    if not normalized:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one commodity futures product is required.",
+        )
     unknown = tuple(product for product in normalized if product not in _MACRO_COMMODITY_PRODUCT_CODES)
     if unknown:
         unknown_labels = ", ".join(product or "<blank>" for product in unknown)
