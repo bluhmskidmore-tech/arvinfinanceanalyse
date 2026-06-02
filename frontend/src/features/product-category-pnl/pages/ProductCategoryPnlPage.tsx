@@ -2436,7 +2436,9 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void attributionQuery.refetch()}
       />
 
-      {!baselineQuery.isError ? <ProductCategoryOperatingAnalysisPanel surface={operatingAnalysisSurface} /> : null}
+      {baseline && !baselineQuery.isLoading && !baselineQuery.isError ? (
+        <ProductCategoryOperatingAnalysisPanel surface={operatingAnalysisSurface} />
+      ) : null}
 
       <SectionLead
         eyebrow="正式口径"
