@@ -80,11 +80,39 @@
   margin-top: 4px;
 }
 
-.sparkPlaceholder {
+.gaugeTrack {
   width: 100%;
-  height: 28px;
+  height: 6px;
   align-self: end;
-  margin-top: 4px;
+  margin-top: 14px;
+  overflow: hidden;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(24, 80, 161, 0.06), rgba(24, 80, 161, 0.02));
+  background: rgba(24, 80, 161, 0.08);
+}
+
+.gaugeTrack > span {
+  display: block;
+  width: var(--equity-kpi-gauge, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0.68;
+}
+
+.deltaUp + .gaugeTrack {
+  color: var(--sa-dh-red, #b94743);
+}
+
+.deltaDown + .gaugeTrack {
+  color: var(--sa-dh-green, #1f7a55);
+}
+
+.deltaFlat + .gaugeTrack {
+  color: var(--sa-dh-blue, #1850a1);
+}
+
+.metricSlot {
+  min-height: 6px;
+  align-self: end;
+  margin-top: 14px;
 }

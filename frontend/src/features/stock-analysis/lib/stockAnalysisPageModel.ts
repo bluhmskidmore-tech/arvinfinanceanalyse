@@ -224,6 +224,7 @@ export type StockAnalysisKpiItem = {
   value: string;
   detail: string;
   tone: StockClosedLoopTone;
+  gaugeValue?: number;
 };
 
 export type StockAnalysisEvidenceStatusKey =
@@ -349,6 +350,11 @@ function formatRatioAsPercent(value: number | null | undefined, digits = 0) {
 
 function finiteNumber(value: number | null | undefined): number | null {
   return value == null || !Number.isFinite(value) ? null : value;
+}
+
+function clampRatio(value: number | null | undefined): number | undefined {
+  if (value == null || !Number.isFinite(value)) return undefined;
+  return Math.min(1, Math.max(0, value));
 }
 
 function buildCandidateFundamentalEvidence(item: LivermoreStockCandidateItem): StockCandidateEvidenceBullet[] {
@@ -1002,9 +1008,10 @@ export function buildStockAnalysisKpiStrip(
     {
       key: "market-state",
       label: "市场状态",
-      value: payload.market_gate.state,
+      value: localizeMarketDataStatus(payload.market_gate.state),
       detail: `观察暴露 ${formatRatioAsPercent(payload.market_gate.exposure)}`,
       tone: hasBoundary ? "warning" : "positive",
+      gaugeValue: clampRatio(payload.market_gate.exposure),
     },
     {
       key: "review-queue",
@@ -1012,6 +1019,7 @@ export function buildStockAnalysisKpiStrip(
       value: String(queue.length),
       detail: queue[0] ? `优先 ${queue[0].stockName} / ${queue[0].sectorName}` : "候选待补",
       tone: queue.length > 0 ? "positive" : "neutral",
+      gaugeValue: clampRatio(queue.length / 6),
     },
     {
       key: "sector-strength",
@@ -1019,6 +1027,7 @@ export function buildStockAnalysisKpiStrip(
       value: strongest ? strongest.sectorName : "待补",
       detail: weakest ? `弱侧 ${weakest.sectorName} / ${weakest.pctChange}` : "弱侧待补",
       tone: strongest ? "positive" : "warning",
+      gaugeValue: clampRatio(strongest?.scoreValue),
     },
     {
       key: "risk-observation",
@@ -1026,6 +1035,7 @@ export function buildStockAnalysisKpiStrip(
       value: String(riskRows.length),
       detail: `触发 ${riskTriggered} / 观察 ${riskWatch}`,
       tone: riskTriggered > 0 ? "negative" : riskWatch > 0 ? "warning" : "positive",
+      gaugeValue: clampRatio(riskRows.length / 4),
     },
     {
       key: "closed-loop",
@@ -1033,6 +1043,7 @@ export function buildStockAnalysisKpiStrip(
       value: closedLoopSummary.referenceRating.label,
       detail: closedLoopSummary.summaryLabel,
       tone: closedLoopSummary.referenceRating.tone,
+      gaugeValue: closedLoopSummary.referenceRating.tone === "positive" ? 1 : closedLoopSummary.referenceRating.tone === "warning" ? 0.55 : 0.28,
     },
     {
       key: "data-boundary",
@@ -1040,6 +1051,7 @@ export function buildStockAnalysisKpiStrip(
       value: String(boundarySummary.boundaryCount),
       detail: boundarySummary.detailLabel,
       tone: boundarySummary.boundaryCount > 0 || isMetaBoundary(meta) ? "warning" : "positive",
+      gaugeValue: clampRatio(boundarySummary.boundaryCount / 6),
     },
   ];
 }
@@ -1051,6 +1063,7 @@ export type StockStrategyLensItem = {
   detail: string;
   tone: "positive" | "warning" | "negative" | "neutral";
   scrollTarget: string;
+  progress?: number;
 };
 
 export type StockThemeLeaderPreviewItem = {
@@ -1356,6 +1369,17 @@ export function buildStrategyLensItems(
   const themeCards = buildThemeBreakoutCards(payload);
   const themeLeaderCount = buildThemeLeaderPreviewItems(themeCards).length;
   const sectorHeavyweightPreview = buildSectorHeavyweightPreview(payload);
+  const strategyMax = Math.max(
+    1,
+    reviewCount,
+    resonanceCount,
+    consensus.strategyCounts.hybrid_fusion,
+    consensus.strategyCounts.livermore,
+    consensus.strategyCounts.factor_screen,
+    consensus.strategyCounts.mean_reversion,
+    themeLeaderCount,
+    sectorHeavyweightPreview.totalSampleCount,
+  );
 
   return [
     {
@@ -1365,6 +1389,7 @@ export function buildStrategyLensItems(
       detail: reviewCount > 0 ? "优先人工复核" : "暂无主候选",
       tone: reviewCount > 0 ? "positive" : "warning",
       scrollTarget: "stock-analysis-review-queue",
+      progress: clampRatio(reviewCount / strategyMax),
     },
     {
       key: "resonance",
@@ -1373,6 +1398,7 @@ export function buildStrategyLensItems(
       detail: consensus.tripleCount > 0 ? `${consensus.tripleCount} 只三重共振` : "双策略及以上",
       tone: resonanceCount > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-consensus-first-screen",
+      progress: clampRatio(resonanceCount / strategyMax),
     },
     {
       key: "hybrid",
@@ -1381,6 +1407,7 @@ export function buildStrategyLensItems(
       detail: "观察池",
       tone: consensus.strategyCounts.hybrid_fusion > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-observation-preview",
+      progress: clampRatio(consensus.strategyCounts.hybrid_fusion / strategyMax),
     },
     {
       key: "livermore",
@@ -1389,6 +1416,7 @@ export function buildStrategyLensItems(
       detail: "Livermore",
       tone: consensus.strategyCounts.livermore > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-observation-preview",
+      progress: clampRatio(consensus.strategyCounts.livermore / strategyMax),
     },
     {
       key: "factor",
@@ -1397,6 +1425,7 @@ export function buildStrategyLensItems(
       detail: "因子池",
       tone: consensus.strategyCounts.factor_screen > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-observation-preview",
+      progress: clampRatio(consensus.strategyCounts.factor_screen / strategyMax),
     },
     {
       key: "mean_reversion",
@@ -1408,6 +1437,7 @@ export function buildStrategyLensItems(
           ? "positive"
           : "neutral",
       scrollTarget: "stock-analysis-observation-preview",
+      progress: clampRatio(consensus.strategyCounts.mean_reversion / strategyMax),
     },
     {
       key: "theme",
@@ -1416,6 +1446,7 @@ export function buildStrategyLensItems(
       detail: `${themeCards.length} 个题材簇`,
       tone: themeCards.length > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-theme-leaders-first-screen",
+      progress: clampRatio(themeLeaderCount / strategyMax),
     },
     {
       key: "sector_heavyweight",
@@ -1424,6 +1455,7 @@ export function buildStrategyLensItems(
       detail: `${sectorHeavyweightPreview.sectorsWithSamples} 个板块有样本`,
       tone: sectorHeavyweightPreview.totalSampleCount > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-sector-heavyweights-first-screen",
+      progress: clampRatio(sectorHeavyweightPreview.totalSampleCount / strategyMax),
     },
   ];
 }

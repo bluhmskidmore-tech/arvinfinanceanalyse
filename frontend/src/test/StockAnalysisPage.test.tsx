@@ -1142,6 +1142,11 @@ describe("StockAnalysisPage", () => {
     expect(cockpit).not.toHaveTextContent("后端供数");
     expect(cockpit).not.toHaveTextContent("门控 WARM");
 
+    const kpiSection = await screen.findByTestId("stock-analysis-kpi-section");
+    expect(kpiSection).toHaveTextContent("市场状态");
+    expect(kpiSection).toHaveTextContent("温和");
+    expect(kpiSection).not.toHaveTextContent("WARM");
+
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("复核队列");
     expect(selection).toHaveTextContent("策略共振选股");

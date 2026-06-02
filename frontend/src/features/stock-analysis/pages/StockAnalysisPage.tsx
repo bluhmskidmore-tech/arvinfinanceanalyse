@@ -603,6 +603,7 @@ function outputKeyLabel(key: string | null | undefined) {
     market_gate: "市场门控",
     sector_rank: "板块排序",
     stock_candidates: "趋势候选",
+    stock_candidate: "趋势候选",
     mean_reversion_candidates: "超跌池",
     factor_screen_candidates: "多因子",
     theme_breakout: "题材观察",
@@ -624,7 +625,7 @@ function cycleInputLabel(input: string | null | undefined) {
   const labels: Record<string, string> = {
     market_gate: "市场门控",
     sector_rank: "板块强弱",
-    stock_candidates: "股票候选",
+    stock_candidates: "趋势候选",
     pmi: "PMI",
     credit_impulse: "信用脉冲",
     profit_cycle: "盈利周期",
@@ -638,7 +639,6 @@ function cycleInputLabel(input: string | null | undefined) {
     factor_screen_candidates: "多因子",
     theme_breakout: "题材观察",
     stock_candidate: "趋势候选",
-    stock_candidates: "趋势候选",
     hybrid_fusion: "融合池",
     social_text_raw: "社交文本",
     ocr_asr_pipeline: "图文识别",
@@ -2609,6 +2609,7 @@ export default function StockAnalysisPage() {
                         value={item.value}
                         deltaText={item.detail}
                         deltaTone={kpiToneToDelta(item.tone)}
+                        gaugeValue={item.gaugeValue}
                       />
                     ))}
                     </div>
@@ -2634,11 +2635,21 @@ export default function StockAnalysisPage() {
                             className="stock-analysis-page__strategy-lens-card"
                             data-tone={item.tone}
                             data-testid={`stock-analysis-strategy-lens-${item.key}`}
+                            style={
+                              item.progress == null
+                                ? undefined
+                                : ({
+                                    "--stock-strategy-lens-progress": `${Math.max(4, item.progress * 100)}%`,
+                                  } as CSSProperties)
+                            }
                             onClick={() => scrollToStockSection(item.scrollTarget)}
                           >
                             <span className="stock-analysis-page__strategy-lens-label">{item.label}</span>
                             <strong className="stock-analysis-page__strategy-lens-value">{item.value}</strong>
                             <small className="stock-analysis-page__strategy-lens-detail">{item.detail}</small>
+                            {item.progress != null ? (
+                              <span className="stock-analysis-page__strategy-lens-meter" aria-hidden="true" />
+                            ) : null}
                           </button>
                         ))}
                       </div>

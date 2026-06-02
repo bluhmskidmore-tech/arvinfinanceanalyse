@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
@@ -13,6 +13,7 @@ export type EquityKpiCardProps = {
   deltaText?: string;
   deltaTone?: "up" | "down" | "flat";
   sparkline?: number[];
+  gaugeValue?: number;
   testId?: string;
 };
 
@@ -52,12 +53,21 @@ export function EquityKpiCard({
   deltaText,
   deltaTone = "flat",
   sparkline,
+  gaugeValue,
   testId,
 }: EquityKpiCardProps) {
   const sparklineOption = useMemo(
     () => (sparkline && sparkline.length > 0 ? buildSparklineOption(sparkline) : null),
     [sparkline],
   );
+  const normalizedGauge =
+    gaugeValue == null || !Number.isFinite(gaugeValue)
+      ? null
+      : Math.min(1, Math.max(0, gaugeValue));
+  const gaugeStyle =
+    normalizedGauge == null
+      ? undefined
+      : ({ "--equity-kpi-gauge": `${Math.max(4, normalizedGauge * 100)}%` } as CSSProperties);
 
   return (
     <article className={styles.card} data-equity-kpi-card data-testid={testId}>
@@ -76,8 +86,12 @@ export function EquityKpiCard({
           option={sparklineOption}
           style={{ height: 28, width: "100%" }}
         />
+      ) : normalizedGauge != null ? (
+        <div className={styles.gaugeTrack} aria-hidden="true" style={gaugeStyle}>
+          <span />
+        </div>
       ) : (
-        <div className={styles.sparkPlaceholder} aria-hidden="true" title="无序列，占位" />
+        <div className={styles.metricSlot} aria-hidden="true" />
       )}
     </article>
   );
