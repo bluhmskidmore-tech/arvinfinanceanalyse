@@ -311,7 +311,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     staleTime: 60_000,
   });
 
-  const payload = scriptsQuery.data?.result;
+  const payload = showOperations ? scriptsQuery.data?.result : undefined;
   const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
   const analysis = analysisEnvelope?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;

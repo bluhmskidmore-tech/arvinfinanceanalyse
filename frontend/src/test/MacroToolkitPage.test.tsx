@@ -1,11 +1,14 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
+import { ApiClientProvider } from "../api/clientContext";
 import type { ResultMeta } from "../api/contracts";
+import MacroToolkitPage from "../features/macro-toolkit/pages/MacroToolkitPage";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const MACRO_TOOLKIT_CSS_PATH = resolve(
@@ -198,6 +201,61 @@ describe("MacroToolkitPage", () => {
     expect(screen.queryByRole("button", { name: /运行选中脚本/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 2, name: "脚本注册表" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 2, name: "运行结果" })).not.toBeInTheDocument();
+  });
+
+  it("ignores cached script registry payloads on the macro observation route", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const [scriptEnvelope, analysisEnvelope] = await Promise.all([
+      baseClient.getMacroToolkitScripts(),
+      baseClient.getMacroToolkitAnalysis(),
+    ]);
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          source_checks: [
+            {
+              alias: "OBS_ONLY",
+              row_count: 1,
+              latest: {
+                date: "2026-04-30",
+                series_id: "OBS_ONLY",
+                vendor_name: "choice",
+                value: 1,
+              },
+            },
+          ],
+          capabilities: [],
+        },
+      }),
+    } as ApiClient;
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: 0,
+          refetchOnWindowFocus: false,
+        },
+      },
+    });
+    queryClient.setQueryData(["macro-toolkit", "scripts"], scriptEnvelope);
+
+    render(
+      <ApiClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
+          <MacroToolkitPage mode="observation" />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    const readiness = await screen.findByLabelText("宏观工具投研总览");
+    expect(readiness).toHaveTextContent("1 个源命中");
+    expect(await screen.findByText("能力闭环")).toBeInTheDocument();
+    expect(screen.getByText("0/0")).toBeInTheDocument();
+    expect(screen.queryByText(scriptEnvelope.result.scripts[0]?.name ?? "")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: "脚本注册表" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /运行选中脚本/ })).not.toBeInTheDocument();
   });
 
   it("renders handwritten data-health repair items from the analysis contract", async () => {
