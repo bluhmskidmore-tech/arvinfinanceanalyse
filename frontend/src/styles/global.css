@@ -2007,6 +2007,29 @@ select {
   box-shadow: 0 10px 22px rgba(var(--moss-color-primary-rgb), 0.22);
 }
 
+.agent-chat-composer__action-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 104px;
+}
+
+.agent-chat-composer__queue {
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid #b8cbe6;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: var(--moss-color-link);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.agent-chat-composer__queue:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .agent-chat-composer__send--stop {
   border: 1px solid #f4b5b5;
   background: #fff7f7;
@@ -2121,6 +2144,51 @@ select {
   border: 1px solid #d7dee8;
   background: #f8fafc;
   color: var(--moss-color-text-secondary);
+}
+
+.agent-queued-turn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d7e8f8;
+  border-radius: 8px;
+  background: #f5fbff;
+  color: var(--moss-color-text-secondary);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.agent-queued-turn__text {
+  min-width: 0;
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+
+.agent-queued-turn__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-queued-turn__actions button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #c8d9eb;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--moss-color-link);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.agent-queued-turn__actions button:hover {
+  border-color: #9fbce0;
+  background: #f8fbff;
 }
 
 .agent-composer-dock {

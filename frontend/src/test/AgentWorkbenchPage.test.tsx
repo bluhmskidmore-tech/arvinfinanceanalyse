@@ -2388,6 +2388,212 @@ describe("AgentWorkbenchPage", () => {
     expect(freshBody.context.conversation).toBeUndefined();
   });
 
+  it("queues a typed follow-up while the current answer is still running", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRun!: (value: Response) => void;
+    const firstRunResponse = new Promise<Response>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(firstRunResponse);
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "second queued answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_queued_second",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:queued-second",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "queued first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("queued first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued second turn");
+    await user.click(screen.getByRole("button", { name: "排队发送" }));
+
+    expect(screen.getByText("已排队：queued second turn")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+
+    await act(async () => {
+      resolveFirstRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "first queued answer",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_queued_first",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:queued-first",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("queued second turn")).toBeInTheDocument();
+    expect(await screen.findByText("first queued answer")).toBeInTheDocument();
+    expect(await screen.findByText("second queued answer")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
+    });
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(JSON.parse(String(runPostCalls[1]?.[1]?.body))).toMatchObject({
+      question: "queued second turn",
+      context: {
+        conversation: {
+          recent_turns: [
+            {
+              question: "queued first turn",
+              answer: "first queued answer",
+              run_id: "agent_run:queued-first",
+              trace_id: "tr_queued_first",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("cancels a queued follow-up when stopping the active answer", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "queued stop first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("queued stop first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued stop second turn");
+    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    expect(screen.getByText("已排队：queued stop second turn")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.queryByText("已排队：queued stop second turn")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued stop second turn");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+  });
+
+  it("cancels a queued follow-up without sending it after the current answer completes", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRun!: (value: Response) => void;
+    const firstRunResponse = new Promise<Response>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(firstRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "queued cancel first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("queued cancel first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued cancel second turn");
+    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    expect(screen.getByText("已排队：queued cancel second turn")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消排队" }));
+    expect(screen.queryByText("已排队：queued cancel second turn")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirstRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "cancel first answer",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_queued_cancel_first",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:queued-cancel-first",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("cancel first answer")).toBeInTheDocument();
+    expect(screen.queryByText("queued cancel second turn")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+  });
+
+  it("moves a queued follow-up back into the composer for editing", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "queued edit first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("queued edit first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued edit second turn");
+    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    expect(screen.getByText("已排队：queued edit second turn")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "编辑排队" }));
+
+    expect(screen.queryByText("已排队：queued edit second turn")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued edit second turn");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+  });
+
   it("restores an unsent composer draft after remount", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<AgentWorkbenchPage />);

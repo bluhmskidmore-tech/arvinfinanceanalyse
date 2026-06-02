@@ -25,6 +25,7 @@ type AgentQueryFormProps = {
   query: string;
   onQueryChange: (value: string) => void;
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
+  onQueueSubmit?: () => void;
   onStop?: () => void;
   inputRef?: Ref<HTMLTextAreaElement>;
 };
@@ -43,8 +44,8 @@ function buildPromptPlaceholder(pageContext?: { page_id: string }) {
   return "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
 }
 
-function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, loading: boolean, query: string) {
-  return !loading && query.trim().length > 0 && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, query: string) {
+  return query.trim().length > 0 && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
 }
 
 function assignTextAreaRef(ref: Ref<HTMLTextAreaElement> | undefined, element: HTMLTextAreaElement | null) {
@@ -83,6 +84,7 @@ export function AgentQueryForm({
   query,
   onQueryChange,
   onSubmit,
+  onQueueSubmit,
   onStop,
   inputRef,
 }: AgentQueryFormProps) {
@@ -145,8 +147,12 @@ export function AgentQueryForm({
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={(event) => {
-              if (shouldSubmitByEnter(event, loading, query)) {
+              if (shouldSubmitByEnter(event, query)) {
                 event.preventDefault();
+                if (loading && onQueueSubmit) {
+                  onQueueSubmit();
+                  return;
+                }
                 void onSubmit();
               }
             }}
@@ -167,14 +173,26 @@ export function AgentQueryForm({
           ) : null}
         </div>
         {loading && onStop ? (
-          <button
-            type="button"
-            data-testid="agent-panel-submit"
-            className="agent-chat-composer__send agent-chat-composer__send--stop"
-            onClick={onStop}
-          >
-            停止
-          </button>
+          <div className="agent-chat-composer__action-stack">
+            {onQueueSubmit ? (
+              <button
+                type="button"
+                className="agent-chat-composer__queue"
+                disabled={!hasQuery}
+                onClick={onQueueSubmit}
+              >
+                排队发送
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="agent-panel-submit"
+              className="agent-chat-composer__send agent-chat-composer__send--stop"
+              onClick={onStop}
+            >
+              停止
+            </button>
+          </div>
         ) : (
           <button
             type="submit"

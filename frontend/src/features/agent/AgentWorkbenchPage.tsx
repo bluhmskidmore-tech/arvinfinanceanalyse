@@ -1317,6 +1317,7 @@ export function EmbeddedAgentCopilot({
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
+  const [queuedQuery, setQueuedQuery] = useState("");
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1325,6 +1326,7 @@ export function EmbeddedAgentCopilot({
   const conversationSessionRef = useRef(0);
   const copyFeedbackTimerRef = useRef<number | null>(null);
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
+  const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
   const [copiedAnswerTurnId, setCopiedAnswerTurnId] = useState<string | null>(null);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
@@ -1434,6 +1436,19 @@ export function EmbeddedAgentCopilot({
     if (shouldPersistConversation) {
       clearComposerDraft();
     }
+  }
+
+  function clearQueuedQuery() {
+    setQueuedQuery("");
+  }
+
+  function restoreQueuedQueryToComposer() {
+    if (!queuedQuery.trim()) {
+      return;
+    }
+    updateComposerQuery(queuedQuery);
+    clearQueuedQuery();
+    shouldFocusComposerRef.current = true;
   }
 
   useEffect(() => {
@@ -1963,6 +1978,10 @@ export function EmbeddedAgentCopilot({
     setAgentRun(null);
     setResult(null);
     setError(null);
+    if (queuedQuery.trim()) {
+      updateComposerQuery(queuedQuery);
+      clearQueuedQuery();
+    }
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
     }
@@ -1995,6 +2014,7 @@ export function EmbeddedAgentCopilot({
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (loading) {
+      queueCurrentQuery();
       return;
     }
 
@@ -2022,6 +2042,44 @@ export function EmbeddedAgentCopilot({
       setLoading(false);
     }
   }
+
+  function queueCurrentQuery() {
+    if (!loading || isEmbedded) {
+      return;
+    }
+    const nextQueuedQuery = query.trim();
+    if (!nextQueuedQuery) {
+      return;
+    }
+    setQueuedQuery(nextQueuedQuery);
+    clearComposerQuery();
+    shouldFocusComposerRef.current = true;
+  }
+
+  async function submitQueuedQuery(question: string) {
+    const context = buildConversationContext(conversationTurns);
+    const turn = createAgentConversationTurn(question, context, "ordinary");
+    setAgentWaitSeconds(0);
+    setConversationTurns((currentTurns) => [...currentTurns, turn]);
+    shouldFocusComposerRef.current = true;
+    setLoading(true);
+    setError(null);
+    try {
+      await executeOrdinaryConversation(question, turn.id, context);
+    } finally {
+      setLoading(false);
+    }
+  }
+  submitQueuedQueryRef.current = submitQueuedQuery;
+
+  useEffect(() => {
+    if (loading || !queuedQuery.trim()) {
+      return;
+    }
+    const nextQueuedQuery = queuedQuery.trim();
+    clearQueuedQuery();
+    void submitQueuedQueryRef.current(nextQueuedQuery);
+  }, [loading, queuedQuery]);
 
   async function executeFinancialWorkflow(workflow: FinancialWorkflowShortcut) {
     if (loading) {
@@ -2352,6 +2410,7 @@ export function EmbeddedAgentCopilot({
     setResult(null);
     setAgentRun(null);
     setError(null);
+    clearQueuedQuery();
     clearComposerQuery();
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
@@ -2814,6 +2873,7 @@ export function EmbeddedAgentCopilot({
           query={query}
           onQueryChange={updateComposerQuery}
           onSubmit={handleSubmit}
+          onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
           onStop={isEmbedded ? undefined : stopActiveAgentTurn}
           inputRef={composerInputRef}
         />
@@ -2925,6 +2985,20 @@ export function EmbeddedAgentCopilot({
         </section>
       ) : null}
 
+      {queuedQuery ? (
+        <div className="agent-queued-turn" role="status" aria-live="polite">
+          <span className="agent-queued-turn__text">已排队：{queuedQuery}</span>
+          <span className="agent-queued-turn__actions">
+            <button type="button" onClick={restoreQueuedQueryToComposer}>
+              编辑排队
+            </button>
+            <button type="button" onClick={clearQueuedQuery}>
+              取消排队
+            </button>
+          </span>
+        </div>
+      ) : null}
+
       {hasConversation ? (
         <div className="agent-composer-dock">
           <AgentQueryForm
@@ -2950,6 +3024,7 @@ export function EmbeddedAgentCopilot({
             query={query}
             onQueryChange={updateComposerQuery}
             onSubmit={handleSubmit}
+            onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
             onStop={isEmbedded ? undefined : stopActiveAgentTurn}
             inputRef={composerInputRef}
           />
