@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -82,6 +82,51 @@ describe("AgentPanel", () => {
     expect(screen.getByTestId("agent-panel-question")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeInTheDocument();
     expect(screen.queryByLabelText("repo-path-input")).not.toBeInTheDocument();
+  });
+
+  it("updates and focuses the embedded composer when the default question changes", () => {
+    const { rerender } = render(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain current page"
+      />,
+    );
+
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("explain current page");
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="review selected row"
+      />,
+    );
+
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("review selected row");
+    expect(input).toHaveFocus();
+  });
+
+  it("does not replace an edited embedded composer draft when the default question changes", () => {
+    const { rerender } = render(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="explain current page"
+      />,
+    );
+
+    const input = screen.getByLabelText("agent-question-input");
+    input.focus();
+    fireEvent.change(input, { target: { value: "my manual follow-up" } });
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="review selected row"
+      />,
+    );
+
+    expect(input).toHaveValue("my manual follow-up");
+    expect(input).toHaveFocus();
   });
 
   it("auto-expands and resets the composer textarea height as draft length changes", async () => {
@@ -229,6 +274,65 @@ describe("AgentPanel", () => {
         intent: "portfolio_overview",
         conversation: {
           recent_turns: [{ result_kind: "agent.analysis_chat" }],
+        },
+      },
+    });
+  });
+
+  it("keeps embedded conversation context when default question changes after an answer", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          buildAgentResult({
+            answer: "First embedded answer.",
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          buildAgentResult({
+            answer: "Second embedded answer.",
+          }),
+        ),
+      );
+
+    const { rerender } = render(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="first embedded question"
+      />,
+    );
+
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("First embedded answer.")).toBeInTheDocument();
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        defaultQuestion="second embedded question"
+      />,
+    );
+
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("second embedded question");
+    expect(screen.getByText("First embedded answer.")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("Second embedded answer.")).toBeInTheDocument();
+
+    const [, secondOptions] = fetchMock.mock.calls[1] ?? [];
+    expect(JSON.parse(String((secondOptions as RequestInit | undefined)?.body))).toMatchObject({
+      question: "second embedded question",
+      context: {
+        conversation: {
+          recent_turns: [
+            {
+              question: "first embedded question",
+              answer: "First embedded answer.",
+              result_kind: "agent.analysis_chat",
+            },
+          ],
         },
       },
     });
