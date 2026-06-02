@@ -84,6 +84,25 @@ describe("AgentPanel", () => {
     expect(screen.queryByLabelText("repo-path-input")).not.toBeInTheDocument();
   });
 
+  it("auto-expands and resets the composer textarea height as draft length changes", async () => {
+    const user = userEvent.setup();
+    renderAgentPanel();
+
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    Object.defineProperty(input, "scrollHeight", {
+      configurable: true,
+      value: 168,
+    });
+
+    await user.type(input, "line one{Shift>}{Enter}{/Shift}line two{Shift>}{Enter}{/Shift}line three");
+
+    expect(input.style.height).toBe("168px");
+
+    await user.clear(input);
+
+    expect(input.style.height).toBe("");
+  });
+
   it("submits page_context and default filters through the embedded request body", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
@@ -227,7 +246,9 @@ describe("AgentPanel", () => {
     expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     release?.();
     await waitFor(() => {
-      expect(screen.getByTestId("agent-panel-submit")).not.toBeDisabled();
+      expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     });
+    await user.type(screen.getByLabelText("agent-question-input"), "follow-up risk check");
+    expect(screen.getByTestId("agent-panel-submit")).not.toBeDisabled();
   });
 });

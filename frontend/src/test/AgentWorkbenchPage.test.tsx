@@ -15,6 +15,7 @@ const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
 const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
+const AGENT_COMPOSER_DRAFT_KEY = "moss.agent.composerDraft.v1";
 const MAX_PINNED_REPO_PATHS = 5;
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -1648,15 +1649,16 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("上下文概览")).toBeInTheDocument();
   });
 
-  it("shows validation error when submitting with empty input", async () => {
+  it("keeps send disabled until the composer has text", async () => {
     const user = userEvent.setup();
     render(<AgentWorkbenchPage />);
 
-    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    screen.getByLabelText("agent-question-input").focus();
+    await user.keyboard("{Enter}");
 
-    expect(
-      screen.getByText("请输入查询问题。"),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    expect(screen.queryByText("请输入查询问题。")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -1851,6 +1853,92 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("shows visible managed run progress while the answer is still running", async () => {
+    const user = userEvent.setup();
+    let resolveCompletedRun!: (value: Response) => void;
+    const completedRunResponse = new Promise<Response>((resolve) => {
+      resolveCompletedRun = resolve;
+    });
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:progress",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:progress",
+          status: "running",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+          started_at: "2026-05-07T08:00:01Z",
+          elapsed_seconds: 1,
+        }),
+      )
+      .mockReturnValueOnce(completedRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "show progress while running");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    const progress = await screen.findByLabelText("agent-run-progress");
+    expect(progress).toHaveTextContent("已提交");
+    expect(progress).toHaveTextContent("排队中");
+    expect(progress).toHaveTextContent("分析中");
+    await waitFor(() => {
+      expect(progress.querySelector('[data-current="true"]')).toHaveTextContent("分析中");
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Hermes 正在分析");
+
+    await act(async () => {
+      resolveCompletedRun(
+        buildJsonResponse({
+          run_id: "agent_run:progress",
+          status: "completed",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          elapsed_seconds: 2,
+          result: {
+            answer: "progress run completed",
+            cards: [],
+            evidence: {
+              tables_used: ["hermes_cli"],
+              filters_applied: {
+                provider: "hermes",
+                model: "gpt-5.5",
+                transport: "bridge",
+                toolsets: "file",
+              },
+              evidence_rows: 1,
+              quality_flag: "ok",
+            },
+            result_meta: {
+              trace_id: "tr_agent_progress",
+              basis: "formal",
+              result_kind: "agent.hermes",
+            },
+            next_drill: [],
+            suggested_actions: [],
+          },
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("progress run completed")).toBeInTheDocument();
+  });
+
   it("keeps the submitted question and Hermes answer together as a chat turn", async () => {
     const user = userEvent.setup();
     mockManagedRunResult(fetchMock, {
@@ -2038,6 +2126,100 @@ describe("AgentWorkbenchPage", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
   });
 
+  it("edits a completed ordinary question into the composer for a revised turn", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "第一轮回答用于编辑。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_edit_first",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:edit-first",
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "改写后问题的回答。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_edit_second",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:edit-second",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "edit original question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("第一轮回答用于编辑。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "编辑问题" }));
+
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("edit original question");
+    expect(document.activeElement).toBe(input);
+
+    await user.clear(input);
+    await user.type(input, "edit revised question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("改写后问题的回答。")).toBeInTheDocument();
+    expect(screen.getByText("edit original question")).toBeInTheDocument();
+    expect(screen.getByText("edit revised question")).toBeInTheDocument();
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(runPostCalls).toHaveLength(2);
+    const [, secondOptions] = runPostCalls[1] ?? [];
+    expect(JSON.parse(String(secondOptions?.body))).toMatchObject({
+      question: "edit revised question",
+      context: {
+        conversation: {
+          recent_turns: [
+            {
+              question: "edit original question",
+              answer: "第一轮回答用于编辑。",
+              run_id: "agent_run:edit-first",
+              trace_id: "tr_edit_first",
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("sends recent turn context with the next follow-up question", async () => {
     const user = userEvent.setup();
     mockManagedRunResult(
@@ -2204,6 +2386,77 @@ describe("AgentWorkbenchPage", () => {
       },
     });
     expect(freshBody.context.conversation).toBeUndefined();
+  });
+
+  it("restores an unsent composer draft after remount", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "draft question before refresh");
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft question before refresh");
+
+    unmount();
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("draft question before refresh");
+  });
+
+  it("clears the composer draft after send and new conversation", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(fetchMock, {
+      answer: "draft submitted answer",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_draft_clear",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "draft to submit");
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to submit");
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("draft submitted answer")).toBeInTheDocument();
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "draft to discard");
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to discard");
+    await user.click(screen.getByRole("button", { name: "新对话" }));
+
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+  });
+
+  it("clears a typed composer draft without sending", async () => {
+    const user = userEvent.setup();
+    render(<AgentWorkbenchPage />);
+
+    const input = screen.getByLabelText("agent-question-input");
+    await user.type(input, "draft to clear");
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to clear");
+
+    await user.click(screen.getByRole("button", { name: "清空输入" }));
+
+    expect(input).toHaveValue("");
+    expect(document.activeElement).toBe(input);
+    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not let a pending restore repopulate a cleared conversation", async () => {
@@ -2512,7 +2765,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("stop this pending answer")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "停止" }));
+    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).not.toBeDisabled();
@@ -2552,6 +2805,311 @@ describe("AgentWorkbenchPage", () => {
 
     expect(screen.queryByText("迟到的托管结果不应该显示。")).not.toBeInTheDocument();
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
+  });
+
+  it("stops a pending answer from the composer action", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "composer stop this answer");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("composer stop this answer")).toBeInTheDocument();
+
+    const composerAction = screen.getByTestId("agent-panel-submit");
+    expect(composerAction).toHaveTextContent("停止");
+    expect(composerAction).not.toBeDisabled();
+    await user.click(composerAction);
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).not.toBeDisabled();
+
+    await act(async () => {
+      resolveCreateRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "late composer stop result should stay hidden",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_late_composer_stop",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:late-composer-stop",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("late composer stop result should stay hidden")).not.toBeInTheDocument();
+    expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
+  });
+
+  it("stops a pending answer with Escape and ignores a late managed result", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "escape should stop this answer");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("escape should stop this answer")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).not.toBeDisabled();
+
+    await act(async () => {
+      resolveCreateRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "late escape result should stay hidden",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_late_escape_stop",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:late-escape-stop",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("late escape result should stay hidden")).not.toBeInTheDocument();
+    expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
+  });
+
+  it("reruns a stopped ordinary turn from the stopped callout", async () => {
+    const user = userEvent.setup();
+    let resolveStoppedRun!: (value: Response) => void;
+    const stoppedRunResponse = new Promise<Response>((resolve) => {
+      resolveStoppedRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(stoppedRunResponse);
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "stopped turn rerun answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_stopped_rerun",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:stopped-rerun",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "rerun this stopped answer");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("rerun this stopped answer")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新发送" }));
+
+    expect(await screen.findByText("stopped turn rerun answer")).toBeInTheDocument();
+    expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
+
+    await act(async () => {
+      resolveStoppedRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "late stopped run should stay hidden",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_late_stopped_rerun",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:late-stopped-rerun",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("late stopped run should stay hidden")).not.toBeInTheDocument();
+  });
+
+  it("restores a stopped pending answer after remount", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    const { unmount } = render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "stop and refresh this answer");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("stop and refresh this answer")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+
+    await waitFor(() => {
+      const storedTurns = JSON.parse(window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY) ?? "[]");
+      expect(storedTurns[0]).toMatchObject({
+        question: "stop and refresh this answer",
+        stopped: true,
+      });
+    });
+
+    unmount();
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByText("stop and refresh this answer")).toBeInTheDocument();
+    expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveCreateRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "late answer after stopped remount",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_late_after_stopped_remount",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:late-after-stopped-remount",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("late answer after stopped remount")).not.toBeInTheDocument();
+    expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
+  });
+
+  it("does not restore a managed run after stopping it once the run id is known", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:known-before-stop",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    const { unmount } = render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "stop after run id exists");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBe("agent_run:known-before-stop");
+    });
+
+    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+
+    expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+
+    unmount();
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByText("stop after run id exists")).toBeInTheDocument();
+    expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("restores the latest managed Hermes run after a refresh", async () => {

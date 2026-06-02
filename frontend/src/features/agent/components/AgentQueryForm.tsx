@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent, Ref } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent, type Ref } from "react";
 
 import { shellTokens as t } from "../../../theme/tokens";
 
@@ -25,6 +25,7 @@ type AgentQueryFormProps = {
   query: string;
   onQueryChange: (value: string) => void;
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
+  onStop?: () => void;
   inputRef?: Ref<HTMLTextAreaElement>;
 };
 
@@ -42,8 +43,19 @@ function buildPromptPlaceholder(pageContext?: { page_id: string }) {
   return "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
 }
 
-function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, loading: boolean) {
-  return !loading && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, loading: boolean, query: string) {
+  return !loading && query.trim().length > 0 && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+}
+
+function assignTextAreaRef(ref: Ref<HTMLTextAreaElement> | undefined, element: HTMLTextAreaElement | null) {
+  if (!ref) {
+    return;
+  }
+  if (typeof ref === "function") {
+    ref(element);
+    return;
+  }
+  ref.current = element;
 }
 
 const primaryQuickExampleCount = 2;
@@ -71,10 +83,26 @@ export function AgentQueryForm({
   query,
   onQueryChange,
   onSubmit,
+  onStop,
   inputRef,
 }: AgentQueryFormProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const primaryQuickExamples = quickExamples.slice(0, primaryQuickExampleCount);
   const advancedQuickExamples = quickExamples.slice(primaryQuickExampleCount);
+  const hasQuery = query.trim().length > 0;
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    if (!query) {
+      textarea.style.height = "";
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [query]);
 
   return (
     <div className={compact ? "agent-chat-composer agent-chat-composer--compact" : "agent-chat-composer"}>
@@ -103,31 +131,61 @@ export function AgentQueryForm({
       ) : null}
 
       <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
-        <textarea
-          aria-label="agent-question-input"
-          data-testid="agent-panel-question"
-          className="agent-chat-composer__input"
-          ref={inputRef}
-          rows={compact ? 2 : 3}
-          placeholder={buildPromptPlaceholder(pageContext)}
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (shouldSubmitByEnter(event, loading)) {
-              event.preventDefault();
-              void onSubmit();
-            }
-          }}
-        />
-        <button
-          type="submit"
-          data-testid="agent-panel-submit"
-          disabled={loading}
-          className="agent-chat-composer__send"
-          style={{ background: t.colorAccent }}
-        >
-          {loading ? "发送中..." : "发送"}
-        </button>
+        <div className="agent-chat-composer__input-wrap">
+          <textarea
+            aria-label="agent-question-input"
+            data-testid="agent-panel-question"
+            className="agent-chat-composer__input"
+            ref={(element) => {
+              textareaRef.current = element;
+              assignTextAreaRef(inputRef, element);
+            }}
+            rows={compact ? 2 : 3}
+            placeholder={buildPromptPlaceholder(pageContext)}
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (shouldSubmitByEnter(event, loading, query)) {
+                event.preventDefault();
+                void onSubmit();
+              }
+            }}
+          />
+          {hasQuery ? (
+            <button
+              type="button"
+              className="agent-chat-composer__clear"
+              onClick={() => {
+                onQueryChange("");
+                if (inputRef && typeof inputRef !== "function") {
+                  inputRef.current?.focus();
+                }
+              }}
+            >
+              清空输入
+            </button>
+          ) : null}
+        </div>
+        {loading && onStop ? (
+          <button
+            type="button"
+            data-testid="agent-panel-submit"
+            className="agent-chat-composer__send agent-chat-composer__send--stop"
+            onClick={onStop}
+          >
+            停止
+          </button>
+        ) : (
+          <button
+            type="submit"
+            data-testid="agent-panel-submit"
+            disabled={loading || !hasQuery}
+            className="agent-chat-composer__send"
+            style={{ background: t.colorAccent }}
+          >
+            {loading ? "发送中..." : "发送"}
+          </button>
+        )}
       </form>
 
       {showAdvancedTools ? (

@@ -1,6 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
-import { CheckOutlined, CopyOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { CheckOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
 import type {
   AgentConversationContext,
@@ -792,6 +792,25 @@ function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: numb
   return "可以离开或刷新，回来后会继续显示这次结果。";
 }
 
+function getAgentRunProgressIndex(agentRun: AgentRunPayload | null) {
+  if (!agentRun?.status) {
+    return 0;
+  }
+  if (agentRun.status === "queued") {
+    return 1;
+  }
+  if (agentRun.status === "starting") {
+    return 2;
+  }
+  if (agentRun.status === "running") {
+    return 3;
+  }
+  if (agentRun.status === "completed") {
+    return 4;
+  }
+  return 0;
+}
+
 function shouldDisplayAgentRunId(agentRun: AgentRunPayload | null) {
   if (!agentRun?.run_id) {
     return false;
@@ -921,6 +940,7 @@ const AGENT_FOLLOW_UP_CHIPS = [
 
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
+const AGENT_COMPOSER_DRAFT_KEY = "moss.agent.composerDraft.v1";
 const MAX_RECENT_REPO_PATHS = 5;
 const MAX_PINNED_REPO_PATHS = 5;
 const GITNEXUS_PROCESS_CARD_TITLE = "GitNexus Processes Table";
@@ -1090,6 +1110,7 @@ function normalizeStoredConversationTurns(value: unknown): AgentConversationTurn
           agentRun,
           result,
           error,
+          stopped: item.stopped === true,
           activeSuggestedActionPayload: null,
         },
       ];
@@ -1119,6 +1140,7 @@ function serializeConversationTurn(turn: AgentConversationTurn) {
     ...(turn.agentRun ? { agentRun: turn.agentRun } : {}),
     ...(turn.result ? { result: turn.result } : {}),
     ...(turn.error ? { error: turn.error } : {}),
+    ...(turn.stopped ? { stopped: true } : {}),
   };
 }
 
@@ -1149,6 +1171,31 @@ function clearLatestAgentRunId() {
     return;
   }
   window.localStorage.removeItem(LATEST_AGENT_RUN_ID_KEY);
+}
+
+function loadComposerDraft() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY) ?? "";
+}
+
+function persistComposerDraft(draft: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!draft.trim()) {
+    window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
+    return;
+  }
+  window.localStorage.setItem(AGENT_COMPOSER_DRAFT_KEY, draft);
+}
+
+function clearComposerDraft() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
 }
 
 function isGitNexusCard(card: AgentResultCard) {
@@ -1252,7 +1299,9 @@ export function EmbeddedAgentCopilot({
   const resolvedShowHeader = showHeader ?? !isEmbedded;
   const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
-  const [query, setQuery] = useState(defaultQuestion);
+  const [query, setQuery] = useState(() =>
+    defaultQuestion || (variant === "workbench" ? loadComposerDraft() : ""),
+  );
   const [conversationTurns, setConversationTurns] = useState<AgentConversationTurn[]>(() =>
     shouldPersistConversation ? loadStoredConversationTurns() : [],
   );
@@ -1275,6 +1324,7 @@ export function EmbeddedAgentCopilot({
   const processStateRequestVersionRef = useRef(0);
   const conversationSessionRef = useRef(0);
   const copyFeedbackTimerRef = useRef<number | null>(null);
+  const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const [copiedAnswerTurnId, setCopiedAnswerTurnId] = useState<string | null>(null);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
@@ -1370,6 +1420,20 @@ export function EmbeddedAgentCopilot({
 
   function focusComposerInput() {
     composerInputRef.current?.focus();
+  }
+
+  function updateComposerQuery(nextQuery: string) {
+    setQuery(nextQuery);
+    if (shouldPersistConversation) {
+      persistComposerDraft(nextQuery);
+    }
+  }
+
+  function clearComposerQuery() {
+    setQuery("");
+    if (shouldPersistConversation) {
+      clearComposerDraft();
+    }
   }
 
   useEffect(() => {
@@ -1899,6 +1963,9 @@ export function EmbeddedAgentCopilot({
     setAgentRun(null);
     setResult(null);
     setError(null);
+    if (shouldPersistConversation) {
+      clearLatestAgentRunId();
+    }
     shouldFocusComposerRef.current = true;
     updateConversationTurn(latestConversationTurn.id, (turn) => ({
       ...turn,
@@ -1909,6 +1976,21 @@ export function EmbeddedAgentCopilot({
       activeSuggestedActionPayload: null,
     }));
   }
+  stopActiveAgentTurnRef.current = stopActiveAgentTurn;
+
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+    function handleEscapeStop(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+      stopActiveAgentTurnRef.current();
+    }
+    window.addEventListener("keydown", handleEscapeStop);
+    return () => window.removeEventListener("keydown", handleEscapeStop);
+  }, [loading]);
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -1930,7 +2012,7 @@ export function EmbeddedAgentCopilot({
     const turn = createAgentConversationTurn(question, context, "ordinary");
     setAgentWaitSeconds(0);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
-    setQuery("");
+    clearComposerQuery();
     shouldFocusComposerRef.current = true;
     setLoading(true);
     setError(null);
@@ -2257,7 +2339,7 @@ export function EmbeddedAgentCopilot({
   }
 
   function applyQuickExample(nextQuery: string) {
-    setQuery(nextQuery);
+    updateComposerQuery(nextQuery);
     setError(null);
     focusComposerInput();
   }
@@ -2270,7 +2352,7 @@ export function EmbeddedAgentCopilot({
     setResult(null);
     setAgentRun(null);
     setError(null);
-    setQuery("");
+    clearComposerQuery();
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
       persistStoredConversationTurns([]);
@@ -2301,7 +2383,7 @@ export function EmbeddedAgentCopilot({
 
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
-      setQuery(`请基于当前 evidence 继续下钻：${action.label}`);
+      updateComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       setError(null);
       focusComposerInput();
       return;
@@ -2336,7 +2418,17 @@ export function EmbeddedAgentCopilot({
   }
 
   function applyFollowUpChip(question: string) {
-    setQuery(question);
+    updateComposerQuery(question);
+    setError(null);
+    focusComposerInput();
+  }
+
+  function editAgentQuestion(turn: AgentConversationTurn) {
+    if (loading || turn.retryMode !== "ordinary" || !turn.question.trim()) {
+      return;
+    }
+
+    updateComposerQuery(turn.question);
     setError(null);
     focusComposerInput();
   }
@@ -2525,6 +2617,37 @@ export function EmbeddedAgentCopilot({
     );
   }
 
+  function renderAgentRunProgress(agentRun: AgentRunPayload | null) {
+    const currentIndex = getAgentRunProgressIndex(agentRun);
+    const stages = ["已提交", "排队中", "分析中"];
+
+    return (
+      <div className="agent-run-progress" aria-label="agent-run-progress">
+        {stages.map((stage, index) => {
+          const stageIndex = index + 1;
+          const isCurrent = stageIndex === currentIndex;
+          const isComplete = stageIndex < currentIndex;
+          return (
+            <div
+              key={stage}
+              className={
+                isCurrent
+                  ? "agent-run-progress__step agent-run-progress__step--current"
+                  : isComplete
+                    ? "agent-run-progress__step agent-run-progress__step--complete"
+                    : "agent-run-progress__step"
+              }
+              data-current={isCurrent ? "true" : undefined}
+            >
+              <span className="agent-run-progress__dot" aria-hidden="true" />
+              <span>{stage}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderAgentTurnError(turn: AgentConversationTurn) {
     if (turn.error?.kind === "disabled") {
       return (
@@ -2689,8 +2812,9 @@ export function EmbeddedAgentCopilot({
           onViewSelectedProcess={() => void viewSelectedProcess()}
           loading={loading}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={updateComposerQuery}
           onSubmit={handleSubmit}
+          onStop={isEmbedded ? undefined : stopActiveAgentTurn}
           inputRef={composerInputRef}
         />
       ) : null}
@@ -2704,7 +2828,20 @@ export function EmbeddedAgentCopilot({
               <div key={turn.id} className="agent-turn">
                 <div className="agent-message agent-message--user">
                   <div className="agent-message__speaker">我</div>
-                  <div className="agent-message__body">{turn.question}</div>
+                  <div className="agent-user-bubble">
+                    <div className="agent-message__body">{turn.question}</div>
+                    {turn.retryMode === "ordinary" ? (
+                      <button
+                        type="button"
+                        className="agent-user-bubble__edit"
+                        onClick={() => editAgentQuestion(turn)}
+                        disabled={loading}
+                      >
+                        <EditOutlined aria-hidden="true" />
+                        <span>编辑问题</span>
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="agent-message agent-message--assistant">
@@ -2725,6 +2862,7 @@ export function EmbeddedAgentCopilot({
                             </div>
                           ) : null}
                           <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
+                          {renderAgentRunProgress(turn.agentRun)}
                         </div>
                         <div className="agent-wait-status__detail">
                           <span>{formatAgentWaitPhase(turn.agentRun)}</span>
@@ -2735,6 +2873,7 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-wait-status__stop"
+                              aria-label="停止当前回答"
                               onClick={stopActiveAgentTurn}
                             >
                               停止
@@ -2747,6 +2886,16 @@ export function EmbeddedAgentCopilot({
                       <div className="agent-callout agent-callout--stopped" role="status">
                         <strong>已停止</strong>
                         <span>已停止等待这次回答。</span>
+                        {turn.retryMode === "ordinary" && turn.question.trim() ? (
+                          <button
+                            type="button"
+                            className="agent-callout__action"
+                            onClick={() => void rerunOrdinaryTurn(turn)}
+                            disabled={loading}
+                          >
+                            重新发送
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -2799,8 +2948,9 @@ export function EmbeddedAgentCopilot({
             onViewSelectedProcess={() => void viewSelectedProcess()}
             loading={loading}
             query={query}
-            onQueryChange={setQuery}
+            onQueryChange={updateComposerQuery}
             onSubmit={handleSubmit}
+            onStop={isEmbedded ? undefined : stopActiveAgentTurn}
             inputRef={composerInputRef}
           />
         </div>
