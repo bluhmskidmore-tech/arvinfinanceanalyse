@@ -472,21 +472,23 @@ export default function RiskTensorPage() {
     return [reportDate, ...dates];
   }, [datesQuery.data?.result.report_dates, reportDate]);
 
-  const datesBlockingError = datesQuery.isError && !reportDate;
+  const datesBlockingError = datesQuery.isError;
   const datesEmpty =
     !explicitReportDate &&
     !datesQuery.isLoading &&
     !datesBlockingError &&
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
+  const tensorBlockedByReportDate = Boolean(selectedBlockedReportDate);
+  const tensorQueryEnabled = Boolean(reportDate) && datesQuery.isSuccess && !tensorBlockedByReportDate;
 
   const tensorQuery = useQuery({
     queryKey: ["risk-tensor", reportDate],
     queryFn: () => client.getRiskTensor(reportDate),
-    enabled: Boolean(reportDate),
+    enabled: tensorQueryEnabled,
     retry: false,
   });
 
-  const envelope = tensorQuery.data;
+  const envelope = datesBlockingError || tensorBlockedByReportDate ? undefined : tensorQuery.data;
   const result = envelope?.result;
   const isEmpty =
     !tensorQuery.isLoading &&
@@ -550,24 +552,34 @@ export default function RiskTensorPage() {
     ];
   }, [result]);
 
+  const dominantTenorRow = useMemo(() => {
+    if (tenorRows.length === 0) {
+      return undefined;
+    }
+    const backendBucket = result?.dv01_controls?.dominant_krd_bucket;
+    const backendRow = backendBucket ? tenorRows.find((row) => row.tenor === backendBucket) : undefined;
+    if (backendRow) {
+      return backendRow;
+    }
+    return [...tenorRows].sort((left, right) => chartMagnitude(right.value) - chartMagnitude(left.value))[0];
+  }, [result?.dv01_controls?.dominant_krd_bucket, tenorRows]);
+
   useEffect(() => {
     if (tenorRows.length === 0) {
       setSelectedTenor("");
       return;
     }
-    const strongest = [...tenorRows].sort(
-      (left, right) => chartMagnitude(right.value) - chartMagnitude(left.value),
-    )[0]?.tenor;
+    const defaultTenor = dominantTenorRow?.tenor ?? tenorRows[0]!.tenor;
     if (!selectedTenor || !tenorRows.some((row) => row.tenor === selectedTenor)) {
-      setSelectedTenor(strongest ?? tenorRows[0]!.tenor);
+      setSelectedTenor(defaultTenor);
     }
-  }, [selectedTenor, tenorRows]);
+  }, [dominantTenorRow?.tenor, selectedTenor, tenorRows]);
 
-  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? tenorRows[0];
+  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? dominantTenorRow ?? tenorRows[0];
   const tensorMeta = envelope?.result_meta;
-  const primaryTenor = selectedTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
-  const primaryTenorValue = selectedTenorRow
-    ? yuanAsWanWithUnit(selectedTenorRow.value)
+  const primaryTenor = dominantTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
+  const primaryTenorValue = dominantTenorRow
+    ? yuanAsWanWithUnit(dominantTenorRow.value)
     : result?.dv01_controls
       ? yuanAsWanWithUnit(result.dv01_controls.dominant_krd)
       : "--";
@@ -583,6 +595,22 @@ export default function RiskTensorPage() {
         `质量标记：${qualityFlagLabel(result.quality_flag)}`,
       ].join(" / ")
     : "";
+
+  const handlePrimaryTenorDrill = () => {
+    if (!dominantTenorRow) {
+      return;
+    }
+    setSelectedTenor(dominantTenorRow.tenor);
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleQualityDetailJump = () => {
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const radarChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -744,7 +772,15 @@ export default function RiskTensorPage() {
         </div>
       </div>
 
-      {tensorQuery.isError ? (
+      {selectedBlockedReportDate ? (
+        <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
+          <strong>风险报告日已被新鲜度校验拦截</strong>
+          <span>
+            报告日 {selectedBlockedReportDate.report_date}；原因{" "}
+            {selectedBlockedReportDate.reason || "后端未返回原因"}。页面不会读取该日期风险张量，请切换到可用报告日。
+          </span>
+        </div>
+      ) : tensorQuery.isError ? (
         <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
           <strong>{riskTensorErrorMessage(tensorErrorStatusCode)}</strong>
           <span>
@@ -764,11 +800,13 @@ export default function RiskTensorPage() {
       <AsyncSection
         title="组合风险张量"
         isLoading={datesQuery.isLoading || tensorQuery.isLoading}
-        isError={datesBlockingError || tensorQuery.isError}
+        isError={datesBlockingError || tensorBlockedByReportDate || tensorQuery.isError}
         isEmpty={datesEmpty || isEmpty}
         onRetry={() => {
           void datesQuery.refetch();
-          void tensorQuery.refetch();
+          if (tensorQueryEnabled) {
+            void tensorQuery.refetch();
+          }
         }}
       >
         {result ? (
@@ -787,6 +825,18 @@ export default function RiskTensorPage() {
                     {result.warnings.slice(0, 2).map((warning, index) => (
                       <li key={index}>{warning}</li>
                     ))}
+                    {result.warnings.length > 2 ? (
+                      <li>
+                        <button
+                          type="button"
+                          className="risk-tensor-brief__link-button"
+                          data-testid="risk-tensor-quality-detail-action"
+                          onClick={handleQualityDetailJump}
+                        >
+                          另有 {result.warnings.length - 2} 条预警见下方质量明细。
+                        </button>
+                      </li>
+                    ) : null}
                   </ul>
                 ) : null}
                 <div className="risk-tensor-brief__badges" aria-label="risk tensor data status">
@@ -798,11 +848,19 @@ export default function RiskTensorPage() {
               </div>
 
               <div className="risk-tensor-brief__tiles">
-                <article className="risk-tensor-brief__tile" data-tone="neutral">
+                <button
+                  type="button"
+                  className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                  data-testid="risk-tensor-primary-tenor-action"
+                  data-tone="neutral"
+                  onClick={handlePrimaryTenorDrill}
+                >
                   <span>主风险桶</span>
                   <strong>{primaryTenor}</strong>
-                  <p>KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。</p>
-                </article>
+                  <span className="risk-tensor-brief__tile-detail">
+                    KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。
+                  </span>
+                </button>
                 <article className="risk-tensor-brief__tile" data-tone="warning">
                   <span>DV01 控制</span>
                   <strong>
@@ -1093,6 +1151,7 @@ export default function RiskTensorPage() {
                     {tenorRows.map((row) => (
                       <button
                         key={row.tenor}
+                        aria-pressed={row.tenor === selectedTenor}
                         type="button"
                         style={chipButtonStyle(row.tenor === selectedTenor)}
                         onClick={() => setSelectedTenor(row.tenor)}
@@ -1213,6 +1272,7 @@ export default function RiskTensorPage() {
             </div>
 
             <div
+              data-testid="risk-tensor-quality-detail"
               style={{
                 marginTop: 20,
                 padding: 12,
@@ -1256,7 +1316,7 @@ export default function RiskTensorPage() {
         testId="risk-tensor-result-meta-panel"
         sections={[
           { key: "dates", title: "风险报告日列表", meta: datesQuery.data?.result_meta },
-          { key: "tensor", title: "风险张量主读面", meta: tensorQuery.data?.result_meta },
+          { key: "tensor", title: "风险张量主读面", meta: envelope?.result_meta },
         ]}
       />
     </section>
