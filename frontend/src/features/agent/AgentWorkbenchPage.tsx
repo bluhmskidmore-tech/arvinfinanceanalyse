@@ -1520,7 +1520,7 @@ export function EmbeddedAgentCopilot({
   ]);
 
   useEffect(() => {
-    if (!hasConversation || loading || !shouldFocusComposerRef.current) {
+    if (!hasConversation || !shouldFocusComposerRef.current) {
       return;
     }
     shouldFocusComposerRef.current = false;
@@ -2079,6 +2079,7 @@ export function EmbeddedAgentCopilot({
     setQueuedQuery(nextQueuedQuery);
     clearComposerQuery();
     shouldFocusComposerRef.current = true;
+    focusComposerInput();
   }
 
   async function submitQueuedQuery(question: string) {
@@ -2505,6 +2506,7 @@ export function EmbeddedAgentCopilot({
     }
 
     setCopyFeedback({ turnId: turn.id, status });
+    focusComposerInput();
     if (copyFeedbackTimerRef.current !== null) {
       window.clearTimeout(copyFeedbackTimerRef.current);
     }

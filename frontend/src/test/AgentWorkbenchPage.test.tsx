@@ -2018,6 +2018,7 @@ describe("AgentWorkbenchPage", () => {
     expect(writeText).toHaveBeenCalledWith("可复制的助手回答，只包含结论文本。");
     expect(await screen.findByText("已复制")).toBeInTheDocument();
     expect(await screen.findByRole("status", { name: "复制状态" })).toHaveTextContent("回答已复制");
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("returns the copy action to idle after feedback expires", async () => {
@@ -2103,6 +2104,7 @@ describe("AgentWorkbenchPage", () => {
     expect(writeText).toHaveBeenCalledWith("这段回答暂时复制不了。");
     expect(await screen.findByRole("button", { name: "复制失败" })).toBeInTheDocument();
     expect(screen.getByText("这段回答暂时复制不了。")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("shows accessible copy failure feedback when clipboard is unavailable", async () => {
@@ -2146,6 +2148,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByRole("status", { name: "复制状态" })).toHaveTextContent(
       "复制失败，请手动选择回答文本。",
     );
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("fills a focused follow-up question from assistant quick chips", async () => {
@@ -2184,6 +2187,8 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("请基于上一轮回答展开证据依据和关键假设。");
     expect(document.activeElement).toBe(input);
+    expect(input).toHaveProperty("selectionStart", input.value.length);
+    expect(input).toHaveProperty("selectionEnd", input.value.length);
   });
 
   it("focuses the composer from the assistant continue input action", async () => {
@@ -2231,6 +2236,7 @@ describe("AgentWorkbenchPage", () => {
       expect(await screen.findByText("回答完成，可以继续追问。")).toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: "复制回答" }));
+      screen.getByRole("button", { name: "已复制" }).focus();
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "已复制" }));
 
       scrollTargets.length = 0;
@@ -2622,6 +2628,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "排队发送" }));
 
     expect(screen.getByText("已排队：queued second turn")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
 
     await act(async () => {
@@ -2810,6 +2817,8 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("queued edit second turn");
     expect(document.activeElement).toBe(input);
+    expect(input).toHaveProperty("selectionStart", input.value.length);
+    expect(input).toHaveProperty("selectionEnd", input.value.length);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
 
@@ -2906,6 +2915,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("draft question before refresh");
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("clears the composer draft after send and new conversation", async () => {
@@ -3252,6 +3262,7 @@ describe("AgentWorkbenchPage", () => {
       expect(conversation).toHaveTextContent("已收到问题");
       expect(conversation).toHaveTextContent("正在交给托管运行时");
       expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+      expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
       expect(scrollIntoView).toHaveBeenCalled();
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
