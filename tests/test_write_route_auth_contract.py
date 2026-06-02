@@ -75,6 +75,7 @@ MUTATION_ROUTES = [
     ("POST", "/ui/market-data/livermore/position-snapshot", {"as_of_date": "2026-04-30", "csv_path": "livermore/positions.csv"}),
     ("POST", "/ui/market-data/livermore/position-snapshot/manual", {"as_of_date": "2026-04-30", "positions": [{"stock_code": "000001.SZ", "stock_name": "Alpha", "entry_cost": 10.5, "bars_since_entry": 6}]}),
     ("POST", "/ui/macro/toolkit/cffex-member-rank/refresh", {"trade_date": "2026-04-10", "contracts": ["T.CFE"], "sources": ["choice"]}),
+    ("POST", "/ui/macro/toolkit/source-backfill/refresh", {"alias": "M0041813", "start_date": "2026-04-01", "end_date": "2026-04-30", "sources": ["tushare_macro"]}),
     ("POST", "/ui/macro/toolkit/scripts/debug_wind/run", {"timeout_seconds": 30}),
     ("POST", "/api/analysis/adb/backfill?start_date=1900-01-01&end_date=1900-01-02", None),
 ]
@@ -189,6 +190,23 @@ def _patch_choice_stock_refresh(monkeypatch, calls: list[str]) -> str:
     return "choice-stock-refresh-test"
 
 
+def _patch_source_backfill_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.macro_toolkit as route_module
+
+    def fake_backfill_macro_series(**_kwargs):
+        calls.append("called")
+        return {
+            "dry_run": False,
+            "processed_count": 1,
+            "total_added": 42,
+            "results": {"SHIBOR:3M": 42},
+            "errors": {},
+        }
+
+    monkeypatch.setattr(route_module, "backfill_macro_series", fake_backfill_macro_series)
+    return "NCD.SHIBOR.3M"
+
+
 def _patch_product_category_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.product_category_pnl as route_module
 
@@ -216,6 +234,12 @@ SCOPED_REFRESH_ROUTES = [
         {"as_of_date": "2026-04-30", "refresh_history": True, "refresh_factors": False},
         "macro_toolkit.choice_stock",
         _patch_choice_stock_refresh,
+    ),
+    (
+        "/ui/macro/toolkit/source-backfill/refresh",
+        {"alias": "M0041813", "start_date": "2026-04-01", "end_date": "2026-04-30", "sources": ["tushare_macro"]},
+        "macro_toolkit.source_backfill",
+        _patch_source_backfill_refresh,
     ),
     ("/ui/pnl/product-category/refresh", None, "product_category_pnl", _patch_product_category_refresh),
 ]

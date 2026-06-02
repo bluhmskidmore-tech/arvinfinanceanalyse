@@ -440,6 +440,57 @@ describe("MacroToolkitPage", () => {
     expect(within(dataHealth).queryByRole("button", { name: "重新完整分析" })).not.toBeInTheDocument();
   });
 
+  it("does not trigger source backfill for unsupported aliases even when action is enabled", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const sourceBackfillCalls: Array<Parameters<ApiClient["refreshMacroSourceBackfill"]>[0]> = [];
+    const unsupportedSourceBackfillRepair = {
+      type: "stale" as const,
+      scope: "core" as const,
+      priority: "medium" as const,
+      key: "source:CU0",
+      alias: "CU0",
+      label: "CU0",
+      source_table: "system_macro_sources",
+      latest_date: "2026-04-01",
+      reference_date: "2026-04-10",
+      stale_days: 9,
+      suggested_action: "CU0 stale",
+      action: {
+        kind: "source_backfill_required" as const,
+        label: "Refresh CU0 source",
+        enabled: true,
+        reason: "Backend should not enable unsupported aliases.",
+        analysis_detail: "full" as const,
+      },
+      tags: ["source"],
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          data_health: {
+            ...analysisEnvelope.result.data_health,
+            repair_items: [unsupportedSourceBackfillRepair],
+          },
+        },
+      }),
+      refreshMacroSourceBackfill: async (options) => {
+        sourceBackfillCalls.push(options);
+        throw new Error("Unsupported alias should not refresh");
+      },
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const dataHealth = await screen.findByLabelText("数据健康总览");
+    expect(dataHealth).toHaveTextContent("CU0");
+    expect(within(dataHealth).queryByRole("button", { name: "Refresh CU0 source" })).not.toBeInTheDocument();
+    expect(sourceBackfillCalls).toEqual([]);
+  });
+
   it("shows M7/M10/M14 input evidence and missing-input warnings in capability results", async () => {
     renderWorkbenchApp(["/macro-toolkit"]);
 

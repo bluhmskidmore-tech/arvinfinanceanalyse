@@ -67,6 +67,7 @@ const GROUP_LABELS: Record<string, string> = {
 const EMPTY_SCRIPTS: MacroToolkitScriptRecord[] = [];
 const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
+const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
@@ -74,6 +75,18 @@ type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]
 type MacroToolkitPageProps = {
   mode?: MacroToolkitPageMode;
 };
+
+function normalizeMacroSourceBackfillAlias(alias: string | null | undefined) {
+  return alias?.trim().toUpperCase() ?? "";
+}
+
+function canRefreshMacroSourceBackfill(item: MacroToolkitRepairItem) {
+  return (
+    item.action?.kind === "source_backfill_required" &&
+    item.action.enabled &&
+    MACRO_SOURCE_BACKFILL_ALIASES.has(normalizeMacroSourceBackfillAlias(item.alias))
+  );
+}
 
 function groupLabel(group: string) {
   return GROUP_LABELS[group] ?? group;
@@ -433,10 +446,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
 
   const refreshMacroSourceBackfill = useCallback(
     async (item: MacroToolkitRepairItem) => {
-      const alias = item.alias?.trim() ?? "";
-      if (!alias) {
+      if (!canRefreshMacroSourceBackfill(item)) {
         return;
       }
+      const alias = normalizeMacroSourceBackfillAlias(item.alias);
       setRefreshingSourceAlias(alias);
       setSourceBackfillError(null);
       setSourceBackfillResult(null);
@@ -933,7 +946,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               dataHealth={analysis.data_health}
               showActions={showOperations}
               onRepairAction={(item) => {
-                if (item.action?.kind === "source_backfill_required") {
+                if (canRefreshMacroSourceBackfill(item)) {
                   void refreshMacroSourceBackfill(item);
                   return;
                 }
@@ -1935,11 +1948,11 @@ function MacroToolkitDataHealthPanel({
                       >
                         {item.action.label ?? "查看完整分析"}
                       </Button>
-                    ) : showActions && item.action.enabled && item.action.kind === "source_backfill_required" ? (
+                    ) : showActions && canRefreshMacroSourceBackfill(item) ? (
                       <Button
                         size="small"
                         icon={<ReloadOutlined />}
-                        loading={refreshingSourceAlias === item.alias?.trim()}
+                        loading={refreshingSourceAlias === normalizeMacroSourceBackfillAlias(item.alias)}
                         aria-label={item.action.label ?? "需要补齐来源数据"}
                         onClick={() => onRepairAction?.(item)}
                       >

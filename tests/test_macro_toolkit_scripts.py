@@ -2002,6 +2002,15 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
         resource="macro_toolkit.source_backfill",
         action="refresh",
     )
+    unsupported = client.post(
+        "/ui/macro/toolkit/source-backfill/refresh",
+        json={**request, "alias": "CU0"},
+        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+    )
+    assert unsupported.status_code == 400, unsupported.text
+    assert "Unsupported macro source backfill alias" in unsupported.text
+    assert calls == []
+
     allowed = client.post(
         "/ui/macro/toolkit/source-backfill/refresh",
         json=request,
