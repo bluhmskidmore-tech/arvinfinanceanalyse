@@ -135,6 +135,8 @@ def _to_formal_zqtz_fact_row(row: dict[str, object]) -> FormalZqtzBalanceFactRow
         rule_version=str(row.get("rule_version") or ""),
         ingest_batch_id=str(row.get("ingest_batch_id") or ""),
         trace_id=str(row.get("trace_id") or ""),
+        business_type_primary=str(row.get("business_type_primary") or ""),
+        sub_type=str(row.get("sub_type") or ""),
     )
 
 

@@ -14,14 +14,13 @@ import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { tableShellStyle, actionButtonStyle } from "../pages/BalanceAnalysisPage.styles";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
+import {
+  formatBalanceAmountToYiFromYuan,
+  formatBalanceGridThousandsValue,
+} from "../pages/balanceAnalysisPageModel";
 
 function thousandsValueFormatter(params: ValueFormatterParams) {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") return "—";
-  const raw = String(v).replace(/,/g, "");
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return String(v);
-  return n.toLocaleString("zh-CN");
+  return formatBalanceGridThousandsValue(params.value);
 }
 
 const balanceAnalysisGridDefaultColDef: ColDef = {
@@ -248,12 +247,12 @@ export function BalanceAnalysisTableSection({
         style={{ marginTop: designTokens.space[5], display: "grid", gap: designTokens.space[4] }}
       >
         <PageSectionLead
-          eyebrow="Analytical"
-          title="Supporting Analytical"
-          description="ADB 预览、会计口径拆解和高阶归因继续作为 supporting analytical 区域，帮助解释 formal 结果，但不替代正式结论。"
+          eyebrow="分析口径"
+          title="辅助分析"
+          description="日均预览、会计口径拆解和高阶归因继续作为辅助分析区域，帮助解释正式结果，但不替代正式结论。"
         />
         <SectionCard
-          title="ADB Analytical Preview"
+          title="日均分析预览"
           loading={adbComparisonQuery.isLoading}
           error={adbComparisonQuery.isError}
           onRetry={() => void adbComparisonQuery.refetch()}
@@ -273,6 +272,7 @@ export function BalanceAnalysisTableSection({
             style={{ ...tableShellStyle, height: 240, width: "100%" }}
           >
             <AgGridReact<BalanceAnalysisBasisBreakdownRow>
+              theme="legacy"
               rowData={basisBreakdownQuery.data?.result.rows ?? []}
               columnDefs={balanceBasisBreakdownColDefs}
               defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -324,16 +324,16 @@ export function BalanceAnalysisTableSection({
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {String(overview?.total_market_value_amount ?? "0.00")}{" "}
-        {String(overview?.total_amortized_cost_amount ?? "0.00")}{" "}
-        {String(overview?.total_accrued_interest_amount ?? "0.00")}
+        {formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
+        {formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
+        {formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
       </div>
 
       <div style={{ marginTop: designTokens.space[6] }}>
         <PageSectionLead
-          eyebrow="Summary"
+          eyebrow="汇总"
           title="正式汇总驾驶舱"
-          description="先阅读分页汇总表，再进入下方 detail summary 和明细下钻，保持 summary / detail 查询分层不变。"
+          description="先阅读分页汇总表，再进入下方明细汇总和明细下钻，保持汇总与明细查询分层不变。"
         />
         <AsyncSection
           title="资产负债汇总"
@@ -356,6 +356,7 @@ export function BalanceAnalysisTableSection({
             style={{ ...tableShellStyle, height: 360, width: "100%", padding: 0 }}
           >
             <AgGridReact<BalanceAnalysisTableRow>
+              theme="legacy"
               rowData={summaryTable?.rows ?? []}
               columnDefs={balanceSummaryColDefs}
               defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -418,6 +419,7 @@ export function BalanceAnalysisTableSection({
                   style={{ ...tableShellStyle, height: 200, width: "100%" }}
                 >
                   <AgGridReact<BalanceAnalysisSummaryRow>
+                    theme="legacy"
                     rowData={detailQuery.data?.result.summary ?? []}
                     columnDefs={balanceDetailSummaryColDefs}
                     defaultColDef={balanceAnalysisGridDefaultColDef}
@@ -458,6 +460,7 @@ export function BalanceAnalysisTableSection({
                 }}
               >
                 <AgGridReact<BalanceAnalysisDetailRow>
+                  theme="legacy"
                   rowData={detailQuery.data?.result.details ?? []}
                   columnDefs={balanceDetailColDefs}
                   defaultColDef={balanceAnalysisGridDefaultColDef}

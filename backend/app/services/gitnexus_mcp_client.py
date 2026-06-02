@@ -139,19 +139,7 @@ class _GitNexusMcpSession:
 
 
 def _resolve_gitnexus_command(repo_path: Path) -> list[str]:
-    mcp_path = repo_path / ".mcp.json"
-    if mcp_path.is_file():
-        payload = json.loads(mcp_path.read_text(encoding="utf-8"))
-        gitnexus_config = (
-            payload.get("mcpServers", {}).get("gitnexus", {})
-            if isinstance(payload, dict)
-            else {}
-        )
-        command = gitnexus_config.get("command")
-        args = gitnexus_config.get("args")
-        if isinstance(command, str) and isinstance(args, list):
-            return [command, *[str(arg) for arg in args]]
-    return ["npx", "-y", "gitnexus@latest", "mcp"]
+    return ["node", "scripts/mcp/gitnexus_mcp_launcher.mjs"]
 
 
 def _parse_content_length(header: bytes) -> int:

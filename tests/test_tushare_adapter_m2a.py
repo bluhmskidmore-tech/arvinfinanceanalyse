@@ -16,6 +16,11 @@ _TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
 _SERIES = "tushare.macro.cn_cpi.monthly"
 
 
+class _Cfg:
+    def __init__(self, tushare_token: str = "") -> None:
+        self.tushare_token = tushare_token
+
+
 def _install_fake_tushare(pro: _FakePro, monkeypatch) -> None:
     mod = types.ModuleType("tushare")
 
@@ -52,10 +57,26 @@ def test_fetch_macro_snapshot_normalizes_cpi_dataframe(monkeypatch):
 
 def test_fetch_macro_snapshot_no_token_raises(monkeypatch):
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
+    monkeypatch.setattr("backend.app.repositories.tushare_adapter._load_settings_for_token_fallback", lambda: _Cfg())
     adapter = VendorAdapter()
     with pytest.raises(RuntimeError) as exc:
         adapter.fetch_macro_snapshot(_SERIES)
     assert _TOKEN_ENV in str(exc.value)
+
+
+def test_fetch_macro_snapshot_uses_settings_token_fallback(monkeypatch):
+    monkeypatch.delenv(_TOKEN_ENV, raising=False)
+    monkeypatch.setattr(
+        "backend.app.repositories.tushare_adapter._load_settings_for_token_fallback",
+        lambda: _Cfg("settings-token"),
+    )
+    frame = pd.DataFrame([{"month": "202401", "nt_yoy": 1.2}])
+    pro = _FakePro(frame, kind="cn_cpi")
+    _install_fake_tushare(pro, monkeypatch)
+
+    out = VendorAdapter().fetch_macro_snapshot(_SERIES)
+
+    assert out["rows"][0]["trade_date"] == "2024-01-01"
 
 
 def test_fetch_macro_snapshot_tushare_import_failure_raises(monkeypatch):
@@ -80,13 +101,32 @@ def test_fetch_macro_snapshot_unknown_series_raises():
         adapter.fetch_macro_snapshot("unknown.series.id")
 
 
-def test_fetch_macro_snapshot_skeleton_unchanged():
-    """M1 fixture path remains for offline tests and backward compatibility."""
-    adapter = VendorAdapter()
-    s = adapter.fetch_macro_snapshot_skeleton()
+def test_fetch_macro_snapshot_skeleton_delegates_to_live_seed(monkeypatch):
+    """Skeleton compatibility now returns the first live seed when available."""
+    expected = {
+        "vendor_kind": "tushare_macro",
+        "series_id": _SERIES,
+        "fetched_at": "2026-01-01T00:00:00+00:00",
+        "rows": [{"trade_date": "2024-01-01", "value": 1.2}],
+    }
+    monkeypatch.setattr(VendorAdapter, "fetch_macro_snapshot", lambda self, series_id: expected)
+
+    s = VendorAdapter().fetch_macro_snapshot_skeleton()
+
+    assert s == expected
+
+
+def test_fetch_macro_snapshot_skeleton_returns_empty_when_live_seed_unavailable(monkeypatch):
+    def _raise(_self, _series_id):
+        raise RuntimeError("missing token")
+
+    monkeypatch.setattr(VendorAdapter, "fetch_macro_snapshot", _raise)
+
+    s = VendorAdapter().fetch_macro_snapshot_skeleton()
+
     assert s["vendor_kind"] == "tushare_macro"
-    assert s["rows"]
-    assert "Fixture" in s.get("note", "") or "fixture" in str(s).lower()
+    assert s["rows"] == []
+    assert "failed" in s["note"]
 
 
 class _FakePro:

@@ -14,6 +14,7 @@ class TestRiskTensorNumericMigration:
         payload = RiskTensorPayload(
             report_date=date(2026, 3, 31),
             portfolio_dv01=Decimal("3.50000000"),
+            regulatory_dv01=Decimal("3.50000000"),
             krd_1y=Decimal("0.50000000"),
             krd_3y=Decimal("0.60000000"),
             krd_5y=Decimal("0.70000000"),
@@ -38,13 +39,16 @@ class TestRiskTensorNumericMigration:
             warnings=[],
         )
         assert isinstance(payload.portfolio_dv01, Numeric)
+        assert isinstance(payload.regulatory_dv01, Numeric)
         assert payload.portfolio_dv01.unit == "dv01"
+        assert payload.regulatory_dv01.unit == "dv01"
         assert payload.total_market_value.sign_aware is False
 
     def test_accepts_native_numeric(self) -> None:
         payload = RiskTensorPayload(
             report_date=date(2026, 3, 31),
             portfolio_dv01=Numeric(raw=3.5, unit="dv01", display="3.50", precision=2, sign_aware=False),
+            regulatory_dv01=Numeric(raw=3.5, unit="dv01", display="3.50", precision=2, sign_aware=False),
             krd_1y=Numeric(raw=0.5, unit="ratio", display="+0.50", precision=2, sign_aware=True),
             krd_3y=Numeric(raw=0.6, unit="ratio", display="+0.60", precision=2, sign_aware=True),
             krd_5y=Numeric(raw=0.7, unit="ratio", display="+0.70", precision=2, sign_aware=True),
@@ -69,12 +73,14 @@ class TestRiskTensorNumericMigration:
             warnings=[],
         )
         assert payload.cs01.raw == 1.25
+        assert payload.regulatory_dv01.raw == 3.5
         assert payload.krd_1y.sign_aware is True
 
     def test_roundtrip_and_from_tensor(self) -> None:
         payload = RiskTensorPayload(
             report_date=date(2026, 3, 31),
             portfolio_dv01=Decimal("3.50000000"),
+            regulatory_dv01=Decimal("3.50000000"),
             krd_1y=Decimal("0.50000000"),
             krd_3y=Decimal("0.60000000"),
             krd_5y=Decimal("0.70000000"),
@@ -100,12 +106,16 @@ class TestRiskTensorNumericMigration:
         )
         dumped = payload.model_dump(mode="json")
         assert isinstance(dumped["portfolio_dv01"], dict)
+        assert isinstance(dumped["regulatory_dv01"], dict)
         restored = RiskTensorPayload.model_validate(dumped)
+        assert restored.regulatory_dv01 is not None
+        assert restored.regulatory_dv01.raw == 3.5
         assert restored.total_market_value.raw == 429.0
 
         tensor = PortfolioRiskTensor(
             report_date=date(2026, 3, 31),
             portfolio_dv01=Decimal("3.50000000"),
+            regulatory_dv01=Decimal("3.50000000"),
             krd_1y=Decimal("0.50000000"),
             krd_3y=Decimal("0.60000000"),
             krd_5y=Decimal("0.70000000"),
@@ -131,3 +141,5 @@ class TestRiskTensorNumericMigration:
         )
         from_tensor = RiskTensorPayload.from_tensor(tensor)
         assert from_tensor.portfolio_dv01.raw == 3.5
+        assert from_tensor.regulatory_dv01 is not None
+        assert from_tensor.regulatory_dv01.raw == 3.5

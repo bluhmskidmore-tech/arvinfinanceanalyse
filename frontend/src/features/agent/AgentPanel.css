@@ -1,0 +1,118 @@
+/* AgentPanel — 与 dashboard-home-panel 叠用以沿用工作台卡片基线 */
+
+.agent-panel.agent-panel {
+  margin-top: 16px;
+}
+
+.agent-panel__title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--moss-color-text-primary);
+  letter-spacing: 0.02em;
+}
+
+.agent-panel__form {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-panel__input {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border-radius: var(--moss-radius-sm, 6px);
+  border: 1px solid var(--moss-color-border-default);
+  background: #ffffff;
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.agent-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.agent-panel__submit {
+  padding: 8px 14px;
+  border-radius: var(--moss-radius-sm, 6px);
+  border: 1px solid var(--moss-color-primary-600);
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-primary-700);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-panel__submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.agent-panel__muted {
+  margin: 0;
+  font-size: 11px;
+  color: var(--moss-color-text-muted);
+}
+
+.agent-panel__answer {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--moss-radius-sm, 6px);
+  border: 1px solid var(--moss-color-border-default);
+  background: #ffffff;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--moss-color-text-primary);
+}
+
+.agent-panel__evidence {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--moss-color-text-secondary);
+}
+
+.agent-panel__chips {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--moss-color-border-default);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--moss-color-text-secondary);
+  background: var(--moss-color-card-bg, #f9fafb);
+}
+
+.agent-panel__banner {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--moss-radius-sm, 6px);
+  border: 1px solid var(--moss-color-warning-border, #fcd34d);
+  background: var(--moss-color-warning-soft, #fffbeb);
+  font-size: 12px;
+  color: var(--moss-color-text-primary);
+}
+
+.agent-panel__error {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--moss-radius-sm, 6px);
+  border: 1px solid var(--moss-color-danger-border, #fecaca);
+  background: var(--moss-color-danger-soft, #fef2f2);
+  font-size: 12px;
+  color: var(--moss-color-text-primary);
+}

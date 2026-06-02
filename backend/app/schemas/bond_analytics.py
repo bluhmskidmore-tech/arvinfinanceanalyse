@@ -480,8 +480,8 @@ class CreditSpreadMigrationResponse(BaseModel):
     rating_aa_and_below_weight: Numeric = Field(
         default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False),
         description=(
-            "淇＄敤鍊轰腑璇勭骇涓?AA 鍙婁互涓嬶紙鍚?AA锛屼笉鍚?AA+锛夌殑甯傚€煎崰缁勫悎鎬诲競鍊硷紱"
-            "鏈瘑鍒殑 rating 涓嶈鍏ュ垎瀛愩€?"
+            "信用债中评级为 AA 及以下（含 AA，不含 AA+）的市值占组合总市值；"
+            "未识别的 rating 不计入分子。"
         ),
     )
     spread_dv01: Numeric
@@ -616,14 +616,14 @@ class ActionAttributionResponse(BaseModel):
 
 
 ACTION_TYPE_NAMES: dict[str, str] = {
-    "ADD_DURATION": "鍔犱箙鏈?",
-    "REDUCE_DURATION": "鍑忎箙鏈?",
-    "SWITCH": "鎹㈠埜",
-    "CREDIT_DOWN": "淇＄敤涓嬫矇",
-    "CREDIT_UP": "淇＄敤涓婃敹",
-    "TIMING_BUY": "鎷╂椂涔板叆",
-    "TIMING_SELL": "鎷╂椂鍗栧嚭",
-    "HEDGE": "瀵瑰啿鎿嶄綔",
+    "ADD_DURATION": "加久期",
+    "REDUCE_DURATION": "减久期",
+    "SWITCH": "换券",
+    "CREDIT_DOWN": "信用下沉",
+    "CREDIT_UP": "信用上收",
+    "TIMING_BUY": "择时买入",
+    "TIMING_SELL": "择时卖出",
+    "HEDGE": "对冲操作",
 }
 
 

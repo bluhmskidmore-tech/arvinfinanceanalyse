@@ -1,0 +1,38 @@
+{
+  "catalog_version": "2026-05-20.cycle-rotation-macro.v1",
+  "policy_note": "PMI / social-financing YoY inputs for cycle MacroScore; refresh via macro_backfill or seed_cycle_rotation_macro script.",
+  "refresh_path": [
+    "scripts/seed_cycle_rotation_macro.py --duckdb-path <target.duckdb> --fixture tests/fixtures/cycle_rotation_macro_monthly.json",
+    "python -m backend.app.tasks.macro_backfill --series-names 制造业PMI 社会融资规模存量:同比 M2:同比"
+  ],
+  "series": [
+    {
+      "series_id": "M0017126",
+      "series_name": "制造业PMI",
+      "frequency": "monthly",
+      "unit": "index",
+      "theme": "macro_leading",
+      "backfill_series_name_aliases": ["制造业PMI", "PMI"],
+      "tushare_api": "cn_pmi"
+    },
+    {
+      "series_id": "M5525763",
+      "series_name": "社会融资规模存量:同比",
+      "frequency": "monthly",
+      "unit": "%",
+      "theme": "macro_leading",
+      "backfill_series_name_aliases": ["社会融资规模存量:同比", "社融"],
+      "tushare_api": "sf_month",
+      "tushare_transform": "derive_yoy_pct_from_stk_endval"
+    },
+    {
+      "series_id": "M0001385",
+      "series_name": "M2:同比",
+      "frequency": "monthly",
+      "unit": "%",
+      "theme": "macro_leading",
+      "backfill_series_name_aliases": ["M2:同比", "M2"],
+      "credit_impulse_fallback": true
+    }
+  ]
+}

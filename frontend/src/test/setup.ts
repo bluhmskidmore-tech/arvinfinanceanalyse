@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { configure } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import "../lib/agGridSetup";
@@ -9,6 +9,7 @@ configure({
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   window.localStorage.clear();
   window.sessionStorage.clear();

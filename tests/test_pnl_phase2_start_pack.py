@@ -12,6 +12,7 @@ from backend.app.core_finance import (
     NonStdPnlBridgeRow,
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
+    compute_nonstd_signed_ledger_amount,
     normalize_fi_pnl_records,
     normalize_nonstd_journal_entries,
 )
@@ -612,3 +613,27 @@ def test_phase2_fi_standardization_converts_usd_rows_to_cny_with_fx_rate() -> No
             trace_id="trace-fi-002",
         )
     ]
+
+
+def test_compute_nonstd_signed_ledger_amount_aligns_direct_fields_with_formal_normalize() -> None:
+    """Regression: V1 汇总曾用 _v1_dc_sign，把 direct_514_* 误作借方导致与物化桥接符号相反。"""
+    assert compute_nonstd_signed_ledger_amount(
+        raw_amount=Decimal("100"),
+        dc_flag="direct_514_field",
+        journal_type="514",
+    ) == Decimal("100")
+    assert compute_nonstd_signed_ledger_amount(
+        raw_amount=Decimal("100"),
+        dc_flag="direct_516_field",
+        journal_type="516",
+    ) == Decimal("-100")
+    assert compute_nonstd_signed_ledger_amount(
+        raw_amount=Decimal("100"),
+        dc_flag="\u8d37",
+        journal_type="514",
+    ) == Decimal("100")
+    assert compute_nonstd_signed_ledger_amount(
+        raw_amount=Decimal("100"),
+        dc_flag="\u501f",
+        journal_type="514",
+    ) == Decimal("-100")

@@ -70,11 +70,17 @@ describe("BondAnalyticsDetailSection", () => {
         />,
       );
 
-      expect(screen.getByRole("heading", { name: "Analysis details" })).toBeInTheDocument();
-      expect(screen.getByText(`Currently viewing: ${def.label}`, { exact: true })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "分析明细" })).toBeInTheDocument();
+      expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
+        "data-module-key",
+        activeTab,
+      );
+      expect(screen.getByTestId("bond-analysis-detail-header")).toBeInTheDocument();
+      expect(screen.getByText(`当前查看：${def.label}`, { exact: true })).toBeInTheDocument();
       expect(screen.getByText(def.description, { exact: true })).toBeInTheDocument();
 
       expect(await screen.findByTestId(mockTestId)).toBeInTheDocument();
+      expect(screen.getByTestId("bond-analysis-detail-content")).toBeInTheDocument();
     },
   );
 
@@ -92,7 +98,7 @@ describe("BondAnalyticsDetailSection", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Credit spread" }));
+    await user.click(screen.getByRole("tab", { name: "信用利差" }));
 
     expect(onActiveTabChange).toHaveBeenCalledTimes(1);
     expect(onActiveTabChange).toHaveBeenCalledWith("credit-spread");

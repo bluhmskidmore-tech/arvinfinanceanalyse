@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
+import { designTokens } from "../../theme/designSystem";
+import { displayTokens } from "../../theme/displayTokens";
 import type {
   HealthCheckStatus,
   HealthResponse,
@@ -10,7 +12,7 @@ import type {
 } from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 
 const summaryGridStyle = {
   display: "grid",
@@ -257,8 +259,12 @@ export default function PlatformConfigPage() {
             alignItems: "center",
             padding: "8px 12px",
             borderRadius: 999,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            background:
+              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+            color:
+              client.mode === "real"
+                ? displayTokens.apiMode.realForeground
+                : displayTokens.apiMode.mockForeground,
             fontSize: 12,
             fontWeight: 600,
             letterSpacing: "0.04em",
@@ -270,7 +276,7 @@ export default function PlatformConfigPage() {
       </div>
 
       <SectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="平台概览"
         description="先看系统状态、运行环境和数据源摘要，再下钻到健康检查卡片与数据源表格，保持配置页的阅读顺序与其他标准壳层一致。"
       />
@@ -305,21 +311,21 @@ export default function PlatformConfigPage() {
           <KpiCard title="系统环境" value={envLabel} detail="部署/运行环境标识" valueVariant="text" />
         </div>
         <div data-testid="platform-config-source-count">
-          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前 source foundation 摘要中的来源数" valueVariant="text" />
+          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前源基础摘要中的来源数" valueVariant="text" />
         </div>
         <div data-testid="platform-config-abnormal-sources">
           <KpiCard title="异常来源" value={String(abnormalSourceCount)} detail="行数为 0 或仍有人工复核的来源" valueVariant="text" />
         </div>
         <div data-testid="platform-config-manual-review-rows">
-          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的 manual_review_count 汇总" valueVariant="text" />
+          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的人工复核计数汇总" valueVariant="text" />
         </div>
       </div>
 
       <div style={{ display: "grid", gap: 24 }}>
         <SectionLead
-          eyebrow="Health"
+          eyebrow="健康"
           title="系统健康状态"
-          description="分项来自 GET /health/ready 的 checks（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
+          description="分项来自 GET /health/ready 的检查项（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
         />
         <AsyncSection
           title="系统健康状态"
@@ -370,7 +376,7 @@ export default function PlatformConfigPage() {
         </AsyncSection>
 
         <SectionLead
-          eyebrow="Sources"
+          eyebrow="数据源"
           title="数据源列表"
           description="数据源列表继续展示最新批次、行数、更新时间和状态，作为治理页的只读汇总表。"
         />

@@ -47,3 +47,16 @@ def campisi_maturity_buckets(
         end_date=end_date,
         lookback_days=lookback_days,
     )
+
+
+@router.get("/campisi/decision-grade")
+def campisi_decision_grade(
+    start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="期末日期 YYYY-MM-DD"),
+    lookback_days: int = Query(30, description="无 start_date 时的回溯天数"),
+) -> dict[str, object]:
+    return _svc().campisi_decision_grade_envelope(
+        start_date=start_date,
+        end_date=end_date,
+        lookback_days=lookback_days,
+    )

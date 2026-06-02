@@ -1,39 +1,44 @@
 from __future__ import annotations
 
-from typing import Annotated
 import importlib
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from typing import Annotated
 
 from backend.app.governance.settings import get_settings
-from backend.app.services.product_category_pnl_service import (
-    ProductCategoryRefreshConflictError,
-    ProductCategoryRefreshServiceError,
-    create_product_category_manual_adjustment,
-    export_product_category_manual_adjustments_csv,
-    list_product_category_manual_adjustments,
-    product_category_dates_envelope,
-    product_category_pnl_envelope,
-    product_category_refresh_status,
-    revoke_product_category_manual_adjustment,
-    refresh_product_category_pnl,
-    restore_product_category_manual_adjustment,
-    update_product_category_manual_adjustment,
-)
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentQuery,
     ProductCategoryManualAdjustmentUpdateRequest,
 )
-
+from backend.app.services.product_category_pnl_service import (
+    AVAILABLE_VIEWS,
+    ProductCategoryReadModelNotFoundError,
+    ProductCategoryReadModelUnavailableError,
+    ProductCategoryRefreshConflictError,
+    ProductCategoryRefreshServiceError,
+    create_product_category_manual_adjustment,
+    export_product_category_manual_adjustments_csv,
+    list_product_category_manual_adjustments,
+    product_category_attribution_envelope,
+    product_category_dates_envelope,
+    product_category_pnl_envelope,
+    refresh_product_category_pnl,
+    restore_product_category_manual_adjustment,
+    revoke_product_category_manual_adjustment,
+    update_product_category_manual_adjustment,
+)
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 router = APIRouter(prefix="/ui/pnl/product-category")
 
 
 @router.get("/dates")
 def dates() -> dict[str, object]:
-    return product_category_dates_envelope(get_settings().duckdb_path)
+    try:
+        return product_category_dates_envelope(get_settings().duckdb_path)
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("")
@@ -42,18 +47,64 @@ def detail(
     view: str = Query("monthly"),
     scenario_rate_pct: float | None = Query(None),
 ) -> dict[str, object]:
-    return product_category_pnl_envelope(
-        get_settings().duckdb_path,
-        report_date=report_date,
-        view=view,
-        scenario_rate_pct=scenario_rate_pct,
-    )
+    if view not in AVAILABLE_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported product-category view={view!r}; expected one of {AVAILABLE_VIEWS}",
+        )
+    try:
+        return product_category_pnl_envelope(
+            get_settings().duckdb_path,
+            report_date=report_date,
+            view=view,
+            scenario_rate_pct=scenario_rate_pct,
+        )
+    except ProductCategoryReadModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/attribution")
+def attribution(
+    report_date: str = Query(...),
+    compare: str = Query("mom"),
+) -> dict[str, object]:
+    if compare not in {"mom", "yoy"}:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'",
+        )
+    try:
+        return product_category_attribution_envelope(
+            get_settings().duckdb_path,
+            report_date=report_date,
+            compare=compare,
+        )
+    except ProductCategoryReadModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/refresh")
-def refresh() -> dict[str, object]:
+def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return refresh_product_category_pnl(get_settings())
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="product_category_pnl",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        return refresh_product_category_pnl(settings)
     except ProductCategoryRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ProductCategoryRefreshServiceError as exc:
@@ -77,8 +128,14 @@ def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
 @router.post("/manual-adjustments")
 def create_manual_adjustment(
     payload: ProductCategoryManualAdjustmentCreateRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
-    return create_product_category_manual_adjustment(get_settings(), payload)
+    settings = get_settings()
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return create_product_category_manual_adjustment(settings, payload)
 
 
 @router.get("/manual-adjustments")
@@ -133,9 +190,17 @@ def export_manual_adjustments(
 
 
 @router.post("/manual-adjustments/{adjustment_id}/revoke")
-def revoke_manual_adjustment(adjustment_id: str) -> dict[str, object]:
+def revoke_manual_adjustment(
+    adjustment_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return revoke_product_category_manual_adjustment(get_settings(), adjustment_id=adjustment_id)
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    try:
+        return revoke_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -144,10 +209,16 @@ def revoke_manual_adjustment(adjustment_id: str) -> dict[str, object]:
 def edit_manual_adjustment(
     adjustment_id: str,
     payload: ProductCategoryManualAdjustmentUpdateRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     try:
         return update_product_category_manual_adjustment(
-            get_settings(),
+            settings,
             adjustment_id=adjustment_id,
             payload=payload,
         )
@@ -156,8 +227,16 @@ def edit_manual_adjustment(
 
 
 @router.post("/manual-adjustments/{adjustment_id}/restore")
-def restore_manual_adjustment(adjustment_id: str) -> dict[str, object]:
+def restore_manual_adjustment(
+    adjustment_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return restore_product_category_manual_adjustment(get_settings(), adjustment_id=adjustment_id)
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    try:
+        return restore_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

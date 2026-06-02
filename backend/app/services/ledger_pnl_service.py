@@ -17,19 +17,18 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import (
-    LEDGER_ASSET_ACCOUNT_PREFIXES,
-    LEDGER_LIABILITY_ACCOUNT_PREFIXES,
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
 from backend.app.core_finance.decimal_utils import fmt_money, to_decimal
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.product_category_source_service import (
-    discover_source_pairs,
     build_canonical_facts,
+    discover_source_pairs,
 )
 
 CACHE_VERSION = "cv_ledger_pnl_v1"
 RULE_VERSION = "rv_ledger_pnl_v1"
+SUPPORTED_CURRENCIES = {"CNX", "CNY"}
 
 
 def _load_facts_for_date(
@@ -64,6 +63,10 @@ def _sum_by_prefixes(
     return total
 
 
+def _supported_currency_facts(facts: list[Any]) -> list[Any]:
+    return [row for row in facts if row.currency in SUPPORTED_CURRENCIES]
+
+
 def get_available_dates(source_dir: str) -> dict[str, Any]:
     """获取可用的报告日期列表。"""
     pairs = discover_source_pairs(Path(source_dir))
@@ -90,9 +93,10 @@ def get_ledger_pnl_by_date(
             },
         }
 
-    filtered = facts
+    filtered = _supported_currency_facts(facts)
     if currency:
         filtered = [f for f in facts if f.currency == currency]
+        filtered = _supported_currency_facts(filtered)
 
     total_pnl_cnx = Decimal("0")
     total_pnl_cny = Decimal("0")
@@ -148,12 +152,13 @@ def get_ledger_pnl_summary(
     if not facts:
         return _empty_summary(report_date, source_version)
 
-    filtered = facts
+    filtered = _supported_currency_facts(facts)
     if currency:
         filtered = [f for f in facts if f.currency == currency]
+        filtered = _supported_currency_facts(filtered)
 
-    ledger_assets = _sum_by_prefixes(filtered, LEDGER_ASSET_ACCOUNT_PREFIXES, "ending_balance")
-    ledger_liabilities = _sum_by_prefixes(filtered, LEDGER_LIABILITY_ACCOUNT_PREFIXES, "ending_balance")
+    ledger_assets = _sum_by_prefixes(filtered, ("1",), "ending_balance")
+    ledger_liabilities = abs(_sum_by_prefixes(filtered, ("2",), "ending_balance"))
     ledger_net = ledger_assets - ledger_liabilities
 
     pnl_core = _sum_by_prefixes(filtered, LEDGER_PNL_ACCOUNT_PREFIXES, "monthly_pnl")

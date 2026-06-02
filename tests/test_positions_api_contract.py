@@ -27,8 +27,8 @@ def _insert_zqtz(
     bond_type: str,
     issuer_name: str,
     market_value: Decimal,
-    ytm: Decimal,
-    coupon: Decimal,
+    ytm: Decimal | None,
+    coupon: Decimal | None,
     is_issuance_like: bool,
     face_value: Decimal | None = None,
     amortized_cost: Decimal | None = None,
@@ -87,7 +87,7 @@ def _insert_tyw(
     position_side: str,
     counterparty: str,
     principal: Decimal,
-    rate: Decimal,
+    rate: Decimal | None,
 ) -> None:
     conn.execute(
         """
@@ -132,7 +132,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-10",
             instrument_code="B001",
             bond_type="GOV",
-            issuer_name="鍙戣浜虹敳",
+            issuer_name="发行人甲",
             market_value=Decimal("100"),
             ytm=Decimal("0.03"),
             coupon=Decimal("0.025"),
@@ -143,7 +143,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-12",
             instrument_code="B001",
             bond_type="GOV",
-            issuer_name="鍙戣浜虹敳",
+            issuer_name="发行人甲",
             market_value=Decimal("120"),
             ytm=Decimal("0.031"),
             coupon=Decimal("0.025"),
@@ -154,7 +154,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-10",
             instrument_code="B002",
             bond_type="CREDIT",
-            issuer_name="鍙戣浜轰箼",
+            issuer_name="发行人乙",
             market_value=Decimal("200"),
             ytm=Decimal("0.04"),
             coupon=Decimal("0.035"),
@@ -165,7 +165,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-10",
             instrument_code="B003",
             bond_type="CREDIT",
-            issuer_name="鍙戣浜轰箼",
+            issuer_name="发行人乙",
             market_value=Decimal("50"),
             ytm=Decimal("0.045"),
             coupon=Decimal("0.04"),
@@ -299,6 +299,7 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
     assert body["num_days"] == 2
     assert body["total_customers"] == 1
     assert len(body["items"]) == 1
+    assert body["cr10_ratio"] == "100.00%"
 
     pt = client.get("/api/positions/interbank/product_types", params={"report_date": "2026-01-10"})
     assert pt.status_code == 200
@@ -352,10 +353,11 @@ def test_positions_counterparty_bonds_excludes_issuance_like_from_asset_scope(tm
     assert body["total_avg_daily"] == "135.00000000"
     assert body["total_customers"] == 2
     items_by_customer = {item["customer_name"]: item for item in body["items"]}
-    assert set(items_by_customer) == {"鍙戣浜虹敳", "鍙戣浜轰箼"}
-    assert items_by_customer["鍙戣浜虹敳"]["total_amount"] == "220.00000000"
-    assert items_by_customer["鍙戣浜轰箼"]["total_amount"] == "50.00000000"
-    assert items_by_customer["鍙戣浜轰箼"]["avg_daily_balance"] == "25.00000000"
+    assert set(items_by_customer) == {"发行人甲", "发行人乙"}
+    assert items_by_customer["发行人甲"]["total_amount"] == "220.00000000"
+    assert items_by_customer["发行人乙"]["total_amount"] == "50.00000000"
+    assert items_by_customer["发行人乙"]["avg_daily_balance"] == "25.00000000"
+    assert body["cr10_ratio"] == "100.00%"
 
 
 def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None:
@@ -380,14 +382,14 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
 
     det = client.get(
         "/api/positions/customer/details",
-        params={"customer_name": "鍙戣浜轰箼", "report_date": "2026-01-10"},
+        params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
     )
     assert det.status_code == 200
     assert det.json()["result"]["bond_count"] == 2
 
     tr = client.get(
         "/api/positions/customer/trend",
-        params={"customer_name": "鍙戣浜虹敳", "end_date": "2026-01-12", "days": 30},
+        params={"customer_name": "发行人甲", "end_date": "2026-01-12", "days": 30},
     )
     assert tr.status_code == 200
     assert len(tr.json()["result"]["items"]) == 2
@@ -577,6 +579,38 @@ def test_positions_reads_normalize_percentage_rates_and_compute_net_price_from_m
     assert bond_item["yield_rate"] == "0.03250000"
     assert bond_item["valuation_net_price"] == "120.00000000"
 
+    rating_response = client.get(
+        "/api/positions/stats/rating",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "Gov"},
+    )
+    assert rating_response.status_code == 200
+    rating_item = rating_response.json()["result"]["items"][0]
+    assert rating_item["weighted_rate"] == "0.03250000"
+
+    counterparty_response = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "sub_type": "Gov",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert counterparty_response.status_code == 200
+    counterparty_body = counterparty_response.json()["result"]
+    assert counterparty_body["total_weighted_rate"] == "0.03250000"
+    assert counterparty_body["total_weighted_coupon_rate"] == "0.02500000"
+
+    details_response = client.get(
+        "/api/positions/customer/details",
+        params={"customer_name": "Issuer-Gov", "report_date": "2026-01-10"},
+    )
+    assert details_response.status_code == 200
+    details_item = details_response.json()["result"]["items"][0]
+    assert details_item["yield_rate"] == "0.03250000"
+
     ib_response = client.get(
         "/api/positions/interbank",
         params={
@@ -591,6 +625,154 @@ def test_positions_reads_normalize_percentage_rates_and_compute_net_price_from_m
     ib_item = ib_response.json()["result"]["items"][0]
     assert ib_item["interest_rate"] == "0.02500000"
 
+    ib_split_response = client.get(
+        "/api/positions/counterparty/interbank/split",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "product_type": "IB"},
+    )
+    assert ib_split_response.status_code == 200
+    assert ib_split_response.json()["result"]["asset_total_weighted_rate"] == "0.02500000"
+
+
+def test_positions_bond_weighted_rates_exclude_missing_rate_denominator(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db = tmp_path / "pos-missing-rate.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="RATE-KNOWN",
+            bond_type="Gov",
+            issuer_name="Issuer-Gov",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.03"),
+            coupon=Decimal("0.04"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="RATE-MISSING",
+            bond_type="Gov",
+            issuer_name="Issuer-Gov",
+            market_value=Decimal("300"),
+            ytm=None,
+            coupon=None,
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    counterparty_response = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-10",
+            "end_date": "2026-01-10",
+            "sub_type": "Gov",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert counterparty_response.status_code == 200
+    counterparty_body = counterparty_response.json()["result"]
+    assert counterparty_body["total_weighted_rate"] == "0.03000000"
+    assert counterparty_body["total_weighted_coupon_rate"] == "0.04000000"
+    assert counterparty_body["items"][0]["weighted_rate"] == "0.03000000"
+    assert counterparty_body["items"][0]["weighted_coupon_rate"] == "0.04000000"
+    assert counterparty_body["ytm_rate_coverage"] == {
+        "policy": "exclude_missing_rate_from_denominator",
+        "covered_amount": "100.00000000",
+        "missing_amount": "300.00000000",
+        "missing_count": 1,
+        "coverage_ratio": "25.00000000",
+    }
+    assert counterparty_body["coupon_rate_coverage"] == {
+        "policy": "exclude_missing_rate_from_denominator",
+        "covered_amount": "100.00000000",
+        "missing_amount": "300.00000000",
+        "missing_count": 1,
+        "coverage_ratio": "25.00000000",
+    }
+
+    rating_response = client.get(
+        "/api/positions/stats/rating",
+        params={"start_date": "2026-01-10", "end_date": "2026-01-10", "sub_type": "Gov"},
+    )
+    assert rating_response.status_code == 200
+    rating_body = rating_response.json()["result"]
+    assert rating_body["items"][0]["weighted_rate"] == "0.03000000"
+    assert rating_body["ytm_rate_coverage"]["coverage_ratio"] == "25.00000000"
+
+
+def test_positions_interbank_rates_treat_low_values_as_percent(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "pos-low-interbank-rate.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        _insert_tyw(
+            conn,
+            report_date="2026-01-10",
+            position_id="IB-A-LOW",
+            product_type="IB",
+            position_side="Asset",
+            counterparty="CP-A",
+            principal=Decimal("1000"),
+            rate=Decimal("0.8"),
+        )
+        _insert_tyw(
+            conn,
+            report_date="2026-01-10",
+            position_id="IB-L-LOW",
+            product_type="IB",
+            position_side="Liability",
+            counterparty="CP-L",
+            principal=Decimal("2000"),
+            rate=Decimal("0.72"),
+        )
+        _insert_tyw(
+            conn,
+            report_date="2026-01-10",
+            position_id="IB-A-MISSING-RATE",
+            product_type="IB",
+            position_side="Asset",
+            counterparty="CP-MISSING",
+            principal=Decimal("500"),
+            rate=None,
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    ib_response = client.get(
+        "/api/positions/interbank",
+        params={
+            "report_date": "2026-01-10",
+            "direction": "Asset",
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert ib_response.status_code == 200
+    assert ib_response.json()["result"]["items"][0]["interest_rate"] == "0.00800000"
+
+    ib_split_response = client.get(
+        "/api/positions/counterparty/interbank/split",
+        params={"start_date": "2026-01-10", "end_date": "2026-01-10"},
+    )
+    assert ib_split_response.status_code == 200
+    split_result = ib_split_response.json()["result"]
+    assert split_result["asset_total_weighted_rate"] == "0.00800000"
+    assert split_result["liability_total_weighted_rate"] == "0.00720000"
+
 
 def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date(tmp_path, monkeypatch) -> None:
     db = tmp_path / "pos.duckdb"
@@ -604,9 +786,8 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
 
     details = client.get(
         "/api/positions/customer/details",
-        params={"customer_name": "鍙戣浜虹敳"},
+        params={"customer_name": "发行人甲"},
     )
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"
     assert details.json()["result"]["bond_count"] == 1
-

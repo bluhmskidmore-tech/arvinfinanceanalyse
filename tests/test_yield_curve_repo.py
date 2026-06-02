@@ -78,6 +78,8 @@ def test_fetch_latest_trade_date(tmp_path):
     assert repo.fetch_latest_trade_date_on_or_before("treasury", "2026-04-09") == "2026-04-09"
     assert repo.fetch_latest_trade_date_on_or_before("treasury", "2026-04-11") == "2026-04-10"
     assert repo.list_trade_dates("treasury") == ["2026-04-10", "2026-04-09"]
+    assert repo.fetch_prior_trade_date("treasury", "2026-04-10") == "2026-04-09"
+    assert repo.fetch_prior_trade_date("treasury", "2026-04-09") is None
 
 
 def test_empty_table_returns_none(tmp_path):

@@ -9,10 +9,10 @@ function createReadinessItem(overrides: Partial<BondAnalyticsReadinessItem> = {}
   return {
     key: "return-decomposition",
     label: "收益拆解",
-    description: "desc",
-    detailHint: "hint",
+    description: "说明",
+    detailHint: "提示",
     statusLabel: "placeholder-blocked",
-    statusReason: "blocked reason",
+    statusReason: "阻塞原因",
     promotionDestination: "readiness-only",
     warnings: [],
     ...overrides,
@@ -27,24 +27,24 @@ describe("BondAnalyticsDecisionRail", () => {
     const activeReadinessItem = createReadinessItem({
       key: "action-attribution",
       statusLabel: "eligible",
-      statusReason: "readiness reason for tag context",
+      statusReason: "标签上下文就绪原因",
     });
 
     const watchlistItems: BondAnalyticsReadinessItem[] = [
       createReadinessItem({
         key: "return-decomposition",
-        label: "Watch One",
-        statusReason: "reason one",
+        label: "观察一",
+        statusReason: "原因一",
       }),
       createReadinessItem({
         key: "benchmark-excess",
-        label: "Watch Two",
-        statusReason: "reason two",
+        label: "观察二",
+        statusReason: "原因二",
       }),
       createReadinessItem({
         key: "credit-spread",
-        label: "Watch Three Hidden",
-        statusReason: "should not render",
+        label: "观察三隐藏",
+        statusReason: "不应渲染",
       }),
     ];
 
@@ -52,10 +52,10 @@ describe("BondAnalyticsDecisionRail", () => {
       <BondAnalyticsDecisionRail
         activeModuleContext={{
           key: "action-attribution",
-          label: "Active module label",
-          description: "Active module description body.",
+          label: "当前模块",
+          description: "当前模块说明。",
           statusLabel: "eligible",
-          statusReason: "Active status reason in context box.",
+          statusReason: "上下文框中的当前状态原因。",
         }}
         activeReadinessItem={activeReadinessItem}
         watchlistItems={watchlistItems}
@@ -63,19 +63,19 @@ describe("BondAnalyticsDecisionRail", () => {
       />,
     );
 
-    expect(screen.getByText("Active module label")).toBeInTheDocument();
-    expect(screen.getByText("eligible")).toBeInTheDocument();
-    expect(screen.getByText("Active module description body.")).toBeInTheDocument();
-    expect(screen.getByText("Active status reason in context box.")).toBeInTheDocument();
+    expect(screen.getByText("当前模块")).toBeInTheDocument();
+    expect(screen.getByText("可提升")).toBeInTheDocument();
+    expect(screen.getByText("当前模块说明。")).toBeInTheDocument();
+    expect(screen.getByText("上下文框中的当前状态原因。")).toBeInTheDocument();
 
-    expect(screen.getByText("Watch One")).toBeInTheDocument();
-    expect(screen.getByText("reason one")).toBeInTheDocument();
-    expect(screen.getByText("Watch Two")).toBeInTheDocument();
-    expect(screen.getByText("reason two")).toBeInTheDocument();
-    expect(screen.queryByText("Watch Three Hidden")).not.toBeInTheDocument();
-    expect(screen.queryByText("should not render")).not.toBeInTheDocument();
+    expect(screen.getByText("观察一")).toBeInTheDocument();
+    expect(screen.getByText("原因一")).toBeInTheDocument();
+    expect(screen.getByText("观察二")).toBeInTheDocument();
+    expect(screen.getByText("原因二")).toBeInTheDocument();
+    expect(screen.queryByText("观察三隐藏")).not.toBeInTheDocument();
+    expect(screen.queryByText("不应渲染")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Open current drill" }));
+    await user.click(screen.getByRole("button", { name: "打开当前下钻" }));
     expect(onOpenModuleDetail).toHaveBeenCalledTimes(1);
     expect(onOpenModuleDetail).toHaveBeenCalledWith("action-attribution");
   });

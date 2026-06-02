@@ -1,0 +1,49 @@
+.stateCard {
+  display: grid;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-6);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-lg);
+  background: #ffffff;
+  box-shadow: var(--moss-shadow-card);
+}
+
+.stateTitle {
+  color: var(--moss-color-neutral-900);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stateBody {
+  color: var(--moss-color-neutral-700);
+  line-height: 1.7;
+}
+
+.toolbarSelect {
+  min-width: 132px;
+  height: 34px;
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-md);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--moss-color-primary-900);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 var(--moss-space-3);
+}
+
+.toolbarSelectWide {
+  min-width: 154px;
+}
+
+.refreshButton {
+  min-width: 48px;
+  color: #ffffff;
+  background: #0b4e9e;
+  border-color: #0b4e9e;
+}
+
+.detailFallback {
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}

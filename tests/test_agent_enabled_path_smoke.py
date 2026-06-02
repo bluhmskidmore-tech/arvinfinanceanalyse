@@ -126,7 +126,7 @@ def _seed_agent_balance_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_tyw_balance_daily values
-            (?, 'TYW-001', '鏈烘瀯A', 'repo', 'H', 'AC', 'asset', 'CNY', 500, 8, 'sv_balance_tyw_1', 'rv_balance_1')
+            (?, 'TYW-001', '机构A', 'repo', 'H', 'AC', 'asset', 'CNY', 500, 8, 'sv_balance_tyw_1', 'rv_balance_1')
             """,
             [REPORT_DATE],
         )
@@ -365,6 +365,8 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
               account_category varchar,
               asset_class varchar,
               bond_type varchar,
+              sub_type varchar,
+              business_type_primary varchar,
               issuer_name varchar,
               industry_name varchar,
               rating varchar,
@@ -403,7 +405,7 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
         conn.execute(
             """
             insert into fact_formal_zqtz_balance_daily values
-            (?, 'BOND-001', 'Bond 001', '缁勫悎A', 'CC100', '鍊哄埜', 'bond', 'treasury', 'issuerA', 'industryA', 'AAA', 'H', 'AC', 'asset', 'CNY', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 'fixed', false, 0, 0, ?, 'normal', 'sv_balance_bridge_1', 'rv_balance_bridge_1', 'batch-balance-1', 'tr-balance-1')
+            (?, 'BOND-001', 'Bond 001', '组合A', 'CC100', '债券', 'bond', 'treasury', '', '', 'issuerA', 'industryA', 'AAA', 'H', 'AC', 'asset', 'CNY', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 'fixed', false, 0, 0, ?, 'normal', 'sv_balance_bridge_1', 'rv_balance_bridge_1', 'batch-balance-1', 'tr-balance-1')
             """,
             [REPORT_DATE, REPORT_DATE],
         )
@@ -495,6 +497,10 @@ def _fresh_main_module():
     return importlib.import_module("backend.app.main")
 
 
+def _set_trusted_agent_user(monkeypatch, user_id: str) -> None:
+    monkeypatch.setenv("MOSS_USER_ID", user_id)
+
+
 def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -503,11 +509,12 @@ def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monk
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_smoke")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
         "/api/agent/query",
-        json={"question": "PnL summary", "context": {"user_id": "u_smoke"}},
+        json={"question": "PnL summary", "context": {"user_id": "spoofed-user"}},
     )
 
     assert response.status_code == 200
@@ -541,6 +548,7 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_balance")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -592,6 +600,7 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_risk")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -633,6 +642,7 @@ def test_agent_query_enabled_path_risk_tensor_uses_latest_report_date_when_conte
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_risk_latest")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -665,6 +675,7 @@ def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, m
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_market")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -735,6 +746,7 @@ def test_agent_query_enabled_path_returns_real_news_and_audit(tmp_path, monkeypa
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_news")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -770,6 +782,7 @@ def test_agent_query_enabled_path_returns_real_product_pnl_and_audit(tmp_path, m
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_product")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -811,6 +824,7 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_bridge")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -850,6 +864,7 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_duration")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(
@@ -885,6 +900,7 @@ def test_agent_query_enabled_path_returns_real_credit_exposure_and_audit(tmp_pat
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_credit")
 
     client = TestClient(_fresh_main_module().app)
     response = client.post(

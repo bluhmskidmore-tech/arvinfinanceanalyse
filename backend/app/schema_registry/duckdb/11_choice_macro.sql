@@ -48,6 +48,20 @@ create table if not exists phase1_macro_vendor_catalog (
   policy_note varchar
 )
 -- MOSS:STMT
+create table if not exists market_data_series_category (
+  series_id varchar,
+  category_key varchar,
+  category_label varchar,
+  source_surface varchar,
+  fetch_mode varchar,
+  fetch_granularity varchar,
+  policy_note varchar,
+  catalog_version varchar,
+  batch_id varchar,
+  updated_at varchar,
+  run_id varchar
+)
+-- MOSS:STMT
 alter table phase1_macro_vendor_catalog add column if not exists vendor_series_code varchar
 -- MOSS:STMT
 alter table phase1_macro_vendor_catalog add column if not exists batch_id varchar
@@ -69,3 +83,23 @@ alter table phase1_macro_vendor_catalog add column if not exists fetch_granulari
 alter table phase1_macro_vendor_catalog add column if not exists refresh_tier varchar
 -- MOSS:STMT
 alter table phase1_macro_vendor_catalog add column if not exists policy_note varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists category_key varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists category_label varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists source_surface varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists fetch_mode varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists fetch_granularity varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists policy_note varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists catalog_version varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists batch_id varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists updated_at varchar
+-- MOSS:STMT
+alter table market_data_series_category add column if not exists run_id varchar

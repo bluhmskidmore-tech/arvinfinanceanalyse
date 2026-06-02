@@ -21,6 +21,16 @@ function num(raw: number | null, unit: Numeric["unit"] = "yuan"): Numeric {
   };
 }
 
+function numDisplay(raw: number | null, unit: Numeric["unit"], display: string): Numeric {
+  return {
+    raw,
+    unit,
+    display,
+    precision: 2,
+    sign_aware: true,
+  };
+}
+
 const readyState: DataSectionState = { kind: "ok" };
 
 describe("PnLCompositionChart", () => {
@@ -77,5 +87,28 @@ describe("PnLCompositionChart", () => {
     expect(chartStubs.some((node) => node.textContent?.includes("其他收入") ?? false)).toBe(true);
     expect(chartStubs.every((node) => !node.textContent?.includes('"type":"pie"'))).toBe(true);
     expect(chartStubs.some((node) => node.textContent?.includes('"type":"bar"') ?? false)).toBe(true);
+  });
+
+  it("renders governed pct display instead of raw ratio values", () => {
+    const data: PnlCompositionPayload = {
+      report_period: "2026-04",
+      report_date: "2026-04-30",
+      total_pnl: num(851_450_000),
+      total_interest_income: num(534_920_000),
+      total_fair_value_change: num(156_730_000),
+      total_capital_gain: num(159_800_000),
+      total_other_income: num(0),
+      interest_pct: numDisplay(0.628245986565378, "pct", "+62.82%"),
+      fair_value_pct: numDisplay(0.1840714304113674, "pct", "+18.41%"),
+      capital_gain_pct: numDisplay(0.18768258302325463, "pct", "+18.77%"),
+      other_pct: numDisplay(0, "pct", "+0.00%"),
+      items: [],
+      trend_data: [],
+    };
+
+    render(<PnLCompositionChart data={data} state={readyState} onRetry={() => {}} />);
+
+    expect(screen.getByText(/\+62\.82%/)).toBeInTheDocument();
+    expect(screen.queryByText(/0\.6%/)).not.toBeInTheDocument();
   });
 });

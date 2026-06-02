@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
-import uuid
+from typing import Any, Literal, cast
 
 import duckdb
-
 from backend.app.core_finance.macro_bond_linkage import (
+    EquityBondSpreadSignal,
     MacroBondCorrelation,
+    MegaCapEquitySignal,
+    build_macro_bond_research_output,
     compute_macro_bond_correlations,
     compute_macro_environment_score,
     estimate_macro_impact_on_portfolio,
@@ -38,7 +40,7 @@ TOP_CORRELATION_LIMIT = 10
 
 def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     settings = get_settings()
-    computed_at = datetime.now(timezone.utc).isoformat()
+    computed_at = datetime.now(UTC).isoformat()
     warnings: list[str] = []
     duckdb_path = str(settings.duckdb_path)
     conn = _connect_read_only(duckdb_path)
@@ -51,6 +53,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
             portfolio_impact={},
             top_correlations=[],
             method_variants=_empty_method_variants(),
+            research_views=[],
+            transmission_axes=[],
             warnings=warnings,
             source_versions=[EMPTY_SOURCE_VERSION],
             vendor_versions=["vv_none"],
@@ -75,6 +79,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
             portfolio_impact={},
             top_correlations=[],
             method_variants=_empty_method_variants(),
+            research_views=[],
+            transmission_axes=[],
             warnings=_dedupe_preserve_order(warnings),
             source_versions=[
                 *macro_inputs["source_versions"],
@@ -101,6 +107,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     method_variants = _empty_method_variants()
     environment_score_payload: dict[str, Any] = {}
     portfolio_impact_payload: dict[str, Any] = {}
+    research_views: list[dict[str, Any]] = []
+    transmission_axes: list[dict[str, Any]] = []
 
     if macro_inputs["series"] and yield_inputs["series"]:
         conservative_corrs = compute_macro_bond_correlations(
@@ -152,7 +160,22 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
                 portfolio_market_value=portfolio_metrics["portfolio_market_value"],
             )
         )
-
+        equity_bond_signal = None
+        mega_cap_signal = None
+        equity_bond_signal, mega_cap_signal, landed_axis_warnings = _load_landed_equity_research_signals(
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            macro_latest=macro_inputs["latest"],
+        )
+        warnings.extend(landed_axis_warnings)
+        research_view_rows, transmission_axis_rows = build_macro_bond_research_output(
+            environment_score,
+            conservative_corrs,
+            equity_bond_spread_signal=equity_bond_signal,
+            mega_cap_equity_signal=mega_cap_signal,
+        )
+        research_views = _json_safe(research_view_rows)
+        transmission_axes = _json_safe(transmission_axis_rows)
     return _build_response_envelope(
         report_date=report_date,
         computed_at=computed_at,
@@ -160,6 +183,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
         portfolio_impact=portfolio_impact_payload,
         top_correlations=top_correlations,
         method_variants=method_variants,
+        research_views=research_views,
+        transmission_axes=transmission_axes,
         warnings=_dedupe_preserve_order(warnings),
         source_versions=[
             *macro_inputs["source_versions"],
@@ -176,6 +201,104 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
             portfolio_metrics["rule_version"],
         ],
     )
+
+
+def _load_landed_equity_research_signals(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    macro_latest: dict[str, tuple[date, float]],
+) -> tuple[EquityBondSpreadSignal | None, MegaCapEquitySignal | None, list[str]]:
+    conn = _connect_read_only(duckdb_path)
+    if conn is None:
+        return None, None, []
+    try:
+        if not _relation_exists(conn, "choice_market_snapshot"):
+            return None, None, []
+        rows = conn.execute(
+            """
+            select series_id, cast(trade_date as date) as trade_date, cast(value_numeric as double) as value_numeric
+            from (
+              select
+                series_id,
+                trade_date,
+                value_numeric,
+                row_number() over (partition by series_id order by cast(trade_date as date) desc) as rn
+              from choice_market_snapshot
+              where series_id in (
+                'CA.CSI300',
+                'CA.CSI300_PCT_CHG',
+                'CA.CSI300_PE',
+                'CA.MEGA_CAP_WEIGHT',
+                'CA.MEGA_CAP_TOP5_WEIGHT',
+                'E1000180',
+                'EMM00166466'
+              )
+                and cast(trade_date as date) <= ?
+                and value_numeric is not null
+            )
+            where rn = 1
+            """,
+            [report_date.isoformat()],
+        ).fetchall()
+    except duckdb.Error as exc:
+        return None, None, [f"choice_market_snapshot equity axes unavailable: {exc}"]
+    finally:
+        conn.close()
+
+    latest: dict[str, tuple[date, float]] = {}
+    for series_id, trade_date_value, value_numeric in rows:
+        point_date = _coerce_date(trade_date_value)
+        if point_date is None:
+            continue
+        latest[str(series_id)] = (point_date, float(value_numeric))
+
+    cn10y = _latest_macro_value(macro_latest, ["E1000180", "EMM00166466"]) or latest.get("E1000180") or latest.get(
+        "EMM00166466"
+    )
+    index_close = latest.get("CA.CSI300")
+    index_pct_change = latest.get("CA.CSI300_PCT_CHG")
+    index_pe = latest.get("CA.CSI300_PE")
+    equity_signal = None
+    if cn10y is not None and index_close is not None and index_pe is not None and index_pe[1] > 0:
+        earnings_yield_pct = 100.0 / index_pe[1]
+        bond_yield_pct = float(cn10y[1])
+        equity_signal = EquityBondSpreadSignal(
+            trade_date=index_pe[0],
+            index_code="000300.SH",
+            index_close=index_close[1],
+            index_pct_change=None if index_pct_change is None else index_pct_change[1],
+            pe=index_pe[1],
+            earnings_yield_pct=earnings_yield_pct,
+            bond_yield_pct=bond_yield_pct,
+            spread_pct=earnings_yield_pct - bond_yield_pct,
+        )
+
+    top10_weight = latest.get("CA.MEGA_CAP_WEIGHT")
+    top5_weight = latest.get("CA.MEGA_CAP_TOP5_WEIGHT")
+    mega_cap_signal = None
+    if top10_weight is not None and top5_weight is not None:
+        mega_cap_signal = MegaCapEquitySignal(
+            weight_trade_date=max(top10_weight[0], top5_weight[0]),
+            index_code="000300.SH",
+            top10_weight_sum=top10_weight[1],
+            top5_weight_sum=top5_weight[1],
+            leading_constituents=[],
+            index_pct_change=None if index_pct_change is None else index_pct_change[1],
+        )
+
+    return equity_signal, mega_cap_signal, []
+
+
+def _latest_macro_value(
+    macro_latest: dict[str, tuple[date, float]],
+    series_ids: list[str],
+) -> tuple[date, float] | None:
+    for series_id in series_ids:
+        value = macro_latest.get(series_id)
+        if value is not None:
+            return value
+    return None
 
 
 def _load_macro_inputs(
@@ -318,48 +441,73 @@ def _load_portfolio_metrics(
         row = conn.execute(
             """
             select
+              cast(report_date as date) as resolved_report_date,
               cast(portfolio_dv01 as decimal(24, 8)) as portfolio_dv01,
               cast(cs01 as decimal(24, 8)) as cs01,
               cast(total_market_value as decimal(24, 8)) as total_market_value,
               coalesce(source_version, '') as source_version,
               coalesce(rule_version, '') as rule_version
             from fact_formal_risk_tensor_daily
-            where report_date = ?
+            where try_cast(report_date as date) <= ?
+            order by try_cast(report_date as date) desc
             limit 1
             """,
             [report_date.isoformat()],
         ).fetchone()
         if row is not None:
+            resolved_report_date = _coerce_date(row[0])
+            if resolved_report_date is not None and resolved_report_date != report_date:
+                warnings.append(
+                    f"风险张量使用最近日期 {resolved_report_date.isoformat()}，目标日期为 {report_date.isoformat()}。"
+                )
             return {
-                "portfolio_dv01": _coerce_decimal(row[0]),
-                "portfolio_cs01": _coerce_decimal(row[1]),
-                "portfolio_market_value": _coerce_decimal(row[2]),
-                "source_version": str(row[3] or EMPTY_SOURCE_VERSION),
-                "rule_version": str(row[4] or ""),
+                "portfolio_dv01": _coerce_decimal(row[1]),
+                "portfolio_cs01": _coerce_decimal(row[2]),
+                "portfolio_market_value": _coerce_decimal(row[3]),
+                "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
+                "rule_version": str(row[5] or ""),
                 "warnings": warnings,
             }
 
     if _relation_exists(conn, "fact_formal_bond_analytics_daily"):
         row = conn.execute(
             """
+            with latest as (
+              select max(try_cast(report_date as date)) as resolved_report_date
+              from fact_formal_bond_analytics_daily
+              where try_cast(report_date as date) <= ?
+            )
             select
+              latest.resolved_report_date,
               cast(coalesce(sum(dv01), 0) as decimal(24, 8)) as portfolio_dv01,
               cast(coalesce(sum(case when is_credit then spread_dv01 else 0 end), 0) as decimal(24, 8)) as portfolio_cs01,
               cast(coalesce(sum(market_value), 0) as decimal(24, 8)) as portfolio_market_value,
               coalesce(string_agg(distinct source_version, '__'), '') as source_version,
               coalesce(string_agg(distinct rule_version, '__'), '') as rule_version
-            from fact_formal_bond_analytics_daily
-            where report_date = ?
+            from fact_formal_bond_analytics_daily, latest
+            where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.resolved_report_date
+            group by latest.resolved_report_date
             """,
             [report_date.isoformat()],
         ).fetchone()
-        warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
+        if row is None:
+            row = (None, Decimal("0"), Decimal("0"), Decimal("0"), EMPTY_SOURCE_VERSION, "")
+        resolved_report_date = _coerce_date(row[0])
+        if resolved_report_date is None:
+            warnings.append("风险张量缺失，且 bond analytics 未提供可用组合 DV01/CS01。")
+        elif resolved_report_date == report_date:
+            warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
+        else:
+            warnings.append(
+                "风险张量缺失，组合 DV01/CS01 已回退到 "
+                f"{resolved_report_date.isoformat()} bond analytics 聚合结果。"
+            )
         return {
-            "portfolio_dv01": _coerce_decimal(row[0]),
-            "portfolio_cs01": _coerce_decimal(row[1]),
-            "portfolio_market_value": _coerce_decimal(row[2]),
-            "source_version": str(row[3] or EMPTY_SOURCE_VERSION),
-            "rule_version": str(row[4] or ""),
+            "portfolio_dv01": _coerce_decimal(row[1]),
+            "portfolio_cs01": _coerce_decimal(row[2]),
+            "portfolio_market_value": _coerce_decimal(row[3]),
+            "source_version": str(row[4] or EMPTY_SOURCE_VERSION),
+            "rule_version": str(row[5] or ""),
             "warnings": warnings,
         }
 
@@ -413,6 +561,8 @@ def _build_response_envelope(
     portfolio_impact: dict[str, Any],
     top_correlations: list[dict[str, Any]],
     method_variants: MacroBondLinkageMethodVariants,
+    research_views: list[dict[str, Any]],
+    transmission_axes: list[dict[str, Any]],
     warnings: list[str],
     source_versions: list[str],
     vendor_versions: list[str],
@@ -424,6 +574,8 @@ def _build_response_envelope(
         portfolio_impact=portfolio_impact,
         top_correlations=top_correlations,
         method_variants=method_variants,
+        research_views=research_views,
+        transmission_axes=transmission_axes,
         warnings=warnings,
         computed_at=computed_at,
     )
@@ -510,7 +662,7 @@ def _coerce_decimal(value: object) -> Decimal:
 
 def _json_safe(value: Any) -> Any:
     if is_dataclass(value):
-        return _json_safe(asdict(value))
+        return _json_safe(asdict(cast(Any, value)))
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, (date, datetime)):

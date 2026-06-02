@@ -44,16 +44,16 @@ def test_normalize_interbank_rate_decimal_always_treats_input_as_percent() -> No
 
 
 def test_normalize_interbank_rate_decimal_consumes_rate_units_pct_to_decimal(monkeypatch) -> None:
-    calls: list[float] = []
+    calls: list[object] = []
 
-    def fake_pct_to_decimal(value: float) -> float:
+    def fake_pct_to_decimal(value: object) -> Decimal:
         calls.append(value)
-        return 0.1234
+        return Decimal("0.1234")
 
     monkeypatch.setattr(compat, "pct_to_decimal", fake_pct_to_decimal)
 
     assert compat.normalize_interbank_rate_decimal("2.5") == Decimal("0.1234")
-    assert calls == [2.5]
+    assert calls == ["2.5"]
 
 
 def test_weighted_rate_ignores_zero_amount_and_missing_rate() -> None:
@@ -146,14 +146,14 @@ def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> N
     )
 
     assert payload["liabilities_structure"] == [
-        {"name": "同业负债", "amount": 670.0, "pct": 77.0115},
-        {"name": "发行负债", "amount": 200.0, "pct": 22.9885},
+        {"name": "同业负债", "amount": 670.0, "pct": 0.7701},
+        {"name": "发行负债", "amount": 200.0, "pct": 0.2299},
     ]
     assert payload["interbank_liabilities_structure"] == [
-        {"name": "卖出回购票据", "amount": 20.0, "pct": 2.9851},
-        {"name": "卖出回购证券", "amount": 100.0, "pct": 14.9254},
-        {"name": "同业存放", "amount": 500.0, "pct": 74.6269},
-        {"name": "同业拆入", "amount": 50.0, "pct": 7.4627},
+        {"name": "卖出回购票据", "amount": 20.0, "pct": 0.0299},
+        {"name": "卖出回购证券", "amount": 100.0, "pct": 0.1493},
+        {"name": "同业存放", "amount": 500.0, "pct": 0.7463},
+        {"name": "同业拆入", "amount": 50.0, "pct": 0.0746},
     ]
     assert [item["bucket"] for item in payload["liabilities_term_buckets"]] == [
         "0-3M",
@@ -168,20 +168,20 @@ def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> N
     assert payload["liabilities_term_buckets"][0] == {
         "bucket": "0-3M",
         "amount": 520.0,
-        "pct": 59.7701,
+        "pct": 0.5977,
     }
     assert payload["liabilities_term_buckets"][1] == {
         "bucket": "3-6M",
         "amount": 100.0,
-        "pct": 11.4943,
+        "pct": 0.1149,
     }
     assert payload["liabilities_term_buckets"][3] == {
         "bucket": "1-3Y",
         "amount": 200.0,
-        "pct": 22.9885,
+        "pct": 0.2299,
     }
     assert payload["liabilities_term_buckets"][4:] == [
-        {"bucket": "3-5Y", "amount": 50.0, "pct": 5.7471},
+        {"bucket": "3-5Y", "amount": 50.0, "pct": 0.0575},
         {"bucket": "5-10Y", "amount": 0.0, "pct": 0.0},
         {"bucket": "10Y+", "amount": 0.0, "pct": 0.0},
         {"bucket": "Matured", "amount": 0.0, "pct": 0.0},
@@ -231,6 +231,7 @@ def test_compute_liability_yield_metrics_falls_back_to_interest_rate_for_bond_as
                 "coupon_rate": None,
                 "ytm_value": None,
                 "interest_rate": "2.5",
+                "maturity_date": "2027-02-26",
             }
         ],
         tyw_rows=[],
@@ -255,6 +256,7 @@ def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weigh
                 "amortized_cost_native": "100",
                 "coupon_rate": "4.0",
                 "ytm_value": None,
+                "maturity_date": "2027-02-26",
             }
         ],
         tyw_rows=[
@@ -268,6 +270,38 @@ def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weigh
 
     assert payload["kpi"] == {
         "asset_yield": 0.02,
+        "liability_cost": None,
+        "market_liability_cost": None,
+        "nim": None,
+    }
+
+
+def test_compute_liability_yield_metrics_excludes_assets_without_maturity() -> None:
+    payload = compute_liability_yield_metrics(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": False,
+                "asset_class": "持有至到期类资产",
+                "market_value_native": "100",
+                "coupon_rate": "5.0",
+                "ytm_value": None,
+                "maturity_date": "2027-02-26",
+            },
+            {
+                "is_issuance_like": False,
+                "asset_class": "持有至到期类资产",
+                "market_value_native": "900",
+                "coupon_rate": "4.0",
+                "ytm_value": None,
+                "maturity_date": None,
+            },
+        ],
+        tyw_rows=[],
+    )
+
+    assert payload["kpi"] == {
+        "asset_yield": 0.05,
         "liability_cost": None,
         "market_liability_cost": None,
         "nim": None,

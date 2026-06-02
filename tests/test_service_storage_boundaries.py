@@ -6,6 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXECUTIVE_SERVICE = ROOT / "backend" / "app" / "services" / "executive_service.py"
 PNL_BRIDGE_SERVICE = ROOT / "backend" / "app" / "services" / "pnl_bridge_service.py"
+ACCOUNTING_MOVEMENT_SERVICE = (
+    ROOT / "backend" / "app" / "services" / "accounting_asset_movement_service.py"
+)
 
 
 def _read_source(path: Path) -> str:
@@ -46,3 +49,11 @@ def test_executive_service_avoids_storage_bypass():
 def test_pnl_bridge_service_avoids_storage_bypass():
     text = _read_source(PNL_BRIDGE_SERVICE)
     _assert_service_avoids_direct_storage_and_formal_sql(PNL_BRIDGE_SERVICE, text)
+
+
+def test_accounting_asset_movement_service_avoids_writable_duckdb_and_low_level_materializer():
+    text = _read_source(ACCOUNTING_MOVEMENT_SERVICE)
+    assert ACCOUNTING_MOVEMENT_SERVICE.is_file()
+    assert "duckdb.connect(str(duckdb_file), read_only=False)" not in text
+    assert "duckdb.connect(duckdb_path, read_only=False)" not in text
+    assert "materialize_accounting_asset_movement_on_connection" not in text

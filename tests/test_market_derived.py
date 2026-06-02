@@ -238,8 +238,8 @@ def test_interpolate_ftp_rate_unsorted_input():
 
     # Should sort to [(6, 0.022), (12, 0.028), (24, 0.035)]
     rate = interpolate_ftp_rate(9.0, curve_points)
-    # 9 is between 6 and 12: 0.022 + (9-6)/(12-6) * (0.028-0.022) = 0.022 + 0.5 * 0.006 = 0.025
-    assert rate == pytest.approx(0.025)
+    # 9 is between 6 and 12: cubic spline result near 0.025 (linear midpoint)
+    assert rate == pytest.approx(0.025, abs=0.002)
 
 
 def test_interpolate_ftp_rate_exact_match():

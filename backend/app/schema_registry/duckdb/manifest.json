@@ -81,6 +81,66 @@
       "path": "16_external_vw_legacy.sql",
       "ensure_module": "backend.app.repositories.external_data_migrations_extra",
       "ensure_symbol": "ensure_external_vw_legacy_schema"
+    },
+    {
+      "path": "17_external_supply_auction_calendar.sql",
+      "ensure_module": "backend.app.repositories.research_calendar_repo",
+      "ensure_symbol": "ensure_supply_auction_calendar_schema"
+    },
+    {
+      "path": "18_accounting_asset_movement.sql",
+      "ensure_module": "backend.app.tasks.accounting_asset_movement",
+      "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "19_ledger_import.sql",
+      "ensure_module": "backend.app.repositories.ledger_import_repo",
+      "ensure_symbol": "ensure_ledger_import_tables"
+    },
+    {
+      "path": "20_ledger_analytics.sql",
+      "ensure_module": "backend.app.repositories.ledger_analytics_repo",
+      "ensure_symbol": "ensure_ledger_analytics_tables"
+    },
+    {
+      "path": "21_choice_stock.sql",
+      "ensure_module": "backend.app.tasks.choice_stock_materialize",
+      "ensure_symbol": "ensure_choice_stock_schema"
+    },
+    {
+      "path": "22_livermore_position_snapshot.sql",
+      "ensure_module": "backend.app.tasks.livermore_position_snapshot_materialize",
+      "ensure_symbol": "ensure_livermore_position_snapshot_schema"
+    },
+    {
+      "path": "23_livermore_gate_supplement.sql",
+      "ensure_module": "backend.app.repositories.livermore_gate_supplement_repo",
+      "ensure_symbol": "ensure_livermore_gate_supplement_schema"
+    },
+    {
+      "path": "24_cffex_member_rank.sql",
+      "ensure_module": "backend.app.repositories.cffex_member_rank_repo",
+      "ensure_symbol": "ensure_cffex_member_rank_schema"
+    },
+    {
+      "path": "25_pnl_by_business_precompute.sql",
+      "ensure_module": "backend.app.tasks.pnl_materialize",
+      "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "27_choice_stock_factor_snapshot.sql",
+      "ensure_module": "backend.app.tasks.choice_stock_materialize",
+      "ensure_symbol": "ensure_choice_stock_schema"
+    },
+    {
+      "path": "28_livermore_candidate_history.sql",
+      "ensure_module": "backend.app.tasks.livermore_candidate_history_materialize",
+      "ensure_symbol": "ensure_livermore_candidate_history_schema"
+    },
+    {
+      "path": "29_commodity_futures_daily.sql",
+      "ensure_module": "backend.app.tasks.commodity_daily_ingest",
+      "ensure_symbol": "ensure_commodity_futures_daily_schema"
     }
   ]
 }

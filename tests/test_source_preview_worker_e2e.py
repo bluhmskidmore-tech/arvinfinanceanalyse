@@ -61,6 +61,7 @@ def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "true")
     get_settings.cache_clear()
     _reset_source_preview_modules()
 

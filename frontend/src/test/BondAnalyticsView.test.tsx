@@ -152,6 +152,13 @@ describe("BondAnalyticsView", () => {
     renderBondAnalyticsView();
 
     expect(
+      await screen.findByTestId("bond-analysis-toolbar", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
+    ).toHaveClass("dashboard-home-toolbar");
+    expect(screen.getByRole("heading", { name: "债券分析", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新" })).toHaveTextContent("刷新");
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+
+    expect(
       await screen.findByTestId("bond-analysis-top-cockpit", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toBeInTheDocument();
 
@@ -170,7 +177,7 @@ describe("BondAnalyticsView", () => {
     expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("尚未捕获刷新运行。")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-action-attribution")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-return-decomposition")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-credit-spread")).toBeInTheDocument();
@@ -218,8 +225,8 @@ describe("BondAnalyticsView", () => {
         {},
         { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
       );
-      expect(within(detail).getByRole("tab", { name: "Portfolio headlines" })).toBeInTheDocument();
-      expect(within(detail).getByRole("tab", { name: "Top holdings" })).toBeInTheDocument();
+      expect(within(detail).getByRole("tab", { name: "组合头条" })).toBeInTheDocument();
+      expect(within(detail).getByRole("tab", { name: "重仓券" })).toBeInTheDocument();
     },
     20_000,
   );
@@ -243,10 +250,10 @@ describe("BondAnalyticsView", () => {
     expect(topCockpit).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(within(topCockpit).queryByText("Request error")).not.toBeInTheDocument();
-      expect(within(topCockpit).queryByText("Unavailable")).not.toBeInTheDocument();
-      expect(within(topCockpit).getByText("Dashboard snapshot only")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("Action attribution unavailable")).toBeInTheDocument();
+      expect(within(topCockpit).queryByText("请求失败")).not.toBeInTheDocument();
+      expect(within(topCockpit).queryByText("不可用")).not.toBeInTheDocument();
+      expect(within(topCockpit).getByText("仅驾驶舱快照")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("动作归因不可用")).toBeInTheDocument();
     });
   });
 
@@ -274,7 +281,7 @@ describe("BondAnalyticsView", () => {
     await waitFor(() => {
       expect(within(topCockpit).queryByText("backend 503 for portfolio headlines")).not.toBeInTheDocument();
       expect(within(topCockpit).queryByText("backend 503 for top holdings")).not.toBeInTheDocument();
-      expect(within(topCockpit).queryByText("Request error")).not.toBeInTheDocument();
+      expect(within(topCockpit).queryByText("请求失败")).not.toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
@@ -743,4 +750,3 @@ describe("BondAnalyticsView", () => {
     });
   });
 });
-

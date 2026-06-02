@@ -253,6 +253,13 @@ def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_r
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
+        snap_zqtz = conn.execute(
+            """
+            select currency_code, market_value_native, market_value_cny
+            from zqtz_bond_daily_snapshot
+            where instrument_code = '240001.IB'
+            """
+        ).fetchone()
         zqtz_rows = conn.execute(
             """
             select report_date, instrument_code, invest_type_std, accounting_basis,
@@ -271,6 +278,11 @@ def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_r
         ).fetchall()
     finally:
         conn.close()
+
+    assert snap_zqtz is not None
+    assert snap_zqtz[0] == "USD"
+    assert snap_zqtz[1] == Decimal("100")
+    assert snap_zqtz[2] == Decimal("720.00000000")
 
     assert zqtz_rows == [
         ("2025-12-31", "240001.IB", "A", "FVOCI", "asset", "CNY", Decimal("720.00000000"), "sv-z-1"),

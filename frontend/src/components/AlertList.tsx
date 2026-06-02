@@ -1,3 +1,4 @@
+import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 
 export type AlertItem = {
@@ -12,10 +13,10 @@ export type AlertListProps = {
 };
 
 const DOT_COLORS: Record<AlertItem["level"], string> = {
-  danger: "#f5222d",
-  warning: "#fa8c16",
-  caution: "#faad14",
-  info: shellTokens.colorAccent,
+  danger: designTokens.color.danger[500],
+  warning: designTokens.color.warning[500],
+  caution: designTokens.color.warning[400],
+  info: designTokens.color.info[500],
 };
 
 export function AlertList({ items }: AlertListProps) {
@@ -38,11 +39,25 @@ export function AlertList({ items }: AlertListProps) {
             }}
           />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#162033", lineHeight: 1.5 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: shellTokens.colorTextPrimary,
+                lineHeight: 1.5,
+              }}
+            >
               {it.title}
             </div>
             {it.detail ? (
-              <div style={{ fontSize: 13, color: "#5c6b82", marginTop: 2, lineHeight: 1.55 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: shellTokens.colorTextSecondary,
+                  marginTop: 2,
+                  lineHeight: 1.55,
+                }}
+              >
                 {it.detail}
               </div>
             ) : null}
@@ -50,7 +65,7 @@ export function AlertList({ items }: AlertListProps) {
               <div
                 style={{
                   fontSize: 12,
-                  color: "#8090a8",
+                  color: shellTokens.colorTextMuted,
                   marginTop: 4,
                   fontVariantNumeric: "tabular-nums",
                 }}

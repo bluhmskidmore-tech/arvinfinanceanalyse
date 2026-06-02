@@ -34,6 +34,22 @@ TUSHARE_M2A_SERIES: list[TushareM2aSeriesConfig] = [
         "unit": "pct",
         "raw_zone_path_template": "data/raw/tushare/{ingest_batch_id}/cn_gdp_quarterly.json",
     },
+    {
+        "series_id": "tushare.macro.cn_ppi.monthly",
+        "series_name": "China PPI YoY (Tushare)",
+        "tushare_api": "cn_ppi",
+        "frequency": "monthly",
+        "unit": "pct",
+        "raw_zone_path_template": "data/raw/tushare/{ingest_batch_id}/cn_ppi_monthly.json",
+    },
+    {
+        "series_id": "tushare.macro.cn_money.monthly",
+        "series_name": "China M2 YoY (Tushare)",
+        "tushare_api": "cn_money",
+        "frequency": "monthly",
+        "unit": "pct",
+        "raw_zone_path_template": "data/raw/tushare/{ingest_batch_id}/cn_money_monthly.json",
+    },
 ]
 
 _SERIES_BY_ID: dict[str, TushareM2aSeriesConfig] = {c["series_id"]: c for c in TUSHARE_M2A_SERIES}

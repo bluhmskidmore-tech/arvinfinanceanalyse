@@ -6,6 +6,7 @@ import type {
   ApiEnvelope,
   BondAnalyticsDatesPayload,
   BondAnalyticsRefreshPayload,
+  BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
   BenchmarkExcessPayload,
@@ -13,6 +14,7 @@ import type {
   BondDashboardHeadlinePayload,
   CreditSpreadAnalysisPayload,
   CreditSpreadMigrationPayload,
+  YieldCurveTermStructurePayload,
   ActionAttributionPayload,
   AccountingClassAuditPayload,
   CashflowProjectionPayload,
@@ -53,6 +55,9 @@ export type BondAnalyticsClientMethods = {
   getBondDashboardIndustryDistribution: (
     reportDate: string,
   ) => Promise<ApiEnvelope<IndustryDistPayload>>;
+  getBondBusinessTypeMetrics: (params: {
+    reportDate: string;
+  }) => Promise<BondBusinessTypeMetricsPayload>;
   getBondDashboardRiskIndicators: (
     reportDate: string,
   ) => Promise<ApiEnvelope<RiskIndicatorsPayload>>;
@@ -91,5 +96,9 @@ export type BondAnalyticsClientMethods = {
   getCreditSpreadAnalysisDetail: (
     reportDate: string,
   ) => Promise<ApiEnvelope<CreditSpreadAnalysisPayload>>;
+  getBondAnalyticsYieldCurveTermStructure: (
+    reportDate: string,
+    options?: { curveTypes?: string },
+  ) => Promise<ApiEnvelope<YieldCurveTermStructurePayload>>;
   getCashflowProjection: (reportDate: string) => Promise<ApiEnvelope<CashflowProjectionPayload>>;
 };

@@ -55,6 +55,8 @@ describe("placeholderSnapshots", () => {
     "cube-query",
     "platform-config",
     "market-data",
+    "news-events",
+    "source-preview",
   ] as const;
 
   it("includes stable section keys", () => {

@@ -4,12 +4,17 @@ from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.financial_workflow_catalog import (
+    FinancialWorkflow,
+    resolve_financial_workflow,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
     AgentDrill,
     AgentEnvelope,
     AgentResultMeta,
+    AgentSuggestedAction,
 )
 from backend.app.agent.tools.evidence_tool import EvidenceTool
 from backend.app.schemas.cube_query import CubeQueryRequest
@@ -34,13 +39,25 @@ _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("product_pnl", ("产品损益", "ftp")),
     ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
-    ("duration_risk", ("久期", "dv01", "风险", "duration")),
+    ("duration_risk", ("久期", "dv01", "duration")),
     ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
     ("portfolio_overview", ("组合概览", "资产规模", "总览", "portfolio overview", "market value", "portfolio value", "asset size")),
     ("pnl_summary", ("损益", "收益", "pnl")),
     ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
     ("news", ("新闻", "事件", "news", "headline", "latest news")),
 ]
+
+_PAGE_DEFAULT_INTENTS = {
+    "dashboard": "portfolio_overview",
+    "bond-dashboard": "portfolio_overview",
+    "balance-analysis": "portfolio_overview",
+    "pnl-attribution": "pnl_summary",
+    "product-category-pnl": "product_pnl",
+    "risk-tensor": "risk_tensor",
+    "bond-analytics": "duration_risk",
+    "market-data": "market_data",
+    "stock-analysis": "market_data",
+}
 
 
 class AnalysisViewTool:
@@ -60,6 +77,12 @@ class AnalysisViewTool:
         self._evidence = EvidenceTool()
 
     def execute(self, request: AgentQueryRequest) -> AgentEnvelope:
+        workflow = resolve_financial_workflow(request.question, request.context)
+        if workflow is not None:
+            if str(request.context.get("workflow_mode") or "").strip().lower() == "execute":
+                return self._execute_workflow_envelope(request, workflow)
+            return self._workflow_envelope(request, workflow)
+
         intent = self._resolve_intent(request)
         try:
             if intent == "cube_query":
@@ -81,12 +104,340 @@ class AnalysisViewTool:
         explicit_intent = str(request.context.get("intent") or "").strip().lower()
         if explicit_intent == "cube_query" or "cube_query" in request.context:
             return "cube_query"
+        if explicit_intent in self._intent_handlers:
+            return explicit_intent
 
         normalized = str(request.question or "").strip().lower()
         for intent, keywords in _INTENT_PATTERNS:
-            if any(keyword.lower() in normalized for keyword in keywords):
+            if intent in self._intent_handlers and any(keyword.lower() in normalized for keyword in keywords):
                 return intent
+        follow_up_intent = self._conversation_intent(request)
+        if follow_up_intent is not None:
+            return follow_up_intent
+        if self._is_page_context_question(normalized):
+            page_intent = self._page_default_intent(request)
+            if page_intent is not None:
+                return page_intent
         return "unknown"
+
+    def _conversation_intent(self, request: AgentQueryRequest) -> str | None:
+        conversation = request.context.get("conversation")
+        if not isinstance(conversation, dict):
+            return None
+        turns = conversation.get("recent_turns")
+        if not isinstance(turns, list):
+            return None
+        for turn in reversed(turns):
+            if not isinstance(turn, dict):
+                continue
+            for value in (turn.get("result_kind"), turn.get("trace_id"), turn.get("answer")):
+                intent = self._intent_from_text(value)
+                if intent is not None:
+                    return intent
+        return None
+
+    def _intent_from_text(self, value: Any) -> str | None:
+        text = str(value or "").strip().lower()
+        if not text:
+            return None
+        for intent in self._intent_handlers:
+            if f"agent.{intent}" in text:
+                return intent
+        return None
+
+    def _page_default_intent(self, request: AgentQueryRequest) -> str | None:
+        if request.page_context is None:
+            return None
+        page_id = request.page_context.page_id.strip().lower()
+        intent = _PAGE_DEFAULT_INTENTS.get(page_id)
+        if intent in self._intent_handlers:
+            return intent
+        return None
+
+    def _is_page_context_question(self, normalized_question: str) -> bool:
+        if not normalized_question:
+            return False
+        return any(
+            token in normalized_question
+            for token in (
+                "当前页",
+                "当前页面",
+                "这个页面",
+                "本页",
+                "页面",
+                "current page",
+                "this page",
+            )
+        )
+
+    def _workflow_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: FinancialWorkflow,
+    ) -> AgentEnvelope:
+        evidence = self._evidence.build_evidence(
+            tables_used=[],
+            filters_applied={},
+            row_count=0,
+            quality_flag="warning",
+        )
+        next_intent = workflow.mapped_intents[0] if workflow.mapped_intents else ""
+        result_meta = AgentResultMeta(
+            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
+            basis=request.basis,
+            result_kind=f"agent.workflow.{workflow.workflow_id}",
+            formal_use_allowed=False,
+            source_version="sv_anthropic_financial_workflow_reference",
+            vendor_version="vv_none",
+            rule_version="rv_agent_financial_workflow_catalog_v1",
+            cache_version=f"cv_agent_workflow_{workflow.workflow_id}_v1",
+            quality_flag="warning",
+            vendor_status="ok",
+            fallback_mode="none",
+            scenario_flag=request.basis == "scenario",
+            tables_used=evidence.tables_used,
+            filters_applied=evidence.filters_applied,
+            sql_executed=evidence.sql_executed,
+            evidence_rows=evidence.evidence_rows,
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="workflow_plan",
+                title="Workflow Plan",
+                data={
+                    "workflow_id": workflow.workflow_id,
+                    "title": workflow.title,
+                    "description": workflow.description,
+                    "category": workflow.category,
+                    "source": workflow.source,
+                    "output_kind": workflow.output_kind,
+                    "phase": "plan_only",
+                },
+            ),
+            AgentCard(
+                type="workflow_intents",
+                title="Mapped MOSS Intents",
+                data=[
+                    {"order": index, "intent": intent}
+                    for index, intent in enumerate(workflow.mapped_intents, start=1)
+                ],
+            ),
+            AgentCard(
+                type="governance_notes",
+                title="Governance Notes",
+                data=[{"note": note} for note in workflow.governance_notes],
+            ),
+        ]
+        suggested_actions = []
+        if next_intent:
+            suggested_actions.append(
+                AgentSuggestedAction(
+                    type="execute_intent",
+                    label=f"Execute first mapped intent: {next_intent}",
+                    payload={
+                        "intent": next_intent,
+                        "workflow_id": workflow.workflow_id,
+                    },
+                    requires_confirmation=True,
+                )
+            )
+
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=(
+                    f"Identified financial workflow '{workflow.title}' ({workflow.workflow_id}). "
+                    "This response is a workflow plan only, not a formal financial result. "
+                    "If executed, it will use governed MOSS intents: "
+                    f"{', '.join(workflow.mapped_intents)}."
+                ),
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=suggested_actions,
+            )
+        )
+
+    def _execute_workflow_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: FinancialWorkflow,
+    ) -> AgentEnvelope:
+        step_rows: list[dict[str, Any]] = []
+        detail_rows: list[dict[str, Any]] = []
+        tables_used: list[str] = []
+        filters_applied: dict[str, Any] = {}
+        evidence_rows = 0
+        failed_intents: list[str] = []
+
+        for index, intent in enumerate(workflow.mapped_intents, start=1):
+            handler = self._intent_handlers.get(intent)
+            if handler is None:
+                failed_intents.append(intent)
+                step_rows.append(
+                    self._workflow_step_row(
+                        order=index,
+                        intent=intent,
+                        status="missing",
+                        quality_flag="warning",
+                        evidence_rows=0,
+                    )
+                )
+                detail_rows.append(
+                    {
+                        "order": index,
+                        "intent": intent,
+                        "status": "missing",
+                        "message": "No registered MOSS intent handler.",
+                    }
+                )
+                continue
+
+            try:
+                envelope = self._payload_envelope(
+                    request=request,
+                    intent=intent,
+                    payload=handler(request),
+                )
+            except Exception as exc:
+                failed_intents.append(intent)
+                step_rows.append(
+                    self._workflow_step_row(
+                        order=index,
+                        intent=intent,
+                        status="error",
+                        quality_flag="warning",
+                        evidence_rows=0,
+                    )
+                )
+                detail_rows.append(
+                    {
+                        "order": index,
+                        "intent": intent,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+                continue
+
+            step_rows.append(
+                self._workflow_step_row(
+                    order=index,
+                    intent=intent,
+                    status="ok",
+                    quality_flag=envelope.result_meta.quality_flag,
+                    evidence_rows=envelope.evidence.evidence_rows,
+                )
+            )
+            detail_rows.append(
+                {
+                    "order": index,
+                    "intent": intent,
+                    "status": "ok",
+                    "answer": envelope.answer,
+                    "result_kind": envelope.result_meta.result_kind,
+                    "formal_use_allowed": envelope.result_meta.formal_use_allowed,
+                    "source_version": envelope.result_meta.source_version,
+                    "rule_version": envelope.result_meta.rule_version,
+                    "tables_used": envelope.evidence.tables_used,
+                    "evidence_rows": envelope.evidence.evidence_rows,
+                    "card_count": len(envelope.cards),
+                }
+            )
+            evidence_rows += envelope.evidence.evidence_rows
+            for table in envelope.evidence.tables_used:
+                if table not in tables_used:
+                    tables_used.append(table)
+            for key, value in envelope.evidence.filters_applied.items():
+                filters_applied[f"{intent}.{key}"] = value
+            if envelope.result_meta.quality_flag != "ok":
+                failed_intents.append(intent)
+
+        quality_flag = "warning" if failed_intents else "ok"
+        evidence = self._evidence.build_evidence(
+            tables_used=tables_used,
+            filters_applied=filters_applied,
+            row_count=evidence_rows,
+            quality_flag=quality_flag,
+        )
+        result_meta = AgentResultMeta(
+            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
+            basis=request.basis,
+            result_kind=f"agent.workflow.{workflow.workflow_id}",
+            formal_use_allowed=False,
+            source_version="sv_anthropic_financial_workflow_reference",
+            vendor_version="vv_none",
+            rule_version="rv_agent_financial_workflow_catalog_v1",
+            cache_version=f"cv_agent_workflow_{workflow.workflow_id}_v1",
+            quality_flag=quality_flag,
+            vendor_status="ok",
+            fallback_mode="none",
+            scenario_flag=request.basis == "scenario",
+            tables_used=evidence.tables_used,
+            filters_applied=evidence.filters_applied,
+            sql_executed=evidence.sql_executed,
+            evidence_rows=evidence.evidence_rows,
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="workflow_execution",
+                title="Workflow Execution Steps",
+                data=step_rows,
+            ),
+            AgentCard(
+                type="workflow_results",
+                title="Mapped Intent Results",
+                data=detail_rows,
+            ),
+            AgentCard(
+                type="governance_notes",
+                title="Governance Notes",
+                data=[{"note": note} for note in workflow.governance_notes],
+            ),
+        ]
+
+        if failed_intents:
+            answer = (
+                f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) with warnings. "
+                f"Failed or degraded intents: {', '.join(failed_intents)}. "
+                "The workflow summary is not a formal financial result."
+            )
+        else:
+            answer = (
+                f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) using governed MOSS intents: "
+                f"{', '.join(workflow.mapped_intents)}. "
+                "The workflow summary is not a formal financial result."
+            )
+
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=answer,
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=[],
+            )
+        )
+
+    def _workflow_step_row(
+        self,
+        *,
+        order: int,
+        intent: str,
+        status: str,
+        quality_flag: str,
+        evidence_rows: int,
+    ) -> dict[str, Any]:
+        return {
+            "order": order,
+            "intent": intent,
+            "status": status,
+            "quality_flag": quality_flag,
+            "evidence_rows": evidence_rows,
+        }
 
     def _cube_query(self, request: AgentQueryRequest) -> AgentEnvelope:
         payload = dict(request.context.get("cube_query") or {})
@@ -106,6 +457,10 @@ class AnalysisViewTool:
             AgentDrill(dimension=path.dimension, label=path.label)
             for path in cube_response.drill_paths
         ]
+        suggested_actions = self._suggested_actions_from_drills(
+            next_drill,
+            page_context=request.page_context,
+        )
         evidence = self._evidence.build_evidence(
             tables_used=[table_name],
             filters_applied=filters_applied,
@@ -141,6 +496,7 @@ class AnalysisViewTool:
                 evidence=evidence,
                 result_meta=result_meta,
                 next_drill=next_drill,
+                suggested_actions=suggested_actions,
             )
         )
 
@@ -153,6 +509,11 @@ class AnalysisViewTool:
     ) -> AgentEnvelope:
         cards = self._normalize_cards(payload.get("cards", []))
         next_drill = self._normalize_drills(payload.get("next_drill", []))
+        suggested_actions = self._normalize_suggested_actions(
+            payload.get("suggested_actions", []),
+            fallback_drills=next_drill,
+            page_context=request.page_context,
+        )
         evidence = self._evidence.build_evidence(
             tables_used=list(payload.get("tables_used", [])),
             filters_applied=dict(payload.get("filters_applied", {})),
@@ -180,11 +541,18 @@ class AnalysisViewTool:
         )
         return AgentEnvelope(
             **self._finalize_envelope(
-                answer=str(payload.get("answer") or ""),
+                answer=self._business_answer(
+                    conclusion=str(payload.get("answer") or ""),
+                    cards=cards,
+                    evidence=evidence,
+                    result_meta=result_meta,
+                    next_drill=next_drill,
+                ),
                 cards=cards,
                 evidence=evidence,
                 result_meta=result_meta,
                 next_drill=next_drill,
+                suggested_actions=suggested_actions,
             )
         )
 
@@ -239,7 +607,7 @@ class AnalysisViewTool:
             tables_used=[],
             filters_applied={key: value for key, value in request.filters.items() if value not in (None, "")},
             row_count=0,
-            quality_flag="warning",
+            quality_flag="error",
         )
         result_meta = AgentResultMeta(
             trace_id=self._trace_id(f"agent.{intent}"),
@@ -250,7 +618,7 @@ class AnalysisViewTool:
             vendor_version="vv_none",
             rule_version="rv_agent_mvp_v1",
             cache_version=f"cv_agent_{intent}_v1",
-            quality_flag="warning",
+            quality_flag="error",
             scenario_flag=False,
             tables_used=[],
             filters_applied=evidence.filters_applied,
@@ -280,6 +648,135 @@ class AnalysisViewTool:
             for drill in drills
         ]
 
+    def _normalize_suggested_actions(
+        self,
+        actions: list[Any],
+        *,
+        fallback_drills: list[AgentDrill] | None = None,
+        page_context: Any | None = None,
+    ) -> list[AgentSuggestedAction]:
+        if actions:
+            return [
+                action
+                if isinstance(action, AgentSuggestedAction)
+                else AgentSuggestedAction.model_validate(action)
+                for action in actions
+            ]
+        return self._suggested_actions_from_drills(
+            fallback_drills or [],
+            page_context=page_context,
+        )
+
+    def _suggested_actions_from_drills(
+        self,
+        drills: list[AgentDrill],
+        *,
+        page_context: Any | None = None,
+    ) -> list[AgentSuggestedAction]:
+        page_context_payload = self._page_context_payload(page_context)
+        row_summary = self._selected_row_summary(page_context_payload)
+        return [
+            AgentSuggestedAction(
+                type="inspect_drill",
+                label=self._page_aware_drill_label(drill.label, row_summary),
+                payload=self._drill_action_payload(drill.dimension, page_context_payload),
+                requires_confirmation=True,
+            )
+            for drill in drills
+        ]
+
+    def _page_context_payload(self, page_context: Any | None) -> dict[str, Any] | None:
+        if page_context is None:
+            return None
+        if hasattr(page_context, "model_dump"):
+            payload = page_context.model_dump(mode="python")
+        else:
+            payload = dict(page_context)
+        return payload or None
+
+    def _drill_action_payload(
+        self,
+        dimension: str,
+        page_context_payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"dimension": dimension}
+        if page_context_payload is not None:
+            payload["page_context"] = page_context_payload
+        return payload
+
+    def _selected_row_summary(self, page_context_payload: dict[str, Any] | None) -> str:
+        if not page_context_payload:
+            return ""
+        selected_rows = page_context_payload.get("selected_rows") or []
+        if not selected_rows or not isinstance(selected_rows[0], dict):
+            return ""
+        first_row = selected_rows[0]
+        parts = [
+            f"{key}={first_row[key]}"
+            for key in ("book_id", "instrument_id", "recon_type", "status")
+            if first_row.get(key) not in (None, "")
+        ]
+        return ", ".join(parts)
+
+    def _page_aware_drill_label(self, label: str, row_summary: str) -> str:
+        if not row_summary:
+            return label
+        return f"{label} for {row_summary}"
+
+    def _business_answer(
+        self,
+        *,
+        conclusion: str,
+        cards: list[AgentCard],
+        evidence,
+        result_meta,
+        next_drill: list[AgentDrill],
+    ) -> str:
+        if conclusion.startswith("结论："):
+            return conclusion
+
+        key_numbers = self._key_numbers(cards)
+        evidence_text = self._evidence_text(evidence)
+        boundary_text = self._boundary_text(result_meta)
+        next_step_text = self._next_step_text(next_drill)
+        return "\n".join(
+            [
+                f"结论：{conclusion or '本次查询未形成明确结论。'}",
+                f"关键数字：{key_numbers}",
+                f"证据：{evidence_text}",
+                f"口径边界：{boundary_text}",
+                f"下一步：{next_step_text}",
+            ]
+        )
+
+    def _key_numbers(self, cards: list[AgentCard]) -> str:
+        metric_parts = [
+            f"{card.title}={card.value}"
+            for card in cards
+            if card.value not in (None, "")
+        ]
+        return "；".join(metric_parts[:6]) if metric_parts else "本次未返回可直接展示的关键数字。"
+
+    def _evidence_text(self, evidence) -> str:
+        tables = "、".join(evidence.tables_used) if evidence.tables_used else "未返回来源表"
+        return f"{tables}；证据行数={evidence.evidence_rows}；质量标识={evidence.quality_flag}。"
+
+    def _boundary_text(self, result_meta) -> str:
+        filters = getattr(result_meta, "filters_applied", {}) or {}
+        filter_parts = [
+            f"{key}={value}"
+            for key, value in filters.items()
+            if value not in (None, "", [])
+        ]
+        filter_text = "；".join(filter_parts) if filter_parts else "未返回筛选条件"
+        formal_text = "可正式使用" if result_meta.formal_use_allowed else "非正式使用"
+        return f"basis={result_meta.basis}；{formal_text}；result_kind={result_meta.result_kind}；{filter_text}。"
+
+    def _next_step_text(self, next_drill: list[AgentDrill]) -> str:
+        if not next_drill:
+            return "暂无系统建议下钻；可继续追问证据、口径或异常项。"
+        return "；".join(drill.label for drill in next_drill)
+
     def _trace_id(self, result_kind: str) -> str:
         suffix = result_kind.replace(".", "_")
         return f"tr_{suffix}_{uuid4().hex[:12]}"
@@ -292,6 +789,7 @@ class AnalysisViewTool:
         evidence,
         result_meta,
         next_drill: list[AgentDrill],
+        suggested_actions: list[AgentSuggestedAction] | None = None,
     ) -> dict[str, Any]:
         return {
             "answer": answer,
@@ -299,4 +797,7 @@ class AnalysisViewTool:
             "evidence": evidence.model_dump(mode="python"),
             "result_meta": result_meta.model_dump(mode="python"),
             "next_drill": [drill.model_dump(mode="python") for drill in next_drill],
+            "suggested_actions": [
+                action.model_dump(mode="python") for action in (suggested_actions or [])
+            ],
         }

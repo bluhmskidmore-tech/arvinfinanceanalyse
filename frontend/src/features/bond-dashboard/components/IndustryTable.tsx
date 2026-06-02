@@ -2,7 +2,7 @@ import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { IndustryDistItem, IndustryDistPayload, Numeric } from "../../../api/contracts";
-import { formatYi, nativeToNumber } from "../utils/format";
+import { formatRatePercent, formatYi } from "../utils/format";
 
 export function IndustryTable({
   data,
@@ -25,7 +25,7 @@ export function IndustryTable({
       dataIndex: "percentage",
       key: "pct",
       align: "right",
-      render: (v: Numeric | null) => nativeToNumber(v).toFixed(2),
+      render: (v: Numeric | null) => formatRatePercent(v),
     },
   ];
 
@@ -44,6 +44,7 @@ export function IndustryTable({
         rowKey={(r) => r.industry_name}
         columns={columns}
         dataSource={data?.items ?? []}
+        scroll={{ x: "max-content" }}
       />
     </Card>
   );

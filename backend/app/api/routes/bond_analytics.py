@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
     BondAnalyticsRefreshServiceError,
@@ -20,6 +22,10 @@ from backend.app.services.bond_analytics_service import (
     get_portfolio_headlines,
     get_return_decomposition,
     get_top_holdings,
+)
+from backend.app.services.yield_curve_term_structure_service import (
+    get_yield_curve_term_structure,
+    parse_curve_types_param,
 )
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
@@ -65,6 +71,18 @@ def credit_spread_migration(
     return get_credit_spread_migration(report_date, spread_scenarios)
 
 
+@router.get("/yield-curve-term-structure")
+def yield_curve_term_structure(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    curve_types: str = Query("treasury,cdb", description="Comma-separated: treasury, cdb, aaa_credit"),
+):
+    try:
+        types_tuple = parse_curve_types_param(curve_types)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return get_yield_curve_term_structure(report_date=report_date, curve_types=types_tuple)
+
+
 @router.get("/portfolio-headlines")
 def portfolio_headlines(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -96,8 +114,17 @@ def accounting_class_audit(
 
 
 @router.post("/refresh")
-def refresh(report_date: str = Query(...)):
+def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+):
     settings = get_settings()
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="bond_analytics", action="refresh")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
         return refresh_bond_analytics(settings, report_date=report_date)
     except BondAnalyticsRefreshConflictError as exc:

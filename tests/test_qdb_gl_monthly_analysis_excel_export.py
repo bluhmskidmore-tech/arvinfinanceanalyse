@@ -38,6 +38,7 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
     workbook = load_workbook(BytesIO(response.content))
     assert workbook.sheetnames == [
         "经营概览",
+        "财务指标落地状态",
         "3位科目总览",
         "资产结构",
         "负债结构",
@@ -48,11 +49,44 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
         "11位偏离TOP",
         "异动预警",
         "外币分析",
+        "分部基础规模",
+        "公司规模",
+        "零售规模",
+        "金融市场规模",
+        "收益率分析（总账可复算）",
+        "存款利息拆分",
+        "母公司营收分项",
     ]
 
     overview = workbook["经营概览"]
     assert overview["A1"].value == "指标"
     assert overview["B1"].value == "值"
     assert overview["A2"].value == "总资产(亿)"
+
+    get_settings.cache_clear()
+
+
+def test_export_includes_segment_scale_compare_sheet_when_history_exists(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601")
+    _write_month_pair(source_dir, "202602")
+
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/qdb-gl-monthly-analysis/workbook/export",
+        params={"report_month": "202602"},
+    )
+
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.content))
+    assert "分部规模同比环比" in workbook.sheetnames
+    assert "公司规模同比环比" in workbook.sheetnames
+    assert "零售规模同比环比" in workbook.sheetnames
+    assert "金融市场规模同比环比" in workbook.sheetnames
+    assert "收益率分析（总账可复算）" in workbook.sheetnames
 
     get_settings.cache_clear()

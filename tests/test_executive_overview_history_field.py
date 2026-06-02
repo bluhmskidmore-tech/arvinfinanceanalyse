@@ -145,7 +145,7 @@ def test_executive_overview_metrics_include_history_json_field(exec_mod, monkeyp
                 "asset_yield": 2.45,
                 "liability_cost": 2.07,
                 "market_liability_cost": 2.07,
-                "nim": 0.38 if report_date == "2030-03-15" else 0.33,
+                "nim": 0.0038 if report_date == "2030-03-15" else 0.0033,
             },
         },
     )

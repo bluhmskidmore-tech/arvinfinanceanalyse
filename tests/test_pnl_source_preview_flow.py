@@ -129,57 +129,10 @@ def test_materialize_preview_supports_pnl_and_nonstd_rows_and_traces(tmp_path, m
     )
 
     for response in (fi_rows, fi_traces, nonstd_rows, nonstd_traces):
-        assert response.status_code == 200
-        assert response.json()["result_meta"]["formal_use_allowed"] is False
-        assert response.json()["result_meta"]["basis"] == "analytical"
-
-    fi_first_row = fi_rows.json()["result"]["rows"][0]
-    assert set(fi_first_row) >= {
-        "ingest_batch_id",
-        "row_locator",
-        "report_date",
-        "instrument_code",
-        "invest_type_raw",
-        "portfolio_name",
-        "cost_center",
-        "currency",
-        "manual_review_needed",
-    }
-
-    nonstd_first_row = nonstd_rows.json()["result"]["rows"][0]
-    assert set(nonstd_first_row) >= {
-        "ingest_batch_id",
-        "row_locator",
-        "report_date",
-        "journal_type",
-        "product_type",
-        "asset_code",
-        "account_code",
-        "dc_flag_raw",
-        "raw_amount",
-        "manual_review_needed",
-    }
-
-    fi_first_trace = fi_traces.json()["result"]["rows"][0]
-    nonstd_first_trace = nonstd_traces.json()["result"]["rows"][0]
-    assert set(fi_first_trace) >= {
-        "ingest_batch_id",
-        "row_locator",
-        "trace_step",
-        "field_name",
-        "field_value",
-        "derived_label",
-        "manual_review_needed",
-    }
-    assert set(nonstd_first_trace) >= {
-        "ingest_batch_id",
-        "row_locator",
-        "trace_step",
-        "field_name",
-        "field_value",
-        "derived_label",
-        "manual_review_needed",
-    }
+        assert response.status_code == 503
+        body = response.json()
+        assert "result_meta" not in body
+        assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
 
 
@@ -228,16 +181,10 @@ def test_mixed_family_materialize_does_not_pollute_tyw_trace_contract(tmp_path, 
         f"/ui/preview/source-foundation/tyw/traces?ingest_batch_id={ingest_payload['ingest_batch_id']}&limit=20&offset=0"
     )
 
-    assert tyw_traces.status_code == 200
-    preview_module = load_module(
-        "backend.app.services.source_preview_service",
-        "backend/app/services/source_preview_service.py",
-    )
-    trace_rows = tyw_traces.json()["result"]["rows"]
-    assert trace_rows
-    field_names = {row["field_name"] for row in trace_rows}
-    assert field_names <= preview_module.TYW_TRACE_FIELDS
-    assert preview_module.TYW_PRODUCT_TYPE in field_names
+    assert tyw_traces.status_code == 503
+    body = tyw_traces.json()
+    assert "result_meta" not in body
+    assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
 
 

@@ -32,6 +32,23 @@ from backend.app.core_finance.balance_workbook._bond_tables import (
     _build_issuance_business_type_table,
 )
 
+_INTEREST_RATE_BOND_DEFAULT_RATING = "AAA"
+_UNMAPPED_DIMENSION = "未映射"
+_INTEREST_RATE_BOND_KEYWORDS = (
+    "央行票据",
+    "央票",
+    "记账式国债",
+    "凭证式国债",
+    "国债",
+    "地方政府债",
+    "地方债",
+    "地方政府债券",
+    "政策性金融债",
+    "政策性银行债",
+    "政金债",
+)
+_INTEREST_RATE_BOND_EXCLUDE_KEYWORDS = ("外国债", "外债")
+
 
 def _build_currency_split_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
@@ -78,7 +95,7 @@ def _build_currency_split_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> di
 def _build_rating_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     total_balance = _sum_decimal(asset_rows, lambda row: row.face_value_amount)
-    grouped = _group_rows(asset_rows, lambda row: row.rating or "无评级(利率债等)")
+    grouped = _group_rows(asset_rows, _rating_bucket_label)
     rows = []
     for rating, entries in sorted(grouped.items()):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
@@ -105,6 +122,28 @@ def _build_rating_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, 
         ],
         rows,
     )
+
+
+def _rating_bucket_label(row: FormalZqtzBalanceFactRow) -> str:
+    rating = str(row.rating or "").strip()
+    if rating:
+        return rating
+    return _INTEREST_RATE_BOND_DEFAULT_RATING if _is_interest_rate_bond(row) else _UNMAPPED_DIMENSION
+
+
+def _is_interest_rate_bond(row: FormalZqtzBalanceFactRow) -> bool:
+    descriptors = (
+        row.bond_type,
+        row.business_type_primary,
+        row.sub_type,
+        row.instrument_name,
+        row.asset_class,
+        row.account_category,
+    )
+    descriptor_text = " ".join(str(value or "").strip() for value in descriptors)
+    if any(keyword in descriptor_text for keyword in _INTEREST_RATE_BOND_EXCLUDE_KEYWORDS):
+        return False
+    return any(keyword in descriptor_text for keyword in _INTEREST_RATE_BOND_KEYWORDS)
 
 
 def _build_rate_distribution_table(
@@ -149,9 +188,12 @@ def _build_rate_distribution_table(
 def _build_industry_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     total_balance = _sum_decimal(asset_rows, lambda row: row.face_value_amount)
-    grouped = _group_rows(asset_rows, lambda row: row.industry_name or "未分类")
+    grouped = _group_rows(asset_rows, lambda row: row.industry_name or _UNMAPPED_DIMENSION)
     rows = []
-    for industry_name, entries in sorted(grouped.items()):
+    for industry_name, entries in sorted(
+        grouped.items(),
+        key=lambda item: (-_sum_decimal(item[1], lambda row: row.face_value_amount), item[0]),
+    ):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
         rows.append(
             {
@@ -317,15 +359,16 @@ def _build_decision_items_table(
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
-    gap_rows = [row for row in maturity_gap["rows"] if _decimal_value(row.get("gap_amount")) != _ZERO]
+    gap_rows = [row for row in maturity_gap["rows"] if _maturity_full_scope_gap_value(row) != _ZERO]
     if gap_rows:
-        largest_gap = max(gap_rows, key=lambda row: abs(_decimal_value(row.get("gap_amount"))))
+        largest_gap = max(gap_rows, key=lambda row: abs(_maturity_full_scope_gap_value(row)))
+        largest_gap_value = _maturity_full_scope_gap_value(largest_gap)
         rows.append(
             {
-                "title": f"Review {largest_gap['bucket']} gap positioning",
-                "action_label": "Review gap",
-                "severity": _severity_from_gap(_decimal_value(largest_gap.get("gap_amount"))),
-                "reason": f"Bucket gap is {largest_gap['gap_amount']} wan yuan.",
+                "title": f"复核{largest_gap['bucket']}期限缺口配置",
+                "action_label": "复核缺口",
+                "severity": _severity_from_gap(largest_gap_value),
+                "reason": f"全口径期限桶缺口为 {largest_gap_value} 万元。",
                 "source_section": "maturity_gap",
                 "rule_id": "bal_wb_decision_gap_001",
                 "rule_version": "v1",
@@ -339,10 +382,10 @@ def _build_decision_items_table(
         if top_share >= Decimal("0.60"):
             rows.append(
                 {
-                    "title": f"Check concentration in {top_rating['rating']}",
-                    "action_label": "Review concentration",
+                    "title": f"关注 {top_rating['rating']} 评级集中度",
+                    "action_label": "复核集中度",
                     "severity": "medium" if top_share < Decimal("0.75") else "high",
-                    "reason": f"Top rating bucket share reached {top_share:.4f}.",
+                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'))}%。",
                     "source_section": "rating_analysis",
                     "rule_id": "bal_wb_decision_rating_001",
                     "rule_version": "v1",
@@ -357,10 +400,10 @@ def _build_decision_items_table(
         )
         rows.append(
             {
-                "title": f"Monitor issuance book: {leading_issue['bond_type']}",
-                "action_label": "Review issuance",
+                "title": f"关注发行类：{leading_issue['bond_type']}",
+                "action_label": "复核发行类",
                 "severity": "medium",
-                "reason": f"Issuance bucket balance is {leading_issue['balance_amount']} wan yuan.",
+                "reason": f"发行类桶余额为 {leading_issue['balance_amount']} 万元。",
                 "source_section": "issuance_business_types",
                 "rule_id": "bal_wb_decision_issuance_001",
                 "rule_version": "v1",
@@ -372,16 +415,20 @@ def _build_decision_items_table(
         "决策事项",
         "decision_items",
         [
-            ("title", "Title"),
-            ("action_label", "Action"),
-            ("severity", "Severity"),
-            ("reason", "Reason"),
-            ("source_section", "Source Section"),
-            ("rule_id", "Rule Id"),
-            ("rule_version", "Rule Version"),
+            ("title", "标题"),
+            ("action_label", "动作"),
+            ("severity", "等级"),
+            ("reason", "原因"),
+            ("source_section", "来源区块"),
+            ("rule_id", "规则编号"),
+            ("rule_version", "规则版本"),
         ],
         rows,
     )
+
+
+def _maturity_full_scope_gap_value(row: dict[str, Any]) -> Decimal:
+    return _decimal_value(row.get("full_scope_gap_amount", row.get("gap_amount")))
 
 
 def _build_event_calendar_table(

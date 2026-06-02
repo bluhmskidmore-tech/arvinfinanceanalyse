@@ -44,6 +44,7 @@ export function SpreadTable({
         rowKey={(r) => r.bond_type}
         columns={columns}
         dataSource={data?.items ?? []}
+        scroll={{ x: "max-content" }}
       />
     </Card>
   );

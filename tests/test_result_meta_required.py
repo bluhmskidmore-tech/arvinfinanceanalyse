@@ -20,6 +20,7 @@ def test_result_meta_schema_defines_governance_fields():
         "quality_flag",
         "vendor_status",
         "fallback_mode",
+        "as_of_date",
         "formal_use_allowed",
         "generated_at",
     } <= fields
@@ -46,3 +47,21 @@ def test_result_meta_accepts_stale_quality_flag_for_degraded_analytical_reads():
     assert payload.quality_flag == "stale"
     assert payload.vendor_status == "ok"
     assert payload.fallback_mode == "none"
+
+
+def test_result_meta_keeps_as_of_date_empty_when_not_explicitly_provided():
+    module = load_module("backend.app.schemas.result_meta", "backend/app/schemas/result_meta.py")
+
+    payload = module.ResultMeta(
+        trace_id="tr_meta_generated_at",
+        basis="formal",
+        result_kind="pnl.data",
+        formal_use_allowed=True,
+        source_version="sv_result_meta",
+        vendor_version="vv_none",
+        rule_version="rv_result_meta",
+        cache_version="cv_result_meta",
+        generated_at="2026-05-10T09:30:00Z",
+    )
+
+    assert payload.as_of_date is None
