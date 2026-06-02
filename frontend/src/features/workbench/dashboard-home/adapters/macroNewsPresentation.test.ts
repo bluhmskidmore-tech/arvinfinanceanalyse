@@ -4,6 +4,7 @@ import type { ChoiceNewsEvent } from "../../../../api/contracts";
 import {
   isDisplayableMacroNewsText,
   isMacroRelevantForHomeBriefing,
+  isPolicyFundingRelevantForHomeBriefing,
   shouldIncludeMacroNewsEvent,
   stripHtmlTags,
   summarizeMacroNewsEvent,
@@ -70,6 +71,22 @@ describe("macroNewsPresentation", () => {
         { requireMacroRelevance: true },
       ),
     ).toBe(true);
+  });
+
+  it("keeps only policy and funding news when requested", () => {
+    expect(isPolicyFundingRelevantForHomeBriefing("央行公开市场净投放保持平稳")).toBe(true);
+    expect(isPolicyFundingRelevantForHomeBriefing("国际油价直线拉升")).toBe(false);
+    expect(
+      shouldIncludeMacroNewsEvent(
+        event({
+          event_key: "stock-1",
+          received_at: "2026-06-01T08:19:56+00:00",
+          topic_code: "S888005004API",
+          payload_text: "标普500股指期货上涨0.3%",
+        }),
+        { requireMacroRelevance: false, requirePolicyFundingRelevance: true },
+      ),
+    ).toBe(false);
   });
 
   it("rejects text that still contains html markup", () => {

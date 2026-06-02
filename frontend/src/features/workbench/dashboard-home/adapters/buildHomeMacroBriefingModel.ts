@@ -78,6 +78,7 @@ const NEWS_STALE_DAYS = 7;
 const MACRO_NEWS_CHOICE_SOURCE_LABEL = "来源：Choice 宏观新闻";
 const MACRO_NEWS_FALLBACK_SOURCE_LABEL = "来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）";
 const MACRO_NEWS_REFRESH_LABEL = "刷新：随页面查询自动更新";
+const POLICY_FUNDING_EMPTY_MESSAGE = "政策与资金面：暂无债券相关更新";
 const macroReleaseCalendar = macroReleaseCalendarRaw as readonly MacroReleaseCalendarRow[];
 
 function importanceLabel(importance: string): string {
@@ -166,11 +167,15 @@ function buildNewsItemsFromEvents(input: {
   statusWhenStale: string;
   statusWhenEmpty: string;
   requireMacroRelevance?: boolean;
+  requirePolicyFundingRelevance?: boolean;
 }): MacroNewsItemsResult {
   const seenTitles = new Set<string>();
   const sortedEvents = (input.events ?? [])
     .filter((event) =>
-      shouldIncludeMacroNewsEvent(event, { requireMacroRelevance: Boolean(input.requireMacroRelevance) }),
+      shouldIncludeMacroNewsEvent(event, {
+        requireMacroRelevance: Boolean(input.requireMacroRelevance),
+        requirePolicyFundingRelevance: Boolean(input.requirePolicyFundingRelevance),
+      }),
     )
     .slice()
     .sort((left, right) => right.received_at.localeCompare(left.received_at));
@@ -231,7 +236,7 @@ export function resolveHomeMacroNewsBriefing(input: {
   if (input.isError) {
     return {
       newsItems: [],
-      newsMessage: "宏观新闻加载失败，请稍后刷新。",
+      newsMessage: "政策与资金面加载失败，请稍后刷新。",
       newsStale: false,
       newsFreshnessLabel: "新闻源异常",
       newsSourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
@@ -243,7 +248,7 @@ export function resolveHomeMacroNewsBriefing(input: {
   if (input.isLoading && !input.choiceEvents?.length && !input.fallbackEvents?.length) {
     return {
       newsItems: [],
-      newsMessage: "正在加载国内外宏观新闻…",
+      newsMessage: "正在加载政策与资金面…",
       newsStale: false,
       newsFreshnessLabel: "加载中",
       newsSourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
@@ -258,10 +263,11 @@ export function resolveHomeMacroNewsBriefing(input: {
     todayIsoDate: input.todayIsoDate,
     topicLabel: dashboardMacroNewsTopicLabel,
     sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
-    emptyMessage: "暂无可展示的宏观新闻。",
+    emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
     statusWhenFresh: "来源状态：正常",
     statusWhenStale: "来源状态：偏旧",
     statusWhenEmpty: "来源状态：暂无数据",
+    requirePolicyFundingRelevance: true,
   });
 
   if (!shouldUseMacroNewsFallback(choiceNews)) {
@@ -273,11 +279,11 @@ export function resolveHomeMacroNewsBriefing(input: {
     todayIsoDate: input.todayIsoDate,
     topicLabel: dashboardMacroNewsFallbackTopicLabel,
     sourceLabel: MACRO_NEWS_FALLBACK_SOURCE_LABEL,
-    emptyMessage: "暂无可展示的宏观新闻。",
+    emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
     statusWhenFresh: "来源状态：Tushare 兜底",
     statusWhenStale: "来源状态：偏旧",
     statusWhenEmpty: "来源状态：暂无数据",
-    requireMacroRelevance: true,
+    requirePolicyFundingRelevance: true,
   });
 
   if (fallbackNews.newsItems.length > 0) {

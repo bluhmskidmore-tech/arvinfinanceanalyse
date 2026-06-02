@@ -86,7 +86,7 @@ describe("resolveHomeMacroNewsBriefing", () => {
     expect(result.newsAsOfLabel).toBe("数据截至 06-01 08:19");
   });
 
-  it("drops non-macro tushare fallback items such as pet hospital stories", () => {
+  it("drops non-policy tushare fallback items such as pet hospital stories", () => {
     const result = resolveHomeMacroNewsBriefing({
       todayIsoDate: "2026-06-01",
       isLoading: false,
@@ -112,14 +112,14 @@ describe("resolveHomeMacroNewsBriefing", () => {
           event_key: "macro-story",
           received_at: "2026-06-01T08:19:56+00:00",
           topic_code: "tushare.news.sina",
-          payload_text: "标普500股指期货上涨0.3%",
+          payload_text: "央行开展 MLF 续作，资金面平稳",
           group_id: "tushare_news",
         }),
       ],
     });
 
     expect(result.newsItems).toHaveLength(1);
-    expect(result.newsItems[0]?.title).toBe("标普500股指期货上涨0.3%");
+    expect(result.newsItems[0]?.title).toBe("央行开展 MLF 续作，资金面平稳");
   });
 
   it("keeps fresh Choice news when it is within the stale window", () => {
@@ -132,7 +132,7 @@ describe("resolveHomeMacroNewsBriefing", () => {
           event_key: "choice-1",
           received_at: "2026-05-30T09:00:00+08:00",
           topic_code: "S888005004API",
-          payload_text: "最新 Choice 国际资讯",
+          payload_text: "央行公开市场净投放保持平稳",
         }),
       ],
       fallbackEvents: [
@@ -146,7 +146,7 @@ describe("resolveHomeMacroNewsBriefing", () => {
       ],
     });
 
-    expect(result.newsItems[0]?.title).toBe("最新 Choice 国际资讯");
+    expect(result.newsItems[0]?.title).toBe("央行公开市场净投放保持平稳");
     expect(result.newsSourceLabel).toBe("来源：Choice 宏观新闻");
     expect(result.newsStatusLabel).toBe("来源状态：正常");
   });

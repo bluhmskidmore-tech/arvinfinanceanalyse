@@ -143,7 +143,7 @@ describe("mapToHomeView", () => {
           error_msg: "",
           topic_code: "S888005004API",
           item_index: 0,
-          payload_text: "国际油价直线拉升",
+          payload_text: "央行开展逆回购操作，DR007 小幅下行",
           payload_json: null,
         },
         {
@@ -157,7 +157,7 @@ describe("mapToHomeView", () => {
           error_msg: "",
           topic_code: "S888005004API",
           item_index: 1,
-          payload_text: "国际油价直线拉升",
+          payload_text: "央行开展逆回购操作，DR007 小幅下行",
           payload_json: null,
         },
       ],
@@ -171,7 +171,7 @@ describe("mapToHomeView", () => {
     expect(view.macroBriefing.releaseItems[0]?.importanceLabel).toBe("高优先级");
     expect(view.macroBriefing.releaseWindowLabel).toBe("未来 45 天 · 6 项");
     expect(view.macroBriefing.newsItems).toHaveLength(1);
-    expect(view.macroBriefing.newsItems[0]?.title).toBe("国际油价直线拉升");
+    expect(view.macroBriefing.newsItems[0]?.title).toBe("央行开展逆回购操作，DR007 小幅下行");
     expect(view.macroBriefing.newsStale).toBe(true);
     expect(view.macroBriefing.newsSourceLabel).toBe("来源：Choice 宏观新闻");
     expect(view.macroBriefing.newsAsOfLabel).toBe("数据截至 05-20 09:00");

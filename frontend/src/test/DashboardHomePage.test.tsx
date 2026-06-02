@@ -91,7 +91,7 @@ function createTerminalStateView(overrides: Partial<DashboardHomeView> = {}): Da
       releaseWindowLabel: "未来 45 天",
       releaseMessage: "暂无已维护发布日期，请补充配置清单。",
       newsItems: [],
-      newsMessage: "暂无可展示的宏观新闻。",
+      newsMessage: "政策与资金面：暂无债券相关更新",
       newsStale: false,
       newsFreshnessLabel: "暂无更新",
       newsSourceLabel: "来源：Choice 宏观新闻",
@@ -668,7 +668,7 @@ describe("DashboardHomePage", () => {
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
       expect(calendar).toHaveTextContent("重大信息发布日期前瞻");
-      expect(calendar).toHaveTextContent("国内外宏观新闻");
+      expect(calendar).toHaveTextContent("政策与资金面");
       expect(calendar).toHaveTextContent("来源：Choice 宏观新闻");
       expect(calendar).toHaveTextContent("数据截至");
       expect(calendar).toHaveTextContent("来源状态");

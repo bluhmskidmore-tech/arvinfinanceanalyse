@@ -61,10 +61,10 @@ export function ResearchCalendarSection({ macroBriefing }: ResearchCalendarSecti
 
           <div className={styles.dhMacroBriefingPane}>
             <div className={styles.dhMacroBriefingHeader}>
-              <span>国内外宏观新闻</span>
+              <span>政策与资金面</span>
               <small>{macroBriefing.newsFreshnessLabel}</small>
             </div>
-            <div className={styles.dhMacroTrustStrip} aria-label="宏观新闻数据状态">
+            <div className={styles.dhMacroTrustStrip} aria-label="政策与资金面数据状态">
               <span>{macroBriefing.newsSourceLabel}</span>
               <span>{macroBriefing.newsAsOfLabel}</span>
               <span>{macroBriefing.newsStatusLabel}</span>

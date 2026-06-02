@@ -30,8 +30,8 @@ describe("ResearchCalendarSection", () => {
             {
               id: "news-1",
               timeLabel: "04-21 15:06",
-              topicLabel: "国际资讯",
-              title: "国际油价直线拉升",
+              topicLabel: "货币市场",
+              title: "央行开展逆回购操作，DR007 小幅下行",
               freshnessLabel: "最近更新 04-21 15:06",
             },
           ],
@@ -50,7 +50,7 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByTestId("dashboard-home-research-calendar")).toBeInTheDocument();
     expect(screen.getByText("重大信息发布日期前瞻")).toBeInTheDocument();
     expect(screen.getByText("未来 45 天 · 1 项")).toBeInTheDocument();
-    expect(screen.getByText("国内外宏观新闻")).toBeInTheDocument();
+    expect(screen.getByText("政策与资金面")).toBeInTheDocument();
     expect(screen.getByText("来源：Choice 宏观新闻")).toBeInTheDocument();
     expect(screen.getByText("数据截至 04-21 15:06")).toBeInTheDocument();
     expect(screen.getByText("来源状态：正常")).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("ISM 制造业 PMI")).toBeInTheDocument();
     expect(screen.getByText("明日")).toBeInTheDocument();
     expect(screen.getByText("高优先级")).toBeInTheDocument();
-    expect(screen.getByText("国际油价直线拉升")).toBeInTheDocument();
+    expect(screen.getByText("央行开展逆回购操作，DR007 小幅下行")).toBeInTheDocument();
     expect(screen.getByText("供给/招标：当前窗口无事件")).toBeInTheDocument();
     expect(screen.queryByText("当前窗口暂无供给/招标事件。")).not.toBeInTheDocument();
   });

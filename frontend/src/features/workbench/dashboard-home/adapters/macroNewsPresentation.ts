@@ -1,6 +1,6 @@
 import type { ChoiceNewsEvent } from "../../../../api/contracts";
 
-/** 首页宏观新闻兜底（Tushare）允许展示的关键词；Choice 专题不走此过滤。 */
+/** 首页宏观新闻兜底（Tushare）允许展示的关键词；保留给非首页债券新闻场景。 */
 export const HOME_MACRO_NEWS_KEYWORDS = [
   "债券",
   "债市",
@@ -82,6 +82,21 @@ export const HOME_MACRO_NEWS_KEYWORDS = [
   "标普",
 ] as const;
 
+export const HOME_POLICY_FUNDING_NEWS_KEYWORDS = [
+  "央行",
+  "公开市场",
+  "逆回购",
+  "MLF",
+  "DR007",
+  "Shibor",
+  "国债收益率",
+  "地方债",
+  "财政",
+  "货币政策",
+  "资金面",
+  "流动性",
+] as const;
+
 export function stripHtmlTags(raw: string): string {
   return raw
     .replace(/<[^>]*>/g, " ")
@@ -115,6 +130,17 @@ export function isMacroRelevantForHomeBriefing(text: string): boolean {
   return HOME_MACRO_NEWS_KEYWORDS.some((keyword) => normalizedLower.includes(keyword.toLowerCase()));
 }
 
+export function isPolicyFundingRelevantForHomeBriefing(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+  const normalizedLower = normalized.toLowerCase();
+  return HOME_POLICY_FUNDING_NEWS_KEYWORDS.some((keyword) =>
+    normalizedLower.includes(keyword.toLowerCase()),
+  );
+}
+
 function extractTitleFromPayloadJson(payloadJson: string | null | undefined): string {
   const raw = payloadJson?.trim();
   if (!raw) {
@@ -145,7 +171,7 @@ export function summarizeMacroNewsEvent(event: ChoiceNewsEvent): string {
 
 export function shouldIncludeMacroNewsEvent(
   event: ChoiceNewsEvent,
-  options: { requireMacroRelevance: boolean },
+  options: { requireMacroRelevance: boolean; requirePolicyFundingRelevance?: boolean },
 ): boolean {
   if (event.error_code !== 0) {
     return false;
@@ -155,6 +181,9 @@ export function shouldIncludeMacroNewsEvent(
     return false;
   }
   if (options.requireMacroRelevance && !isMacroRelevantForHomeBriefing(title)) {
+    return false;
+  }
+  if (options.requirePolicyFundingRelevance && !isPolicyFundingRelevantForHomeBriefing(title)) {
     return false;
   }
   return true;
