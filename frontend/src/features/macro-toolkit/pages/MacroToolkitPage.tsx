@@ -1711,7 +1711,14 @@ function choiceStockRefreshDetail(
   const factorRows = refresh.factor_row_count ?? "-";
   const source = refresh.source_version?.trim();
   const vendor = refresh.vendor_version?.trim();
-  const versionText = [source ? `source ${source}` : "", vendor ? `vendor ${vendor}` : ""].filter(Boolean).join(" · ");
+  const rule = refresh.rule_version?.trim();
+  const cache = refresh.cache_version?.trim();
+  const versionText = [
+    source ? `source ${source}` : "",
+    vendor ? `vendor ${vendor}` : "",
+    rule ? `rule ${rule}` : "",
+    cache ? `cache ${cache}` : "",
+  ].filter(Boolean).join(" · ");
   const version = versionText ? ` · ${versionText}` : "";
   const failureText = choiceStockRefreshFailureText(refresh);
   const failure = failureText ? ` · failure ${failureText}` : "";

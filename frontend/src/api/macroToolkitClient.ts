@@ -96,6 +96,8 @@ export type MacroToolkitChoiceStockRefreshRun = {
   factor_row_count?: number | null;
   source_version?: string;
   vendor_version?: string | null;
+  rule_version?: string | null;
+  cache_version?: string | null;
   refresh_history?: boolean;
   refresh_factors?: boolean;
   factor_max_stock_count?: number | null;
