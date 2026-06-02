@@ -586,7 +586,12 @@ export default function RiskTensorPage() {
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
   const firstRequiredAction = requiredActions[0];
-  const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 ? "warning" : "ok";
+  const actionTileDetail =
+    firstRequiredAction?.title ??
+    result?.warnings[0] ??
+    "后端未返回必做控制动作，继续按质量标记和明细核对。";
+  const actionTileCanJump = Boolean(result && (requiredActions.length > 0 || result.warnings.length > 0));
+  const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 || (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
   const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
   const topLineSummary = result
     ? [
@@ -610,6 +615,30 @@ export default function RiskTensorPage() {
     document
       .querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]')
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleDv01ControlsJump = () => {
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-dv01-controls"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleLiquidityDetailJump = () => {
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-cashflow-grid"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleRequiredInformationJump = () => {
+    const targetTestId =
+      requiredActions.length > 0 ? "risk-tensor-dv01-controls" : result?.warnings.length ? "risk-tensor-quality-detail" : null;
+    if (!targetTestId) {
+      return;
+    }
+    document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
   };
 
   const radarChartOption = useMemo((): EChartsOption | null => {
@@ -861,45 +890,77 @@ export default function RiskTensorPage() {
                     KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。
                   </span>
                 </button>
-                <article className="risk-tensor-brief__tile" data-tone="warning">
-                  <span>DV01 控制</span>
-                  <strong>
-                    {result.dv01_controls
-                      ? dv01ControlStatusLabel(result.dv01_controls.limit_status)
-                      : "控制未接入"}
-                  </strong>
-                  <p>
-                    监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}
-                    {result.dv01_controls ? `；${result.dv01_controls.control_message}` : "；后端未返回限额控制载荷。"}
-                  </p>
-                </article>
-                <article className="risk-tensor-brief__tile" data-tone={liquidityGapTone(liquidity30dRaw)}>
+                {result.dv01_controls ? (
+                  <button
+                    type="button"
+                    className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                    data-testid="risk-tensor-dv01-controls-action"
+                    data-tone="warning"
+                    onClick={handleDv01ControlsJump}
+                  >
+                    <span>DV01 控制</span>
+                    <strong>{dv01ControlStatusLabel(result.dv01_controls.limit_status)}</strong>
+                    <span className="risk-tensor-brief__tile-detail">
+                      监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；{result.dv01_controls.control_message}
+                    </span>
+                  </button>
+                ) : (
+                  <article className="risk-tensor-brief__tile" data-tone="warning">
+                    <span>DV01 控制</span>
+                    <strong>控制未接入</strong>
+                    <p>监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；后端未返回限额控制载荷。</p>
+                  </article>
+                )}
+                <button
+                  type="button"
+                  className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                  data-testid="risk-tensor-liquidity-action"
+                  data-tone={liquidityGapTone(liquidity30dRaw)}
+                  onClick={handleLiquidityDetailJump}
+                >
                   <span>流动性</span>
                   <strong>{ratioPercentDisplay(result.liquidity_gap_30d_ratio)}</strong>
-                  <p>{yuanAsYiWithUnit(result.liquidity_gap_30d)} = 30 日资产现金流 - 负债现金流。</p>
-                </article>
+                  <span className="risk-tensor-brief__tile-detail">
+                    {yuanAsYiWithUnit(result.liquidity_gap_30d)} = 30 日资产现金流 - 负债现金流。
+                  </span>
+                </button>
                 <article className="risk-tensor-brief__tile" data-tone="neutral">
                   <span>发行人集中度</span>
                   <strong>{ratioPercentDisplay(result.issuer_top5_weight)}</strong>
                   <p>前五大权重；HHI {displayStr(result.issuer_concentration_hhi)}。</p>
                 </article>
-                <article className="risk-tensor-brief__tile" data-tone={qualityTone(result.quality_flag)}>
+                <button
+                  type="button"
+                  className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                  data-testid="risk-tensor-data-status-action"
+                  data-tone={qualityTone(result.quality_flag)}
+                  onClick={handleQualityDetailJump}
+                >
                   <span>数据状态</span>
                   <strong>{qualityFlagLabel(result.quality_flag)}</strong>
-                  <p>
-                    来源 {compactVersion(tensorMeta?.source_version)}；规则{" "}
-                    {compactVersion(tensorMeta?.rule_version)}。
-                  </p>
-                </article>
-                <article className="risk-tensor-brief__tile" data-tone={actionTileTone}>
-                  <span>待补信息</span>
-                  <strong>{requiredActionSummary(result.dv01_controls?.control_actions)}</strong>
-                  <p>
-                    {firstRequiredAction?.title ??
-                      result.warnings[0] ??
-                      "后端未返回必做控制动作，继续按质量标记和明细核对。"}
-                  </p>
-                </article>
+                  <span className="risk-tensor-brief__tile-detail">
+                    来源 {compactVersion(tensorMeta?.source_version)}；规则 {compactVersion(tensorMeta?.rule_version)}。
+                  </span>
+                </button>
+                {actionTileCanJump ? (
+                  <button
+                    type="button"
+                    className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                    data-testid="risk-tensor-required-action"
+                    data-tone={actionTileTone}
+                    onClick={handleRequiredInformationJump}
+                  >
+                    <span>待补信息</span>
+                    <strong>{requiredActionSummary(result.dv01_controls?.control_actions)}</strong>
+                    <span className="risk-tensor-brief__tile-detail">{actionTileDetail}</span>
+                  </button>
+                ) : (
+                  <article className="risk-tensor-brief__tile" data-tone={actionTileTone}>
+                    <span>待补信息</span>
+                    <strong>{requiredActionSummary(result.dv01_controls?.control_actions)}</strong>
+                    <p>{actionTileDetail}</p>
+                  </article>
+                )}
               </div>
             </section>
 

@@ -141,6 +141,33 @@ function tensorResult(reportDate: string): RiskTensorPayload {
   };
 }
 
+function dv01ControlsFixture(
+  overrides: Partial<NonNullable<RiskTensorPayload["dv01_controls"]>> = {},
+): NonNullable<RiskTensorPayload["dv01_controls"]> {
+  return {
+    basis: "regulatory_dv01",
+    limit_status: "pending_configuration",
+    approved_limit_dv01: null,
+    limit_usage_ratio: null,
+    volatility_status: "pending_market_volatility",
+    daily_rate_volatility_bp: null,
+    dominant_krd_bucket: "5Y",
+    dominant_krd: {
+      raw: 3,
+      unit: "dv01",
+      display: "+3.00",
+      precision: 2,
+      sign_aware: true,
+    },
+    stress_scenarios: [],
+    operating_judgement: "DV01 controls require configuration.",
+    control_actions: [],
+    control_message: "Limit configuration is pending.",
+    action_hint: "Configure approved DV01 limit.",
+    ...overrides,
+  };
+}
+
 function renderRiskTensorRoute(
   initialEntry: string,
   client: ReturnType<typeof createApiClient>,
@@ -484,6 +511,229 @@ describe("RiskTensorPage", () => {
         expect(oneYear).toHaveAttribute("aria-pressed", "false");
       });
       expect(scrollTargets).toContain(drill);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the first-screen DV01 control tile to the control detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture(),
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const dv01Action = within(brief).getByTestId("risk-tensor-dv01-controls-action");
+      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+
+      await user.click(dv01Action);
+
+      expect(scrollTargets).toContain(controls);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the first-screen required information tile to DV01 actions", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_required_action_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_required_action_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({
+            control_actions: [
+              {
+                key: "approved_dv01_limit",
+                title: "Configure approved DV01 limit",
+                status: "required",
+                evidence: "Approved limit is missing.",
+                action: "Connect approved limit source.",
+              },
+            ],
+          }),
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
+      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+      expect(requiredAction).toHaveTextContent("Configure approved DV01 limit");
+
+      await user.click(requiredAction);
+
+      expect(scrollTargets).toContain(controls);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the first-screen required information tile to quality detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_required_info_quality_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const qualityWarning = "Quality warning needs review.";
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_required_info_quality_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: [qualityWarning],
+          dv01_controls: dv01ControlsFixture(),
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      expect(requiredAction).toHaveTextContent(qualityWarning);
+
+      await user.click(requiredAction);
+
+      expect(scrollTargets).toContain(qualityDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the first-screen liquidity tile to cashflow detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_liquidity_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_liquidity_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const liquidityAction = within(brief).getByTestId("risk-tensor-liquidity-action");
+      const cashflowGrid = await screen.findByTestId("risk-tensor-cashflow-grid");
+
+      await user.click(liquidityAction);
+
+      expect(scrollTargets).toContain(cashflowGrid);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the first-screen data status tile to quality detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_data_status_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_data_status_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+      await user.click(dataStatusAction);
+
+      expect(scrollTargets).toContain(qualityDetail);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
