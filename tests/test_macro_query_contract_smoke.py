@@ -3,6 +3,7 @@ import logging
 import duckdb
 from fastapi import FastAPI
 from backend.app.governance.settings import get_settings
+from backend.app.services.macro_vendor_service import load_choice_macro_latest_payload
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
@@ -905,6 +906,151 @@ def test_macro_foundation_preview_exposes_policy_metadata_from_catalog(
     assert payload["result"]["series"][0]["fetch_granularity"] == "batch"
     assert payload["result"]["series"][0]["policy_note"] == "main refresh date-slice lane"
     get_settings.cache_clear()
+
+
+def test_market_data_catalog_tolerates_legacy_policy_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "market-data-catalog-legacy-policy.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'legacy_macro',
+                'Legacy macro',
+                'tushare',
+                'vv_legacy',
+                'monthly',
+                'pct',
+                'live_backfill',
+                'monthly',
+                'on_demand',
+                'legacy external catalog metadata'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/market-data/catalog")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "market_data.catalog"
+    assert payload["result"]["series"][0]["series_id"] == "legacy_macro"
+    assert payload["result"]["series"][0]["refresh_tier"] is None
+    assert payload["result"]["series"][0]["fetch_mode"] is None
+    assert payload["result"]["series"][0]["fetch_granularity"] is None
+    assert payload["result"]["series"][0]["policy_note"] == "legacy external catalog metadata"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_tolerates_legacy_policy_metadata(tmp_path):
+    duckdb_path = tmp_path / "choice-macro-latest-legacy-policy.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'legacy_macro',
+                'Legacy macro',
+                '2026-04-09',
+                1.23,
+                'monthly',
+                'pct',
+                'sv_choice_macro_legacy',
+                'vv_legacy',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:legacy'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'legacy_macro',
+                'Legacy macro',
+                'tushare',
+                'vv_legacy',
+                'monthly',
+                'pct',
+                'live_backfill',
+                'monthly',
+                'on_demand',
+                'legacy external catalog metadata'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = load_choice_macro_latest_payload(str(duckdb_path))
+
+    assert payload.series[0].series_id == "legacy_macro"
+    assert payload.series[0].refresh_tier is None
+    assert payload.series[0].fetch_mode is None
+    assert payload.series[0].fetch_granularity is None
+    assert payload.series[0].policy_note == "legacy external catalog metadata"
 
 
 def test_choice_macro_latest_returns_up_to_twenty_recent_points(tmp_path, monkeypatch):

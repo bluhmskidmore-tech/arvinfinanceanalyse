@@ -30,6 +30,9 @@ RULE_VERSION = "rv_phase1_macro_vendor_v1"
 CACHE_VERSION = "cv_phase1_macro_vendor_v1"
 LIVE_RULE_VERSION = "rv_choice_macro_thin_slice_v1"
 LIVE_CACHE_VERSION = "cv_choice_macro_thin_slice_v1"
+CHOICE_MACRO_REFRESH_TIERS = {"stable", "fallback", "isolated"}
+CHOICE_MACRO_FETCH_MODES = {"date_slice", "latest"}
+CHOICE_MACRO_FETCH_GRANULARITIES = {"batch", "single"}
 
 
 def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
@@ -99,9 +102,11 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
                 vendor_version=str(vendor_version),
                 frequency=str(frequency),
                 unit=str(unit),
-                refresh_tier=_as_optional_string(category.get("refresh_tier") or refresh_tier),
-                fetch_mode=_as_optional_string(category.get("fetch_mode") or fetch_mode),
-                fetch_granularity=_as_optional_string(
+                refresh_tier=_sanitize_choice_macro_refresh_tier(
+                    category.get("refresh_tier") or refresh_tier
+                ),
+                fetch_mode=_sanitize_choice_macro_fetch_mode(category.get("fetch_mode") or fetch_mode),
+                fetch_granularity=_sanitize_choice_macro_fetch_granularity(
                     category.get("fetch_granularity") or fetch_granularity
                 ),
                 policy_note=_as_optional_string(category.get("policy_note") or policy_note),
@@ -866,9 +871,11 @@ def _load_choice_macro_catalog_map(
         category = category_by_series.get(str(series_id), {})
         catalog_by_series[str(series_id)] = {
             "vendor_name": _as_optional_string(vendor_name),
-            "refresh_tier": _as_optional_string(category.get("refresh_tier") or refresh_tier),
-            "fetch_mode": _as_optional_string(category.get("fetch_mode") or fetch_mode),
-            "fetch_granularity": _as_optional_string(
+            "refresh_tier": _sanitize_choice_macro_refresh_tier(
+                category.get("refresh_tier") or refresh_tier
+            ),
+            "fetch_mode": _sanitize_choice_macro_fetch_mode(category.get("fetch_mode") or fetch_mode),
+            "fetch_granularity": _sanitize_choice_macro_fetch_granularity(
                 category.get("fetch_granularity") or fetch_granularity
             ),
             "policy_note": _as_optional_string(category.get("policy_note") or policy_note),
@@ -908,9 +915,9 @@ def _load_market_data_category_map(
     category_by_series: dict[str, dict[str, object]] = {}
     for series_id, refresh_tier, fetch_mode, fetch_granularity, policy_note in rows:
         category_by_series[str(series_id)] = {
-            "refresh_tier": _as_optional_string(refresh_tier),
-            "fetch_mode": _as_optional_string(fetch_mode),
-            "fetch_granularity": _as_optional_string(fetch_granularity),
+            "refresh_tier": _sanitize_choice_macro_refresh_tier(refresh_tier),
+            "fetch_mode": _sanitize_choice_macro_fetch_mode(fetch_mode),
+            "fetch_granularity": _sanitize_choice_macro_fetch_granularity(fetch_granularity),
             "policy_note": _as_optional_string(policy_note),
         }
     return category_by_series
@@ -974,3 +981,22 @@ def _as_optional_string(value: object) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _sanitize_choice_macro_refresh_tier(value: object) -> str | None:
+    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_REFRESH_TIERS)
+
+
+def _sanitize_choice_macro_fetch_mode(value: object) -> str | None:
+    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_MODES)
+
+
+def _sanitize_choice_macro_fetch_granularity(value: object) -> str | None:
+    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_GRANULARITIES)
+
+
+def _sanitize_choice_macro_literal(value: object, allowed_values: set[str]) -> str | None:
+    text = _as_optional_string(value)
+    if text is None:
+        return None
+    return text if text in allowed_values else None
