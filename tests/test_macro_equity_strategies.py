@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from backend.app.core_finance.macro.equity_strategies import (
     classify_low_crowding_market_regime,
-    compute_low_crowding_scores,
     compute_factors,
+    compute_low_crowding_scores,
     generate_random_prices,
     low_crowding_multifactor_selection,
     mean_reversion_momentum_strategy,
     moving_average_strategy,
     multi_factor_selection,
+    _industry_neutralize_factors,
 )
 from backend.app.core_finance.macro.toolkit import get_toolkit_script, run_toolkit_script
 
@@ -108,6 +108,56 @@ def test_mean_reversion_momentum_strategy_returns_clean_portfolio_path() -> None
     assert portfolio.isna().sum() == 0
     assert portfolio.iloc[0] == 1.0
     assert portfolio.iloc[-1] >= 1.0
+
+
+def test_equity_strategy_portfolio_paths_are_stable_for_multistock_sample() -> None:
+    prices = generate_random_prices(num_stocks=6, num_days=120, seed=20260602)
+
+    moving_average = moving_average_strategy(prices)
+    mean_reversion = mean_reversion_momentum_strategy(prices, z_threshold=0.8)
+
+    assert round(float(moving_average.iloc[-1]), 12) == 1.111509676331
+    assert round(float(moving_average.min()), 12) == 0.96551648441
+    assert round(float(moving_average.max()), 12) == 1.138880452146
+    assert round(float(mean_reversion.iloc[-1]), 12) == 1.01663166321
+    assert round(float(mean_reversion.min()), 12) == 0.978534131903
+    assert round(float(mean_reversion.max()), 12) == 1.076100455866
+
+
+def test_industry_neutralize_factors_preserves_peer_group_semantics() -> None:
+    factors = pd.DataFrame(
+        {
+            "value": [1.0, 3.0, 10.0, 2.0, 2.0],
+            "quality": [2.0, 4.0, 20.0, 6.0, 6.0],
+            "momentum": [3.0, 5.0, 30.0, 7.0, 7.0],
+            "low_vol": [4.0, 6.0, 40.0, 8.0, 8.0],
+            "dividend": [5.0, 7.0, 50.0, 9.0, 9.0],
+        },
+        index=["a", "b", "single", "flat_1", "flat_2"],
+    )
+    industries = pd.Series(
+        ["tech", "tech", "solo", "flat", "flat"],
+        index=factors.index,
+    )
+
+    neutralized = _industry_neutralize_factors(factors, industries)
+
+    assert neutralized.loc["a"].to_dict() == {
+        "value": -1.0,
+        "quality": -1.0,
+        "momentum": -1.0,
+        "low_vol": -1.0,
+        "dividend": -1.0,
+    }
+    assert neutralized.loc["b"].to_dict() == {
+        "value": 1.0,
+        "quality": 1.0,
+        "momentum": 1.0,
+        "low_vol": 1.0,
+        "dividend": 1.0,
+    }
+    assert neutralized.loc["single"].to_dict() == factors.loc["single"].to_dict()
+    assert neutralized.loc[["flat_1", "flat_2"]].eq(0.0).all().all()
 
 
 def test_multi_factor_selection_ranks_and_filters_industry() -> None:

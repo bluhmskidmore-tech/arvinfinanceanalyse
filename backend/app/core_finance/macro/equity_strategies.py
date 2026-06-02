@@ -89,26 +89,33 @@ def moving_average_strategy(
 
         # 今日收盘信号只决定今日收盘后的持仓，影响的是次日及以后的收益。
         current_position = previous_position.copy()
-        for column in price_frame.columns:
-            crossed_up = (
-                short_ma[column].iat[row_no - 1] <= long_ma[column].iat[row_no - 1]
-                and short_ma[column].iat[row_no] > long_ma[column].iat[row_no]
-            )
-            crossed_down = (
-                short_ma[column].iat[row_no - 1] >= long_ma[column].iat[row_no - 1]
-                and short_ma[column].iat[row_no] < long_ma[column].iat[row_no]
-            )
-            if crossed_up:
-                current_position[column] = 1.0
+        crossed_up = (short_ma.iloc[row_no - 1] <= long_ma.iloc[row_no - 1]) & (
+            short_ma.iloc[row_no] > long_ma.iloc[row_no]
+        )
+        crossed_down = (
+            (short_ma.iloc[row_no - 1] >= long_ma.iloc[row_no - 1])
+            & (short_ma.iloc[row_no] < long_ma.iloc[row_no])
+            & ~crossed_up
+        )
+        if crossed_up.any():
+            current_position.loc[crossed_up] = 1.0
+            for column in crossed_up.index[crossed_up]:
                 entry_prices[column] = float(price_frame[column].iat[row_no])
-            elif crossed_down:
+        if crossed_down.any():
+            current_position.loc[crossed_down] = 0.0
+            for column in crossed_down.index[crossed_down]:
+                entry_prices[column] = None
+
+        held_columns = [
+            column
+            for column in price_frame.columns
+            if current_position[column] > 0 and entry_prices[column] is not None and not bool(crossed_up[column])
+        ]
+        for column in held_columns:
+            drawdown_from_entry = price_frame[column].iat[row_no] / entry_prices[column] - 1
+            if drawdown_from_entry <= -stop_loss:
                 current_position[column] = 0.0
                 entry_prices[column] = None
-            elif current_position[column] > 0 and entry_prices[column] is not None:
-                drawdown_from_entry = price_frame[column].iat[row_no] / entry_prices[column] - 1
-                if drawdown_from_entry <= -stop_loss:
-                    current_position[column] = 0.0
-                    entry_prices[column] = None
 
         positions.iloc[row_no] = current_position
 
@@ -162,26 +169,28 @@ def mean_reversion_momentum_strategy(
 
         # 今日收盘信号只决定今日收盘后的持仓，影响的是次日及以后的收益。
         current_position = previous_position.copy()
-        for column in price_frame.columns:
-            price = float(price_frame[column].iat[row_no])
-            z_score = z_scores[column].iat[row_no]
-            trend = trend_ma[column].iat[row_no]
-            held = current_position[column] > 0
+        price_row = price_frame.iloc[row_no]
+        z_row = z_scores.iloc[row_no]
+        trend_row = trend_ma.iloc[row_no]
+        held = current_position > 0
+        entry_signal = (~held) & z_row.notna() & trend_row.notna() & (z_row < -z_threshold) & (price_row > trend_row)
+        if entry_signal.any():
+            current_position.loc[entry_signal] = 1.0
+            for column in entry_signal.index[entry_signal]:
+                entry_prices[column] = float(price_row[column])
 
-            if not held and pd.notna(z_score) and pd.notna(trend) and z_score < -z_threshold and price > trend:
-                current_position[column] = 1.0
-                entry_prices[column] = price
-            elif held and entry_prices[column] is not None:
-                change = price / entry_prices[column] - 1
-                exit_signal = (
-                    change <= -stop_loss
-                    or change >= take_profit
-                    or (pd.notna(trend) and price < trend)
-                    or (pd.notna(z_score) and z_score > z_threshold)
-                )
-                if exit_signal:
-                    current_position[column] = 0.0
-                    entry_prices[column] = None
+        held_columns = [column for column in price_frame.columns if held[column] and entry_prices[column] is not None]
+        for column in held_columns:
+            change = price_row[column] / entry_prices[column] - 1
+            exit_signal = (
+                change <= -stop_loss
+                or change >= take_profit
+                or (pd.notna(trend_row[column]) and price_row[column] < trend_row[column])
+                or (pd.notna(z_row[column]) and z_row[column] > z_threshold)
+            )
+            if exit_signal:
+                current_position[column] = 0.0
+                entry_prices[column] = None
 
         positions.iloc[row_no] = current_position
 
@@ -455,9 +464,17 @@ def _winsorize_frame(frame: pd.DataFrame, limits: tuple[float, float] | None) ->
 
 def _industry_neutralize_factors(factors: pd.DataFrame, industries: pd.Series) -> pd.DataFrame:
     out = factors.copy()
+    if out.empty:
+        return out
     industry_labels = industries.reindex(out.index).fillna("").astype(str)
-    for column in FACTOR_COLUMNS:
-        out[column] = out.groupby(industry_labels, group_keys=False)[column].transform(_zscore_if_group_has_peers)
+    clean = out.loc[:, FACTOR_COLUMNS].apply(pd.to_numeric, errors="coerce").replace([np.inf, -np.inf], np.nan)
+    grouped = clean.groupby(industry_labels, sort=False)
+    counts = grouped.transform("count")
+    means = grouped.transform("mean")
+    squared_means = clean.pow(2).groupby(industry_labels, sort=False).transform("mean")
+    stds = np.sqrt((squared_means - means.pow(2)).clip(lower=0.0))
+    zscores = ((clean - means) / stds.replace(0.0, np.nan)).fillna(0.0)
+    out.loc[:, FACTOR_COLUMNS] = zscores.where(counts >= 2, clean)
     return out
 
 
