@@ -132,7 +132,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-10",
             instrument_code="B001",
             bond_type="GOV",
-            issuer_name="鍙戣浜虹敳",
+            issuer_name="发行人甲",
             market_value=Decimal("100"),
             ytm=Decimal("0.03"),
             coupon=Decimal("0.025"),
@@ -143,7 +143,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-12",
             instrument_code="B001",
             bond_type="GOV",
-            issuer_name="鍙戣浜虹敳",
+            issuer_name="发行人甲",
             market_value=Decimal("120"),
             ytm=Decimal("0.031"),
             coupon=Decimal("0.025"),
@@ -154,7 +154,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-10",
             instrument_code="B002",
             bond_type="CREDIT",
-            issuer_name="鍙戣浜轰箼",
+            issuer_name="发行人乙",
             market_value=Decimal("200"),
             ytm=Decimal("0.04"),
             coupon=Decimal("0.035"),
@@ -165,7 +165,7 @@ def _seed_positions_db(path: Path) -> None:
             report_date="2026-01-10",
             instrument_code="B003",
             bond_type="CREDIT",
-            issuer_name="鍙戣浜轰箼",
+            issuer_name="发行人乙",
             market_value=Decimal("50"),
             ytm=Decimal("0.045"),
             coupon=Decimal("0.04"),
@@ -353,10 +353,10 @@ def test_positions_counterparty_bonds_excludes_issuance_like_from_asset_scope(tm
     assert body["total_avg_daily"] == "135.00000000"
     assert body["total_customers"] == 2
     items_by_customer = {item["customer_name"]: item for item in body["items"]}
-    assert set(items_by_customer) == {"鍙戣浜虹敳", "鍙戣浜轰箼"}
-    assert items_by_customer["鍙戣浜虹敳"]["total_amount"] == "220.00000000"
-    assert items_by_customer["鍙戣浜轰箼"]["total_amount"] == "50.00000000"
-    assert items_by_customer["鍙戣浜轰箼"]["avg_daily_balance"] == "25.00000000"
+    assert set(items_by_customer) == {"发行人甲", "发行人乙"}
+    assert items_by_customer["发行人甲"]["total_amount"] == "220.00000000"
+    assert items_by_customer["发行人乙"]["total_amount"] == "50.00000000"
+    assert items_by_customer["发行人乙"]["avg_daily_balance"] == "25.00000000"
     assert body["cr10_ratio"] == "100.00%"
 
 
@@ -382,14 +382,14 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
 
     det = client.get(
         "/api/positions/customer/details",
-        params={"customer_name": "鍙戣浜轰箼", "report_date": "2026-01-10"},
+        params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
     )
     assert det.status_code == 200
     assert det.json()["result"]["bond_count"] == 2
 
     tr = client.get(
         "/api/positions/customer/trend",
-        params={"customer_name": "鍙戣浜虹敳", "end_date": "2026-01-12", "days": 30},
+        params={"customer_name": "发行人甲", "end_date": "2026-01-12", "days": 30},
     )
     assert tr.status_code == 200
     assert len(tr.json()["result"]["items"]) == 2
@@ -786,7 +786,7 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
 
     details = client.get(
         "/api/positions/customer/details",
-        params={"customer_name": "鍙戣浜虹敳"},
+        params={"customer_name": "发行人甲"},
     )
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"

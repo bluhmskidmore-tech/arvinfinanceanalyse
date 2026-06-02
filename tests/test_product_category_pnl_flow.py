@@ -961,7 +961,7 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
     seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
-    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
 
     _write_month_pair(source_dir, "202601", january=True)
@@ -1098,7 +1098,7 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
-    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
 
     _write_month_pair(source_dir, "202601", january=True)
@@ -1155,7 +1155,7 @@ def test_product_category_refresh_reconciles_stale_queued_run_and_requeues(
     seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
-    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
 
     _write_month_pair(source_dir, "202601", january=True)
@@ -1211,7 +1211,7 @@ def test_product_category_refresh_status_completed_has_terminal_trigger_and_stab
     monkeypatch,
 ):
     data_root = tmp_path / "data_input"
-    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
 
     duckdb_path = tmp_path / "moss.duckdb"
@@ -1425,7 +1425,7 @@ def test_product_category_refresh_status_returns_503_when_status_backend_fails(
     monkeypatch,
 ):
     data_root = tmp_path / "data_input"
-    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
 
     duckdb_path = tmp_path / "moss.duckdb"

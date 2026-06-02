@@ -659,7 +659,7 @@
   color: var(--mh-muted);
 }
 
-/* Portfolio 棣栭〉瑙嗚锛氬鐢?dashboard-home/dashboardHome.module.css + portfolioHome.module.css */
+/* Portfolio 首页视觉：复用 dashboard-home/dashboardHome.module.css + portfolioHome.module.css */
 
 @media (min-width: 1600px) {
   .layout {

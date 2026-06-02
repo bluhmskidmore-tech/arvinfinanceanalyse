@@ -480,8 +480,8 @@ class CreditSpreadMigrationResponse(BaseModel):
     rating_aa_and_below_weight: Numeric = Field(
         default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False),
         description=(
-            "淇＄敤鍊轰腑璇勭骇涓?AA 鍙婁互涓嬶紙鍚?AA锛屼笉鍚?AA+锛夌殑甯傚€煎崰缁勫悎鎬诲競鍊硷紱"
-            "鏈瘑鍒殑 rating 涓嶈鍏ュ垎瀛愩€?"
+            "信用债中评级为 AA 及以下（含 AA，不含 AA+）的市值占组合总市值；"
+            "未识别的 rating 不计入分子。"
         ),
     )
     spread_dv01: Numeric

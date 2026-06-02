@@ -160,7 +160,7 @@ class AnalyticalBridgeService:
             ),
         )
 
-    # ── ledger pathway ──────────��──────────────────────────────────────
+    # ── ledger pathway ─────────────────────────────────────────────────
     def _execute_ledger(
         self,
         request: CubeQueryRequest,

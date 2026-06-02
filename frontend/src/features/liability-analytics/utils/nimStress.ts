@@ -11,7 +11,7 @@ function pctDecimal(n: Numeric | null | undefined): number | null {
 const NIM_CRITICAL_FLOOR = 0.005;
 const FLOAT_EPSILON = 1e-9;
 
-/** 涓?V1 涓€鑷达細璐熷€烘垚鏈?+50bps锛?0.005 灏忔暟锛夊悗鐨?NIM 涓庡彉鍔ㄣ€?*/
+/** 与 V1 一致：负债成本 +50bps（0.005 小数）后的 NIM 与变动。 */
 export function dailyNimStressFromKpi(yieldKpi: LiabilityYieldKpi | null) {
   const ayRaw = pctDecimal(yieldKpi?.asset_yield ?? null);
   const mlcRaw = pctDecimal(yieldKpi?.market_liability_cost ?? null);

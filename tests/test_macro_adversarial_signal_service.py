@@ -57,8 +57,8 @@ def test_load_macro_adversarial_signal_payload_falls_back_to_crowding_snapshot_a
     _write_csv(
         tmp_path / "crowding_latest.csv",
         """
-鍝佺,鏃ユ湡,C鍒嗕綅鏁?,鎷ユ尋搴︿俊鍙?,璇存槑
-TL,2026-05-11,NaN,璀︽儠澶氬ご,澶氬ご鎷ユ尋
+品种,日期,C分位数,拥挤度信号,说明
+TL,2026-05-11,NaN,警惕多头,多头拥挤
 """,
     )
 

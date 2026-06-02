@@ -155,7 +155,9 @@ describe("ActionAttributionView", () => {
     expect(screen.getAllByText("机会成本口径").length).toBeGreaterThan(0);
     expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商状态");
     expect(screen.getByText("shadow_bench")).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/鍔|鎻|鏃|螖|鈫|锛|璇婚潰|鎶ュ憡/);
+    expect(document.body.textContent).not.toMatch(/[\u9344\u9396\u93C3\u8796\u920B\u951B]/);
+    expect(document.body.textContent).not.toContain("\u7487\u8A2A\u6F7C");
+    expect(document.body.textContent).not.toContain("\u93B6\u5BA0\u61A1");
   });
 
   it("shows readiness metadata when backend returns component hints", async () => {

@@ -256,31 +256,25 @@ function buildShellTickerItems(
   return resolved.length > 0 ? resolved : fallbackShellTickerItems;
 }
 
-const shellUtilityEntries = [
+const shellSupportEntries = [
   {
     key: "reports",
-    label: "\u62a5\u8868\u4e2d\u5fc3",
+    label: "报表中心",
     to: "/reports",
     icon: <FileTextOutlined />,
   },
   {
     key: "platform",
-    label: "\u4e2d\u53f0\u914d\u7f6e",
+    label: "中台配置",
     to: "/platform-config",
     icon: <SettingOutlined />,
   },
   {
     key: "help",
-    label: "\u5e2e\u52a9\u6587\u6863",
+    label: "帮助文档",
     to: "/",
     icon: <QuestionCircleOutlined />,
   },
-] as const;
-
-const _shellSupportEntries = [
-  { key: "reports", label: "鎶ヨ〃涓績", to: "/reports", icon: <FileTextOutlined /> },
-  { key: "platform", label: "涓彴閰嶇疆", to: "/platform-config", icon: <SettingOutlined /> },
-  { key: "help", label: "甯姪鏂囨。", to: "/", icon: <QuestionCircleOutlined /> },
 ] as const;
 
 type PortfolioStage = {
@@ -883,7 +877,7 @@ export function WorkbenchShell() {
           <span className="workbench-shell-section-label workbench-shell-section-label--rail">
             支持入口
           </span>
-          {shellUtilityEntries.map((item) => {
+          {shellSupportEntries.map((item) => {
             const active = item.to !== "/" && pathnameResolved === item.to;
 
             return (
@@ -992,27 +986,34 @@ export function WorkbenchShell() {
                 <UserOutlined />
                 <span>{"\u7ba1\u7406\u89c6\u89d2"}</span>
               </span>
-              {shellUtilityEntries
+              {shellSupportEntries
                 .filter((item) => item.key !== "help")
-                .map((item) => (
-                  <NavLink
-                    key={`terminal-${item.key}`}
-                    to={item.to}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "4px 2px",
-                      color: shellTokens.colorTextSecondary,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      borderBottom: `1px solid transparent`,
-                    }}
-                  >
-                    <span style={{ fontSize: 11 }}>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </NavLink>
-                ))}
+                .map((item) => {
+                  const active = pathnameResolved === item.to;
+
+                  return (
+                    <NavLink
+                      key={`terminal-${item.key}`}
+                      to={item.to}
+                      data-active={active ? "true" : "false"}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 2px",
+                        color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderBottom: active
+                          ? `1px solid ${shellTokens.colorBorderStrong}`
+                          : "1px solid transparent",
+                      }}
+                    >
+                      <span style={{ fontSize: 11 }}>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </NavLink>
+                  );
+                })}
             </section>
           </div>
 

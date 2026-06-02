@@ -265,7 +265,7 @@ def test_api_rejects_invalid_manual_adjustment_payload(tmp_path, monkeypatch):
 
 
 def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
-    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     governance_dir = tmp_path / "governance"
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
@@ -320,7 +320,7 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
 
 
 def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_path, monkeypatch):
-    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     governance_dir = tmp_path / "governance"
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
