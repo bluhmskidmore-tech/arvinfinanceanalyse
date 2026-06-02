@@ -306,6 +306,33 @@ describe("mapToHomeView", () => {
     expect(view.bondNews.statusLabel).toBe("来源状态：偏旧");
   });
 
+  it("derives bond news freshness from the latest included bond item", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      todayIsoDate: "2026-06-01",
+      bondNewsEvents: [
+        newsEvent({
+          event_key: "fresh-unrelated-news",
+          received_at: "2026-06-01T12:00:00+08:00",
+          topic_code: "tushare.news",
+          payload_text: "国际油价直线拉升",
+        }),
+        newsEvent({
+          event_key: "stale-bond-news",
+          received_at: "2026-05-23T15:06:00+08:00",
+          topic_code: "tushare.news",
+          payload_text: "国债收益率曲线延续下行，资金面保持宽松",
+        }),
+      ],
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.bondNews.marketNews[0]?.title).toBe("国债收益率曲线延续下行，资金面保持宽松");
+    expect(view.bondNews.asOfLabel).toBe("数据截至 05-23 15:06");
+    expect(view.bondNews.statusLabel).toBe("来源状态：偏旧");
+  });
+
   it("falls back to Tushare macro news when Choice feed is stale", () => {
     const view = mapToHomeView({
       ...baseRealInput,

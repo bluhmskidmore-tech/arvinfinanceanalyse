@@ -224,6 +224,7 @@ export function buildHomeBondNewsModel(input: {
   const holdingHits: HomeBondNewsItem[] = [];
   const marketNews: HomeBondNewsItem[] = [];
   const creditAndIssuanceNews: HomeBondNewsItem[] = [];
+  let latestIncludedReceivedAt = "";
 
   for (const event of sortedEvents) {
     const title = summarizeBondNewsEvent(event);
@@ -243,6 +244,9 @@ export function buildHomeBondNewsModel(input: {
     }
 
     seenTitles.add(dedupeKey);
+    if (!latestIncludedReceivedAt) {
+      latestIncludedReceivedAt = event.received_at;
+    }
     if (holdingHit) {
       holdingHits.push(toBondNewsItem(event, title, "持仓命中", holdingHit));
     } else if (isCreditOrIssuance) {
@@ -252,10 +256,10 @@ export function buildHomeBondNewsModel(input: {
     }
   }
 
-  const latestDate = sortedEvents[0]?.received_at.slice(0, 10) ?? "";
+  const latestDate = latestIncludedReceivedAt.slice(0, 10);
   const staleDays = latestDate ? daysBetween(input.todayIsoDate, latestDate) : null;
   const isStale = staleDays != null && staleDays > BOND_NEWS_STALE_DAYS;
-  const latestTimeLabel = sortedEvents[0] ? dateLabel(sortedEvents[0].received_at) : "";
+  const latestTimeLabel = latestIncludedReceivedAt ? dateLabel(latestIncludedReceivedAt) : "";
 
   return {
     holdingHits: holdingHits.slice(0, HOLDING_HIT_LIMIT),
