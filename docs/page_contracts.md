@@ -1376,6 +1376,64 @@
 - 是否将某些宏观序列或策略状态按 candidate metric 登记；当前合同明确不登记。
 - 是否允许脚本运行输出进入可下载报告或审计归档；当前仅作为页面运行证据显示。
 
+## 13.10 PAGE-MACRO-OBS-001 宏观观察
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-MACRO-OBS-001`
+- 页面名称：`宏观观察`
+- 路由：前端 `/macro-observation`（`frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx`，`mode="observation"`）
+- 页面状态：`candidate tooling surface`。本页只展示宏观分析与策略供数证据，不暴露脚本注册表、执行按钮或刷新动作。
+- 页面边界锚点：`macro-observation-readonly-boundary` 必须在正常页和错误页可见，并明确标出 `read-only macro observation`。
+
+### B. 业务问题与不回答
+
+- **须回答**：宏观核心判断、证据覆盖、市场踩踏风险、功能结果、策略供数状态是否可读。
+- **不回答**：
+  - 不展示脚本注册表、运行结果或任何运行/刷新入口。
+  - 不把脚本产物或运维状态升格为正式宏观指标 truth。
+
+### C. 必有 section / 组件
+
+| Section / component | 状态 | 备注 |
+| --- | --- | --- |
+| `macro-toolkit-tailwind-cockpit` | live | 首屏保留分析日期、投研观点、证据覆盖、能力闭环与合同边界 |
+| `MacroToolkitContractBoundary` | live | 仍需展示 `formal_use_allowed=false` 和 result meta |
+| `macro-observation-readonly-boundary` | live | 明确只读边界，说明刷新、脚本执行和运维注册表留在 `/macro-toolkit` |
+| 核心信号 / 市场踩踏风险 | live | 只读分析证据，不暴露运维操作 |
+| 指标矩阵 / 功能结果 | live | 保留分析结果，但不引出脚本工具尾段 |
+| 策略展示 / 策略供数闭环 | live | 保留策略证据与供数状态，不展示股票刷新控件 |
+
+### D. 时间语义
+
+- 与 `PAGE-MACRO-TOOLKIT-001` 相同，核心分析和策略供数日期仍以返回 payload 内字段为准。
+- 本页不引入独立操作日期或运行日期。
+
+### E. Endpoint / DTO 表
+
+| Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
+| --- | --- | --- | --- |
+| `getMacroToolkitAnalysis()` -> `GET /ui/macro/toolkit/analysis?detail=core` | 核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
+
+### F. 指标映射
+
+- 本页不新增 `MTR-MACRO-*`，不新增 `MTR-*`，也不绑定 golden sample。
+- 只读观察页复用工具页的分析证据，但不继承运维动作。
+
+### G. 状态规则
+
+- **Loading**：核心分析和策略供数可先返回，脚本/运维段不渲染。
+- **Empty**：无分析时仍保留只读边界。
+- **Error**：分析失败时展示合同边界和只读边界。
+
+### H. 测试与验证锚点
+
+- 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 路由：`frontend/src/test/RouteRegistry.test.tsx`
+- 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
+- 债务基线：`npm run debt:audit`
+
 ## 14.0 PAGE-LEDGER-PNL-001 Ledger PnL
 
 ### A. Page identity

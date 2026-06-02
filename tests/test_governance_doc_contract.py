@@ -475,12 +475,30 @@ def test_market_data_page_contract_documents_blocked_formal_use_visibility():
 
 
 def test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promotion():
+    observation_contract = _page_contract_section(
+        "## 13.10 PAGE-MACRO-OBS-001",
+        "## 14.0 PAGE-LEDGER-PNL-001",
+    )
     macro_contract = _page_contract_section(
         "## 13.9 PAGE-MACRO-TOOLKIT-001",
-        "## 14.0 PAGE-LEDGER-PNL-001",
+        "## 13.10 PAGE-MACRO-OBS-001",
     )
     metric_dictionary = _read_doc("metric_dictionary.md")
     maturity_registry = _read_doc("live_route_maturity.md")
+
+    for required in (
+        "页面 ID：`PAGE-MACRO-OBS-001`",
+        "路由：前端 `/macro-observation`",
+        "`macro-observation-readonly-boundary`",
+        "`read-only macro observation`",
+        "`GET /ui/macro/toolkit/analysis?detail=core`",
+        "`GET /ui/macro/toolkit/analysis/strategy-summaries`",
+        "不展示脚本注册表",
+        "不新增 `MTR-MACRO-*`",
+        "`frontend/src/test/MacroToolkitPage.test.tsx`",
+        "`frontend/src/test/RouteRegistry.test.tsx`",
+    ):
+        assert required in observation_contract
 
     for required in (
         "页面 ID：`PAGE-MACRO-TOOLKIT-001`",
@@ -500,6 +518,17 @@ def test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promoti
     ):
         assert required in macro_contract
 
+    assert (
+        "| `/macro-observation` | `PAGE-MACRO-OBS-001` | "
+        "`MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` | "
+        "**无 `MTR-*`**：只读宏观观察口径，不升格为正式指标 | — | "
+        "`frontend/src/test/MacroToolkitPage.test.tsx`；`frontend/src/test/RouteRegistry.test.tsx` |"
+    ) in metric_dictionary
+    assert "`macro-observation`: 页面已有 `PAGE-MACRO-OBS-001`" in metric_dictionary
+    assert "GAP-MACRO-OBS-PAGE" not in maturity_registry
+    assert (
+        "| `/macro-observation` | live | candidate | PAGE-MACRO-OBS-001 |"
+    ) in maturity_registry
     assert (
         "| `/macro-toolkit` | `PAGE-MACRO-TOOLKIT-001` | "
         "`MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / "

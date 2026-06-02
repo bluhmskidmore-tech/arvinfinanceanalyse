@@ -654,6 +654,80 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     assert payload["result"]["default_data_sources"] == ["choice", "tushare"]
     assert payload["result"]["conclusion"]["stance"]
     assert payload["result"]["coverage"]["hit_count"] >= 6
+    data_health = payload["result"]["data_health"]
+    assert data_health["analysis_scope"] == "full"
+    assert data_health["indicator_coverage"] == {
+        "hit_count": 7,
+        "total_count": 8,
+        "hit_rate": 0.875,
+        "missing_count": 1,
+        "missing": [
+            {
+                "key": "ncd_3m",
+                "alias": "M0041813",
+                "label": "3M NCD",
+            }
+        ],
+    }
+    assert data_health["source_coverage"] == {
+        "hit_count": 8,
+        "total_count": 9,
+        "hit_rate": 0.8889,
+        "latest_date": "2026-04-10",
+        "deferred": False,
+        "missing_aliases": ["M0041813"],
+    }
+    assert data_health["capability_results"] == {
+        "complete": 0,
+        "degraded": 5,
+        "unavailable": 6,
+        "total_count": 11,
+        "deferred": False,
+    }
+    assert data_health["capability_plan"] == {
+        "ready_count": 4,
+        "wired_count": 11,
+        "total_count": 11,
+        "deferred": False,
+    }
+    assert data_health["warnings"] == []
+    repair_items = data_health["repair_items"]
+    ncd_repair = next(item for item in repair_items if item["key"] == "indicator:ncd_3m")
+    assert ncd_repair == {
+        "type": "missing",
+        "scope": "full",
+        "priority": "high",
+        "key": "indicator:ncd_3m",
+        "alias": "M0041813",
+        "label": "3M NCD",
+        "source_table": None,
+        "latest_date": None,
+        "reference_date": "2026-04-10",
+        "stale_days": None,
+        "suggested_action": "补齐 M0041813 后重新运行完整宏观分析；缺失项不能按 0 处理。",
+        "action": {
+            "kind": "source_backfill_required",
+            "label": "需要补齐来源数据",
+            "enabled": False,
+            "reason": "当前没有已接入的一键宏观序列刷新接口。",
+            "analysis_detail": "full",
+        },
+        "tags": ["indicator"],
+    }
+    leading_repair = next(item for item in repair_items if item["key"] == "capability:leading_indicator")
+    assert leading_repair["type"] == "degraded"
+    assert leading_repair["scope"] == "full"
+    assert leading_repair["priority"] == "medium"
+    assert leading_repair["label"] == "宏观领先指标"
+    assert "宏观领先指标 当前 degraded" in leading_repair["suggested_action"]
+    assert "PMI_MISSING" in leading_repair["suggested_action"]
+    assert leading_repair["action"] == {
+        "kind": "load_full_analysis",
+        "label": "重新完整分析",
+        "enabled": True,
+        "reason": "补齐输入证据后重新运行完整分析确认状态。",
+        "analysis_detail": "full",
+    }
     assert {item["key"] for item in payload["result"]["signal_cards"]} == {
         "crisis_score_cn",
         "a_share_stampede_risk",
@@ -1194,6 +1268,30 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
     assert result["strategy_summaries"] == []
     assert result["source_checks"] == []
     assert result["capabilities"] == []
+    assert result["data_health"]["analysis_scope"] == "core"
+    assert result["data_health"]["indicator_coverage"]["hit_count"] == 7
+    assert result["data_health"]["indicator_coverage"]["total_count"] == 8
+    assert result["data_health"]["indicator_coverage"]["missing"][0]["alias"] == "M0041813"
+    assert result["data_health"]["source_coverage"] == {
+        "hit_count": 0,
+        "total_count": 0,
+        "hit_rate": None,
+        "latest_date": None,
+        "deferred": True,
+        "missing_aliases": [],
+    }
+    assert result["data_health"]["capability_results"]["deferred"] is True
+    assert result["data_health"]["capability_plan"]["deferred"] is True
+    assert "source_checks" in result["data_health"]["deferred_sections"]
+    repair_items = result["data_health"]["repair_items"]
+    assert any(
+        item["type"] == "deferred"
+        and item["key"] == "deferred:source_checks"
+        and item["scope"] == "core"
+        and item["suggested_action"] == "打开完整分析后确认 source_checks，不把首屏延后加载当作缺失。"
+        for item in repair_items
+    )
+    assert not any(item["key"].startswith("source:") for item in repair_items)
     assert result["a_share_risk"] is None
     assert {item["key"] for item in result["signal_cards"]} == {
         "crisis_score_cn",
@@ -1210,6 +1308,70 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
     assert crisis_card["evidence"] == ["首屏未运行完整 Crisis Score，打开完整分析后显示分数"]
     risk_card = next(item for item in result["signal_cards"] if item["key"] == "a_share_stampede_risk")
     assert risk_card["tone"] == "missing"
+
+
+def test_macro_toolkit_data_health_marks_stale_sources_as_repair_items() -> None:
+    data_health = macro_toolkit_route._analysis_data_health(
+        indicators=[
+            {
+                "key": "hs300",
+                "alias": "sh000300",
+                "label": "沪深300",
+                "latest_value": 4100.0,
+            }
+        ],
+        source_checks=[
+            {
+                "alias": "CU0",
+                "row_count": 120,
+                "latest": {
+                    "date": "2026-04-01",
+                    "series_id": "CA.COPPER",
+                    "vendor_name": "tushare",
+                    "value": 81234.5,
+                },
+            },
+            {
+                "alias": "M0000612",
+                "row_count": 12,
+                "latest": {
+                    "date": "2026-03-01",
+                    "series_id": "cn_cpi_yoy",
+                    "vendor_name": "choice",
+                    "value": 0.7,
+                },
+            }
+        ],
+        capability_results=[],
+        capabilities=[],
+        runtime_status={"analysis_scope": "full", "deferred_sections": []},
+        warnings=[],
+        reference_date="2026-04-10",
+    )
+
+    assert data_health["repair_items"] == [
+        {
+            "type": "stale",
+            "scope": "full",
+            "priority": "medium",
+            "key": "source:CU0",
+            "alias": "CU0",
+            "label": "CU0",
+            "source_table": "system_macro_sources",
+            "latest_date": "2026-04-01",
+            "reference_date": "2026-04-10",
+            "stale_days": 9,
+            "suggested_action": "CU0 最新 2026-04-01，落后分析日 2026-04-10 9 天；刷新 Choice/Tushare 后再确认。",
+            "action": {
+                "kind": "source_backfill_required",
+                "label": "需要刷新来源",
+                "enabled": False,
+                "reason": "当前没有已接入的一键宏观序列刷新接口。",
+                "analysis_detail": "full",
+            },
+            "tags": ["source"],
+        }
+    ]
 
 
 def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_payload(tmp_path, monkeypatch) -> None:

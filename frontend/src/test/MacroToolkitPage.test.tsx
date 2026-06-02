@@ -1,10 +1,11 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const MACRO_TOOLKIT_CSS_PATH = resolve(
@@ -54,6 +55,22 @@ describe("MacroToolkitPage", () => {
     expect(await screen.findByText("投研观点")).toBeInTheDocument();
     expect(await screen.findByText("证据覆盖")).toBeInTheDocument();
     expect(await screen.findByText("87.5%")).toBeInTheDocument();
+    const dataHealth = await screen.findByLabelText("数据健康总览");
+    expect(dataHealth).toHaveTextContent("指标覆盖");
+    expect(dataHealth).toHaveTextContent("7/8");
+    expect(dataHealth).toHaveTextContent("来源覆盖");
+    expect(dataHealth).toHaveTextContent("7/9");
+    expect(dataHealth).toHaveTextContent("最新来源日期");
+    expect(dataHealth).toHaveTextContent("2026-04-30");
+    expect(dataHealth).toHaveTextContent("能力降级");
+    expect(dataHealth).toHaveTextContent("1");
+    expect(dataHealth).toHaveTextContent("待处理数据项");
+    expect(dataHealth).toHaveTextContent("M0041813");
+    expect(dataHealth).toHaveTextContent("补齐 M0041813 后重新运行完整宏观分析");
+    expect(dataHealth).toHaveTextContent("宏观领先指标");
+    expect(dataHealth).toHaveTextContent("PMI_MISSING");
+    expect(dataHealth).toHaveTextContent("重新完整分析");
+    expect(dataHealth).toHaveTextContent("M0041813");
     const boundary = await screen.findByTestId("macro-toolkit-contract-boundary");
     expect(boundary).toHaveTextContent("分析/工具口径");
     expect(boundary).toHaveTextContent("非正式口径");
@@ -163,11 +180,219 @@ describe("MacroToolkitPage", () => {
     expect((await screen.findAllByText("equity_strategies")).length).toBeGreaterThan(0);
   });
 
+  it("renders macro observation as a read-only analysis route without operations controls", async () => {
+    renderWorkbenchApp(["/macro-observation"]);
+
+    expect(await screen.findByTestId("macro-toolkit-tailwind-cockpit")).toBeInTheDocument();
+    expect(await screen.findByTestId("macro-toolkit-contract-boundary")).toHaveTextContent(
+      "macro_toolkit.analysis",
+    );
+    expect(await screen.findByRole("heading", { level: 2, name: "核心信号" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "市场踩踏风险" })).toBeInTheDocument();
+    expect(await screen.findByTestId("macro-observation-readonly-boundary")).toHaveTextContent(
+      "read-only",
+    );
+
+    expect(screen.queryByRole("button", { name: /刷新席位/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /刷新股票数据/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /运行选中脚本/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: "脚本注册表" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: "运行结果" })).not.toBeInTheDocument();
+  });
+
+  it("renders handwritten data-health repair items from the analysis contract", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const resultMeta: ResultMeta = {
+      trace_id: "trace_macro_health_contract",
+      basis: "analytical",
+      result_kind: "macro_toolkit.analysis",
+      formal_use_allowed: false,
+      source_version: "sv_macro_health_contract",
+      vendor_version: "vv_choice_tushare",
+      rule_version: "rv_macro_health_contract",
+      cache_version: "cv_macro_health_contract",
+      quality_flag: "warning",
+      vendor_status: "vendor_stale",
+      fallback_mode: "none",
+      scenario_flag: false,
+      as_of_date: "2026-04-10",
+      generated_at: "2026-04-10T10:00:00Z",
+      tables_used: ["system_macro_sources"],
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        result_meta: resultMeta,
+        result: {
+          default_data_sources: ["choice", "tushare"],
+          as_of_date: "2026-04-10",
+          conclusion: {
+            stance: "数据健康待处理",
+            tone: "neutral",
+            summary: "存在缺失、滞后、降级和延后加载项。",
+            recommended_action: "先处理高优先级输入，再查看完整分析。",
+          },
+          coverage: {
+            indicator_count: 1,
+            hit_count: 0,
+            hit_rate: 0,
+            script_count: 0,
+            output_file_count: 0,
+          },
+          indicators: [],
+          signal_cards: [],
+          capability_results: [],
+          strategy_summaries: [],
+          output_files: [],
+          source_checks: [],
+          capabilities: [],
+          runtime_status: {
+            analysis_scope: "core",
+            deferred_sections: [
+              {
+                key: "source_checks",
+                label: "来源检查",
+                status: "deferred",
+              },
+            ],
+          },
+          data_health: {
+            analysis_scope: "core",
+            indicator_coverage: {
+              hit_count: 0,
+              total_count: 1,
+              hit_rate: 0,
+              missing_count: 1,
+              missing: [{ key: "ncd_3m", alias: "M0041813", label: "3M NCD" }],
+            },
+            source_coverage: {
+              hit_count: 0,
+              total_count: 0,
+              hit_rate: null,
+              latest_date: null,
+              deferred: true,
+              missing_aliases: [],
+            },
+            capability_results: {
+              complete: 0,
+              degraded: 0,
+              unavailable: 0,
+              total_count: 0,
+              deferred: true,
+            },
+            capability_plan: {
+              ready_count: 0,
+              wired_count: 0,
+              total_count: 0,
+              deferred: true,
+            },
+            deferred_sections: ["source_checks"],
+            warnings: ["存在待处理数据项"],
+            repair_items: [
+              {
+                type: "missing",
+                scope: "core",
+                priority: "high",
+                key: "indicator:ncd_3m",
+                alias: "M0041813",
+                label: "3M NCD",
+                suggested_action: "补齐 M0041813 后重新运行完整宏观分析；缺失项不能按 0 处理。",
+                action: {
+                  kind: "source_backfill_required",
+                  label: "需要补齐来源数据",
+                  enabled: false,
+                  reason: "当前没有已接入的一键宏观序列刷新接口。",
+                  analysis_detail: "full",
+                },
+              },
+              {
+                type: "stale",
+                scope: "core",
+                priority: "medium",
+                key: "source:CU0",
+                alias: "CU0",
+                label: "CU0",
+                source_table: "system_macro_sources",
+                latest_date: "2026-04-01",
+                reference_date: "2026-04-10",
+                stale_days: 9,
+                suggested_action: "CU0 最新 2026-04-01，落后分析日 2026-04-10 9 天；刷新 Choice/Tushare 后再确认。",
+                action: {
+                  kind: "source_backfill_required",
+                  label: "需要刷新来源",
+                  enabled: false,
+                  reason: "当前没有已接入的一键宏观序列刷新接口。",
+                  analysis_detail: "full",
+                },
+              },
+              {
+                type: "degraded",
+                scope: "core",
+                priority: "medium",
+                key: "capability:leading_indicator",
+                label: "宏观领先指标",
+                suggested_action: "宏观领先指标 当前 degraded：PMI_MISSING；补齐输入证据后重新运行完整宏观分析。",
+                action: {
+                  kind: "load_full_analysis",
+                  label: "重新完整分析",
+                  enabled: true,
+                  reason: "补齐输入证据后重新运行完整分析确认状态。",
+                  analysis_detail: "full",
+                },
+              },
+              {
+                type: "deferred",
+                scope: "core",
+                priority: "low",
+                key: "deferred:source_checks",
+                label: "source_checks",
+                suggested_action: "打开完整分析后确认 source_checks，不把首屏延后加载当作缺失。",
+                action: {
+                  kind: "load_full_analysis",
+                  label: "查看完整分析",
+                  enabled: true,
+                  reason: "首屏延后加载，完整分析可确认。",
+                  analysis_detail: "full",
+                },
+              },
+            ],
+          },
+          warnings: [],
+        },
+      }),
+      getMacroToolkitStrategySummaries: async () => ({
+        result_meta: { ...resultMeta, result_kind: "macro_toolkit.strategy_summaries" },
+        result: { strategy_summaries: [] },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-observation"], { client });
+
+    const dataHealth = await screen.findByLabelText("数据健康总览");
+    expect(dataHealth).toHaveTextContent("3M NCD");
+    expect(dataHealth).toHaveTextContent("CU0");
+    expect(dataHealth).toHaveTextContent("落后 9 天");
+    expect(dataHealth).toHaveTextContent("宏观领先指标");
+    expect(dataHealth).toHaveTextContent("PMI_MISSING");
+    expect(dataHealth).toHaveTextContent("完整分析后确认");
+    expect(dataHealth).toHaveTextContent("当前没有已接入的一键宏观序列刷新接口。");
+    expect(within(dataHealth).queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
+    expect(within(dataHealth).queryByRole("button", { name: "重新完整分析" })).not.toBeInTheDocument();
+  });
+
   it("shows M7/M10/M14 input evidence and missing-input warnings in capability results", async () => {
     renderWorkbenchApp(["/macro-toolkit"]);
 
     const m7Text = await screen.findByText((content) => content.includes("Policy rate 7D"));
-    const m10Texts = await screen.findAllByText((content) => content.includes("PMI_MISSING"));
+    await waitFor(() => {
+      const capabilityPmiTexts = screen
+        .getAllByText((content) => content.includes("PMI_MISSING"))
+        .filter((item) => item.closest(".macro-toolkit-capability-result"));
+      expect(capabilityPmiTexts.length).toBeGreaterThanOrEqual(2);
+    });
+    const m10Texts = screen
+      .getAllByText((content) => content.includes("PMI_MISSING"))
+      .filter((item) => item.closest(".macro-toolkit-capability-result"));
     const m7Card = m7Text.closest(".macro-toolkit-capability-result");
     const m10Card = m10Texts[0]?.closest(".macro-toolkit-capability-result");
     const m14Card = m10Texts[1]?.closest(".macro-toolkit-capability-result");
@@ -256,6 +481,55 @@ describe("MacroToolkitPage", () => {
       ...baseClient,
       getMacroToolkitAnalysis: async (options) => {
         calls.push(options);
+        const coreDataHealth = {
+          ...analysisEnvelope.result.data_health!,
+          analysis_scope: "core",
+          source_coverage: {
+            hit_count: 0,
+            total_count: 0,
+            hit_rate: null,
+            latest_date: null,
+            deferred: true,
+            missing_aliases: [],
+          },
+          capability_results: {
+            complete: 0,
+            degraded: 0,
+            unavailable: 0,
+            total_count: 0,
+            deferred: true,
+          },
+          capability_plan: {
+            ready_count: 0,
+            wired_count: 0,
+            total_count: 0,
+            deferred: true,
+          },
+          deferred_sections: ["capability_results", "source_checks"],
+          repair_items: [
+            {
+              type: "deferred",
+              scope: "core",
+              priority: "low",
+              key: "deferred:source_checks",
+              alias: null,
+              label: "source_checks",
+              source_table: null,
+              latest_date: null,
+              reference_date: "2026-04-30",
+              stale_days: null,
+              suggested_action: "打开完整分析后确认 source_checks，不把首屏延后加载当作缺失。",
+              action: {
+                kind: "load_full_analysis",
+                label: "查看完整分析",
+                enabled: true,
+                reason: "首屏延后加载，完整分析可确认。",
+                analysis_detail: "full",
+              },
+              tags: ["deferred"],
+            },
+          ],
+        } as const;
         return {
           ...analysisEnvelope,
           result: {
@@ -277,6 +551,7 @@ describe("MacroToolkitPage", () => {
               options?.detail === "full" ? analysisEnvelope.result.capability_results : [],
             signal_cards:
               options?.detail === "full" ? analysisEnvelope.result.signal_cards : coreSignalCardsWithCrisis,
+            data_health: options?.detail === "full" ? analysisEnvelope.result.data_health : coreDataHealth,
           },
         };
       },
@@ -286,11 +561,22 @@ describe("MacroToolkitPage", () => {
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
     expect(await screen.findByText("完整结果待加载")).toBeInTheDocument();
+    const coreDataHealth = await screen.findByLabelText("数据健康总览");
+    expect(coreDataHealth).toHaveTextContent("待处理数据项");
+    expect(coreDataHealth).toHaveTextContent("完整分析后确认");
+    expect(coreDataHealth).not.toHaveTextContent("来源未命中");
     expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
-    const fullAnalysisButtons = await screen.findAllByRole("button", { name: "查看完整分析" });
-    await user.click(fullAnalysisButtons[0]!);
+    await user.click(within(coreDataHealth).getByRole("button", { name: /查看完整分析/ }));
+    expect(calls).toContainEqual({ detail: "full" });
+    await screen.findByLabelText("Crisis Score 数据来源");
 
     expect(calls).toContainEqual({ detail: "full" });
+    const fullDataHealth = await screen.findByLabelText("数据健康总览");
+    expect(fullDataHealth).toHaveTextContent("待处理数据项");
+    expect(fullDataHealth).toHaveTextContent("补齐 M0041813 后重新运行完整宏观分析");
+    expect(fullDataHealth).toHaveTextContent("PMI_MISSING");
+    await user.click(within(fullDataHealth).getAllByRole("button", { name: /重新完整分析/ })[0]!);
+    expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2);
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("分数组件覆盖");
     expect(crisisEvidence).toHaveTextContent("5/5");
@@ -300,13 +586,13 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("2026-04-10");
     expect(crisisEvidence).toHaveTextContent("120 rows");
     expect(crisisEvidence).toHaveTextContent("商品旁证覆盖");
-    expect(crisisEvidence).toHaveTextContent("supplemental_observation");
     expect(crisisEvidence).toHaveTextContent("6/6");
+    expect(crisisEvidence).toHaveTextContent("supplemental_observation");
     expect(crisisEvidence).toHaveTextContent("Crisis Score 公式仍仅使用 nanhua");
     expect(crisisEvidence).toHaveTextContent("Copper futures");
+    expect(crisisEvidence).toHaveTextContent("CU0 / CU0.SHF");
     expect(crisisEvidence).toHaveTextContent("matched CU0");
     expect(crisisEvidence).toHaveTextContent("同日");
-    expect(crisisEvidence).toHaveTextContent("CU0 / CU0.SHF");
     expect(crisisEvidence).toHaveTextContent("Crude oil futures");
     expect(crisisEvidence).toHaveTextContent("Gold futures");
     expect(crisisEvidence).toHaveTextContent("未纳入公式");

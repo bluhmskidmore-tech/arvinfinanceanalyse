@@ -287,6 +287,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/macro-observation") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<MacroToolkitPage mode="observation" />),
+      };
+    }
+
     if (section.path === "/macro-toolkit") {
       return {
         path: section.path.slice(1),

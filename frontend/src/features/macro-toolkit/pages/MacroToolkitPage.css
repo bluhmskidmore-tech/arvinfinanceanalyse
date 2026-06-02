@@ -290,6 +290,179 @@
   gap: 10px;
 }
 
+.macro-toolkit-data-health {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-left: 3px solid var(--macro-toolkit-primary);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--macro-toolkit-border-soft) 74%, transparent);
+}
+
+.macro-toolkit-data-health__head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__head span {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.macro-toolkit-data-health__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.macro-toolkit-data-health__tile {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-left: 3px solid var(--macro-toolkit-info);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card-muted);
+}
+
+.macro-toolkit-data-health__tile--positive {
+  border-left-color: var(--macro-toolkit-success);
+}
+
+.macro-toolkit-data-health__tile--negative,
+.macro-toolkit-data-health__tile--missing {
+  border-left-color: var(--macro-toolkit-warning);
+}
+
+.macro-toolkit-data-health__tile span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.macro-toolkit-data-health__tile strong {
+  color: var(--moss-color-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-data-health__tile small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-data-health__notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__repairs {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.macro-toolkit-data-health__repairs-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__repairs-head span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.macro-toolkit-data-health__repair-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__repair {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-left: 3px solid var(--macro-toolkit-warning);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card-muted);
+}
+
+.macro-toolkit-data-health__repair--high {
+  border-left-color: var(--macro-toolkit-danger);
+}
+
+.macro-toolkit-data-health__repair--low {
+  border-left-color: var(--macro-toolkit-info);
+}
+
+.macro-toolkit-data-health__repair-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__repair-main span,
+.macro-toolkit-data-health__repair-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-data-health__repair-main small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-data-health__repair-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__repair-action small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .macro-toolkit-readiness-tile {
   display: grid;
   gap: 6px;
@@ -976,14 +1149,14 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.macro-toolkit-crisis-evidence__components {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
 .macro-toolkit-crisis-coverage-note {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.macro-toolkit-crisis-evidence__components {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .macro-toolkit-crisis-input-grid {
@@ -1362,6 +1535,7 @@
   .macro-toolkit-a-share-risk,
   .macro-toolkit-a-share-risk__lists,
   .macro-toolkit-hason-strategy__metrics,
+  .macro-toolkit-data-health__grid,
   .macro-toolkit-readiness-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1386,6 +1560,7 @@
   .macro-toolkit-a-share-risk__metrics,
   .macro-toolkit-a-share-risk__lists,
   .macro-toolkit-hason-strategy__metrics,
+  .macro-toolkit-data-health__grid,
   .macro-toolkit-readiness-strip {
     grid-template-columns: 1fr;
   }

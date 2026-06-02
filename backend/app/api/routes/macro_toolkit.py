@@ -75,6 +75,17 @@ _SOURCE_CHECK_ALIASES = (
     "M0041813",
 )
 
+_DAILY_SOURCE_CHECK_ALIASES = {
+    "sh000300",
+    "CU0",
+    "DR007.IB",
+    "M0067855",
+    "S0059747",
+    "S0059749",
+    "S0059760",
+    "M0041813",
+}
+
 _ANALYSIS_INDICATORS = (
     {"key": "hs300", "alias": "sh000300", "label": "沪深300", "unit": "点", "group": "风险资产"},
     {"key": "copper", "alias": "CU0", "label": "铜主力", "unit": "元/吨", "group": "工业需求"},
@@ -316,6 +327,16 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
         "output_file_count": len(output_files),
     }
     conclusion = _analysis_conclusion(signal_cards, coverage)
+    warnings = _analysis_warnings(coverage)
+    data_health = _analysis_data_health(
+        indicators=indicators,
+        source_checks=source_checks,
+        capability_results=capability_results,
+        capabilities=capabilities,
+        runtime_status=runtime_status,
+        warnings=warnings,
+        reference_date=analysis_date,
+    )
     return _envelope(
         "macro_toolkit.analysis",
         {
@@ -342,7 +363,8 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
                 reference_date=analysis_date,
             ),
             "runtime_status": runtime_status,
-            "warnings": _analysis_warnings(coverage),
+            "data_health": data_health,
+            "warnings": warnings,
         },
     )
 
@@ -3520,6 +3542,350 @@ def _analysis_warnings(coverage: dict[str, object]) -> list[str]:
     if float(coverage["hit_rate"]) < 0.6:
         return ["核心宏观指标命中不足，当前结论只展示可用证据，不形成完整方向判断。"]
     return []
+
+
+def _analysis_data_health(
+    *,
+    indicators: list[dict[str, object]],
+    source_checks: list[dict[str, object]],
+    capability_results: list[dict[str, object]],
+    capabilities: list[dict[str, object]],
+    runtime_status: dict[str, object],
+    warnings: list[str],
+    reference_date: str | None,
+) -> dict[str, object]:
+    deferred_sections = [
+        str(section["key"])
+        for section in runtime_status.get("deferred_sections", [])
+        if isinstance(section, dict) and section.get("key")
+    ]
+    analysis_scope = str(runtime_status.get("analysis_scope") or "")
+    return {
+        "analysis_scope": runtime_status.get("analysis_scope"),
+        "indicator_coverage": _indicator_data_health(indicators),
+        "source_coverage": _source_data_health(
+            source_checks,
+            deferred="source_checks" in deferred_sections,
+        ),
+        "capability_results": _capability_result_data_health(
+            capability_results,
+            deferred="capability_results" in deferred_sections,
+        ),
+        "capability_plan": _capability_plan_data_health(
+            capabilities,
+            deferred="capabilities" in deferred_sections,
+        ),
+        "deferred_sections": deferred_sections,
+        "repair_items": _analysis_repair_items(
+            indicators=indicators,
+            source_checks=source_checks,
+            capability_results=capability_results,
+            deferred_sections=deferred_sections,
+            analysis_scope=analysis_scope,
+            reference_date=reference_date,
+        ),
+        "warnings": warnings,
+    }
+
+
+def _analysis_repair_items(
+    *,
+    indicators: list[dict[str, object]],
+    source_checks: list[dict[str, object]],
+    capability_results: list[dict[str, object]],
+    deferred_sections: list[str],
+    analysis_scope: str,
+    reference_date: str | None,
+) -> list[dict[str, object]]:
+    missing_indicator_aliases = {
+        str(item.get("alias"))
+        for item in indicators
+        if item.get("alias") and item.get("latest_value") is None
+    }
+    items: list[dict[str, object]] = [
+        _missing_indicator_repair_item(item, analysis_scope=analysis_scope, reference_date=reference_date)
+        for item in indicators
+        if item.get("latest_value") is None
+    ]
+
+    if "source_checks" not in deferred_sections:
+        items.extend(
+            _source_repair_item(check, analysis_scope=analysis_scope, reference_date=reference_date)
+            for check in source_checks
+            if _source_check_needs_repair(check, reference_date)
+            and str(check.get("alias") or "") not in missing_indicator_aliases
+        )
+
+    if "capability_results" not in deferred_sections:
+        items.extend(
+            _capability_repair_item(item, analysis_scope=analysis_scope, reference_date=reference_date)
+            for item in capability_results
+            if str(item.get("status") or "") in {"degraded", "unavailable"}
+        )
+
+    items.extend(
+        _deferred_repair_item(section, analysis_scope=analysis_scope, reference_date=reference_date)
+        for section in deferred_sections
+        if section in {"source_checks", "capability_results", "capabilities"}
+    )
+    return sorted(items, key=_repair_item_sort_key)
+
+
+def _missing_indicator_repair_item(
+    item: dict[str, object],
+    *,
+    analysis_scope: str,
+    reference_date: str | None,
+) -> dict[str, object]:
+    alias = str(item.get("alias") or "")
+    label = str(item.get("label") or item.get("key") or alias)
+    return {
+        "type": "missing",
+        "scope": analysis_scope,
+        "priority": "high",
+        "key": f"indicator:{item.get('key')}",
+        "alias": alias or None,
+        "label": label,
+        "source_table": None,
+        "latest_date": None,
+        "reference_date": reference_date,
+        "stale_days": None,
+        "suggested_action": f"补齐 {alias or label} 后重新运行完整宏观分析；缺失项不能按 0 处理。",
+        "action": _source_backfill_action("需要补齐来源数据"),
+        "tags": ["indicator"],
+    }
+
+
+def _source_check_needs_repair(check: dict[str, object], reference_date: str | None) -> bool:
+    if int(check.get("row_count") or 0) <= 0:
+        return True
+    latest = check.get("latest")
+    if not isinstance(latest, dict):
+        return True
+    if str(check.get("alias") or "") not in _DAILY_SOURCE_CHECK_ALIASES:
+        return False
+    return _stale_days(latest.get("date"), reference_date) is not None
+
+
+def _source_repair_item(
+    check: dict[str, object],
+    *,
+    analysis_scope: str,
+    reference_date: str | None,
+) -> dict[str, object]:
+    alias = str(check.get("alias") or "")
+    latest = check.get("latest") if isinstance(check.get("latest"), dict) else None
+    latest_date = str(latest.get("date"))[:10] if isinstance(latest, dict) and latest.get("date") else None
+    stale_days = _stale_days(latest_date, reference_date)
+    if int(check.get("row_count") or 0) <= 0 or latest is None:
+        return {
+            "type": "missing",
+            "scope": analysis_scope,
+            "priority": "high",
+            "key": f"source:{alias}",
+            "alias": alias or None,
+            "label": alias,
+            "source_table": "system_macro_sources",
+            "latest_date": None,
+            "reference_date": reference_date,
+            "stale_days": None,
+            "suggested_action": f"补齐 {alias} 来源数据后重新运行完整宏观分析；缺失项不能按 0 处理。",
+            "action": _source_backfill_action("需要补齐来源数据"),
+            "tags": ["source"],
+        }
+    return {
+        "type": "stale",
+        "scope": analysis_scope,
+        "priority": "medium",
+        "key": f"source:{alias}",
+        "alias": alias or None,
+        "label": alias,
+        "source_table": "system_macro_sources",
+        "latest_date": latest_date,
+        "reference_date": reference_date,
+        "stale_days": stale_days,
+        "suggested_action": (
+            f"{alias} 最新 {latest_date}，落后分析日 {reference_date} {stale_days} 天；"
+            "刷新 Choice/Tushare 后再确认。"
+        ),
+        "action": _source_backfill_action("需要刷新来源"),
+        "tags": ["source"],
+    }
+
+
+def _capability_repair_item(
+    item: dict[str, object],
+    *,
+    analysis_scope: str,
+    reference_date: str | None,
+) -> dict[str, object]:
+    key = str(item.get("key") or "")
+    status = str(item.get("status") or "")
+    warnings = [str(warning) for warning in item.get("warnings", []) if warning]
+    priority = "high" if status == "unavailable" else "medium"
+    label = str(item.get("label") or key)
+    warning_text = " / ".join(warnings[:3])
+    reason = warning_text or status
+    return {
+        "type": "missing" if status == "unavailable" else "degraded",
+        "scope": analysis_scope,
+        "priority": priority,
+        "key": f"capability:{key}",
+        "alias": None,
+        "label": label,
+        "source_table": None,
+        "latest_date": None,
+        "reference_date": reference_date,
+        "stale_days": None,
+        "suggested_action": f"{label} 当前 {status}：{reason}；补齐输入证据后重新运行完整宏观分析。",
+        "action": _full_analysis_action(
+            label="重新完整分析",
+            reason="补齐输入证据后重新运行完整分析确认状态。",
+        ),
+        "tags": ["capability"],
+    }
+
+
+def _deferred_repair_item(
+    section: str,
+    *,
+    analysis_scope: str,
+    reference_date: str | None,
+) -> dict[str, object]:
+    return {
+        "type": "deferred",
+        "scope": analysis_scope,
+        "priority": "low",
+        "key": f"deferred:{section}",
+        "alias": None,
+        "label": section,
+        "source_table": None,
+        "latest_date": None,
+        "reference_date": reference_date,
+        "stale_days": None,
+        "suggested_action": f"打开完整分析后确认 {section}，不把首屏延后加载当作缺失。",
+        "action": _full_analysis_action(
+            label="查看完整分析",
+            reason="首屏延后加载，完整分析可确认。",
+        ),
+        "tags": ["deferred"],
+    }
+
+
+def _source_backfill_action(label: str) -> dict[str, object]:
+    return {
+        "kind": "source_backfill_required",
+        "label": label,
+        "enabled": False,
+        "reason": "当前没有已接入的一键宏观序列刷新接口。",
+        "analysis_detail": "full",
+    }
+
+
+def _full_analysis_action(*, label: str, reason: str) -> dict[str, object]:
+    return {
+        "kind": "load_full_analysis",
+        "label": label,
+        "enabled": True,
+        "reason": reason,
+        "analysis_detail": "full",
+    }
+
+
+def _stale_days(latest_date: object, reference_date: str | None) -> int | None:
+    if not latest_date or not reference_date:
+        return None
+    try:
+        latest = date.fromisoformat(str(latest_date)[:10])
+        reference = date.fromisoformat(str(reference_date)[:10])
+    except ValueError:
+        return None
+    days = (reference - latest).days
+    return days if days > 1 else None
+
+
+def _repair_item_sort_key(item: dict[str, object]) -> tuple[int, str, str]:
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    type_order = {"missing": 0, "stale": 1, "degraded": 2, "deferred": 3}
+    return (
+        priority_order.get(str(item.get("priority")), 9),
+        str(type_order.get(str(item.get("type")), 9)),
+        str(item.get("key") or ""),
+    )
+
+
+def _indicator_data_health(indicators: list[dict[str, object]]) -> dict[str, object]:
+    hit_count = sum(1 for item in indicators if item.get("latest_value") is not None)
+    missing = [
+        {
+            "key": item.get("key"),
+            "alias": item.get("alias"),
+            "label": item.get("label"),
+        }
+        for item in indicators
+        if item.get("latest_value") is None
+    ]
+    return {
+        "hit_count": hit_count,
+        "total_count": len(indicators),
+        "hit_rate": round(hit_count / len(indicators), 4) if indicators else None,
+        "missing_count": len(missing),
+        "missing": missing,
+    }
+
+
+def _source_data_health(
+    source_checks: list[dict[str, object]],
+    *,
+    deferred: bool,
+) -> dict[str, object]:
+    hit_count = sum(1 for item in source_checks if int(item.get("row_count") or 0) > 0)
+    missing_aliases = [
+        str(item["alias"])
+        for item in source_checks
+        if item.get("alias") and int(item.get("row_count") or 0) <= 0
+    ]
+    return {
+        "hit_count": hit_count,
+        "total_count": len(source_checks),
+        "hit_rate": round(hit_count / len(source_checks), 4) if source_checks else None,
+        "latest_date": _latest_source_check_date(source_checks),
+        "deferred": deferred,
+        "missing_aliases": missing_aliases,
+    }
+
+
+def _capability_result_data_health(
+    capability_results: list[dict[str, object]],
+    *,
+    deferred: bool,
+) -> dict[str, object]:
+    return {
+        "complete": sum(1 for item in capability_results if item.get("status") == "complete"),
+        "degraded": sum(1 for item in capability_results if item.get("status") == "degraded"),
+        "unavailable": sum(1 for item in capability_results if item.get("status") == "unavailable"),
+        "total_count": len(capability_results),
+        "deferred": deferred,
+    }
+
+
+def _capability_plan_data_health(
+    capabilities: list[dict[str, object]],
+    *,
+    deferred: bool,
+) -> dict[str, object]:
+    ready_count = sum(1 for item in capabilities if str(item.get("data_status")) == "ready")
+    wired_count = sum(
+        1
+        for item in capabilities
+        if str(item.get("route_status")) == "wired" and str(item.get("frontend_status")) == "visible"
+    )
+    return {
+        "ready_count": ready_count,
+        "wired_count": wired_count,
+        "total_count": len(capabilities),
+        "deferred": deferred,
+    }
 
 
 def _analysis_runtime_status(scope: str) -> dict[str, object]:

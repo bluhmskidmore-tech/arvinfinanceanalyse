@@ -444,6 +444,7 @@ Guardrails:
 | `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
 | `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；当前仅 formal rates 片段可单独核对，尚无 full-page formal metric dictionary / capture-ready golden sample | — | `frontend/src/test/MarketDataPage.test.tsx` |
+| `/macro-observation` | `PAGE-MACRO-OBS-001` | `MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` | **无 `MTR-*`**：只读宏观观察口径，不升格为正式指标 | — | `frontend/src/test/MacroToolkitPage.test.tsx`；`frontend/src/test/RouteRegistry.test.tsx` |
 | `/macro-toolkit` | `PAGE-MACRO-TOOLKIT-001` | `MacroToolkitPage.tsx` -> `getMacroToolkitAnalysis` / `getMacroToolkitStrategySummaries` / `getMacroToolkitScripts` | **无 `MTR-*`**：工具/分析口径，不升格为正式指标 | — | `frontend/src/test/MacroToolkitPage.test.tsx`；`tests/test_macro_toolkit_scripts.py` |
 
 ## 13. 建议下一步
@@ -549,6 +550,7 @@ Guardrails:
 ### 15.3 复用、排除与对齐说明
 
 - `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence，macro / FX / news 继续以 `GAP-OPS-MACRO-FX` 约束。
+- `macro-observation`: 页面已有 `PAGE-MACRO-OBS-001`，但它是只读宏观观察 surface；核心信号、踩踏风险、策略供数状态和 source/version/run_id 只作分析证据，不新增 `MTR-MACRO-*` 或任何正式 `MTR-*`。
 - `macro-toolkit`: 页面已有 `PAGE-MACRO-TOOLKIT-001`，但它是工具/分析口径 surface；`coverage.hit_rate`、脚本数、策略数、真实链路数、刷新行数与 source/version/run_id 只作状态和追踪证据，不新增 `MTR-MACRO-*` 或任何正式 `MTR-*`。
 - `product-category-pnl`: 继续只复用当前 active 的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 只有在 decision 3C field matrix / numbering / tests 落地后才可升格为更多 `MTR-*`。
 - `positions`: `区间起`、`区间止`、`业务种类`、`产品类型`、`客户搜索`、`方向/对手方` 属过滤上下文，`status=excluded`，不写入 `MTR-*`。

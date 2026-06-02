@@ -42,6 +42,9 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-POS-001": (
         "positions DTO remains page/schema truth only; no approved `MTR-*` page bindings yet."
     ),
+    "PAGE-MACRO-OBS-001": (
+        "macro observation is a non-formal analytical surface; no approved `MTR-*` bindings by design."
+    ),
     "PAGE-MACRO-TOOLKIT-001": (
         "macro toolkit is a non-formal tooling surface; no approved `MTR-*` bindings by design."
     ),

@@ -359,6 +359,65 @@ export type MacroToolkitRuntimeStatusPayload = {
   }>;
 };
 
+export type MacroToolkitDataHealth = {
+  analysis_scope?: string | null;
+  indicator_coverage: {
+    hit_count: number;
+    total_count: number;
+    hit_rate: number | null;
+    missing_count: number;
+    missing: Array<{
+      key?: string | null;
+      alias?: string | null;
+      label?: string | null;
+    }>;
+  };
+  source_coverage: {
+    hit_count: number;
+    total_count: number;
+    hit_rate: number | null;
+    latest_date: string | null;
+    deferred: boolean;
+    missing_aliases: string[];
+  };
+  capability_results: {
+    complete: number;
+    degraded: number;
+    unavailable: number;
+    total_count: number;
+    deferred: boolean;
+  };
+  capability_plan: {
+    ready_count: number;
+    wired_count: number;
+    total_count: number;
+    deferred: boolean;
+  };
+  deferred_sections: string[];
+  warnings: string[];
+  repair_items?: Array<{
+    type?: string | null;
+    scope?: string | null;
+    priority?: string | null;
+    key?: string | null;
+    alias?: string | null;
+    label?: string | null;
+    source_table?: string | null;
+    latest_date?: string | null;
+    reference_date?: string | null;
+    stale_days?: number | null;
+    suggested_action?: string | null;
+    action?: {
+      kind?: string | null;
+      label?: string | null;
+      enabled?: boolean | null;
+      reason?: string | null;
+      analysis_detail?: string | null;
+    } | null;
+    tags?: string[];
+  }>;
+};
+
 export type MacroToolkitHasonStrategyModule = {
   key: string;
   label: string;
@@ -443,6 +502,7 @@ export type MacroToolkitAnalysisPayload = {
   cffex_member_rank?: MacroToolkitPayload["cffex_member_rank"];
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   runtime_status?: MacroToolkitRuntimeStatusPayload;
+  data_health?: MacroToolkitDataHealth;
   warnings: string[];
 };
 
@@ -1484,6 +1544,89 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   runtime_status: {
     analysis_scope: "full",
     deferred_sections: [],
+  },
+  data_health: {
+    analysis_scope: "full",
+    indicator_coverage: {
+      hit_count: 7,
+      total_count: 8,
+      hit_rate: 0.875,
+      missing_count: 1,
+      missing: [
+        {
+          key: "ncd_3m",
+          alias: "M0041813",
+          label: "3M NCD",
+        },
+      ],
+    },
+    source_coverage: {
+      hit_count: 7,
+      total_count: 9,
+      hit_rate: 0.7778,
+      latest_date: "2026-04-30",
+      deferred: false,
+      missing_aliases: ["M0041813"],
+    },
+    capability_results: {
+      complete: 2,
+      degraded: 1,
+      unavailable: 0,
+      total_count: 3,
+      deferred: false,
+    },
+    capability_plan: {
+      ready_count: 1,
+      wired_count: 1,
+      total_count: 2,
+      deferred: false,
+    },
+    deferred_sections: [],
+    warnings: [],
+    repair_items: [
+      {
+        type: "missing",
+        scope: "full",
+        priority: "high",
+        key: "indicator:ncd_3m",
+        alias: "M0041813",
+        label: "3M NCD",
+        source_table: null,
+        latest_date: null,
+        reference_date: "2026-04-30",
+        stale_days: null,
+        suggested_action: "补齐 M0041813 后重新运行完整宏观分析；缺失项不能按 0 处理。",
+        action: {
+          kind: "source_backfill_required",
+          label: "需要补齐来源数据",
+          enabled: false,
+          reason: "当前没有已接入的一键宏观序列刷新接口。",
+          analysis_detail: "full",
+        },
+        tags: ["indicator"],
+      },
+      {
+        type: "degraded",
+        scope: "full",
+        priority: "medium",
+        key: "capability:leading_indicator",
+        alias: null,
+        label: "宏观领先指标",
+        source_table: null,
+        latest_date: null,
+        reference_date: "2026-04-30",
+        stale_days: null,
+        suggested_action: "宏观领先指标 当前 degraded：PMI_MISSING / PPI_YOY_MISSING / M2_YOY_MISSING；补齐输入证据后重新运行完整宏观分析。",
+        action: {
+          kind: "load_full_analysis",
+          label: "重新完整分析",
+          enabled: true,
+          reason: "补齐输入证据后重新运行完整分析确认状态。",
+          analysis_detail: "full",
+        },
+        tags: ["capability"],
+      },
+    ],
   },
   warnings: [],
 };

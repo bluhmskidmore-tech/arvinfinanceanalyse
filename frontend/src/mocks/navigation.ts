@@ -97,6 +97,7 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   "average-balance": "portfolio",
   "market-overview": "market",
   "market-data": "market",
+  "macro-observation": "market",
   "macro-toolkit": "market",
   "cross-asset": "market",
   "stock-analysis": "market",
@@ -265,6 +266,17 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "已开放",
     readinessNote:
       "已接正式利率行情读链路，稳定序列走 formal 口径；分析口径模块（Livermore / 联动）独立标注。",
+  },
+  {
+    key: "macro-observation",
+    label: "宏观观察",
+    path: "/macro-observation",
+    icon: "analysis",
+    description: "只读宏观分析入口，展示核心信号、风险状态和策略供数证据。",
+    readiness: "live",
+    readinessLabel: "观察口径",
+    readinessNote:
+      "复用宏观分析读链路，只展示 analytical evidence；刷新、脚本注册表和运行结果留在宏观工具页。",
   },
   {
     key: "macro-toolkit",

@@ -182,6 +182,14 @@ vi.mock("../features/market-data/pages/MarketDataPage", () => ({
   ),
 }));
 
+vi.mock("../features/macro-toolkit/pages/MacroToolkitPage", () => ({
+  default: ({ mode }: { mode?: "toolkit" | "observation" }) => (
+    <section data-testid={`macro-toolkit-route-${mode ?? "toolkit"}`}>
+      <h1>{mode === "observation" ? "宏观观察" : "宏观工具"}</h1>
+    </section>
+  ),
+}));
+
 vi.mock("../features/stock-analysis/pages/StockAnalysisPage", () => ({
   default: () => (
     <section data-testid="stock-analysis-page">
@@ -306,6 +314,13 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("market-data-page")).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+  });
+
+  it("renders the macro-observation route as the read-only macro page", async () => {
+    renderWorkbenchApp(["/macro-observation"], { client: mockClient });
+
+    expect(await screen.findByTestId("macro-toolkit-route-observation")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "宏观观察" })).toBeInTheDocument();
   });
 
   it("renders the stock-analysis route", async () => {
