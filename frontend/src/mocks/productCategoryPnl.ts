@@ -284,7 +284,7 @@ export function buildMockProductCategoryPnlEnvelope(
     },
     {
       category_id: "derivatives",
-      category_name: "衍生品",
+      category_name: "汇兑损益及衍生",
       side: "asset",
       level: 0,
       view: options.view,

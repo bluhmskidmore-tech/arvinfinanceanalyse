@@ -451,7 +451,7 @@ describe("TeamPerformancePage", () => {
           }),
           productRow({
             category_id: "derivatives",
-            category_name: "衍生品",
+            category_name: "汇兑损益及衍生",
             level: 1,
             is_total: false,
             business_net_income: "-300000",
@@ -535,7 +535,8 @@ describe("TeamPerformancePage", () => {
     expect(q1Caliber).toHaveTextContent("自营中心");
     expect(q1Caliber).toHaveTextContent("债券交易室");
     expect(q1Caliber).toHaveTextContent("外汇与衍生品室");
-    expect(q1Caliber).toHaveTextContent("外汇远期/掉期归代客交易");
+    expect(q1Caliber).toHaveTextContent("汇兑损益及衍生聚合行暂不强行归属");
+    expect(q1Caliber).toHaveTextContent("汇兑损益及衍生");
     expect(q1Caliber).toHaveTextContent("产业基金");
     expect(q1Caliber).toHaveTextContent("来源行：其中：结构化融资（券商）");
     expect(q1Caliber).not.toHaveTextContent("2026计划");

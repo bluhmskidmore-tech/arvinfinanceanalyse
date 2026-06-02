@@ -355,7 +355,7 @@ describe("teamPerformancePageModel", () => {
     ).toEqual(["政策性金融债", "同业存单", "地方政府债券", "国债", "铁道债"]);
   });
 
-  it("splits Q1 interbank and FX rows by currency fields and keeps derivatives out of FX", () => {
+  it("splits Q1 interbank and FX rows by currency fields and keeps aggregate FX derivative evidence pending", () => {
     const model = buildTeamPerformanceQ1CaliberModel({
       productCategoryRows: [
         productRow({
@@ -383,7 +383,7 @@ describe("teamPerformancePageModel", () => {
         }),
         productRow({
           category_id: "derivatives",
-          category_name: "衍生品",
+          category_name: "汇兑损益及衍生",
           level: 0,
           is_total: false,
           business_net_income: "-5000000",
@@ -407,6 +407,7 @@ describe("teamPerformancePageModel", () => {
     expect(customer?.rules.find((rule) => rule.rowId === "derivatives")).toMatchObject({
       allocation: "reference",
       evidenceStatus: "split-needed",
+      rowName: "汇兑损益及衍生",
       amountYuan: -5000000,
     });
   });

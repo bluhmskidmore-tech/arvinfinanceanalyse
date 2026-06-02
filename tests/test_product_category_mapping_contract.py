@@ -100,6 +100,34 @@ def test_derivative_and_intermediate_account_lists_have_no_duplicates() -> None:
     assert len(INTERMEDIATE_BUSINESS_PNL_ACCOUNTS) == len(set(INTERMEDIATE_BUSINESS_PNL_ACCOUNTS))
 
 
+def test_fx_and_derivative_account_list_matches_confirmed_full_scope() -> None:
+    assert DERIVATIVE_PNL_ACCOUNTS == [
+        "51203010001",
+        "51203010003",
+        "51203020001",
+        "51203050001",
+        "51203070001",
+        "51203070002",
+        "51203070003",
+        "51204000001",
+        "51206010003",
+        "51206040003",
+    ]
+
+
+def test_intermediate_business_income_keeps_only_fee_income_accounts() -> None:
+    assert INTERMEDIATE_BUSINESS_PNL_ACCOUNTS == [
+        "51102000004",
+        "51102000005",
+        "51104000001",
+        "51110000018",
+    ]
+
+
+def test_fx_derivative_and_intermediate_income_accounts_do_not_overlap() -> None:
+    assert set(DERIVATIVE_PNL_ACCOUNTS).isdisjoint(INTERMEDIATE_BUSINESS_PNL_ACCOUNTS)
+
+
 @pytest.mark.parametrize("accounts", [DERIVATIVE_PNL_ACCOUNTS, INTERMEDIATE_BUSINESS_PNL_ACCOUNTS])
 def test_account_lists_are_nonempty(accounts: list[str]) -> None:
     assert len(accounts) > 0

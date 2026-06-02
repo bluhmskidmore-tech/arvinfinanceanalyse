@@ -754,7 +754,7 @@ export const Q1_CENTER_CALIBER_RULES: TeamPerformanceQ1CaliberRule[] = [
     amountField: "business_net_income",
     allocation: "reference",
     evidenceStatus: "split-needed",
-    note: "当前产品分类页只有衍生品聚合行，需要账户或产品明细拆出外汇远期、外汇掉期。",
+    note: "当前产品分类页只有汇兑损益及衍生聚合行，需要账户或产品明细拆出外汇远期、外汇掉期；不强行归属。",
   },
   {
     centerId: "product-market",
@@ -1634,7 +1634,7 @@ export const CENTER_PNL_MAPPINGS_2025: CenterPnlMapping2025[] = [
     rowId: "derivatives",
     pnlField: "business_net_income",
     confidence: "high",
-    note: "衍生品条目按业务净收入展示。",
+    note: "汇兑损益及衍生条目按业务净收入展示。",
   },
   {
     centerId: "customer-business",

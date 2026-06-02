@@ -353,6 +353,21 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
         row for row in feb_monthly_payload["result"]["rows"] if row["category_id"] == "bond_tpl"
     )
     assert Decimal(str(feb_bond["cnx_cash"])) > 0
+    feb_derivatives = next(
+        row for row in feb_monthly_payload["result"]["rows"] if row["category_id"] == "derivatives"
+    )
+    feb_intermediate = next(
+        row
+        for row in feb_monthly_payload["result"]["rows"]
+        if row["category_id"] == "intermediate_business_income"
+    )
+    assert feb_derivatives["category_name"] == "汇兑损益及衍生"
+    assert Decimal(str(feb_derivatives["cnx_cash"])) == Decimal("1.14000000")
+    assert Decimal(str(feb_derivatives["cny_cash"])) == Decimal("0.83000000")
+    assert Decimal(str(feb_derivatives["business_net_income"])) == Decimal("1.14000000")
+    assert Decimal(str(feb_intermediate["cnx_cash"])) == Decimal("0.12000000")
+    assert Decimal(str(feb_intermediate["cny_cash"])) == Decimal("0.11000000")
+    assert Decimal(str(feb_intermediate["business_net_income"])) == Decimal("0.12000000")
     feb_asset_total = feb_monthly_payload["result"]["asset_total"]
     feb_liability_total = feb_monthly_payload["result"]["liability_total"]
     feb_grand_total = feb_monthly_payload["result"]["grand_total"]
@@ -2307,7 +2322,10 @@ def _ledger_rows(currency: str, *, january: bool) -> list[list[object]]:
             _pnl_row("51703010001", "\u5176\u4ed6\u6295\u8d44\u4ef0\u503c\u53ca\u4e70\u5356\u4ef7\u5dee", currency, pnl(0.5, 0.5)),
             _pnl_row("51603010005", "\u975e\u5957\u671f\u4fdd\u503c\u7c7b\u884d\u751f\u5de5\u5177\u516c\u5141\u4ef7\u503c\u53d8\u52a8\u635f\u76ca", currency, pnl(3 if january else -1, 2 if january else -1)),
             _pnl_row("51102000004", "\u4e2d\u95f4\u4e1a\u52a1\u6536\u5165-1", currency, pnl(0.12, 0.11)),
-            _pnl_row("51203010001", "\u4e2d\u95f4\u4e1a\u52a1\u6536\u5165-2", currency, pnl(0.14, 0.13)),
+            _pnl_row("51203010001", "\u6c47\u5151\u635f\u76ca-1", currency, pnl(0.14, 0.13)),
+            _pnl_row("51203020001", "\u6c47\u5151\u635f\u76ca-2", currency, pnl(0.25 if january else 0.40, 0.20 if january else 0.30)),
+            _pnl_row("51203050001", "\u884d\u751f\u5de5\u5177\u635f\u76ca", currency, pnl(0.10 if january else 0.30, 0.08 if january else 0.20)),
+            _pnl_row("51206040003", "\u6c47\u5151\u53ca\u884d\u751f\u8c03\u6574", currency, pnl(0.05 if january else 0.30, 0.04 if january else 0.20)),
             _pnl_row("52206000001", "\u540c\u4e1a\u5b58\u653e\u5229\u606f\u652f\u51fa-\u5883\u5185", currency, pnl(-6 if january else -7, -5 if january else -6)),
             _pnl_row("52204000001", "\u540c\u4e1a\u62c6\u5165\u5229\u606f\u652f\u51fa", currency, pnl(-4 if january else -5, -3 if january else -4)),
             _pnl_row("52208000001", "\u5356\u51fa\u56de\u8d2d\u5229\u606f\u652f\u51fa1", currency, pnl(-2 if january else -3, -2 if january else -2.5)),
