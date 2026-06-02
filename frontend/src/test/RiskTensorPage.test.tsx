@@ -1,5 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -14,6 +17,10 @@ import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 
 const WAN_YUAN_UNIT = "\u4e07\u5143";
 const YI_YUAN_UNIT = "\u4ebf\u5143";
+const RISK_TENSOR_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/risk-tensor/RiskTensorPage.css",
+);
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
@@ -137,6 +144,7 @@ function tensorResult(reportDate: string): RiskTensorPayload {
 function renderRiskTensorRoute(
   initialEntry: string,
   client: ReturnType<typeof createApiClient>,
+  setupQueryClient?: (queryClient: QueryClient) => void,
 ) {
   const router = createWorkbenchMemoryRouter([initialEntry]);
   const queryClient = new QueryClient({
@@ -144,6 +152,7 @@ function renderRiskTensorRoute(
       queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
     },
   });
+  setupQueryClient?.(queryClient);
 
   return render(
     <ApiClientProvider client={client}>
@@ -155,6 +164,18 @@ function renderRiskTensorRoute(
 }
 
 describe("RiskTensorPage", () => {
+  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+    const css = readFileSync(RISK_TENSOR_CSS_PATH, "utf8");
+
+    expect(css).not.toMatch(/--moss-color-warm-(terracotta|taupe|slate-blue|burgundy)/);
+    expect(css).not.toMatch(/rgba\((124, 88, 61|141, 48, 58|184, 121, 47|82, 63, 44)/);
+    expect(css).not.toMatch(/rgba\((255, 253, 248|249, 244, 235)/);
+    expect(css).toContain("var(--moss-color-info-600)");
+    expect(css).toContain("var(--moss-color-warning-600)");
+    expect(css).toContain("var(--moss-color-danger-600)");
+    expect(css).toContain("var(--moss-color-text-muted)");
+  });
+
   it("converts backend yuan amounts into the risk tensor page display units", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -199,6 +220,41 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
       new RegExp(`3\\.00\\s*${WAN_YUAN_UNIT}`),
     );
+  });
+
+  it("surfaces the backend rate-risk duration denominator scope", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_duration_scope_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_duration_scope_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        total_market_value: "500000000",
+        rate_risk_market_value: "400000000",
+        rate_risk_dv01: "120000",
+        rate_risk_modified_duration: "4.2",
+        duration_excluded_market_value: "100000000",
+        duration_excluded_count: 2,
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+    expect(durationScope).toHaveTextContent("利率风险适用资产覆盖");
+    expect(durationScope).toHaveTextContent("无到期日或零久期资产不造期限");
+    expect(durationScope).toHaveTextContent(new RegExp(`4\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent(new RegExp(`4\\.2\\s*年`));
+    expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent("排除行数 2");
   });
 
   it("uses latest available report date when querystring is absent", async () => {
@@ -264,6 +320,168 @@ describe("RiskTensorPage", () => {
       expect(getRiskTensorDates).toHaveBeenCalled();
       expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
     });
+  });
+
+  it("summarizes hidden warnings in the first-screen risk judgement", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_many_warnings_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_many_warnings_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        warnings: [
+          "估值曲线 vendor stale",
+          "回售权现金流未进入 formal 张量",
+          "部分到期日缺失，已从久期分母排除",
+        ],
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const brief = await screen.findByTestId("risk-tensor-brief");
+    expect(brief).toHaveTextContent("估值曲线 vendor stale");
+    expect(brief).toHaveTextContent("回售权现金流未进入 formal 张量");
+    expect(brief).toHaveTextContent("另有 1 条预警见下方质量明细");
+    expect(within(brief).queryByText("部分到期日缺失，已从久期分母排除")).not.toBeInTheDocument();
+    expect(screen.getByText("部分到期日缺失，已从久期分母排除")).toBeInTheDocument();
+  });
+
+  it("exposes the selected KRD tenor chip to assistive technology", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_tenor_a11y_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_tenor_a11y_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const drill = await screen.findByTestId("risk-tensor-tenor-drill");
+    const fiveYear = within(drill).getByRole("button", { name: "5Y" });
+    const oneYear = within(drill).getByRole("button", { name: "1Y" });
+    expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+    expect(oneYear).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(oneYear);
+
+    await waitFor(() => {
+      expect(oneYear).toHaveAttribute("aria-pressed", "true");
+      expect(fiveYear).toHaveAttribute("aria-pressed", "false");
+      expect(drill).toHaveTextContent("当前桶：1Y");
+    });
+  });
+
+  it("keeps the primary risk bucket stable and lets users return to it from the first-screen tile", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_primary_bucket_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_primary_bucket_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const drill = await screen.findByTestId("risk-tensor-tenor-drill");
+      const primaryBucketAction = within(brief).getByTestId("risk-tensor-primary-tenor-action");
+      const fiveYear = within(drill).getByRole("button", { name: "5Y" });
+      const oneYear = within(drill).getByRole("button", { name: "1Y" });
+
+      expect(primaryBucketAction).toHaveTextContent("5Y");
+      expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+
+      await user.click(oneYear);
+
+      await waitFor(() => {
+        expect(oneYear).toHaveAttribute("aria-pressed", "true");
+        expect(fiveYear).toHaveAttribute("aria-pressed", "false");
+        expect(primaryBucketAction).toHaveTextContent("5Y");
+      });
+
+      await user.click(primaryBucketAction);
+
+      await waitFor(() => {
+        expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+        expect(oneYear).toHaveAttribute("aria-pressed", "false");
+      });
+      expect(scrollTargets).toContain(drill);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users switch among backend report dates from the page", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_switch_dates"),
+      result: { report_dates: ["2026-02-28", "2026-01-31"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_switch_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        ...(reportDate === "2026-01-31"
+          ? {
+              krd_1y: "90000",
+              krd_3y: "20000",
+              krd_5y: "30000",
+            }
+          : {}),
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const reportDateSelect = await screen.findByLabelText("风险报告日");
+    expect(reportDateSelect).toHaveValue("2026-02-28");
+
+    await user.selectOptions(reportDateSelect, "2026-01-31");
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
+    });
+    expect(reportDateSelect).toHaveValue("2026-01-31");
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-01-31");
+    expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 1Y");
   });
 
   it("renders prior-period no-data state without comparison metric cards", async () => {
@@ -530,6 +748,85 @@ describe("RiskTensorPage", () => {
     });
   });
 
+  it("blocks a URL-selected report date that backend marked stale", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_with_selected_blocked"),
+      result: {
+        report_dates: ["2026-02-28"],
+        blocked_report_dates: [
+          {
+            report_date: "2026-02-27",
+            reason: "risk tensor source lineage is stale",
+          },
+        ],
+      },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日已被新鲜度校验拦截");
+    expect(errorContext).toHaveTextContent("2026-02-27");
+    expect(errorContext).toHaveTextContent("risk tensor source lineage is stale");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+      "tr_tensor_dates_with_selected_blocked",
+    );
+  });
+
+  it("does not surface cached tensor data for a backend-blocked report date", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const blockedReportDate = "2026-02-27";
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_with_selected_blocked_cache"),
+      result: {
+        report_dates: ["2026-02-28"],
+        blocked_report_dates: [
+          {
+            report_date: blockedReportDate,
+            reason: "risk tensor source lineage is stale",
+          },
+        ],
+      },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute(
+      `/risk-tensor?report_date=${blockedReportDate}`,
+      {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      },
+      (queryClient) => {
+        queryClient.setQueryData(["risk-tensor", blockedReportDate], {
+          result_meta: buildMeta("risk.tensor", "tr_tensor_cached_blocked_date"),
+          result: tensorResult(blockedReportDate),
+        });
+      },
+    );
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日已被新鲜度校验拦截");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("risk-tensor-brief")).not.toBeInTheDocument();
+    const metaPanel = screen.getByTestId("risk-tensor-result-meta-panel");
+    expect(metaPanel).toHaveTextContent("tr_tensor_dates_with_selected_blocked_cache");
+    expect(metaPanel).not.toHaveTextContent("tr_tensor_cached_blocked_date");
+  });
+
   it("honors report_date in the URL querystring", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -573,5 +870,86 @@ describe("RiskTensorPage", () => {
     expect(await screen.findByText("后端未返回可用风险报告日。")).toBeInTheDocument();
     expect(getRiskTensor).not.toHaveBeenCalled();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dates_empty");
+  });
+
+  it("surfaces report-date list failures without hardcoded fallback", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => {
+      throw new Error("Request failed: /api/risk/tensor/dates (503)");
+    });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日列表加载失败");
+    expect(errorContext).toHaveTextContent("503");
+    expect(errorContext).toHaveTextContent("不会回退到硬编码报告日");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+  });
+
+  it("does not load an explicit report date when report-date governance fails", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => {
+      throw new Error("Request failed: /api/risk/tensor/dates (503)");
+    });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日列表加载失败");
+    expect(errorContext).toHaveTextContent("503");
+    expect(errorContext).toHaveTextContent("不会回退到硬编码报告日");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+  });
+
+  it("renders default mock risk tensor empty state without optional decks", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    renderRiskTensorRoute("/risk-tensor", client);
+
+    expect(await screen.findByText("当前暂无可展示内容。")).toBeInTheDocument();
+    expect(screen.queryByTestId("risk-tensor-prior-period-change")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [404, "当前报告日无风险张量数据", "2026-03-15"],
+    [503, "风险张量治理前置缺失", "2026-03-16"],
+  ])("surfaces risk tensor %s API failures with business context", async (statusCode, message, reportDate) => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_error_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async () => {
+      throw new Error(`Request failed: /api/risk/tensor?report_date=${reportDate} (${statusCode})`);
+    });
+
+    renderRiskTensorRoute(`/risk-tensor?report_date=${reportDate}`, {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent(message);
+    expect(errorContext).toHaveTextContent(reportDate);
+    expect(errorContext).toHaveTextContent(String(statusCode));
   });
 });

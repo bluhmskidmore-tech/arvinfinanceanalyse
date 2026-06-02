@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -9,7 +9,7 @@ import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
-import type { Numeric, ResultMeta, RiskTensorPayload } from "../../api/contracts";
+import type { Numeric, ResultMeta, RiskTensorChangeMetric, RiskTensorPayload } from "../../api/contracts";
 import {
   parseDisplayNumber,
   toneFromSignedDisplayString,
@@ -178,7 +178,7 @@ function isWanAmountMetric(key: string) {
   return key === "portfolio_dv01" || key === "regulatory_dv01" || key === "cs01" || key.startsWith("krd_");
 }
 
-function priorMetricDisplay(metric: RiskTensorPayload["prior_period_change"]["metrics"][number], key: PriorMetricValueKey) {
+function priorMetricDisplay(metric: RiskTensorChangeMetric, key: PriorMetricValueKey) {
   if (!isWanAmountMetric(metric.key)) {
     const displayKey = `${key}_display` as const;
     return metric[displayKey];
@@ -211,6 +211,35 @@ function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) 
 
 function ratioTone(value: Parameters<typeof bondNumericRawOrNull>[0]) {
   return toneFromSignedDisplayString(ratioPercentDisplay(value));
+}
+
+function hasRiskTensorValue(value: RiskTensorDisplayValue | null | undefined) {
+  return value !== null && value !== undefined;
+}
+
+function countDisplay(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "--";
+  }
+  return value.toLocaleString("zh-CN");
+}
+
+function hasDurationScopeDisclosure(result: RiskTensorPayload) {
+  return (
+    hasRiskTensorValue(result.rate_risk_market_value) ||
+    hasRiskTensorValue(result.rate_risk_dv01) ||
+    hasRiskTensorValue(result.rate_risk_modified_duration) ||
+    hasRiskTensorValue(result.duration_excluded_market_value) ||
+    (result.duration_excluded_count !== null && result.duration_excluded_count !== undefined)
+  );
+}
+
+function durationExclusionTone(result: RiskTensorPayload) {
+  const excludedMarketValue = riskTensorRawOrNull(result.duration_excluded_market_value);
+  if ((result.duration_excluded_count ?? 0) > 0 || (excludedMarketValue ?? 0) > 0) {
+    return "warning";
+  }
+  return "default";
 }
 
 function priorMetricTone(tone: string) {
@@ -249,7 +278,7 @@ function qualityTone(flag: string | undefined) {
   return "neutral";
 }
 
-function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | undefined) {
+function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | string | undefined) {
   if (mode === "none") {
     return "未降级";
   }
@@ -293,6 +322,22 @@ function liquidityGapTone(raw: number | null) {
     return "neutral";
   }
   return raw < 0 ? "danger" : "ok";
+}
+
+function errorStatusCode(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const match = message.match(/\((\d{3})\)/);
+  return match ? match[1] : "";
+}
+
+function riskTensorErrorMessage(statusCode: string) {
+  if (statusCode === "404") {
+    return "当前报告日无风险张量数据";
+  }
+  if (statusCode === "503") {
+    return "风险张量治理前置缺失";
+  }
+  return "风险张量主读面加载失败";
 }
 
 function requiredActionSummary(actions: NonNullable<RiskTensorPayload["dv01_controls"]>["control_actions"] | undefined) {
@@ -396,9 +441,10 @@ function dv01ControlActionStatusLabel(status: string) {
 
 export default function RiskTensorPage() {
   const client = useApiClient();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
   const [selectedTenor, setSelectedTenor] = useState<string>("");
+  const tenorDrillRef = useRef<HTMLDivElement | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -419,28 +465,39 @@ export default function RiskTensorPage() {
     }
     return datesQuery.data?.result.report_dates[0] ?? "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate]);
+  const reportDateOptions = useMemo(() => {
+    const dates = datesQuery.data?.result.report_dates ?? [];
+    if (!reportDate || dates.includes(reportDate)) {
+      return dates;
+    }
+    return [reportDate, ...dates];
+  }, [datesQuery.data?.result.report_dates, reportDate]);
 
-  const datesBlockingError = datesQuery.isError && !reportDate;
+  const datesBlockingError = datesQuery.isError;
   const datesEmpty =
     !explicitReportDate &&
     !datesQuery.isLoading &&
     !datesBlockingError &&
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
+  const tensorBlockedByReportDate = Boolean(selectedBlockedReportDate);
+  const tensorQueryEnabled = Boolean(reportDate) && datesQuery.isSuccess && !tensorBlockedByReportDate;
 
   const tensorQuery = useQuery({
     queryKey: ["risk-tensor", reportDate],
     queryFn: () => client.getRiskTensor(reportDate),
-    enabled: Boolean(reportDate),
+    enabled: tensorQueryEnabled,
     retry: false,
   });
 
-  const envelope = tensorQuery.data;
+  const envelope = datesBlockingError || tensorBlockedByReportDate ? undefined : tensorQuery.data;
   const result = envelope?.result;
   const isEmpty =
     !tensorQuery.isLoading &&
     !tensorQuery.isError &&
     result !== undefined &&
     result.bond_count === 0;
+  const tensorErrorStatusCode = errorStatusCode(tensorQuery.error);
+  const datesErrorStatusCode = errorStatusCode(datesQuery.error);
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -496,24 +553,34 @@ export default function RiskTensorPage() {
     ];
   }, [result]);
 
+  const dominantTenorRow = useMemo(() => {
+    if (tenorRows.length === 0) {
+      return undefined;
+    }
+    const backendBucket = result?.dv01_controls?.dominant_krd_bucket;
+    const backendRow = backendBucket ? tenorRows.find((row) => row.tenor === backendBucket) : undefined;
+    if (backendRow) {
+      return backendRow;
+    }
+    return [...tenorRows].sort((left, right) => chartMagnitude(right.value) - chartMagnitude(left.value))[0];
+  }, [result?.dv01_controls?.dominant_krd_bucket, tenorRows]);
+
   useEffect(() => {
     if (tenorRows.length === 0) {
       setSelectedTenor("");
       return;
     }
-    const strongest = [...tenorRows].sort(
-      (left, right) => chartMagnitude(right.value) - chartMagnitude(left.value),
-    )[0]?.tenor;
+    const defaultTenor = dominantTenorRow?.tenor ?? tenorRows[0]!.tenor;
     if (!selectedTenor || !tenorRows.some((row) => row.tenor === selectedTenor)) {
-      setSelectedTenor(strongest ?? tenorRows[0]!.tenor);
+      setSelectedTenor(defaultTenor);
     }
-  }, [selectedTenor, tenorRows]);
+  }, [dominantTenorRow?.tenor, selectedTenor, tenorRows]);
 
-  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? tenorRows[0];
+  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? dominantTenorRow ?? tenorRows[0];
   const tensorMeta = envelope?.result_meta;
-  const primaryTenor = selectedTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
-  const primaryTenorValue = selectedTenorRow
-    ? yuanAsWanWithUnit(selectedTenorRow.value)
+  const primaryTenor = dominantTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
+  const primaryTenorValue = dominantTenorRow
+    ? yuanAsWanWithUnit(dominantTenorRow.value)
     : result?.dv01_controls
       ? yuanAsWanWithUnit(result.dv01_controls.dominant_krd)
       : "--";
@@ -521,6 +588,7 @@ export default function RiskTensorPage() {
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
   const firstRequiredAction = requiredActions[0];
   const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 ? "warning" : "ok";
+  const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
@@ -528,6 +596,14 @@ export default function RiskTensorPage() {
         `质量标记：${qualityFlagLabel(result.quality_flag)}`,
       ].join(" / ")
     : "";
+
+  const handlePrimaryTenorDrill = () => {
+    if (!dominantTenorRow) {
+      return;
+    }
+    setSelectedTenor(dominantTenorRow.tenor);
+    tenorDrillRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const radarChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -627,6 +703,28 @@ export default function RiskTensorPage() {
       </div>
 
       <div style={controlBarStyle}>
+        {reportDateOptions.length > 0 ? (
+          <label className="risk-tensor-report-date-select">
+            <span>风险报告日</span>
+            <select
+              value={reportDate}
+              onChange={(event) => {
+                const nextReportDate = event.target.value;
+                setSearchParams((previous) => {
+                  const next = new URLSearchParams(previous);
+                  next.set("report_date", nextReportDate);
+                  return next;
+                });
+              }}
+            >
+              {reportDateOptions.map((dateValue) => (
+                <option key={dateValue} value={dateValue}>
+                  {dateValue}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div
           style={{
             padding: "10px 12px",
@@ -667,14 +765,41 @@ export default function RiskTensorPage() {
         </div>
       </div>
 
+      {selectedBlockedReportDate ? (
+        <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
+          <strong>风险报告日已被新鲜度校验拦截</strong>
+          <span>
+            报告日 {selectedBlockedReportDate.report_date}；原因{" "}
+            {selectedBlockedReportDate.reason || "后端未返回原因"}。页面不会读取该日期风险张量，请切换到可用报告日。
+          </span>
+        </div>
+      ) : tensorQuery.isError ? (
+        <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
+          <strong>{riskTensorErrorMessage(tensorErrorStatusCode)}</strong>
+          <span>
+            报告日 {reportDate || explicitReportDate || "未选择"}；HTTP 状态{" "}
+            {tensorErrorStatusCode || "未知"}。请先核对正式风险张量物化和 lineage 新鲜度。
+          </span>
+        </div>
+      ) : datesBlockingError ? (
+        <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
+          <strong>风险报告日列表加载失败</strong>
+          <span>
+            HTTP 状态 {datesErrorStatusCode || "未知"}。页面不会回退到硬编码报告日。
+          </span>
+        </div>
+      ) : null}
+
       <AsyncSection
         title="组合风险张量"
         isLoading={datesQuery.isLoading || tensorQuery.isLoading}
-        isError={datesBlockingError || tensorQuery.isError}
+        isError={datesBlockingError || tensorBlockedByReportDate || tensorQuery.isError}
         isEmpty={datesEmpty || isEmpty}
         onRetry={() => {
           void datesQuery.refetch();
-          void tensorQuery.refetch();
+          if (tensorQueryEnabled) {
+            void tensorQuery.refetch();
+          }
         }}
       >
         {result ? (
@@ -693,6 +818,9 @@ export default function RiskTensorPage() {
                     {result.warnings.slice(0, 2).map((warning, index) => (
                       <li key={index}>{warning}</li>
                     ))}
+                    {result.warnings.length > 2 ? (
+                      <li>另有 {result.warnings.length - 2} 条预警见下方质量明细。</li>
+                    ) : null}
                   </ul>
                 ) : null}
                 <div className="risk-tensor-brief__badges" aria-label="risk tensor data status">
@@ -704,11 +832,19 @@ export default function RiskTensorPage() {
               </div>
 
               <div className="risk-tensor-brief__tiles">
-                <article className="risk-tensor-brief__tile" data-tone="neutral">
+                <button
+                  type="button"
+                  className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                  data-testid="risk-tensor-primary-tenor-action"
+                  data-tone="neutral"
+                  onClick={handlePrimaryTenorDrill}
+                >
                   <span>主风险桶</span>
                   <strong>{primaryTenor}</strong>
-                  <p>KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。</p>
-                </article>
+                  <span className="risk-tensor-brief__tile-detail">
+                    KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。
+                  </span>
+                </button>
                 <article className="risk-tensor-brief__tile" data-tone="warning">
                   <span>DV01 控制</span>
                   <strong>
@@ -769,7 +905,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="修正久期"
                 value={displayStr(result.portfolio_modified_duration)}
-                detail="portfolio_modified_duration。"
+                detail="portfolio_modified_duration；按利率风险适用资产加权。"
                 unit="年"
               />
               <KpiCard
@@ -799,6 +935,47 @@ export default function RiskTensorPage() {
                 tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.total_market_value))}
               />
             </div>
+
+            {showDurationScope ? (
+              <section className="risk-tensor-duration-scope" data-testid="risk-tensor-duration-scope">
+                <div className="risk-tensor-duration-scope__header">
+                  <span>久期口径</span>
+                  <h2>利率风险适用资产覆盖</h2>
+                  <p>
+                    组合久期只按有到期日且正久期的资产加权；无到期日或零久期资产不造期限，DV01 仍保留在总量。
+                  </p>
+                </div>
+                <div className="risk-tensor-duration-scope__grid">
+                  <KpiCard
+                    title="利率风险市值"
+                    value={yuanAsYiDisplay(result.rate_risk_market_value)}
+                    detail="rate_risk_market_value；进入久期分母的市值。"
+                    unit={YI_YUAN_UNIT}
+                    tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.rate_risk_market_value))}
+                  />
+                  <KpiCard
+                    title="利率风险 DV01"
+                    value={yuanAsWanDisplay(result.rate_risk_dv01)}
+                    detail="rate_risk_dv01；进入久期分母的 DV01。"
+                    unit={amountUnit(result.rate_risk_dv01, WAN_YUAN_UNIT)}
+                    tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.rate_risk_dv01))}
+                  />
+                  <KpiCard
+                    title="利率风险久期"
+                    value={displayStr(result.rate_risk_modified_duration)}
+                    detail="rate_risk_modified_duration；应与修正久期一致。"
+                    unit={amountUnit(result.rate_risk_modified_duration, "年")}
+                  />
+                  <KpiCard
+                    title="久期排除市值"
+                    value={yuanAsYiDisplay(result.duration_excluded_market_value)}
+                    detail={`duration_excluded_market_value；排除行数 ${countDisplay(result.duration_excluded_count)}。`}
+                    unit={amountUnit(result.duration_excluded_market_value, YI_YUAN_UNIT)}
+                    tone={durationExclusionTone(result)}
+                  />
+                </div>
+              </section>
+            ) : null}
 
             {result.prior_period_change ? (
               <section className="risk-tensor-prior-change" data-testid="risk-tensor-prior-period-change">
@@ -947,7 +1124,7 @@ export default function RiskTensorPage() {
               ) : null}
 
               {selectedTenorRow ? (
-                <div data-testid="risk-tensor-tenor-drill" style={drillPanelStyle}>
+                <div ref={tenorDrillRef} data-testid="risk-tensor-tenor-drill" style={drillPanelStyle}>
                   <div style={{ color: t.colorTextPrimary, fontSize: 15, fontWeight: 600 }}>
                     期限桶下钻
                   </div>
@@ -958,6 +1135,7 @@ export default function RiskTensorPage() {
                     {tenorRows.map((row) => (
                       <button
                         key={row.tenor}
+                        aria-pressed={row.tenor === selectedTenor}
                         type="button"
                         style={chipButtonStyle(row.tenor === selectedTenor)}
                         onClick={() => setSelectedTenor(row.tenor)}
@@ -1121,7 +1299,7 @@ export default function RiskTensorPage() {
         testId="risk-tensor-result-meta-panel"
         sections={[
           { key: "dates", title: "风险报告日列表", meta: datesQuery.data?.result_meta },
-          { key: "tensor", title: "风险张量主读面", meta: tensorQuery.data?.result_meta },
+          { key: "tensor", title: "风险张量主读面", meta: envelope?.result_meta },
         ]}
       />
     </section>

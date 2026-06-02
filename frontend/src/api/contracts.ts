@@ -682,6 +682,11 @@ export type RiskTensorPayload = {
   cs01: RiskTensorScalar;
   portfolio_convexity: RiskTensorScalar;
   portfolio_modified_duration: RiskTensorScalar;
+  rate_risk_market_value?: RiskTensorScalar | null;
+  rate_risk_dv01?: RiskTensorScalar | null;
+  rate_risk_modified_duration?: RiskTensorScalar | null;
+  duration_excluded_market_value?: RiskTensorScalar | null;
+  duration_excluded_count?: number | null;
   issuer_concentration_hhi: RiskTensorScalar;
   issuer_top5_weight: RiskTensorScalar;
   asset_cashflow_30d: RiskTensorScalar;
