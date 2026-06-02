@@ -2020,3 +2020,201 @@ function formatStageCurrencyBasis(currencyBasis: BalanceCurrencyBasis | string):
   }
   return String(currencyBasis);
 }
+
+export type BalanceCockpitDistributionSlice = {
+  key: string;
+  label: string;
+  valueYi: string;
+  sharePct: number;
+  color: string;
+};
+
+export type BalanceCockpitKpiItem = {
+  key: string;
+  label: string;
+  value: string;
+  unit: string;
+  variant?: "default" | "donut";
+  donutPct?: number;
+};
+
+export type BalanceCockpitMaturityBar = {
+  key: string;
+  label: string;
+  gapYi: number;
+  barWidthPct: number;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type BalanceCockpitRiskCell = {
+  key: string;
+  label: string;
+  value: string;
+  foot: string;
+  status: "ok" | "watch" | "alert";
+  statusLabel: string;
+};
+
+export type BalanceCockpitIndustryBar = {
+  key: string;
+  label: string;
+  valueYi: string;
+  barWidthPct: number;
+};
+
+export type BalanceCockpitWorkbookNavItem = {
+  key: string;
+  label: string;
+  panelId: string;
+};
+
+export type BalanceCockpitViewModel = {
+  scaleKpis: BalanceCockpitKpiItem[];
+  opsKpis: BalanceCockpitKpiItem[];
+  workbookNav: BalanceCockpitWorkbookNavItem[];
+  workbookSummary: string;
+  judgementLine: string;
+};
+
+function buildGapCoveragePercent(
+  workbook: BalanceAnalysisWorkbookPayload | null | undefined,
+): number | null {
+  const rows = tableByKey(workbook, "maturity_gap")?.rows ?? [];
+  if (rows.length === 0) {
+    return null;
+  }
+  let covered = 0;
+  let total = 0;
+  for (const row of rows) {
+    const gap = finiteWanValue(row.full_scope_gap_amount ?? row.gap_amount);
+    if (gap === null) {
+      continue;
+    }
+    total += 1;
+    if (gap >= 0) {
+      covered += 1;
+    }
+  }
+  if (total === 0) {
+    return null;
+  }
+  return (covered / total) * 100;
+}
+
+export const BALANCE_COCKPIT_WORKBOOK_NAV: BalanceCockpitWorkbookNavItem[] = [
+  { key: "bond_business_types", label: "债券种类", panelId: "balance-analysis-workbook-panel-bond_business_types" },
+  { key: "rating_analysis", label: "评级分析", panelId: "balance-analysis-workbook-panel-rating_analysis" },
+  { key: "maturity_gap", label: "期限缺口", panelId: "balance-analysis-workbook-panel-maturity_gap" },
+  { key: "issuance_business_types", label: "发行类", panelId: "balance-analysis-workbook-panel-issuance_business_types" },
+  { key: "industry_distribution", label: "行业分布", panelId: "balance-analysis-workbook-panel-industry_distribution" },
+  { key: "rate_distribution", label: "利率分布", panelId: "balance-analysis-workbook-panel-rate_distribution" },
+  { key: "counterparty_types", label: "对手方", panelId: "balance-analysis-workbook-panel-counterparty_types" },
+  { key: "decision_items", label: "治理队列", panelId: "balance-analysis-right-rail-panel-decision_items" },
+];
+
+export function buildBalanceCockpitViewModel({
+  overview,
+  workbook,
+  stageModel,
+  decisionCount,
+  topRiskTitle,
+  topDecisionTitle,
+}: {
+  overview?: BalanceAnalysisOverviewPayload | null;
+  workbook?: BalanceAnalysisWorkbookPayload | null;
+  stageModel: BalanceStageRealDataModel;
+  decisionCount: number;
+  topRiskTitle?: string | null;
+  topDecisionTitle?: string | null;
+}): BalanceCockpitViewModel {
+  const netPositionWan = finiteWanValue(workbookCardValue(workbook, "net_position"));
+  const gapCoverage = buildGapCoveragePercent(workbook);
+  const scaleKpis: BalanceCockpitKpiItem[] = [
+    {
+      key: "asset-market",
+      label: "资产市值",
+      value: formatBalanceAmountToYiFromYuan(overview?.asset_total_market_value_amount),
+      unit: "亿",
+    },
+    {
+      key: "liability-market",
+      label: "负债市值",
+      value: formatBalanceAmountToYiFromYuan(overview?.liability_total_market_value_amount),
+      unit: "亿",
+    },
+    {
+      key: "net-position",
+      label: "净头寸",
+      value: netPositionWan === null ? "—" : formatWanAsYiPlain(netPositionWan),
+      unit: "亿",
+    },
+    {
+      key: "total-market",
+      label: "总市值",
+      value: formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount),
+      unit: "亿",
+    },
+    {
+      key: "amortized-cost",
+      label: "摊余成本",
+      value: formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount),
+      unit: "亿",
+    },
+    {
+      key: "accrued-interest",
+      label: "应计利息",
+      value: formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount),
+      unit: "亿",
+    },
+    {
+      key: "gap-coverage",
+      label: "缺口覆盖率",
+      value: gapCoverage === null ? "—" : gapCoverage.toFixed(1),
+      unit: gapCoverage === null ? "" : "%",
+      variant: "donut",
+      donutPct: gapCoverage ?? 0,
+    },
+  ];
+
+  const opsKpis: BalanceCockpitKpiItem[] = [
+    {
+      key: "summary-rows",
+      label: "汇总行数",
+      value:
+        overview?.summary_row_count != null
+          ? overview.summary_row_count.toLocaleString("zh-CN")
+          : "—",
+      unit: overview?.summary_row_count != null ? "行" : "",
+    },
+    {
+      key: "detail-rows",
+      label: "明细行数",
+      value:
+        overview?.detail_row_count != null
+          ? overview.detail_row_count.toLocaleString("zh-CN")
+          : "—",
+      unit: overview?.detail_row_count != null ? "行" : "",
+    },
+    {
+      key: "governance-queue",
+      label: "治理待办",
+      value: String(decisionCount),
+      unit: "项",
+    },
+  ];
+
+  const tableCount = workbook?.tables.length ?? 0;
+  const panelCount =
+    (workbook?.tables.length ?? 0) + (workbook?.operational_sections?.length ?? 0);
+
+  return {
+    scaleKpis,
+    opsKpis,
+    workbookNav: BALANCE_COCKPIT_WORKBOOK_NAV,
+    workbookSummary: `${panelCount} 面板 · ${tableCount} 表`,
+    judgementLine:
+      [topRiskTitle ? `风险：${topRiskTitle}` : null, topDecisionTitle ? `治理：${topDecisionTitle}` : null]
+        .filter(Boolean)
+        .join(" · ") || stageModel.summary.content || "净头寸、期限缺口与治理动作可读",
+  };
+}

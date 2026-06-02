@@ -12,6 +12,7 @@ import {
   BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT,
   buildBalanceAnalysisPageModel,
   buildBalanceAnalysisPageReadModel,
+  buildBalanceCockpitViewModel,
   buildBalanceHeadlineCards,
   buildBalanceStageRealDataModel,
   buildBalanceReconciliationLinkModel,
@@ -904,5 +905,73 @@ describe("balanceAnalysisPageModel", () => {
       expect(model.summary.content).toContain("40.00");
       expect(model.summary.content).not.toContain("workbook");
     });
+  });
+
+  it("builds cockpit KPI row from governed overview and workbook cards", () => {
+    const overviewPayload: BalanceAnalysisOverviewPayload = {
+      report_date: "2026-04-30",
+      position_scope: "all",
+      currency_basis: "CNY",
+      detail_row_count: 2,
+      summary_row_count: 2,
+      total_market_value_amount: "30000000000",
+      total_amortized_cost_amount: "28000000000",
+      total_accrued_interest_amount: "100000000",
+      asset_total_market_value_amount: "20000000000",
+      liability_total_market_value_amount: "10000000000",
+      asset_total_amortized_cost_amount: "18000000000",
+      liability_total_amortized_cost_amount: "10000000000",
+      asset_total_accrued_interest_amount: "80000000",
+      liability_total_accrued_interest_amount: "20000000",
+    };
+    const workbookPayload: BalanceAnalysisWorkbookPayload = {
+      report_date: "2026-04-30",
+      position_scope: "all",
+      currency_basis: "CNY",
+      cards: [{ key: "net_position", label: "净头寸", value: "1200000" }],
+      tables: [
+        {
+          key: "maturity_gap",
+          title: "期限缺口",
+          section_kind: "table",
+          columns: [{ key: "bucket", label: "桶" }, { key: "gap_amount", label: "缺口" }],
+          rows: [
+            { bucket: "1-2年", gap_amount: "1000000", full_scope_gap_amount: "1000000" },
+            { bucket: "3-5年", gap_amount: "-500000", full_scope_gap_amount: "-500000" },
+          ],
+        },
+      ],
+      operational_sections: [],
+    };
+    const stageModel = buildBalanceStageRealDataModel({
+      overview: overviewPayload,
+      workbook: workbookPayload,
+    });
+    const cockpit = buildBalanceCockpitViewModel({
+      overview: overviewPayload,
+      workbook: workbookPayload,
+      stageModel,
+      decisionCount: 2,
+      topRiskTitle: "1-2年期限桶负缺口",
+    });
+
+    expect(cockpit.scaleKpis.map((item) => item.label)).toEqual([
+      "资产市值",
+      "负债市值",
+      "净头寸",
+      "总市值",
+      "摊余成本",
+      "应计利息",
+      "缺口覆盖率",
+    ]);
+    expect(cockpit.opsKpis.map((item) => item.label)).toEqual([
+      "汇总行数",
+      "明细行数",
+      "治理待办",
+    ]);
+    expect(cockpit.scaleKpis.find((item) => item.key === "gap-coverage")?.value).toBe("50.0");
+    expect(cockpit.opsKpis.find((item) => item.key === "summary-rows")?.value).toBe("2");
+    expect(cockpit.opsKpis.find((item) => item.key === "governance-queue")?.value).toBe("2");
+    expect(cockpit.judgementLine).toContain("1-2年期限桶负缺口");
   });
 });

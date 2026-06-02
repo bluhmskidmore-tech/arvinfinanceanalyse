@@ -1,14 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import { Collapse } from "antd";
-import {
-  CalendarOutlined,
-  DownloadOutlined,
-  FileExcelOutlined,
-  FilterOutlined,
-  ReloadOutlined,
-  SafetyCertificateOutlined,
-  SwapOutlined,
-} from "@ant-design/icons";
+import { ReloadOutlined } from "@ant-design/icons";
 import "../../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
@@ -27,33 +19,23 @@ import type {
   BalanceAnalysisWorkbookColumn,
   BalanceAnalysisWorkbookOperationalSection,
   BalanceAnalysisWorkbookTable,
-  BalanceCurrencyBasis,
-  BalancePositionScope,
 } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
-import { CalibrationBadge } from "../../../components/CalibrationBadge";
-import { FilterBar } from "../../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import {
   AnalysisGrid,
   DataStatusStrip,
   EvidencePanel,
-  PageFilterTray,
   PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
-import BalanceAnalysisWorkbenchLayout, {
-  type BalanceDeferredSurface,
-  type BalanceEndpointGroup,
-  type BalanceEndpointStatus,
-  type BalanceStateSentinel,
-} from "../components/BalanceAnalysisWorkbenchLayout";
-import { BalanceBottomRow } from "../components/BalanceBottomRow";
-import { BalanceContributionRow } from "../components/BalanceContributionRow";
-import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
+import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
+import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
+import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
+import type { BalanceStateSentinel } from "../components/BalanceAnalysisWorkbenchLayout";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import {
@@ -66,6 +48,7 @@ import {
 } from "./BalanceAnalysisPage.styles";
 import {
   buildBalanceAnalysisPageModel,
+  buildBalanceCockpitViewModel,
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
@@ -125,13 +108,6 @@ const workbookRightRailNotes: Record<RightRailWorkbookKey, string> = {
 
 const decisionRailNote = "规则驱动的运营建议项通过处理流确认、忽略和跟踪，不把处理结果写回正式事实表。";
 
-type BalanceEndpointQueryState = {
-  isError: boolean;
-  isLoading: boolean;
-  isFetching?: boolean;
-  isSuccess: boolean;
-};
-
 type BalanceAttentionSentinelKey = "stale" | "fallback" | "error";
 
 type BalanceAttentionReason = {
@@ -139,46 +115,6 @@ type BalanceAttentionReason = {
   sentinel: BalanceAttentionSentinelKey;
   detail: string;
 };
-
-function queryEndpointStatus(
-  query: BalanceEndpointQueryState,
-  enabled = true,
-): BalanceEndpointStatus {
-  if (!enabled) {
-    return "deferred";
-  }
-  if (query.isError) {
-    return "error";
-  }
-  if (query.isLoading || query.isFetching) {
-    return "loading";
-  }
-  if (query.isSuccess) {
-    return "ready";
-  }
-  return "idle";
-}
-
-function actionEndpointStatus({
-  isError,
-  isLoading,
-  isActive,
-}: {
-  isError?: boolean;
-  isLoading?: boolean;
-  isActive?: boolean;
-}): BalanceEndpointStatus {
-  if (isError) {
-    return "error";
-  }
-  if (isLoading) {
-    return "loading";
-  }
-  if (isActive) {
-    return "ready";
-  }
-  return "idle";
-}
 
 function firstAttentionDetail(
   reasons: readonly BalanceAttentionReason[],
@@ -1319,7 +1255,6 @@ export default function BalanceAnalysisPage() {
     isBondBusinessLinkedToMovement,
     isIndustryLinkedToMovement,
     movementDateAvailable,
-    deferredAnalysisQueriesEnabled,
     deferredAnalysisQueriesPending,
     totalPages,
     currentPage,
@@ -1380,6 +1315,20 @@ export default function BalanceAnalysisPage() {
     eventCalendarRows,
     riskAlertRows,
     metaSections: resultMetaSections,
+  });
+  const topRiskTitle = riskAlertRows[0]
+    ? formatBalanceBusinessTextDisplay(riskAlertRows[0].title)
+    : null;
+  const topDecisionTitle = decisionRows[0]
+    ? formatBalanceBusinessTextDisplay(decisionRows[0].title)
+    : null;
+  const cockpitViewModel = buildBalanceCockpitViewModel({
+    overview,
+    workbook,
+    stageModel: pageModel.stageModel,
+    decisionCount: decisionRows.length,
+    topRiskTitle,
+    topDecisionTitle,
   });
   const pageReadModel = pageModel.readModel;
   const evidenceMetas = resultMetaSections.map((section) => section.meta);
@@ -1529,265 +1478,6 @@ export default function BalanceAnalysisPage() {
       (movementDateAvailable && movementLinkQuery.isLoading),
   });
 
-  const summaryEndpointStatus = queryEndpointStatus(
-    summaryQuery,
-    Boolean(selectedReportDate) && overviewQuery.isSuccess,
-  );
-  const detailEndpointStatus = queryEndpointStatus(detailQuery, deferredAnalysisQueriesEnabled);
-  const basisEndpointStatus = queryEndpointStatus(basisBreakdownQuery, deferredAnalysisQueriesEnabled);
-  const adbEndpointStatus = queryEndpointStatus(adbComparisonQuery, deferredAnalysisQueriesEnabled);
-  const movementDetailEndpointStatus =
-    deferredAnalysisQueriesEnabled && !movementDateAvailable
-      ? "idle"
-      : queryEndpointStatus(
-          movementLinkQuery,
-          deferredAnalysisQueriesEnabled && movementDateAvailable,
-        );
-  const attributionEndpointStatus = queryEndpointStatus(
-    advancedAttributionQuery,
-    deferredAnalysisQueriesEnabled,
-  );
-  const endpointGroups: BalanceEndpointGroup[] = [
-    {
-      key: "first-screen",
-      title: "首屏",
-      description: "报告日、总览、工作簿、治理、汇总、权限、余额变动",
-      count: 7,
-      tone: "primary",
-      endpoints: [
-        {
-          key: "dates",
-          label: "报告日列表",
-          path: "GET /ui/balance-analysis/dates",
-          status: queryEndpointStatus(datesQuery),
-          value: datesQuery.data ? `${datesQuery.data.result.report_dates.length} 个报告日` : "待返回",
-          detail: "报告日选择器与默认报告日。",
-        },
-        {
-          key: "overview",
-          label: "首屏总览",
-          path: "GET /ui/balance-analysis/overview",
-          status: queryEndpointStatus(overviewQuery, Boolean(selectedReportDate)),
-          value: overviewMeta?.basis === "formal" ? "正式口径" : (overviewMeta?.basis ?? "待返回"),
-          detail: "正式读面、规模和首屏 KPI 的主来源。",
-        },
-        {
-          key: "workbook",
-          label: "工作簿图谱",
-          path: "GET /ui/balance-analysis/workbook",
-          status: queryEndpointStatus(workbookQuery, Boolean(selectedReportDate)),
-          value: workbook ? `${workbook.cards.length} 张卡片` : "待返回",
-          detail: "工作簿结构、风险预警、事件和治理动作。",
-        },
-        {
-          key: "decision-items",
-          label: "治理队列",
-          path: "GET /ui/balance-analysis/decision-items",
-          status: queryEndpointStatus(decisionItemsQuery, Boolean(selectedReportDate)),
-          value: `${decisionRows.length} 项`,
-          detail: "治理队列和首页主动作。",
-        },
-        {
-          key: "summary",
-          label: "汇总分页",
-          path: "GET /ui/balance-analysis/summary",
-          status: summaryEndpointStatus,
-          value: summaryTable ? `${summaryTable.rows.length} 行` : "待返回",
-          detail: "汇总表分页和有效读面行数。",
-        },
-        {
-          key: "current-user",
-          label: "当前权限",
-          path: "GET /ui/balance-analysis/current-user",
-          status: queryEndpointStatus(currentUserQuery),
-          value: currentUser ? formatCurrentUserRoleDisplay(currentUser.role) : "待返回",
-          detail: "治理动作提交人与身份来源。",
-        },
-        {
-          key: "movement-dates",
-          label: "余额变动报告日",
-          path: "GET /ui/balance-movement-analysis/dates",
-          status: queryEndpointStatus(movementDatesQuery, Boolean(selectedReportDate)),
-          value: movementDatesQuery.data ? `${movementDatesQuery.data.result.report_dates.length} 个报告日` : "待返回",
-          detail: "判断余额变动联动是否可用。",
-        },
-      ],
-    },
-    {
-      key: "deferred",
-      title: "补充",
-      description: "明细、口径、日均、变动、归因",
-      count: 5,
-      tone: "info",
-      endpoints: [
-        {
-          key: "detail",
-          label: "明细底稿",
-          path: "GET /ui/balance-analysis",
-          status: detailEndpointStatus,
-          value: detailQuery.data ? `${detailQuery.data.result.details.length} 行` : "等待首屏",
-          detail: "明细底稿和明细汇总下钻。",
-        },
-        {
-          key: "summary-by-basis",
-          label: "口径拆解",
-          path: "GET /ui/balance-analysis/summary-by-basis",
-          status: basisEndpointStatus,
-          value: basisBreakdownQuery.data ? `${basisBreakdownQuery.data.result.rows.length} 组` : "待口径",
-          detail: "按会计口径、头寸范围和币种拆解。",
-        },
-        {
-          key: "adb-comparison",
-          label: "日均对比",
-          path: "GET /api/analysis/adb/comparison",
-          status: adbEndpointStatus,
-          value:
-            adbComparisonQuery.data?.net_interest_margin == null
-              ? "等待日均"
-              : `${adbComparisonQuery.data.net_interest_margin.toFixed(2)}% 净息差`,
-          detail: "日均资产负债和净息差解释材料。",
-        },
-        {
-          key: "movement-detail",
-          label: "余额变动联动",
-          path: "GET /ui/balance-movement-analysis",
-          status: movementDetailEndpointStatus,
-          value: movementDateAvailable ? "可联动" : "无联动",
-          detail: movementDateAvailable ? "余额变动联动可用。" : "当前报告日无余额变动联动。",
-        },
-        {
-          key: "advanced-attribution",
-          label: "高阶归因",
-          path: "GET /ui/balance-analysis/advanced-attribution",
-          status: attributionEndpointStatus,
-          value:
-            advancedAttributionQuery.data?.result.status === "not_ready" ? "部分可用" : "情景材料",
-          detail: "高阶归因的可用组件、缺失输入和提示。",
-        },
-      ],
-    },
-    {
-      key: "actions",
-      title: "动作",
-      description: "刷新、进度、导出、治理处理",
-      count: 5,
-      tone: "action",
-      endpoints: [
-        {
-          key: "refresh",
-          label: "刷新正式结果",
-          path: "POST /ui/balance-analysis/refresh",
-          status: actionEndpointStatus({
-            isError: Boolean(refreshError),
-            isLoading: isRefreshing,
-            isActive: Boolean(selectedReportDate),
-          }),
-          value: isRefreshing ? "刷新中" : "手动触发",
-          detail: "触发正式结果重建。",
-        },
-        {
-          key: "refresh-status",
-          label: "刷新进度",
-          path: "GET /ui/balance-analysis/refresh-status",
-          status: actionEndpointStatus({
-            isError: Boolean(refreshError),
-            isLoading: Boolean(refreshStatus && isRefreshing),
-            isActive: Boolean(refreshStatus),
-          }),
-          value: refreshStatus ?? "待触发",
-          detail: refreshStatus ? "刷新任务已有反馈。" : "刷新任务反馈轮询。",
-        },
-        {
-          key: "summary-export",
-          label: "导出汇总表",
-          path: "GET /ui/balance-analysis/summary/export",
-          status: actionEndpointStatus({
-            isError: Boolean(refreshError),
-            isLoading: isExportingCsv,
-            isActive: Boolean(selectedReportDate),
-          }),
-          value: "CSV",
-          detail: "导出汇总 CSV。",
-        },
-        {
-          key: "workbook-export",
-          label: "导出工作簿",
-          path: "GET /ui/balance-analysis/workbook/export",
-          status: actionEndpointStatus({
-            isError: Boolean(refreshError),
-            isLoading: isExportingWorkbook,
-            isActive: Boolean(selectedReportDate),
-          }),
-          value: "Excel",
-          detail: "导出工作簿 Excel。",
-        },
-        {
-          key: "decision-status",
-          label: "治理处理",
-          path: "POST /ui/balance-analysis/decision-items/status",
-          status: actionEndpointStatus({
-            isError: Boolean(decisionActionError),
-            isLoading: Boolean(updatingDecisionKey),
-            isActive: decisionItemsQuery.isSuccess,
-          }),
-          value: `${decisionRows.length} 项`,
-          detail: "确认、忽略并同步治理处理结果。",
-        },
-      ],
-    },
-  ];
-  const deferredSurfaces: BalanceDeferredSurface[] = [
-    {
-      key: "detail-ledger",
-      title: "明细底稿",
-      endpoint: "明细读面",
-      status: detailEndpointStatus,
-      value: detailQuery.data ? `${detailQuery.data.result.details.length} 行` : "等待首屏",
-      detail: `明细汇总 ${detailQuery.data?.result.summary.length ?? 0} 组，用于正式汇总下钻。`,
-    },
-    {
-      key: "basis-breakdown",
-      title: "口径分解",
-      endpoint: "口径读面",
-      status: basisEndpointStatus,
-      value: `${basisBreakdownQuery.data?.result.rows.length ?? 0} 组`,
-      detail: "解释不同会计口径、头寸范围和币种组合。",
-    },
-    {
-      key: "adb-comparison",
-      title: "日均对比",
-      endpoint: "日均读面",
-      status: adbEndpointStatus,
-      value:
-        adbComparisonQuery.data?.net_interest_margin == null
-          ? "等待日均"
-          : `${adbComparisonQuery.data.net_interest_margin.toFixed(2)}% 净息差`,
-      detail: "辅助比较时点与日均口径，不提升为正式主指标。",
-    },
-    {
-      key: "movement-link",
-      title: "变动联动",
-      endpoint: "变动读面",
-      status: movementDetailEndpointStatus,
-      value: movementDateAvailable ? "可联动" : "无同日报告",
-      detail: "承接资产分类和行业分布联动证据。",
-    },
-    {
-      key: "advanced-attribution",
-      title: "高级归因",
-      endpoint: "归因读面",
-      status: attributionEndpointStatus,
-      value:
-        advancedAttributionQuery.data?.result.status === "not_ready"
-          ? "未就绪"
-          : advancedAttributionQuery.data?.result.status
-            ? "情景材料"
-            : "等待输入",
-      detail: `缺失输入 ${advancedAttributionQuery.data?.result.missing_inputs.length ?? 0} 项，提示 ${
-        advancedAttributionQuery.data?.result.warnings.length ?? 0
-      } 条。`,
-    },
-  ];
   const hasStaleAttention = balanceAttentionReasons.some((reason) => reason.sentinel === "stale");
   const hasFallbackAttention = balanceAttentionReasons.some((reason) => reason.sentinel === "fallback");
   const hasErrorAttention = balanceAttentionReasons.some((reason) => reason.sentinel === "error");
@@ -1922,130 +1612,27 @@ export default function BalanceAnalysisPage() {
   }
 
   return (
-    <section data-testid="balance-analysis-page" className="balance-analysis-page">
-      <section
-        data-testid="balance-analysis-contract-hero"
-        className="balance-analysis-hero"
-      >
-        <div className="balance-analysis-hero__identity">
-          <span className="balance-analysis-hero__tab">首屏问题</span>
-          <div className="balance-analysis-hero__title-row">
-            <h1 data-testid="balance-analysis-page-title">资产负债分析</h1>
-            <span>报告日判断 · 缺口优先 · 证据闭环</span>
-          </div>
-          <p data-testid="balance-analysis-page-subtitle">
-            先看资产负债缺口、净头寸和治理动作，再进入证据与汇总底稿。
-          </p>
-          <span className="balance-analysis-hero-conclusion">
-            <strong>{pageReadModel.conclusionTitle}</strong>
-            <span>{pageReadModel.filterLine}</span>
-          </span>
-        </div>
-        <div className="balance-analysis-hero__meta">
-          <span
-            className="balance-analysis-hero__report"
-            data-testid="balance-analysis-report-date-slot"
-          >
-            报告日 {pageReadModel.resolvedReportDate}
-          </span>
-          <div className="balance-analysis-hero-actions">
-            <CalibrationBadge calibration={overview?.calibration} />
-            <span
-              className="balance-analysis-source-badge"
-              data-tone={pageReadModel.sourceBadge.tone}
-            >
-              <SafetyCertificateOutlined aria-hidden className="balance-analysis-inline-icon" />
-              {pageReadModel.sourceBadge.label}
-            </span>
-          </div>
-        </div>
-        <PageFilterTray testId="balance-analysis-filter-tray">
-          <FilterBar className="balance-analysis-filter-bar">
-            <label>
-              <span>
-                <CalendarOutlined aria-hidden className="balance-analysis-inline-icon" />
-                报告日
-              </span>
-              <select
-                aria-label="balance-report-date"
-                value={selectedReportDate}
-                onChange={(event) => setSelectedReportDate(event.target.value)}
-                className="balance-analysis-control"
-              >
-                {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-                  <option key={reportDate} value={reportDate}>
-                    {reportDate}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <span>
-                <FilterOutlined aria-hidden className="balance-analysis-inline-icon" />
-                头寸范围
-              </span>
-              <select
-                aria-label="balance-position-scope"
-                value={positionScope}
-                onChange={(event) => setPositionScope(event.target.value as BalancePositionScope)}
-                className="balance-analysis-control"
-              >
-                <option value="all">全部</option>
-                <option value="asset">资产</option>
-                <option value="liability">负债</option>
-              </select>
-            </label>
-
-            <label>
-              <span>
-                <SwapOutlined aria-hidden className="balance-analysis-inline-icon" />
-                币种口径
-              </span>
-              <select
-                aria-label="balance-currency-basis"
-                value={currencyBasis}
-                onChange={(event) => setCurrencyBasis(event.target.value as BalanceCurrencyBasis)}
-                className="balance-analysis-control"
-              >
-                <option value="CNY">人民币</option>
-                <option value="native">原币</option>
-              </select>
-            </label>
-
-            <button
-              data-testid="balance-analysis-refresh-button"
-              type="button"
-              onClick={() => void handleRefresh()}
-              disabled={!selectedReportDate || isRefreshing}
-              className="balance-analysis-action-button"
-            >
-              <ReloadOutlined aria-hidden className="balance-analysis-inline-icon" />
-              {isRefreshing ? "刷新中..." : "刷新正式结果"}
-            </button>
-            <button
-              data-testid="balance-analysis-export-button"
-              type="button"
-              onClick={() => void handleExport()}
-              disabled={!selectedReportDate || isExportingCsv}
-              className="balance-analysis-action-button"
-            >
-              <DownloadOutlined aria-hidden className="balance-analysis-inline-icon" />
-              {isExportingCsv ? "导出中..." : "导出 CSV"}
-            </button>
-            <button
-              data-testid="balance-analysis-workbook-export-button"
-              type="button"
-              onClick={() => void handleWorkbookExport()}
-              disabled={!selectedReportDate || isExportingWorkbook}
-              className="balance-analysis-action-button"
-            >
-              <FileExcelOutlined aria-hidden className="balance-analysis-inline-icon" />
-              {isExportingWorkbook ? "导出中..." : "导出 Excel"}
-            </button>
-          </FilterBar>
-        </PageFilterTray>
-      </section>
+    <section
+      data-testid="balance-analysis-page"
+      className={`${dhStyles.dhPage} balance-analysis-page`}
+    >
+      <BalanceAnalysisToolbar
+        reportDates={datesQuery.data?.result.report_dates ?? []}
+        selectedReportDate={selectedReportDate}
+        positionScope={positionScope}
+        currencyBasis={currencyBasis}
+        sourceBadge={pageReadModel.sourceBadge}
+        calibration={overview?.calibration}
+        isRefreshing={isRefreshing}
+        isExportingCsv={isExportingCsv}
+        isExportingWorkbook={isExportingWorkbook}
+        onReportDateChange={setSelectedReportDate}
+        onPositionScopeChange={setPositionScope}
+        onCurrencyBasisChange={setCurrencyBasis}
+        onRefresh={() => void handleRefresh()}
+        onExportCsv={() => void handleExport()}
+        onExportWorkbook={() => void handleWorkbookExport()}
+      />
 
       {attentionStatusBadges.length > 0 ? (
         <DataStatusStrip
@@ -2072,46 +1659,55 @@ export default function BalanceAnalysisPage() {
       {reportDateUnavailable ? (
         <section
           data-testid="balance-analysis-report-date-empty"
-          className="balance-analysis-report-date-empty"
+          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalStateSurface}`}
+          data-state="empty"
         >
-          <div>
-            <span>等待读面</span>
-            <h2>{reportDateUnavailableTitle}</h2>
-            <p>{reportDateUnavailableDescription}</p>
-          </div>
+          <span className={dhStyles.dhTerminalStateIcon}>
+            <ReloadOutlined aria-hidden />
+          </span>
+          <b>{reportDateUnavailableTitle}</b>
+          <small>{reportDateUnavailableDescription}</small>
           <button
             type="button"
-            className="balance-analysis-action-button"
+            className={dhStyles.dhRefreshBtn}
             onClick={() => void datesQuery.refetch()}
           >
-            <ReloadOutlined aria-hidden className="balance-analysis-inline-icon" />
+            <ReloadOutlined aria-hidden />
             重新读取报告日
           </button>
         </section>
       ) : (
         <>
-          <BalanceAnalysisWorkbenchLayout
-            overview={overview}
-            summary={summaryTable}
-            workbook={workbook}
-            detail={detailQuery.data?.result}
-            formalStatus={overviewMeta}
-            currentUser={currentUser}
-            decisionRows={decisionRows}
-            riskAlerts={riskAlertRows}
-            calendarEvents={eventCalendarRows}
-            tableRows={summaryTable?.rows ?? []}
-            metrics={pageModel.balanceWorkbenchMetrics}
-            kpiBars={[]}
-            endpointGroups={endpointGroups}
-            deferredSurfaces={deferredSurfaces}
-            stateSentinels={stateSentinels}
-            compactFilters={
-              <p className="balance-analysis-compact-filter-note">
-                报告日、头寸范围与币种口径请使用页眉筛选。
-              </p>
-            }
+          <BalanceAnalysisCockpit
+            model={cockpitViewModel}
+            stageModel={pageModel.stageModel}
+            headlineCards={pageModel.headlineAmountCards}
           />
+
+          {stateSentinels.some((sentinel) => sentinel.active) ? (
+            <div
+              data-testid="balance-analysis-abnormal-sentinels"
+              className="balance-analysis-abnormal-sentinels"
+            >
+              <div className="balance-analysis-abnormal-sentinels__head">
+                <strong>需处理事项</strong>
+              </div>
+              <div className="balance-analysis-abnormal-sentinels__list">
+                {stateSentinels
+                  .filter((sentinel) => sentinel.active)
+                  .map((sentinel) => (
+                    <span
+                      key={sentinel.key}
+                      className="balance-analysis-abnormal-sentinels__item"
+                      data-status={sentinel.status}
+                    >
+                      <b>{sentinel.label}</b>
+                      <small>{sentinel.detail}</small>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          ) : null}
 
           <details
             className="balance-analysis-evidence-details"
@@ -2823,21 +2419,18 @@ export default function BalanceAnalysisPage() {
 
       <details data-testid="balance-analysis-stage-details" className="balance-analysis-stage-details">
         <summary className="balance-analysis-stage-details__summary">
-          <span className="balance-analysis-stage-details__eyebrow">真实数据</span>
-          <strong>真实数据场景阅读</strong>
+          <span className="balance-analysis-stage-details__eyebrow">场景核对</span>
+          <strong>完整场景阅读（与首屏同源）</strong>
           <span>
-            保留当前报告日派生视图，默认收起，正式总览、汇总、明细和治理信号仍是主判断来源。
+            首屏已展示摘要、贡献、期限与风险读面；此处保留口径说明与核对提示，不再重复渲染同一组区块。
           </span>
         </summary>
         <div className="balance-analysis-stage-details__content">
           <div className="balance-analysis-stage-warning">
-            当前区块已切换为真实数据派生视图，报告日为 {pageModel.stageModel.summary.tags[0]?.label ?? "—"}；
-            仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
+            当前区块与首屏驾驶舱共用同一 stageModel 读面，报告日为{" "}
+            {pageModel.stageModel.summary.tags[0]?.label ?? "—"}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
             {pageModel.stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实阶段切片。"}
           </div>
-          <BalanceSummaryRow model={pageModel.stageModel.summary} />
-          <BalanceContributionRow model={pageModel.stageModel.contribution} />
-          <BalanceBottomRow model={pageModel.stageModel.bottom} />
         </div>
       </details>
 

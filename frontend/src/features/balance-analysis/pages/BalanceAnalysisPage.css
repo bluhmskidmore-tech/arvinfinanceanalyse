@@ -1,7 +1,55 @@
-.balance-analysis-page {
-  display: grid;
-  gap: 7px;
+/* Align balance page with dashboard-home shell: page owns the top toolbar. */
+.workbench-shell-grid--cockpit:has(.balance-analysis-page) .workbench-main-column > main {
+  gap: 12px !important;
+  padding: 14px !important;
 }
+
+.balance-analysis-page {
+  padding: 0;
+}
+
+.balance-analysis-page.dhPage {
+  gap: var(--dh-space-2, 12px);
+}
+
+.balance-analysis-abnormal-sentinels {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 38, 38, 0.24);
+  border-radius: 8px;
+  background: #fef2f2;
+}
+
+.balance-analysis-abnormal-sentinels__head strong {
+  font-size: 12px;
+  color: #991b1b;
+}
+
+.balance-analysis-abnormal-sentinels__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.balance-analysis-abnormal-sentinels__item {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  font-size: 11px;
+}
+
+.balance-analysis-abnormal-sentinels__item b {
+  color: #991b1b;
+}
+
+.balance-analysis-abnormal-sentinels__item small {
+  color: #7f1d1d;
+}
+
 
 .balance-analysis-hero {
   position: relative;
@@ -57,7 +105,29 @@
   line-height: 1.08;
 }
 
-.balance-analysis-hero__title-row span {
+.balance-analysis-hero--cockpit {
+  grid-template-columns: minmax(280px, 1fr) auto;
+  align-items: center;
+  padding-top: 12px;
+}
+
+.balance-analysis-hero--cockpit .balance-analysis-hero__title-row {
+  padding-top: 0;
+}
+
+.balance-analysis-hero__tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: #e8f0fa;
+  color: #1850a1;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.balance-analysis-hero__title-row span:not(.balance-analysis-hero__tag) {
   color: var(--moss-color-primary-800);
   font-size: 12px;
   font-weight: 760;
@@ -171,28 +241,7 @@
   margin-right: 6px;
 }
 
-[data-testid="balance-analysis-filter-tray"] {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: stretch;
-  align-self: end;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-[data-testid="balance-analysis-filter-tray"] label {
-  display: grid;
-  gap: 4px;
-}
-
-[data-testid="balance-analysis-filter-tray"] label > span {
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  color: var(--moss-color-neutral-700);
-}
+/* 顶栏已独立为 dhTopbar，不再嵌在 hero 栅格里。 */
 
 .balance-analysis-filter-bar {
   justify-content: flex-end;
@@ -368,15 +417,6 @@
     white-space: nowrap;
   }
 
-  [data-testid="balance-analysis-filter-tray"] label {
-    gap: 2px;
-  }
-
-  [data-testid="balance-analysis-filter-tray"] label > span {
-    font-size: 10px;
-    line-height: 1;
-  }
-
   .balance-analysis-filter-bar {
     flex-wrap: nowrap !important;
     gap: 6px;
@@ -449,11 +489,6 @@
     grid-template-columns: 1fr;
     gap: 8px;
     padding: 10px;
-  }
-
-  [data-testid="balance-analysis-filter-tray"] {
-    grid-column: 1;
-    grid-row: auto;
   }
 
   .balance-analysis-hero__meta {
@@ -858,11 +893,6 @@
 @media (max-width: 1280px) {
   .balance-analysis-hero {
     grid-template-columns: 1fr;
-  }
-
-  [data-testid="balance-analysis-filter-tray"] {
-    grid-column: 1;
-    grid-row: auto;
   }
 }
 

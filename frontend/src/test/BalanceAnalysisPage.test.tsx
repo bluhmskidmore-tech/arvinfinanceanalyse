@@ -828,21 +828,7 @@ describe("BalanceAnalysisPage", () => {
       expect(getDecisionItemsSpy).toHaveBeenCalled();
     });
 
-    const pendingEndpointMatrix = screen.getByTestId("balance-analysis-endpoint-matrix");
-    expect(pendingEndpointMatrix).not.toHaveAttribute("open");
-    await user.click(within(pendingEndpointMatrix).getByText("读面目录与返回摘要"));
-    expect(pendingEndpointMatrix).toHaveAttribute("open");
-    const pendingOverviewChip = within(pendingEndpointMatrix).getByTestId(
-      "balance-analysis-endpoint-chip-overview",
-    );
-    expect(pendingOverviewChip).toBeVisible();
-    expect(pendingOverviewChip).toHaveAttribute("data-status", "loading");
-    expect(pendingOverviewChip).toHaveAttribute("data-endpoint-path", "GET /ui/balance-analysis/overview");
-    expect(pendingOverviewChip).not.toHaveAttribute(
-      "title",
-      expect.stringContaining("GET /ui/balance-analysis/overview"),
-    );
-    expect(pendingOverviewChip).not.toHaveTextContent("加载");
+    expect(screen.getByTestId("balance-analysis-cockpit-kpis")).toBeInTheDocument();
 
     expect(getDetailSpy).not.toHaveBeenCalled();
     expect(getSummarySpy).not.toHaveBeenCalled();
@@ -1172,8 +1158,29 @@ describe("BalanceAnalysisPage", () => {
       assets_breakdown: [],
       liabilities_breakdown: [],
     }));
-
-    const user = userEvent.setup();
+    const getBasisBreakdownSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.basis-breakdown", "tr_balance_basis"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        rows: [],
+      },
+    }));
+    const getAdvancedAttributionSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.advanced-attribution", "tr_balance_advanced"),
+      result: {
+        report_date: "2025-12-31",
+        mode: "analytical" as const,
+        scenario_name: null,
+        scenario_inputs: {},
+        upstream_summaries: {},
+        status: "not_ready" as const,
+        missing_inputs: [],
+        blocked_components: [],
+        warnings: [],
+      },
+    }));
 
     renderBalanceAnalysisWithClient({
       ...baseClient,
@@ -1183,87 +1190,41 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisSummary: getSummarySpy,
       getBalanceAnalysisWorkbook: getWorkbookSpy,
       getBalanceAnalysisDecisionItems: vi.fn(async () => buildDecisionItemsResponse()),
+      getBalanceAnalysisCurrentUser: vi.fn(async () => buildCurrentUserResponse()),
       getBalanceMovementDates: getMovementDatesSpy,
       getBalanceMovementAnalysis: getMovementSpy,
       getAdbComparison: getAdbComparisonSpy,
+      getBalanceAnalysisSummaryByBasis: getBasisBreakdownSpy,
+      getBalanceAnalysisAdvancedAttribution: getAdvancedAttributionSpy,
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
     expect(screen.queryByTestId("balance-analysis-data-status")).not.toBeInTheDocument();
     expect(screen.getByTestId("balance-workbench")).toBeInTheDocument();
-    expect(screen.getByTestId("balance-analysis-command-deck")).toBeInTheDocument();
-    expect(screen.getByTestId("balance-analysis-status-rail")).toBeInTheDocument();
-    const endpointMatrix = screen.getByTestId("balance-analysis-endpoint-matrix");
-    expect(endpointMatrix).toHaveTextContent("首屏");
-    expect(endpointMatrix).toHaveTextContent("补充");
-    expect(endpointMatrix).toHaveTextContent("动作");
-    expect(endpointMatrix).toHaveTextContent("17 个读面");
-    expect(endpointMatrix).toHaveTextContent("覆盖首屏、补充读面、动作");
-    expect(endpointMatrix).toHaveTextContent("数据读面链路");
-    expect(endpointMatrix).not.toHaveTextContent("API 数据链路");
-    expect(endpointMatrix).not.toHaveTextContent("接口目录");
-    expect(endpointMatrix).not.toHaveTextContent(/已返回|待读取|读取中/);
-    expect(endpointMatrix).not.toHaveAttribute("open");
-    const firstScreenEndpointGroup = within(endpointMatrix).getByTestId(
-      "balance-analysis-endpoint-group-first-screen",
-    );
-    const deferredEndpointGroup = within(endpointMatrix).getByTestId(
-      "balance-analysis-endpoint-group-deferred",
-    );
-    const actionEndpointGroup = within(endpointMatrix).getByTestId(
-      "balance-analysis-endpoint-group-actions",
-    );
-    expect(firstScreenEndpointGroup).toBeInTheDocument();
-    expect(deferredEndpointGroup).toBeInTheDocument();
-    expect(actionEndpointGroup).toBeInTheDocument();
-    expect(firstScreenEndpointGroup).toHaveTextContent(
-      "报告日、总览、工作簿、治理、汇总、权限、余额变动",
-    );
-    expect(deferredEndpointGroup).toHaveTextContent("明细、口径、日均、变动、归因");
-    expect(actionEndpointGroup).toHaveTextContent("刷新、进度、导出、治理处理");
-    expect(within(firstScreenEndpointGroup).getByTestId("balance-analysis-endpoint-chip-overview")).toBeInTheDocument();
-    expect(within(deferredEndpointGroup).getByTestId("balance-analysis-endpoint-chip-advanced-attribution")).toBeInTheDocument();
-    expect(within(actionEndpointGroup).getByTestId("balance-analysis-endpoint-chip-decision-status")).toBeInTheDocument();
-    expect(endpointMatrix).not.toHaveTextContent("GET /ui");
-    const deferredStrip = screen.getByTestId("balance-analysis-deferred-strip");
-    expect(deferredStrip).toHaveTextContent("自动补充分析");
-    expect(deferredStrip).not.toHaveAttribute("open");
-    await user.click(within(deferredStrip).getByText("自动补充分析 5"));
-    expect(deferredStrip).toHaveAttribute("open");
-    expect(deferredStrip).toHaveTextContent("补充分析");
-    expect(deferredStrip).toHaveTextContent("日均对比");
-    expect(deferredStrip).not.toHaveTextContent(/延迟|加载|已返回|待读取/);
-    expect(screen.queryByTestId("balance-analysis-abnormal-sentinels")).not.toBeInTheDocument();
-    expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent("下钻工作台");
-    expect(screen.getByTestId("balance-analysis-secondary-workbench")).not.toHaveTextContent("summary / detail");
-    expect(screen.getByTestId("balance-analysis-secondary-workbench")).not.toHaveTextContent("workbook sections");
-    expect(screen.getByTestId("balance-analysis-secondary-workbench")).not.toHaveTextContent("anonymous / viewer");
-    expect(screen.getByTestId("balance-analysis-homepage-focus")).not.toBeVisible();
-    expect(screen.queryByTestId("balance-analysis-kpi-bars-empty")).not.toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-cockpit")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-cockpit-kpis")).toBeVisible();
+    expect(screen.getByTestId("balance-analysis-cockpit-stage")).toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-workbench-grid")).toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-page-title")).toHaveTextContent("资产负债分析");
     expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
-      "资产负债缺口",
+      "净头寸",
     );
     expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "正式状态摘要" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "资产负债缺口判断" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "治理闭环与工作簿底稿" })).toBeInTheDocument();
     const pageTitle = screen.getByTestId("balance-analysis-page-title");
-    const contractKpis = screen.getByTestId("balance-analysis-contract-kpis");
-    const commandDeck = screen.getByTestId("balance-analysis-command-deck");
+    const cockpitKpis = screen.getByTestId("balance-analysis-cockpit-kpis");
     const workbenchGrid = screen.getByTestId("balance-analysis-workbench-grid");
     const summaryDetails = screen.getByTestId("balance-analysis-formal-summary-details");
     const evidenceDetails = screen.getByTestId("balance-analysis-evidence-details");
-    expect(contractKpis).toBeVisible();
-    expect(contractKpis).toHaveTextContent("总市值规模");
-    expect(contractKpis).toHaveTextContent("MTR-BAL-001");
-    expect(Boolean(pageTitle.compareDocumentPosition(commandDeck) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(Boolean(commandDeck.compareDocumentPosition(contractKpis) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(Boolean(contractKpis.compareDocumentPosition(endpointMatrix) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-    expect(Boolean(endpointMatrix.compareDocumentPosition(workbenchGrid) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(cockpitKpis).toBeVisible();
+    expect(cockpitKpis).toHaveTextContent("资产市值");
+    expect(cockpitKpis).toHaveTextContent("总市值");
+    expect(cockpitKpis).not.toHaveTextContent("MTR-BAL");
+    expect(Boolean(pageTitle.compareDocumentPosition(cockpitKpis) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(Boolean(cockpitKpis.compareDocumentPosition(workbenchGrid) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(summaryDetails.compareDocumentPosition(screen.getByTestId("balance-analysis-supplemental-panels")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(screen.getByTestId("balance-analysis-supplemental-panels")).not.toHaveAttribute("open");
     expect(evidenceDetails).toHaveTextContent("证据链路");
@@ -1275,77 +1236,17 @@ describe("BalanceAnalysisPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产市值合计");
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("3,580.72");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债市值合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,845.73");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产摊余成本合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("3,514.99");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债摊余成本合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,852.22");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产应计利息合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("2.12");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债应计利息合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("0.14");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("总市值合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("债券资产(剔除发行类)");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("99.00 万元");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("市场资产");
+      expect(screen.getByTestId("balance-analysis-cockpit-kpis")).toHaveTextContent("3,580.72");
+      expect(screen.getByTestId("balance-analysis-cockpit-kpis")).toHaveTextContent("1,845.73");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("3,580.72");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("1,845.73");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("7");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("3");
-      const statusRail = screen.getByTestId("balance-analysis-status-rail");
-      expect(statusRail).toHaveTextContent("首页组合");
-      expect(statusRail).toHaveTextContent("报告日 / 口径");
-      expect(statusRail).toHaveTextContent("有效读面");
-      expect(statusRail).toHaveTextContent("3 / 7");
-      expect(statusRail).toHaveTextContent("治理队列");
-      expect(statusRail).toHaveTextContent("最近事件");
-      expect(statusRail).toHaveTextContent("首页主动作");
-      expect(statusRail).not.toHaveTextContent("指标定义");
-      expect(statusRail).not.toHaveTextContent("trace_id");
-      expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent(
-        "汇总驾驶舱",
-      );
-      expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent(
-        "工作簿图谱",
-      );
-      expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent(
-        "治理闭环",
-      );
-      expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent(
-        "汇总与明细",
-      );
-      expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent(
-        "结构与分布",
-      );
-      expect(screen.getByTestId("balance-analysis-secondary-workbench")).toHaveTextContent(
-        "决策与预警",
-      );
     });
-    expect(evidenceDetails).not.toHaveAttribute("open");
-    await user.click(within(evidenceDetails).getByText("证据链路"));
-    expect(evidenceDetails).toHaveAttribute("open");
-    expect(evidenceDetails).toHaveTextContent("读面类型");
-    expect(evidenceDetails).toHaveTextContent("治理队列");
-    expect(evidenceDetails).toHaveTextContent("质量");
-    expect(evidenceDetails).toHaveTextContent("降级");
-    expect(evidenceDetails).toHaveTextContent("数据日");
-    expect(evidenceDetails).toHaveTextContent("追踪记录");
-    expect(evidenceDetails).toHaveTextContent("已记录");
-    expect(evidenceDetails).not.toHaveTextContent("kind");
-    expect(evidenceDetails).not.toHaveTextContent("quality");
-    expect(evidenceDetails).not.toHaveTextContent("fallback");
-    expect(evidenceDetails).not.toHaveTextContent("as-of");
-    expect(evidenceDetails).not.toHaveTextContent("tr_balance_decisions");
+    expect(evidenceDetails).toHaveTextContent("证据链路");
 
     expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
-      "复核1-2年期限缺口配置",
-    );
-    expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
       "1-2年期限桶负缺口",
-    );
-    expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
-      "240001.IB 到期",
     );
 
     const summaryTable = await screen.findByTestId("balance-analysis-summary-table");
@@ -1520,7 +1421,7 @@ describe("BalanceAnalysisPage", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByTestId("balance-analysis-stage-details")).not.toHaveAttribute("open");
-    expect(screen.getByText("真实数据场景阅读")).toBeInTheDocument();
+    expect(screen.getByText("完整场景阅读（与首屏同源）")).toBeInTheDocument();
     expect(screen.queryByText("情景演示与静态参考")).not.toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-summary-row")).toHaveTextContent(
       "资产端合计 3,287.80 亿元",
@@ -2709,18 +2610,13 @@ describe("BalanceAnalysisPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产市值合计");
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("720.00");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("负债市值合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("72.00");
+      expect(screen.getByTestId("balance-analysis-cockpit-kpis")).toHaveTextContent("720.00");
+      expect(screen.getByTestId("balance-analysis-cockpit-kpis")).toHaveTextContent("72.00");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("债券资产(剔除发行类)");
       expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("1,000.00");
       const attentionStrip = screen.getByTestId("balance-analysis-data-status");
       expect(attentionStrip).toHaveTextContent("降级日期");
       expect(attentionStrip).toHaveTextContent("陈旧数据");
-      const statusRail = screen.getByTestId("balance-analysis-status-rail");
-      expect(statusRail).toHaveTextContent("质量");
-      expect(statusRail).toHaveTextContent("陈旧");
-      expect(statusRail).toHaveTextContent("降级");
-      expect(statusRail).toHaveTextContent("最新快照降级");
       const sentinels = screen.getByTestId("balance-analysis-abnormal-sentinels");
       expect(sentinels).toBeVisible();
       expect(sentinels).toHaveTextContent("陈旧");
