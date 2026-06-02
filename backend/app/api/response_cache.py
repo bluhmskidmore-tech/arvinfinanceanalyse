@@ -13,12 +13,19 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from typing import TypeVar
+from typing import TypeVar, cast
 
 T = TypeVar("T")
 
 DEFAULT_TTL_SECONDS = 300.0
 _TTL_ENV_VAR = "MOSS_MARKET_HOME_CACHE_TTL_SECONDS"
+
+
+class _InFlightBuild:
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.value: object = None
+        self.error: BaseException | None = None
 
 
 def resolve_default_ttl(default: float = DEFAULT_TTL_SECONDS) -> float:
@@ -46,6 +53,7 @@ class TTLResponseCache:
         self._clock = clock
         self._lock = threading.Lock()
         self._store: dict[str, tuple[float, object]] = {}
+        self._inflight: dict[str, _InFlightBuild] = {}
 
     def get_or_build(
         self,
@@ -63,11 +71,35 @@ class TTLResponseCache:
             entry = self._store.get(key)
             if entry is not None and entry[0] > now:
                 return entry[1]  # type: ignore[return-value]
+            inflight = self._inflight.get(key)
+            if inflight is None:
+                inflight = _InFlightBuild()
+                self._inflight[key] = inflight
+                should_build = True
+            else:
+                should_build = False
 
-        value = builder()
+        if not should_build:
+            inflight.event.wait()
+            if inflight.error is not None:
+                raise inflight.error
+            return cast(T, inflight.value)
+
+        try:
+            value = builder()
+        except BaseException as exc:
+            with self._lock:
+                inflight.error = exc
+                self._inflight.pop(key, None)
+                inflight.event.set()
+            raise
+
         expires_at = self._clock() + ttl
         with self._lock:
             self._store[key] = (expires_at, value)
+            inflight.value = value
+            self._inflight.pop(key, None)
+            inflight.event.set()
         return value
 
     def invalidate(self, key: str | None = None) -> None:
