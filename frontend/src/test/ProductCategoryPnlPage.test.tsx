@@ -139,6 +139,31 @@ function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy"
 }
 
 describe("ProductCategoryPnlPage", () => {
+  it("does not render operating analysis while the formal baseline is still loading", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const pendingPnl = vi.fn(
+      (_options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
+        new Promise<Awaited<ReturnType<typeof baseClient.getProductCategoryPnl>>>(() => {}),
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28"],
+        }),
+      ),
+      getProductCategoryPnl: pendingPnl,
+    });
+
+    await waitFor(() => {
+      expect(pendingPnl).toHaveBeenCalledWith({
+        reportDate: "2026-02-28",
+        view: "monthly",
+      });
+    });
+    expect(screen.queryByTestId("product-category-operating-analysis")).not.toBeInTheDocument();
+  });
+
   it("renders the page shell, summary, and table structure", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
@@ -169,6 +194,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-matrix")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-spread")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-operating-analysis")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-operating-profit-rank")).toHaveTextContent("1.45");
+    expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
+    expect(screen.getByTestId("product-category-operating-quadrant")).toHaveTextContent("2.57");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债侧产品类别口径");
     expect(screen.queryByText("同业负债")).not.toBeInTheDocument();

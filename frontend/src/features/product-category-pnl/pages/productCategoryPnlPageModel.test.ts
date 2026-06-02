@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import type { ProductCategoryPnlPayload, ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
+import type {
+  ProductCategoryAttributionEffects,
+  ProductCategoryAttributionPayload,
+  ProductCategoryPnlPayload,
+  ProductCategoryPnlRow,
+  ResultMeta,
+} from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
 
 import {
@@ -29,6 +35,7 @@ import {
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadYearComparisonChart,
+  selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportDates,
@@ -96,6 +103,50 @@ function annualizedCash(scaleYi: number, ratePct: number, days: number): string 
   return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
 }
 
+function attributionPayload(overrides: Partial<ProductCategoryAttributionPayload>): ProductCategoryAttributionPayload {
+  return {
+    report_date: "2026-02-28",
+    compare: "mom",
+    current_report_date: "2026-02-28",
+    prior_report_date: "2026-01-31",
+    state: "complete",
+    reason: null,
+    rows: [],
+    totals: null,
+    ...overrides,
+  };
+}
+
+function attributionRow(
+  partial: Pick<ProductCategoryAttributionPayload["rows"][number], "category_id"> &
+    Omit<Partial<ProductCategoryAttributionPayload["rows"][number]>, "effects"> & {
+      effects?: Partial<ProductCategoryAttributionEffects>;
+    },
+): ProductCategoryAttributionPayload["rows"][number] {
+  const { effects, ...rest } = partial;
+  return {
+    category_name: rest.category_name ?? rest.category_id,
+    side: rest.side ?? "asset",
+    level: rest.level ?? 0,
+    state: rest.state ?? "complete",
+    current: rest.current ?? null,
+    prior: rest.prior ?? null,
+    effects: {
+      day_effect: "0",
+      scale_effect: "0",
+      rate_effect: "0",
+      ftp_effect: "0",
+      direct_effect: "0",
+      unexplained_effect: "0",
+      explained_effect: "0",
+      delta_business_net_income: "0",
+      closure_error: "0",
+      ...effects,
+    },
+    ...rest,
+  };
+}
+
 describe("productCategoryPnlPageModel", () => {
   it("keeps main-page view selector scope to monthly and ytd inside the governed API detail surface", () => {
     expect(PRODUCT_CATEGORY_MAIN_PAGE_VIEWS).toEqual(["monthly", "ytd"]);
@@ -131,6 +182,134 @@ describe("productCategoryPnlPageModel", () => {
     expect(formatProductCategoryReportMonthLabel("2026-02-28")).toBe("\u0032\u0030\u0032\u0036\u5e74\u0030\u0032\u6708");
     expect(formatProductCategoryReportMonthLabel("2025-12-31")).toBe("\u0032\u0030\u0032\u0035\u5e74\u0031\u0032\u6708");
     expect(formatProductCategoryReportMonthLabel("not-a-date")).toBe("not-a-date");
+  });
+
+  it("builds operating analysis from current rows and existing attribution data", () => {
+    const rows = [
+      row({
+        category_id: "bond_investment",
+        category_name: "债券投资",
+        cnx_scale: yi(3000),
+        business_net_income: yi(7),
+        weighted_yield: "2.50",
+        children: ["bond_ac", "bond_fvoci"],
+      }),
+      row({
+        category_id: "repo_assets",
+        category_name: "买入返售",
+        cnx_scale: yi(200),
+        business_net_income: yi(-0.3),
+        weighted_yield: "1.20",
+      }),
+      row({
+        category_id: "bond_ac",
+        category_name: "AC债券投资",
+        cnx_scale: yi(2000),
+        business_net_income: yi(5),
+        weighted_yield: "2.60",
+        level: 1,
+      }),
+      row({
+        category_id: "bond_fvoci",
+        category_name: "FVOCI",
+        cnx_scale: yi(1000),
+        business_net_income: yi(1),
+        weighted_yield: "1.80",
+        level: 1,
+      }),
+      row({
+        category_id: "intermediate_business_income",
+        category_name: "中间业务收入",
+        cnx_scale: "0",
+        business_net_income: yi(0.05),
+        weighted_yield: null,
+      }),
+      row({
+        category_id: "asset_total",
+        category_name: "资产端合计",
+        cnx_scale: yi(4200),
+        business_net_income: yi(7.75),
+        weighted_yield: "2.35",
+        is_total: true,
+      }),
+    ];
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows,
+      grandTotal: row({
+        category_id: "grand_total",
+        category_name: "全表合计",
+        side: "all",
+        business_net_income: yi(8),
+        is_total: true,
+      }),
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "bond_investment",
+            category_name: "债券投资",
+            effects: {
+              delta_business_net_income: yi(1.5),
+              rate_effect: yi(0.9),
+              scale_effect: yi(0.2),
+              ftp_effect: yi(0.1),
+              direct_effect: yi(0.2),
+              unexplained_effect: yi(0.1),
+            },
+          }),
+          attributionRow({
+            category_id: "repo_assets",
+            category_name: "买入返售",
+            effects: {
+              delta_business_net_income: yi(-0.4),
+              rate_effect: yi(-0.3),
+              scale_effect: yi(-0.05),
+              ftp_effect: yi(-0.03),
+              unexplained_effect: yi(-0.02),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.contribution.profitRows[0]).toMatchObject({
+      categoryId: "bond_ac",
+      categoryLabel: "AC债券投资",
+      netIncomeLabel: "5.00",
+      contributionLabel: "62.5%",
+      tone: "positive",
+    });
+    expect(surface.contribution.profitRows.map((item) => item.categoryId)).not.toContain("bond_investment");
+    expect(surface.contribution.pressureRows[0]).toMatchObject({
+      categoryId: "repo_assets",
+      netIncomeLabel: "-0.30",
+      contributionLabel: "-3.8%",
+      tone: "negative",
+    });
+    expect(surface.movement.rows[0]).toMatchObject({
+      categoryId: "repo_assets",
+      deltaLabel: "-0.40",
+      leadingDriverLabel: "利率因素",
+      leadingDriverValueLabel: "-0.30",
+    });
+    expect(surface.movement.rows.map((item) => item.categoryId)).not.toContain("bond_investment");
+    expect(surface.quadrant.rows.map((item) => item.categoryId)).not.toContain("bond_investment");
+    expect(surface.quadrant.rows).toEqual([
+      expect.objectContaining({
+        categoryId: "bond_ac",
+        quadrant: "core_profit_pool",
+        quadrantLabel: "核心利润池",
+      }),
+      expect.objectContaining({
+        categoryId: "bond_fvoci",
+        quadrant: "scale_efficiency_watch",
+        quadrantLabel: "高规模低收益",
+      }),
+      expect.objectContaining({
+        categoryId: "repo_assets",
+        quadrant: "shrink_or_reprice",
+        quadrantLabel: "低规模低收益",
+      }),
+    ]);
   });
 
   it("formats attribution effects from governed yuan values into yi display values", () => {
