@@ -59,4 +59,19 @@ describe("productCategoryPnl mock", () => {
     const yi = (v: string) => Number(v) / YI;
     expect(yi(String(env.result.grand_total.business_net_income))).toBeCloseTo(2.85, 5);
   });
+
+  it("keeps the derivatives row as an aggregate business-net-income reference", () => {
+    const env = buildMockProductCategoryPnlEnvelope({
+      reportDate: "2026-02-28",
+      view: "ytd",
+    });
+    const row = env.result.rows.find((item) => item.category_id === "derivatives");
+
+    expect(row).toMatchObject({
+      category_id: "derivatives",
+      category_name: "汇兑损益及衍生",
+    });
+    expect(row?.business_net_income).toBeDefined();
+    expect(row?.business_net_income).not.toBe("");
+  });
 });
