@@ -668,4 +668,69 @@ describe("RiskTensorPage", () => {
     expect(getRiskTensor).not.toHaveBeenCalled();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dates_empty");
   });
+
+  it("surfaces report-date list failures without hardcoded fallback", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => {
+      throw new Error("Request failed: /api/risk/tensor/dates (503)");
+    });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日列表加载失败");
+    expect(errorContext).toHaveTextContent("503");
+    expect(errorContext).toHaveTextContent("不会回退到硬编码报告日");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+  });
+
+  it("renders default mock risk tensor controls and prior-period context", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    renderRiskTensorRoute("/risk-tensor", client);
+
+    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+    expect(priorChange).toHaveTextContent("暂无可比较的上一报告日");
+
+    const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+    expect(controls).toHaveTextContent("DV01");
+    expect(controls).toHaveTextContent("配置审批限额");
+    expect(controls).toHaveTextContent("接入利率波动");
+    expect(controls).toHaveTextContent("+10bp");
+    expect(controls).toHaveTextContent("未接入正式限额源");
+    expect(controls).not.toHaveTextContent("pending_configuration");
+  });
+
+  it.each([
+    [404, "当前报告日无风险张量数据", "2026-03-15"],
+    [503, "风险张量治理前置缺失", "2026-03-16"],
+  ])("surfaces risk tensor %s API failures with business context", async (statusCode, message, reportDate) => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_error_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async () => {
+      throw new Error(`Request failed: /api/risk/tensor?report_date=${reportDate} (${statusCode})`);
+    });
+
+    renderRiskTensorRoute(`/risk-tensor?report_date=${reportDate}`, {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent(message);
+    expect(errorContext).toHaveTextContent(reportDate);
+    expect(errorContext).toHaveTextContent(String(statusCode));
+  });
 });

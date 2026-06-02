@@ -324,6 +324,22 @@ function liquidityGapTone(raw: number | null) {
   return raw < 0 ? "danger" : "ok";
 }
 
+function errorStatusCode(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const match = message.match(/\((\d{3})\)/);
+  return match ? match[1] : "";
+}
+
+function riskTensorErrorMessage(statusCode: string) {
+  if (statusCode === "404") {
+    return "当前报告日无风险张量数据";
+  }
+  if (statusCode === "503") {
+    return "风险张量治理前置缺失";
+  }
+  return "风险张量主读面加载失败";
+}
+
 function requiredActionSummary(actions: NonNullable<RiskTensorPayload["dv01_controls"]>["control_actions"] | undefined) {
   if (!actions) {
     return "控制项未接入";
@@ -477,6 +493,8 @@ export default function RiskTensorPage() {
     !tensorQuery.isError &&
     result !== undefined &&
     result.bond_count === 0;
+  const tensorErrorStatusCode = errorStatusCode(tensorQuery.error);
+  const datesErrorStatusCode = errorStatusCode(datesQuery.error);
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -725,6 +743,23 @@ export default function RiskTensorPage() {
           ) : null}
         </div>
       </div>
+
+      {tensorQuery.isError ? (
+        <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
+          <strong>{riskTensorErrorMessage(tensorErrorStatusCode)}</strong>
+          <span>
+            报告日 {reportDate || explicitReportDate || "未选择"}；HTTP 状态{" "}
+            {tensorErrorStatusCode || "未知"}。请先核对正式风险张量物化和 lineage 新鲜度。
+          </span>
+        </div>
+      ) : datesBlockingError ? (
+        <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
+          <strong>风险报告日列表加载失败</strong>
+          <span>
+            HTTP 状态 {datesErrorStatusCode || "未知"}。页面不会回退到硬编码报告日。
+          </span>
+        </div>
+      ) : null}
 
       <AsyncSection
         title="组合风险张量"
