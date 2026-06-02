@@ -39,8 +39,65 @@ from the wrong working directory.
 | `moss-data-catalog` | Read-only DuckDB table inventory, schema registry, table description, and available date lookup. | `cmd.exe /d /s /c scripts\mcp\moss_catalog.cmd` |
 | `moss-data-quality` | Read-only DuckDB quality summaries: row counts, null counts, date coverage, and golden-sample hints. | `cmd.exe /d /s /c scripts\mcp\moss_data_quality.cmd` |
 | `playwright` | Browser/page QA through Playwright MCP. | `npx -y @playwright/mcp@latest` |
+| `stitch` | Google Stitch UI generation (design screens, export HTML/screenshots). | `cmd.exe /d /s /c scripts\mcp\stitch_mcp.cmd` |
 
-## Boundaries
+## Stitch setup
+
+Stitch MCP uses the published `stitch-mcp-server` package and reads `STITCH_API_KEY`
+from `config/.env` or the shell environment.
+
+1. Sign in at [stitch.google.com](https://stitch.google.com/) and create an API key.
+2. Add the key to `config/.env`:
+
+```env
+STITCH_API_KEY=your-key-here
+```
+
+3. Restart Cursor or start a new agent session so MCP reloads.
+4. Smoke test locally:
+
+```powershell
+node scripts/mcp/stitch_mcp_launcher.mjs
+```
+
+If the key is missing, the launcher exits with a clear error. If the key is valid,
+the process stays running and waits for MCP stdio traffic.
+
+Generate the dashboard-home overview prototype:
+
+```powershell
+npm install --prefix scripts/stitch
+node scripts/stitch/generate_dashboard_home.mjs
+```
+
+Outputs land in `artifacts/stitch/dashboard-home/` (`overview.html`, `overview.png`, `meta.json`).
+
+Generate a Stitch mockup for balance-analysis (often too generic; prefer MOSS v2 HTML):
+
+```powershell
+node scripts/stitch/generate_balance_analysis.mjs
+```
+
+Generate the cross-asset drivers homepage mockup:
+
+```powershell
+node scripts/stitch/generate_cross_asset.mjs
+```
+
+Outputs land in `artifacts/stitch/cross-asset/` (`design-draft.html`, `design-draft.png`, `meta.json`, `UI-SPEC.md`).
+
+Preferred balance-analysis design reference (MOSS tokens + 债券经营驾驶舱风格):
+
+- `artifacts/design/balance-analysis-v4-cockpit.html` ← **current (专业驾驶舱)**
+- `artifacts/design/balance-analysis-v3.html`
+- `artifacts/design/balance-analysis-v2.html` (superseded)
+- Spec: `artifacts/stitch/balance-analysis/UI-SPEC.md`
+- 用户参考图：细线图标 + KPI 卡片行 + 图表三列 + 风险进度表
+
+Stitch is a design/prototype tool only. Generated HTML must still be adapted to
+MOSS `DESIGN.md` and `frontend/src/theme/designSystem.ts` before landing in
+production pages.
+
 
 - The local MOSS servers are read-only.
 - `moss-data-catalog` only uses `information_schema` and fixed date-list queries; it does not accept arbitrary SQL.

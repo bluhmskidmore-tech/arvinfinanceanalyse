@@ -29,6 +29,11 @@
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest"],
       "cwd": "."
+    },
+    "stitch": {
+      "command": "cmd.exe",
+      "args": ["/d", "/s", "/c", "scripts\\mcp\\stitch_mcp.cmd"],
+      "cwd": "."
     }
   }
 }
