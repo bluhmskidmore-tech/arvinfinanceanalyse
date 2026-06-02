@@ -81,6 +81,9 @@ const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "NHCI", label: "南华指数", description: "Crisis Score 输入" },
 ] as const;
 const DEFAULT_MACRO_COMMODITY_PRODUCTS = MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => option.value);
+const NANHUA_COMMODITY_PRODUCT_CODE = "NHCI";
+const NANHUA_CRISIS_ALIAS = "NH0100.NHF";
+const NANHUA_SYSTEM_SERIES_ID = "NHCI.NH";
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
@@ -320,6 +323,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [refreshingSourceAlias, setRefreshingSourceAlias] = useState<string | null>(null);
   const [commodityRefreshResult, setCommodityRefreshResult] = useState<string | null>(null);
   const [commodityRefreshError, setCommodityRefreshError] = useState<string | null>(null);
+  const [commodityRefreshRun, setCommodityRefreshRun] = useState<MacroToolkitCommodityFuturesRefreshRun | null>(null);
   const [isRefreshingCommodity, setIsRefreshingCommodity] = useState(false);
   const [selectedCommodityProducts, setSelectedCommodityProducts] = useState<string[]>([
     ...DEFAULT_MACRO_COMMODITY_PRODUCTS,
@@ -617,11 +621,13 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     if (selectedCommodityProducts.length === 0) {
       setCommodityRefreshError("请至少选择一个商品期货品种");
       setCommodityRefreshResult(null);
+      setCommodityRefreshRun(null);
       return;
     }
     setIsRefreshingCommodity(true);
     setCommodityRefreshError(null);
     setCommodityRefreshResult(null);
+    setCommodityRefreshRun(null);
     const shouldReloadFullAnalysis = !dryRun && !isCoreAnalysis;
     try {
       const response = await client.refreshCommodityFutures({
@@ -629,7 +635,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         products: selectedCommodityProducts,
         dryRun,
       });
-      setCommodityRefreshResult(formatCommodityRefreshResult(response.result.refresh));
+      const refresh = response.result.refresh;
+      setCommodityRefreshRun(refresh);
+      setCommodityRefreshResult(formatCommodityRefreshResult(refresh));
       if (dryRun) {
         return;
       }
@@ -640,6 +648,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       }
     } catch (error) {
       setCommodityRefreshError(error instanceof Error ? error.message : "刷新商品期货失败");
+      setCommodityRefreshRun(null);
     } finally {
       setIsRefreshingCommodity(false);
     }
@@ -1457,6 +1466,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                     setSelectedCommodityProducts(values.map(String));
                     setCommodityRefreshResult(null);
                     setCommodityRefreshError(null);
+                    setCommodityRefreshRun(null);
                   }}
                 >
                   {MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => (
@@ -1491,6 +1501,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
                 {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
               </div>
+              {commodityRefreshRun ? <CommodityRefreshResultPanel refresh={commodityRefreshRun} /> : null}
             </div>
           </section>
 
@@ -1657,6 +1668,99 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+type CommodityRefreshProductRow = {
+  key: string;
+  productCode: string;
+  productName: string;
+  seriesId: string;
+  status: "estimated" | "written" | "missing";
+  rowCountLabel: string;
+  latestDate: string;
+  latestValue: number | null;
+  vendor: string;
+  table: string;
+  isNanhua: boolean;
+};
+
+function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodityFuturesRefreshRun }) {
+  const rows = normalizeCommodityRefreshRows(refresh);
+  const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
+  const nanhuaRow = rows.find((row) => row.isNanhua);
+  const nanhuaMessage =
+    nanhuaRow && !isDryRun && nanhuaRow.status === "written"
+      ? "Crisis Score 南华输入已更新"
+      : nanhuaRow
+        ? "NHCI / NH0100.NHF 已纳入本次检查"
+        : "NHCI / NH0100.NHF 未选择";
+  const columns: ColumnsType<CommodityRefreshProductRow> = [
+    {
+      title: "品种",
+      dataIndex: "productName",
+      key: "productName",
+      render: (_, row) => (
+        <div className="macro-toolkit-commodity-refresh-product">
+          <span>{row.productName}</span>
+          <small>{commodityRefreshIdentifierText(row)}</small>
+        </div>
+      ),
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
+      width: 110,
+      render: (_, row) => <Tag color={commodityRefreshStatusColor(row.status)}>{commodityRefreshStatusText(row.status)}</Tag>,
+    },
+    {
+      title: "行数",
+      dataIndex: "rowCountLabel",
+      key: "rowCountLabel",
+      width: 110,
+    },
+    {
+      title: "最新日期 / 值",
+      dataIndex: "latestDate",
+      key: "latestDate",
+      render: (_, row) => (
+        <span>
+          {row.latestDate}
+          {row.latestValue == null ? "" : ` / ${formatNumberValue(row.latestValue, 2)}`}
+        </span>
+      ),
+    },
+    {
+      title: "来源",
+      dataIndex: "vendor",
+      key: "vendor",
+      width: 120,
+    },
+    {
+      title: "写入表",
+      dataIndex: "table",
+      key: "table",
+      render: (table: string) => <span className="macro-toolkit-nowrap-soft">{table}</span>,
+    },
+  ];
+
+  return (
+    <div className="macro-toolkit-commodity-refresh-result" aria-label="商品期货刷新结果">
+      <div className="macro-toolkit-commodity-refresh-summary">
+        <span>{isDryRun ? "预估结果" : "刷新结果"}</span>
+        <strong>{formatCommodityRefreshResult(refresh)}</strong>
+        <Tag color={nanhuaRow && !isDryRun && nanhuaRow.status === "written" ? "green" : "blue"}>{nanhuaMessage}</Tag>
+      </div>
+      <Table
+        rowKey="key"
+        size="small"
+        columns={columns}
+        dataSource={rows}
+        pagination={false}
+        scroll={{ x: 760 }}
+      />
     </div>
   );
 }
@@ -2475,6 +2579,124 @@ function choiceStockTableSummary(
   const statusText = statusLabel(table?.freshness_status ?? "unknown");
   const fallbackText = choiceStockFallbackText(table);
   return [dateText, statusText, fallbackText].filter(Boolean).join(" · ");
+}
+
+function normalizeCommodityRefreshRows(refresh: MacroToolkitCommodityFuturesRefreshRun): CommodityRefreshProductRow[] {
+  const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
+  const table = refresh.table ?? "fact_commodity_futures_daily";
+  return (refresh.products ?? []).filter(isRecord).map((item, index) => {
+    const productCode = commodityRefreshProductCode(item.product_code, index);
+    const option = MACRO_COMMODITY_PRODUCT_OPTIONS.find((candidate) => candidate.value === productCode);
+    const productName = commodityRefreshString(item.name_zh) || option?.label || productCode;
+    const estimatedRows = commodityRefreshNumber(item.estimated_rows);
+    const writtenRows = commodityRefreshNumber(item.row_count);
+    const rowCount = isDryRun ? estimatedRows ?? writtenRows : writtenRows ?? estimatedRows;
+    const seriesId = commodityRefreshString(item.series_id) || commodityRefreshSeriesId(productCode);
+    const latestDate = commodityRefreshString(item.latest_date) || (isDryRun ? refresh.end_date ?? "待刷新" : refresh.end_date ?? "缺失");
+    const latestValue = commodityRefreshNumber(item.latest_value);
+    const status = commodityRefreshProductStatus({ isDryRun, rowCount });
+    return {
+      key: `${productCode}-${index}`,
+      productCode,
+      productName,
+      seriesId,
+      status,
+      rowCountLabel: rowCount == null ? "缺失" : `${isDryRun ? "预计 " : ""}${rowCount} 行`,
+      latestDate,
+      latestValue,
+      vendor: commodityRefreshString(item.vendor) || (isDryRun ? "estimate_only" : "缺失"),
+      table,
+      isNanhua: isNanhuaCommodityRefreshRow(productCode, seriesId),
+    };
+  });
+}
+
+function commodityRefreshProductCode(value: unknown, index: number) {
+  const code = commodityRefreshString(value);
+  if (!code) {
+    return `#${index + 1}`;
+  }
+  const normalized = code.toUpperCase();
+  return normalized === NANHUA_CRISIS_ALIAS ? NANHUA_COMMODITY_PRODUCT_CODE : normalized;
+}
+
+function commodityRefreshString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function commodityRefreshNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return null;
+}
+
+function commodityRefreshSeriesId(productCode: string) {
+  const normalized = productCode.trim().toUpperCase();
+  if (normalized === NANHUA_COMMODITY_PRODUCT_CODE || normalized === NANHUA_CRISIS_ALIAS) {
+    return NANHUA_SYSTEM_SERIES_ID;
+  }
+  if (normalized === "NHII") {
+    return "NHII.NH";
+  }
+  if (normalized === "CU") {
+    return "CA.COPPER";
+  }
+  if (normalized === "AL") {
+    return "CA.ALUMINUM";
+  }
+  return normalized.startsWith("#") ? "缺失" : `COMMODITY.${normalized}`;
+}
+
+function isNanhuaCommodityRefreshRow(productCode: string, seriesId: string) {
+  const normalizedProductCode = productCode.trim().toUpperCase();
+  const normalizedSeriesId = seriesId.trim().toUpperCase();
+  return (
+    normalizedProductCode === NANHUA_COMMODITY_PRODUCT_CODE ||
+    normalizedProductCode === NANHUA_CRISIS_ALIAS ||
+    normalizedSeriesId === NANHUA_SYSTEM_SERIES_ID ||
+    normalizedSeriesId === NANHUA_CRISIS_ALIAS
+  );
+}
+
+function commodityRefreshIdentifierText(row: CommodityRefreshProductRow) {
+  const identifiers = row.isNanhua
+    ? [row.productCode, NANHUA_CRISIS_ALIAS, row.seriesId]
+    : [row.productCode, row.seriesId];
+  return Array.from(new Set(identifiers.filter(Boolean))).join(" / ");
+}
+
+function commodityRefreshProductStatus({
+  isDryRun,
+  rowCount,
+}: {
+  isDryRun: boolean;
+  rowCount: number | null;
+}): CommodityRefreshProductRow["status"] {
+  if (rowCount == null || rowCount <= 0) {
+    return "missing";
+  }
+  return isDryRun ? "estimated" : "written";
+}
+
+function commodityRefreshStatusText(status: CommodityRefreshProductRow["status"]) {
+  if (status === "estimated") {
+    return "预计可写";
+  }
+  if (status === "written") {
+    return "已写入";
+  }
+  return "未命中";
+}
+
+function commodityRefreshStatusColor(status: CommodityRefreshProductRow["status"]) {
+  if (status === "missing") {
+    return "red";
+  }
+  return status === "written" ? "green" : "blue";
 }
 
 function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefreshRun) {

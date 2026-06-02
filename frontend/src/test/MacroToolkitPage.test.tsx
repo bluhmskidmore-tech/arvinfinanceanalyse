@@ -824,6 +824,12 @@ describe("MacroToolkitPage", () => {
         refreshCalls.push(options);
         const products = options?.products ?? ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"];
         const isDryRun = options?.dryRun ?? false;
+        const productNames: Record<string, string> = {
+          CU: "铜",
+          SC: "原油",
+          AU: "黄金",
+          NHCI: "南华指数",
+        };
         return {
           result_meta: {
             ...analysisEnvelope.result_meta,
@@ -839,7 +845,26 @@ describe("MacroToolkitPage", () => {
               row_count: isDryRun ? 0 : products.length * 22,
               estimated_total_rows: isDryRun ? products.length * 22 : undefined,
               estimated_trading_days: isDryRun ? 22 : undefined,
-              products: products.map((product) => ({ product_code: product, row_count: isDryRun ? undefined : 22 })),
+              products: products.map((product) => {
+                const productCode = product === "NHCI" ? "NH0100.NHF" : product;
+                return {
+                  product_code: productCode,
+                  name_zh: productNames[product] ?? product,
+                  row_count: isDryRun ? undefined : 22,
+                  estimated_rows: isDryRun ? 22 : undefined,
+                  latest_date: isDryRun ? undefined : "2026-04-30",
+                  latest_value: product === "NHCI" && !isDryRun ? 3187.42 : undefined,
+                  series_id:
+                    product === "NHCI"
+                      ? "NH0100.NHF"
+                      : product === "CU"
+                        ? "CA.COPPER"
+                        : product === "AL"
+                          ? "CA.ALUMINUM"
+                          : `COMMODITY.${product}`,
+                  vendor: isDryRun ? "estimate_only" : "tushare",
+                };
+              }),
               table: "fact_commodity_futures_daily",
               rule_version: "rv_commodity_daily_v1",
             },
@@ -864,8 +889,15 @@ describe("MacroToolkitPage", () => {
       products: ["CU", "SC", "AU", "NHCI"],
       dryRun: true,
     });
-    expect(await screen.findByText(/商品期货预估完成/)).toHaveTextContent("4 个品种，88 行");
-    expect(screen.getByText(/商品期货预估完成/)).toHaveTextContent("22 个交易日");
+    const dryRunSummaries = await screen.findAllByText(/商品期货预估完成/);
+    expect(dryRunSummaries[0]).toHaveTextContent("4 个品种，88 行");
+    expect(dryRunSummaries[0]).toHaveTextContent("22 个交易日");
+    const dryRunResult = await screen.findByLabelText("商品期货刷新结果");
+    expect(dryRunResult).toHaveTextContent("预计可写");
+    expect(dryRunResult).toHaveTextContent("estimate_only");
+    expect(dryRunResult).toHaveTextContent("CU / CA.COPPER");
+    expect(dryRunResult).toHaveTextContent("NHCI / NH0100.NHF");
+    expect(dryRunResult).toHaveTextContent("fact_commodity_futures_daily");
     expect(calls.filter((item) => item?.detail === "full")).toHaveLength(0);
 
     await user.click(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ }));
@@ -875,7 +907,13 @@ describe("MacroToolkitPage", () => {
       products: ["CU", "SC", "AU", "NHCI"],
       dryRun: false,
     });
-    expect(await screen.findByText(/商品期货刷新完成/)).toHaveTextContent("4 个品种，88 行");
+    const refreshSummaries = await screen.findAllByText(/商品期货刷新完成/);
+    expect(refreshSummaries[0]).toHaveTextContent("4 个品种，88 行");
+    const completedResult = await screen.findByLabelText("商品期货刷新结果");
+    expect(completedResult).toHaveTextContent("Crisis Score 南华输入已更新");
+    expect(completedResult).toHaveTextContent("已写入");
+    expect(completedResult).toHaveTextContent("2026-04-30");
+    expect(completedResult).toHaveTextContent("3187.42");
     await waitFor(() => expect(calls).toContainEqual({ detail: "full" }));
   });
 

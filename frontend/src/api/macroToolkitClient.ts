@@ -1905,6 +1905,22 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
     },
     async refreshCommodityFutures(options) {
       const products = options?.products ?? ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"];
+      const productNames: Record<string, string> = {
+        RB: "螺纹钢",
+        I: "铁矿石",
+        CU: "铜",
+        AL: "铝",
+        SC: "原油",
+        AU: "黄金",
+        NHCI: "南华指数",
+      };
+      const productSeriesId = (product: string) => {
+        if (product === "NHCI") return "NHCI.NH";
+        if (product === "NHII") return "NHII.NH";
+        if (product === "CU") return "CA.COPPER";
+        if (product === "AL") return "CA.ALUMINUM";
+        return `COMMODITY.${product}`;
+      };
       return buildMockApiEnvelope(
         "macro_toolkit.commodity_futures_refresh",
         {
@@ -1919,7 +1935,12 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
             estimated_trading_days: options?.dryRun ? 22 : undefined,
             products: products.map((product) => ({
               product_code: product,
+              name_zh: productNames[product] ?? product,
               row_count: options?.dryRun ? undefined : 22,
+              estimated_rows: options?.dryRun ? 22 : undefined,
+              latest_date: options?.dryRun ? undefined : options?.endDate ?? "2026-04-30",
+              latest_value: product === "NHCI" && !options?.dryRun ? 3187.42 : undefined,
+              series_id: productSeriesId(product),
               vendor: options?.dryRun ? "estimate_only" : "tushare",
             })),
             table: "fact_commodity_futures_daily",

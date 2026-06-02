@@ -1360,6 +1360,58 @@
   font-weight: 650;
 }
 
+.macro-toolkit-commodity-refresh-result {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.macro-toolkit-commodity-refresh-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-muted);
+}
+
+.macro-toolkit-commodity-refresh-summary span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.macro-toolkit-commodity-refresh-summary strong {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.macro-toolkit-commodity-refresh-product {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.macro-toolkit-commodity-refresh-product span {
+  color: var(--moss-color-text-primary);
+  font-weight: 740;
+}
+
+.macro-toolkit-commodity-refresh-product small,
+.macro-toolkit-nowrap-soft {
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-commodity-refresh-product small {
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  font-weight: 640;
+}
+
 .macro-toolkit-strategy-supply-strip {
   display: flex;
   flex-wrap: wrap;
