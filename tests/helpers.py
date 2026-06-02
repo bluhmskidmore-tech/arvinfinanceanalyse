@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import sys
 from pathlib import Path
 
@@ -33,6 +34,10 @@ def load_module(module_name: str, relative_path: str):
 
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
+
+    if module_name.startswith("backend.app.api.routes."):
+        _purge_backend_main_import_chain()
+        return importlib.import_module(module_name)
 
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:

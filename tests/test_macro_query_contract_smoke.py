@@ -495,6 +495,43 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     assert payload["warnings"] == ["tushare index_weight used latest available date"]
 
 
+def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    route_module.market_home_response_cache.invalidate()
+    build_calls: list[object] = []
+
+    def _latest_envelope(_duckdb_path: object, *, category: object | None = None) -> dict[str, object]:
+        build_calls.append(category)
+        return {
+            "result_meta": {"result_kind": "macro.choice.latest"},
+            "result": {"series": [{"series_id": f"series-{len(build_calls)}"}]},
+        }
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            return {"status": "completed", "run_id": f"choice-refresh-{backfill_days}"}
+
+    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _latest_envelope)
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", lambda: {"status": "completed"})
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    first = route_module.choice_series_latest()
+    second = route_module.choice_series_latest()
+    route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=3)
+    third = route_module.choice_series_latest()
+
+    assert first["result"]["series"][0]["series_id"] == "series-1"
+    assert second["result"]["series"][0]["series_id"] == "series-1"
+    assert third["result"]["series"][0]["series_id"] == "series-2"
+    assert build_calls == [None, None]
+    route_module.market_home_response_cache.invalidate()
+
+
 def test_choice_macro_refresh_keeps_auth_dependency_contract():
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",

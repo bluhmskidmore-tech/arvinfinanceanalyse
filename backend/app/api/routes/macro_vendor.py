@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from backend.app.api.perf_logging import timed_api_call
+from backend.app.api.response_cache import market_home_response_cache
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -34,9 +35,12 @@ CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 def market_data_rates() -> dict[str, object]:
     """Formal-basis rates for the market-data page (stable series only)."""
     settings = get_settings()
-    return timed_api_call(
-        "/ui/market-data/rates",
-        lambda: choice_macro_formal_envelope(settings.duckdb_path),
+    return market_home_response_cache.get_or_build(
+        f"market-data/rates::{settings.duckdb_path}",
+        lambda: timed_api_call(
+            "/ui/market-data/rates",
+            lambda: choice_macro_formal_envelope(settings.duckdb_path),
+        ),
     )
 
 
@@ -44,7 +48,10 @@ def market_data_rates() -> dict[str, object]:
 def market_data_catalog() -> dict[str, object]:
     """Formal-basis macro catalog for the market-data page."""
     settings = get_settings()
-    return macro_foundation_formal_envelope(settings.duckdb_path)
+    return market_home_response_cache.get_or_build(
+        f"market-data/catalog::{settings.duckdb_path}",
+        lambda: macro_foundation_formal_envelope(settings.duckdb_path),
+    )
 
 
 # ── Analytical / preview endpoints (unlocked from 503) ─────────────
@@ -58,7 +65,10 @@ def macro_foundation() -> dict[str, object]:
 @router.get("/ui/macro/choice-series/latest")
 def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict[str, object]:
     settings = get_settings()
-    return choice_macro_latest_envelope(settings.duckdb_path, category=category)
+    return market_home_response_cache.get_or_build(
+        f"choice-series/latest::{category or 'all'}::{settings.duckdb_path}",
+        lambda: choice_macro_latest_envelope(settings.duckdb_path, category=category),
+    )
 
 
 @router.get("/ui/market-data/fx/formal-status")
@@ -91,6 +101,9 @@ def choice_series_refresh(
     choice_refresh = getattr(refresh_choice_macro_snapshot, "fn", refresh_choice_macro_snapshot)
     choice_payload = choice_refresh(backfill_days=backfill_days)
     public_payload = _run_public_cross_asset_headline_refresh()
+    # Fresh upstream snapshot just landed; drop cached market reads so the next
+    # page load reflects it instead of waiting out the TTL.
+    market_home_response_cache.invalidate()
     return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload)
 
 
