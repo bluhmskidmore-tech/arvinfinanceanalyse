@@ -325,3 +325,35 @@ def test_social_financing_stock_yoy_uses_stock_end_value_not_monthly_increment()
     assert len(rows) == 1
     assert rows[0]["trade_date"] == "2025-05-01"
     assert rows[0]["value"] == pytest.approx(8.7337, rel=1e-4)
+
+
+def test_cn_pmi_uses_tushare_month_and_manufacturing_pmi_code() -> None:
+    rows = _map_tushare_records(
+        "cn_pmi",
+        [
+            {"month": "202605", "pmi010000": 50.0, "pmi010100": 51.1},
+            {"MONTH": "202604", "PMI010000": 50.3, "PMI010100": 50.2},
+        ],
+        series_name="制造业PMI",
+    )
+
+    assert rows == [
+        {"trade_date": "2026-05-01", "value": 50.0},
+        {"trade_date": "2026-04-01", "value": 50.3},
+    ]
+
+
+def test_cn_pmi_new_orders_uses_tushare_new_orders_code() -> None:
+    rows = _map_tushare_records(
+        "cn_pmi",
+        [
+            {"month": "202605", "pmi010300": 47.2, "pmi010500": 48.5},
+            {"MONTH": "202604", "PMI010300": 47.0, "PMI010500": 49.1},
+        ],
+        series_name="PMI:新订单",
+    )
+
+    assert rows == [
+        {"trade_date": "2026-05-01", "value": 48.5},
+        {"trade_date": "2026-04-01", "value": 49.1},
+    ]

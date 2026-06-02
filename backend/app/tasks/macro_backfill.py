@@ -931,10 +931,20 @@ def _tushare_request_start_month(api: str, series_name: str, start_date: str) ->
 
 
 def _pick_tushare_value(record: dict[str, object], series_name: str, mapping: dict[str, str]) -> float | None:
+    if "pmi" in mapping.values():
+        key = str(series_name or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if "new_orders" in key or "new_order" in key or "新订单" in series_name or "pmi010500" in key:
+            return _coerce_float(record.get("pmi010500") or record.get("PMI010500"))
+        return _coerce_float(record.get("pmi010000") or record.get("PMI010000") or record.get("pmi"))
+
     for needle, field in mapping.items():
         if needle in series_name:
+            if field == "pmi":
+                field = "PMI010500" if "新订单" in series_name else "PMI010000"
             return _coerce_float(record.get(field))
     first_field = next(iter(mapping.values()), None)
+    if first_field == "pmi":
+        first_field = "PMI010500" if "新订单" in series_name else "PMI010000"
     return _coerce_float(record.get(first_field)) if first_field else None
 
 
