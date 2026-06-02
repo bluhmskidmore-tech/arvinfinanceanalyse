@@ -60,6 +60,7 @@ from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRA
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.tasks.macro_backfill import backfill_macro_series
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
 
@@ -84,6 +85,14 @@ _DAILY_SOURCE_CHECK_ALIASES = {
     "S0059749",
     "S0059760",
     "M0041813",
+}
+
+_SOURCE_BACKFILL_TARGETS = {
+    "m0041813": {
+        "series_id": "NCD.SHIBOR.3M",
+        "series_name": "SHIBOR:3M",
+        "default_sources": ["tushare_macro"],
+    },
 }
 
 _ANALYSIS_INDICATORS = (
@@ -238,6 +247,13 @@ class ChoiceStockRefreshRequest(BaseModel):
     refresh_history: bool = True
     refresh_factors: bool = True
     factor_max_stock_count: int | None = Field(default=None, ge=1)
+
+
+class SourceBackfillRefreshRequest(BaseModel):
+    alias: str = Field(min_length=1)
+    start_date: str | None = None
+    end_date: str | None = None
+    sources: list[str] | None = None
 
 
 @router.get("/scripts")
@@ -516,6 +532,51 @@ def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -
     )
 
 
+@router.post("/source-backfill/refresh")
+def macro_toolkit_refresh_source_backfill(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    request: SourceBackfillRefreshRequest,
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_source_backfill_refresh_allowed(auth, settings)
+    target = _source_backfill_target(request.alias)
+    start_date = request.start_date or _default_source_backfill_start_date(request.end_date)
+    end_date = request.end_date or date.today().isoformat()
+    try:
+        payload = backfill_macro_series(
+            duckdb_path=str(settings.duckdb_path),
+            series_names=[str(target["series_name"])],
+            start_date=start_date,
+            end_date=end_date,
+            dry_run=False,
+            sources_filter=request.sources or list(target["default_sources"]),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    refresh = {
+        "status": "completed" if not payload.get("errors") else "partial",
+        "alias": request.alias,
+        "series_ids": [str(target["series_id"])],
+        "series_names": [str(target["series_name"])],
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_added": int(payload.get("total_added") or 0),
+        "processed_count": int(payload.get("processed_count") or 0),
+        "results": payload.get("results") or {},
+        "errors": payload.get("errors") or {},
+    }
+    market_home_response_cache.invalidate()
+    return _envelope(
+        "macro_toolkit.source_backfill_refresh",
+        {"refresh": refresh},
+        quality_flag="ok" if refresh["status"] == "completed" else "warning",
+        fallback_mode="none",
+        as_of_date=end_date,
+    )
+
+
 @router.post("/scripts/{name}/run")
 def macro_toolkit_run(
     name: str,
@@ -568,6 +629,20 @@ def _ensure_choice_stock_refresh_allowed(auth: AuthContext, settings: object) ->
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+def _ensure_source_backfill_refresh_allowed(auth: AuthContext, settings: object) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_toolkit.source_backfill",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 def _ensure_macro_toolkit_script_execute_allowed(
     auth: AuthContext,
     settings: object,
@@ -587,6 +662,22 @@ def _ensure_macro_toolkit_script_execute_allowed(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _source_backfill_target(alias: str) -> dict[str, object]:
+    key = str(alias or "").strip().lower()
+    target = _SOURCE_BACKFILL_TARGETS.get(key)
+    if target is None:
+        raise HTTPException(status_code=400, detail=f"Unsupported macro source backfill alias: {alias}")
+    return target
+
+
+def _default_source_backfill_start_date(end_date: str | None) -> str:
+    try:
+        end = date.fromisoformat(str(end_date)[:10]) if end_date else date.today()
+    except ValueError:
+        end = date.today()
+    return (end - timedelta(days=31)).isoformat()
 
 
 def _script_payload(script: MacroToolkitScript) -> dict[str, object]:
@@ -3651,7 +3742,7 @@ def _missing_indicator_repair_item(
         "reference_date": reference_date,
         "stale_days": None,
         "suggested_action": f"补齐 {alias or label} 后重新运行完整宏观分析；缺失项不能按 0 处理。",
-        "action": _source_backfill_action("需要补齐来源数据"),
+        "action": _source_backfill_action("需要补齐来源数据", alias=alias),
         "tags": ["indicator"],
     }
 
@@ -3690,7 +3781,7 @@ def _source_repair_item(
             "reference_date": reference_date,
             "stale_days": None,
             "suggested_action": f"补齐 {alias} 来源数据后重新运行完整宏观分析；缺失项不能按 0 处理。",
-            "action": _source_backfill_action("需要补齐来源数据"),
+            "action": _source_backfill_action("需要补齐来源数据", alias=alias),
             "tags": ["source"],
         }
     return {
@@ -3708,7 +3799,7 @@ def _source_repair_item(
             f"{alias} 最新 {latest_date}，落后分析日 {reference_date} {stale_days} 天；"
             "刷新 Choice/Tushare 后再确认。"
         ),
-        "action": _source_backfill_action("需要刷新来源"),
+        "action": _source_backfill_action("需要刷新来源", alias=alias),
         "tags": ["source"],
     }
 
@@ -3772,12 +3863,17 @@ def _deferred_repair_item(
     }
 
 
-def _source_backfill_action(label: str) -> dict[str, object]:
+def _source_backfill_action(label: str, *, alias: str | None = None) -> dict[str, object]:
+    enabled = str(alias or "").strip().lower() in _SOURCE_BACKFILL_TARGETS
     return {
         "kind": "source_backfill_required",
         "label": label,
-        "enabled": False,
-        "reason": "当前没有已接入的一键宏观序列刷新接口。",
+        "enabled": enabled,
+        "reason": (
+            "可触发宏观来源补齐；完成后重新运行完整分析确认。"
+            if enabled
+            else "当前没有已接入的一键宏观序列刷新接口。"
+        ),
         "analysis_detail": "full",
     }
 

@@ -708,8 +708,8 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "action": {
             "kind": "source_backfill_required",
             "label": "需要补齐来源数据",
-            "enabled": False,
-            "reason": "当前没有已接入的一键宏观序列刷新接口。",
+            "enabled": True,
+            "reason": "可触发宏观来源补齐；完成后重新运行完整分析确认。",
             "analysis_detail": "full",
         },
         "tags": ["indicator"],
@@ -1955,6 +1955,76 @@ def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_gran
     assert allowed.json()["result"]["refresh"]["run_id"] == "choice-stock-refresh-auth-test"
     assert len(calls) == 1
     assert calls[0]["permission"]["resource"] == "macro_toolkit.choice_stock"
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    calls: list[dict[str, object]] = []
+
+    def fake_backfill_macro_series(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "dry_run": False,
+            "processed_count": 1,
+            "total_added": 42,
+            "results": {"SHIBOR:3M": 42},
+            "errors": {},
+        }
+
+    monkeypatch.setattr(macro_toolkit_route, "backfill_macro_series", fake_backfill_macro_series)
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+    request = {
+        "alias": "M0041813",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "sources": ["tushare_macro"],
+    }
+
+    denied = client.post(
+        "/ui/macro/toolkit/source-backfill/refresh",
+        json=request,
+        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="macro-source-user",
+        role=None,
+        resource="macro_toolkit.source_backfill",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/ui/macro/toolkit/source-backfill/refresh",
+        json=request,
+        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+    )
+
+    assert allowed.status_code == 200, allowed.text
+    payload = allowed.json()
+    refresh = payload["result"]["refresh"]
+    assert refresh["status"] == "completed"
+    assert refresh["alias"] == "M0041813"
+    assert refresh["series_ids"] == ["NCD.SHIBOR.3M"]
+    assert refresh["total_added"] == 42
+    assert calls == [
+        {
+            "duckdb_path": str(duckdb_path),
+            "series_names": ["SHIBOR:3M"],
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dry_run": False,
+            "sources_filter": ["tushare_macro"],
+        }
+    ]
     get_settings.cache_clear()
 
 

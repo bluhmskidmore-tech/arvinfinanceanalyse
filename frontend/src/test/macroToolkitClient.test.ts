@@ -119,6 +119,49 @@ describe("macroToolkitClient", () => {
     );
   });
 
+  it("posts source backfill refresh requests to the toolkit route", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            refresh: {
+              status: "completed",
+              alias: "M0041813",
+              series_ids: ["NCD.SHIBOR.3M"],
+              total_added: 42,
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    await client.refreshMacroSourceBackfill({
+      alias: "M0041813",
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+      sources: ["tushare_macro"],
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/macro/toolkit/source-backfill/refresh",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          alias: "M0041813",
+          start_date: "2026-04-01",
+          end_date: "2026-04-30",
+          sources: ["tushare_macro"],
+        }),
+      }),
+    );
+  });
+
   it("requests core analysis first and reads deferred strategy summaries separately", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) =>
       new Response(

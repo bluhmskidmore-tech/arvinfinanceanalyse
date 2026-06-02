@@ -527,6 +527,21 @@ export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
   cffex_member_rank: MacroToolkitCffexMemberRankStatus;
 }>;
 
+export type MacroToolkitSourceBackfillRefreshResponse = ApiEnvelope<{
+  refresh: {
+    status: string;
+    alias: string;
+    series_ids: string[];
+    series_names?: string[];
+    start_date?: string | null;
+    end_date?: string | null;
+    total_added: number;
+    processed_count?: number;
+    results?: Record<string, number>;
+    errors?: Record<string, string>;
+  };
+}>;
+
 export type MacroToolkitAnalysisRequest = {
   detail?: "core" | "full";
 };
@@ -546,6 +561,12 @@ export type MacroToolkitClientMethods = {
     contracts?: string[];
     sources?: string[];
   }) => Promise<MacroToolkitCffexRefreshResponse>;
+  refreshMacroSourceBackfill: (options: {
+    alias: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    sources?: string[];
+  }) => Promise<MacroToolkitSourceBackfillRefreshResponse>;
   refreshChoiceStock: (options?: {
     asOfDate?: string;
     refreshHistory?: boolean;
@@ -1599,8 +1620,8 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
         action: {
           kind: "source_backfill_required",
           label: "需要补齐来源数据",
-          enabled: false,
-          reason: "当前没有已接入的一键宏观序列刷新接口。",
+          enabled: true,
+          reason: "可触发宏观来源补齐；完成后重新运行完整分析确认。",
           analysis_detail: "full",
         },
         tags: ["indicator"],
@@ -1825,6 +1846,33 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         },
       );
     },
+    async refreshMacroSourceBackfill(options) {
+      return buildMockApiEnvelope(
+        "macro_toolkit.source_backfill_refresh",
+        {
+          refresh: {
+            status: "completed",
+            alias: options.alias,
+            series_ids: options.alias === "M0041813" ? ["NCD.SHIBOR.3M"] : [options.alias],
+            series_names: options.alias === "M0041813" ? ["SHIBOR:3M"] : [options.alias],
+            start_date: options.startDate ?? null,
+            end_date: options.endDate ?? null,
+            total_added: 0,
+            processed_count: 1,
+            results: {},
+            errors: {},
+          },
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
     async refreshChoiceStock() {
       return buildMockApiEnvelope(
         "macro_toolkit.choice_stock_refresh",
@@ -1921,6 +1969,22 @@ export function createRealMacroToolkitClient({
             trade_date: options?.tradeDate ?? null,
             contracts: options?.contracts ?? ["TS.CFE", "TF.CFE", "T.CFE", "TL.CFE"],
             sources: options?.sources ?? ["choice", "tushare"],
+          }),
+        },
+      ),
+    refreshMacroSourceBackfill: (options) =>
+      requestActionJson<MacroToolkitSourceBackfillRefreshResponse>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/source-backfill/refresh",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            alias: options.alias,
+            start_date: options.startDate ?? null,
+            end_date: options.endDate ?? null,
+            sources: options.sources ?? null,
           }),
         },
       ),

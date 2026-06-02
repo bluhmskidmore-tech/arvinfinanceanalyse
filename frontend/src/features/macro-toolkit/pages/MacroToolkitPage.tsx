@@ -69,6 +69,7 @@ const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 
 type MacroToolkitPageMode = "toolkit" | "observation";
+type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
 
 type MacroToolkitPageProps = {
   mode?: MacroToolkitPageMode;
@@ -286,6 +287,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [stockRefreshResult, setStockRefreshResult] = useState<string | null>(null);
   const [stockRefreshError, setStockRefreshError] = useState<string | null>(null);
   const [isRefreshingChoiceStock, setIsRefreshingChoiceStock] = useState(false);
+  const [sourceBackfillResult, setSourceBackfillResult] = useState<string | null>(null);
+  const [sourceBackfillError, setSourceBackfillError] = useState<string | null>(null);
+  const [refreshingSourceAlias, setRefreshingSourceAlias] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [fullAnalysisEnvelope, setFullAnalysisEnvelope] =
     useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(null);
@@ -426,6 +430,33 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setIsLoadingFullAnalysis(false);
     }
   }, [client]);
+
+  const refreshMacroSourceBackfill = useCallback(
+    async (item: MacroToolkitRepairItem) => {
+      const alias = item.alias?.trim() ?? "";
+      if (!alias) {
+        return;
+      }
+      setRefreshingSourceAlias(alias);
+      setSourceBackfillError(null);
+      setSourceBackfillResult(null);
+      try {
+        const response = await client.refreshMacroSourceBackfill({
+          alias,
+          endDate: item.reference_date ?? analysis?.as_of_date ?? undefined,
+          sources: undefined,
+        });
+        const refresh = response.result.refresh;
+        setSourceBackfillResult(`来源补齐完成：${refresh.alias} 新增 ${refresh.total_added} 行`);
+        await loadFullAnalysis();
+      } catch (error) {
+        setSourceBackfillError(error instanceof Error ? error.message : "来源补齐失败");
+      } finally {
+        setRefreshingSourceAlias(null);
+      }
+    },
+    [analysis?.as_of_date, client, loadFullAnalysis],
+  );
 
   const runSelectedScript = useCallback(async () => {
     if (!selectedScript) {
@@ -901,10 +932,19 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             <MacroToolkitDataHealthPanel
               dataHealth={analysis.data_health}
               showActions={showOperations}
-              onRepairAction={() => void loadFullAnalysis()}
+              onRepairAction={(item) => {
+                if (item.action?.kind === "source_backfill_required") {
+                  void refreshMacroSourceBackfill(item);
+                  return;
+                }
+                void loadFullAnalysis();
+              }}
               repairActionLoading={isLoadingFullAnalysis}
+              refreshingSourceAlias={refreshingSourceAlias}
             />
           ) : null}
+          {sourceBackfillResult ? <Alert type="success" showIcon message={sourceBackfillResult} /> : null}
+          {sourceBackfillError ? <Alert type="error" showIcon message={sourceBackfillError} /> : null}
 
           <div className="macro-toolkit-readiness-strip" aria-label="宏观工具投研总览">
             <ReadinessTile
@@ -1771,11 +1811,13 @@ function MacroToolkitDataHealthPanel({
   showActions = false,
   onRepairAction,
   repairActionLoading = false,
+  refreshingSourceAlias = null,
 }: {
   dataHealth: MacroToolkitDataHealth;
   showActions?: boolean;
-  onRepairAction?: () => void;
+  onRepairAction?: (item: MacroToolkitRepairItem) => void;
   repairActionLoading?: boolean;
+  refreshingSourceAlias?: string | null;
 }) {
   const missingAliases = dataHealth.source_coverage.missing_aliases;
   const missingIndicators = dataHealth.indicator_coverage.missing;
@@ -1889,9 +1931,19 @@ function MacroToolkitDataHealthPanel({
                         icon={<LineChartOutlined />}
                         loading={repairActionLoading}
                         aria-label={item.action.label ?? "查看完整分析"}
-                        onClick={onRepairAction}
+                        onClick={() => onRepairAction?.(item)}
                       >
                         {item.action.label ?? "查看完整分析"}
+                      </Button>
+                    ) : showActions && item.action.enabled && item.action.kind === "source_backfill_required" ? (
+                      <Button
+                        size="small"
+                        icon={<ReloadOutlined />}
+                        loading={refreshingSourceAlias === item.alias?.trim()}
+                        aria-label={item.action.label ?? "需要补齐来源数据"}
+                        onClick={() => onRepairAction?.(item)}
+                      >
+                        {item.action.label ?? "需要补齐来源数据"}
                       </Button>
                     ) : (
                       <small title={item.action.reason ?? ""}>

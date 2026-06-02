@@ -55,6 +55,7 @@ const MACRO_TOOLKIT_METHODS = new Set<keyof MacroToolkitClientMethods>([
   "getMacroToolkitScripts",
   "runMacroToolkitScript",
   "refreshCffexMemberRank",
+  "refreshMacroSourceBackfill",
   "refreshChoiceStock",
   "getChoiceStockRefreshStatus",
 ]);

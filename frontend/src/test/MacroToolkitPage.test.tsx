@@ -358,8 +358,8 @@ describe("MacroToolkitPage", () => {
                 action: {
                   kind: "source_backfill_required",
                   label: "需要补齐来源数据",
-                  enabled: false,
-                  reason: "当前没有已接入的一键宏观序列刷新接口。",
+                  enabled: true,
+                  reason: "可触发宏观来源补齐；完成后重新运行完整分析确认。",
                   analysis_detail: "full",
                 },
               },
@@ -433,7 +433,9 @@ describe("MacroToolkitPage", () => {
     expect(dataHealth).toHaveTextContent("宏观领先指标");
     expect(dataHealth).toHaveTextContent("PMI_MISSING");
     expect(dataHealth).toHaveTextContent("完整分析后确认");
+    expect(dataHealth).toHaveTextContent("可触发宏观来源补齐");
     expect(dataHealth).toHaveTextContent("当前没有已接入的一键宏观序列刷新接口。");
+    expect(within(dataHealth).queryByRole("button", { name: "需要刷新来源" })).not.toBeInTheDocument();
     expect(within(dataHealth).queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
     expect(within(dataHealth).queryByRole("button", { name: "重新完整分析" })).not.toBeInTheDocument();
   });
@@ -520,6 +522,7 @@ describe("MacroToolkitPage", () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
     const calls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
+    const sourceBackfillCalls: Array<Parameters<ApiClient["refreshMacroSourceBackfill"]>[0]> = [];
     const coreCrisisCard = {
       key: "crisis_score_cn",
       title: "Crisis Score",
@@ -613,6 +616,23 @@ describe("MacroToolkitPage", () => {
           },
         };
       },
+      refreshMacroSourceBackfill: async (options) => {
+        sourceBackfillCalls.push(options);
+        return {
+          result_meta: {
+            ...analysisEnvelope.result_meta,
+            result_kind: "macro_toolkit.source_backfill_refresh",
+          },
+          result: {
+            refresh: {
+              status: "completed",
+              alias: options.alias,
+              series_ids: ["NCD.SHIBOR.3M"],
+              total_added: 42,
+            },
+          },
+        };
+      },
     } as ApiClient;
     const user = userEvent.setup();
 
@@ -633,8 +653,18 @@ describe("MacroToolkitPage", () => {
     expect(fullDataHealth).toHaveTextContent("待处理数据项");
     expect(fullDataHealth).toHaveTextContent("补齐 M0041813 后重新运行完整宏观分析");
     expect(fullDataHealth).toHaveTextContent("PMI_MISSING");
-    await user.click(within(fullDataHealth).getAllByRole("button", { name: /重新完整分析/ })[0]!);
+    await user.click(within(fullDataHealth).getByRole("button", { name: /需要补齐来源数据/ }));
+    expect(sourceBackfillCalls).toEqual([
+      {
+        alias: "M0041813",
+        startDate: undefined,
+        endDate: "2026-04-30",
+        sources: undefined,
+      },
+    ]);
     expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2);
+    await user.click(within(fullDataHealth).getAllByRole("button", { name: /重新完整分析/ })[0]!);
+    expect(calls.filter((item) => item?.detail === "full")).toHaveLength(3);
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("分数组件覆盖");
     expect(crisisEvidence).toHaveTextContent("5/5");
