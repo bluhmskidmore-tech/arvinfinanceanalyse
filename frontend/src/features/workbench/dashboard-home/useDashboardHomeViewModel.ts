@@ -46,6 +46,7 @@ export function useDashboardHomeViewModel() {
     researchCalendarQuery,
     macroNewsQueries,
     macroNewsFallbackQueries,
+    bondNewsQueries,
     calendarStartDate,
     calendarEndDate,
   } = useDashboardData({
@@ -163,6 +164,10 @@ export function useDashboardHomeViewModel() {
     () => macroNewsFallbackQueries.flatMap((query) => query.data?.result.events ?? []),
     [macroNewsFallbackQueries],
   );
+  const bondNewsEvents = useMemo(
+    () => bondNewsQueries.flatMap((query) => query.data?.result.events ?? []),
+    [bondNewsQueries],
+  );
   const macroNewsLoading =
     macroNewsQueries.some((query) => query.isLoading) ||
     macroNewsFallbackQueries.some((query) => query.isLoading);
@@ -234,6 +239,7 @@ export function useDashboardHomeViewModel() {
         todayIsoDate: dashboardTodayIsoDate,
         macroNewsEvents,
         macroNewsFallbackEvents,
+        bondNewsEvents,
         macroNewsLoading,
         macroNewsError,
         snapshotMeta,
@@ -246,6 +252,7 @@ export function useDashboardHomeViewModel() {
       adapterOutput.attribution.vm,
       adapterOutput.verdict,
       alertCount,
+      bondNewsEvents,
       bondHeadlineQuery.data?.result,
       coreMetricsQuery.data?.result,
       creditSpreadMigrationQuery.data?.result,

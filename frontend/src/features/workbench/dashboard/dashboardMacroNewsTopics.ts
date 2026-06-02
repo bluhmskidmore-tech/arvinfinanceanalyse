@@ -1,4 +1,5 @@
 export const DASHBOARD_MACRO_NEWS_TOPIC_LIMIT = 6;
+export const DASHBOARD_BOND_NEWS_TOPIC_LIMIT = 8;
 
 export const DASHBOARD_MACRO_NEWS_TOPICS = [
   { code: "S888010007API", label: "经济数据" },
@@ -16,8 +17,15 @@ export const DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS = [
   { code: "tushare.npr", label: "政策要闻" },
 ] as const;
 
+export const DASHBOARD_BOND_NEWS_TOPICS = [
+  { code: "tushare.news", label: "市场快讯" },
+  { code: "tushare.major", label: "重大新闻" },
+  { code: "tushare.npr", label: "政策要闻" },
+  { code: "tushare.research", label: "研究观点" },
+] as const;
+
 const DASHBOARD_MACRO_NEWS_TOPIC_LABELS: ReadonlyMap<string, string> = new Map(
-  DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => [topic.code, topic.label] as const),
+  [...DASHBOARD_MACRO_NEWS_TOPICS, ...DASHBOARD_BOND_NEWS_TOPICS].map((topic) => [topic.code, topic.label] as const),
 );
 
 const DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_LABELS: ReadonlyMap<string, string> = new Map(

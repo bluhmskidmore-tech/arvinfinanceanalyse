@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from "vitest";
 
-import type { CoreMetricsResult, VerdictPayload } from "../../../api/contracts";
+import type { ChoiceNewsEvent, CoreMetricsResult, VerdictPayload } from "../../../api/contracts";
 import { mapToHomeView, stripDisplayUnit } from "./dashboardHomeView";
 
 const verdict: VerdictPayload = {
@@ -17,6 +17,23 @@ function numeric(raw: number | null, display: string, unit: "yuan" | "pct" | "bp
     display,
     precision: 2,
     sign_aware: false,
+  };
+}
+
+function newsEvent(
+  partial: Partial<ChoiceNewsEvent> &
+    Pick<ChoiceNewsEvent, "event_key" | "received_at" | "topic_code" | "payload_text">,
+): ChoiceNewsEvent {
+  return {
+    group_id: "tushare_news",
+    content_type: "news",
+    serial_id: 1,
+    request_id: 1,
+    error_code: 0,
+    error_msg: "",
+    item_index: 0,
+    payload_json: null,
+    ...partial,
   };
 }
 
@@ -161,6 +178,132 @@ describe("mapToHomeView", () => {
     expect(view.macroBriefing.newsStatusLabel).toBe("来源状态：偏旧");
     expect(view.macroBriefing.newsRefreshLabel).toBe("刷新：随页面查询自动更新");
     expect(view.macroBriefing.supplyItems[0]?.label).toBe("供给/招标：当前窗口无事件");
+  });
+
+  it("builds bond news from holding matches and bond-relevant topics", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      todayIsoDate: "2026-06-01",
+      topHoldings: {
+        report_date: "2026-04-30",
+        top_n: 2,
+        total_market_value: numeric(200_000_000, "2.00 亿"),
+        warnings: [],
+        computed_at: "2026-04-30T10:00:00Z",
+        items: [
+          {
+            instrument_code: "240001.IB",
+            instrument_name: "25山东债06",
+            issuer_name: "山东省财政厅",
+            rating: null,
+            asset_class: "rate",
+            market_value: numeric(100_000_000, "1.00 亿"),
+            face_value: numeric(100_000_000, "1.00 亿"),
+            ytm: numeric(0.021, "2.10%", "pct"),
+            modified_duration: numeric(5.2, "5.20", "ratio"),
+            weight: numeric(0.1, "10.00%", "ratio"),
+          },
+          {
+            instrument_code: "2528001.IB",
+            instrument_name: "25民生银行债01",
+            issuer_name: "民生银行",
+            rating: "AAA",
+            asset_class: "credit",
+            market_value: numeric(100_000_000, "1.00 亿"),
+            face_value: numeric(100_000_000, "1.00 亿"),
+            ytm: numeric(0.025, "2.50%", "pct"),
+            modified_duration: numeric(3.1, "3.10", "ratio"),
+            weight: numeric(0.1, "10.00%", "ratio"),
+          },
+        ],
+      },
+      bondNewsEvents: [
+        newsEvent({
+          event_key: "holding-name",
+          received_at: "2026-06-01T09:30:00+08:00",
+          topic_code: "tushare.news",
+          payload_text: "25山东债06 成交活跃",
+        }),
+        newsEvent({
+          event_key: "holding-code",
+          received_at: "2026-06-01T09:20:00+08:00",
+          topic_code: "tushare.major",
+          payload_text: "2528001.IB 二级市场收益率下行",
+        }),
+        newsEvent({
+          event_key: "market",
+          received_at: "2026-06-01T09:10:00+08:00",
+          topic_code: "tushare.npr",
+          payload_text: "国债收益率曲线延续下行，资金面保持宽松",
+        }),
+        newsEvent({
+          event_key: "credit",
+          received_at: "2026-06-01T09:05:00+08:00",
+          topic_code: "tushare.research",
+          payload_text: "信用债发行提速，评级调整和兑付安排受关注",
+        }),
+        newsEvent({
+          event_key: "market-duplicate",
+          received_at: "2026-06-01T09:00:00+08:00",
+          topic_code: "tushare.news",
+          payload_text: "国债收益率曲线延续下行，资金面保持宽松",
+        }),
+      ],
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.bondNews.holdingHits).toHaveLength(2);
+    expect(view.bondNews.holdingHits[0]).toMatchObject({
+      title: "25山东债06 成交活跃",
+      hitLabel: "命中持仓：25山东债06",
+      sourceLabel: "市场快讯",
+    });
+    expect(view.bondNews.holdingHits[1]).toMatchObject({
+      title: "2528001.IB 二级市场收益率下行",
+      hitLabel: "命中持仓：2528001.IB",
+      sourceLabel: "重大新闻",
+    });
+    expect(view.bondNews.marketNews).toHaveLength(1);
+    expect(view.bondNews.marketNews[0]?.topicLabel).toBe("债券市场");
+    expect(view.bondNews.creditAndIssuanceNews).toHaveLength(1);
+    expect(view.bondNews.creditAndIssuanceNews[0]?.topicLabel).toBe("发行/评级");
+    expect(
+      [
+        ...view.bondNews.holdingHits,
+        ...view.bondNews.marketNews,
+        ...view.bondNews.creditAndIssuanceNews,
+      ].map((item) => item.title),
+    ).toEqual([
+      "25山东债06 成交活跃",
+      "2528001.IB 二级市场收益率下行",
+      "国债收益率曲线延续下行，资金面保持宽松",
+      "信用债发行提速，评级调整和兑付安排受关注",
+    ]);
+    expect(view.bondNews.sourceLabel).toBe("来源：Choice / Tushare 债券新闻");
+    expect(view.bondNews.asOfLabel).toBe("数据截至 06-01 09:30");
+    expect(view.bondNews.statusLabel).toBe("来源状态：正常");
+    expect(view.bondNews.refreshLabel).toBe("刷新：随页面查询自动更新");
+  });
+
+  it("marks bond news as stale when the latest event is older than seven days", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      todayIsoDate: "2026-06-01",
+      bondNewsEvents: [
+        newsEvent({
+          event_key: "stale-bond-news",
+          received_at: "2026-05-23T15:06:00+08:00",
+          topic_code: "tushare.news",
+          payload_text: "国债收益率曲线延续下行，资金面保持宽松",
+        }),
+      ],
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.bondNews.marketNews[0]?.title).toBe("国债收益率曲线延续下行，资金面保持宽松");
+    expect(view.bondNews.statusLabel).toBe("来源状态：偏旧");
   });
 
   it("falls back to Tushare macro news when Choice feed is stale", () => {

@@ -50,6 +50,10 @@ import {
 import { findAttributionExtremes, type HomeWaterfallItem } from "./dashboardHomeAttribution";
 import { buildHomeAttributionTabs } from "./adapters/buildHomeAttributionTabs";
 import {
+  buildHomeBondNewsModel,
+  type HomeBondNewsModel,
+} from "./adapters/buildHomeBondNewsModel";
+import {
   buildHomeMacroBriefingModel,
   type HomeMacroBriefingModel,
   type HomeMacroNewsItem,
@@ -318,6 +322,7 @@ export type DashboardHomeView = {
   quickDrilldowns: readonly HomeQuickDrill[];
   researchCalendar: HomeResearchCalendarModel;
   macroBriefing: HomeMacroBriefingModel;
+  bondNews: HomeBondNewsModel;
   marketContext: HomeMarketContextModel;
   liabilityWatchBasisNote: string | null;
   decisionRail: HomeDecisionRail;
@@ -389,6 +394,7 @@ export type MapToHomeViewInput = {
   todayIsoDate?: string;
   macroNewsEvents?: readonly ChoiceNewsEvent[] | null;
   macroNewsFallbackEvents?: readonly ChoiceNewsEvent[] | null;
+  bondNewsEvents?: readonly ChoiceNewsEvent[] | null;
   macroNewsLoading?: boolean;
   macroNewsError?: boolean;
   snapshotMeta: ResultMeta | null;
@@ -1282,6 +1288,13 @@ function buildMockView(): DashboardHomeView {
     newsError: false,
     supplyCalendar: researchCalendar,
   });
+  const bondNews = buildHomeBondNewsModel({
+    todayIsoDate: resolveTodayIsoDate(),
+    events: null,
+    topHoldings: null,
+    positionChanges: null,
+    industryDistribution: null,
+  });
   const marketContext = buildHomeMarketContextModel({
     marketTape: DASHBOARD_MARKET_PULSE_MOCK.map((item) => ({
       id: item.id,
@@ -1471,6 +1484,7 @@ function buildMockView(): DashboardHomeView {
     })),
     researchCalendar,
     macroBriefing,
+    bondNews,
     marketContext,
     liabilityWatchBasisNote: null,
     decisionRail: {
@@ -1943,6 +1957,13 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     : input.positionChangesError
       ? { rows: [], state: displayState("error", "增减仓加载失败") }
       : buildPositionChangeRows(input.positionChanges, reportDate);
+  const bondNews = buildHomeBondNewsModel({
+    todayIsoDate,
+    events: input.bondNewsEvents,
+    topHoldings: input.topHoldings,
+    positionChanges: input.positionChanges,
+    industryDistribution: input.industryDistribution,
+  });
   const researchReportsBase = input.researchReportsLoading
     ? { rows: [], state: displayState("loading", "研究报告加载中") }
     : input.researchReportsError
@@ -2151,6 +2172,7 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     })),
     researchCalendar,
     macroBriefing,
+    bondNews,
     marketContext,
     liabilityWatchBasisNote: cockpitWatchlist.basisNote,
     decisionRail: {

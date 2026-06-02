@@ -100,6 +100,18 @@ function createTerminalStateView(overrides: Partial<DashboardHomeView> = {}): Da
       newsRefreshLabel: "刷新：随页面查询自动更新",
       supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
     },
+    bondNews: {
+      holdingHits: [],
+      marketNews: [],
+      creditAndIssuanceNews: [],
+      holdingMessage: "持仓命中：当前无相关新闻",
+      marketMessage: "债券市场：暂无相关新闻",
+      creditMessage: "发行/评级：暂无相关新闻",
+      sourceLabel: "来源：Choice / Tushare 债券新闻",
+      asOfLabel: "数据截至：暂无",
+      statusLabel: "来源状态：暂无数据",
+      refreshLabel: "刷新：随页面查询自动更新",
+    },
     marketContext: {
       temperatureLabel: "市场温度：中性",
       temperatureScore: 50,
@@ -673,6 +685,10 @@ describe("DashboardHomePage", () => {
         "S888005004API",
         "C000003006",
         "C000003002",
+        "tushare.news",
+        "tushare.major",
+        "tushare.npr",
+        "tushare.research",
       ]),
     );
   });

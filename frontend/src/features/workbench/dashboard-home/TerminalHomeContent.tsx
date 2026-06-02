@@ -24,6 +24,7 @@ import type {
 } from "./dashboardHomeView";
 import { resolveDeltaClass } from "./dashboardHomeView";
 import { HomeSparkline } from "./HomeSparkline";
+import { BondNewsSection } from "./sections/BondNewsSection";
 import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
 import styles from "./dashboardHome.module.css";
 
@@ -761,6 +762,7 @@ export function TerminalHomeContent({ view }: TerminalHomeContentProps) {
       <TerminalKpiStrip view={view} />
       <RiskStrip items={view.keyRiskStrip} />
       <MarketContextPanel view={view} />
+      <BondNewsSection bondNews={view.bondNews} />
 
       <section data-testid="dashboard-home-work-grid" className={styles.dhTerminalGrid}>
         <HoldingsPanel view={view} />
