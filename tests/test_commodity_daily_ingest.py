@@ -112,3 +112,28 @@ def test_dry_run_reports_sixteen_products_without_db_write(tmp_path, monkeypatch
     assert {item.product_code for item in COMMODITY_PRODUCTS} == {
         str(item["product_code"]) for item in payload["products"]
     }
+
+
+def test_product_specs_include_bond_futures_contracts() -> None:
+    specs = {item.product_code: item for item in COMMODITY_PRODUCTS}
+
+    assert specs["TS"].tushare_ts_code == "TS.CFX"
+    assert specs["TF"].tushare_ts_code == "TF.CFX"
+    assert specs["T"].tushare_ts_code == "T.CFX"
+    assert specs["TL"].tushare_ts_code == "TL.CFX"
+    assert specs["TS"].akshare_symbol == "TS0"
+
+
+def test_dry_run_can_limit_to_selected_products(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "unused.duckdb"))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+
+    payload = run_commodity_daily_ingest(
+        start_date="2024-01-01",
+        end_date="2024-01-10",
+        products=("TS", "T"),
+        dry_run=True,
+    )
+
+    assert payload["product_count"] == 2
+    assert [item["product_code"] for item in payload["products"]] == ["TS", "T"]

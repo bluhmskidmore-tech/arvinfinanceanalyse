@@ -103,6 +103,32 @@ describe("AgentPanel", () => {
     expect(input.style.height).toBe("");
   });
 
+  it("keeps the composer in view after clearing a typed draft", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      renderAgentPanel();
+
+      const input = screen.getByLabelText("agent-question-input");
+      await user.type(input, "draft to clear in place");
+      await user.click(screen.getByRole("button", { name: "清空输入" }));
+
+      expect(input).toHaveValue("");
+      expect(document.activeElement).toBe(input);
+      expect(scrollTargets).toContain(input);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("submits page_context and default filters through the embedded request body", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
@@ -243,6 +269,7 @@ describe("AgentPanel", () => {
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     expect(await screen.findByRole("status")).toHaveTextContent("本地查询");
+    expect(screen.getByText("正在回答 · Shift+Enter 换行")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     release?.();
     await waitFor(() => {

@@ -21,13 +21,16 @@ import { useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/clientContext";
+import type { ApiEnvelope } from "../../../api/contracts";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
   MacroToolkitChoiceStockRefreshRun,
   MacroToolkitChoiceStockRefreshPermission,
   MacroToolkitAShareRiskPayload,
+  MacroToolkitAnalysisPayload,
   MacroToolkitHasonStrategy,
+  MacroToolkitInputEvidence,
   MacroToolkitIndicator,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
@@ -276,6 +279,10 @@ export default function MacroToolkitPage() {
   const [stockRefreshError, setStockRefreshError] = useState<string | null>(null);
   const [isRefreshingChoiceStock, setIsRefreshingChoiceStock] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [fullAnalysisEnvelope, setFullAnalysisEnvelope] =
+    useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(null);
+  const [fullAnalysisError, setFullAnalysisError] = useState<string | null>(null);
+  const [isLoadingFullAnalysis, setIsLoadingFullAnalysis] = useState(false);
 
   const analysisQuery = useQuery({
     queryKey: ["macro-toolkit", "analysis"],
@@ -296,7 +303,8 @@ export default function MacroToolkitPage() {
   });
 
   const payload = scriptsQuery.data?.result;
-  const analysis = analysisQuery.data?.result;
+  const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
+  const analysis = analysisEnvelope?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
   const capabilityResults = analysis?.capability_results ?? [];
   const strategyPayload = strategyQuery.data?.result;
@@ -321,7 +329,7 @@ export default function MacroToolkitPage() {
   const hasRealStrategyData = strategySummaries.some((strategy) => hasRealStrategySource(strategy));
   const strategyDescription =
     strategySupplyState === "loading"
-      ? "策略摘要正在生成，核心判断和市场踩踏风险已先返回。"
+      ? "策略摘要正在生成，核心信号已先返回；市场踩踏风险和功能结果需打开完整分析后显示。"
       : strategySupplyState === "failed"
         ? "策略摘要读取失败，当前不能判断策略供数闭环。"
         : hasRealStrategyData
@@ -365,20 +373,23 @@ export default function MacroToolkitPage() {
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
   const sourceChecks = payload?.source_checks ?? analysis?.source_checks ?? [];
   const capabilityItems = payload?.capabilities ?? analysis?.capabilities ?? [];
-  const analysisMeta = analysisQuery.data?.result_meta;
+  const analysisMeta = analysisEnvelope?.result_meta;
   const sourceHitCount = sourceChecks.filter((check) => check.row_count > 0).length;
   const availableScriptCount = scripts.filter((script) => script.available).length;
   const readyCapabilityCount = capabilityItems.filter((item) => isReadyStatus(item.data_status)).length;
   const wiredCapabilityCount = capabilityItems.filter((item) =>
     isReadyStatus(item.route_status) && isReadyStatus(item.frontend_status),
   ).length;
+  const crisisScoreResult = capabilityResults.find((result) => result.key === "crisis_score_cn") ?? null;
   const degradedResultCount = capabilityResults.filter((result) => result.status !== "complete").length;
   const missingIndicatorCount = analysis?.indicators.filter((indicator) => indicator.quality === "missing").length ?? 0;
   const primarySignal =
     analysis?.signal_cards
       .filter((card) => card.score != null)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null;
-  const isMacroRefreshing = analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching;
+  const isCoreAnalysis = analysis?.runtime_status?.analysis_scope === "core";
+  const isMacroRefreshing =
+    analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching || isLoadingFullAnalysis;
   const queryErrorText = [analysisQuery.error, scriptsQuery.error, strategyQuery.error]
     .filter(Boolean)
     .map(formatQueryError)
@@ -388,6 +399,20 @@ export default function MacroToolkitPage() {
     .map(formatQueryError);
   const runtimeSections = analysis?.runtime_status?.deferred_sections ?? [];
   const hasonStrategy = analysis?.hason_strategy ?? null;
+  const showFullAnalysisActionInRuntime = isCoreAnalysis && runtimeSections.length > 0;
+
+  const loadFullAnalysis = useCallback(async () => {
+    setIsLoadingFullAnalysis(true);
+    setFullAnalysisError(null);
+    try {
+      const response = await client.getMacroToolkitAnalysis({ detail: "full" });
+      setFullAnalysisEnvelope(response);
+    } catch (error) {
+      setFullAnalysisError(formatQueryError(error));
+    } finally {
+      setIsLoadingFullAnalysis(false);
+    }
+  }, [client]);
 
   const runSelectedScript = useCallback(async () => {
     if (!selectedScript) {
@@ -399,6 +424,8 @@ export default function MacroToolkitPage() {
     try {
       const result = await client.runMacroToolkitScript(selectedScript.name);
       setRunResult(result);
+      setFullAnalysisEnvelope(null);
+      setFullAnalysisError(null);
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "运行失败");
@@ -417,6 +444,8 @@ export default function MacroToolkitPage() {
       });
       const rank = response.result.cffex_member_rank;
       setRefreshResult(`刷新完成：${rank.row_count} 行，最新交易日 ${rank.latest_trade_date ?? "缺失"}`);
+      setFullAnalysisEnvelope(null);
+      setFullAnalysisError(null);
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新席位失败");
@@ -460,6 +489,8 @@ export default function MacroToolkitPage() {
       setStockRefreshResult(
         `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,
       );
+      setFullAnalysisEnvelope(null);
+      setFullAnalysisError(null);
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setStockRefreshError(error instanceof Error ? error.message : "刷新股票数据失败");
@@ -701,6 +732,8 @@ export default function MacroToolkitPage() {
             <Button
               icon={<ReloadOutlined />}
               onClick={() => {
+                setFullAnalysisEnvelope(null);
+                setFullAnalysisError(null);
                 void analysisQuery.refetch();
                 void scriptsQuery.refetch();
                 void strategyQuery.refetch();
@@ -760,6 +793,10 @@ export default function MacroToolkitPage() {
         <Alert type="error" showIcon message="宏观分析结果加载失败" />
       ) : null}
 
+      {fullAnalysisError ? (
+        <Alert type="error" showIcon message="完整分析加载失败" description={fullAnalysisError} />
+      ) : null}
+
       {isAnalysisLoading ? (
         <>
           <div data-testid="macro-toolkit-initial-analysis-loading">
@@ -767,7 +804,7 @@ export default function MacroToolkitPage() {
               type="info"
               showIcon
               message="核心分析加载中"
-              description="页面口径边界已就绪；核心信号、市场踩踏风险和脚本注册表会在后端返回后自动补上。"
+              description="页面口径边界已就绪；核心信号和脚本注册表会在后端返回后自动补上。"
             />
           </div>
           <section className="macro-toolkit-section">
@@ -792,11 +829,11 @@ export default function MacroToolkitPage() {
       {analysis ? (
         <>
           <DataStatusStrip className="macro-toolkit-status-strip">
-            <span title={`读取口径：${analysisQuery.data?.result_meta.basis ?? "-"}`}>
-              <DatabaseOutlined /> {analysisQuery.data?.result_meta.basis ?? "-"}
+            <span title={`读取口径：${analysisMeta?.basis ?? "-"}`}>
+              <DatabaseOutlined /> {analysisMeta?.basis ?? "-"}
             </span>
-            <span title={`质量：${analysisQuery.data?.result_meta.quality_flag ?? "-"}`}>
-              <SafetyCertificateOutlined /> {analysisQuery.data?.result_meta.quality_flag ?? "-"}
+            <span title={`质量：${analysisMeta?.quality_flag ?? "-"}`}>
+              <SafetyCertificateOutlined /> {analysisMeta?.quality_flag ?? "-"}
             </span>
             <span title={`建议：${analysis.conclusion.recommended_action}`}>
               <ThunderboltOutlined /> {compactText(analysis.conclusion.recommended_action, 24)}
@@ -811,6 +848,17 @@ export default function MacroToolkitPage() {
                   {section.label} · <Tag color={statusColor(section.status)}>{statusLabel(section.status)}</Tag>
                 </span>
               ))}
+              {showFullAnalysisActionInRuntime ? (
+                <Button
+                  aria-label="查看完整分析"
+                  size="small"
+                  icon={<LineChartOutlined />}
+                  loading={isLoadingFullAnalysis}
+                  onClick={() => void loadFullAnalysis()}
+                >
+                  查看完整分析
+                </Button>
+              ) : null}
             </div>
           ) : null}
 
@@ -876,6 +924,8 @@ export default function MacroToolkitPage() {
             </div>
           </section>
 
+          {crisisScoreResult ? <CrisisScoreEvidencePanel result={crisisScoreResult} /> : null}
+
           <section className="macro-toolkit-section">
             <PageSectionLead
               eyebrow="risk"
@@ -917,12 +967,23 @@ export default function MacroToolkitPage() {
                   <CapabilityResultCard result={result} key={result.key} />
                 ))}
               </div>
-            ) : analysis?.runtime_status?.analysis_scope === "core" ? (
+            ) : isCoreAnalysis ? (
               <Alert
                 type="info"
                 showIcon
                 message="M7-M16 功能结果正在生成"
-                description="核心判断和市场踩踏风险已先返回。"
+                description="核心信号已先返回；市场踩踏风险和功能结果需打开完整分析后显示。"
+                action={
+                  <Button
+                    aria-label="查看完整分析"
+                    size="small"
+                    icon={<LineChartOutlined />}
+                    loading={isLoadingFullAnalysis}
+                    onClick={() => void loadFullAnalysis()}
+                  >
+                    查看完整分析
+                  </Button>
+                }
               />
             ) : (
               <div className="macro-toolkit-empty-output">暂无 M7-M16 功能结果。</div>
@@ -1016,7 +1077,7 @@ export default function MacroToolkitPage() {
                 type="info"
                 showIcon
                 message="策略展示正在生成"
-                description="核心判断和市场踩踏风险已先返回。"
+                description="核心信号已先返回；市场踩踏风险需打开完整分析后显示。"
               />
             ) : strategyQuery.isError ? (
               <Alert
@@ -1337,6 +1398,101 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
   );
 }
 
+function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityResult }) {
+  const normalizedEvidence = normalizeInputEvidence(result);
+  const inputEvidence = normalizedEvidence?.inputs ?? [];
+  const rawResult = result.result;
+  const availableComponentCount = toDisplayNumber(rawResult.available_component_count);
+  const componentCount = toDisplayNumber(rawResult.component_count);
+  const components = Array.isArray(rawResult.components)
+    ? rawResult.components.filter(isCrisisComponent)
+    : [];
+  const weights = isRecord(rawResult.weights) ? rawResult.weights : {};
+  const commodityInput = inputEvidence.find(
+    (item) => item.field === "nanhua" || item.aliases?.includes("NH0100.NHF"),
+  );
+  const warnings = result.warnings.length ? result.warnings : normalizedEvidence?.missingInputs ?? [];
+
+  return (
+    <section
+      className="macro-toolkit-section macro-toolkit-crisis-evidence"
+      aria-label="Crisis Score 数据来源"
+    >
+      <PageSectionLead
+        eyebrow="crisis evidence"
+        title="Crisis Score 数据来源"
+        description="完整分析返回后展示每个输入、组件权重和缺口；缺失输入保持缺失，不折算为 0。"
+      />
+
+      <div className="macro-toolkit-crisis-evidence__summary">
+        <MetricTile
+          icon={<SafetyCertificateOutlined />}
+          label="分数组件覆盖"
+          value={`${availableComponentCount}/${componentCount}`}
+          detail={components.map((component) => component.key).join(" / ") || "components missing"}
+          tone={result.status === "complete" ? "positive" : "neutral"}
+        />
+        <MetricTile
+          icon={<DatabaseOutlined />}
+          label="商品期货输入"
+          value={commodityInput?.available ? "已命中" : "缺失"}
+          detail={formatCrisisInputDetail(commodityInput)}
+          tone={commodityInput?.available ? "positive" : "missing"}
+        />
+        <MetricTile
+          icon={<WarningOutlined />}
+          label="缺口提示"
+          value={warnings.length}
+          detail={warnings.join(" / ") || "无缺失输入"}
+          tone={warnings.length ? "neutral" : "positive"}
+        />
+      </div>
+
+      <div className="macro-toolkit-crisis-evidence__components">
+        {components.map((component) => (
+          <div className="macro-toolkit-crisis-component" key={component.key}>
+            <span>{component.label}</span>
+            <strong>{formatValue(component.z_score, "")}</strong>
+            <small>
+              {component.key} · weight {formatCrisisWeight(component.key, weights)} · raw{" "}
+              {formatValue(component.raw_value, "")}
+            </small>
+          </div>
+        ))}
+      </div>
+
+      <div className="macro-toolkit-crisis-input-grid">
+        {inputEvidence.map((item) => (
+          <div
+            className={[
+              "macro-toolkit-crisis-input",
+              item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
+              item.field === "nanhua" ? "macro-toolkit-crisis-input--commodity" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            key={`${item.field}-${item.aliases?.join("-") ?? item.label}`}
+          >
+            <div className="macro-toolkit-capability-result-head">
+              <span>{item.label || item.field}</span>
+              <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
+            </div>
+            <strong>{item.aliases?.join(" / ") || item.series_id || "alias missing"}</strong>
+            <small>
+              {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
+            </small>
+            <small>
+              {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · value{" "}
+              {item.value == null ? "缺失" : formatValue(item.value, "")}
+            </small>
+            {item.warning ? <Tag color={item.available ? "default" : "red"}>{item.warning}</Tag> : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function HasonMacroStrategyPanel({ strategy }: { strategy: MacroToolkitHasonStrategy }) {
   const readiness = strategy.readiness;
   const readinessText = `${readiness.ready_modules}/${readiness.total_modules}`;
@@ -1619,6 +1775,49 @@ function normalizeInputEvidence(result: MacroToolkitCapabilityResult) {
     return null;
   }
   return { inputs, missingInputs, sources, latestDates };
+}
+
+type CrisisComponent = {
+  key: string;
+  label: string;
+  raw_value: number | null;
+  z_score: number | null;
+  weight: number | null;
+};
+
+type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCrisisComponent(value: unknown): value is CrisisComponent {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.key === "string" && typeof value.label === "string";
+}
+
+function toDisplayNumber(value: unknown) {
+  return typeof value === "number" || typeof value === "string" ? value : "缺失";
+}
+
+function formatCrisisWeight(key: string, weights: Record<string, unknown>) {
+  const weight = weights[key];
+  return typeof weight === "number" ? formatPercent(weight) : "缺失";
+}
+
+function formatCrisisRowCount(rowCount: number | null | undefined) {
+  return typeof rowCount === "number" ? `${rowCount} rows` : "行数缺失";
+}
+
+function formatCrisisInputDetail(input: MacroToolkitInputEvidenceItem | undefined) {
+  if (!input) {
+    return "Nanhua commodity index / NH0100.NHF 未命中";
+  }
+  return `${input.label || input.field} · ${input.aliases?.join(" / ") || input.series_id || "alias missing"} · ${
+    input.latest_date ?? "日期缺失"
+  }`;
 }
 
 function hasRealStrategySource(strategy: MacroToolkitStrategySummary) {

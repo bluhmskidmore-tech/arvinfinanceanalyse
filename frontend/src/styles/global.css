@@ -4692,16 +4692,15 @@ select {
   }
 
   .workbench-main-column [data-testid="workbench-section-subnav"] > div:last-child {
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
     gap: var(--moss-space-2) !important;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: visible;
+    padding-bottom: 0;
   }
 
   .workbench-main-column [data-testid="workbench-section-subnav"] > div:last-child a {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    max-width: 100%;
     white-space: nowrap;
   }
 

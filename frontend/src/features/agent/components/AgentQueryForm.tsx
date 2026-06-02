@@ -92,6 +92,23 @@ export function AgentQueryForm({
   const primaryQuickExamples = quickExamples.slice(0, primaryQuickExampleCount);
   const advancedQuickExamples = quickExamples.slice(primaryQuickExampleCount);
   const hasQuery = query.trim().length > 0;
+  const submitHint = loading
+    ? onQueueSubmit
+      ? "Enter 排队发送 · Shift+Enter 换行"
+      : "正在回答 · Shift+Enter 换行"
+    : "Enter 发送 · Shift+Enter 换行";
+
+  function focusTextarea() {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.focus();
+    const scrollIntoView = textarea.scrollIntoView;
+    if (typeof scrollIntoView === "function") {
+      scrollIntoView.call(textarea, { behavior: "smooth", block: "nearest" });
+    }
+  }
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -114,7 +131,7 @@ export function AgentQueryForm({
             <div>
               <div className="agent-chat-composer__title">问 Agent</div>
             </div>
-            <div className="agent-chat-composer__hint">Enter 发送 · Shift+Enter 换行</div>
+            <div className="agent-chat-composer__hint">{submitHint}</div>
           </div>
 
           <div className="agent-chat-composer__quick-row" aria-label="常用问题">
@@ -163,15 +180,14 @@ export function AgentQueryForm({
               className="agent-chat-composer__clear"
               onClick={() => {
                 onQueryChange("");
-                if (inputRef && typeof inputRef !== "function") {
-                  inputRef.current?.focus();
-                }
+                focusTextarea();
               }}
             >
               清空输入
             </button>
           ) : null}
         </div>
+        {compact ? <div className="agent-chat-composer__hint">{submitHint}</div> : null}
         {loading && onStop ? (
           <div className="agent-chat-composer__action-stack">
             {onQueueSubmit ? (

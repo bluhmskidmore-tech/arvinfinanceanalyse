@@ -304,6 +304,7 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
         output_files,
         capability_results,
         a_share_risk,
+        capabilities_deferred=detail == "core",
     )
     hason_strategy = _hason_macro_strategy_summary(output_files, analysis_date=analysis_date)
     hit_count = sum(1 for item in indicators if item["latest_value"] is not None)
@@ -1009,7 +1010,13 @@ def _macro_capability_results(
 ) -> list[dict[str, object]]:
     parsed_report_date = _parse_report_date(report_date)
     if parsed_report_date is None:
-        return [_unavailable_capability_result(item, "缺少可用分析日期") for item in _CAPABILITY_DEFINITIONS]
+        crisis_report_date = _latest_crisis_input_date(duckdb_path)
+        return [
+            _crisis_score_card_without_analysis_date(item, duckdb_path, crisis_report_date)
+            if item["key"] == "crisis_score_cn"
+            else _unavailable_capability_result(item, "缺少可用分析日期")
+            for item in _CAPABILITY_DEFINITIONS
+        ]
 
     curve_rows = _load_macro_curve_rows(duckdb_path, parsed_report_date)
     wide_rows = _load_macro_wide_rows(duckdb_path, parsed_report_date, curve_rows)
@@ -2031,6 +2038,40 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
     return enriched
 
 
+def _latest_crisis_input_date(duckdb_path: str | Path) -> date | None:
+    latest_dates: list[date] = []
+    for config in _CRISIS_SCORE_INPUTS:
+        check = _source_check(str(config["alias"]), duckdb_path)
+        latest = check.get("latest")
+        if isinstance(latest, dict):
+            latest_date = _coerce_frame_date(latest.get("date"))
+            if latest_date is not None:
+                latest_dates.append(latest_date)
+    return max(latest_dates) if latest_dates else None
+
+
+def _crisis_score_card_without_analysis_date(
+    definition: dict[str, object],
+    duckdb_path: str | Path,
+    report_date: date | None,
+) -> dict[str, object]:
+    if report_date is None:
+        return _unavailable_capability_result(definition, "缺少可用分析日期")
+    raw_result = _run_capability(
+        "crisis_score_cn",
+        lambda: _compute_crisis_score_capability(duckdb_path, report_date),
+    )
+    warnings = [str(item) for item in raw_result.get("warnings", []) if item]
+    reason = "缺少全局分析日期，Crisis Score 使用自身输入最新日期补充证据"
+    if reason not in warnings:
+        warnings.insert(0, reason)
+    enriched = dict(raw_result)
+    if str(enriched.get("data_status") or "").lower() == "complete":
+        enriched["data_status"] = "degraded"
+    enriched["warnings"] = warnings
+    return _capability_result_card(definition, enriched)
+
+
 def _frame_to_crisis_points(frame: pd.DataFrame) -> list[tuple[date, float]]:
     points: list[tuple[date, float]] = []
     if frame.empty:
@@ -2891,9 +2932,11 @@ def _analysis_signal_cards(
     output_files: list[dict[str, object]],
     capability_results: list[dict[str, object]],
     a_share_risk: dict[str, object] | None = None,
+    *,
+    capabilities_deferred: bool = False,
 ) -> list[dict[str, object]]:
     cards = [
-        _crisis_score_card(capability_results),
+        _crisis_score_card(capability_results, deferred=capabilities_deferred),
         _a_share_stampede_risk_card(a_share_risk),
         _liquidity_card(indicator_by_key),
         _risk_appetite_card(indicator_by_key),
@@ -3232,9 +3275,18 @@ def _a_share_stampede_risk_card(a_share_risk: dict[str, object] | None) -> dict[
     )
 
 
-def _crisis_score_card(capability_results: list[dict[str, object]]) -> dict[str, object]:
+def _crisis_score_card(capability_results: list[dict[str, object]], *, deferred: bool = False) -> dict[str, object]:
     crisis = next((item for item in capability_results if item.get("key") == "crisis_score_cn"), None)
     if crisis is None:
+        if deferred:
+            return _signal_card(
+                "crisis_score_cn",
+                "Crisis Score",
+                "完整结果待加载",
+                "neutral",
+                None,
+                ["首屏未运行完整 Crisis Score，打开完整分析后显示分数"],
+            )
         return _signal_card("crisis_score_cn", "Crisis Score", "数据不足", "missing", None, ["Crisis Score 未接入"])
     result = crisis.get("result") if isinstance(crisis.get("result"), dict) else {}
     score = _float_or_none(crisis.get("score"))
@@ -3459,6 +3511,7 @@ def _envelope(
         "fx_daily_mid",
         "fact_formal_yield_curve_daily",
         "std_external_macro_daily",
+        "fact_commodity_futures_daily",
         "fact_cffex_member_rank_daily",
         "vw_cffex_member_rank_daily",
     ]

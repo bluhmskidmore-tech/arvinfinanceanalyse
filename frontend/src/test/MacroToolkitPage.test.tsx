@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -227,7 +228,108 @@ describe("MacroToolkitPage", () => {
     expect(strategySupply).not.toHaveTextContent("0/0");
     expect(strategySupply).not.toHaveTextContent("样例 0");
     expect(await screen.findByText("策略展示正在生成")).toBeInTheDocument();
-    expect(screen.getByText("核心判断和市场踩踏风险已先返回。")).toBeInTheDocument();
+    expect(
+      screen.getByText("核心信号已先返回；市场踩踏风险需打开完整分析后显示。"),
+    ).toBeInTheDocument();
+  });
+
+  it("loads the full macro analysis from the core first screen action", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const calls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
+    const coreCrisisCard = {
+      key: "crisis_score_cn",
+      title: "Crisis Score",
+      stance: "完整结果待加载",
+      tone: "neutral",
+      score: null,
+      evidence: ["首屏未运行完整 Crisis Score，打开完整分析后显示分数"],
+    } as const;
+    const coreSignalCards = analysisEnvelope.result.signal_cards.map((card) =>
+      card.key === "crisis_score_cn" ? coreCrisisCard : card,
+    );
+    const coreSignalCardsWithCrisis = [
+      coreCrisisCard,
+      ...coreSignalCards.filter((card) => card.key !== "crisis_score_cn"),
+    ];
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async (options) => {
+        calls.push(options);
+        return {
+          ...analysisEnvelope,
+          result: {
+            ...analysisEnvelope.result,
+            runtime_status: {
+              analysis_scope: options?.detail === "full" ? "full" : "core",
+              deferred_sections:
+                options?.detail === "full"
+                  ? []
+                  : [
+                      {
+                        key: "capability_results",
+                        label: "功能结果",
+                        status: "deferred",
+                      },
+                    ],
+            },
+            capability_results:
+              options?.detail === "full" ? analysisEnvelope.result.capability_results : [],
+            signal_cards:
+              options?.detail === "full" ? analysisEnvelope.result.signal_cards : coreSignalCardsWithCrisis,
+          },
+        };
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    expect(await screen.findByText("完整结果待加载")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
+    const fullAnalysisButtons = await screen.findAllByRole("button", { name: "查看完整分析" });
+    await user.click(fullAnalysisButtons[0]!);
+
+    expect(calls).toContainEqual({ detail: "full" });
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    expect(crisisEvidence).toHaveTextContent("分数组件覆盖");
+    expect(crisisEvidence).toHaveTextContent("5/5");
+    expect(crisisEvidence).toHaveTextContent("Nanhua commodity index");
+    expect(crisisEvidence).toHaveTextContent("NH0100.NHF");
+    expect(crisisEvidence).toHaveTextContent("commodity_vol");
+    expect(crisisEvidence).toHaveTextContent("2026-04-10");
+    expect(crisisEvidence).toHaveTextContent("120 rows");
+    expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
+  });
+
+  it("shows the full analysis action in the runtime strip when core capability results are deferred", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          runtime_status: {
+            analysis_scope: "core",
+            deferred_sections: [
+              {
+                key: "capability_results",
+                label: "功能结果",
+                status: "deferred",
+              },
+            ],
+          },
+          capability_results: [],
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const runtimeStrip = await screen.findByLabelText("宏观工具运行状态");
+    expect(within(runtimeStrip).getByRole("button", { name: "查看完整分析" })).toBeInTheDocument();
   });
 
   it("does not mark Hason runtime outputs ready when freshness is unknown", async () => {

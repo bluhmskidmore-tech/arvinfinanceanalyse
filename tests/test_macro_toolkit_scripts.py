@@ -299,6 +299,75 @@ def test_system_source_layer_reads_nanhua_from_commodity_daily_table(tmp_path, m
     get_settings.cache_clear()
 
 
+def test_system_windpy_reads_bond_futures_price_oi_volume_from_daily_table(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values
+              ('2026-05-28', 'T', 'T2609.CFX', 'CFX',
+               102.0, 102.8, 101.9, 102.5, 102.4,
+               12345, 67890, 'sv_tushare_fut_daily_t', 'vv_tushare_fut_daily_T_CFX_20260529',
+               'rv_commodity_daily_v1'),
+              ('2026-05-29', 'T', 'T2609.CFX', 'CFX',
+               102.6, 103.0, 102.1, 102.75, 102.7,
+               22345, 77890, 'sv_tushare_fut_daily_t', 'vv_tushare_fut_daily_T_CFX_20260529',
+               'rv_commodity_daily_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    get_settings.cache_clear()
+
+    previous_windpy = sys.modules.pop("WindPy", None)
+    try:
+        windpy = importlib.import_module("WindPy")
+        windpy.w.start()
+        result = windpy.w.wsd("T.CFE", "close,oi,volume", "2026-05-28", "2026-05-29")
+    finally:
+        if previous_windpy is not None:
+            sys.modules["WindPy"] = previous_windpy
+        else:
+            sys.modules.pop("WindPy", None)
+        get_settings.cache_clear()
+
+    assert result.ErrorCode == 0
+    assert result.Codes == ["T.CFE"]
+    assert result.Fields == ["close", "oi", "volume"]
+    assert [item.strftime("%Y-%m-%d") for item in result.Times] == ["2026-05-28", "2026-05-29"]
+    assert result.Data == [[102.5, 102.75], [67890.0, 77890.0], [12345.0, 22345.0]]
+
+
 def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -424,6 +493,7 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "fx_daily_mid",
         "fact_formal_yield_curve_daily",
         "std_external_macro_daily",
+        "fact_commodity_futures_daily",
         "fact_cffex_member_rank_daily",
         "vw_cffex_member_rank_daily",
         "choice_stock_daily_observation",
@@ -1061,6 +1131,11 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
         "credit",
         "outputs",
     }
+    crisis_card = next(item for item in result["signal_cards"] if item["key"] == "crisis_score_cn")
+    assert crisis_card["stance"] == "完整结果待加载"
+    assert crisis_card["tone"] == "neutral"
+    assert crisis_card["score"] is None
+    assert crisis_card["evidence"] == ["首屏未运行完整 Crisis Score，打开完整分析后显示分数"]
     risk_card = next(item for item in result["signal_cards"] if item["key"] == "a_share_stampede_risk")
     assert risk_card["tone"] == "missing"
 
@@ -1197,10 +1272,93 @@ def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_pa
     assert crisis["primary_metric"]["label"] == "Crisis Score"
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["crisis_score"] >= 1
+    assert crisis["input_evidence"] == crisis["result"]["input_evidence"]
+    crisis_inputs = {item["field"]: item for item in crisis["input_evidence"]["inputs"]}
+    nanhua_input = crisis_inputs["nanhua"]
+    assert nanhua_input["label"] == "Nanhua commodity index"
+    assert nanhua_input["aliases"] == ["NH0100.NHF"]
+    assert nanhua_input["available"] is True
+    assert nanhua_input["row_count"] >= 120
+    assert nanhua_input["latest_date"] == "2026-04-10"
+    assert nanhua_input["series_id"] == "NH0100.NHF"
+    assert nanhua_input["source"] == "choice"
+    assert nanhua_input["value"] is not None
     assert "fact_choice_macro_daily" in response.json()["result_meta"]["tables_used"]
+    assert "fact_commodity_futures_daily" in response.json()["result_meta"]["tables_used"]
 
     signal = next(item for item in payload["signal_cards"] if item["key"] == "crisis_score_cn")
     assert signal["tone"] == "negative"
+
+
+def test_macro_toolkit_analysis_surfaces_crisis_score_nanhua_from_commodity_table(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_crisis_score_history(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute("delete from fact_choice_macro_daily where series_id = 'NH0100.NHF'")
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            )
+            select
+              trade_date, 'NHCI', 'NHCI.NH', 'NH',
+              null, null, null, max(value_numeric), null,
+              null, null, 'sv_tushare_index_daily_nhci',
+              'vv_tushare_index_daily_NHCI_20260410', 'rv_commodity_daily_v1'
+            from fact_choice_macro_daily
+            where series_id = 'CA.CSI300'
+            group by trade_date
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    crisis = next(item for item in payload["capability_results"] if item["key"] == "crisis_score_cn")
+    crisis_inputs = {item["field"]: item for item in crisis["input_evidence"]["inputs"]}
+    nanhua_input = crisis_inputs["nanhua"]
+    assert nanhua_input["available"] is True
+    assert nanhua_input["latest_date"] == "2026-04-10"
+    assert nanhua_input["series_id"] == "NHCI.NH"
+    assert nanhua_input["source"] == "tushare"
+    assert nanhua_input["value"] is not None
 
 
 def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_factor(tmp_path, monkeypatch) -> None:

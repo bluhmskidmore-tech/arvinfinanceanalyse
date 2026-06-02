@@ -104,6 +104,10 @@ COMMODITY_PRODUCTS: tuple[CommodityProductSpec, ...] = (
     CommodityProductSpec("P", "棕榈油", "futures", "DCE", "P.DCE", "P0"),
     CommodityProductSpec("AU", "黄金", "futures", "SHF", "AU.SHF", "AU0"),
     CommodityProductSpec("AG", "白银", "futures", "SHF", "AG.SHF", "AG0"),
+    CommodityProductSpec("TS", "2Y government bond futures", "futures", "CFX", "TS.CFX", "TS0"),
+    CommodityProductSpec("TF", "5Y government bond futures", "futures", "CFX", "TF.CFX", "TF0"),
+    CommodityProductSpec("T", "10Y government bond futures", "futures", "CFX", "T.CFX", "T0"),
+    CommodityProductSpec("TL", "30Y government bond futures", "futures", "CFX", "TL.CFX", "TL0"),
     CommodityProductSpec("NHCI", "南华商品指数", "index", "NH", "NHCI.NH", None),
     CommodityProductSpec("NHII", "南华工业品指数", "index", "NH", "NHII.NH", None),
 )
@@ -217,6 +221,20 @@ def _row_tuple(row: dict[str, object]) -> tuple[object, ...]:
         row.get("vendor_version"),
         row.get("rule_version") or RULE_VERSION,
     )
+
+
+def _parse_products_arg(value: str | None) -> tuple[str, ...] | None:
+    if not value:
+        return None
+    parsed = tuple(item.strip().upper() for item in value.split(",") if item.strip())
+    return parsed or None
+
+
+def _select_products(products: tuple[str, ...] | None) -> tuple[CommodityProductSpec, ...]:
+    if not products:
+        return COMMODITY_PRODUCTS
+    requested = {str(item).strip().upper() for item in products if str(item).strip()}
+    return tuple(spec for spec in COMMODITY_PRODUCTS if spec.product_code.upper() in requested)
 
 
 def _build_row(
@@ -505,6 +523,7 @@ def run_commodity_daily_ingest(
     start_date: str = DEFAULT_START_DATE,
     end_date: str | None = None,
     duckdb_path: str | None = None,
+    products: tuple[str, ...] | None = None,
     dry_run: bool = False,
 ) -> dict[str, object]:
     settings = get_settings()
@@ -515,12 +534,13 @@ def run_commodity_daily_ingest(
         pro = import_tushare_pro().pro_api(token)
 
     estimated_trade_dates = _estimate_trading_days(start_date=start_date, end_date=resolved_end, pro=pro)
+    selected_products = _select_products(products)
     per_product: list[dict[str, object]] = []
     total_rows = 0
     vendors: set[str] = set()
 
     if dry_run:
-        for spec in COMMODITY_PRODUCTS:
+        for spec in selected_products:
             per_product.append(
                 {
                     "product_code": spec.product_code,
@@ -532,13 +552,13 @@ def run_commodity_daily_ingest(
                     "vendor": "estimate_only",
                 }
             )
-        total_rows = len(estimated_trade_dates) * len(COMMODITY_PRODUCTS)
+        total_rows = len(estimated_trade_dates) * len(selected_products)
         payload: dict[str, object] = {
             "status": "dry_run",
             "dry_run": True,
             "start_date": start_date,
             "end_date": resolved_end,
-            "product_count": len(COMMODITY_PRODUCTS),
+            "product_count": len(selected_products),
             "estimated_trading_days": len(estimated_trade_dates),
             "estimated_total_rows": total_rows,
             "tushare_token_configured": bool(token),
@@ -555,7 +575,7 @@ def run_commodity_daily_ingest(
         conn = duckdb.connect(str(db_file), read_only=False)
         try:
             apply_pending_migrations_on_connection(conn)
-            for spec in COMMODITY_PRODUCTS:
+            for spec in selected_products:
                 rows, vendor = _fetch_product_rows(
                     spec=spec,
                     pro=pro,
@@ -582,7 +602,7 @@ def run_commodity_daily_ingest(
         "start_date": start_date,
         "end_date": resolved_end,
         "duckdb_path": str(db_file),
-        "product_count": len(COMMODITY_PRODUCTS),
+        "product_count": len(selected_products),
         "row_count": total_rows,
         "tushare_token_configured": bool(token),
         "vendors": sorted(vendors),
@@ -597,6 +617,7 @@ def main() -> None:
     parser.add_argument("--start-date", default=DEFAULT_START_DATE)
     parser.add_argument("--end-date")
     parser.add_argument("--duckdb-path")
+    parser.add_argument("--products", help="Comma-separated product codes to ingest, e.g. TS,TF,T,TL")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -604,6 +625,7 @@ def main() -> None:
         start_date=args.start_date,
         end_date=args.end_date,
         duckdb_path=args.duckdb_path,
+        products=_parse_products_arg(args.products),
         dry_run=args.dry_run,
     )
     _emit_json_payload(payload)

@@ -1,6 +1,7 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { CheckOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import type { CSSProperties } from "react";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
 import type {
   AgentConversationContext,
@@ -49,6 +50,15 @@ type AgentQueryResult = {
 
 type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed";
 type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+};
 
 type AgentRunPayload = PollingTaskPayload & {
   run_id: string;
@@ -2412,7 +2422,12 @@ export function EmbeddedAgentCopilot({
   }
 
   function applyQuickExample(nextQuery: string) {
+    replaceComposerQuery(nextQuery);
+  }
+
+  function replaceComposerQuery(nextQuery: string) {
     updateComposerQuery(nextQuery);
+    clearQueuedQuery();
     setError(null);
     focusComposerInput();
   }
@@ -2457,9 +2472,7 @@ export function EmbeddedAgentCopilot({
 
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
-      updateComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
-      setError(null);
-      focusComposerInput();
+      replaceComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       return;
     }
     const intent = getExecutableSuggestedIntent(action);
@@ -2502,9 +2515,7 @@ export function EmbeddedAgentCopilot({
   }
 
   function applyFollowUpChip(question: string) {
-    updateComposerQuery(question);
-    setError(null);
-    focusComposerInput();
+    replaceComposerQuery(question);
   }
 
   function editAgentQuestion(turn: AgentConversationTurn) {
@@ -2512,9 +2523,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
 
-    updateComposerQuery(turn.question);
-    setError(null);
-    focusComposerInput();
+    replaceComposerQuery(turn.question);
   }
 
   function renderFinancialWorkflowPanel() {
@@ -2582,6 +2591,8 @@ export function EmbeddedAgentCopilot({
     }
     const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;
     const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
+    const copyStatusMessage =
+      copyStatus === "success" ? "回答已复制" : copyStatus === "error" ? "复制失败，请手动选择回答文本。" : "";
 
     return (
       <div className="agent-result-shell">
@@ -2609,6 +2620,11 @@ export function EmbeddedAgentCopilot({
                   {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
                   <span>{copyLabel}</span>
                 </button>
+                {copyStatus ? (
+                  <span aria-label="复制状态" role="status" style={visuallyHiddenStyle}>
+                    {copyStatusMessage}
+                  </span>
+                ) : null}
               </div>
               <AgentAnswerPanel
                 answer={turnResult.answer}
@@ -3023,6 +3039,7 @@ export function EmbeddedAgentCopilot({
       {queuedQuery ? (
         <div className="agent-queued-turn" role="status" aria-live="polite">
           <span className="agent-queued-turn__text">已排队：{queuedQuery}</span>
+          <span className="agent-queued-turn__text">当前回答完成后自动发送。</span>
           <span className="agent-queued-turn__actions">
             <button type="button" onClick={restoreQueuedQueryToComposer}>
               编辑排队
