@@ -819,6 +819,55 @@ describe("MacroToolkitPage", () => {
     );
   });
 
+  it("shows Choice refresh failure category and reason in run evidence", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const strategyEnvelope = await baseClient.getMacroToolkitStrategySummaries();
+    const choiceStockRefresh = strategyEnvelope.result.choice_stock_refresh!;
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          strategy_summaries: [],
+        },
+      }),
+      getMacroToolkitStrategySummaries: async () => ({
+        ...strategyEnvelope,
+        result: {
+          ...strategyEnvelope.result,
+          choice_stock_refresh: {
+            ...choiceStockRefresh,
+            refresh: {
+              status: "failed",
+              run_id: "choice_stock_refresh:2026-04-30:failed",
+              report_date: "2026-04-30",
+              trigger_mode: "terminal",
+              history_row_count: 111,
+              factor_row_count: null,
+              failure_category: "ChoiceVendorError",
+              failure_reason: "factor snapshot vendor unavailable",
+              error_message: "ChoiceVendorError: factor snapshot vendor unavailable",
+              permission: choiceStockRefresh.permission,
+            },
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const permissionLabel = await screen.findByText("刷新状态");
+    const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
+    expect(permissionTile).not.toBeNull();
+    expect(permissionTile).toHaveTextContent("失败");
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      "run choice_stock_refresh:2026-04-30:failed · report 2026-04-30 · trigger terminal · rows history 111 / factor - · failure ChoiceVendorError: factor snapshot vendor unavailable · resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
+    );
+  });
+
   it("shows price source versions when factor strategy is degraded", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();

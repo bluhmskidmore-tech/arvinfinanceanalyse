@@ -1709,12 +1709,22 @@ function choiceStockRefreshDetail(
   const triggerMode = refresh.trigger_mode ?? "unknown";
   const historyRows = refresh.history_row_count ?? "-";
   const factorRows = refresh.factor_row_count ?? "-";
-  const failure = refresh.failure_category ? ` · failure ${refresh.failure_category}` : "";
+  const failureText = choiceStockRefreshFailureText(refresh);
+  const failure = failureText ? ` · failure ${failureText}` : "";
   return `run ${runId} · report ${reportDate} · trigger ${triggerMode} · rows history ${historyRows} / factor ${factorRows}${failure} · ${permissionDetail}`;
 }
 
 function choiceStockHasRunEvidence(refresh: MacroToolkitChoiceStockRefreshRun | null | undefined): refresh is MacroToolkitChoiceStockRefreshRun {
   return Boolean(refresh?.run_id);
+}
+
+function choiceStockRefreshFailureText(refresh: MacroToolkitChoiceStockRefreshRun) {
+  const category = refresh.failure_category?.trim();
+  const reason = refresh.failure_reason?.trim();
+  if (category && reason) {
+    return `${category}: ${reason}`;
+  }
+  return reason || refresh.error_message?.trim() || category || "";
 }
 
 function choiceStockPermissionDetail(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
