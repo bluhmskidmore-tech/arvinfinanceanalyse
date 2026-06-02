@@ -1196,6 +1196,7 @@ describe("StockAnalysisPage", () => {
     expect(css).toContain(
       '.workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"])',
     );
+    expect(css).toContain(".workbench-shell-grid--stock-analysis");
     expect(css).toContain('[data-testid="workbench-section-subnav"]');
     expect(css).toContain('[data-testid="workbench-governance-banner"]');
     expect(css).toContain(".stock-analysis-page__dh-topbar");

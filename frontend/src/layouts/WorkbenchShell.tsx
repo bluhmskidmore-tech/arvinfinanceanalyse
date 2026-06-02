@@ -345,10 +345,15 @@ export function WorkbenchShell() {
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
   const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const isStockAnalysisShell = currentSection.key === "stock-analysis";
   const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
   const agentWorkbenchActive = agentWorkbenchSection
     ? pathMatchesWorkbenchSection(agentWorkbenchSection.path, pathnameResolved)
     : false;
+  const agentNavSectionLabel = isStockAnalysisShell ? "复核" : "Agent";
+  const agentNavLabel = isStockAnalysisShell ? "复核助手" : agentWorkbenchSection?.label;
+  const agentNavBadgeLabel = isStockAnalysisShell ? "可用" : agentWorkbenchSection?.readinessLabel;
+  const agentNavHint = isStockAnalysisShell ? "跨页证据" : "Hermes Agent";
   const currentGroup =
     primaryWorkbenchNavigationGroups.find(
       (group) => group.key === resolveWorkbenchGroupKey(currentSection),
@@ -464,7 +469,9 @@ export function WorkbenchShell() {
     <div
       className={`workbench-shell-grid${
         useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"
-      }${isBondAnalysisMinimalShell ? " workbench-shell-grid--bond-analysis" : ""}`}
+      }${isBondAnalysisMinimalShell ? " workbench-shell-grid--bond-analysis" : ""}${
+        isStockAnalysisShell ? " workbench-shell-grid--stock-analysis" : ""
+      }`}
       style={{
         minHeight: "100vh",
         padding: "14px clamp(14px, 1.6vw, 24px)",
@@ -773,7 +780,7 @@ export function WorkbenchShell() {
             data-testid="workbench-agent-nav"
           >
             <span className="workbench-shell-section-label workbench-shell-section-label--rail">
-              Agent
+              {agentNavSectionLabel}
             </span>
             <NavLink
               to={agentWorkbenchSection.path}
@@ -791,7 +798,7 @@ export function WorkbenchShell() {
                   {iconMap[agentWorkbenchSection.icon]}
                 </span>
                 <span className="workbench-shell-agent-nav__label">
-                  {agentWorkbenchSection.label}
+                  {agentNavLabel}
                 </span>
                 <span
                   className="workbench-shell-agent-nav__badge"
@@ -799,7 +806,7 @@ export function WorkbenchShell() {
                     ...sectionBadgeStyle(agentWorkbenchSection),
                   }}
                 >
-                  {agentWorkbenchSection.readinessLabel}
+                  {agentNavBadgeLabel}
                 </span>
               </div>
               <span
@@ -808,7 +815,7 @@ export function WorkbenchShell() {
                   color: shellTokens.railTextSupportIdle,
                 }}
               >
-                Hermes Agent
+                {agentNavHint}
               </span>
             </NavLink>
           </section>

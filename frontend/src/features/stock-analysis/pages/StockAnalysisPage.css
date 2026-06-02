@@ -47,17 +47,25 @@
   display: none !important;
 }
 
+.workbench-shell-grid--stock-analysis [data-testid="workbench-section-subnav"],
+.workbench-shell-grid--stock-analysis [data-testid="workbench-governance-banner"] {
+  display: none !important;
+}
+
 @media (min-width: 721px) {
+  .workbench-shell-grid--stock-analysis,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) {
     grid-template-columns: 196px minmax(0, 1fr);
     background: #f4f7fb !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-main-column,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-main-column {
     gap: 8px;
     padding: 8px 12px 18px !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-shell-aside,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside {
     padding: 18px 12px !important;
     border-right: 1px solid #e4e9f0 !important;
@@ -65,23 +73,30 @@
     box-shadow: none !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-shell-aside *,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside * {
     color: #2c3e5a !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-shell-aside > div:first-child,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside > div:first-child {
     border-bottom-color: #e4e9f0 !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-shell-aside > div:first-child > div > div:first-child,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside > div:first-child > div > div:first-child {
     background: linear-gradient(145deg, #2f68b8, #10356a) !important;
     color: #ffffff !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-shell-section-label--rail,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-section-label--rail {
     color: #6b7d95 !important;
   }
 
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a,
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-support-nav"] a,
+  .workbench-shell-grid--stock-analysis .workbench-shell-agent-nav__link,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-support-nav"] a,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__link {
@@ -89,6 +104,9 @@
     border-radius: 9px !important;
   }
 
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a[data-active="true"],
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-support-nav"] a[data-active="true"],
+  .workbench-shell-grid--stock-analysis .workbench-shell-agent-nav__link[data-active="true"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a[data-active="true"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-support-nav"] a[data-active="true"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__link[data-active="true"] {
@@ -97,11 +115,14 @@
     box-shadow: inset 3px 0 0 #1850a1 !important;
   }
 
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child,
+  .workbench-shell-grid--stock-analysis .workbench-shell-agent-nav__label,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__label {
     color: #10356a !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-main-column > main,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-main-column > main {
     gap: 10px !important;
     padding: 0 !important;
@@ -111,6 +132,7 @@
     box-shadow: none !important;
   }
 
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-terminal-bar"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-terminal-bar"] {
     min-height: 46px;
     border-color: #e4e9f0 !important;
@@ -121,6 +143,7 @@
 }
 
 @media (max-width: 900px) and (min-width: 721px) {
+  .workbench-shell-grid--stock-analysis,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) {
     min-height: 100vh;
     grid-template-columns: 168px minmax(0, 1fr) !important;
@@ -129,6 +152,8 @@
     overflow-x: hidden;
   }
 
+  .moss-data-mode-ribbon + .workbench-shell-grid--stock-analysis .workbench-shell-aside,
+  .workbench-shell-grid--stock-analysis .workbench-shell-aside,
   .moss-data-mode-ribbon + .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside {
     position: sticky !important;
@@ -140,6 +165,7 @@
     overflow: auto !important;
   }
 
+  .workbench-shell-grid--stock-analysis .workbench-main-column,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-main-column {
     width: 100%;
     min-width: 0;

@@ -95,6 +95,22 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
+  it("uses stock-analysis shell labels without exposing Agent wording in the rail", async () => {
+    renderShellAt("/stock-analysis");
+
+    expect(await screen.findByText("stock-analysis body")).toBeInTheDocument();
+    const layoutRoot = screen.getByTestId("workbench-group-nav").closest(".workbench-shell-grid--stock-analysis");
+    expect(layoutRoot).not.toBeNull();
+
+    const agentNav = screen.getByTestId("workbench-agent-nav");
+    const agentLink = within(agentNav).getByRole("link", { name: /复核助手/ });
+    expect(agentLink).toHaveAttribute("href", "/agent");
+    expect(agentNav).toHaveTextContent("复核");
+    expect(agentNav).toHaveTextContent("跨页证据");
+    expect(agentNav).not.toHaveTextContent("Agent");
+    expect(agentNav).not.toHaveTextContent("Hermes");
+  });
+
   it("shows current-group section links separately from the workspace groups", async () => {
     renderShellAt("/platform-config");
 
