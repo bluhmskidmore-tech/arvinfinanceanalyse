@@ -43,6 +43,7 @@ import {
   selectProductCategoryDetailRows,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestEarningIncomeScaleChart,
+  selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
@@ -810,6 +811,144 @@ function ProductCategoryAttributionPanel(props: {
   );
 }
 
+type ProductCategoryOperatingAnalysisSurface = ReturnType<
+  typeof selectProductCategoryOperatingAnalysisSurface
+>;
+
+function ProductCategoryOperatingAnalysisPanel(props: {
+  surface: ProductCategoryOperatingAnalysisSurface;
+}) {
+  const quadrantGroups = [
+    "core_profit_pool",
+    "selective_growth",
+    "scale_efficiency_watch",
+    "shrink_or_reprice",
+  ] as const;
+  return (
+    <section className="product-category-operating-analysis" data-testid="product-category-operating-analysis">
+      <div className="product-category-operating-analysis__header">
+        <div>
+          <span className="product-category-operating-analysis__eyebrow">经营分析</span>
+          <h2 className="product-category-operating-analysis__title">产品类别利润结构与经营动作</h2>
+          <p className="product-category-operating-analysis__description">
+            基于当前正式表和已有月环比归因，优先识别利润池、压力项、主要变动驱动和可优化产品。
+          </p>
+        </div>
+        <span className="product-category-operating-analysis__badge">
+          全表净营收 {props.surface.contribution.grandTotalLabel ?? "-"} 亿元
+        </span>
+      </div>
+      <div className="product-category-operating-analysis__grid">
+        <article
+          className="product-category-operating-analysis__panel"
+          data-testid="product-category-operating-profit-rank"
+        >
+          <h3 className="product-category-operating-analysis__panel-title">利润贡献排行</h3>
+          <p className="product-category-operating-analysis__panel-note">按当前净营收排序，贡献率相对全表净营收计算。</p>
+          {props.surface.contribution.emptyCopy ? (
+            <div className="product-category-operating-analysis__empty">{props.surface.contribution.emptyCopy}</div>
+          ) : (
+            <div className="product-category-operating-analysis__rank-groups">
+              <ProductCategoryOperatingContributionList
+                label="利润池"
+                rows={props.surface.contribution.profitRows}
+              />
+              <ProductCategoryOperatingContributionList
+                label="压力项"
+                rows={props.surface.contribution.pressureRows}
+              />
+            </div>
+          )}
+        </article>
+        <article
+          className="product-category-operating-analysis__panel"
+          data-testid="product-category-operating-movement"
+        >
+          <h3 className="product-category-operating-analysis__panel-title">月环比变动驱动</h3>
+          <p className="product-category-operating-analysis__panel-note">直接复用正式经营差异归因，按变动绝对值排序。</p>
+          {props.surface.movement.emptyCopy ? (
+            <div className="product-category-operating-analysis__empty">{props.surface.movement.emptyCopy}</div>
+          ) : (
+            <div className="product-category-operating-analysis__movement-list">
+              {props.surface.movement.rows.map((row) => (
+                <div className="product-category-operating-analysis__movement-row" key={row.categoryId}>
+                  <div>
+                    <strong>{row.categoryLabel}</strong>
+                    <span>{row.leadingDriverLabel} {row.leadingDriverValueLabel}</span>
+                  </div>
+                  <b className={row.delta > 0 ? "is-positive" : "is-negative"}>{row.deltaLabel}</b>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
+      <article
+        className="product-category-operating-analysis__panel product-category-operating-analysis__panel--wide"
+        data-testid="product-category-operating-quadrant"
+      >
+        <div className="product-category-operating-analysis__quadrant-header">
+          <div>
+            <h3 className="product-category-operating-analysis__panel-title">规模-收益率象限</h3>
+            <p className="product-category-operating-analysis__panel-note">
+              以可用产品的中位数为基准：规模 {props.surface.quadrant.scaleBenchmarkLabel} 亿元，收益率{" "}
+              {props.surface.quadrant.yieldBenchmarkLabel}%。
+            </p>
+          </div>
+        </div>
+        {props.surface.quadrant.emptyCopy ? (
+          <div className="product-category-operating-analysis__empty">{props.surface.quadrant.emptyCopy}</div>
+        ) : (
+          <div className="product-category-operating-analysis__quadrant-grid">
+            {quadrantGroups.map((quadrant) => {
+              const rows = props.surface.quadrant.rows.filter((row) => row.quadrant === quadrant);
+              if (rows.length === 0) {
+                return null;
+              }
+              return (
+                <section className={`product-category-operating-analysis__quadrant is-${quadrant}`} key={quadrant}>
+                  <h4>{rows[0]?.quadrantLabel}</h4>
+                  <div className="product-category-operating-analysis__quadrant-items">
+                    {rows.map((row) => (
+                      <div className="product-category-operating-analysis__quadrant-item" key={row.categoryId}>
+                        <strong>{row.categoryLabel}</strong>
+                        <span>{row.scaleLabel} 亿元 · {row.yieldLabel}% · 净营收 {row.netIncomeLabel}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </article>
+    </section>
+  );
+}
+
+function ProductCategoryOperatingContributionList(props: {
+  label: string;
+  rows: ProductCategoryOperatingAnalysisSurface["contribution"]["profitRows"];
+}) {
+  if (props.rows.length === 0) {
+    return null;
+  }
+  return (
+    <div className="product-category-operating-analysis__rank-group">
+      <span className="product-category-operating-analysis__rank-label">{props.label}</span>
+      {props.rows.map((row) => (
+        <div className="product-category-operating-analysis__rank-row" key={row.categoryId}>
+          <div>
+            <strong>{row.categoryLabel}</strong>
+            <span>{row.sideLabel} · {row.contributionLabel}</span>
+          </div>
+          <b className={row.tone === "positive" ? "is-positive" : "is-negative"}>{row.netIncomeLabel}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ProductCategoryAttributionCompareSwitch(props: {
   compare: ProductCategoryAttributionCompare;
   onCompareChange: (compare: ProductCategoryAttributionCompare) => void;
@@ -1155,6 +1294,15 @@ export default function ProductCategoryPnlPage() {
   const rowsToRender = useMemo(
     () => selectProductCategoryDetailRows(baseline?.rows, scenario?.rows),
     [baseline?.rows, scenario?.rows],
+  );
+  const operatingAnalysisSurface = useMemo(
+    () =>
+      selectProductCategoryOperatingAnalysisSurface({
+        rows: rowsToRender,
+        grandTotal: displayedGrandTotal,
+        attribution: attributionQuery.data?.result,
+      }),
+    [attributionQuery.data?.result, displayedGrandTotal, rowsToRender],
   );
   const trendReportPoints = useMemo(
     () => selectProductCategoryTrendReportPoints(selectedDate, datesQuery.data?.result.report_dates, selectedView),
@@ -2288,6 +2436,8 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void attributionQuery.refetch()}
       />
 
+      {!baselineQuery.isError ? <ProductCategoryOperatingAnalysisPanel surface={operatingAnalysisSurface} /> : null}
+
       <SectionLead
         eyebrow="正式口径"
         title="正式产品类别损益表"
@@ -2303,51 +2453,59 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void baselineQuery.refetch()}
         extra={reportExtra}
       >
-        <div style={{ overflowX: "auto" }}>
-          <table
-            data-testid="product-category-table"
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-            }}
-          >
+        <div className="product-category-formal-table-wrap">
+          <table data-testid="product-category-table" className="product-category-formal-table">
+            <colgroup>
+              <col className="product-category-formal-table__col--category" />
+              <col className="product-category-formal-table__col--scale" />
+              <col className="product-category-formal-table__col--scale" />
+              <col className="product-category-formal-table__col--scale-foreign" />
+              <col className="product-category-formal-table__col--pnl" />
+              <col className="product-category-formal-table__col--pnl" />
+              <col className="product-category-formal-table__col--pnl-ftp" />
+              <col className="product-category-formal-table__col--pnl-net" />
+              <col className="product-category-formal-table__col--pnl-foreign" />
+              <col className="product-category-formal-table__col--pnl-ftp" />
+              <col className="product-category-formal-table__col--pnl-net" />
+              <col className="product-category-formal-table__col--business-net" />
+              <col className="product-category-formal-table__col--yield" />
+            </colgroup>
             <thead>
-              <tr
-                style={{
-                  textAlign: "left",
-                  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                  background: designTokens.color.primary[50],
-                }}
-              >
-                <th rowSpan={2} style={{ padding: "12px 8px" }}>产品类别</th>
-                <th colSpan={3} style={{ padding: "12px 8px", textAlign: "center" }}>规模日均</th>
-                <th colSpan={8} style={{ padding: "12px 8px", textAlign: "center" }}>损益</th>
-                <th rowSpan={2} style={{ padding: "12px 8px", textAlign: "right" }}>加权收益率</th>
-              </tr>
-              <tr
-                style={{
-                  textAlign: "left",
-                  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                  background: designTokens.color.primary[50],
-                }}
-              >
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>综本</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>人民币</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>外币</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>综本</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>人民币</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>人民币FTP</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>人民币减收入</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>外币</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>外币FTP</th>
-                <th style={{ padding: "12px 8px", textAlign: "right" }}>外币减收入</th>
+              <tr className="product-category-formal-table__header-row">
                 <th
-                  style={{
-                    padding: "12px 8px",
-                    textAlign: "right",
-                    background: designTokens.color.warning[50],
-                  }}
+                  rowSpan={2}
+                  className="product-category-formal-table__head product-category-formal-table__head--category"
+                >
+                  产品类别
+                </th>
+                <th colSpan={3} className="product-category-formal-table__head product-category-formal-table__head--group">
+                  规模日均
+                </th>
+                <th colSpan={8} className="product-category-formal-table__head product-category-formal-table__head--group">
+                  损益
+                </th>
+                <th
+                  rowSpan={2}
+                  className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--yield"
+                >
+                  加权收益率
+                </th>
+              </tr>
+              <tr className="product-category-formal-table__header-row product-category-formal-table__header-row--metrics">
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">综本</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--group-start">
+                  综本
+                </th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币FTP</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币减收入</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币FTP</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币减收入</th>
+                <th
+                  className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight"
                 >
                   营业减收入
                 </th>
@@ -2357,58 +2515,60 @@ export default function ProductCategoryPnlPage() {
               {rowsToRender.map((row) => (
                 <tr
                   key={row.category_id}
-                  style={{
-                    borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
-                    background: row.is_total ? designTokens.color.primary[100] : displayTokens.surface.section,
-                    fontWeight: row.is_total ? 700 : 400,
-                  }}
+                  className={`product-category-formal-table__row ${
+                    row.is_total ? "product-category-formal-table__row--total" : ""
+                  }`}
                 >
-                  <td style={{ padding: "12px 8px" }}>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--category">
                     <div style={{ paddingLeft: row.level * 18 }}>
                       <div>{row.category_name}</div>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cnx_scale)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cny_scale)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_scale)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cnx_cash)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cny_cash)}</td>
-                  <td
-                    style={{
-                      padding: "12px 8px",
-                      textAlign: "right",
-                      color: designTokens.color.primary[600],
-                    }}
-                  >
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                    {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
+                  </td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                    {formatProductCategoryRowDisplayValue(row, row.cny_scale)}
+                  </td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                    {formatProductCategoryRowDisplayValue(row, row.foreign_scale)}
+                  </td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--group-start">
+                    {formatProductCategoryRowDisplayValue(row, row.cnx_cash)}
+                  </td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                    {formatProductCategoryRowDisplayValue(row, row.cny_cash)}
+                  </td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
                     {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: toneForProductCategoryValue(row.cny_net) }}>
+                  <td
+                    className="product-category-formal-table__cell product-category-formal-table__cell--number"
+                    style={{ color: toneForProductCategoryValue(row.cny_net) }}
+                  >
                     {formatProductCategoryRowDisplayValue(row, row.cny_net)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_cash)}</td>
-                  <td
-                    style={{
-                      padding: "12px 8px",
-                      textAlign: "right",
-                      color: designTokens.color.primary[600],
-                    }}
-                  >
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                    {formatProductCategoryRowDisplayValue(row, row.foreign_cash)}
+                  </td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
                     {formatProductCategoryRowDisplayValue(row, row.foreign_ftp)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: toneForProductCategoryValue(row.foreign_net) }}>
+                  <td
+                    className="product-category-formal-table__cell product-category-formal-table__cell--number"
+                    style={{ color: toneForProductCategoryValue(row.foreign_net) }}
+                  >
                     {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
                   </td>
                   <td
-                    style={{
-                      padding: "12px 8px",
-                      textAlign: "right",
-                      color: toneForProductCategoryValue(row.business_net_income),
-                      background: designTokens.color.warning[50],
-                    }}
+                    className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--highlight"
+                    style={{ color: toneForProductCategoryValue(row.business_net_income) }}
                   >
                     {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryYieldValue(row.weighted_yield)}</td>
+                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--yield">
+                    {formatProductCategoryYieldValue(row.weighted_yield)}
+                  </td>
                 </tr>
               ))}
             </tbody>

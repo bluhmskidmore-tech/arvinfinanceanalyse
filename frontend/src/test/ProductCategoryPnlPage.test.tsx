@@ -169,6 +169,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-matrix")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-spread")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-operating-analysis")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-operating-profit-rank")).toHaveTextContent("1.45");
+    expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
+    expect(screen.getByTestId("product-category-operating-quadrant")).toHaveTextContent("2.57");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债侧产品类别口径");
     expect(screen.queryByText("同业负债")).not.toBeInTheDocument();
