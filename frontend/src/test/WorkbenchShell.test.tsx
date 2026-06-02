@@ -553,6 +553,16 @@ describe("WorkbenchShell", () => {
 
     expect(platformLink).toHaveAttribute("href", "/platform-config");
     expect(platformLink).toHaveAttribute("data-active", "true");
+    expect(within(supportNav).getByRole("link", { name: /报表中心/ })).toHaveAttribute(
+      "href",
+      "/reports",
+    );
+    expect(within(supportNav).getByRole("link", { name: /帮助文档/ })).toHaveAttribute("href", "/");
+
+    const operatorZone = screen.getByTestId("workbench-operator-zone");
+    const operatorPlatformLink = within(operatorZone).getByRole("link", { name: /中台配置/ });
+    expect(operatorPlatformLink).toHaveAttribute("href", "/platform-config");
+    expect(operatorPlatformLink).toHaveAttribute("data-active", "true");
   });
 
   it("does not render the portfolio decision surface outside the portfolio group", async () => {

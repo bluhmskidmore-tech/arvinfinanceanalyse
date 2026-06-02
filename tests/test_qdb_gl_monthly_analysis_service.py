@@ -147,7 +147,7 @@ def test_service_workbook_envelope_applies_approved_analysis_adjustments(tmp_pat
         "backend.app.services.qdb_gl_monthly_analysis_service",
         "backend/app/services/qdb_gl_monthly_analysis_service.py",
     )
-    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     governance_dir = tmp_path / "governance"
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
@@ -230,7 +230,7 @@ def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_overrid
         "backend.app.services.qdb_gl_monthly_analysis_service",
         "backend/app/services/qdb_gl_monthly_analysis_service.py",
     )
-    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     governance_dir = tmp_path / "governance"
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")

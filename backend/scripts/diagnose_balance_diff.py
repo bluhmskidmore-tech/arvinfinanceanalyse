@@ -2,7 +2,7 @@
 精确差额定位脚本 — 逐行对比快照与 formal 表，找出差异来源。
 
 用法:
-  cd f:\MOSS-V3
+  cd F:/MOSS-V3
   python -m backend.scripts.diagnose_balance_diff --date 2026-04-30
 
 输出:
@@ -400,7 +400,7 @@ def diagnose_adb_read(conn: duckdb.DuckDBPyConnection, report_date: str):
             total_liab += amt
             print(f"    {str(r[0] or '未知'):>20}: {amt / YI:>12.4f} 亿")
 
-    print(f"\n  ────��────────────────────────────")
+    print("\n  " + "─" * 36)
     print(f"  ADB 总资产: {total_assets / YI:.4f} 亿")
     print(f"  ADB 总负债: {total_liab / YI:.4f} 亿")
 

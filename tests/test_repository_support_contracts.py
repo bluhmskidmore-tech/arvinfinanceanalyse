@@ -573,8 +573,8 @@ def test_liability_analytics_yield_batch_rows_preserve_nim_calculation(tmp_path)
         conn.execute(
             """
             insert into zqtz_bond_daily_snapshot values
-            ('2025-12-31', 'Z1', 'bond 1', '搴旀敹鎶曡祫', 'gov', false, 100, 101, 99, 0.025, 0.026, '2030-01-01', 'sv_z_1', 'rv_z_1'),
-            ('2025-12-31', 'Z2', 'cd 1', 'rate', '鍚屼笟瀛樺崟', true, 200, 202, 198, 0.030, 0.031, '2031-01-01', 'sv_z_2', 'rv_z_2')
+            ('2025-12-31', 'Z1', 'bond 1', 'other_asset_class', 'gov', false, 100, 101, 99, 0.025, 0.026, '2030-01-01', 'sv_z_1', 'rv_z_1'),
+            ('2025-12-31', 'Z2', 'cd 1', 'rate', '同业存单', true, 200, 202, 198, 0.030, 0.031, '2031-01-01', 'sv_z_2', 'rv_z_2')
             """
         )
         conn.execute(

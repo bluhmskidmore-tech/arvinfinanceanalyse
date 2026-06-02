@@ -28,7 +28,7 @@ def test_product_category_average_workbook_with_single_sheet_is_treated_as_parti
 
 
 def test_product_category_average_workbook_ignores_misaligned_non_currency_blocks(tmp_path: Path):
-    avg_path = tmp_path / "鏃ュ潎202401.xlsx"
+    avg_path = tmp_path / "日均202401.xlsx"
     workbook = Workbook()
     year_sheet = workbook.active
     year_sheet.title = "annual"

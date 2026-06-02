@@ -126,7 +126,7 @@ def _seed_agent_balance_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_tyw_balance_daily values
-            (?, 'TYW-001', '鏈烘瀯A', 'repo', 'H', 'AC', 'asset', 'CNY', 500, 8, 'sv_balance_tyw_1', 'rv_balance_1')
+            (?, 'TYW-001', '机构A', 'repo', 'H', 'AC', 'asset', 'CNY', 500, 8, 'sv_balance_tyw_1', 'rv_balance_1')
             """,
             [REPORT_DATE],
         )
@@ -405,7 +405,7 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
         conn.execute(
             """
             insert into fact_formal_zqtz_balance_daily values
-            (?, 'BOND-001', 'Bond 001', '缁勫悎A', 'CC100', '鍊哄埜', 'bond', 'treasury', '', '', 'issuerA', 'industryA', 'AAA', 'H', 'AC', 'asset', 'CNY', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 'fixed', false, 0, 0, ?, 'normal', 'sv_balance_bridge_1', 'rv_balance_bridge_1', 'batch-balance-1', 'tr-balance-1')
+            (?, 'BOND-001', 'Bond 001', '组合A', 'CC100', '债券', 'bond', 'treasury', '', '', 'issuerA', 'industryA', 'AAA', 'H', 'AC', 'asset', 'CNY', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 'fixed', false, 0, 0, ?, 'normal', 'sv_balance_bridge_1', 'rv_balance_bridge_1', 'batch-balance-1', 'tr-balance-1')
             """,
             [REPORT_DATE, REPORT_DATE],
         )
