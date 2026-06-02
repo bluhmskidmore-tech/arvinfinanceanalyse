@@ -124,6 +124,83 @@ describe("ModuleWorkbenchHome model", () => {
     expect(bondMarket?.value).not.toContain("348,819");
   });
 
+  it("derives the industry distribution total from returned industry rows", () => {
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "mock" },
+      {
+        bondDates: query({ data: envelope({ report_dates: ["2026-04-30"] }) }),
+        bondIndustry: query({
+          data: envelope({
+            report_date: "2026-04-30",
+            items: [
+              {
+                industry_name: "金融债",
+                total_market_value: formatRawAsNumeric({ raw: 100_000_000, unit: "yuan", sign_aware: false }),
+                bond_count: 2,
+                percentage: formatRawAsNumeric({ raw: 0.333333, unit: "pct", sign_aware: false }),
+              },
+              {
+                industry_name: "产业债",
+                total_market_value: formatRawAsNumeric({ raw: 200_000_000, unit: "yuan", sign_aware: false }),
+                bond_count: 3,
+                percentage: formatRawAsNumeric({ raw: 0.666667, unit: "pct", sign_aware: false }),
+              },
+            ],
+          }),
+        }),
+      },
+    );
+
+    const industryPanel = view.distributionPanels?.find((panel) => panel.key === "industry");
+    expect(industryPanel?.rows).toHaveLength(2);
+    expect(industryPanel?.rows.map((row) => row.marketValue)).toEqual(["1.00 亿元", "2.00 亿元"]);
+    expect(industryPanel?.totalDisplay).toBe("3.00 亿");
+  });
+
+  it("does not synthesize an industry total when industry distribution rows are empty", () => {
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "mock" },
+      {
+        bondDates: query({ data: envelope({ report_dates: ["2026-04-30"] }) }),
+        bondIndustry: query({
+          data: envelope({
+            report_date: "2026-04-30",
+            items: [],
+          }),
+        }),
+      },
+    );
+
+    const industryPanel = view.distributionPanels?.find((panel) => panel.key === "industry");
+    expect(industryPanel?.rows).toHaveLength(0);
+    expect(industryPanel?.totalDisplay).toBeUndefined();
+  });
+
+  it("marks the portfolio depth status returned when any depth read has data", () => {
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "mock" },
+      {
+        bondDates: query({ data: envelope({ report_dates: ["2026-04-30"] }) }),
+        bondYield: query({
+          data: envelope({
+            report_date: "2026-04-30",
+            weighted_ytm: formatRawAsNumeric({ raw: 0.028, unit: "pct", sign_aware: false }),
+            items: [],
+          }),
+        }),
+      },
+    );
+
+    expect(view.statuses.find((item) => item.key === "bond-depth")).toMatchObject({
+      value: "已返回",
+      detail: expect.stringContaining("至少一个子读面已返回"),
+      tone: "ok",
+    });
+  });
+
   it("keeps empty governance data explicit instead of rendering blank cards", () => {
     const view = buildModuleHomeView(
       "governance",
@@ -169,7 +246,7 @@ describe("ModuleWorkbenchHome model", () => {
                 manual_review_count: 0,
                 source_version: "sv_mock_zqtz_preview",
                 rule_version: "rv_phase1_source_preview_v1",
-                group_counts: { 债券类: 1571 },
+                group_counts: { 债券类: 1571, 回购类: 0 },
               },
               {
                 source_family: "tyw",
@@ -179,7 +256,7 @@ describe("ModuleWorkbenchHome model", () => {
                 manual_review_count: 18,
                 source_version: "sv_mock_tyw_preview",
                 rule_version: "rv_phase1_source_preview_v1",
-                group_counts: { 回购类: 1060 },
+                group_counts: { 债券类: 0, 回购类: 1060 },
               },
             ],
           }),
@@ -481,7 +558,7 @@ describe("ModuleWorkbenchHome model", () => {
           refetching: true,
         }),
         marketRates: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
-        marketCatalog: query({ data: envelope({ series: [] }) }),
+        marketCatalog: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
       },
     );
 
@@ -624,20 +701,20 @@ describe("ModuleWorkbenchHome model", () => {
         bondRisk: query({
           data: envelope({
             report_date: "2026-04-30",
-            total_market_value: formatRawAsNumeric({ raw: 100_000_000_000, unit: "yuan" }),
-            total_dv01: formatRawAsNumeric({ raw: -125_430.5, unit: "dv01" }),
-            weighted_duration: formatRawAsNumeric({ raw: 3.45, unit: "ratio" }),
-            credit_ratio: formatRawAsNumeric({ raw: 0.42, unit: "pct" }),
-            weighted_convexity: formatRawAsNumeric({ raw: 0.12, unit: "ratio" }),
-            total_spread_dv01: formatRawAsNumeric({ raw: 12_000, unit: "dv01" }),
-            reinvestment_ratio_1y: formatRawAsNumeric({ raw: 0.18, unit: "pct" }),
+            total_market_value: formatRawAsNumeric({ raw: 100_000_000_000, unit: "yuan", sign_aware: false }),
+            total_dv01: formatRawAsNumeric({ raw: -125_430.5, unit: "dv01", sign_aware: false }),
+            weighted_duration: formatRawAsNumeric({ raw: 3.45, unit: "ratio", sign_aware: false }),
+            credit_ratio: formatRawAsNumeric({ raw: 0.42, unit: "pct", sign_aware: false }),
+            weighted_convexity: formatRawAsNumeric({ raw: 0.12, unit: "ratio", sign_aware: false }),
+            total_spread_dv01: formatRawAsNumeric({ raw: 12_000, unit: "dv01", sign_aware: false }),
+            reinvestment_ratio_1y: formatRawAsNumeric({ raw: 0.18, unit: "pct", sign_aware: false }),
           }),
         }),
         pnlSummary: query({
           data: envelope({
             report_date: "2026-04-30",
             primary_driver: "volume",
-            primary_driver_pct: formatRawAsNumeric({ raw: 0.53, unit: "pct" }),
+            primary_driver_pct: formatRawAsNumeric({ raw: 0.53, unit: "pct", sign_aware: false }),
             key_findings: ["规模效应主导本期损益变动。"],
             tpl_market_aligned: true,
             tpl_market_note: "TPL 与市场方向一致。",

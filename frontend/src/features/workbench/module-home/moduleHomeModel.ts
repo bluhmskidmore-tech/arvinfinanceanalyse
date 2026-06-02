@@ -1,5 +1,6 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 
+import type { ApiClient } from "../../../api/client";
 import type {
   MacroToolkitAnalysisPayload,
   MacroToolkitAShareRiskPayload,
@@ -9,6 +10,7 @@ import type {
   MacroToolkitStrategySummariesPayload,
 } from "../../../api/macroToolkitClient";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
+import { formatRawAsNumeric } from "../../../utils/format";
 import type {
   ApiEnvelope,
   AssetStructurePayload,
@@ -23,6 +25,7 @@ import type {
   ChoiceMacroLatestPoint,
   CubeDimensionsPayload,
   HealthResponse,
+  HealthStatusResponse,
   SourcePreviewSummary,
   IndustryDistPayload,
   KpiOwnerListResponse,
@@ -1230,7 +1233,7 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
       label: "Choice 日频观测",
       value: `${daily.status} · ${daily.stock_count ?? "-"} 只`,
       tradeDate: daily.latest_trade_date ?? "-",
-      source: daily.freshness_status,
+      source: daily.freshness_status ?? "-",
       tone: daily.freshness_status === "current" ? "ok" : "watch",
     });
   }
@@ -1241,7 +1244,7 @@ function buildMacroToolkitRuntimeRows(analysis: MacroToolkitAnalysisPayload): Mo
       label: "Choice 因子快照",
       value: `${factor.status} · ${factor.stock_count ?? "-"} 只`,
       tradeDate: factor.as_of_date ?? "-",
-      source: factor.freshness_status,
+      source: factor.freshness_status ?? "-",
       tone: factor.freshness_status === "current" ? "ok" : "watch",
     });
   }
@@ -1507,6 +1510,7 @@ function portfolioView(
   const businessType = queries.bondBusinessType?.data?.result;
   const balanceBasis = queries.balanceBasis?.data?.result;
   const pnlSummary = queries.pnlSummary?.data?.result;
+  const industryTotalMarketValue = sumIndustryMarketValue(industry);
 
   const creditRatio = risk ? nativeToNumber(risk.credit_ratio) : null;
   const creditTone =
@@ -1680,9 +1684,9 @@ function portfolioView(
           marketValue: item.total_market_value,
           percentage: item.percentage,
         })),
-        industry?.total_market_value,
+        industryTotalMarketValue,
       ),
-      totalMarketValue: industry?.total_market_value,
+      totalMarketValue: industryTotalMarketValue,
     }),
     buildDistributionPanel({
       key: "yield",
@@ -1832,7 +1836,7 @@ function portfolioView(
       queryStatus("bond", "债券总览", queries.bondHeadline, "headline kpis 已返回。"),
       queryStatus("bond-risk", "风险指标", queries.bondRisk, "risk-indicators 已返回。"),
       queryStatus("bond-structure", "持仓结构", queries.bondAssetType, "券种/评级/期限/行业分布已挂接。"),
-      queryStatus(
+      combinedQueryStatus(
         "bond-depth",
         "深度读链路",
         [
@@ -1841,7 +1845,7 @@ function portfolioView(
           queries.bondSpread,
           queries.bondBusinessType,
         ],
-        "收益率/子组合/利差/业务类型已挂接。",
+        "深度读链路至少一个子读面已返回；收益率/子组合/利差/业务类型分别在明细面板披露。",
       ),
       queryStatus("balance-basis", "Basis 分解", queries.balanceBasis, "summary-by-basis 已返回。"),
       queryStatus("pnl-summary", "损益归因", queries.pnlSummary, "summary 已返回。"),
@@ -2290,6 +2294,20 @@ function marketView(
 
 type RiskTensorDisplayValue = RiskTensorScalar | null | undefined;
 
+function sumIndustryMarketValue(payload: IndustryDistPayload | undefined): Numeric | undefined {
+  if (!payload || payload.items.length === 0) {
+    return undefined;
+  }
+  const values = payload.items
+    .map((item) => bondNumericRawOrNull(item.total_market_value))
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) {
+    return undefined;
+  }
+  const raw = values.reduce((sum, value) => sum + value, 0);
+  return formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+}
+
 const RISK_YUAN_PER_WAN = 10_000;
 const RISK_YUAN_PER_YI = 100_000_000;
 
@@ -2395,7 +2413,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
   const rows: ModuleHomeDetailRow[] = [];
 
   for (const field of RISK_KRD_FIELDS) {
-    pushRiskTensorDetailRow(rows, field.key, field.label, tensor[field.key], "wan", reportDate);
+    pushRiskTensorDetailRow(rows, field.key, field.label, tensor[field.key] as RiskTensorDisplayValue, "wan", reportDate);
   }
 
   pushRiskTensorDetailRow(rows, "cs01", "CS01", tensor.cs01, "wan", reportDate);
