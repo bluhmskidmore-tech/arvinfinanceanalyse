@@ -2184,7 +2184,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "展开依据" }));
 
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("请基于上一轮回答展开证据依据和关键假设。");
     expect(document.activeElement).toBe(input);
     expect(input).toHaveProperty("selectionStart", input.value.length);
@@ -2385,7 +2385,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "编辑问题" }));
 
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("edit original question");
     expect(document.activeElement).toBe(input);
 
@@ -2700,7 +2700,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("enter queue first turn")).toBeInTheDocument();
     expect(screen.getByText("Enter 排队发送 · Shift+Enter 换行")).toBeInTheDocument();
 
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     await user.type(input, "enter queued second turn");
     await user.keyboard("{Enter}");
 
@@ -2729,7 +2729,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.queryByText("已排队：queued stop second turn")).not.toBeInTheDocument();
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("queued stop second turn");
     expect(document.activeElement).toBe(input);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
@@ -2755,7 +2755,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "取消排队" }));
     expect(screen.queryByText("已排队：queued cancel second turn")).not.toBeInTheDocument();
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("");
     expect(document.activeElement).toBe(input);
 
@@ -2814,7 +2814,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "编辑排队" }));
 
     expect(screen.queryByText("已排队：queued edit second turn")).not.toBeInTheDocument();
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("queued edit second turn");
     expect(document.activeElement).toBe(input);
     expect(input).toHaveProperty("selectionStart", input.value.length);

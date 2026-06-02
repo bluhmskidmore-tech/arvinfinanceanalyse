@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FormEvent, type KeyboardEvent, type Ref } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent, type MutableRefObject, type Ref } from "react";
 
 import { shellTokens as t } from "../../../theme/tokens";
 
@@ -56,7 +56,7 @@ function assignTextAreaRef(ref: Ref<HTMLTextAreaElement> | undefined, element: H
     ref(element);
     return;
   }
-  ref.current = element;
+  (ref as MutableRefObject<HTMLTextAreaElement | null>).current = element;
 }
 
 const primaryQuickExampleCount = 2;

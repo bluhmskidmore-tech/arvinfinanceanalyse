@@ -1332,6 +1332,9 @@ export function EmbeddedAgentCopilot({
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const shouldFocusRestoredDraftRef = useRef(
+    shouldPersistConversation && !defaultQuestion.trim() && query.trim().length > 0,
+  );
   const shouldFocusComposerRef = useRef(false);
   const processStateRequestVersionRef = useRef(0);
   const conversationSessionRef = useRef(0);
@@ -1475,6 +1478,14 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
     focusComposerInput();
   }
+
+  useEffect(() => {
+    if (!shouldFocusRestoredDraftRef.current) {
+      return;
+    }
+    shouldFocusRestoredDraftRef.current = false;
+    focusComposerInput();
+  }, []);
 
   useEffect(() => {
     if (!shouldPersistConversation) {
