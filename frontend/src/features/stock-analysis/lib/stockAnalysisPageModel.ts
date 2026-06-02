@@ -764,7 +764,7 @@ export function buildStockAnalysisPagePurpose(
   const aligned = quality === "ok" && vendor === "ok" && fallback === "none";
   const asOf = payload.as_of_date ?? "待补";
   return {
-    eyebrow: "Livermore 策略 · 只读复核台",
+    eyebrow: "趋势策略 · 只读复核台",
     title: "股票策略复核台",
     subtitle: "只读复核，不生成交易指令",
     asOfLine: `观察日 ${asOf}`,
@@ -1413,7 +1413,7 @@ export function buildStrategyLensItems(
       key: "livermore",
       label: "趋势突破",
       value: String(consensus.strategyCounts.livermore),
-      detail: "Livermore",
+      detail: "趋势突破",
       tone: consensus.strategyCounts.livermore > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-observation-preview",
       progress: clampRatio(consensus.strategyCounts.livermore / strategyMax),
@@ -1498,7 +1498,7 @@ export function buildStockAnalysisEvidenceStatus(
       label: "计算口径",
       statusLabel: localizeBasisLabel(payload.basis),
       tone: evidenceToneForStatus(payload.basis ?? "pending"),
-      detail: payload.strategy_name,
+      detail: payload.basis ? "指标口径已接入" : "口径待确认",
     },
     {
       key: "rule-version",

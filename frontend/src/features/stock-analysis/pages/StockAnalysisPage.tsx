@@ -2129,7 +2129,7 @@ export default function StockAnalysisPage() {
                 onClick={() => setAgentDrawerOpen(true)}
                 aria-expanded={agentDrawerOpen}
               >
-                Agent
+                复核助手
               </Button>
               <DatePicker
                 allowClear
@@ -5445,7 +5445,7 @@ export default function StockAnalysisPage() {
           onClose={() => setDetailSelection(null)}
         />
         <Drawer
-          title="Agent 复核当前观察"
+          title="复核助手"
           placement="left"
           width={480}
           open={agentDrawerOpen}

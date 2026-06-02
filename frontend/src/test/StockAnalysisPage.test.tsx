@@ -1141,6 +1141,7 @@ describe("StockAnalysisPage", () => {
     expect(cockpit).not.toHaveTextContent("TAILWIND");
     expect(cockpit).not.toHaveTextContent("后端供数");
     expect(cockpit).not.toHaveTextContent("门控 WARM");
+    expect(cockpit).not.toHaveTextContent("Livermore");
 
     const kpiSection = await screen.findByTestId("stock-analysis-kpi-section");
     expect(kpiSection).toHaveTextContent("市场状态");
@@ -2267,8 +2268,10 @@ describe("StockAnalysisPage", () => {
     await screen.findByTestId("stock-candidate-000001.SZ");
     await user.click(screen.getByTestId("stock-analysis-agent-open"));
 
-    expect(await screen.findByTestId("stock-analysis-agent-drawer")).toBeInTheDocument();
-    expect(screen.getByText("Agent 复核当前观察")).toBeInTheDocument();
+    const drawer = await screen.findByTestId("stock-analysis-agent-drawer");
+    expect(drawer).toBeInTheDocument();
+    expect(within(drawer).getByText("复核助手")).toBeInTheDocument();
+    expect(screen.queryByText("Agent 复核当前观察")).not.toBeInTheDocument();
     expect(screen.getByTestId("agent-panel")).toBeInTheDocument();
 
     await user.type(screen.getByTestId("agent-panel-question"), "please judge current risk");
