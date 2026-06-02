@@ -1,5 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
+const playwrightPort = process.env.MOSS_PLAYWRIGHT_PORT ?? "5888";
+const playwrightBaseURL =
+  process.env.MOSS_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${playwrightPort}`;
+
 export default defineConfig({
   testDir: "./tests/playwright",
   timeout: 90_000,
@@ -11,14 +15,18 @@ export default defineConfig({
   webServer:
     process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"
       ? {
-          command: "npm run dev -- --host 127.0.0.1 --port 5888",
-          url: process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5888",
+          command: `npm run dev -- --host 127.0.0.1 --port ${playwrightPort}`,
+          url: playwrightBaseURL,
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
+          env: {
+            ...process.env,
+            VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "mock",
+          },
         }
       : undefined,
   use: {
-    baseURL: process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5888",
+    baseURL: playwrightBaseURL,
     trace: "retain-on-failure",
     screenshot: "off",
     video: "off",

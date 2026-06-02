@@ -625,7 +625,12 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
       },
     ],
     supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "risk_exit"],
-    unsupported_outputs: [],
+    unsupported_outputs: [
+      {
+        key: "theme_breakout",
+        reason: "concept membership table pending",
+      },
+    ],
     sector_rank: {
       as_of_date: resolvedDate,
       formula_version: "rv_livermore_sector_rank_provisional_v1",

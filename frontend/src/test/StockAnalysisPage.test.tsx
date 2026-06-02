@@ -1159,6 +1159,7 @@ describe("StockAnalysisPage", () => {
     expect(selection).toHaveTextContent("策略共振选股");
     expect(selection).toHaveTextContent("多策略观察池");
     expect(await screen.findByTestId("stock-analysis-strategy-lens")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-review-queue-ranking-chart")).toHaveTextContent("队列排序");
 
     const user = userEvent.setup();
     await user.click(screen.getByText("供数明细与闭环"));
@@ -2059,7 +2060,10 @@ describe("StockAnalysisPage", () => {
     });
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("无候选行业");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 0 / 2 个候选");
-    expect(screen.getByText("该行业暂无候选复核项，可切换到其他行业复核。")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent(
+      "该行业暂无候选复核项，可切换到其他行业复核。",
+    );
+    expect(screen.queryByTestId("stock-analysis-review-queue-ranking-chart")).not.toBeInTheDocument();
   });
 
   it("connects the boundary summary to the full diagnostics drawer", async () => {
@@ -2096,15 +2100,29 @@ describe("StockAnalysisPage", () => {
   });
 
   it("renders event monitoring with business labels instead of raw backend fields", async () => {
-    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          unsupported_outputs: [
+            {
+              key: "theme_breakout",
+              reason: "concept membership table pending",
+            },
+          ],
+        }),
+      }),
+    });
 
     const section = await screen.findByTestId("stock-analysis-events-monitoring");
     expect(section).toHaveTextContent("诊断");
     expect(section).toHaveTextContent("缺口");
+    expect(section).toHaveTextContent("题材观察阻断");
+    expect(section).toHaveTextContent("概念归属表待确认");
     expect(section).toHaveTextContent("中");
     expect(section).toHaveTextContent("高");
     expect(section).toHaveTextContent("市场宽度");
     expect(section).not.toHaveTextContent("data_gap");
+    expect(section).not.toHaveTextContent("concept membership table pending");
     expect(section).not.toHaveTextContent("risk_exit");
     expect(section).not.toHaveTextContent("warning");
     expect(section).not.toHaveTextContent("missing");

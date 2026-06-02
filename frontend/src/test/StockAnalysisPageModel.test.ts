@@ -247,7 +247,8 @@ describe("stockAnalysisPageModel", () => {
     expect(card.state).toBe("WARM");
     expect(card.exposureLabel).toBe("40%");
     expect(card.passedLabel).toBe("2 / 4 条件通过");
-    expect(card.warnings.join(" ")).toContain("Breadth inputs are unavailable");
+    expect(card.warnings.join(" ")).toContain("市场宽度输入不可用");
+    expect(card.warnings.join(" ")).toContain("5日市场宽度输入未落地");
     expect(sectors[0].sectorName).toBe("AI");
     expect(sectors[0].pctChange).toBe("4.80%");
   });
@@ -283,7 +284,7 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.headline).toContain("今日市场状态：进攻");
     expect(summary.gateLabel).toBe("门控 2/4");
     expect(summary.exposureLabel).toBe("观察暴露 40%");
-    expect(summary.dataFreshnessLabel).toBe("数据需复核 warning / ok");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量需复核 / 通道正常");
     expect(summary.nextReviewAction).toContain("先复核 Alpha");
     expect(summary.nextReviewAction).toContain("距观察位");
     expect(summary.boundaryLabel).toContain("2 条边界");
@@ -437,7 +438,7 @@ describe("stockAnalysisPageModel", () => {
       fallback_mode: "latest_snapshot",
     });
 
-    expect(summary.dataFreshnessLabel).toBe("数据需复核 ok / ok / 回退 latest_snapshot");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 通道正常 / 回退快照");
   });
 
   it("builds page purpose and review-queue empty guidance in Chinese", () => {
@@ -552,7 +553,7 @@ describe("stockAnalysisPageModel", () => {
 
     expect(cards[0]).toMatchObject({
       themeKey: "semiconductor_proxy",
-      parentSectorLabel: "Electronic #9",
+      parentSectorLabel: "电子 #9",
       strongCountLabel: "强势 3",
       limitCountLabel: "涨停 2",
       avgPctChangeLabel: "均涨跌 9.77%",
@@ -637,12 +638,19 @@ describe("stockAnalysisPageModel", () => {
     expect(buildThemeLeaderPreviewItems(cards, 12)).toEqual([
       expect.objectContaining({
         stockCode: "688001.SH",
-        themeName: "Semiconductor proxy",
+        stockName: "Alpha Semiconductor",
+        themeName: "半导体",
         themeRank: 1,
+        pctChange: "12.10%",
+        tags: ["涨停", "强势"],
       }),
       expect.objectContaining({
         stockCode: "688002.SH",
-        themeName: "Semiconductor proxy",
+        stockName: "Beta Semiconductor",
+        themeName: "半导体",
+        themeRank: 1,
+        pctChange: "8.10%",
+        tags: ["强势"],
       }),
     ]);
     expect(buildThemeLeaderPreviewItems(cards, 1)).toHaveLength(1);
@@ -826,8 +834,9 @@ describe("stockAnalysisPageModel", () => {
       key: "concept_membership",
       status: "catalog_unconfirmed",
     });
-    expect(rows[0].statusLabel).toContain("catalog");
-    expect(rows[1].detail).toContain("Intraday movement table");
+    expect(rows[0].statusLabel).toContain("目录待确认");
+    expect(rows[1].detail).toContain("盘中异动");
+    expect(rows[1].detail).toContain("数据表缺失");
     expect(rows.map((row) => row.detail).join(" ")).not.toContain("buy");
   });
 
@@ -891,7 +900,7 @@ describe("stockAnalysisPageModel", () => {
       themeKey: "semiconductor_proxy",
       sourceKindLabel: "代理观察",
     });
-    expect(reviewItems[0].failedGateLabel).toContain("insufficient_cluster_strength");
+    expect(reviewItems[0].failedGateLabel).toContain("簇强度不足");
     expect(reviewItems[0].summary).toContain("2");
     expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("buy");
   });
@@ -1044,7 +1053,8 @@ describe("stockAnalysisPageModel", () => {
       headline: "闭环阻断，先复核约束项",
       tone: "negative",
     });
-    expect(summary.verdict.primaryReason).toContain("crowded leaders without breadth confirmation");
+    expect(summary.verdict.primaryReason).toContain("强势样本拥挤");
+    expect(summary.verdict.primaryReason).toContain("市场宽度未确认");
     expect(summary.verdict.nextStep).toContain("仅观察");
     expect(summary.items).toEqual(
       expect.arrayContaining([
@@ -1059,7 +1069,7 @@ describe("stockAnalysisPageModel", () => {
           label: "反拥挤拦截",
           status: "block",
           tone: "negative",
-          detail: expect.stringContaining("crowded leaders without breadth confirmation"),
+          detail: expect.stringContaining("强势样本拥挤"),
         }),
         expect.objectContaining({
           key: "risk_exit",
@@ -1172,7 +1182,7 @@ describe("stockAnalysisPageModel", () => {
       headline: "暂缓复核，存在降级边界",
       tone: "warning",
     });
-    expect(summary.verdict.nextStep).toContain("fallback");
+    expect(summary.verdict.nextStep).toContain("回退");
   });
 
   it("represents partial replay windows with unsupported, pending, proxy-only, and zero-signal dates", () => {
@@ -1240,19 +1250,19 @@ describe("stockAnalysisPageModel", () => {
       status: "partial",
       tone: "warning",
     });
-    expect(replayItem?.detail).toContain("excluded from completed stats: 2026-04-30, 2026-05-08, 2026-05-07");
-    expect(replayItem?.detail).toContain("2026-04-30 missing_daily_limit_flags");
-    expect(replayItem?.detail).toContain("2026-05-08 forward_returns_pending");
-    expect(replayItem?.detail).toContain("2026-05-07 proxy_theme_only");
-    expect(replayItem?.detail).toContain("completed zero-signal dates: 2026-05-06");
-    expect(replayItem?.detail).toContain("do not infer strategy efficacy");
+    expect(replayItem?.detail).toContain("剔除日期：2026-04-30、2026-05-08、2026-05-07");
+    expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
+    expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
+    expect(replayItem?.detail).toContain("2026-05-07 仅代理题材");
+    expect(replayItem?.detail).toContain("完成但无信号日期：2026-05-06");
+    expect(replayItem?.detail).toContain("不推导策略有效性");
     expect(replayItem?.badges).toEqual(
       expect.arrayContaining([
-        "completed dates 1",
-        "pending dates 1",
-        "unsupported dates 1",
-        "proxy-only dates 1",
-        "completed rows 0",
+        "完成 1日",
+        "待成熟 1日",
+        "不可用 1日",
+        "代理观察 1日",
+        "完成样本 0",
       ]),
     );
   });
@@ -1317,9 +1327,9 @@ describe("stockAnalysisPageModel", () => {
       status: "unsupported",
       tone: "warning",
     });
-    expect(replayItem?.detail).toContain("no decision-usable completed replay dates");
-    expect(replayItem?.detail).toContain("2026-04-30 missing_daily_limit_flags");
-    expect(replayItem?.detail).toContain("2026-05-08 forward_returns_pending");
+    expect(replayItem?.detail).toContain("暂无可用于判断的完成回放日");
+    expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
+    expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
@@ -1402,11 +1412,12 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.diagnosticsCount).toBe(1);
     expect(summary.dataGapCount).toBe(1);
     expect(summary.unsupportedCount).toBe(1);
-    expect(summary.freshnessLabel).toBe("新鲜度 warning / ok / 回退 latest_snapshot");
+    expect(summary.freshnessLabel).toBe("新鲜度 质量需复核 / 通道正常 / 回退快照");
     expect(summary.summaryLabel).toBe("3 条边界");
     expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 未支持 1");
-    expect(summary.topMessages.join(" ")).toContain("Breadth inputs are unavailable.");
-    expect(summary.topMessages.join(" ")).toContain("position snapshot not landed");
+    expect(summary.topMessages.join(" ")).toContain("市场宽度输入不可用");
+    expect(summary.topMessages.join(" ")).toContain("5日市场宽度输入未落地");
+    expect(summary.topMessages.join(" ")).toContain("position snapshot 未落地");
   });
 
   it("builds current sector filter status for review queue stitching", () => {
@@ -1417,11 +1428,11 @@ describe("stockAnalysisPageModel", () => {
     expect(filtered.sectorLabel).toBe("AI");
     expect(filtered.visibleCount).toBe(1);
     expect(filtered.totalCount).toBe(1);
-    expect(filtered.summaryLabel).toContain("sector AI (801001)");
+    expect(filtered.summaryLabel).toBe("行业 AI (801001) / 显示 1 / 1 个候选");
 
     expect(unfiltered.isFiltered).toBe(false);
-    expect(unfiltered.sectorLabel).toBe("all sectors");
-    expect(unfiltered.summaryLabel).toBe("sector all sectors / showing 1 of 1");
+    expect(unfiltered.sectorLabel).toBe("全部行业");
+    expect(unfiltered.summaryLabel).toBe("行业 全部 / 显示 1 / 1 个候选");
   });
 
   it("builds first-screen KPI strip from existing strategy evidence only", () => {
@@ -1441,7 +1452,7 @@ describe("stockAnalysisPageModel", () => {
     ]);
     expect(items.find((item) => item.key === "market-state")).toMatchObject({
       label: "市场状态",
-      value: "WARM",
+      value: "温和",
       detail: "观察暴露 40%",
       tone: "warning",
     });
@@ -1500,10 +1511,14 @@ describe("stockAnalysisPageModel", () => {
         expect.objectContaining({
           source: "unsupported",
           level: "warning",
-          event: expect.stringContaining("theme_breakout"),
+          event: "题材观察阻断",
+          impact: "theme_breakout",
+          detail: "概念归属表待确认。",
         }),
       ]),
     );
+    expect(events.map((event) => event.event).join(" ")).not.toContain("theme_breakout");
+    expect(events.map((event) => event.detail).join(" ")).not.toContain("concept membership table pending");
   });
 
   it("builds consensus review panel summary for empty resonance", () => {

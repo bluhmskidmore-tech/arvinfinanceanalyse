@@ -718,6 +718,9 @@ export function localizeStockBackendText(
   if (lower.includes("crowded leaders without breadth confirmation")) {
     return "强势样本拥挤，市场宽度未确认。";
   }
+  if (lower.includes("concept membership table pending")) {
+    return "概念归属表待确认。";
+  }
   if (lower.includes("market gate is available") && lower.includes("pmi") && lower.includes("credit impulse")) {
     return "市场门控已接入，PMI 与信用脉冲待补。";
   }
@@ -1559,7 +1562,7 @@ export function buildStockAnalysisEventMonitorRows(
       key: `unsupported:${item.key}`,
       source: "unsupported",
       level: "warning",
-      event: `${item.key}: ${item.reason}`,
+      event: `${localizeStockDataFamily(item.key)}阻断`,
       impact: item.key,
       detail: localizeStockBackendText(item.reason, item.key),
     });
@@ -1607,11 +1610,11 @@ export function buildSectorFilterSummary(
   if (!sectorFilterSectorCode) {
     return {
       sectorCode: null,
-      sectorLabel: "all sectors",
+      sectorLabel: "全部行业",
       isFiltered: false,
       visibleCount: totalCount,
       totalCount,
-      summaryLabel: `sector all sectors / showing ${totalCount} of ${totalCount}`,
+      summaryLabel: `行业 全部 / 显示 ${totalCount} / ${totalCount} 个候选`,
     };
   }
 
@@ -1627,7 +1630,7 @@ export function buildSectorFilterSummary(
     isFiltered: true,
     visibleCount,
     totalCount,
-    summaryLabel: `sector ${sectorName} (${sectorFilterSectorCode}) / showing ${visibleCount} of ${totalCount}`,
+    summaryLabel: `行业 ${sectorName} (${sectorFilterSectorCode}) / 显示 ${visibleCount} / ${totalCount} 个候选`,
   };
 }
 

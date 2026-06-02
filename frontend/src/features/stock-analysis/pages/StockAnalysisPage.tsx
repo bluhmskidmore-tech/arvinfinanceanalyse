@@ -341,6 +341,7 @@ const stockChartPalette = {
 
 const miniBarChartStyle: CSSProperties = { height: 54, width: "100%" };
 const miniStackChartStyle: CSSProperties = { height: 40, width: "100%" };
+const reviewQueueChartStyle: CSSProperties = { height: 74, width: "100%" };
 const sectorStrengthChartStyle: CSSProperties = { height: 220, width: "100%" };
 
 type CompactChartRow = {
@@ -402,6 +403,42 @@ function buildCompactBarOption({
         const item = Array.isArray(params) ? params[0] : params;
         const index = Number(item?.dataIndex ?? 0);
         return `${labels[index] ?? ""}: ${Number(item?.value ?? 0).toFixed(2)}${valueSuffix}`;
+      },
+    },
+  };
+}
+
+function buildReviewQueueRankingOption(rows: CompactChartRow[]): EChartsOption {
+  return {
+    animation: false,
+    grid: { top: 3, right: 4, bottom: 3, left: 2, containLabel: false },
+    xAxis: { type: "value", show: false, splitLine: { show: false } },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: rows.map((row) => row.label),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+    },
+    series: [
+      {
+        type: "bar",
+        data: rows.map((row) => row.value),
+        barWidth: 9,
+        itemStyle: { color: stockChartPalette.success, borderRadius: [2, 2, 2, 2] },
+        backgroundStyle: { color: stockChartPalette.track, borderRadius: 2 },
+        showBackground: true,
+      },
+    ],
+    tooltip: {
+      trigger: "axis",
+      confine: true,
+      formatter: (params) => {
+        const item = Array.isArray(params) ? params[0] : params;
+        const index = Number(item?.dataIndex ?? 0);
+        const row = rows[index];
+        return row ? `${row.label}<br/>${row.detail ?? ""}` : "";
       },
     },
   };
@@ -567,7 +604,7 @@ function eventImpactLabel(row: { source: string; impact: string }) {
 
 function eventNameLabel(row: { source: string; event: string; impact: string }) {
   if (row.source === "data_gap") return statusLabel(row.event);
-  if (row.source === "unsupported") return outputKeyLabel(row.impact);
+  if (row.source === "unsupported") return compactText(row.event, 20);
   if (row.source === "risk_exit") return compactText(row.event, 18);
   if (row.source === "signal_confluence") return "联动诊断";
   return compactText(row.event.replace(/_/g, " "), 20);
@@ -1429,6 +1466,27 @@ export default function StockAnalysisPage() {
     if (!sectorFilterSectorCode) return reviewQueue;
     return reviewQueue.filter((c) => c.sectorCode === sectorFilterSectorCode);
   }, [reviewQueue, sectorFilterSectorCode]);
+
+  const reviewQueueChartRows = useMemo<CompactChartRow[]>(
+    () => {
+      const visible = filteredCandidates.slice(0, 6);
+      return visible.map((card, index) => {
+        const evidenceCount = card.primaryEvidence.length + card.supportingEvidence.length;
+        return {
+          key: card.stockCode,
+          label: `#${card.rank} ${card.stockName}`,
+          value: visible.length - index,
+          detail: `${card.sectorName} · 距观察位 ${card.distanceToBreakoutPct} · 证据 ${evidenceCount}`,
+        };
+      });
+    },
+    [filteredCandidates],
+  );
+
+  const reviewQueueRankingOption = useMemo(
+    () => buildReviewQueueRankingOption(reviewQueueChartRows),
+    [reviewQueueChartRows],
+  );
 
   const riskRows = useMemo(
     () => (strategyPayload ? buildRiskExitRows(strategyPayload, confluencePayload) : []),
@@ -2678,7 +2736,7 @@ export default function StockAnalysisPage() {
 
                 {reviewQueue.length > 0 ? (
                   <div
-                    className="mb-2 flex max-h-[68px] flex-wrap gap-1.5 overflow-y-auto pb-0.5"
+                    className="mb-2 flex flex-wrap items-center gap-1.5 rounded-md border border-neutral-100 bg-neutral-50 px-2 py-1.5"
                     data-testid="stock-sector-filter-chips"
                   >
                     <button
@@ -2701,189 +2759,54 @@ export default function StockAnalysisPage() {
                         {label}
                       </button>
                     ))}
+                    <div
+                      className="ml-auto flex min-w-[180px] flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-xs text-neutral-500"
+                      data-testid="stock-review-filter-status"
+                    >
+                      <span>范围</span>
+                      <strong className="text-sm text-neutral-900">{selectedSectorLabel ?? "全部行业"}</strong>
+                      <small>
+                        显示 {filteredCandidates.length} / {reviewQueue.length} 个候选
+                        {reviewQueueUsesHybridFusion ? " · 融合策略候选优先" : ""}
+                      </small>
+                    </div>
                   </div>
                 ) : null}
-                {reviewQueue.length > 0 ? (
+
+                {reviewQueueChartRows.length > 0 ? (
                   <div
-                    className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2 text-xs text-neutral-500"
-                    data-testid="stock-review-filter-status"
+                    className="mb-2 grid gap-2 border-y border-neutral-100 bg-neutral-50/70 px-2 py-2 md:grid-cols-[minmax(0,1fr)_minmax(160px,220px)]"
+                    data-testid="stock-analysis-review-queue-ranking-chart"
+                    aria-label="复核队列排名图"
                   >
-                    <span>当前复核范围</span>
-                    <strong className="text-sm text-neutral-900">{selectedSectorLabel ?? "全部行业"}</strong>
-                    <small>
-                      显示 {filteredCandidates.length} / {reviewQueue.length} 个候选
-                      {reviewQueueUsesHybridFusion ? " · 融合策略候选优先" : ""}
-                    </small>
+                    <div className="min-w-0">
+                      <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                        <strong className="inline-flex items-center gap-1 text-neutral-900">
+                          <BarChartOutlined aria-hidden="true" /> 队列排序
+                        </strong>
+                        <span className="font-semibold text-neutral-500">前 {reviewQueueChartRows.length}</span>
+                      </div>
+                      <ReactECharts
+                        option={reviewQueueRankingOption}
+                        className="stock-analysis-page__echart"
+                        style={reviewQueueChartStyle}
+                        opts={{ renderer: "canvas" }}
+                        notMerge
+                        lazyUpdate
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 md:grid-cols-1">
+                      {reviewQueueChartRows.slice(0, 3).map((row) => (
+                        <div key={row.key} className="min-w-0 border-l border-neutral-200 pl-2 text-xs">
+                          <strong className="block truncate text-neutral-900">{row.label}</strong>
+                          <span className="block truncate text-neutral-500">{row.detail}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
 
-                {reviewQueue.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {filteredCandidates.map((card) => {
-                      const visibleEvidence = [...card.primaryEvidence, ...card.supportingEvidence].slice(0, 4);
-                      const hiddenEvidenceCount =
-                        card.primaryEvidence.length + card.supportingEvidence.length - visibleEvidence.length;
-
-                      return (
-                        <article
-                          className="grid gap-2.5 rounded-md border border-neutral-200 bg-white p-3.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
-                          data-testid={`stock-candidate-${card.stockCode}`}
-                          key={card.stockCode}
-                        >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="m-0 text-base font-semibold text-neutral-900">{card.headline}</h3>
-                            <p className="mt-1 text-xs text-neutral-500">
-                              {card.stockCode} / {card.stockName} / {card.sectorName}
-                            </p>
-                            <div
-                              className="mt-1.5 inline-block rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-semibold text-neutral-500"
-                              title={card.patternNote}
-                            >
-                              形态：{card.pattern} / 距观察位 {card.distanceToBreakoutPct}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 flex-col items-end gap-1.5">
-                            <strong className="text-lg text-primary-700" style={tabularNumStyle}>
-                              #{card.rank}
-                            </strong>
-                            <Button
-                              type="default"
-                              size="small"
-                              data-testid={`stock-candidate-review-chart-${card.stockCode}`}
-                              onClick={() => {
-                                const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
-                                setDetailSelection({
-                                  code: card.stockCode,
-                                  name: card.stockName,
-                                  reviewRank: card.rank,
-                                  sectorCode: card.sectorCode,
-                                  sectorName: card.sectorName,
-                                  distanceToBreakoutPct: card.distanceToBreakoutPct,
-                                    source: "review_queue",
-                                    livermoreRank: reviewQueueUsesHybridFusion ? ranks.livermoreRank : card.rank,
-                                    meanReversionRank: ranks.meanReversionRank,
-                                    factorScreenRank: ranks.factorScreenRank,
-                                    hybridFusionRank: reviewQueueUsesHybridFusion ? card.rank : ranks.hybridFusionRank,
-                                  });
-                              }}
-                            >
-                              复核 K 线
-                            </Button>
-                            <span className="rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
-                              观察
-                            </span>
-                          </div>
-                        </div>
-                        <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold leading-relaxed text-neutral-900">
-                          {card.reviewFocus}
-                        </p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {visibleEvidence.map((item, index) => (
-                            <div
-                              className="flex min-w-0 items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2"
-                              key={item.key}
-                              title={`${item.label}: ${item.value}`}
-                            >
-                              <StatusIcon tone={index < card.primaryEvidence.length ? "positive" : "neutral"}>
-                                {index < card.primaryEvidence.length ? (
-                                  <CheckCircleOutlined />
-                                ) : (
-                                  <DatabaseOutlined />
-                                )}
-                              </StatusIcon>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[11px] font-medium text-neutral-500">
-                                  {item.label}
-                                </span>
-                                <strong className="block truncate text-sm font-semibold text-neutral-900">
-                                  {item.value}
-                                </strong>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 text-xs">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-1 font-semibold text-neutral-600">
-                            <SafetyCertificateOutlined aria-hidden="true" /> 边界 {card.boundaryEvidence.length}
-                          </span>
-                          <span
-                            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-danger-100 bg-danger-50 px-2 py-1 font-semibold text-danger-700"
-                            title={card.invalidationFocus}
-                          >
-                            <ClockCircleOutlined aria-hidden="true" />
-                            <span className="truncate">失效 {compactText(card.invalidationFocus, 24)}</span>
-                          </span>
-                          {hiddenEvidenceCount > 0 ? (
-                            <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-1 font-semibold text-neutral-500">
-                              +{hiddenEvidenceCount} 证据
-                            </span>
-                          ) : null}
-                        </div>
-                        <Collapse
-                          ghost
-                          bordered={false}
-                          destroyOnHidden
-                          className="stock-analysis-page__candidate-collapse"
-                          items={[
-                            {
-                              key: "evidence",
-                              label: "证据明细",
-                              children: (
-                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                  <div>
-                                    <h4 className="mb-2 text-sm font-semibold text-neutral-900">进入依据</h4>
-                                    <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
-                                      {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
-                                        <li key={item.key}>
-                                          <strong className="text-neutral-900">{item.label}</strong>：{item.value}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                  <div>
-                                    <h4 className="mb-2 text-sm font-semibold text-neutral-900">边界待补</h4>
-                                    <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
-                                      {card.boundaryEvidence.map((item) => (
-                                        <li key={item}>{item}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                  <div>
-                                    <h4 className="mb-2 text-sm font-semibold text-neutral-900">失效条件</h4>
-                                    <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold text-neutral-900">
-                                      {card.invalidationFocus}
-                                    </p>
-                                    <ul className="m-0 mt-1 grid list-none gap-1 p-0 text-sm text-neutral-600">
-                                      {card.invalidationRules.slice(1).map((item) => (
-                                        <li key={item}>{item}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                </div>
-                              ),
-                            },
-                            {
-                              key: "raw",
-                              label: "指标明细",
-                              children: (
-                                <dl className="stock-analysis-page__raw-grid">
-                                  {card.rawFields.map((field) => (
-                                    <div key={field.key}>
-                                      <dt>{field.label}</dt>
-                                      <dd>{field.value}</dd>
-                                    </div>
-                                  ))}
-                                </dl>
-                              ),
-                            },
-                          ]}
-                        />
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
+                {reviewQueue.length === 0 ? (
                   <div
                     className="flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-600"
                     role="status"
@@ -2897,14 +2820,178 @@ export default function StockAnalysisPage() {
                         "可下翻查看多因子或融合观察池，并核对门控与板块强弱。"}
                     </p>
                   </div>
-                )}
-                {reviewQueue.length > 0 &&
-                sectorFilterSectorCode &&
-                filteredCandidates.length === 0 ? (
-                  <p className="stock-analysis-page__empty">
+                ) : filteredCandidates.length === 0 ? (
+                  <p className="stock-analysis-page__empty" data-testid="stock-analysis-review-queue-filter-empty">
                     该行业暂无候选复核项，可切换到其他行业复核。
                   </p>
-                ) : null}
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    {filteredCandidates.map((card) => {
+                      const visibleEvidence = [...card.primaryEvidence, ...card.supportingEvidence].slice(0, 4);
+                      const hiddenEvidenceCount =
+                        card.primaryEvidence.length + card.supportingEvidence.length - visibleEvidence.length;
+
+                      return (
+                        <article
+                          className="grid gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
+                          data-testid={`stock-candidate-${card.stockCode}`}
+                          key={card.stockCode}
+                        >
+                          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                            <div className="min-w-0">
+                              <h3 className="m-0 text-sm font-semibold text-neutral-900">{card.headline}</h3>
+                              <p className="mt-0.5 text-[11px] text-neutral-500">
+                                {card.stockCode} / {card.stockName} / {card.sectorName}
+                              </p>
+                              <div
+                                className="mt-1 inline-block rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-semibold text-neutral-500"
+                                title={card.patternNote}
+                              >
+                                形态：{card.pattern} / 距观察位 {card.distanceToBreakoutPct}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap items-center gap-1.5 md:justify-end">
+                              <strong className="text-lg text-primary-700" style={tabularNumStyle}>
+                                #{card.rank}
+                              </strong>
+                              <Button
+                                type="default"
+                                size="small"
+                                icon={<LineChartOutlined />}
+                                data-testid={`stock-candidate-review-chart-${card.stockCode}`}
+                                onClick={() => {
+                                  const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
+                                  setDetailSelection({
+                                    code: card.stockCode,
+                                    name: card.stockName,
+                                    reviewRank: card.rank,
+                                    sectorCode: card.sectorCode,
+                                    sectorName: card.sectorName,
+                                    distanceToBreakoutPct: card.distanceToBreakoutPct,
+                                    source: "review_queue",
+                                    livermoreRank: reviewQueueUsesHybridFusion ? ranks.livermoreRank : card.rank,
+                                    meanReversionRank: ranks.meanReversionRank,
+                                    factorScreenRank: ranks.factorScreenRank,
+                                    hybridFusionRank: reviewQueueUsesHybridFusion ? card.rank : ranks.hybridFusionRank,
+                                  });
+                                }}
+                              >
+                                <span className="sr-only">复核 </span>K 线
+                              </Button>
+                              <span className="rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+                                观察
+                              </span>
+                            </div>
+                          </div>
+                          <p className="m-0 border-l-2 border-primary-500 pl-2 text-xs font-semibold leading-relaxed text-neutral-900">
+                            {card.reviewFocus}
+                          </p>
+                          <div className="grid gap-1.5 sm:grid-cols-2">
+                            {visibleEvidence.map((item, index) => (
+                              <div
+                                className="flex min-w-0 items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5"
+                                key={item.key}
+                                title={`${item.label}: ${item.value}`}
+                              >
+                                <StatusIcon tone={index < card.primaryEvidence.length ? "positive" : "neutral"}>
+                                  {index < card.primaryEvidence.length ? (
+                                    <CheckCircleOutlined />
+                                  ) : (
+                                    <DatabaseOutlined />
+                                  )}
+                                </StatusIcon>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-[10px] font-medium text-neutral-500">
+                                    {item.label}
+                                  </span>
+                                  <strong className="block truncate text-xs font-semibold text-neutral-900">
+                                    {item.value}
+                                  </strong>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap gap-1 text-xs">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-semibold text-neutral-600">
+                              <SafetyCertificateOutlined aria-hidden="true" /> 边界 {card.boundaryEvidence.length}
+                            </span>
+                            <span
+                              className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-danger-100 bg-danger-50 px-2 py-0.5 font-semibold text-danger-700"
+                              title={card.invalidationFocus}
+                            >
+                              <ClockCircleOutlined aria-hidden="true" />
+                              <span className="truncate">失效 {compactText(card.invalidationFocus, 24)}</span>
+                            </span>
+                            {hiddenEvidenceCount > 0 ? (
+                              <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 font-semibold text-neutral-500">
+                                +{hiddenEvidenceCount} 证据
+                              </span>
+                            ) : null}
+                          </div>
+                          <Collapse
+                            ghost
+                            bordered={false}
+                            destroyOnHidden
+                            className="stock-analysis-page__candidate-collapse"
+                            items={[
+                              {
+                                key: "evidence",
+                                label: "证据明细",
+                                children: (
+                                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                    <div>
+                                      <h4 className="mb-2 text-sm font-semibold text-neutral-900">进入依据</h4>
+                                      <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                                        {[...card.primaryEvidence, ...card.supportingEvidence].map((item) => (
+                                          <li key={item.key}>
+                                            <strong className="text-neutral-900">{item.label}</strong>：{item.value}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                    <div>
+                                      <h4 className="mb-2 text-sm font-semibold text-neutral-900">边界待补</h4>
+                                      <ul className="m-0 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                                        {card.boundaryEvidence.map((item) => (
+                                          <li key={item}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                    <div>
+                                      <h4 className="mb-2 text-sm font-semibold text-neutral-900">失效条件</h4>
+                                      <p className="border-l-[3px] border-primary-500 pl-2.5 text-sm font-semibold text-neutral-900">
+                                        {card.invalidationFocus}
+                                      </p>
+                                      <ul className="m-0 mt-1 grid list-none gap-1 p-0 text-sm text-neutral-600">
+                                        {card.invalidationRules.slice(1).map((item) => (
+                                          <li key={item}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  </div>
+                                ),
+                              },
+                              {
+                                key: "raw",
+                                label: "指标明细",
+                                children: (
+                                  <dl className="stock-analysis-page__raw-grid">
+                                    {card.rawFields.map((field) => (
+                                      <div key={field.key}>
+                                        <dt>{field.label}</dt>
+                                        <dd>{field.value}</dd>
+                                      </div>
+                                    ))}
+                                  </dl>
+                                ),
+                              },
+                            ]}
+                          />
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
               </section>
 
                   <section

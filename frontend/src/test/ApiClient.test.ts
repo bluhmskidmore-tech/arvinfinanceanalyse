@@ -3604,6 +3604,10 @@ describe("createApiClient", () => {
     ]);
     expect(envelope.result.stock_candidates?.candidate_count).toBe(2);
     expect(envelope.result.risk_exit?.signal_count).toBe(1);
+    expect(envelope.result.unsupported_outputs).toContainEqual({
+      key: "theme_breakout",
+      reason: "concept membership table pending",
+    });
     expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(false);
     expect(envelope.result.unsupported_outputs.some((item) => item.key === "risk_exit")).toBe(false);
   });
