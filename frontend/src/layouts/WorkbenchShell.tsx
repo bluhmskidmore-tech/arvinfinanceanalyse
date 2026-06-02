@@ -358,14 +358,30 @@ export function WorkbenchShell() {
   );
   const currentGroupSections =
     currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
+  const isModuleHomePage = [
+    "portfolio-home",
+    "market-overview",
+    "risk-overview",
+    "performance-home",
+    "reports-center",
+  ].includes(currentSection.key);
   const isPortfolioGroup = currentGroup.key === "portfolio";
-  const isDashboardCockpitShell = currentSection.key === "dashboard";
+  const isDashboardCockpitShell =
+    currentSection.key === "dashboard" || currentSection.key === "portfolio-home";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
-  const useCockpitShellFrame = isDashboardCockpitShell || isBondAnalysisMinimalShell;
-  const showShellTerminalBar = !isDashboardCockpitShell && !isBondAnalysisMinimalShell;
-  const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
-  /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
+  /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
+  const useCockpitShellFrame =
+    isDashboardCockpitShell ||
+    isBondAnalysisMinimalShell ||
+    isBalanceAnalysisCompactChrome ||
+    isModuleHomePage;
+  const showShellTerminalBar =
+    !isDashboardCockpitShell &&
+    !isBondAnalysisMinimalShell &&
+    !isBalanceAnalysisCompactChrome &&
+    !isModuleHomePage;
+  const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
   const isBalanceMovementAnalysisCompactChrome =
     currentSection.key === "balance-movement-analysis";
   /** 负债结构分析页以页面正文为主，不显示组合导读 Hero / Suggested Flow 占位。 */
@@ -380,7 +396,8 @@ export function WorkbenchShell() {
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
     isCrossAssetImmersiveMain ||
-    isPortfolioPageOwnedChrome;
+    isPortfolioPageOwnedChrome ||
+    isModuleHomePage;
   const showFullWorkspaceGuidance =
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
@@ -644,7 +661,7 @@ export function WorkbenchShell() {
                 color: shellTokens.colorTextMuted,
               }}
             >
-              保留模块
+              规划入口
             </div>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
@@ -797,7 +814,7 @@ export function WorkbenchShell() {
           </section>
         ) : null}
 
-        {isBondAnalysisMinimalShell ? null : (
+        {!isBondAnalysisMinimalShell && secondaryWorkbenchNavigation.length > 0 ? (
           <section
             style={{
               display: "grid",
@@ -807,7 +824,7 @@ export function WorkbenchShell() {
             }}
           >
             <span className="workbench-shell-section-label workbench-shell-section-label--rail">
-              保留模块
+              规划入口
             </span>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
@@ -845,7 +862,7 @@ export function WorkbenchShell() {
               );
             })}
           </section>
-        )}
+        ) : null}
 
         <section
           data-testid="workbench-support-nav"
@@ -1476,7 +1493,10 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isDashboardCockpitShell && !isBondAnalysisMinimalShell && !isBalanceAnalysisCompactChrome ? (
+          {!isDashboardCockpitShell &&
+          !isBondAnalysisMinimalShell &&
+          !isBalanceAnalysisCompactChrome &&
+          !isModuleHomePage ? (
             <section
               data-testid="workbench-section-subnav"
               style={{

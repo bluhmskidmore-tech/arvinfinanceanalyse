@@ -13,6 +13,15 @@ import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 const DashboardHomePage = lazy(
   () => import("../features/workbench/dashboard-home/DashboardHomePage"),
 );
+const ModuleWorkbenchHomePage = lazy(
+  () => import("../features/workbench/module-home/ModuleWorkbenchHomePage"),
+);
+const PortfolioHomePage = lazy(
+  () => import("../features/workbench/module-home/PortfolioHomePage"),
+);
+const MarketHomePage = lazy(
+  () => import("../features/workbench/module-home/MarketHomePage"),
+);
 const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
@@ -135,6 +144,41 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<OperationsAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/portfolio") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PortfolioHomePage />),
+      };
+    }
+
+    if (section.path === "/market-overview") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<MarketHomePage />),
+      };
+    }
+
+    if (section.path === "/risk-overview") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<ModuleWorkbenchHomePage kind="risk" />),
+      };
+    }
+
+    if (section.path === "/performance") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<ModuleWorkbenchHomePage kind="performance" />),
+      };
+    }
+
+    if (section.path === "/reports") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<ModuleWorkbenchHomePage kind="governance" />),
       };
     }
 

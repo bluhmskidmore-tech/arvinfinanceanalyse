@@ -20,6 +20,8 @@ function statusDotClass(statusKind: DashboardHomeView["headerStatus"]["dataStatu
 }
 
 type DashboardHomeToolbarProps = {
+  title?: string;
+  toolbarTestId?: string;
   headerStatus: DashboardHomeView["headerStatus"];
   reportDateInput: string;
   onReportDateChange: (value: string) => void;
@@ -32,6 +34,8 @@ type DashboardHomeToolbarProps = {
 };
 
 export function DashboardHomeToolbar({
+  title = "经营驾驶舱",
+  toolbarTestId = "dashboard-home-toolbar",
   headerStatus,
   reportDateInput,
   onReportDateChange,
@@ -43,14 +47,14 @@ export function DashboardHomeToolbar({
   refreshLabel,
 }: DashboardHomeToolbarProps) {
   return (
-    <header data-testid="dashboard-home-toolbar" className={styles.dhTopbar}>
+    <header data-testid={toolbarTestId} className={styles.dhTopbar}>
       <div className={styles.dhTopbarLeft}>
         <div className={styles.dhTitleBrand}>
           <span className={styles.dhTitleBar} aria-hidden="true" />
           <span className={styles.dhTitleMark} aria-hidden="true">
             M
           </span>
-          <h1 className={styles.dhTitle}>经营驾驶舱</h1>
+          <h1 className={styles.dhTitle}>{title}</h1>
         </div>
         <span className={styles.dhDateLabel}>报告日</span>
         <label className={styles.dhDateSelect}>

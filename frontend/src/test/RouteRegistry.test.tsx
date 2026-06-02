@@ -107,6 +107,24 @@ vi.mock("../features/risk-overview/RiskOverviewPage", () => ({
   ),
 }));
 
+vi.mock("../features/workbench/module-home/ModuleWorkbenchHomePage", () => ({
+  default: ({ kind }: { kind: string }) => (
+    <section data-testid="module-workbench-home">
+      <h1>
+        {kind === "portfolio"
+          ? "组合工作台"
+          : kind === "market"
+            ? "市场工作台"
+            : kind === "risk"
+              ? "风险工作台"
+              : kind === "performance"
+                ? "绩效工作台"
+                : "报表与数据"}
+      </h1>
+    </section>
+  ),
+}));
+
 vi.mock("../features/risk-tensor/RiskTensorPage", () => ({
   default: () => (
     <section data-testid="risk-tensor-kpi-grid">
@@ -363,11 +381,18 @@ describe("RouteRegistry", () => {
     });
   });
 
-  it("renders the risk-overview route as a reserved placeholder page", async () => {
+  it("renders the risk-overview route as a live module home page", async () => {
     renderWorkbenchApp(["/risk-overview"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.queryByTestId("risk-overview-kpi-grid")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("module-workbench-home")).toHaveTextContent("风险工作台");
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+  });
+
+  it("renders the reports route as a live module home page", async () => {
+    renderWorkbenchApp(["/reports"], { client: mockClient });
+
+    expect(await screen.findByTestId("module-workbench-home")).toHaveTextContent("报表与数据");
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the risk-tensor route", async () => {

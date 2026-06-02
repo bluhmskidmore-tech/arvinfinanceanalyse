@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
+import { createDeferredApiClient } from "../api/clientContext";
 import type { BondAnalyticsClientMethods } from "../api/bondAnalyticsClient";
 import type { PnlClientMethods } from "../api/pnlClient";
 import type { PnlAttributionClientMethods } from "../api/pnlAttributionClient";
@@ -1864,7 +1865,67 @@ describe("ApiClient composition boundary", () => {
     expect(dataModeRibbonSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
     expect(dataModeRibbonSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
     expect(clientContextSource).toContain("createDeferredApiClient");
+    expect(clientContextSource).toContain("MACRO_TOOLKIT_METHODS");
+    expect(clientContextSource).toContain("MARKET_TICKER_METHODS");
+    expect(clientContextSource).toContain("createRealMacroToolkitClient");
+    expect(clientContextSource).toContain("createMockMacroToolkitClient");
+    expect(clientContextSource).toContain("createRealMarketDataClient");
+    expect(clientContextSource).toContain("createMockMarketDataClient");
     expect(clientContextSource).not.toMatch(/import\s+\{[^}]*createApiClient/);
     expect(clientSource).toContain("from \"./clientContext\"");
+  });
+
+  it("routes macro toolkit reads through the lightweight domain client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: { runtime_status: { analysis_scope: "core" } },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getMacroToolkitAnalysis();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/macro/toolkit/analysis?detail=full",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes shell market ticker reads through the lightweight market-data domain client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result: { read_target: "duckdb", series: [] },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getChoiceMacroLatest();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/macro/choice-series/latest",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
   });
 });

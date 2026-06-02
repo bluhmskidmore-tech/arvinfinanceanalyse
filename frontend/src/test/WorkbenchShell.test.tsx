@@ -40,6 +40,10 @@ function renderShellAt(path: string, client?: ApiClient) {
         children: [
           { index: true, element: <div>shell body</div> },
           { path: "dashboard", element: <div>dashboard alias body</div> },
+          { path: "portfolio", element: <div>portfolio home body</div> },
+          { path: "market-overview", element: <div>market home body</div> },
+          { path: "risk-overview", element: <div>risk home body</div> },
+          { path: "performance", element: <div>performance home body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
           { path: "cross-asset", element: <div>cross-asset body</div> },
           { path: "stock-analysis", element: <div>stock-analysis body</div> },
@@ -98,8 +102,8 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config", "/cube-query", "/agent"]);
-    expect(hrefs).not.toContain("/reports");
+    expect(hrefs).toEqual(["/platform-config", "/reports", "/cube-query", "/agent"]);
+    expect(hrefs).toContain("/reports");
   });
 
   it("keeps live portfolio pages focused on page content instead of shell guidance", async () => {
@@ -126,12 +130,12 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
   });
 
-  it("retains shell guidance and readiness warning for placeholder routes", async () => {
+  it("uses the live reports home without old placeholder guidance", async () => {
     renderShellAt("/reports");
 
     expect(await screen.findByText("reports body")).toBeInTheDocument();
-    expect(screen.getByText("当前只突出可验证的真实读链路")).toBeInTheDocument();
-    expect(screen.getByTestId("workbench-readiness-banner")).toHaveTextContent("当前页面仍是占位壳层");
+    expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
@@ -522,7 +526,7 @@ describe("WorkbenchShell", () => {
     const navigation = await screen.findByTestId("workbench-group-nav");
     const portfolioLink = within(navigation)
       .getAllByRole("link")
-      .find((candidate) => candidate.getAttribute("href") === "/balance-analysis");
+      .find((candidate) => candidate.getAttribute("href") === "/portfolio");
 
     expect(portfolioLink).toBeDefined();
     expect(portfolioLink).toHaveAttribute("data-active", "true");
@@ -555,18 +559,14 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
   });
 
-  it("renders the reserved modules section outside the grouped workspace nav", async () => {
+  it("hides the planned modules section when no visible placeholders remain", async () => {
     renderShellAt("/");
 
-    expect(await screen.findByText("保留模块")).toBeInTheDocument();
-    for (const section of secondaryWorkbenchNavigation) {
-      const link = screen
-        .getAllByRole("link")
-        .find((candidate) => candidate.getAttribute("href") === section.path);
-
-      expect(link).toBeDefined();
-      expect(link).toHaveTextContent(section.label);
-    }
+    expect(await screen.findByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByText("规划入口")).not.toBeInTheDocument();
+    expect(screen.queryByText("保留模块")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reserved")).not.toBeInTheDocument();
+    expect(secondaryWorkbenchNavigation).toHaveLength(0);
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
@@ -616,5 +616,26 @@ describe("WorkbenchShell", () => {
     expect(banner).toBeInTheDocument();
     expect(screen.getByText("operations body")).toBeInTheDocument();
     expect(banner).toHaveTextContent(/临时例外/i);
+  });
+  it("uses dedicated home routes for primary workspace group links", async () => {
+    renderShellAt("/portfolio");
+
+    expect(await screen.findByText("portfolio home body")).toBeInTheDocument();
+    const navigation = screen.getByTestId("workbench-group-nav");
+    const hrefs = within(navigation)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/",
+        "/portfolio",
+        "/market-overview",
+        "/risk-overview",
+        "/performance",
+        "/reports",
+      ]),
+    );
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

@@ -823,9 +823,11 @@ describe("mapToHomeView", () => {
 
     const pnl = view.terminalKpis.find((kpi) => kpi.id === "day-pnl");
     const creditRatio = view.terminalKpis.find((kpi) => kpi.id === "credit-ratio");
+    const riskExposureCreditRatio = view.riskExposureMetrics.find((metric) => metric.id === "credit");
 
     expect(pnl?.label).toBe("月度盈亏（本月）");
     expect(creditRatio?.value).toBe("29.54");
     expect(creditRatio?.unit).toBe("%");
+    expect(riskExposureCreditRatio?.value).toBe("29.54%");
   });
 });

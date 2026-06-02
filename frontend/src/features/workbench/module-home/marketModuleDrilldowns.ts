@@ -1,0 +1,26 @@
+import {
+  primaryWorkbenchNavigation,
+  resolveWorkbenchGroupKey,
+  type WorkbenchSection,
+} from "../../../mocks/navigation";
+import type { ModuleHomeDrilldown } from "./moduleHomeConfig";
+
+function sectionToDrilldown(section: WorkbenchSection): ModuleHomeDrilldown {
+  return {
+    key: section.key,
+    label: section.label,
+    path: section.path,
+    description: section.description,
+    statusLabel: section.readinessLabel,
+    icon: section.icon,
+  };
+}
+
+/** 与侧栏「市场工作台」分组下的 live 子页面数量保持一致。 */
+export function getMarketModuleDrilldowns(): ModuleHomeDrilldown[] {
+  return primaryWorkbenchNavigation
+    .filter((section) => resolveWorkbenchGroupKey(section) === "market")
+    .map(sectionToDrilldown);
+}
+
+export const MARKET_MODULE_DRILLDOWN_COUNT = getMarketModuleDrilldowns().length;
