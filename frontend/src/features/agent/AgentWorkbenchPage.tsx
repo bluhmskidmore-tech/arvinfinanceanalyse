@@ -48,6 +48,7 @@ type AgentQueryResult = {
 };
 
 type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed";
+type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
 
 type AgentRunPayload = PollingTaskPayload & {
   run_id: string;
@@ -1327,7 +1328,7 @@ export function EmbeddedAgentCopilot({
   const copyFeedbackTimerRef = useRef<number | null>(null);
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
-  const [copiedAnswerTurnId, setCopiedAnswerTurnId] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
@@ -1421,7 +1422,15 @@ export function EmbeddedAgentCopilot({
   }
 
   function focusComposerInput() {
-    composerInputRef.current?.focus();
+    const input = composerInputRef.current;
+    if (!input) {
+      return;
+    }
+    input.focus();
+    const scrollIntoView = input.scrollIntoView;
+    if (typeof scrollIntoView === "function") {
+      scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
+    }
   }
 
   function updateComposerQuery(nextQuery: string) {
@@ -1442,6 +1451,11 @@ export function EmbeddedAgentCopilot({
     setQueuedQuery("");
   }
 
+  function cancelQueuedQuery() {
+    clearQueuedQuery();
+    focusComposerInput();
+  }
+
   function restoreQueuedQueryToComposer() {
     if (!queuedQuery.trim()) {
       return;
@@ -1449,6 +1463,7 @@ export function EmbeddedAgentCopilot({
     updateComposerQuery(queuedQuery);
     clearQueuedQuery();
     shouldFocusComposerRef.current = true;
+    focusComposerInput();
   }
 
   useEffect(() => {
@@ -2461,17 +2476,27 @@ export function EmbeddedAgentCopilot({
   async function copyAgentAnswer(turn: AgentConversationTurn) {
     const answer = turn.result?.answer.trim();
     const writeText = typeof navigator === "undefined" ? undefined : navigator.clipboard?.writeText;
-    if (!answer || typeof writeText !== "function") {
+    if (!answer) {
       return;
     }
 
-    await writeText.call(navigator.clipboard, answer);
-    setCopiedAnswerTurnId(turn.id);
+    let status: AgentCopyFeedback["status"] = "success";
+    if (typeof writeText !== "function") {
+      status = "error";
+    } else {
+      try {
+        await writeText.call(navigator.clipboard, answer);
+      } catch {
+        status = "error";
+      }
+    }
+
+    setCopyFeedback({ turnId: turn.id, status });
     if (copyFeedbackTimerRef.current !== null) {
       window.clearTimeout(copyFeedbackTimerRef.current);
     }
     copyFeedbackTimerRef.current = window.setTimeout(() => {
-      setCopiedAnswerTurnId((currentTurnId) => (currentTurnId === turn.id ? null : currentTurnId));
+      setCopyFeedback((currentFeedback) => (currentFeedback?.turnId === turn.id ? null : currentFeedback));
       copyFeedbackTimerRef.current = null;
     }, 1800);
   }
@@ -2555,6 +2580,8 @@ export function EmbeddedAgentCopilot({
     if (!turnResult) {
       return null;
     }
+    const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;
+    const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
 
     return (
       <div className="agent-result-shell">
@@ -2579,8 +2606,8 @@ export function EmbeddedAgentCopilot({
                   onClick={() => void copyAgentAnswer(turn)}
                   disabled={!turnResult.answer.trim()}
                 >
-                  {copiedAnswerTurnId === turn.id ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
-                  <span>{copiedAnswerTurnId === turn.id ? "已复制" : "复制回答"}</span>
+                  {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
+                  <span>{copyLabel}</span>
                 </button>
               </div>
               <AgentAnswerPanel
@@ -2621,6 +2648,14 @@ export function EmbeddedAgentCopilot({
               />
 
               <div className="agent-follow-up-chips" aria-label="assistant-follow-up-suggestions">
+                <button
+                  type="button"
+                  className="agent-follow-up-chips__button"
+                  onClick={focusComposerInput}
+                  disabled={loading}
+                >
+                  继续输入
+                </button>
                 {AGENT_FOLLOW_UP_CHIPS.map((chip) => (
                   <button
                     key={chip.label}
@@ -2992,7 +3027,7 @@ export function EmbeddedAgentCopilot({
             <button type="button" onClick={restoreQueuedQueryToComposer}>
               编辑排队
             </button>
-            <button type="button" onClick={clearQueuedQuery}>
+            <button type="button" onClick={cancelQueuedQuery}>
               取消排队
             </button>
           </span>

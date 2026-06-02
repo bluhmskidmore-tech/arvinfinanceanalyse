@@ -2019,6 +2019,91 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("已复制")).toBeInTheDocument();
   });
 
+  it("returns the copy action to idle after feedback expires", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockManagedRunResult(fetchMock, {
+      answer: "复制反馈会自动恢复。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_copy_feedback_reset",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "copy feedback reset check");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("复制反馈会自动恢复。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "复制回答" }));
+    expect(await screen.findByRole("button", { name: "已复制" })).toBeInTheDocument();
+
+    expect(await screen.findByRole("button", { name: "复制回答" }, { timeout: 2500 })).toBeInTheDocument();
+  });
+
+  it("shows copy failure feedback without interrupting the chat", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockManagedRunResult(fetchMock, {
+      answer: "这段回答暂时复制不了。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_copy_answer_failure",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "copy failure check");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("这段回答暂时复制不了。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "复制回答" }));
+
+    expect(writeText).toHaveBeenCalledWith("这段回答暂时复制不了。");
+    expect(await screen.findByRole("button", { name: "复制失败" })).toBeInTheDocument();
+    expect(screen.getByText("这段回答暂时复制不了。")).toBeInTheDocument();
+  });
+
   it("fills a focused follow-up question from assistant quick chips", async () => {
     const user = userEvent.setup();
     mockManagedRunResult(fetchMock, {
@@ -2055,6 +2140,67 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("请基于上一轮回答展开证据依据和关键假设。");
     expect(document.activeElement).toBe(input);
+  });
+
+  it("focuses the composer from the assistant continue input action", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockManagedRunResult(fetchMock, {
+      answer: "回答完成，可以继续追问。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_continue_input",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    try {
+      render(<AgentWorkbenchPage />);
+
+      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "duration risk follow-up check");
+      await user.click(screen.getByRole("button", { name: "发送" }));
+      expect(await screen.findByText("回答完成，可以继续追问。")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "复制回答" }));
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "已复制" }));
+
+      scrollTargets.length = 0;
+      scrollOptions.length = 0;
+      await user.click(screen.getByRole("button", { name: "继续输入" }));
+
+      const input = screen.getByLabelText("agent-question-input");
+      expect(input).toHaveValue("");
+      expect(document.activeElement).toBe(input);
+      expect(scrollTargets).toContain(input);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("regenerates a completed ordinary answer in the same chat turn", async () => {
@@ -2510,7 +2656,9 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.queryByText("已排队：queued stop second turn")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued stop second turn");
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("queued stop second turn");
+    expect(document.activeElement).toBe(input);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
 
@@ -2534,6 +2682,9 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "取消排队" }));
     expect(screen.queryByText("已排队：queued cancel second turn")).not.toBeInTheDocument();
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("");
+    expect(document.activeElement).toBe(input);
 
     await act(async () => {
       resolveFirstRun(
@@ -2590,7 +2741,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "编辑排队" }));
 
     expect(screen.queryByText("已排队：queued edit second turn")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued edit second turn");
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("queued edit second turn");
+    expect(document.activeElement).toBe(input);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
 
@@ -3175,6 +3328,9 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("stopped turn rerun answer")).toBeInTheDocument();
     expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("");
+    expect(document.activeElement).toBe(input);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
 
     await act(async () => {
