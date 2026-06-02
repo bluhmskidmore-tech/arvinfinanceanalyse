@@ -105,6 +105,21 @@ def test_formal_financial_indicator_registry_exposes_202603_contract_without_pro
     assert contract_metrics["parent.loan_balance"]["golden_sample_ref"].endswith("#parent.loan_balance")
 
 
+def test_formal_financial_indicator_registry_returns_empty_contract_for_unregistered_month():
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    contract = registry.build_formal_financial_indicator_contract(report_month="202605")
+
+    assert contract["sample_status"] == "missing_contract"
+    assert contract["report_month"] == "202605"
+    assert contract["source_version"] == "sv_formal_financial_indicators_contract_unavailable"
+    assert contract["formal_use_allowed"] is False
+    assert contract["metrics"] == []
+
+
 def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_envelope():
     service = load_module(
         "backend.app.services.ledger_pnl_service",
@@ -124,6 +139,25 @@ def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_env
     assert metrics["group.operating_revenue"]["missing_reason"].startswith("正式财务指标来源未接入")
     assert metrics["parent.deposit_balance"]["source_status"] == "needs_reconciliation"
     assert metrics["parent.deposit_balance"]["value"] is None
+
+
+def test_ledger_pnl_service_wraps_unregistered_month_as_empty_warning_envelope():
+    service = load_module(
+        "backend.app.services.ledger_pnl_service",
+        "backend/app/services/ledger_pnl_service.py",
+    )
+
+    envelope = service.ledger_pnl_formal_financial_indicator_contract_envelope(
+        report_month="202605",
+    )
+
+    assert envelope["result_meta"]["basis"] == "ledger"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["formal_use_allowed"] is False
+    assert envelope["result_meta"]["source_version"] == "sv_formal_financial_indicators_contract_unavailable"
+    assert envelope["result_meta"]["evidence_rows"] == 0
+    assert envelope["result"]["report_month"] == "202605"
+    assert envelope["result"]["metrics"] == []
 
 
 def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract():
@@ -147,6 +181,25 @@ def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract():
     assert metrics["group.operating_revenue"]["source_status"] == "formal_pending"
     assert metrics["parent.loan_balance"]["source_status"] == "candidate_qdb_aligned"
     assert metrics["parent.loan_balance"]["value"] is None
+
+
+def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month():
+    app_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(app_module.app)
+
+    response = client.get(
+        "/api/ledger-pnl/formal-financial-indicators",
+        params={"report_month": "202605"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "ledger"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["evidence_rows"] == 0
+    assert payload["result"]["sample_status"] == "missing_contract"
+    assert payload["result"]["report_month"] == "202605"
+    assert payload["result"]["metrics"] == []
 
 
 def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():

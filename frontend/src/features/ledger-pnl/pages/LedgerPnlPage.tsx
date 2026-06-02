@@ -9,7 +9,12 @@ import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { shellTokens } from "../../../theme/tokens";
 import { FilterBar } from "../../../components/FilterBar";
-import type { LedgerMoneyValue, QdbGlMonthlyAnalysisSheet } from "../../../api/contracts";
+import type {
+  LedgerMoneyValue,
+  LedgerPnlFormalFinancialIndicatorContractPayload,
+  LedgerPnlFormalFinancialIndicatorMetric,
+  QdbGlMonthlyAnalysisSheet,
+} from "../../../api/contracts";
 import "./LedgerPnlPage.css";
 
 const pageHeaderStyle = {
@@ -176,6 +181,130 @@ function FinancialIndicatorStatusPanel(props: { rows: FinancialIndicatorStatusRo
   );
 }
 
+const sourceStatusLabels = {
+  formal_pending: "正式来源待接入",
+  candidate_qdb_aligned: "QDB 候选对齐",
+  needs_reconciliation: "需对账",
+} as const;
+
+function formalSourceContractTone(metric: LedgerPnlFormalFinancialIndicatorMetric) {
+  if (metric.source_status === "candidate_qdb_aligned") {
+    return "analytical";
+  }
+  if (metric.source_status === "formal_pending") {
+    return "pending";
+  }
+  return "warning";
+}
+
+function formatContractMetricValue(value: string | number | null | undefined, unit: string) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  return unit ? `${value} ${unit}` : String(value);
+}
+
+function formatFormalContractValue(value: string | number | null | undefined, unit: string) {
+  if (value === null || value === undefined || value === "") {
+    return "未接入";
+  }
+  return formatContractMetricValue(value, unit);
+}
+
+function FormalIndicatorSourceContractPanel(props: {
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  requestedReportMonth: string;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  const metrics = props.contract?.metrics ?? [];
+  const counts = {
+    formal_pending: metrics.filter((metric) => metric.source_status === "formal_pending").length,
+    candidate_qdb_aligned: metrics.filter((metric) => metric.source_status === "candidate_qdb_aligned").length,
+    needs_reconciliation: metrics.filter((metric) => metric.source_status === "needs_reconciliation").length,
+  };
+
+  return (
+    <section
+      data-testid="ledger-pnl-formal-indicator-source-contract-panel"
+      className="ledger-pnl-analysis__status-panel"
+    >
+      <div className="ledger-pnl-analysis__status-header">
+        <div>
+          <h3 className="ledger-pnl-analysis__status-title">正式财务指标源契约</h3>
+          <div className="ledger-pnl-analysis__status-subtitle">
+            Excel 样本值、系统候选值与正式展示值分列；value 为空时保持未接入。
+          </div>
+        </div>
+        <div className="ledger-pnl-analysis__status-summary">
+          <span>report_month {props.contract?.report_month || props.requestedReportMonth || "-"}</span>
+          <span>sample_status {props.contract?.sample_status ?? "-"}</span>
+          <span>formal_use_allowed={String(props.contract?.formal_use_allowed ?? false)}</span>
+          <span>formal_pending {counts.formal_pending}</span>
+          <span>candidate_qdb_aligned {counts.candidate_qdb_aligned}</span>
+          <span>needs_reconciliation {counts.needs_reconciliation}</span>
+        </div>
+      </div>
+
+      {props.contract?.contract_note ? (
+        <div className="ledger-pnl-analysis__source-contract-note">{props.contract.contract_note}</div>
+      ) : null}
+
+      {props.isLoading ? (
+        <div className="ledger-pnl-analysis__empty">正式财务指标源契约读取中</div>
+      ) : props.isError ? (
+        <div className="ledger-pnl-analysis__empty">正式财务指标源契约读取失败</div>
+      ) : metrics.length > 0 ? (
+        <div className="ledger-pnl-analysis__source-contract-list">
+          {metrics.map((metric) => {
+            const tone = formalSourceContractTone(metric);
+            return (
+              <article
+                key={metric.metric_key}
+                data-testid={`ledger-pnl-formal-indicator-source-contract-row-${metric.metric_key}`}
+                className={`ledger-pnl-analysis__status-row ledger-pnl-analysis__status-row--${tone}`}
+              >
+                <div className="ledger-pnl-analysis__status-main">
+                  <span className="ledger-pnl-analysis__status-name">{metric.metric_name}</span>
+                  <span className="ledger-pnl-analysis__status-badge">
+                    {metric.source_status}
+                  </span>
+                </div>
+                <div className="ledger-pnl-analysis__source-contract-status">
+                  {sourceStatusLabels[metric.source_status]}
+                </div>
+                <div className="ledger-pnl-analysis__source-contract-values">
+                  <div>
+                    <span>正式展示值</span>
+                    <strong>{formatFormalContractValue(metric.value, metric.unit)}</strong>
+                  </div>
+                  <div>
+                    <span>Excel 样本值</span>
+                    <strong>{formatContractMetricValue(metric.excel_value, metric.unit)}</strong>
+                  </div>
+                  <div>
+                    <span>系统候选值</span>
+                    <strong>{formatContractMetricValue(metric.system_value, metric.unit)}</strong>
+                  </div>
+                </div>
+                {metric.reconciliation_gap ? (
+                  <div className="ledger-pnl-analysis__source-contract-gap">
+                    对账差异 {metric.reconciliation_gap}
+                  </div>
+                ) : null}
+                <div className="ledger-pnl-analysis__status-source">{metric.missing_reason}</div>
+                <div className="ledger-pnl-analysis__source-contract-ref">{metric.cell_ref}</div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="ledger-pnl-analysis__empty">暂无正式财务指标源契约数据</div>
+      )}
+    </section>
+  );
+}
+
 function AnalysisTable(props: {
   title: string;
   sheet: QdbGlMonthlyAnalysisSheet | undefined;
@@ -280,6 +409,13 @@ export default function LedgerPnlPage() {
     Boolean(requestedAnalysisMonth) && monthlyAnalysisMonths.includes(requestedAnalysisMonth);
   const selectedAnalysisMonth = hasMatchingAnalysisMonth ? requestedAnalysisMonth : "";
 
+  const formalIndicatorSourceContractQuery = useQuery({
+    queryKey: ["ledger-pnl", "formal-financial-indicators", client.mode, requestedAnalysisMonth],
+    enabled: Boolean(requestedAnalysisMonth),
+    queryFn: () => client.getLedgerPnlFormalFinancialIndicators(requestedAnalysisMonth),
+    retry: false,
+  });
+
   const monthlyAnalysisWorkbookQuery = useQuery({
     queryKey: ["ledger-pnl", "monthly-analysis", "workbook", client.mode, selectedAnalysisMonth],
     enabled: hasMatchingAnalysisMonth,
@@ -288,6 +424,7 @@ export default function LedgerPnlPage() {
   });
 
   const monthlyAnalysisWorkbook = monthlyAnalysisWorkbookQuery.data?.result;
+  const formalIndicatorSourceContract = formalIndicatorSourceContractQuery.data?.result;
   const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
   const financialIndicatorStatusSheet = findAnalysisSheet(
     monthlyAnalysisWorkbook?.sheets,
@@ -493,6 +630,13 @@ export default function LedgerPnlPage() {
             月度分析工作簿读取失败
           </div>
         ) : null}
+
+        <FormalIndicatorSourceContractPanel
+          contract={formalIndicatorSourceContract}
+          requestedReportMonth={requestedAnalysisMonth}
+          isLoading={formalIndicatorSourceContractQuery.isLoading}
+          isError={formalIndicatorSourceContractQuery.isError}
+        />
 
         <FinancialIndicatorStatusPanel rows={financialIndicatorStatusRows} />
 
@@ -807,6 +951,11 @@ export default function LedgerPnlPage() {
             key: "monthly-analysis-workbook",
             title: "月度分析工作簿",
             meta: monthlyAnalysisWorkbookQuery.data?.result_meta,
+          },
+          {
+            key: "formal-financial-indicator-source-contract",
+            title: "正式财务指标源契约",
+            meta: formalIndicatorSourceContractQuery.data?.result_meta,
           },
         ]}
       />

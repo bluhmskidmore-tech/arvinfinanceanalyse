@@ -14,7 +14,7 @@ export type Numeric = {
   sign_aware: boolean;
 };
 
-export type ApiBasis = "formal" | "scenario" | "analytical" | "mock";
+export type ApiBasis = "formal" | "scenario" | "analytical" | "ledger" | "mock";
 export type PnlBasis = "formal" | "analytical";
 export type ApiQuality = "ok" | "warning" | "error" | "stale" | "missing";
 
@@ -4269,6 +4269,51 @@ export type LedgerPnlSummaryPayload = {
   ledger_monthly_pnl_all: LedgerMoneyValue;
   by_currency: LedgerPnlSummaryByCurrency[];
   by_account: LedgerPnlSummaryByAccount[];
+};
+
+export type LedgerPnlFormalIndicatorSourceStatus =
+  | "formal_pending"
+  | "candidate_qdb_aligned"
+  | "needs_reconciliation";
+
+export type LedgerPnlFormalFinancialIndicatorMetric = {
+  metric_key: string;
+  metric_name: string;
+  scope: string;
+  excel_value: string;
+  unit: string;
+  excel_ref: string;
+  formula: string;
+  source_status: LedgerPnlFormalIndicatorSourceStatus;
+  system_metric: string | null;
+  system_value: string | null;
+  reconciliation_gap?: string | null;
+  value: string | number | null;
+  basis: "formal_financial_indicator_source_contract";
+  formal_use_allowed: boolean;
+  source_version: string;
+  rule_version: string;
+  consolidation_scope: string;
+  cell_ref: string;
+  golden_sample_ref: string;
+  missing_reason: string;
+};
+
+export type LedgerPnlFormalFinancialIndicatorContractPayload = {
+  sample_id: string;
+  sample_status: string;
+  surface: string;
+  report_month: string;
+  report_date: string;
+  source_workbook: string;
+  source_sheet: string;
+  source_basis: string;
+  source_version: string;
+  rule_version: string;
+  formal_use_allowed: boolean;
+  contract_note: string;
+  status_semantics: Record<LedgerPnlFormalIndicatorSourceStatus, string>;
+  metrics: LedgerPnlFormalFinancialIndicatorMetric[];
 };
 
 export type CampisiFourEffectsTotals = {

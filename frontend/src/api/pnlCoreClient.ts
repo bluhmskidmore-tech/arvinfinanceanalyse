@@ -6,6 +6,7 @@ import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import {
   mockLedgerPnlData,
   mockLedgerPnlDates,
+  mockLedgerPnlFormalFinancialIndicators,
   mockLedgerPnlSummary,
 } from "../mocks/ledgerPnlMocks";
 import { formatRawAsNumeric } from "../utils/format";
@@ -14,6 +15,7 @@ import type {
   FormalPnlRefreshPayload,
   LedgerPnlDataPayload,
   LedgerPnlDatesPayload,
+  LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlSummaryPayload,
   NumericUnit,
   PnlBasis,
@@ -39,6 +41,9 @@ export type PnlCoreClientMethods = {
     reportDate: string,
     currency?: string,
   ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
+  getLedgerPnlFormalFinancialIndicators: (
+    reportMonth: string,
+  ) => Promise<ApiEnvelope<LedgerPnlFormalFinancialIndicatorContractPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
@@ -147,6 +152,28 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
             : mockLedgerPnlSummary.by_currency,
         },
         { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getLedgerPnlFormalFinancialIndicators(reportMonth: string) {
+      await delay();
+      const normalizedReportMonth = reportMonth.trim() || mockLedgerPnlFormalFinancialIndicators.report_month;
+      return buildMockApiEnvelope(
+        "ledger_pnl.formal_financial_indicator_source_contract",
+        {
+          ...mockLedgerPnlFormalFinancialIndicators,
+          report_month: normalizedReportMonth,
+        },
+        {
+          basis: "ledger",
+          formal_use_allowed: false,
+          source_version: mockLedgerPnlFormalFinancialIndicators.source_version,
+          rule_version: mockLedgerPnlFormalFinancialIndicators.rule_version,
+          cache_version: "cv_ledger_pnl_financial_indicator_contract_v1",
+          quality_flag: "warning",
+          as_of_date: mockLedgerPnlFormalFinancialIndicators.report_date,
+          date_basis: "report_month_end",
+          evidence_rows: mockLedgerPnlFormalFinancialIndicators.metrics.length,
+        },
       );
     },
     async getPnlBridge(reportDate: string) {
@@ -259,6 +286,16 @@ export function createRealPnlCoreClient(
         fetchImpl,
         baseUrl,
         `/api/ledger-pnl/summary?${params.toString()}`,
+      );
+    },
+    getLedgerPnlFormalFinancialIndicators: (reportMonth: string) => {
+      const params = new URLSearchParams({
+        report_month: reportMonth.trim(),
+      });
+      return requestJson<LedgerPnlFormalFinancialIndicatorContractPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/formal-financial-indicators?${params.toString()}`,
       );
     },
     getPnlBridge: (reportDate: string) =>

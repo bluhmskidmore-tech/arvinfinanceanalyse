@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from calendar import monthrange
 from copy import deepcopy
 from typing import Any
 
 SAMPLE_ID = "GS-LEDGER-PNL-FIN-IND-202603-B"
 SOURCE_VERSION = "sv_formal_financial_indicators_excel_202603_contract"
+EMPTY_SOURCE_VERSION = "sv_formal_financial_indicators_contract_unavailable"
 RULE_VERSION = "rv_formal_financial_indicators_source_status_v1"
 SOURCE_WORKBOOK = "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx"
 SOURCE_SHEET = "财务指标-汇总"
@@ -283,7 +285,7 @@ _METRICS_202603: tuple[dict[str, Any], ...] = (
 def build_formal_financial_indicator_contract(*, report_month: str) -> dict[str, Any]:
     normalized_month = str(report_month or "").strip()
     if normalized_month != "202603":
-        raise ValueError(f"Unsupported formal financial indicator contract month: {report_month!r}")
+        return _empty_contract(normalized_month)
 
     metrics = [_with_contract_fields(metric) for metric in deepcopy(_METRICS_202603)]
     return {
@@ -305,6 +307,40 @@ def build_formal_financial_indicator_contract(*, report_month: str) -> dict[str,
         "status_semantics": dict(STATUS_SEMANTICS),
         "metrics": metrics,
     }
+
+
+def _empty_contract(report_month: str) -> dict[str, Any]:
+    normalized_month = report_month or "unknown"
+    return {
+        "sample_id": f"GS-LEDGER-PNL-FIN-IND-{normalized_month}-MISSING",
+        "sample_status": "missing_contract",
+        "surface": "/ledger-pnl formal financial indicator source contract",
+        "report_month": normalized_month,
+        "report_date": _month_end_report_date(normalized_month),
+        "source_workbook": "",
+        "source_sheet": "",
+        "source_basis": "No frozen formal financial indicator contract is registered for requested report_month.",
+        "source_version": EMPTY_SOURCE_VERSION,
+        "rule_version": RULE_VERSION,
+        "formal_use_allowed": False,
+        "contract_note": (
+            "No frozen formal financial indicator contract is registered for requested report_month. "
+            "Formal values remain unavailable and must not be backfilled from analytical candidates."
+        ),
+        "status_semantics": dict(STATUS_SEMANTICS),
+        "metrics": [],
+    }
+
+
+def _month_end_report_date(report_month: str) -> str:
+    if len(report_month) != 6 or not report_month.isdigit():
+        return ""
+    year = int(report_month[:4])
+    month = int(report_month[4:])
+    if not 1 <= month <= 12:
+        return ""
+    day = monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 def _with_contract_fields(metric: dict[str, Any]) -> dict[str, Any]:

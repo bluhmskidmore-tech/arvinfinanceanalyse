@@ -198,6 +198,76 @@
   overflow-wrap: anywhere;
 }
 
+.ledger-pnl-analysis__source-contract-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--moss-space-3);
+}
+
+.ledger-pnl-analysis__source-contract-status {
+  margin-top: var(--moss-space-2);
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.ledger-pnl-analysis__source-contract-note {
+  margin-bottom: var(--moss-space-3);
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.ledger-pnl-analysis__source-contract-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+  margin-top: var(--moss-space-3);
+}
+
+.ledger-pnl-analysis__source-contract-values div {
+  min-width: 0;
+  padding: var(--moss-space-2);
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.ledger-pnl-analysis__source-contract-values span {
+  display: block;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ledger-pnl-analysis__source-contract-values strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.ledger-pnl-analysis__source-contract-gap {
+  margin-top: var(--moss-space-2);
+  color: var(--moss-color-warning-700);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.ledger-pnl-analysis__source-contract-ref {
+  margin-top: var(--moss-space-2);
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .ledger-pnl-analysis__tables {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -259,6 +329,10 @@
   }
 
   .ledger-pnl-analysis__tables {
+    grid-template-columns: 1fr;
+  }
+
+  .ledger-pnl-analysis__source-contract-values {
     grid-template-columns: 1fr;
   }
 }

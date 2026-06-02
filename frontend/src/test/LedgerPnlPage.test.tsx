@@ -9,6 +9,7 @@ import type {
   LedgerMoneyValue,
   LedgerPnlDataPayload,
   LedgerPnlDatesPayload,
+  LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlSummaryPayload,
   QdbGlMonthlyAnalysisDatesPayload,
   QdbGlMonthlyAnalysisWorkbookPayload,
@@ -81,7 +82,290 @@ function money(yuan: string, wan = "999.99"): LedgerMoneyValue {
   } as LedgerMoneyValue;
 }
 
+function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicatorContractPayload {
+  return {
+    sample_id: "GS-LEDGER-PNL-FIN-IND-202603-B",
+    sample_status: "contract_fixture",
+    surface: "/ledger-pnl formal financial indicator source contract",
+    report_month: "202603",
+    report_date: "2026-03-31",
+    source_workbook: "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+    source_sheet: "财务指标-汇总",
+    source_basis: "Excel 2026-03 formal financial indicator table supplied by user",
+    source_version: "sv_formal_financial_indicators_excel_202603_contract",
+    rule_version: "rv_formal_financial_indicators_source_status_v1",
+    formal_use_allowed: false,
+    contract_note:
+      "This contract freezes the Excel formal-indicator sample and current source status.",
+    status_semantics: {
+      formal_pending:
+        "Excel has the formal indicator value, but the governed production source is not connected.",
+      candidate_qdb_aligned:
+        "QDB analytical value aligns to the Excel value within display precision, but remains analytical.",
+      needs_reconciliation:
+        "QDB has a related analytical value, but it does not reconcile to the Excel formal value.",
+    },
+    metrics: [
+      {
+        metric_key: "group.operating_revenue",
+        metric_name: "集团营业收入",
+        scope: "group_consolidated",
+        excel_value: "43.4194731314",
+        unit: "亿元",
+        excel_ref: "财务指标-汇总!K5 -> 财务指标-计算表!K5",
+        formula: "=4341947313.14/100000000",
+        source_status: "formal_pending",
+        system_metric: null,
+        system_value: null,
+        value: null,
+        basis: "formal_financial_indicator_source_contract",
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_excel_202603_contract",
+        rule_version: "rv_formal_financial_indicators_source_status_v1",
+        consolidation_scope: "group_consolidated",
+        cell_ref: "财务指标-汇总!K5 -> 财务指标-计算表!K5",
+        golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#group.operating_revenue",
+        missing_reason: "正式财务指标来源未接入；系统值必须保持为空，不能用 0 或 QDB 分析值顶替。",
+      },
+      {
+        metric_key: "parent.loan_balance",
+        metric_name: "贷款余额（母公司）",
+        scope: "parent_company",
+        excel_value: "4189.4674724087",
+        unit: "亿元",
+        excel_ref: "财务指标-汇总!K39 -> 财务指标-计算表!K76",
+        formula: "external/formal calculation table input",
+        source_status: "candidate_qdb_aligned",
+        system_metric: "qdb.loan_spot",
+        system_value: "4189.47",
+        reconciliation_gap: "0.0025275913",
+        value: null,
+        basis: "formal_financial_indicator_source_contract",
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_excel_202603_contract",
+        rule_version: "rv_formal_financial_indicators_source_status_v1",
+        consolidation_scope: "parent_company",
+        cell_ref: "财务指标-汇总!K39 -> 财务指标-计算表!K76",
+        golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#parent.loan_balance",
+        missing_reason: "正式财务指标来源未接入；QDB 分析值仅作为候选对照，不具备正式使用权限。",
+      },
+      {
+        metric_key: "parent.deposit_balance",
+        metric_name: "存款余额（母公司）",
+        scope: "parent_company",
+        excel_value: "5120.6380974646",
+        unit: "亿元",
+        excel_ref: "财务指标-汇总!K40 -> 财务指标-计算表!K74",
+        formula: "external/formal calculation table input",
+        source_status: "needs_reconciliation",
+        system_metric: "qdb.deposit_spot",
+        system_value: "5115.96",
+        reconciliation_gap: "4.6780974646",
+        value: null,
+        basis: "formal_financial_indicator_source_contract",
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_excel_202603_contract",
+        rule_version: "rv_formal_financial_indicators_source_status_v1",
+        consolidation_scope: "parent_company",
+        cell_ref: "财务指标-汇总!K40 -> 财务指标-计算表!K74",
+        golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#parent.deposit_balance",
+        missing_reason: "正式财务指标来源未接入；QDB 分析值与 Excel 正式样本存在差异，需先对账。",
+      },
+    ],
+  };
+}
+
+function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicatorContractPayload {
+  return {
+    sample_id: "GS-LEDGER-PNL-FIN-IND-202605-MISSING",
+    sample_status: "missing_contract",
+    surface: "/ledger-pnl formal financial indicator source contract",
+    report_month: "202605",
+    report_date: "2026-05-31",
+    source_workbook: "",
+    source_sheet: "",
+    source_basis: "No frozen formal financial indicator contract is registered for requested report_month.",
+    source_version: "sv_formal_financial_indicators_contract_unavailable",
+    rule_version: "rv_formal_financial_indicators_source_status_v1",
+    formal_use_allowed: false,
+    contract_note:
+      "No frozen formal financial indicator contract is registered for requested report_month. Formal values remain unavailable and must not be backfilled from analytical candidates.",
+    status_semantics: {
+      formal_pending:
+        "Excel has the formal indicator value, but the governed production source is not connected.",
+      candidate_qdb_aligned:
+        "QDB analytical value aligns to the Excel value within display precision, but remains analytical.",
+      needs_reconciliation:
+        "QDB has a related analytical value, but it does not reconcile to the Excel formal value.",
+    },
+    metrics: [],
+  };
+}
+
 describe("LedgerPnlPage", () => {
+  it("renders the formal financial indicator source contract without promoting candidate values", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => ({
+      result_meta: {
+        ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+        basis: "ledger" as const,
+        quality_flag: "warning" as const,
+        as_of_date: "2026-03-31",
+        date_basis: "report_month_end",
+        formal_use_allowed: false,
+      },
+      result: buildFormalIndicatorContractPayload(),
+    }));
+
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.dates"),
+        result: { dates: ["2026-03-31"] },
+      })),
+      getLedgerPnlSummary: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.summary"),
+        result: {
+          report_date: "2026-03-31",
+          source_version: "sv_ledger_test",
+          ledger_monthly_pnl_core: money("0.00"),
+          ledger_monthly_pnl_all: money("0.00"),
+          ledger_total_assets: money("0.00"),
+          ledger_total_liabilities: money("0.00"),
+          ledger_net_assets: money("0.00"),
+          by_currency: [],
+          by_account: [],
+        },
+      })),
+      getLedgerPnlData: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.data"),
+        result: {
+          report_date: "2026-03-31",
+          summary: {
+            total_pnl_cnx: money("0.00"),
+            total_pnl_cny: money("0.00"),
+            total_pnl: money("0.00"),
+            count: 0,
+          },
+          items: [],
+        },
+      })),
+      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+        result: { report_months: [] },
+      })),
+      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlFormalFinancialIndicators,
+    });
+
+    await waitFor(() => {
+      expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202603");
+    });
+
+    const panel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+    expect(panel).toHaveTextContent("正式财务指标源契约");
+    expect(panel).toHaveTextContent("report_month 202603");
+    expect(panel).toHaveTextContent("formal_use_allowed=false");
+    expect(panel).toHaveTextContent("formal_pending 1");
+    expect(panel).toHaveTextContent("candidate_qdb_aligned 1");
+    expect(panel).toHaveTextContent("needs_reconciliation 1");
+
+    const formalPendingRow = screen.getByTestId(
+      "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",
+    );
+    expect(formalPendingRow).toHaveTextContent("集团营业收入");
+    expect(formalPendingRow).toHaveTextContent(/正式展示值\s*未接入/);
+    expect(formalPendingRow).toHaveTextContent(/Excel 样本值\s*43.4194731314 亿元/);
+    expect(formalPendingRow).toHaveTextContent(/系统候选值\s*-/);
+
+    const qdbCandidateRow = screen.getByTestId(
+      "ledger-pnl-formal-indicator-source-contract-row-parent.loan_balance",
+    );
+    expect(qdbCandidateRow).toHaveTextContent("贷款余额（母公司）");
+    expect(qdbCandidateRow).toHaveTextContent(/正式展示值\s*未接入/);
+    expect(qdbCandidateRow).toHaveTextContent(/系统候选值\s*4189.47 亿元/);
+    expect(qdbCandidateRow).toHaveTextContent("候选对照，不具备正式使用权限");
+
+    const reconciliationRow = screen.getByTestId(
+      "ledger-pnl-formal-indicator-source-contract-row-parent.deposit_balance",
+    );
+    expect(reconciliationRow).toHaveTextContent("存款余额（母公司）");
+    expect(reconciliationRow).toHaveTextContent("对账差异 4.6780974646");
+    expect(reconciliationRow).toHaveTextContent("需先对账");
+  });
+
+  it("surfaces missing formal financial indicator contracts as unavailable instead of empty success", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => ({
+      result_meta: {
+        ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+        basis: "ledger" as const,
+        quality_flag: "warning" as const,
+        as_of_date: "2026-05-31",
+        date_basis: "report_month_end",
+        evidence_rows: 0,
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_contract_unavailable",
+      },
+      result: buildMissingFormalIndicatorContractPayload(),
+    }));
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.summary"),
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("0.00"),
+            ledger_monthly_pnl_all: money("0.00"),
+            ledger_total_assets: money("0.00"),
+            ledger_total_liabilities: money("0.00"),
+            ledger_net_assets: money("0.00"),
+            by_currency: [],
+            by_account: [],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.data"),
+          result: {
+            report_date: "2026-05-31",
+            summary: {
+              total_pnl_cnx: money("0.00"),
+              total_pnl_cny: money("0.00"),
+              total_pnl: money("0.00"),
+              count: 0,
+            },
+            items: [],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators,
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202605");
+    });
+
+    const panel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+    expect(panel).toHaveTextContent("report_month 202605");
+    expect(panel).toHaveTextContent("sample_status missing_contract");
+    expect(panel).toHaveTextContent("formal_use_allowed=false");
+    expect(panel).toHaveTextContent("No frozen formal financial indicator contract is registered");
+    expect(panel).toHaveTextContent("暂无正式财务指标源契约数据");
+  });
+
   it("renders all ledger money fields in yi units", async () => {
     const base = createApiClient({ mode: "mock" });
     const datesPayload: LedgerPnlDatesPayload = {

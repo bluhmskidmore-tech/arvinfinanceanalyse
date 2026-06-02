@@ -120,6 +120,7 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getLedgerPnlDates).toBe("function");
     expect(typeof client.getLedgerPnlData).toBe("function");
     expect(typeof client.getLedgerPnlSummary).toBe("function");
+    expect(typeof client.getLedgerPnlFormalFinancialIndicators).toBe("function");
     expect(typeof client.getPnlBridge).toBe("function");
     expect(typeof client.refreshFormalPnl).toBe("function");
     expect(typeof client.getFormalPnlImportStatus).toBe("function");
@@ -736,6 +737,7 @@ describe("ApiClient composition boundary", () => {
     await client.getLedgerPnlDates();
     await client.getLedgerPnlData("2026 02/28", " CNX ");
     await client.getLedgerPnlSummary("2026 02/28", " CNX ");
+    await client.getLedgerPnlFormalFinancialIndicators(" 202603 ");
     await client.getPnlBridge("2026 02/28");
     await client.refreshFormalPnl("2026 02/28");
     await client.getFormalPnlImportStatus("pnl_materialize:run 1");
@@ -784,13 +786,20 @@ describe("ApiClient composition boundary", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       7,
-      "http://localhost:8000/api/pnl/bridge?report_date=2026%2002%2F28",
+      "http://localhost:8000/api/ledger-pnl/formal-financial-indicators?report_month=202603",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
+      "http://localhost:8000/api/pnl/bridge?report_date=2026%2002%2F28",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
       "http://localhost:8000/api/data/refresh_pnl?report_date=2026%2002%2F28",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
@@ -798,7 +807,7 @@ describe("ApiClient composition boundary", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      9,
+      10,
       "http://localhost:8000/api/data/import_status/pnl?run_id=pnl_materialize%3Arun%201",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
@@ -945,6 +954,17 @@ describe("ApiClient composition boundary", () => {
       },
       result: {
         report_date: "2026-03-31",
+      },
+    });
+    await expect(client.getLedgerPnlFormalFinancialIndicators("202603")).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "ledger_pnl.formal_financial_indicator_source_contract",
+        basis: "ledger",
+        formal_use_allowed: false,
+      },
+      result: {
+        report_month: "202603",
+        formal_use_allowed: false,
       },
     });
     await expect(client.getPnlBridge("2026-03-31")).resolves.toMatchObject({
@@ -1341,6 +1361,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("ledger_pnl.dates");
     expect(clientSource).not.toContain("ledger_pnl.data");
     expect(clientSource).not.toContain("ledger_pnl.summary");
+    expect(clientSource).not.toContain("ledger_pnl.formal_financial_indicator_source_contract");
     expect(clientSource).not.toContain("pnl.bridge");
     expect(clientSource).not.toContain("/ui/pnl/attribution");
     expect(clientSource).not.toContain("/api/pnl-attribution/");
@@ -1472,6 +1493,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getLedgerPnlDates\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlData\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlSummary\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
     expect(clientSource).not.toMatch(/async getPnlBridge\(/);
     expect(clientSource).not.toMatch(/async refreshFormalPnl\(/);
     expect(clientSource).not.toMatch(/async getFormalPnlImportStatus\(/);
@@ -1786,6 +1808,7 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/dates");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/data");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/summary");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/formal-financial-indicators");
     expect(pnlCoreClientSource).toContain("/api/pnl/bridge");
     expect(pnlCoreClientSource).toContain("/api/data/refresh_pnl");
     expect(pnlCoreClientSource).toContain("/api/data/import_status/pnl");
@@ -1795,6 +1818,7 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toContain("ledger_pnl.dates");
     expect(pnlCoreClientSource).toContain("ledger_pnl.data");
     expect(pnlCoreClientSource).toContain("ledger_pnl.summary");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.formal_financial_indicator_source_contract");
     expect(pnlCoreClientSource).toContain("pnl.bridge");
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlDates\(/);
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlData\(/);
@@ -1802,6 +1826,7 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlDates\(/);
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlData\(/);
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlSummary\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
     expect(pnlCoreClientSource).toMatch(/async getPnlBridge\(/);
     expect(pnlCoreClientSource).toMatch(/async refreshFormalPnl\(/);
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlImportStatus\(/);

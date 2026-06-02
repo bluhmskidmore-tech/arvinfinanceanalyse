@@ -459,6 +459,48 @@ describe("createApiClient", () => {
             },
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_ledger_formal_indicator_contract",
+            basis: "ledger",
+            result_kind: "ledger_pnl.formal_financial_indicator_source_contract",
+            formal_use_allowed: false,
+            source_version: "sv_formal_financial_indicators_excel_202603_contract",
+            vendor_version: "vv_none",
+            rule_version: "rv_formal_financial_indicators_source_status_v1",
+            cache_version: "cv_ledger_pnl_financial_indicator_contract_v1",
+            quality_flag: "warning",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+            as_of_date: "2026-03-31",
+            date_basis: "report_month_end",
+          },
+          result: {
+            sample_id: "GS-LEDGER-PNL-FIN-IND-202603-B",
+            sample_status: "contract_fixture",
+            surface: "/ledger-pnl formal financial indicator source contract",
+            report_month: "202603",
+            report_date: "2026-03-31",
+            source_workbook: "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+            source_sheet: "财务指标-汇总",
+            source_basis: "Excel 2026-03 formal financial indicator table supplied by user",
+            source_version: "sv_formal_financial_indicators_excel_202603_contract",
+            rule_version: "rv_formal_financial_indicators_source_status_v1",
+            formal_use_allowed: false,
+            contract_note: "Source contract only.",
+            status_semantics: {
+              formal_pending: "formal pending",
+              candidate_qdb_aligned: "candidate only",
+              needs_reconciliation: "needs reconciliation",
+            },
+            metrics: [],
+          },
+        }),
       });
 
     const client = createApiClient({
@@ -470,6 +512,7 @@ describe("createApiClient", () => {
     await client.getLedgerPnlDates();
     await client.getLedgerPnlSummary("2025-12-31", "CNX");
     await client.getLedgerPnlData("2025-12-31", "CNX");
+    await client.getLedgerPnlFormalFinancialIndicators("202603");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -488,6 +531,13 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://localhost:8000/api/ledger-pnl/data?date=2025-12-31&currency=CNX",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/ledger-pnl/formal-financial-indicators?report_month=202603",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
