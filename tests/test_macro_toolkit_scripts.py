@@ -12,6 +12,7 @@ import duckdb
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import backend.app.core_finance.macro.toolkit.system_sources as system_sources
 from backend.app.core_finance.macro.crisis_score import (
     classify_crisis_score,
     compute_crisis_indicators,
@@ -148,6 +149,33 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     assert m2["series_id"].tolist() == ["tushare.macro.cn_money.monthly"]
     assert m2["value"].tolist() == [8.1]
     get_settings.cache_clear()
+
+
+def test_series_alias_lookup_reuses_system_frame_until_duckdb_file_changes(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    original_load_system_macro_frame = system_sources.load_system_macro_frame
+    calls: list[object] = []
+
+    def spy_load_system_macro_frame(duckdb_path_arg=None):
+        calls.append(duckdb_path_arg)
+        return original_load_system_macro_frame(duckdb_path_arg)
+
+    monkeypatch.setattr(system_sources, "load_system_macro_frame", spy_load_system_macro_frame)
+
+    hs300 = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
+    copper = load_series_by_alias("CU0", duckdb_path=duckdb_path)
+
+    assert hs300["value"].tolist() == [4102.25]
+    assert copper["value"].tolist() == [81234.5]
+    assert len(calls) == 1
+
+    time.sleep(0.01)
+    duckdb_path.touch()
+    usdcny = load_series_by_alias("M0067855", duckdb_path=duckdb_path)
+
+    assert usdcny["value"].tolist() == [7.1234]
+    assert len(calls) == 2
 
 
 def test_system_source_layer_reads_crisis_external_backfill_aliases(tmp_path, monkeypatch) -> None:

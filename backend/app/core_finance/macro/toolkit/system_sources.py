@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import duckdb
@@ -113,6 +114,34 @@ def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFra
     return out.sort_values(["series_id", "trade_date", "source_priority"]).reset_index(drop=True)
 
 
+def _load_system_macro_frame_for_alias_lookup(
+    duckdb_path: str | Path | None = None,
+) -> tuple[pd.DataFrame, dict[str, tuple[int, ...]]]:
+    path = resolve_system_duckdb_path(duckdb_path)
+    if not path.exists():
+        return _empty_frame(), {}
+    try:
+        stat = path.stat()
+    except OSError:
+        return _empty_frame(), {}
+    cache_key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    return (
+        _load_system_macro_frame_for_alias_cache(*cache_key),
+        _load_system_macro_alias_index_cache(*cache_key),
+    )
+
+
+@lru_cache(maxsize=8)
+def _load_system_macro_frame_for_alias_cache(path: str, mtime_ns: int, size: int) -> pd.DataFrame:
+    return load_system_macro_frame(Path(path))
+
+
+@lru_cache(maxsize=8)
+def _load_system_macro_alias_index_cache(path: str, mtime_ns: int, size: int) -> dict[str, tuple[int, ...]]:
+    frame = _load_system_macro_frame_for_alias_cache(path, mtime_ns, size)
+    return _build_alias_row_index(frame)
+
+
 def load_series_by_alias(
     alias: str,
     *,
@@ -120,15 +149,17 @@ def load_series_by_alias(
     end: str | None = None,
     duckdb_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    frame = load_system_macro_frame(duckdb_path)
+    frame, row_index_by_alias = _load_system_macro_frame_for_alias_lookup(duckdb_path)
     if frame.empty:
         return _empty_series_frame()
 
     candidates = _candidate_aliases(alias)
-    mask = frame.apply(lambda row: bool(_row_aliases(row) & candidates), axis=1)
-    selected = frame.loc[mask].copy()
-    if selected.empty:
+    row_indices = sorted(
+        {row_index for candidate in candidates for row_index in row_index_by_alias.get(candidate, ())},
+    )
+    if not row_indices:
         return _empty_series_frame()
+    selected = frame.iloc[row_indices].copy()
 
     if start:
         selected = selected[selected["trade_date"] >= pd.to_datetime(start, errors="coerce")]
@@ -362,6 +393,16 @@ def _row_aliases(row: pd.Series) -> set[str]:
     for alias in tuple(aliases):
         aliases.update(_candidate_aliases(alias))
     return aliases
+
+
+def _build_alias_row_index(frame: pd.DataFrame) -> dict[str, tuple[int, ...]]:
+    if frame.empty:
+        return {}
+    rows_by_alias: dict[str, list[int]] = {}
+    for row_index, row in frame.iterrows():
+        for alias in _row_aliases(row):
+            rows_by_alias.setdefault(alias, []).append(int(row_index))
+    return {alias: tuple(row_indices) for alias, row_indices in rows_by_alias.items()}
 
 
 def _expanded_vendor_aliases(value: str) -> set[str]:
