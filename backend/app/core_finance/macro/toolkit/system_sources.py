@@ -420,21 +420,25 @@ def _expanded_vendor_aliases(value: str) -> set[str]:
 
     aliases: set[str] = set()
     for part in parts:
+        expansion_parts = {part}
         normalized = _normalize_alias(part)
         if normalized:
             aliases.add(normalized)
         lowered = part.lower()
         for suffix in (".close", ".pct_chg", ".value"):
             if lowered.endswith(suffix):
-                aliases.add(_normalize_alias(part[: -len(suffix)]))
-        if "." not in part:
-            continue
-        code, exchange = part.split(".", 1)
-        if len(code) == 6:
-            aliases.add(_normalize_alias(f"{exchange[:2]}{code}"))
-        elif code.isalpha():
-            aliases.add(_normalize_alias(f"{code}0"))
-            aliases.add(_normalize_alias(f"{code}0.{exchange}"))
+                stripped = part[: -len(suffix)]
+                expansion_parts.add(stripped)
+                aliases.add(_normalize_alias(stripped))
+        for alias_part in expansion_parts:
+            if "." not in alias_part:
+                continue
+            code, exchange = alias_part.split(".", 1)
+            if len(code) == 6:
+                aliases.add(_normalize_alias(f"{exchange[:2]}{code}"))
+            elif code.isalpha():
+                aliases.add(_normalize_alias(f"{code}0"))
+                aliases.add(_normalize_alias(f"{code}0.{exchange}"))
     return aliases
 
 

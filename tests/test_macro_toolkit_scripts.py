@@ -1433,6 +1433,106 @@ def test_macro_toolkit_analysis_surfaces_crisis_score_nanhua_from_commodity_tabl
     assert nanhua_input["value"] is not None
 
 
+def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changing_crisis_formula(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_crisis_score_history(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values
+              ('2026-04-10', 'RB', 'RB2605.SHF', 'SHF',
+               null, null, null, 3588.0, null,
+               1000, 2000, 'sv_tushare_fut_daily_rb', 'vv_tushare_fut_daily_RB_SHF_20260410',
+               'rv_commodity_daily_v1'),
+              ('2026-04-10', 'I', 'I2605.DCE', 'DCE',
+               null, null, null, 812.5, null,
+               1000, 2000, 'sv_tushare_fut_daily_i', 'vv_tushare_fut_daily_I_DCE_20260410',
+               'rv_commodity_daily_v1'),
+              ('2026-04-10', 'CU', 'CU2605.SHF', 'SHF',
+               null, null, null, 81234.5, null,
+               1000, 2000, 'sv_tushare_fut_daily_cu', 'vv_tushare_fut_daily_CU_SHF_20260410',
+               'rv_commodity_daily_v1'),
+              ('2026-04-10', 'AL', 'AL2605.SHF', 'SHF',
+               null, null, null, 19876.0, null,
+               1000, 2000, 'sv_tushare_fut_daily_al', 'vv_tushare_fut_daily_AL_SHF_20260410',
+               'rv_commodity_daily_v1'),
+              ('2026-04-10', 'SC', 'SC2605.INE', 'INE',
+               null, null, null, 612.3, null,
+               1000, 2000, 'sv_tushare_fut_daily_sc', 'vv_tushare_fut_daily_SC_INE_20260410',
+               'rv_commodity_daily_v1'),
+              ('2026-04-10', 'AU', 'AU2605.SHF', 'SHF',
+               null, null, null, 548.2, null,
+               1000, 2000, 'sv_tushare_fut_daily_au', 'vv_tushare_fut_daily_AU_SHF_20260410',
+               'rv_commodity_daily_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/ui/macro/toolkit/analysis")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    crisis = next(item for item in payload["capability_results"] if item["key"] == "crisis_score_cn")
+    coverage = crisis["result"]["commodity_coverage"]
+    assert coverage["available_count"] == 6
+    assert coverage["tracked_count"] == 6
+    assert coverage["used_in_crisis_score"] == ["nanhua"]
+    items = {item["field"]: item for item in coverage["items"]}
+    assert set(items) == {"rebar", "iron_ore", "copper", "aluminum", "crude_oil", "gold"}
+    assert load_series_by_alias("SC0.INE", duckdb_path=duckdb_path)["series_id"].tolist() == ["COMMODITY.SC"]
+    assert items["copper"]["available"] is True
+    assert items["copper"]["aliases"] == ["CU0", "CU0.SHF"]
+    assert items["copper"]["series_id"] == "CA.COPPER"
+    assert items["copper"]["source"] == "tushare"
+    assert items["copper"]["latest_date"] == "2026-04-10"
+    assert items["copper"]["row_count"] == 1
+    assert items["copper"]["value"] == 81234.5
+    assert items["crude_oil"]["series_id"] == "COMMODITY.SC"
+    assert items["gold"]["series_id"] == "COMMODITY.AU"
+    assert crisis["result"]["available_component_count"] == 5
+    assert crisis["result"]["component_count"] == 5
+
+
 def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_factor(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)

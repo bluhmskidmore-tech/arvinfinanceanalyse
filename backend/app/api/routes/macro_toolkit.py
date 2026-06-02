@@ -893,6 +893,15 @@ _CRISIS_SCORE_INPUTS = (
     },
 )
 
+_CRISIS_COMMODITY_COVERAGE_INPUTS = (
+    {"field": "rebar", "label": "Rebar futures", "aliases": ("RB0", "RB0.SHF")},
+    {"field": "iron_ore", "label": "Iron ore futures", "aliases": ("I0", "I0.DCE")},
+    {"field": "copper", "label": "Copper futures", "aliases": ("CU0", "CU0.SHF")},
+    {"field": "aluminum", "label": "Aluminum futures", "aliases": ("AL0", "AL0.SHF")},
+    {"field": "crude_oil", "label": "Crude oil futures", "aliases": ("SC0", "SC0.INE")},
+    {"field": "gold", "label": "Gold futures", "aliases": ("AU0", "AU0.SHF")},
+)
+
 _CAPABILITY_INPUT_REQUIREMENTS = {
     "monetary_policy_stance": (
         {
@@ -2035,7 +2044,84 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         "sources": _unique_sorted_texts(item.get("source") for item in inputs),
         "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
     }
+    enriched["commodity_coverage"] = _crisis_commodity_coverage(
+        duckdb_path,
+        report_date=report_date,
+        start=start,
+    )
     return enriched
+
+
+def _crisis_commodity_coverage(
+    duckdb_path: str | Path,
+    *,
+    report_date: date,
+    start: date,
+) -> dict[str, object]:
+    items = [
+        _crisis_commodity_coverage_item(
+            config,
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            start=start,
+        )
+        for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
+    ]
+    available_count = sum(1 for item in items if item["available"])
+    return {
+        "role": "supplemental_observation",
+        "tracked_count": len(items),
+        "available_count": available_count,
+        "missing_inputs": [str(item["field"]) for item in items if not item["available"]],
+        "sources": _unique_sorted_texts(item.get("source") for item in items),
+        "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in items),
+        "used_in_crisis_score": ["nanhua"],
+        "items": items,
+    }
+
+
+def _crisis_commodity_coverage_item(
+    config: dict[str, object],
+    *,
+    duckdb_path: str | Path,
+    report_date: date,
+    start: date,
+) -> dict[str, object]:
+    aliases = tuple(str(alias) for alias in config["aliases"])
+    matched_alias = None
+    frame = pd.DataFrame()
+    for alias in aliases:
+        candidate = load_series_by_alias(
+            alias,
+            start=start.isoformat(),
+            end=report_date.isoformat(),
+            duckdb_path=duckdb_path,
+        )
+        if not candidate.empty:
+            matched_alias = alias
+            frame = candidate
+            break
+    latest = frame.sort_values("date").iloc[-1] if not frame.empty else None
+    latest_date = str(latest["date"])[:10] if latest is not None else None
+    date_alignment_status = (
+        "missing" if latest_date is None else "aligned" if latest_date == report_date.isoformat() else "lagging"
+    )
+    return {
+        "field": str(config["field"]),
+        "label": str(config["label"]),
+        "aliases": list(aliases),
+        "matched_alias": matched_alias,
+        "role": "supplemental_observation",
+        "used_in_formula": False,
+        "available": latest is not None,
+        "row_count": int(len(frame)),
+        "latest_date": latest_date,
+        "report_date": report_date.isoformat(),
+        "date_alignment_status": date_alignment_status,
+        "series_id": str(latest["series_id"]) if latest is not None else None,
+        "source": str(latest["vendor_name"]) if latest is not None else None,
+        "value": _float_or_none(latest["value"]) if latest is not None else None,
+    }
 
 
 def _latest_crisis_input_date(duckdb_path: str | Path) -> date | None:

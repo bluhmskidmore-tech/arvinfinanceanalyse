@@ -299,6 +299,14 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("commodity_vol");
     expect(crisisEvidence).toHaveTextContent("2026-04-10");
     expect(crisisEvidence).toHaveTextContent("120 rows");
+    expect(crisisEvidence).toHaveTextContent("商品旁证覆盖");
+    expect(crisisEvidence).toHaveTextContent("6/6");
+    expect(crisisEvidence).toHaveTextContent("Crisis Score 公式仍仅使用 nanhua");
+    expect(crisisEvidence).toHaveTextContent("Copper futures");
+    expect(crisisEvidence).toHaveTextContent("CU0 / CU0.SHF");
+    expect(crisisEvidence).toHaveTextContent("Crude oil futures");
+    expect(crisisEvidence).toHaveTextContent("Gold futures");
+    expect(crisisEvidence).toHaveTextContent("未纳入公式");
     expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
   });
 

@@ -170,7 +170,7 @@ function compactText(text: string | null | undefined, maxLength = 34) {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-function macroStatusIconTone(tone: MacroToolkitSignalCard["tone"] | "positive" | "neutral") {
+function macroStatusIconTone(tone: MacroToolkitSignalCard["tone"] | "positive" | "neutral" | "missing") {
   if (tone === "positive") return "positive";
   if (tone === "negative") return "negative";
   if (tone === "missing") return "missing";
@@ -181,7 +181,7 @@ function MacroStatusIcon({
   tone = "neutral",
   children,
 }: {
-  tone?: MacroToolkitSignalCard["tone"] | "positive" | "neutral";
+  tone?: MacroToolkitSignalCard["tone"] | "positive" | "neutral" | "missing";
   children: ReactNode;
 }) {
   return (
@@ -1411,6 +1411,7 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
   const commodityInput = inputEvidence.find(
     (item) => item.field === "nanhua" || item.aliases?.includes("NH0100.NHF"),
   );
+  const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
   const warnings = result.warnings.length ? result.warnings : normalizedEvidence?.missingInputs ?? [];
 
   return (
@@ -1460,6 +1461,43 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
           </div>
         ))}
       </div>
+
+      {commodityCoverage ? (
+        <div className="macro-toolkit-crisis-commodity-coverage">
+          <MetricTile
+            icon={<DatabaseOutlined />}
+            label="商品旁证覆盖"
+            value={`${commodityCoverage.available_count}/${commodityCoverage.tracked_count}`}
+            detail={`Crisis Score 公式仍仅使用 ${commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}`}
+            tone="neutral"
+          />
+          <div className="macro-toolkit-crisis-input-grid">
+            {commodityCoverage.items.map((item) => (
+              <div
+                className={[
+                  "macro-toolkit-crisis-input",
+                  item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                key={item.field}
+              >
+                <div className="macro-toolkit-capability-result-head">
+                  <span>{item.label || item.field}</span>
+                  <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
+                </div>
+                <strong>{item.aliases.join(" / ") || item.series_id || "alias missing"}</strong>
+                <small>
+                  {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
+                </small>
+                <small>
+                  {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · 未纳入公式
+                </small>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="macro-toolkit-crisis-input-grid">
         {inputEvidence.map((item) => (
@@ -1785,6 +1823,25 @@ type CrisisComponent = {
   weight: number | null;
 };
 
+type CrisisCommodityCoverageItem = {
+  field: string;
+  label: string;
+  aliases: string[];
+  available: boolean;
+  row_count: number | null;
+  latest_date: string | null;
+  series_id: string | null;
+  source: string | null;
+  value: number | null;
+};
+
+type CrisisCommodityCoverage = {
+  tracked_count: number;
+  available_count: number;
+  used_in_crisis_score: string[];
+  items: CrisisCommodityCoverageItem[];
+};
+
 type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1796,6 +1853,42 @@ function isCrisisComponent(value: unknown): value is CrisisComponent {
     return false;
   }
   return typeof value.key === "string" && typeof value.label === "string";
+}
+
+function normalizeCommodityCoverage(value: unknown): CrisisCommodityCoverage | null {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    return null;
+  }
+  const items = value.items.map(normalizeCommodityCoverageItem).filter((item) => item !== null);
+  if (!items.length) {
+    return null;
+  }
+  return {
+    tracked_count: typeof value.tracked_count === "number" ? value.tracked_count : items.length,
+    available_count:
+      typeof value.available_count === "number" ? value.available_count : items.filter((item) => item.available).length,
+    used_in_crisis_score: Array.isArray(value.used_in_crisis_score)
+      ? value.used_in_crisis_score.map((item) => String(item)).filter(Boolean)
+      : [],
+    items,
+  };
+}
+
+function normalizeCommodityCoverageItem(value: unknown): CrisisCommodityCoverageItem | null {
+  if (!isRecord(value) || typeof value.field !== "string" || typeof value.label !== "string") {
+    return null;
+  }
+  return {
+    field: value.field,
+    label: value.label,
+    aliases: Array.isArray(value.aliases) ? value.aliases.map((item) => String(item)).filter(Boolean) : [],
+    available: value.available === true,
+    row_count: typeof value.row_count === "number" ? value.row_count : null,
+    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
+    series_id: typeof value.series_id === "string" ? value.series_id : null,
+    source: typeof value.source === "string" ? value.source : null,
+    value: typeof value.value === "number" ? value.value : null,
+  };
 }
 
 function toDisplayNumber(value: unknown) {
@@ -2618,7 +2711,7 @@ function MetricTile({
   label: string;
   value: string | number;
   detail: string;
-  tone?: "neutral" | "positive";
+  tone?: "neutral" | "positive" | "missing";
   testId?: string;
 }) {
   return (

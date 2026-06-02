@@ -965,6 +965,7 @@
 
 .macro-toolkit-crisis-evidence__summary,
 .macro-toolkit-crisis-evidence__components,
+.macro-toolkit-crisis-commodity-coverage,
 .macro-toolkit-crisis-input-grid {
   display: grid;
   gap: 10px;
