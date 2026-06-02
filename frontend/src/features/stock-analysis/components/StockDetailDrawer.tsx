@@ -148,6 +148,26 @@ function truncateChoiceNewsText(text: string | null, maxLen: number): string {
   return `${s.slice(0, maxLen)}…`;
 }
 
+const choiceNewsContentTypeLabels: Record<string, string> = {
+  announcement: "公告",
+  research: "研报",
+  research_report: "研报",
+  sectornews: "行业新闻",
+  stocknews: "个股新闻",
+};
+
+function choiceNewsTopicLabel(topicCode: string | null | undefined, contentType: string | null | undefined): string {
+  const normalizedContentType = contentType?.trim().toLowerCase();
+  if (normalizedContentType && choiceNewsContentTypeLabels[normalizedContentType]) {
+    return choiceNewsContentTypeLabels[normalizedContentType];
+  }
+
+  const value = topicCode?.trim();
+  if (!value) return "事件分类待确认";
+  if (/^[A-Z0-9_]+$/.test(value) || value.includes("_")) return "事件分类待确认";
+  return value;
+}
+
 function formatCandidateHistoryReturn(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   return `${(value * 100).toFixed(2)}%`;
@@ -167,11 +187,11 @@ function candidateHistoryDataStatusLabel(status: string): string {
     pending: "待成熟",
   };
   const normalized = status.trim().toLowerCase();
-  const fallback = status.trim();
-  return labels[normalized] ?? (fallback || "—");
+  return labels[normalized] ?? "状态待确认";
 }
 
 const candidateHistorySignalLabels: Record<string, string> = {
+  livermore: "趋势突破",
   hybrid_fusion: "融合策略",
   stock_candidate: "趋势突破",
   factor_screen: "多因子",
@@ -181,7 +201,7 @@ const candidateHistorySignalLabels: Record<string, string> = {
 
 function candidateHistorySignalLabel(value: string | null | undefined): string {
   const key = value?.trim() || "stock_candidate";
-  return candidateHistorySignalLabels[key] ?? key;
+  return candidateHistorySignalLabels[key] ?? "策略待确认";
 }
 
 export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContext, onClose }: StockDetailDrawerProps) {
@@ -488,7 +508,9 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                       <span className="stock-detail-drawer__market-events-time stock-detail-drawer__tabular">
                         {formatChoiceNewsReceivedAt(ev.received_at)}
                       </span>
-                      <span className="stock-detail-drawer__market-events-topic">{ev.topic_code}</span>
+                      <span className="stock-detail-drawer__market-events-topic">
+                        {choiceNewsTopicLabel(ev.topic_code, ev.content_type)}
+                      </span>
                       <span className="stock-detail-drawer__market-events-text">
                         {truncateChoiceNewsText(ev.payload_text, 100)}
                       </span>

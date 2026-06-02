@@ -924,7 +924,7 @@ function buildStrategyOptimizationPayload(
         recommendation: {
           action: "promote",
           priority_label: "优先复核",
-          reason: "T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。",
+          reason: "T+5 sample 30, avg return +2.33%, win rate 66.7%, priority review ranking.",
           primary_horizon: "return_5d",
           available_count: 30,
           min_sample: 20,
@@ -2535,7 +2535,8 @@ describe("StockAnalysisPage", () => {
     expect(factorRow.getByText("60.0% / +3.10% / 20条")).toBeInTheDocument();
     expect(factorRowElement).toHaveTextContent("前10名优先复核");
     expect(factorRowElement).toHaveTextContent("75.0% / +4.21% / 20条");
-    expect(factorRow.getByText("11-20 降权观察")).toBeInTheDocument();
+    expect(factorRow.getByText("第 11-20 名 降权观察")).toBeInTheDocument();
+    expect(factorRowElement).not.toHaveTextContent("11-20 降权观察");
 
     const trendRow = within(screen.getByTestId("stock-analysis-market-priority-row-OVERHEAT-stock_candidate"));
     expect(trendRow.getByText("长窗口风险")).toBeInTheDocument();
@@ -2581,9 +2582,13 @@ describe("StockAnalysisPage", () => {
     expect(card).toHaveTextContent("三策略 T+5 排名");
     expect(card).toHaveTextContent("多因子");
     expect(card).toHaveTextContent("优先复核");
+    expect(card).toHaveTextContent("T+5 样本 30");
+    expect(card).not.toHaveTextContent("sample 30");
+    expect(card).not.toHaveTextContent("priority review ranking");
     expect(card).toHaveTextContent("题材突变");
     expect(card).toHaveTextContent("样本不足");
-    expect(card).toHaveTextContent("rank 21-30");
+    expect(card).toHaveTextContent("第 21-30 名");
+    expect(card).not.toHaveTextContent("rank 21-30");
     expect(card).toHaveTextContent("降权观察");
     expect(card).toHaveTextContent("当前最新日期收益");
     expect(card).toHaveTextContent("待成熟");

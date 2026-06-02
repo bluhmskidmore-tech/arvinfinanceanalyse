@@ -2635,6 +2635,22 @@ export function EmbeddedAgentCopilot({
     );
   }
 
+  function renderShortcutDrawer() {
+    const shortcutCount = RESEARCH_SHORTCUTS.length + FINANCIAL_WORKFLOWS.length;
+    return (
+      <details className="agent-quick-entry">
+        <summary>
+          <span className="agent-quick-entry__title">快捷入口</span>
+          <span className="agent-quick-entry__meta">Research / MOSS intents · {shortcutCount} 项</span>
+        </summary>
+        <div className="agent-quick-entry__content">
+          {renderResearchShortcutPanel()}
+          {renderFinancialWorkflowPanel()}
+        </div>
+      </details>
+    );
+  }
+
   function renderAgentTurnResult(turn: AgentConversationTurn) {
     const turnResult = turn.result;
     if (!turnResult) {
@@ -2749,7 +2765,7 @@ export function EmbeddedAgentCopilot({
               </div>
             </div>
 
-            <aside className="agent-result-side">
+            <aside className="agent-result-side" aria-label="assistant-result-details">
               {hasEvidenceContent(turnResult.evidence) ? (
                 <AgentEvidencePanel
                   tablesUsed={turnResult.evidence.tables_used}
@@ -2974,9 +2990,7 @@ export function EmbeddedAgentCopilot({
         </details>
       ) : null}
 
-      {!isEmbedded ? renderResearchShortcutPanel() : null}
-
-      {!isEmbedded ? renderFinancialWorkflowPanel() : null}
+      {!isEmbedded ? renderShortcutDrawer() : null}
 
       {!hasConversation ? (
         <AgentQueryForm

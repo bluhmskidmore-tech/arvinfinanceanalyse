@@ -1185,6 +1185,21 @@ function strategyPriorityReasonLabel(row: StrategyPriorityRow): string {
   return localizeStockBackendText(row.reason, row.signal_kind);
 }
 
+function localizeRankRangeLabel(
+  label: string | null | undefined,
+  rankFrom?: number | null,
+  rankTo?: number | null,
+  fallback = "排名待补",
+): string {
+  if (typeof rankFrom === "number" && Number.isFinite(rankFrom) && typeof rankTo === "number" && Number.isFinite(rankTo)) {
+    return `第 ${rankFrom}-${rankTo} 名`;
+  }
+  const value = label?.trim() ?? "";
+  const rankLabel = value.match(/^(?:rank\s*)?(\d+)\s*-\s*(\d+)$/i);
+  if (rankLabel) return `第 ${rankLabel[1]}-${rankLabel[2]} 名`;
+  return value || fallback;
+}
+
 function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
   const diagnostics = row.diagnostics;
   if (!diagnostics) return [];
@@ -1199,7 +1214,7 @@ function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
   }
   for (const bucket of diagnostics.rank_buckets ?? []) {
     if (!bucket.included_in_priority && bucket.priority_label === "降权观察") {
-      labels.push(`${bucket.label} ${bucket.priority_label}`);
+      labels.push(`${localizeRankRangeLabel(bucket.label, bucket.rank_from, bucket.rank_to)} ${bucket.priority_label}`);
     }
   }
   for (const flag of diagnostics.risk_flags ?? []) {
@@ -1280,6 +1295,17 @@ function strategyOptimizationDateWeightedText(
 
 function strategyOptimizationReasonLabel(row: StrategyOptimizationSummary | StrategyOptimizationSlice): string {
   return localizeStockBackendText(row.recommendation.reason, row.signal_kind);
+}
+
+function strategyOptimizationSliceLabel(slice: StrategyOptimizationSlice): string {
+  const dimension = slice.dimension.trim().toLowerCase();
+  const bucket = slice.bucket.trim();
+  if (dimension === "rank" && /^\d+\s*-\s*\d+$/.test(bucket)) {
+    return localizeRankRangeLabel(bucket, null, null, "切片待补");
+  }
+  const rankLabel = localizeRankRangeLabel(slice.label, null, null, "");
+  if (rankLabel) return rankLabel;
+  return slice.label || "切片待补";
 }
 
 function strategyOptimizationSlicePair(
@@ -5549,12 +5575,19 @@ export default function StockAnalysisPage() {
                     <div className="stock-analysis-page__filter-status">
                       <span>各策略最强/最弱切片</span>
                       <strong>
-                        {strategyOptimizationSlices.strongest?.label ?? "最强待补"} /{" "}
-                        {strategyOptimizationSlices.weakest?.label ?? "最弱待补"}
+                        {strategyOptimizationSlices.strongest
+                          ? strategyOptimizationSliceLabel(strategyOptimizationSlices.strongest)
+                          : "最强待补"}{" "}
+                        /{" "}
+                        {strategyOptimizationSlices.weakest
+                          ? strategyOptimizationSliceLabel(strategyOptimizationSlices.weakest)
+                          : "最弱待补"}
                       </strong>
                       <small>
                         {strategyOptimizationSlices.weakest
-                          ? `${strategyOptimizationSlices.weakest.strategy_label} ${strategyOptimizationSlices.weakest.label}：${strategyOptimizationSlices.weakest.recommendation.priority_label}`
+                          ? `${strategyOptimizationSlices.weakest.strategy_label} ${strategyOptimizationSliceLabel(
+                              strategyOptimizationSlices.weakest,
+                            )}：${strategyOptimizationSlices.weakest.recommendation.priority_label}`
                           : "切片样本不足，暂不做降权判断。"}
                       </small>
                     </div>
@@ -5577,7 +5610,7 @@ export default function StockAnalysisPage() {
                               slice ? (
                                 <tr key={`${label}:${slice.slice_key}`}>
                                   <td>
-                                    {label}：{slice.label}
+                                    {label}：{strategyOptimizationSliceLabel(slice)}
                                   </td>
                                   <td>{slice.strategy_label}</td>
                                   <td>{slice.recommendation.priority_label}</td>

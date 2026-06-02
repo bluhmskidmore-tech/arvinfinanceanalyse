@@ -68,64 +68,55 @@ def moving_average_strategy(
     if stop_loss < 0:
         raise ValueError("stop_loss must be non-negative")
 
-    short_ma = price_frame.rolling(window=short_window).mean()
-    long_ma = price_frame.rolling(window=long_window).mean()
-    positions = pd.DataFrame(0.0, index=price_frame.index, columns=price_frame.columns)
-    portfolio_value = pd.Series(1.0, index=price_frame.index, dtype="float64")
+    short_ma = price_frame.rolling(window=short_window).mean().to_numpy(dtype="float64")
+    long_ma = price_frame.rolling(window=long_window).mean().to_numpy(dtype="float64")
+    price_values = price_frame.to_numpy(dtype="float64")
+    portfolio_value = np.ones(len(price_frame), dtype="float64")
+    current_position = np.zeros(len(price_frame.columns), dtype="float64")
+    entry_prices = np.full(len(price_frame.columns), np.nan, dtype="float64")
     cash = 1.0
     peak_value = 1.0
-    entry_prices: dict[str, float | None] = {column: None for column in price_frame.columns}
 
     for row_no in range(1, len(price_frame)):
         # 先用昨日收盘确定的持仓结算今日收益（避免用当日信号吃当日收益的前视偏差）。
-        previous_position = positions.iloc[row_no - 1]
-        daily_returns = _safe_daily_returns(price_frame, row_no)
-        cash *= 1 + _weighted_return(previous_position, daily_returns)
-        portfolio_value.iat[row_no] = cash
+        previous_position = current_position
+        daily_returns = price_values[row_no] / price_values[row_no - 1] - 1.0
+        cash *= 1 + _weighted_return_array(previous_position, daily_returns)
+        portfolio_value[row_no] = cash
 
         if row_no < long_window:
-            positions.iloc[row_no] = previous_position
             continue
 
         # 今日收盘信号只决定今日收盘后的持仓，影响的是次日及以后的收益。
         current_position = previous_position.copy()
-        crossed_up = (short_ma.iloc[row_no - 1] <= long_ma.iloc[row_no - 1]) & (
-            short_ma.iloc[row_no] > long_ma.iloc[row_no]
+        crossed_up = (short_ma[row_no - 1] <= long_ma[row_no - 1]) & (
+            short_ma[row_no] > long_ma[row_no]
         )
         crossed_down = (
-            (short_ma.iloc[row_no - 1] >= long_ma.iloc[row_no - 1])
-            & (short_ma.iloc[row_no] < long_ma.iloc[row_no])
+            (short_ma[row_no - 1] >= long_ma[row_no - 1])
+            & (short_ma[row_no] < long_ma[row_no])
             & ~crossed_up
         )
         if crossed_up.any():
-            current_position.loc[crossed_up] = 1.0
-            for column in crossed_up.index[crossed_up]:
-                entry_prices[column] = float(price_frame[column].iat[row_no])
+            current_position[crossed_up] = 1.0
+            entry_prices[crossed_up] = price_values[row_no, crossed_up]
         if crossed_down.any():
-            current_position.loc[crossed_down] = 0.0
-            for column in crossed_down.index[crossed_down]:
-                entry_prices[column] = None
+            current_position[crossed_down] = 0.0
+            entry_prices[crossed_down] = np.nan
 
-        held_columns = [
-            column
-            for column in price_frame.columns
-            if current_position[column] > 0 and entry_prices[column] is not None and not bool(crossed_up[column])
-        ]
-        for column in held_columns:
-            drawdown_from_entry = price_frame[column].iat[row_no] / entry_prices[column] - 1
-            if drawdown_from_entry <= -stop_loss:
-                current_position[column] = 0.0
-                entry_prices[column] = None
-
-        positions.iloc[row_no] = current_position
+        held = (current_position > 0) & ~np.isnan(entry_prices) & ~crossed_up
+        stop_mask = np.zeros_like(held, dtype=bool)
+        stop_mask[held] = price_values[row_no, held] / entry_prices[held] - 1.0 <= -stop_loss
+        if stop_mask.any():
+            current_position[stop_mask] = 0.0
+            entry_prices[stop_mask] = np.nan
 
         peak_value = max(peak_value, cash)
         if peak_value > 0 and (peak_value - cash) / peak_value > max_drawdown:
-            positions.iloc[row_no] = 0.0
-            for column in entry_prices:
-                entry_prices[column] = None
+            current_position.fill(0.0)
+            entry_prices.fill(np.nan)
 
-    return portfolio_value
+    return pd.Series(portfolio_value, index=price_frame.index, dtype="float64")
 
 
 def mean_reversion_momentum_strategy(
@@ -146,61 +137,60 @@ def mean_reversion_momentum_strategy(
 
     rolling_mean = price_frame.rolling(short_window).mean()
     rolling_std = price_frame.rolling(short_window).std(ddof=0).replace(0, np.nan)
-    z_scores = (price_frame - rolling_mean) / rolling_std
-    trend_ma = price_frame.rolling(long_window).mean()
+    z_scores = ((price_frame - rolling_mean) / rolling_std).to_numpy(dtype="float64")
+    trend_ma = price_frame.rolling(long_window).mean().to_numpy(dtype="float64")
+    price_values = price_frame.to_numpy(dtype="float64")
     warmup = max(short_window, long_window)
 
-    positions = pd.DataFrame(0.0, index=price_frame.index, columns=price_frame.columns)
-    portfolio_value = pd.Series(1.0, index=price_frame.index, dtype="float64")
-    entry_prices: dict[str, float | None] = {column: None for column in price_frame.columns}
+    portfolio_value = np.ones(len(price_frame), dtype="float64")
+    current_position = np.zeros(len(price_frame.columns), dtype="float64")
+    entry_prices = np.full(len(price_frame.columns), np.nan, dtype="float64")
     cash = 1.0
     peak_value = 1.0
 
     for row_no in range(1, len(price_frame)):
         # 先用昨日收盘确定的持仓结算今日收益（避免用当日信号吃当日收益的前视偏差）。
-        previous_position = positions.iloc[row_no - 1]
-        daily_returns = _safe_daily_returns(price_frame, row_no)
-        cash *= 1 + _weighted_return(previous_position, daily_returns)
-        portfolio_value.iat[row_no] = cash
+        previous_position = current_position
+        daily_returns = price_values[row_no] / price_values[row_no - 1] - 1.0
+        cash *= 1 + _weighted_return_array(previous_position, daily_returns)
+        portfolio_value[row_no] = cash
 
         if row_no < warmup:
-            positions.iloc[row_no] = previous_position
             continue
 
         # 今日收盘信号只决定今日收盘后的持仓，影响的是次日及以后的收益。
         current_position = previous_position.copy()
-        price_row = price_frame.iloc[row_no]
-        z_row = z_scores.iloc[row_no]
-        trend_row = trend_ma.iloc[row_no]
+        price_row = price_values[row_no]
+        z_row = z_scores[row_no]
+        trend_row = trend_ma[row_no]
         held = current_position > 0
-        entry_signal = (~held) & z_row.notna() & trend_row.notna() & (z_row < -z_threshold) & (price_row > trend_row)
+        entry_signal = (~held) & np.isfinite(z_row) & np.isfinite(trend_row) & (z_row < -z_threshold) & (price_row > trend_row)
         if entry_signal.any():
-            current_position.loc[entry_signal] = 1.0
-            for column in entry_signal.index[entry_signal]:
-                entry_prices[column] = float(price_row[column])
+            current_position[entry_signal] = 1.0
+            entry_prices[entry_signal] = price_row[entry_signal]
 
-        held_columns = [column for column in price_frame.columns if held[column] and entry_prices[column] is not None]
-        for column in held_columns:
-            change = price_row[column] / entry_prices[column] - 1
-            exit_signal = (
-                change <= -stop_loss
-                or change >= take_profit
-                or (pd.notna(trend_row[column]) and price_row[column] < trend_row[column])
-                or (pd.notna(z_row[column]) and z_row[column] > z_threshold)
+        held_with_entry = held & ~np.isnan(entry_prices)
+        exit_mask = np.zeros_like(held_with_entry, dtype=bool)
+        if held_with_entry.any():
+            changes = price_row[held_with_entry] / entry_prices[held_with_entry] - 1.0
+            held_trend = trend_row[held_with_entry]
+            held_z = z_row[held_with_entry]
+            exit_mask[held_with_entry] = (
+                (changes <= -stop_loss)
+                | (changes >= take_profit)
+                | (np.isfinite(held_trend) & (price_row[held_with_entry] < held_trend))
+                | (np.isfinite(held_z) & (held_z > z_threshold))
             )
-            if exit_signal:
-                current_position[column] = 0.0
-                entry_prices[column] = None
-
-        positions.iloc[row_no] = current_position
+        if exit_mask.any():
+            current_position[exit_mask] = 0.0
+            entry_prices[exit_mask] = np.nan
 
         peak_value = max(peak_value, cash)
         if peak_value > 0 and (peak_value - cash) / peak_value > max_drawdown:
-            positions.iloc[row_no] = 0.0
-            for column in entry_prices:
-                entry_prices[column] = None
+            current_position.fill(0.0)
+            entry_prices.fill(np.nan)
 
-    return portfolio_value
+    return pd.Series(portfolio_value, index=price_frame.index, dtype="float64")
 
 
 def compute_factors(
@@ -458,6 +448,14 @@ def _weighted_return(position: pd.Series, daily_returns: pd.Series) -> float:
         return 0.0
     weights = position / active_count
     return float((weights * daily_returns).sum())
+
+
+def _weighted_return_array(position: np.ndarray, daily_returns: np.ndarray) -> float:
+    active_count = float(position.sum())
+    if active_count <= 0:
+        return 0.0
+    clean_returns = np.nan_to_num(daily_returns, nan=0.0, posinf=0.0, neginf=0.0)
+    return float(np.dot(position / active_count, clean_returns))
 
 
 def _safe_inverse(series: pd.Series) -> pd.Series:

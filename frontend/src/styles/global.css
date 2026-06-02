@@ -1589,6 +1589,86 @@ select {
   white-space: nowrap;
 }
 
+.agent-quick-entry {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, var(--moss-color-neutral-50));
+}
+
+.agent-quick-entry > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 10px;
+  color: var(--moss-color-text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.agent-quick-entry > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-quick-entry > summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  color: var(--moss-color-text-muted);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.agent-quick-entry[open] > summary::after {
+  content: "-";
+}
+
+.agent-quick-entry > summary:hover {
+  color: var(--moss-color-link);
+  background: color-mix(in srgb, var(--moss-color-info-50) 60%, var(--moss-color-card-bg));
+}
+
+.agent-quick-entry > summary:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
+}
+
+.agent-quick-entry__title {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.agent-quick-entry__meta {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-quick-entry__content {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.agent-quick-entry:not([open]) .agent-quick-entry__content {
+  display: none;
+}
+
+.agent-quick-entry .agent-financial-workflows {
+  margin: 0;
+  padding: 10px;
+  border-color: var(--moss-color-neutral-100);
+  box-shadow: none;
+}
+
 .agent-financial-workflows {
   display: grid;
   gap: 10px;
@@ -1709,7 +1789,7 @@ select {
 
 .agent-conversation__bottom {
   min-height: 72px;
-  scroll-margin-bottom: 120px;
+  scroll-margin-bottom: 280px;
 }
 
 .agent-message {
@@ -1990,6 +2070,10 @@ select {
   flex-basis: 100%;
 }
 
+.agent-wait-status__details:not([open]) .agent-wait-status__detail-list {
+  display: none;
+}
+
 .agent-wait-status__detail-list {
   display: flex;
   flex-wrap: wrap;
@@ -2039,8 +2123,8 @@ select {
 
 .agent-result-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
@@ -2289,6 +2373,10 @@ select {
   gap: 8px;
 }
 
+.agent-follow-up-chips__details:not([open]) .agent-follow-up-chips__options {
+  display: none;
+}
+
 .agent-follow-up-chips__options {
   display: flex;
   flex-wrap: wrap;
@@ -2298,6 +2386,14 @@ select {
 
 .agent-result-side {
   align-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.agent-result-side .agent-side-panel {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--moss-color-card-bg) 88%, var(--moss-color-neutral-50));
+  box-shadow: none;
 }
 
 .agent-side-panel {
@@ -2367,6 +2463,10 @@ select {
   outline-offset: 2px;
 }
 
+.agent-side-panel__details:not([open]) > :not(summary) {
+  display: none;
+}
+
 .agent-side-panel__details pre {
   margin: 6px 0 0;
   color: var(--moss-color-text-secondary);
@@ -2398,6 +2498,54 @@ select {
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.agent-suggested-actions__more {
+  min-width: 0;
+}
+
+.agent-suggested-actions__more > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--moss-color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.agent-suggested-actions__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-suggested-actions__more > summary::after {
+  content: "+";
+  margin-left: 6px;
+}
+
+.agent-suggested-actions__more[open] > summary::after {
+  content: "-";
+}
+
+.agent-suggested-actions__more > summary:hover {
+  color: var(--moss-color-link);
+}
+
+.agent-suggested-actions__more > summary:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
+}
+
+.agent-suggested-actions__more-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.agent-suggested-actions__more:not([open]) .agent-suggested-actions__more-list {
+  display: none;
 }
 
 .agent-suggested-actions__item {
@@ -2463,6 +2611,10 @@ select {
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
+}
+
+.agent-suggested-actions__details:not([open]) > :not(summary) {
+  display: none;
 }
 
 .agent-suggested-actions__type {
@@ -2698,6 +2850,11 @@ select {
   outline-offset: 2px;
 }
 
+.agent-chat-composer__advanced:not([open]) .agent-chat-composer__advanced-body,
+.agent-chat-composer__process-details:not([open]) .agent-chat-composer__process-grid {
+  display: none;
+}
+
 .agent-chat-composer__advanced-body {
   display: grid;
   gap: 10px;
@@ -2807,11 +2964,21 @@ select {
   position: sticky;
   bottom: 12px;
   z-index: 4;
+  margin-top: -8px;
+  padding-top: 8px;
+  background: linear-gradient(
+    180deg,
+    rgba(251, 252, 254, 0),
+    color-mix(in srgb, var(--moss-color-card-bg) 92%, var(--moss-color-surface-base))
+  );
 }
 
 .agent-composer-dock .agent-chat-composer {
   margin-bottom: 0;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+  border-color: #cfd8e6;
+  box-shadow:
+    0 -1px 0 rgba(207, 216, 230, 0.82),
+    0 14px 32px rgba(15, 23, 42, 0.12);
 }
 
 @media (max-width: 720px) {
@@ -2842,6 +3009,19 @@ select {
 
   .agent-runtime-strip__detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agent-quick-entry > summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-height: 0;
+    padding: 9px 10px;
+  }
+
+  .agent-quick-entry__meta {
+    flex-basis: 100%;
+    margin-left: 0;
+    white-space: normal;
   }
 
   .agent-chat-composer__header,
@@ -3029,7 +3209,7 @@ select {
   gap: 12px;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]).dashboard-home-shell {
+:where([data-testid="bond-analysis-overview"]).dashboard-home-shell {
   --dashboard-blue-25: #f8fbff;
   --dashboard-blue-50: #f1f6fc;
   --dashboard-blue-100: #e3edf8;
@@ -3078,7 +3258,7 @@ select {
   display: none !important;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-toolbar {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3096,14 +3276,14 @@ select {
   backdrop-filter: none;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-toolbar__identity {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__identity {
   display: flex;
   align-items: baseline;
   gap: 12px;
   min-width: 0;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-toolbar__eyebrow {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
   color: rgba(71, 85, 105, 0.74);
   font-size: 10px;
   font-weight: 640;
@@ -3112,7 +3292,7 @@ select {
   white-space: nowrap;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-toolbar__title {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__title {
   margin: 0;
   color: var(--dashboard-ink);
   font-size: 24px;
@@ -3121,7 +3301,7 @@ select {
   line-height: 1.1;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-actions {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3130,10 +3310,10 @@ select {
   min-width: 0;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-view-pill,
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-action-button,
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-control,
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-check {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
   min-height: 32px;
   border-radius: 999px;
   font-size: 12px;
@@ -3141,7 +3321,7 @@ select {
   line-height: 1;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-view-pill {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -3152,32 +3332,32 @@ select {
   white-space: nowrap;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-control,
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-check {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--moss-color-text-secondary);
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-control > span {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control > span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
   white-space: nowrap;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-check input {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check input {
   margin: 0;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-actions__divider {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-actions__divider {
   width: 1px;
   height: 14px;
   background: rgba(15, 23, 42, 0.08);
   margin: 0 2px;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-action-button {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3189,19 +3369,19 @@ select {
   cursor: pointer;
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-action-button--primary {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--primary {
   border-color: rgba(24, 53, 83, 0.82);
   background: linear-gradient(180deg, #263f5f 0%, #183553 100%);
   color: #ffffff;
   box-shadow: 0 10px 24px rgba(24, 53, 83, 0.12);
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-action-button--secondary:hover {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--secondary:hover {
   border-color: rgba(104, 36, 44, 0.26);
   color: var(--dashboard-red-700);
 }
 
-:where([data-testid="bond-analysis-overview"], [data-testid="portfolio-home-overview"]) .dashboard-home-action-button--disabled {
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }

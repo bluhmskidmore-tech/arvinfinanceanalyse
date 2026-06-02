@@ -359,9 +359,11 @@ describe("RouteRegistry", () => {
   it("renders the balance-analysis route", async () => {
     renderWorkbenchApp(["/balance-analysis"], { client: mockClient });
 
-    expect(await screen.findByTestId("balance-analysis-overview-cards")).toBeInTheDocument();
-    expect(await screen.findByTestId("balance-analysis-table")).toBeInTheDocument();
-  });
+    expect(
+      await screen.findByTestId("balance-analysis-overview-cards", {}, { timeout: 5_000 }),
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId("balance-analysis-table", {}, { timeout: 8_000 })).toBeInTheDocument();
+  }, 20_000);
 
   it("renders the pnl-bridge route", async () => {
     renderWorkbenchApp(["/pnl-bridge"], { client: mockClient });

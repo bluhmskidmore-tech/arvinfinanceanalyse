@@ -4,7 +4,7 @@ import { Alert, Button, Card, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
-import type { AssetStructureItem, BondTopHoldingItem, Numeric } from "../../../api/contracts";
+import type { AssetStructureItem, BondTopHoldingItem, DV01RiskPayload, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import {
   buildKpiValuePair,
@@ -53,6 +53,14 @@ const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资
 const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
 const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组合规模与浮盈快照。";
 const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
+const DV01_HOME_TOP_N = 1;
+const DV01_HOME_SHOCK_BPS = "1";
+const DV01_ACCOUNTING_CLASSES = [
+  { label: "AC", value: "AC" },
+  { label: "OCI", value: "OCI" },
+  { label: "TPL", value: "TPL" },
+  { label: "全部", value: "all" },
+] as const;
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
@@ -72,6 +80,22 @@ function formatNumericString(raw: string | number | null | undefined) {
     return String(raw);
   }
   return parsed.toLocaleString("zh-CN");
+}
+
+function formatNumericDisplay(value: Numeric | null | undefined): string {
+  return value?.display || "—";
+}
+
+function formatDurationDisplay(value: Numeric | null | undefined): string {
+  const display = formatNumericDisplay(value);
+  return display === "—" ? display : `${display} 年`;
+}
+
+function formatMoneyDisplay(value: Numeric | null | undefined): string {
+  if (value == null) {
+    return "—";
+  }
+  return formatYi(value);
 }
 
 function formatSignedPct(pct: number | null): string {
@@ -129,6 +153,67 @@ function SectionCardTitle({
       <div style={{ ...FIELD, marginBottom: 0 }}>{eyebrow}</div>
       <div style={sectionTitleStyle}>{title}</div>
     </div>
+  );
+}
+
+function AccountingDv01SummaryPanel({
+  rows,
+  isLoading,
+  hasError,
+  onOpenModuleDetail,
+}: {
+  rows: Array<{
+    label: string;
+    value: string;
+    payload: DV01RiskPayload | null;
+  }>;
+  isLoading: boolean;
+  hasError: boolean;
+  onOpenModuleDetail?: (key: BondAnalyticsModuleKey) => void;
+}) {
+  return (
+    <Card
+      variant="borderless"
+      size="small"
+      title={<SectionCardTitle eyebrow="分类风险" title="会计分类 DV01" />}
+      extra={
+        <Button
+          size="small"
+          type="text"
+          data-testid="bond-analysis-home-open-dv01-risk"
+          onClick={() => onOpenModuleDetail?.("dv01-risk")}
+        >
+          打开 DV01 风险
+        </Button>
+      }
+      data-testid="bond-analysis-accounting-dv01-summary"
+      className={styles.accountingDv01Card}
+      style={dashboardCardStyle}
+      styles={{ body: { padding: 0 } }}
+    >
+      <div className={styles.accountingDv01Grid}>
+        <div className={styles.accountingDv01Header}>
+          <span>分类</span>
+          <span>面值加权久期</span>
+          <span>DV01</span>
+          <span>面值</span>
+          <span>持仓数</span>
+        </div>
+        {rows.map((row) => (
+          <div className={styles.accountingDv01Row} key={row.value}>
+            <strong>{row.label}</strong>
+            <span style={tabularNumsStyle}>{formatDurationDisplay(row.payload?.face_weighted_modified_duration)}</span>
+            <span style={tabularNumsStyle}>{formatNumericDisplay(row.payload?.total_dv01)}</span>
+            <span style={tabularNumsStyle}>{formatMoneyDisplay(row.payload?.total_face_value)}</span>
+            <span style={tabularNumsStyle}>
+              {row.payload ? formatNumericString(row.payload.position_count) : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+      {isLoading ? <div className={styles.accountingDv01Note}>分类 DV01 正在读取。</div> : null}
+      {hasError ? <div className={styles.accountingDv01Note}>分类 DV01 读面暂未返回。</div> : null}
+    </Card>
   );
 }
 
@@ -531,12 +616,36 @@ export function BondAnalyticsInstitutionalCockpit({
       },
     ],
   });
+  const dv01AccountingQueries = useQueries({
+    queries: DV01_ACCOUNTING_CLASSES.map((item) => ({
+      queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
+        client.mode,
+        dashboardReportDate,
+        item.value,
+        DV01_HOME_TOP_N,
+        DV01_HOME_SHOCK_BPS,
+      ),
+      queryFn: () =>
+        client.getBondAnalyticsDv01Risk(dashboardReportDate, {
+          accountingClass: item.value,
+          topN: DV01_HOME_TOP_N,
+          shockBps: DV01_HOME_SHOCK_BPS,
+        }),
+      enabled: Boolean(dashboardReportDate),
+    })),
+  });
 
   const headline = headlineQ.data?.result;
   const portfolioHl = portfolioHlQ.data?.result;
   const err = headlineQ.isError ? ((headlineQ.error as Error)?.message ?? "驾驶舱数据加载失败") : null;
   const portfolioHeadlinesUnavailable = portfolioHlQ.isError;
   const topHoldingsUnavailable = holdingsQ.isError;
+  const dv01AccountingRows = DV01_ACCOUNTING_CLASSES.map((item, index) => ({
+    ...item,
+    payload: dv01AccountingQueries[index]?.data?.result ?? null,
+  }));
+  const dv01AccountingLoading = dv01AccountingQueries.some((query) => query.isLoading);
+  const dv01AccountingUnavailable = dv01AccountingQueries.some((query) => query.isError);
 
   const dur = headline ? numOr(headline.kpis.weighted_duration) : Number.NaN;
   const riskCreditRatio = riskQ.data?.result ? numOr(riskQ.data.result.credit_ratio) : Number.NaN;
@@ -709,6 +818,13 @@ export function BondAnalyticsInstitutionalCockpit({
             <ReferenceKpiDonutTile label="信用债占比" value={creditWeightDisplay} detail={`债券只数 ${bondCountDisplay}`} ratio={investmentGradeRatio} />
           </div>
         </div>
+
+        <AccountingDv01SummaryPanel
+          rows={dv01AccountingRows}
+          isLoading={dv01AccountingLoading}
+          hasError={dv01AccountingUnavailable}
+          onOpenModuleDetail={onOpenModuleDetail}
+        />
 
         <div className={styles.referenceTopbar}>
           <div>

@@ -236,8 +236,9 @@ describe("StockDetailDrawer", () => {
 
     const list = await screen.findByTestId("stock-detail-market-events-list");
     expect(list.querySelectorAll("li")).toHaveLength(2);
-    expect(screen.getByText("TOPIC_ONE")).toBeInTheDocument();
-    expect(screen.getByText("TOPIC_TWO")).toBeInTheDocument();
+    expect(screen.getAllByText("行业新闻")).toHaveLength(2);
+    expect(list).not.toHaveTextContent("TOPIC_ONE");
+    expect(list).not.toHaveTextContent("TOPIC_TWO");
     expect(screen.getByText(/Brief headline about macro conditions/)).toBeInTheDocument();
   });
 
@@ -382,6 +383,7 @@ describe("StockDetailDrawer", () => {
         snapshot_as_of_date: "2026-04-10",
         stock_code: "000001.SZ",
         stock_name: "H1",
+        signal_kind: "livermore",
         candidate_rank: 1,
         sector_code: null,
         sector_name: null,
@@ -422,6 +424,21 @@ describe("StockDetailDrawer", () => {
         return_20d: null,
         data_status: " partial_halt ",
       },
+      {
+        snapshot_as_of_date: "2026-03-20",
+        stock_code: "000001.SZ",
+        stock_name: "H4",
+        signal_kind: "experimental_signal",
+        candidate_rank: 4,
+        selection_close: 9.9,
+        forward_trade_date_1d: null,
+        forward_trade_date_5d: null,
+        forward_trade_date_20d: null,
+        return_1d: null,
+        return_5d: null,
+        return_20d: null,
+        data_status: "missing_forward_return",
+      },
     ];
     const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
@@ -450,6 +467,8 @@ describe("StockDetailDrawer", () => {
     expect(screen.getByText("-2.00%")).toBeInTheDocument();
     expect(screen.getByText("8.00%")).toBeInTheDocument();
     const completeRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-10-1");
+    expect(completeRow).toHaveTextContent("趋势突破");
+    expect(completeRow).not.toHaveTextContent("livermore");
     expect(completeRow).toHaveTextContent("已成熟");
     expect(completeRow).not.toHaveTextContent("complete");
     const pendingRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-03-2");
@@ -460,6 +479,11 @@ describe("StockDetailDrawer", () => {
     expect(partialHaltRow).toHaveTextContent("部分停牌");
     expect(partialHaltRow).not.toHaveTextContent("partial_halt");
     expect(partialHaltRow).toHaveClass("stock-detail-drawer__history-row--halt");
+    const unknownStatusRow = screen.getByTestId("stock-detail-candidate-history-row-2026-03-20-4");
+    expect(unknownStatusRow).toHaveTextContent("策略待确认");
+    expect(unknownStatusRow).not.toHaveTextContent("experimental_signal");
+    expect(unknownStatusRow).toHaveTextContent("状态待确认");
+    expect(unknownStatusRow).not.toHaveTextContent("missing_forward_return");
   });
 
   it("shows candidate history error without breaking chart or factors", async () => {

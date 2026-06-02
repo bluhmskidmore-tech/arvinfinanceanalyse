@@ -21,6 +21,7 @@ const pageHeaderStyle = {
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
+  flexWrap: "wrap",
   gap: 16,
   marginBottom: 24,
 } as const;
@@ -211,6 +212,61 @@ function formatFormalContractValue(value: string | number | null | undefined, un
   return formatContractMetricValue(value, unit);
 }
 
+function buildFormalContractDecision(
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+  isLoading: boolean,
+  isError: boolean,
+) {
+  if (isLoading) {
+    return {
+      tone: "pending",
+      title: "正在读取正式财务指标契约",
+      detail: "读取完成前不展示正式财务指标值。",
+    };
+  }
+  if (isError) {
+    return {
+      tone: "warning",
+      title: "正式财务指标契约读取失败",
+      detail: "本次页面不能确认正式财务指标来源，正式值不可用于展示。",
+    };
+  }
+  if (contract?.sample_status === "missing_contract") {
+    return {
+      tone: "warning",
+      title: "本月未登记正式财务指标契约",
+      detail: "正式值不可用于展示，分析候选值不会回填。",
+    };
+  }
+  if (contract && !contract.formal_use_allowed) {
+    return {
+      tone: "warning",
+      title: "正式财务指标尚未放行",
+      detail: "当前仅展示样本与候选核对状态，不批准分析值转正式值。",
+    };
+  }
+  return {
+    tone: "ok",
+    title: "正式财务指标契约已读取",
+    detail: "按后端契约返回的正式值展示。",
+  };
+}
+
+function formatFormalContractNote(
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+) {
+  if (!contract?.contract_note) {
+    return "";
+  }
+  if (contract.sample_status === "missing_contract") {
+    return "后台未登记本月正式财务指标契约；正式值保持不可用，不能用分析候选值补齐。";
+  }
+  if (!contract.formal_use_allowed) {
+    return "当前契约只冻结样本与来源状态；QDB 候选值仅用于核对，不能转为正式展示。";
+  }
+  return contract.contract_note;
+}
+
 function FormalIndicatorSourceContractPanel(props: {
   contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   requestedReportMonth: string;
@@ -223,17 +279,19 @@ function FormalIndicatorSourceContractPanel(props: {
     candidate_qdb_aligned: metrics.filter((metric) => metric.source_status === "candidate_qdb_aligned").length,
     needs_reconciliation: metrics.filter((metric) => metric.source_status === "needs_reconciliation").length,
   };
+  const decision = buildFormalContractDecision(props.contract, props.isLoading, props.isError);
+  const contractNote = formatFormalContractNote(props.contract);
 
   return (
     <section
       data-testid="ledger-pnl-formal-indicator-source-contract-panel"
-      className="ledger-pnl-analysis__status-panel"
+      className="ledger-pnl-analysis__status-panel ledger-pnl-analysis__status-panel--source-contract"
     >
       <div className="ledger-pnl-analysis__status-header">
         <div>
           <h3 className="ledger-pnl-analysis__status-title">正式财务指标源契约</h3>
           <div className="ledger-pnl-analysis__status-subtitle">
-            Excel 样本值、系统候选值与正式展示值分列；value 为空时保持未接入。
+            Excel 样本值、系统候选值与正式展示值分列；正式值没有来源时保持未接入。
           </div>
         </div>
         <div className="ledger-pnl-analysis__status-summary">
@@ -246,8 +304,16 @@ function FormalIndicatorSourceContractPanel(props: {
         </div>
       </div>
 
-      {props.contract?.contract_note ? (
-        <div className="ledger-pnl-analysis__source-contract-note">{props.contract.contract_note}</div>
+      <div
+        data-testid="ledger-pnl-formal-indicator-source-contract-decision"
+        className={`ledger-pnl-analysis__source-contract-decision ledger-pnl-analysis__source-contract-decision--${decision.tone}`}
+      >
+        <strong>{decision.title}</strong>
+        <span>{decision.detail}</span>
+      </div>
+
+      {contractNote ? (
+        <div className="ledger-pnl-analysis__source-contract-note">{contractNote}</div>
       ) : null}
 
       {props.isLoading ? (
@@ -547,6 +613,7 @@ export default function LedgerPnlPage() {
               client.mode === "real"
                 ? displayTokens.apiMode.realForeground
                 : displayTokens.apiMode.mockForeground,
+            whiteSpace: "nowrap",
           }}
         >
           {client.mode === "real" ? "正式只读链路" : "本地演示数据"}

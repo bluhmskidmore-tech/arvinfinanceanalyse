@@ -712,6 +712,9 @@ export function localizeStockBackendText(
   const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
   const availableSample = value.match(/\b(T\+\d+)\s+available\s+(\d+)\s*\/\s*(\d+)/i);
   const matureSnapshotSample = value.match(/\b(T\+\d+)\s+matured?\s+snapshots?\s+(\d+)\s*\/\s*(\d+)/i);
+  const optimizationSample = value.match(/\b(T\+\d+)\s+sample\s+(\d+)/i);
+  const optimizationAvgReturn = value.match(/\bavg(?:erage)?(?:\s+return)?\s*([+-]?\d+(?:\.\d+)?%)/i);
+  const optimizationWinRate = value.match(/\bwin\s+rate\s*([+-]?\d+(?:\.\d+)?%)/i);
   if (lower.includes("current market sample") && lower.includes("insufficient")) {
     const sampleText = availableSample
       ? `${availableSample[1].toUpperCase()} 可用样本 ${availableSample[2]}/${availableSample[3]}，`
@@ -721,6 +724,13 @@ export function localizeStockBackendText(
   if (matureSnapshotSample) {
     const suffix = lower.includes("waiting for more mature days") ? "等待更多成熟日。" : "可作为强优先复核。";
     return `${matureSnapshotSample[1].toUpperCase()} 已成熟快照 ${matureSnapshotSample[2]}/${matureSnapshotSample[3]}，${suffix}`;
+  }
+  if (optimizationSample && (optimizationAvgReturn || optimizationWinRate || lower.includes("priority review ranking"))) {
+    const parts = [`${optimizationSample[1].toUpperCase()} 样本 ${optimizationSample[2]}`];
+    if (optimizationAvgReturn) parts.push(`均值 ${optimizationAvgReturn[1]}`);
+    if (optimizationWinRate) parts.push(`胜率 ${optimizationWinRate[1]}`);
+    if (lower.includes("priority review ranking")) parts.push("优先复核排序");
+    return `${parts.join("，")}。`;
   }
   if (lower.includes("observation-only candidate")) {
     return `${familyLabel || "候选"}仅观察候选。`;
@@ -893,7 +903,18 @@ function isMacroGapFamily(inputFamily: string): boolean {
 function macroGapLabels(payload: LivermoreStrategyPayload): string[] {
   return payload.data_gaps
     .filter((gap) => gap.status !== "ready" && isMacroGapFamily(gap.input_family))
-    .map((gap) => `${gap.input_family} (${gap.status})`);
+    .map((gap) => `${localizeStockDataFamily(gap.input_family)} ${macroGapStatusLabel(gap.status)}`);
+}
+
+function macroGapStatusLabel(status: string | null | undefined): string {
+  const normalized = (status ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    blocked: "阻断",
+    missing: "缺失",
+    partial: "部分",
+    stale: "陈旧",
+  };
+  return labels[normalized] ?? "状态待确认";
 }
 
 export function buildCycleMacroLayerSummary(
@@ -928,11 +949,11 @@ export function buildCycleMacroLayerSummary(
   }
 
   const detailParts = [
-    `可用 ${availableInputs.join(", ") || "-"}`,
-    `缺失 ${missingInputs.join(", ") || "-"}`,
+    `可用 ${availableInputs.map(localizeStockDataFamily).join("、") || "-"}`,
+    `缺失 ${missingInputs.map(localizeStockDataFamily).join("、") || "-"}`,
   ];
   if (macroGapLabelsList.length > 0) {
-    detailParts.push(`gaps ${macroGapLabelsList.join(" / ")}`);
+    detailParts.push(`缺口 ${macroGapLabelsList.join(" / ")}`);
   }
 
   return {
@@ -3279,7 +3300,7 @@ export function buildMarketPriorityPanelSummary(input: {
   const horizonStats = top.stats[horizon];
   return {
     headline: `优先 ${top.strategy_label}`,
-    detail: top.reason,
+    detail: localizeStockBackendText(top.reason, top.signal_kind),
     badgeLabel: top.priority_label === "优先复核" ? "已就绪" : "降权观察",
     stats: [
       {
@@ -3419,7 +3440,7 @@ export function buildStrategyOptimizationPanelSummary(input: {
 
   return {
     headline: `${top.recommendation.priority_label} · ${top.strategy_label}`,
-    detail: top.recommendation.reason,
+    detail: localizeStockBackendText(top.recommendation.reason, top.signal_kind),
     badgeLabel: top.recommendation.priority_label === "优先复核" ? "已就绪" : "降权观察",
     stats: [
       {

@@ -36,6 +36,15 @@ function openProcessTools() {
   return details;
 }
 
+function openShortcutDrawer() {
+  const summary = screen.getByText("快捷入口");
+  const details = summary.closest("details");
+  if (!details?.hasAttribute("open")) {
+    fireEvent.click(summary);
+  }
+  return details;
+}
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -308,6 +317,26 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
   });
 
+  it("keeps shortcut entry panels collapsed until requested", () => {
+    render(<AgentWorkbenchPage />);
+
+    const shortcutDrawer = screen.getByText("快捷入口").closest("details");
+    const stockResearchButton = screen.getByText("Stock Research").closest("button");
+    const portfolioReviewButton = screen.getByText("Portfolio Review").closest("button");
+    expect(shortcutDrawer).not.toBeNull();
+    expect(shortcutDrawer).not.toHaveAttribute("open");
+    expect(stockResearchButton).not.toBeNull();
+    expect(portfolioReviewButton).not.toBeNull();
+    expect(stockResearchButton).not.toBeVisible();
+    expect(portfolioReviewButton).not.toBeVisible();
+
+    openShortcutDrawer();
+
+    expect(shortcutDrawer).toHaveAttribute("open");
+    expect(stockResearchButton).toBeVisible();
+    expect(portfolioReviewButton).toBeVisible();
+  });
+
   it("renders explicit repo_path input and GitNexus quick examples", () => {
     render(<AgentWorkbenchPage />);
 
@@ -357,6 +386,7 @@ describe("AgentWorkbenchPage", () => {
 
   it("renders four financial workflow shortcut buttons", () => {
     render(<AgentWorkbenchPage />);
+    openShortcutDrawer();
 
     expect(screen.getByRole("button", { name: /Portfolio Review/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /PnL Review/ })).toBeInTheDocument();
@@ -366,6 +396,7 @@ describe("AgentWorkbenchPage", () => {
 
   it("renders stock and macro research shortcut buttons", () => {
     render(<AgentWorkbenchPage />);
+    openShortcutDrawer();
 
     expect(screen.getByRole("button", { name: /Stock Research/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Macro Research/ })).toBeInTheDocument();
@@ -387,6 +418,7 @@ describe("AgentWorkbenchPage", () => {
       />,
     );
 
+    openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Stock Research/ }));
 
     await waitFor(() => {
@@ -417,6 +449,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Macro Research/ }));
 
     await waitFor(() => {
@@ -449,6 +482,7 @@ describe("AgentWorkbenchPage", () => {
       />,
     );
 
+    openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
 
     await waitFor(() => {
@@ -489,6 +523,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
 
     const status = await screen.findByRole("status");
@@ -558,6 +593,10 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("组合概览")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
     expect(screen.getByRole("status")).toHaveTextContent("本地查询完成");
+    const resultDetails = screen.getByLabelText("assistant-result-details");
+    expect(resultDetails).toHaveClass("agent-result-side");
+    expect(resultDetails).toHaveTextContent("回答依据");
+    expect(resultDetails).toHaveTextContent("运行信息");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/agent/query");
   });
@@ -831,6 +870,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
+    openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
     expect(await screen.findByText("Workflow Execution Steps")).toBeInTheDocument();
 
@@ -1168,8 +1208,6 @@ describe("AgentWorkbenchPage", () => {
 
     const processSelect = screen.getByLabelText("process-name-select");
     const viewProcessButton = screen.getByRole("button", { name: "查看所选流程" });
-    expect(viewProcessButton).toBeDisabled();
-    await user.selectOptions(processSelect, "CheckoutFlow");
     await waitFor(() => expect(processSelect).toHaveValue("CheckoutFlow"));
     expect(viewProcessButton).not.toBeDisabled();
     await user.click(viewProcessButton);
@@ -2292,9 +2330,19 @@ describe("AgentWorkbenchPage", () => {
     const moreFollowUps = screen.getByText("更多追问");
     const followUpDetails = moreFollowUps.closest("details");
     expect(followUpDetails).not.toBeNull();
+    if (!followUpDetails) {
+      throw new Error("Expected follow-up details to exist");
+    }
+    const followUpOptions = followUpDetails.querySelector(".agent-follow-up-chips__options");
+    expect(followUpOptions).not.toBeNull();
+    if (!followUpOptions) {
+      throw new Error("Expected follow-up options to exist");
+    }
     expect(followUpDetails).not.toHaveAttribute("open");
+    expect(followUpOptions).not.toBeVisible();
     fireEvent.click(moreFollowUps);
     expect(followUpDetails).toHaveAttribute("open");
+    expect(followUpOptions).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "展开依据" }));
 
@@ -4032,15 +4080,51 @@ describe("AgentWorkbenchPage", () => {
     expect(evidencePanel).toHaveTextContent("质量");
     expect(evidencePanel).toHaveTextContent("正常");
     expect(screen.getByText("查看筛选参数")).toBeInTheDocument();
+    const sidePanelDetails = Array.from(document.querySelectorAll<HTMLDetailsElement>(".agent-side-panel__details"));
+    expect(sidePanelDetails.length).toBeGreaterThan(0);
+    const firstSidePanelDetails = sidePanelDetails[0];
+    const firstSidePanelBody = Array.from(firstSidePanelDetails.children).find(
+      (child) => child.tagName.toLowerCase() !== "summary",
+    );
+    expect(firstSidePanelDetails).not.toHaveAttribute("open");
+    expect(firstSidePanelBody).toBeDefined();
+    if (!firstSidePanelBody) {
+      throw new Error("Expected side panel details body to exist");
+    }
+    expect(firstSidePanelBody).not.toBeVisible();
+    const firstSidePanelSummary = firstSidePanelDetails.querySelector("summary");
+    expect(firstSidePanelSummary).not.toBeNull();
+    if (!firstSidePanelSummary) {
+      throw new Error("Expected side panel details summary to exist");
+    }
+    fireEvent.click(firstSidePanelSummary);
+    expect(firstSidePanelDetails).toHaveAttribute("open");
+    expect(firstSidePanelBody).toBeVisible();
     expect(screen.getByText("按组合下钻")).toBeInTheDocument();
     expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();
     expect(screen.getByText("接下来可以做")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "继续下钻期限桶" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看血缘" })).toBeInTheDocument();
+    const moreSuggestedActions = screen.getByText("更多建议 · 1 项").closest("details");
+    const lineageActionButton = screen.getByText("查看血缘").closest("button");
+    expect(moreSuggestedActions).not.toBeNull();
+    expect(moreSuggestedActions).not.toHaveAttribute("open");
+    expect(lineageActionButton).not.toBeNull();
+    expect(lineageActionButton).not.toBeVisible();
     expect(screen.getAllByText("需确认后执行")).toHaveLength(2);
     expect(screen.getAllByText("查看参数")).toHaveLength(2);
     expect(screen.getByText(/inspect_drill/)).toBeInTheDocument();
-    expect(screen.getByText(/inspect_lineage/)).toBeInTheDocument();
+    expect(screen.getByText(/inspect_lineage/)).not.toBeVisible();
+
+    fireEvent.click(screen.getByText("更多建议 · 1 项"));
+    expect(moreSuggestedActions).toHaveAttribute("open");
+    expect(lineageActionButton).toBeVisible();
+    if (!moreSuggestedActions) {
+      throw new Error("Expected secondary suggested actions drawer to exist");
+    }
+    const lineageActionDetails = within(moreSuggestedActions).getByText("查看参数").closest("details");
+    expect(lineageActionDetails).not.toBeNull();
+    expect(lineageActionDetails).not.toHaveAttribute("open");
+    expect(screen.getByText(/inspect_lineage/)).not.toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "继续下钻期限桶" }));
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue(

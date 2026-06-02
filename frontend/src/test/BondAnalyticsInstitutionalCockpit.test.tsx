@@ -7,8 +7,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { DV01RiskPayload, Numeric, ResultMeta } from "../api/contracts";
 import { BondAnalyticsInstitutionalCockpit } from "../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit";
+import { formatRawAsNumeric } from "../utils/format";
 
 const COCKPIT_CSS = readFileSync(
   resolve(
@@ -42,6 +43,52 @@ function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
     scenario_flag: false,
     generated_at: "2026-04-19T00:00:00Z",
     ...overrides,
+  };
+}
+
+const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+const ratio = (raw: number) =>
+  formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false, precision: 2 });
+const dv01 = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
+const bp = (raw: number) => formatRawAsNumeric({ raw, unit: "bp", sign_aware: true });
+
+function createDv01RiskPayload(
+  accountingClass: string,
+  durationRaw: number,
+  dv01Raw: number,
+): DV01RiskPayload {
+  const zero = (unit: Numeric["unit"]) =>
+    formatRawAsNumeric({ raw: 0, unit, sign_aware: false });
+  return {
+    report_date: "2026-03-31",
+    accounting_class: accountingClass,
+    total_face_value: yuan(1_000_000_000),
+    total_market_value: yuan(1_020_000_000),
+    face_weighted_modified_duration: ratio(durationRaw),
+    total_dv01: dv01(dv01Raw),
+    position_count: 12,
+    shock_scenarios: [
+      {
+        scenario_name: "rate_up_1bp",
+        shock_bp: bp(1),
+        estimated_pnl: formatRawAsNumeric({ raw: -dv01Raw, unit: "yuan", sign_aware: true }),
+      },
+    ],
+    tenor_buckets: [],
+    top_bonds: [],
+    top_issuers: [],
+    warnings: [],
+    computed_at: "2026-04-19T00:00:00Z",
+    ...(dv01Raw === 0
+      ? {
+          total_face_value: zero("yuan"),
+          total_market_value: zero("yuan"),
+          face_weighted_modified_duration: zero("ratio"),
+          total_dv01: zero("dv01"),
+          position_count: 0,
+          shock_scenarios: [],
+        }
+      : {}),
   };
 }
 
@@ -223,6 +270,60 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     expect(screen.getByTestId("bond-analysis-holdings-table")).toHaveTextContent("持仓明细");
     expect(screen.getByTestId("bond-analysis-risk-guardrails")).toHaveTextContent("风险指标");
+  });
+
+  it("puts accounting-class duration and DV01 directly on the bond-analysis homepage", async () => {
+    const dv01ByClass = {
+      AC: createDv01RiskPayload("AC", 2.1, 123_000),
+      OCI: createDv01RiskPayload("OCI", 3.43, 3_546_830),
+      TPL: createDv01RiskPayload("TPL", 0.65, 42_000),
+      all: createDv01RiskPayload("all", 2.88, 3_711_830),
+    };
+    const getBondAnalyticsDv01Risk = vi.fn(async (_reportDate: string, options?: { accountingClass?: string }) => ({
+      result_meta: createResultMeta({ result_kind: "bond_analytics.dv01_risk" }),
+      result: dv01ByClass[(options?.accountingClass ?? "OCI") as keyof typeof dv01ByClass],
+    }));
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDv01Risk,
+    };
+
+    renderCockpit(client);
+
+    const summary = await screen.findByTestId("bond-analysis-accounting-dv01-summary");
+
+    await waitFor(() => {
+      expect(getBondAnalyticsDv01Risk).toHaveBeenCalledWith(expect.any(String), {
+        accountingClass: "AC",
+        topN: 1,
+        shockBps: "1",
+      });
+      expect(getBondAnalyticsDv01Risk).toHaveBeenCalledWith(expect.any(String), {
+        accountingClass: "OCI",
+        topN: 1,
+        shockBps: "1",
+      });
+      expect(getBondAnalyticsDv01Risk).toHaveBeenCalledWith(expect.any(String), {
+        accountingClass: "TPL",
+        topN: 1,
+        shockBps: "1",
+      });
+      expect(getBondAnalyticsDv01Risk).toHaveBeenCalledWith(expect.any(String), {
+        accountingClass: "all",
+        topN: 1,
+        shockBps: "1",
+      });
+    });
+    expect(summary).toHaveTextContent("会计分类 DV01");
+    expect(summary).toHaveTextContent("AC");
+    expect(summary).toHaveTextContent("2.10 年");
+    expect(summary).toHaveTextContent("123,000");
+    expect(summary).toHaveTextContent("OCI");
+    expect(summary).toHaveTextContent("3.43 年");
+    expect(summary).toHaveTextContent("3,546,830");
+    expect(summary).toHaveTextContent("TPL");
+    expect(summary).toHaveTextContent("全部");
+    expect(summary).toHaveTextContent("3,711,830");
   });
 
   it("keeps the reference topbar and current conclusion visible in the desktop first screen grid", () => {

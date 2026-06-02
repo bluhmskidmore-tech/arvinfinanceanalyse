@@ -4,6 +4,7 @@ import type {
   ConfluenceReplayStatus,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyOptimizationPayload,
+  LivermoreStrategyScorePayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
 import {
@@ -35,6 +36,7 @@ import {
   buildEventsMonitoringPanelSummary,
   buildObservationPoolsPanelSummary,
   buildThemeBreakoutPanelSummary,
+  buildMarketPriorityPanelSummary,
   buildStrategyOptimizationPanelSummary,
   localizeStockBackendText,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
@@ -384,7 +386,11 @@ describe("stockAnalysisPageModel", () => {
     });
 
     expect(missing?.statusLabel).toBe("部分就绪");
-    expect(missing?.macroGapLabels).toEqual(["PMI (missing)", "credit_impulse (missing)"]);
+    expect(missing?.macroGapLabels).toEqual(["PMI 缺失", "信用脉冲 缺失"]);
+    expect(missing?.detailLabel).toContain("可用 市场门控");
+    expect(missing?.detailLabel).toContain("缺失 PMI、信用脉冲、价差");
+    expect(missing?.detailLabel).not.toContain("credit_impulse");
+    expect(missing?.detailLabel).not.toContain("(missing)");
     expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v3");
   });
 
@@ -1678,6 +1684,140 @@ describe("stockAnalysisPageModel", () => {
     );
   });
 
+  it("localizes optimization panel summary recommendation detail", () => {
+    const stats = {
+      return_5d: {
+        available_count: 30,
+        missing_count: 0,
+        positive_count: 20,
+        non_positive_count: 10,
+        avg_return: 0.0233,
+        win_rate: 0.667,
+      },
+    };
+    const dateWeightedStats = {
+      return_5d: {
+        available_day_count: 2,
+        candidate_row_count: 30,
+        avg_return: 0.0233,
+        positive_day_rate: 1,
+        worst_day_return: 0.01,
+        best_day_return: 0.03,
+      },
+    };
+    const payload: LivermoreStrategyOptimizationPayload = {
+      as_of_date: "2026-05-13",
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "HOT",
+      backtest_window_summary: null,
+      strategy_summaries: [
+        {
+          summary_key: "strategy:factor_screen",
+          signal_kind: "factor_screen",
+          strategy_label: "多因子",
+          sample_status: "sufficient",
+          stats,
+          date_weighted_stats: dateWeightedStats,
+          recommendation: {
+            action: "promote",
+            priority_label: "优先复核",
+            reason: "T+5 sample 30, avg return +2.33%, win rate 66.7%, priority review ranking.",
+            primary_horizon: "return_5d",
+            available_count: 30,
+            min_sample: 20,
+            avg_return: 0.0233,
+            win_rate: 0.667,
+            score: 69,
+          },
+        },
+      ],
+      slices: [],
+      recommendations: [],
+      pending_summary: {
+        primary_horizon: "return_5d",
+        pending_rows: 0,
+        pending_dates: [],
+        latest_pending_date: null,
+        message: "",
+      },
+      sample_maturity: null,
+    };
+
+    const summary = buildStrategyOptimizationPanelSummary({
+      payload,
+      rows: payload.strategy_summaries,
+      queryState: "ready",
+    });
+
+    expect(summary.detail).toBe("T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。");
+    expect(summary.detail).not.toContain("sample 30");
+    expect(summary.detail).not.toContain("priority review ranking");
+  });
+
+  it("localizes market priority panel summary reason detail", () => {
+    const payload: LivermoreStrategyScorePayload = {
+      as_of_date: "2026-05-13",
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "HOT",
+      rows: [
+        {
+          market_state: "HOT",
+          signal_kind: "factor_screen",
+          strategy_label: "多因子",
+          sample_status: "sufficient",
+          priority_score: 69,
+          priority_rank: 1,
+          priority_label: "优先复核",
+          reason: "T+5 sample 30, avg return +2.33%, win rate 66.7%, priority review ranking.",
+          stats: {
+            return_1d: {
+              available_count: 30,
+              missing_count: 0,
+              positive_count: 18,
+              non_positive_count: 12,
+              avg_return: 0.006,
+              win_rate: 0.6,
+            },
+            return_5d: {
+              available_count: 30,
+              missing_count: 0,
+              positive_count: 20,
+              non_positive_count: 10,
+              avg_return: 0.0233,
+              win_rate: 0.667,
+            },
+            return_20d: {
+              available_count: 30,
+              missing_count: 0,
+              positive_count: 16,
+              non_positive_count: 14,
+              avg_return: 0.031,
+              win_rate: 0.533,
+            },
+          },
+        },
+      ],
+      current_market_state_rows: [],
+    };
+
+    const summary = buildMarketPriorityPanelSummary({
+      payload,
+      rows: payload.rows,
+      marketState: "HOT",
+      queryState: "ready",
+    });
+
+    expect(summary.detail).toBe("T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。");
+    expect(summary.detail).not.toContain("sample 30");
+    expect(summary.detail).not.toContain("priority review ranking");
+  });
+
   it("keeps generic backend pending copy as confirmation status, not return maturity", () => {
     const copy = localizeStockBackendText("Signal confluence diagnostic pending detail.", "signal_confluence");
 
@@ -1695,6 +1835,10 @@ describe("stockAnalysisPageModel", () => {
       "T+5 matured snapshots 2/4, waiting for more mature days.",
       "stock_candidate",
     );
+    const optimization = localizeStockBackendText(
+      "T+5 sample 30, avg return +2.33%, win rate 66.7%, priority review ranking.",
+      "factor_screen",
+    );
 
     expect(insufficient).toBe("当前状态样本不足：T+5 可用样本 6/20，仅作观察。");
     expect(insufficient).not.toContain("Current market sample");
@@ -1702,6 +1846,8 @@ describe("stockAnalysisPageModel", () => {
     expect(fusion).not.toContain("Fusion observation-only candidate");
     expect(maturity).toBe("T+5 已成熟快照 2/4，等待更多成熟日。");
     expect(maturity).not.toContain("matured snapshots");
+    expect(optimization).toBe("T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。");
+    expect(optimization).not.toContain("priority review ranking");
   });
 
 });

@@ -150,6 +150,51 @@
   gap: 10px;
 }
 
+.risk-tensor-section-heading {
+  margin: 24px 0 12px;
+  color: var(--moss-color-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.risk-tensor-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.risk-tensor-radar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-tensor-radar-actions button {
+  appearance: none;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.risk-tensor-radar-actions button:hover {
+  border-color: var(--moss-color-info-300);
+  color: var(--moss-color-info-600);
+}
+
+.risk-tensor-radar-actions button:focus-visible {
+  outline: 2px solid var(--moss-color-info-600);
+  outline-offset: 2px;
+}
+
 .risk-tensor-brief__tile {
   display: grid;
   align-content: start;

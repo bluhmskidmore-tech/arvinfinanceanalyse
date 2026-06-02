@@ -11,7 +11,6 @@ import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import type { Numeric, ResultMeta, RiskTensorChangeMetric, RiskTensorPayload } from "../../api/contracts";
 import {
-  parseDisplayNumber,
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
 import {
@@ -30,6 +29,17 @@ const RADAR_META = [
   { key: "hhi" as const, name: "集中度", max: 1 },
   { key: "liq_ratio" as const, name: "流动性缺口", max: 1 },
 ] as const;
+
+type RadarKey = (typeof RADAR_META)[number]["key"];
+
+const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
+  duration: "risk-tensor-duration-scope",
+  dv01: "risk-tensor-dv01-controls",
+  convexity: "risk-tensor-kpi-grid",
+  cs01: "risk-tensor-kpi-grid",
+  hhi: "risk-tensor-issuer-concentration-detail",
+  liq_ratio: "risk-tensor-liquidity-gap-detail",
+};
 
 const chartRowStyle = {
   display: "flex",
@@ -103,6 +113,7 @@ function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
 
 type RiskTensorDisplayValue = Parameters<typeof bondNumericDisplay>[0];
 type PriorMetricValueKey = "current" | "previous" | "delta";
+type KrdChartClickParams = { name?: unknown };
 
 const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
@@ -593,6 +604,19 @@ export default function RiskTensorPage() {
   const actionTileCanJump = Boolean(result && (requiredActions.length > 0 || result.warnings.length > 0));
   const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 || (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
   const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
+  const radarNavigationItems = result
+    ? RADAR_META.map((item) => {
+        const targetTestId =
+          (item.key === "duration" && !showDurationScope) || (item.key === "dv01" && !result.dv01_controls)
+            ? "risk-tensor-kpi-grid"
+            : RADAR_NAVIGATION_TARGETS[item.key];
+        return {
+          key: item.key,
+          name: item.name,
+          targetTestId,
+        };
+      })
+    : [];
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
@@ -625,13 +649,38 @@ export default function RiskTensorPage() {
 
   const handleLiquidityDetailJump = () => {
     document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-cashflow-grid"]')
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-liquidity-gap-detail"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleIssuerConcentrationJump = () => {
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-issuer-concentration-detail"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleRadarDimensionJump = (targetTestId: string) => {
+    document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
+  const handleKrdChartClick = (params: KrdChartClickParams) => {
+    const tenor = typeof params.name === "string" ? params.name : "";
+    const row = tenorRows.find((item) => item.tenor === tenor);
+    if (!row) {
+      return;
+    }
+    setSelectedTenor(row.tenor);
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]')
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const handleRequiredInformationJump = () => {
     const targetTestId =
-      requiredActions.length > 0 ? "risk-tensor-dv01-controls" : result?.warnings.length ? "risk-tensor-quality-detail" : null;
+      requiredActions.length > 0 ? "risk-tensor-dv01-actions" : result?.warnings.length ? "risk-tensor-quality-detail" : null;
     if (!targetTestId) {
       return;
     }
@@ -924,11 +973,19 @@ export default function RiskTensorPage() {
                     {yuanAsYiWithUnit(result.liquidity_gap_30d)} = 30 日资产现金流 - 负债现金流。
                   </span>
                 </button>
-                <article className="risk-tensor-brief__tile" data-tone="neutral">
+                <button
+                  type="button"
+                  className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                  data-testid="risk-tensor-issuer-concentration-action"
+                  data-tone="neutral"
+                  onClick={handleIssuerConcentrationJump}
+                >
                   <span>发行人集中度</span>
                   <strong>{ratioPercentDisplay(result.issuer_top5_weight)}</strong>
-                  <p>前五大权重；HHI {displayStr(result.issuer_concentration_hhi)}。</p>
-                </article>
+                  <span className="risk-tensor-brief__tile-detail">
+                    前五大权重；HHI {displayStr(result.issuer_concentration_hhi)}。
+                  </span>
+                </button>
                 <button
                   type="button"
                   className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
@@ -1146,7 +1203,11 @@ export default function RiskTensorPage() {
                 </div>
 
                 {result.dv01_controls.control_actions.length > 0 ? (
-                  <div className="risk-tensor-dv01-controls__actions" aria-label="DV01 control actions">
+                  <div
+                    className="risk-tensor-dv01-controls__actions"
+                    data-testid="risk-tensor-dv01-actions"
+                    aria-label="DV01 control actions"
+                  >
                     {result.dv01_controls.control_actions.map((item) => (
                       <article className="risk-tensor-dv01-controls__action-card" key={item.key}>
                         <div>
@@ -1183,6 +1244,20 @@ export default function RiskTensorPage() {
                       style={{ height: 400, width: "100%" }}
                     />
                   ) : null}
+                  {radarNavigationItems.length > 0 ? (
+                    <div className="risk-tensor-radar-actions" aria-label="risk tensor radar dimension navigation">
+                      {radarNavigationItems.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          data-testid={`risk-tensor-radar-action-${item.key}`}
+                          onClick={() => handleRadarDimensionJump(item.targetTestId)}
+                        >
+                          {item.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div style={chartColumnStyle}>
@@ -1197,7 +1272,11 @@ export default function RiskTensorPage() {
                   KRD 分档（估值 DV01）
                 </h2>
               {krdChartOption ? (
-                <ReactECharts option={krdChartOption} style={{ height: 320, width: "100%" }} />
+                <ReactECharts
+                  option={krdChartOption}
+                  onEvents={{ click: handleKrdChartClick }}
+                  style={{ height: 320, width: "100%" }}
+                />
               ) : null}
 
               {selectedTenorRow ? (
@@ -1232,68 +1311,53 @@ export default function RiskTensorPage() {
             </div>
           </div>
 
-            <h2
-              style={{
-                margin: "24px 0 12px",
-                fontSize: 16,
-                fontWeight: 600,
-                color: "#162033",
-              }}
-            >
-              集中度
-            </h2>
-            <div style={summaryGridStyle}>
-              <KpiCard
-                title="发行人 HHI"
-                value={displayStr(result.issuer_concentration_hhi)}
-                detail="issuer_concentration_hhi。"
-                tone={
-                  (() => {
-                    const n = parseDisplayNumber(displayStr(result.issuer_concentration_hhi));
-                    return n != null && n > 0.15 ? "warning" : "default";
-                  })()
-                }
-              />
-              <KpiCard
-                title="前五大权重"
-                value={ratioPercentDisplay(result.issuer_top5_weight)}
-                detail="issuer_top5_weight。"
-              />
-            </div>
+            <section data-testid="risk-tensor-issuer-concentration-detail" aria-label="发行人集中度明细">
+              <h2 className="risk-tensor-section-heading">
+                发行人集中度
+              </h2>
+              <div className="risk-tensor-summary-grid">
+                <KpiCard
+                  title="发行人 HHI"
+                  value={displayStr(result.issuer_concentration_hhi)}
+                  detail="issuer_concentration_hhi。"
+                  testId="risk-tensor-issuer-hhi"
+                />
+                <KpiCard
+                  title="前五大权重"
+                  value={ratioPercentDisplay(result.issuer_top5_weight)}
+                  detail="issuer_top5_weight。"
+                />
+              </div>
+            </section>
 
-            <h2
-              style={{
-                margin: "24px 0 12px",
-                fontSize: 16,
-                fontWeight: 600,
-                color: "#162033",
-              }}
-            >
-              流动性现金流缺口
-            </h2>
-            <div style={summaryGridStyle}>
-              <KpiCard
-                title="30 日资产现金流 - 负债现金流"
-                value={yuanAsYiDisplay(result.liquidity_gap_30d)}
-                detail="liquidity_gap_30d。"
-                unit={YI_YUAN_UNIT}
-                tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_30d))}
-              />
-              <KpiCard
-                title="90 日资产现金流 - 负债现金流"
-                value={yuanAsYiDisplay(result.liquidity_gap_90d)}
-                detail="liquidity_gap_90d。"
-                unit={YI_YUAN_UNIT}
-                tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_90d))}
-              />
-              <KpiCard
-                title="30 日流动性缺口比例"
-                value={ratioPercentDisplay(result.liquidity_gap_30d_ratio)}
-                detail="liquidity_gap_30d_ratio。"
-                tone={ratioTone(result.liquidity_gap_30d_ratio)}
-                testId="risk-tensor-liquidity-gap-ratio"
-              />
-            </div>
+            <section data-testid="risk-tensor-liquidity-gap-detail" aria-label="流动性现金流缺口明细">
+              <h2 className="risk-tensor-section-heading">
+                流动性现金流缺口
+              </h2>
+              <div className="risk-tensor-summary-grid">
+                <KpiCard
+                  title="30 日资产现金流 - 负债现金流"
+                  value={yuanAsYiDisplay(result.liquidity_gap_30d)}
+                  detail="liquidity_gap_30d。"
+                  unit={YI_YUAN_UNIT}
+                  tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_30d))}
+                />
+                <KpiCard
+                  title="90 日资产现金流 - 负债现金流"
+                  value={yuanAsYiDisplay(result.liquidity_gap_90d)}
+                  detail="liquidity_gap_90d。"
+                  unit={YI_YUAN_UNIT}
+                  tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.liquidity_gap_90d))}
+                />
+                <KpiCard
+                  title="30 日流动性缺口比例"
+                  value={ratioPercentDisplay(result.liquidity_gap_30d_ratio)}
+                  detail="liquidity_gap_30d_ratio。"
+                  tone={ratioTone(result.liquidity_gap_30d_ratio)}
+                  testId="risk-tensor-liquidity-gap-ratio"
+                />
+              </div>
+            </section>
 
             <h2
               style={{

@@ -7,12 +7,19 @@ import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="risk-tensor-echarts-stub" />,
+  default: ({ onEvents }: { onEvents?: Record<string, (params: { name?: string }) => void> }) => (
+    <button
+      type="button"
+      data-testid="risk-tensor-echarts-stub"
+      onClick={() => onEvents?.click?.({ name: "1Y" })}
+    />
+  ),
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta, RiskTensorPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
+import { displayTokens } from "../theme/displayTokens";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 
 const WAN_YUAN_UNIT = "\u4e07\u5143";
@@ -316,7 +323,7 @@ describe("RiskTensorPage", () => {
     expect(kpi).toHaveTextContent("监管口径 DV01");
     expect(kpi).toHaveTextContent("待接入");
     expect(kpi).toHaveTextContent(new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`));
-    expect(screen.getByText("集中度")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-issuer-concentration-detail")).toHaveTextContent("发行人集中度");
     expect(screen.getByText("流动性现金流缺口")).toBeInTheDocument();
     expect(screen.getByText("30 日资产现金流 - 负债现金流")).toBeInTheDocument();
     expect(screen.getByText("90 日资产现金流 - 负债现金流")).toBeInTheDocument();
@@ -602,12 +609,13 @@ describe("RiskTensorPage", () => {
 
       const brief = await screen.findByTestId("risk-tensor-brief");
       const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
       expect(requiredAction).toHaveTextContent("Configure approved DV01 limit");
+      expect(actions).toHaveTextContent("Configure approved DV01 limit");
 
       await user.click(requiredAction);
 
-      expect(scrollTargets).toContain(controls);
+      expect(scrollTargets).toContain(actions);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
@@ -660,7 +668,7 @@ describe("RiskTensorPage", () => {
     }
   });
 
-  it("lets users jump from the first-screen liquidity tile to cashflow detail", async () => {
+  it("lets users jump from the first-screen liquidity tile to liquidity gap detail", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
     const scrollOptions: unknown[] = [];
@@ -689,11 +697,11 @@ describe("RiskTensorPage", () => {
 
       const brief = await screen.findByTestId("risk-tensor-brief");
       const liquidityAction = within(brief).getByTestId("risk-tensor-liquidity-action");
-      const cashflowGrid = await screen.findByTestId("risk-tensor-cashflow-grid");
+      const liquidityGapDetail = await screen.findByTestId("risk-tensor-liquidity-gap-detail");
 
       await user.click(liquidityAction);
 
-      expect(scrollTargets).toContain(cashflowGrid);
+      expect(scrollTargets).toContain(liquidityGapDetail);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
@@ -734,6 +742,164 @@ describe("RiskTensorPage", () => {
       await user.click(dataStatusAction);
 
       expect(scrollTargets).toContain(qualityDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("surfaces issuer concentration detail from backend fields", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_issuer_detail_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_issuer_detail_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        issuer_top5_weight: "0.42",
+        issuer_concentration_hhi: "0.18",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const issuerDetail = await screen.findByTestId("risk-tensor-issuer-concentration-detail");
+    const issuerHhi = within(issuerDetail).getByTestId("risk-tensor-issuer-hhi");
+    expect(issuerDetail).toHaveTextContent("发行人集中度");
+    expect(issuerDetail).toHaveTextContent("42.0%");
+    expect(issuerDetail).toHaveTextContent("0.18");
+    expect(issuerDetail).toHaveTextContent("issuer_top5_weight");
+    expect(issuerDetail).toHaveTextContent("issuer_concentration_hhi");
+    expect(within(issuerHhi).getByText("0.18")).toHaveStyle({ color: displayTokens.kpi.valueDefault });
+  });
+
+  it("lets users select a tenor from the KRD chart and lands on the tenor drilldown", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_chart_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_krd_chart_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const drill = await screen.findByTestId("risk-tensor-tenor-drill");
+      const oneYear = within(drill).getByRole("button", { name: "1Y" });
+      const fiveYear = within(drill).getByRole("button", { name: "5Y" });
+      const krdChart = screen.getAllByTestId("risk-tensor-echarts-stub")[1]!;
+
+      expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+
+      await user.click(krdChart);
+
+      await waitFor(() => {
+        expect(oneYear).toHaveAttribute("aria-pressed", "true");
+        expect(fiveYear).toHaveAttribute("aria-pressed", "false");
+        expect(drill).toHaveTextContent("当前桶：1Y");
+      });
+      expect(scrollTargets).toContain(drill);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the radar concentration dimension to issuer detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_hhi_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_hhi_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const issuerDetail = await screen.findByTestId("risk-tensor-issuer-concentration-detail");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-hhi");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(issuerDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the first-screen issuer concentration tile to issuer detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_issuer_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_issuer_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const issuerAction = within(brief).getByTestId("risk-tensor-issuer-concentration-action");
+      const issuerDetail = await screen.findByTestId("risk-tensor-issuer-concentration-detail");
+
+      await user.click(issuerAction);
+
+      expect(scrollTargets).toContain(issuerDetail);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

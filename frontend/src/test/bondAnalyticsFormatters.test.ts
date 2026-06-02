@@ -18,6 +18,11 @@ describe("bond analytics formatters", () => {
     it("returns dash for invalid input", () => {
       expect(formatYi("not-a-number")).toBe("-");
     });
+
+    it("returns dash for nullish input", () => {
+      expect(formatYi(null)).toBe("-");
+      expect(formatYi(undefined)).toBe("-");
+    });
   });
 
   describe("formatWan", () => {
@@ -27,6 +32,11 @@ describe("bond analytics formatters", () => {
 
     it("returns dash for invalid input", () => {
       expect(formatWan("x")).toBe("-");
+    });
+
+    it("returns dash for nullish input", () => {
+      expect(formatWan(null)).toBe("-");
+      expect(formatWan(undefined)).toBe("-");
     });
   });
 
@@ -38,6 +48,11 @@ describe("bond analytics formatters", () => {
     it("returns dash for invalid input", () => {
       expect(formatPct("")).toBe("-");
     });
+
+    it("returns dash for nullish input", () => {
+      expect(formatPct(null)).toBe("-");
+      expect(formatPct(undefined)).toBe("-");
+    });
   });
 
   describe("formatBp", () => {
@@ -47,6 +62,11 @@ describe("bond analytics formatters", () => {
 
     it("returns dash for invalid input", () => {
       expect(formatBp("bad")).toBe("-");
+    });
+
+    it("returns dash for nullish input", () => {
+      expect(formatBp(null)).toBe("-");
+      expect(formatBp(undefined)).toBe("-");
     });
   });
 

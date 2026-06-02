@@ -22,6 +22,24 @@ from backend.app.core_finance.config import product_category_mapping as authorit
 _REQUIRED_KEYS = frozenset(
     {"id", "name", "side", "level", "scale_accounts", "pnl_accounts", "ftp_rate_pct", "children"}
 )
+EXPECTED_DERIVATIVE_PNL_ACCOUNTS = [
+    "51203010001",
+    "51203010003",
+    "51203020001",
+    "51203050001",
+    "51203070001",
+    "51203070002",
+    "51203070003",
+    "51204000001",
+    "51206010003",
+    "51206040003",
+]
+EXPECTED_INTERMEDIATE_BUSINESS_PNL_ACCOUNTS = [
+    "51102000004",
+    "51102000005",
+    "51104000001",
+    "51110000018",
+]
 
 
 def test_default_ftp_rate_pct_is_one_point_seven_five() -> None:
@@ -98,6 +116,25 @@ def test_custom_ftp_rate_propagates_to_all_items() -> None:
 def test_derivative_and_intermediate_account_lists_have_no_duplicates() -> None:
     assert len(DERIVATIVE_PNL_ACCOUNTS) == len(set(DERIVATIVE_PNL_ACCOUNTS))
     assert len(INTERMEDIATE_BUSINESS_PNL_ACCOUNTS) == len(set(INTERMEDIATE_BUSINESS_PNL_ACCOUNTS))
+    assert not set(DERIVATIVE_PNL_ACCOUNTS).intersection(INTERMEDIATE_BUSINESS_PNL_ACCOUNTS)
+
+
+def test_derivative_accounts_match_confirmed_fx_and_derivative_scope() -> None:
+    assert DERIVATIVE_PNL_ACCOUNTS == EXPECTED_DERIVATIVE_PNL_ACCOUNTS
+
+
+def test_intermediate_business_accounts_match_confirmed_fee_scope() -> None:
+    assert INTERMEDIATE_BUSINESS_PNL_ACCOUNTS == EXPECTED_INTERMEDIATE_BUSINESS_PNL_ACCOUNTS
+
+
+def test_derivatives_category_keeps_id_and_uses_fx_derivative_display_name() -> None:
+    cfg = build_default_product_category_config()
+    derivatives = next(item for item in cfg if item["id"] == "derivatives")
+    intermediate = next(item for item in cfg if item["id"] == "intermediate_business_income")
+
+    assert derivatives["name"] == "汇兑损益及衍生"
+    assert derivatives["pnl_accounts"] == EXPECTED_DERIVATIVE_PNL_ACCOUNTS
+    assert intermediate["pnl_accounts"] == EXPECTED_INTERMEDIATE_BUSINESS_PNL_ACCOUNTS
 
 
 def test_fx_and_derivative_account_list_matches_confirmed_full_scope() -> None:

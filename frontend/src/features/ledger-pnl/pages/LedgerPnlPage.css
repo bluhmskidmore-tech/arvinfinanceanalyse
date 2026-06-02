@@ -82,7 +82,7 @@
 
 .ledger-pnl-analysis__status-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 560px);
   gap: var(--moss-space-3);
   align-items: start;
   margin-bottom: var(--moss-space-3);
@@ -108,7 +108,7 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--moss-space-2);
-  min-width: 220px;
+  min-width: 0;
 }
 
 .ledger-pnl-analysis__status-summary span {
@@ -202,6 +202,42 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: var(--moss-space-3);
+}
+
+.ledger-pnl-analysis__source-contract-decision {
+  display: grid;
+  gap: 4px;
+  margin-bottom: var(--moss-space-3);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 3px solid var(--moss-color-neutral-400);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-bg-surface, #ffffff);
+}
+
+.ledger-pnl-analysis__source-contract-decision--warning {
+  border-left-color: var(--moss-color-warning-500);
+  background: var(--moss-color-warning-50);
+}
+
+.ledger-pnl-analysis__source-contract-decision--pending {
+  border-left-color: var(--moss-color-neutral-400);
+}
+
+.ledger-pnl-analysis__source-contract-decision--ok {
+  border-left-color: var(--moss-color-success-500);
+}
+
+.ledger-pnl-analysis__source-contract-decision strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ledger-pnl-analysis__source-contract-decision span {
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .ledger-pnl-analysis__source-contract-status {

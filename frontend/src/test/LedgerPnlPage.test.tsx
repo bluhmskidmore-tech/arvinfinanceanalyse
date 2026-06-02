@@ -362,7 +362,10 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("report_month 202605");
     expect(panel).toHaveTextContent("sample_status missing_contract");
     expect(panel).toHaveTextContent("formal_use_allowed=false");
-    expect(panel).toHaveTextContent("No frozen formal financial indicator contract is registered");
+    expect(panel).toHaveTextContent("本月未登记正式财务指标契约");
+    expect(panel).toHaveTextContent("正式值不可用于展示，分析候选值不会回填");
+    expect(panel).toHaveTextContent("后台未登记本月正式财务指标契约");
+    expect(panel).not.toHaveTextContent("No frozen formal financial indicator contract is registered");
     expect(panel).toHaveTextContent("暂无正式财务指标源契约数据");
   });
 
