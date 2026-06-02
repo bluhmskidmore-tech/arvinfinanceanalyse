@@ -1,7 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { ApiEnvelope, ResultMeta } from "../api/contracts";
 import { createApiClient, type ApiClient } from "../api/client";
+import type {
+  MacroToolkitAnalysisPayload,
+  MacroToolkitStrategySummariesPayload,
+} from "../api/macroToolkitClient";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 import { PORTFOLIO_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/portfolioModuleDrilldowns";
 import { MARKET_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/marketModuleDrilldowns";
@@ -14,6 +19,74 @@ function renderAt(path: string, client?: ApiClient) {
   return renderWorkbenchApp([path], {
     client: client ?? createApiClient({ mode: "mock" }),
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
+}
+
+function testMeta(resultKind: string): ResultMeta {
+  return {
+    trace_id: `${resultKind}_trace`,
+    basis: "analytical",
+    result_kind: resultKind,
+    formal_use_allowed: false,
+    source_version: "sv_test",
+    vendor_version: "vv_test",
+    rule_version: "rv_test",
+    cache_version: "cv_test",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-06-01T00:00:00Z",
+  };
+}
+
+function coreMacroAnalysisEnvelope(): ApiEnvelope<MacroToolkitAnalysisPayload> {
+  return {
+    result_meta: testMeta("macro_toolkit.analysis"),
+    result: {
+      default_data_sources: ["choice"],
+      as_of_date: "2026-04-30",
+      conclusion: {
+        stance: "中性观察",
+        tone: "neutral",
+        summary: "核心宏观信号已返回。",
+        recommended_action: "等待候选策略摘要补齐。",
+      },
+      coverage: {
+        indicator_count: 8,
+        hit_count: 7,
+        hit_rate: 0.875,
+        script_count: 24,
+        output_file_count: 0,
+      },
+      indicators: [],
+      signal_cards: [],
+      capability_results: [],
+      strategy_summaries: [],
+      output_files: [],
+      source_checks: [],
+      capabilities: [],
+      warnings: [],
+    },
+  };
+}
+
+function strategySummariesEnvelope(): ApiEnvelope<MacroToolkitStrategySummariesPayload> {
+  return {
+    result_meta: testMeta("macro_toolkit.analysis.strategy_summaries"),
+    result: {
+      strategy_summaries: [],
+    },
+  };
 }
 
 describe("ModuleWorkbenchHomePage", () => {
@@ -279,6 +352,31 @@ describe("PortfolioHomePage", () => {
 });
 
 describe("MarketHomePage", () => {
+  it("requests core macro analysis before deferred strategy summaries", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const analysis = deferred<ApiEnvelope<MacroToolkitAnalysisPayload>>();
+    const getMacroToolkitAnalysis = vi.fn(() => analysis.promise);
+    const getMacroToolkitStrategySummaries = vi.fn(async () => strategySummariesEnvelope());
+    const client: ApiClient = {
+      ...base,
+      getMacroToolkitAnalysis,
+      getMacroToolkitStrategySummaries,
+    };
+
+    renderAt("/market-overview", client);
+
+    await waitFor(() => {
+      expect(getMacroToolkitAnalysis).toHaveBeenCalledWith({ detail: "core" });
+    });
+    expect(getMacroToolkitStrategySummaries).not.toHaveBeenCalled();
+
+    analysis.resolve(coreMacroAnalysisEnvelope());
+
+    await waitFor(() => {
+      expect(getMacroToolkitStrategySummaries).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("renders market-specific home content with portfolio-style layout", async () => {
     renderAt("/market-overview");
 

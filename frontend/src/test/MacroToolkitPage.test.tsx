@@ -664,7 +664,7 @@ describe("MacroToolkitPage", () => {
     ]);
     expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2);
     await user.click(within(fullDataHealth).getAllByRole("button", { name: /重新完整分析/ })[0]!);
-    expect(calls.filter((item) => item?.detail === "full")).toHaveLength(3);
+    await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(3));
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("分数组件覆盖");
     expect(crisisEvidence).toHaveTextContent("5/5");
@@ -685,6 +685,85 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("Gold futures");
     expect(crisisEvidence).toHaveTextContent("未纳入公式");
     expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
+  });
+
+  it("prefetches full analysis after the core screen without revealing evidence early", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const calls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
+    const sourceBackfillCalls: Array<Parameters<ApiClient["refreshMacroSourceBackfill"]>[0]> = [];
+    const coreCrisisCard = {
+      key: "crisis_score_cn",
+      title: "Crisis Score",
+      stance: "完整结果待加载",
+      tone: "neutral",
+      score: null,
+      evidence: ["首屏未运行完整 Crisis Score，打开完整分析后显示分数"],
+    } as const;
+    const coreSignalCards = [
+      coreCrisisCard,
+      ...analysisEnvelope.result.signal_cards.filter((card) => card.key !== "crisis_score_cn"),
+    ];
+    const coreEnvelope = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        runtime_status: {
+          analysis_scope: "core",
+          deferred_sections: [
+            {
+              key: "capability_results",
+              label: "功能结果",
+              status: "deferred",
+            },
+          ],
+        },
+        capability_results: [],
+        signal_cards: coreSignalCards,
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async (options) => {
+        calls.push(options);
+        return options?.detail === "full" ? analysisEnvelope : coreEnvelope;
+      },
+      refreshMacroSourceBackfill: async (options) => {
+        sourceBackfillCalls.push(options);
+        return baseClient.refreshMacroSourceBackfill(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    expect(await screen.findByText("完整结果待加载")).toBeInTheDocument();
+    expect(calls.filter((item) => item?.detail === "full")).toHaveLength(0);
+    expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(1), {
+      timeout: 3_000,
+    });
+    expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: /查看完整分析/ })[0]!);
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    expect(crisisEvidence).toHaveTextContent("5/5");
+    expect(crisisEvidence).toHaveTextContent("Nanhua commodity index");
+    expect(crisisEvidence).toHaveTextContent("NH0100.NHF");
+    expect(calls.filter((item) => item?.detail === "full")).toHaveLength(1);
+
+    const fullDataHealth = await screen.findByLabelText("数据健康总览");
+    await user.click(within(fullDataHealth).getByRole("button", { name: /需要补齐来源数据/ }));
+    expect(sourceBackfillCalls).toEqual([
+      {
+        alias: "M0041813",
+        startDate: undefined,
+        endDate: "2026-04-30",
+        sources: undefined,
+      },
+    ]);
+    await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2));
   });
 
   it("does not trigger source backfill for unsupported aliases even when action is enabled", async () => {

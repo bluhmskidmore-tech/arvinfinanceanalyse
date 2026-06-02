@@ -1895,7 +1895,7 @@ describe("ApiClient composition boundary", () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledWith(
-      "http://backend.local/ui/macro/toolkit/analysis?detail=full",
+      "http://backend.local/ui/macro/toolkit/analysis?detail=core",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),

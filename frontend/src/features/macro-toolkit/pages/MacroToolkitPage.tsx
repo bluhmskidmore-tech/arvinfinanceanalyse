@@ -67,6 +67,9 @@ const GROUP_LABELS: Record<string, string> = {
 const EMPTY_SCRIPTS: MacroToolkitScriptRecord[] = [];
 const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
+const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
+const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
+const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = ["macro-toolkit", "analysis", "full"] as const;
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
@@ -313,21 +316,33 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const analysisQuery = useQuery({
     queryKey: ["macro-toolkit", "analysis"],
     queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
-    staleTime: 60_000,
+    staleTime: MACRO_TOOLKIT_READ_STALE_MS,
   });
 
   const scriptsQuery = useQuery({
     queryKey: ["macro-toolkit", "scripts"],
     queryFn: () => client.getMacroToolkitScripts(),
     enabled: showOperations,
-    staleTime: 60_000,
+    staleTime: MACRO_TOOLKIT_READ_STALE_MS,
   });
 
   const strategyQuery = useQuery({
     queryKey: ["macro-toolkit", "strategy-summaries"],
     queryFn: ({ signal }) => client.getMacroToolkitStrategySummaries({ signal }),
-    staleTime: 60_000,
+    staleTime: MACRO_TOOLKIT_READ_STALE_MS,
   });
+
+  const fetchFullAnalysis = useCallback(
+    () => client.getMacroToolkitAnalysis({ detail: "full" }),
+    [client],
+  );
+
+  const clearFullAnalysisCache = useCallback(async () => {
+    setFullAnalysisEnvelope(null);
+    setFullAnalysisError(null);
+    await queryClient.cancelQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
+    queryClient.removeQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
+  }, [queryClient]);
 
   const payload = showOperations ? scriptsQuery.data?.result : undefined;
   const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
@@ -432,19 +447,41 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const hasonStrategy = analysis?.hason_strategy ?? null;
   const showFullAnalysisActionInRuntime = isCoreAnalysis && runtimeSections.length > 0;
 
-  const loadFullAnalysis = useCallback(async () => {
+  useEffect(() => {
+    if (fullAnalysisEnvelope || analysisQuery.data?.result.runtime_status?.analysis_scope !== "core") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      void queryClient.prefetchQuery({
+        queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
+        queryFn: fetchFullAnalysis,
+        staleTime: MACRO_TOOLKIT_READ_STALE_MS,
+      });
+    }, MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [analysisQuery.data?.result.runtime_status?.analysis_scope, fetchFullAnalysis, fullAnalysisEnvelope, queryClient]);
+
+  const loadFullAnalysis = useCallback(async (options?: { force?: boolean }) => {
     setIsLoadingFullAnalysis(true);
     setFullAnalysisError(null);
     try {
       await queryClient.cancelQueries({ queryKey: ["macro-toolkit", "strategy-summaries"] });
-      const response = await client.getMacroToolkitAnalysis({ detail: "full" });
+      if (options?.force) {
+        await queryClient.cancelQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
+        queryClient.removeQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
+      }
+      const response = await queryClient.fetchQuery({
+        queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
+        queryFn: fetchFullAnalysis,
+        staleTime: MACRO_TOOLKIT_READ_STALE_MS,
+      });
       setFullAnalysisEnvelope(response);
     } catch (error) {
       setFullAnalysisError(formatQueryError(error));
     } finally {
       setIsLoadingFullAnalysis(false);
     }
-  }, [client, queryClient]);
+  }, [fetchFullAnalysis, queryClient]);
 
   const refreshMacroSourceBackfill = useCallback(
     async (item: MacroToolkitRepairItem) => {
@@ -463,6 +500,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         });
         const refresh = response.result.refresh;
         setSourceBackfillResult(`来源补齐完成：${refresh.alias} 新增 ${refresh.total_added} 行`);
+        await clearFullAnalysisCache();
         await loadFullAnalysis();
       } catch (error) {
         setSourceBackfillError(error instanceof Error ? error.message : "来源补齐失败");
@@ -470,7 +508,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         setRefreshingSourceAlias(null);
       }
     },
-    [analysis?.as_of_date, client, loadFullAnalysis],
+    [analysis?.as_of_date, clearFullAnalysisCache, client, loadFullAnalysis],
   );
 
   const runSelectedScript = useCallback(async () => {
@@ -483,15 +521,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     try {
       const result = await client.runMacroToolkitScript(selectedScript.name);
       setRunResult(result);
-      setFullAnalysisEnvelope(null);
-      setFullAnalysisError(null);
+      await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "运行失败");
     } finally {
       setIsRunning(false);
     }
-  }, [analysisQuery, client, scriptsQuery, selectedScript, strategyQuery]);
+  }, [analysisQuery, clearFullAnalysisCache, client, scriptsQuery, selectedScript, strategyQuery]);
 
   const refreshCffexMemberRank = useCallback(async () => {
     setIsRefreshingCffex(true);
@@ -503,15 +540,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       });
       const rank = response.result.cffex_member_rank;
       setRefreshResult(`刷新完成：${rank.row_count} 行，最新交易日 ${rank.latest_trade_date ?? "缺失"}`);
-      setFullAnalysisEnvelope(null);
-      setFullAnalysisError(null);
+      await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新席位失败");
     } finally {
       setIsRefreshingCffex(false);
     }
-  }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery, strategyQuery]);
+  }, [analysis?.as_of_date, clearFullAnalysisCache, client, scriptsQuery, analysisQuery, strategyQuery]);
 
   const refreshChoiceStock = useCallback(async () => {
     setIsRefreshingChoiceStock(true);
@@ -548,8 +584,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setStockRefreshResult(
         `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,
       );
-      setFullAnalysisEnvelope(null);
-      setFullAnalysisError(null);
+      await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setStockRefreshError(error instanceof Error ? error.message : "刷新股票数据失败");
@@ -557,7 +592,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     } finally {
       setIsRefreshingChoiceStock(false);
     }
-  }, [analysis?.as_of_date, analysisQuery, client, scriptsQuery, strategyQuery]);
+  }, [analysis?.as_of_date, analysisQuery, clearFullAnalysisCache, client, scriptsQuery, strategyQuery]);
 
   const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     {
@@ -803,8 +838,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               <Button
                 icon={<ReloadOutlined />}
                 onClick={() => {
-                  setFullAnalysisEnvelope(null);
-                  setFullAnalysisError(null);
+                  void clearFullAnalysisCache();
                   void analysisQuery.refetch();
                   void scriptsQuery.refetch();
                   void strategyQuery.refetch();
@@ -952,7 +986,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   void refreshMacroSourceBackfill(item);
                   return;
                 }
-                void loadFullAnalysis();
+                void loadFullAnalysis({ force: item.scope === "full" });
               }}
               repairActionLoading={isLoadingFullAnalysis}
               refreshingSourceAlias={refreshingSourceAlias}

@@ -60,7 +60,7 @@ const MACRO_TOOLKIT_METHODS = new Set<keyof MacroToolkitClientMethods>([
   "getChoiceStockRefreshStatus",
 ]);
 
-const MARKET_TICKER_METHODS = new Set<keyof Pick<MarketDataClientMethods, "getChoiceMacroLatest">>([
+const MARKET_TICKER_METHODS = new Set<keyof MarketDataClientMethods>([
   "getChoiceMacroLatest",
 ]);
 

@@ -32,14 +32,22 @@ export function useMarketHomeQueries(): ModuleHomeSourceQueries {
   });
 
   const macroToolkitAnalysisQuery = useQuery({
-    queryKey: ["module-home", "macro-toolkit-analysis", client.mode],
-    queryFn: () => client.getMacroToolkitAnalysis({ detail: "full" }),
+    queryKey: ["module-home", "macro-toolkit-analysis", "core", client.mode],
+    queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
     ...MARKET_HOME_QUERY_OPTIONS,
   });
+
+  const primaryQueriesReady = Boolean(
+    choiceLatestQuery.data &&
+      marketRatesQuery.data &&
+      marketCatalogQuery.data &&
+      macroToolkitAnalysisQuery.data,
+  );
 
   const macroToolkitStrategySummariesQuery = useQuery({
     queryKey: ["module-home", "macro-toolkit-strategy-summaries", client.mode],
     queryFn: () => client.getMacroToolkitStrategySummaries(),
+    enabled: primaryQueriesReady,
     ...MARKET_HOME_QUERY_OPTIONS,
   });
 

@@ -1934,7 +1934,7 @@ export function createRealMacroToolkitClient({
 }: MacroToolkitClientFactoryOptions): MacroToolkitClientMethods {
   return {
     getMacroToolkitAnalysis: (options?: MacroToolkitAnalysisRequest) => {
-      const detail = options?.detail ?? "full";
+      const detail = options?.detail ?? "core";
       return requestJson<MacroToolkitAnalysisPayload>(
         fetchImpl,
         baseUrl,
