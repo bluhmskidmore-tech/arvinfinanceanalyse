@@ -873,7 +873,7 @@ describe("stockAnalysisPageModel", () => {
             movement_event_count: 0,
             failed_gates: ["insufficient_cluster_strength"],
             observation_only: true,
-            reason: "Review-only proxy cluster missed selection: strong rows 2 below gate 3.",
+            reason: "Observation-only near-miss: failed gates insufficient_cluster_strength.",
             items: [
               {
                 stock_code: "688001.SH",
@@ -905,7 +905,11 @@ describe("stockAnalysisPageModel", () => {
     });
     expect(reviewItems[0].failedGateLabel).toContain("簇强度不足");
     expect(reviewItems[0].summary).toContain("2");
+    expect(reviewItems[0].reason).toContain("强势样本未过门槛，保留观察");
     expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("buy");
+    expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("Observation-only");
+    expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("failed gates");
+    expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("insufficient_cluster_strength");
   });
 
   it("builds a closed-loop summary for complete pass states", () => {
@@ -1353,6 +1357,9 @@ describe("stockAnalysisPageModel", () => {
       ]),
     );
     expect(rows.map((row) => row.reason).join(" ")).not.toContain("卖出");
+    const triggered = rows.find((r) => r.stockCode === "000001.SZ");
+    expect(triggered?.reason).toContain("连续 2 日收盘低于 10 日均线");
+    expect(triggered?.reason).not.toContain("2d_below_ema10");
     const watch = rows.find((r) => r.stockCode === "000777.SZ");
     expect(watch?.distanceToExitPct).toContain("%");
     expect(watch?.exitDistanceBucket === "triggered" || watch?.exitDistanceBucket === "0-3%").toBe(true);
@@ -1676,6 +1683,25 @@ describe("stockAnalysisPageModel", () => {
 
     expect(copy).toContain("待确认");
     expect(copy).not.toContain("待成熟");
+  });
+
+  it("localizes strategy sample and observation-only backend reasons", () => {
+    const insufficient = localizeStockBackendText(
+      "Current market sample is insufficient: T+5 available 6/20, observation only.",
+      "stock_candidate",
+    );
+    const fusion = localizeStockBackendText("Fusion observation-only candidate", "hybrid_fusion");
+    const maturity = localizeStockBackendText(
+      "T+5 matured snapshots 2/4, waiting for more mature days.",
+      "stock_candidate",
+    );
+
+    expect(insufficient).toBe("当前状态样本不足：T+5 可用样本 6/20，仅作观察。");
+    expect(insufficient).not.toContain("Current market sample");
+    expect(fusion).toBe("融合池仅观察候选。");
+    expect(fusion).not.toContain("Fusion observation-only candidate");
+    expect(maturity).toBe("T+5 已成熟快照 2/4，等待更多成熟日。");
+    expect(maturity).not.toContain("matured snapshots");
   });
 
 });

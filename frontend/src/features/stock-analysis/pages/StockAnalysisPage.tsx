@@ -1175,10 +1175,14 @@ function buildStrategyPriorityHeadline(rows: StrategyPriorityRow[]): string {
 
 function strategyPrioritySummaryReason(rows: StrategyPriorityRow[]): string {
   const firstPriority = rows.find((row) => row.priority_label === "优先复核");
-  if (firstPriority) return firstPriority.reason;
+  if (firstPriority) return strategyPriorityReasonLabel(firstPriority);
   const firstInsufficient = rows.find((row) => row.sample_status === "insufficient");
-  if (firstInsufficient) return firstInsufficient.reason;
-  return rows[0]?.reason ?? "暂无当前状态策略评分。";
+  if (firstInsufficient) return strategyPriorityReasonLabel(firstInsufficient);
+  return rows[0] ? strategyPriorityReasonLabel(rows[0]) : "暂无当前状态策略评分。";
+}
+
+function strategyPriorityReasonLabel(row: StrategyPriorityRow): string {
+  return localizeStockBackendText(row.reason, row.signal_kind);
 }
 
 function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
@@ -1191,7 +1195,7 @@ function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
     labels.push(scopeStatsText ? `${diagnostics.priority_scope_label} ${scopeStatsText}` : diagnostics.priority_scope_label);
   }
   if (diagnostics.maturity?.status === "narrow") {
-    labels.push(`${diagnostics.maturity.label} ${diagnostics.maturity.reason}`);
+    labels.push(`${diagnostics.maturity.label} ${localizeStockBackendText(diagnostics.maturity.reason, row.signal_kind)}`);
   }
   for (const bucket of diagnostics.rank_buckets ?? []) {
     if (!bucket.included_in_priority && bucket.priority_label === "降权观察") {
@@ -1272,6 +1276,10 @@ function strategyOptimizationDateWeightedText(
   return `${stats.available_day_count}日等权 ${formatBacktestSignedPercent(stats.avg_return)} / 正收益日 ${formatBacktestPercent(
     stats.positive_day_rate,
   )}`;
+}
+
+function strategyOptimizationReasonLabel(row: StrategyOptimizationSummary | StrategyOptimizationSlice): string {
+  return localizeStockBackendText(row.recommendation.reason, row.signal_kind);
 }
 
 function strategyOptimizationSlicePair(
@@ -1744,7 +1752,7 @@ export default function StockAnalysisPage() {
 
   const closedLoopSummary = useMemo(
     () =>
-      strategyPayload && !confluenceQuery.isLoading
+      strategyPayload
         ? buildClosedLoopSummary(strategyPayload, confluencePayload, {
             quality_flag:
               confluencePayload?.closed_loop_state != null
@@ -1771,7 +1779,6 @@ export default function StockAnalysisPage() {
     [
       strategyPayload,
       confluencePayload,
-      confluenceQuery.isLoading,
       confluenceQuery.data?.result_meta?.quality_flag,
       confluenceQuery.data?.result_meta?.vendor_status,
       confluenceQuery.data?.result_meta?.fallback_mode,
@@ -1792,7 +1799,7 @@ export default function StockAnalysisPage() {
 
   const kpiStrip = useMemo(
     () =>
-      strategyPayload && !confluenceQuery.isLoading
+      strategyPayload
         ? buildStockAnalysisKpiStrip(strategyPayload, confluencePayload, {
             quality_flag:
               confluencePayload?.closed_loop_state != null
@@ -1819,7 +1826,6 @@ export default function StockAnalysisPage() {
     [
       strategyPayload,
       confluencePayload,
-      confluenceQuery.isLoading,
       confluenceQuery.data?.result_meta?.quality_flag,
       confluenceQuery.data?.result_meta?.vendor_status,
       confluenceQuery.data?.result_meta?.fallback_mode,
@@ -2272,6 +2278,31 @@ export default function StockAnalysisPage() {
             <div className="stock-analysis-page__header-title-row">
               <h1>股票分析</h1>
               <span className="stock-analysis-page__badge">只读复核</span>
+            </div>
+            <div className="stock-analysis-page__toolbar-info" aria-label="复核控制状态">
+              <span className="stock-analysis-page__toolbar-title">
+                <SafetyCertificateOutlined aria-hidden="true" />
+                <strong>复核控制</strong>
+              </span>
+              <span className="stock-analysis-page__toolbar-pill">
+                <ClockCircleOutlined aria-hidden="true" />
+                观察日 {decisionSummary?.asOfLabel ?? effectiveAsOf ?? "默认"}
+              </span>
+              <span
+                className="stock-analysis-page__toolbar-pill"
+                data-tone={backendSupplyOverview?.qualityLabel === "质量 正常" ? "positive" : undefined}
+              >
+                <SafetyCertificateOutlined aria-hidden="true" />
+                {backendSupplyOverview?.gateLabel ?? decisionSummary?.gateLabel ?? "门控待确认"}
+              </span>
+              <span className="stock-analysis-page__toolbar-pill">
+                <DatabaseOutlined aria-hidden="true" />
+                {backendSupplyOverview?.dataGapLabel ?? decisionSummary?.boundaryLabel ?? "边界待确认"}
+              </span>
+              <span className="stock-analysis-page__toolbar-pill">
+                <StockOutlined aria-hidden="true" />
+                复核 {reviewQueue.length}
+              </span>
             </div>
             <div className="stock-analysis-page__header-controls stock-analysis-page__dh-topbar-controls">
               <Button
@@ -3825,7 +3856,7 @@ export default function StockAnalysisPage() {
                                           {backtestStatsText(row.stats[horizon])}
                                         </td>
                                       ))}
-                                      <td>{row.reason}</td>
+                                      <td>{strategyPriorityReasonLabel(row)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -3879,7 +3910,7 @@ export default function StockAnalysisPage() {
                                       <td className="stock-analysis-page__table-number">
                                         {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
                                       </td>
-                                      <td>{row.recommendation.reason}</td>
+                                      <td>{strategyOptimizationReasonLabel(row)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -4342,7 +4373,7 @@ export default function StockAnalysisPage() {
                           />
                         </div>
 
-                        <ul className="mt-3 space-y-1.5" aria-label="闭环检查项">
+                        <ul className="mt-3 list-none space-y-1.5 p-0" aria-label="闭环检查项">
                           {closedLoopSummary.items.map((item) => (
                             <li
                               key={item.key}
@@ -5201,7 +5232,7 @@ export default function StockAnalysisPage() {
                                     </td>
                                   ))}
                                   <td>
-                                    <span>{row.reason}</span>
+                                    <span>{strategyPriorityReasonLabel(row)}</span>
                                     {diagnosticLabels.length > 0 ? (
                                       <div className="stock-analysis-page__strategy-diagnostic-tags">
                                         {diagnosticLabels.map((label) => (
@@ -5230,7 +5261,8 @@ export default function StockAnalysisPage() {
                               : ""}
                           </strong>
                           <small>
-                            {strategyMaturityRemainingText(strategyMaturity)}，{strategyMaturity.reason}
+                            {strategyMaturityRemainingText(strategyMaturity)}，
+                            {localizeStockBackendText(strategyMaturity.reason, strategyMaturityRow.signal_kind)}
                           </small>
                         </div>
                         <div className="stock-analysis-page__table-wrap">
@@ -5505,7 +5537,7 @@ export default function StockAnalysisPage() {
                                 <td className="stock-analysis-page__table-number">
                                   {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
                                 </td>
-                                <td>{row.recommendation.reason}</td>
+                                <td>{strategyOptimizationReasonLabel(row)}</td>
                               </tr>
                             ))}
                           </tbody>

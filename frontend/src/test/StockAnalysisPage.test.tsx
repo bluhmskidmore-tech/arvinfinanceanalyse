@@ -554,7 +554,7 @@ function buildStrategyScorePayload(
       maturity: {
         status: "narrow",
         label: "样本偏窄",
-        reason: "T+5 已成熟快照 2/4，等待更多成熟日。",
+        reason: "T+5 matured snapshots 2/4, waiting for more mature days.",
         min_mature_snapshot_count: 4,
         mature_snapshot_count: 2,
         snapshot_stats: [
@@ -1207,7 +1207,9 @@ describe("StockAnalysisPage", () => {
     expect(css).toContain('[data-testid="workbench-section-subnav"]');
     expect(css).toContain('[data-testid="workbench-governance-banner"]');
     expect(css).toContain(".stock-analysis-page__dh-topbar");
-    expect(css).toContain("background: transparent");
+    expect(css).toContain("box-shadow: var(--moss-shadow-card)");
+    expect(css).toContain(".stock-analysis-page__toolbar-title");
+    expect(css).toContain(".stock-analysis-page__toolbar-pill");
   });
 
   it("keeps the stock-analysis toolbar title from breaking on tablet width", () => {
@@ -1532,7 +1534,7 @@ describe("StockAnalysisPage", () => {
                 movement_event_count: 0,
                 failed_gates: ["insufficient_cluster_strength"],
                 observation_only: true,
-                reason: "Review-only proxy cluster missed selection: strong rows 2 below gate 3.",
+                reason: "Observation-only near-miss: failed gates insufficient_cluster_strength.",
                 items: [],
               },
             ],
@@ -1589,9 +1591,14 @@ describe("StockAnalysisPage", () => {
     expect(section).toHaveTextContent("Alpha Semiconductor");
     expect(section).not.toHaveTextContent("Semiconductor proxy");
     expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("目录待确认");
-    expect(screen.getByTestId("stock-analysis-theme-review-items")).toHaveTextContent("簇强度不足");
+    const reviewItems = screen.getByTestId("stock-analysis-theme-review-items");
+    expect(reviewItems).toHaveTextContent("簇强度不足");
+    expect(reviewItems).toHaveTextContent("强势样本未过门槛，保留观察");
     expect(screen.getByTestId("stock-analysis-theme-evidence-state")).not.toHaveTextContent("catalog_unconfirmed");
-    expect(screen.getByTestId("stock-analysis-theme-review-items")).not.toHaveTextContent("insufficient_cluster_strength");
+    expect(reviewItems).not.toHaveTextContent("insufficient_cluster_strength");
+    expect(reviewItems).not.toHaveTextContent("Observation-only near-miss");
+    expect(reviewItems).not.toHaveTextContent("failed gates");
+    expect(section).not.toHaveTextContent("Observation-only proxy cluster");
     expect(section).not.toHaveTextContent("买入");
   });
 
@@ -2240,10 +2247,12 @@ describe("StockAnalysisPage", () => {
     expect(section).toHaveTextContent("距 -10.78%");
     expect(section).toHaveTextContent("供数原因");
     expect(section).not.toHaveTextContent("触发复核：2d_below_ema10");
+    expect(section).not.toHaveTextContent("连续 2 日收盘低于 10 日均线");
 
     await userEvent.click(within(section).getAllByText("供数原因")[0]);
 
-    expect(section).toHaveTextContent("触发复核：2d_below_ema10");
+    expect(section).toHaveTextContent("触发复核：连续 2 日收盘低于 10 日均线");
+    expect(section).not.toHaveTextContent("触发复核：2d_below_ema10");
   });
 
   it("surfaces blocked backend outputs in the hero supply details", async () => {
@@ -2534,6 +2543,8 @@ describe("StockAnalysisPage", () => {
     expect(summary).not.toHaveTextContent("优先复核：多因子、趋势突破");
     expect(summary).toHaveTextContent("样本偏窄");
     expect(summary).toHaveTextContent("T+5 已成熟快照 2/4");
+    expect(summary).not.toHaveTextContent("matured snapshots");
+    expect(summary).not.toHaveTextContent("waiting for more mature days");
     expect(summary).toHaveTextContent("当前候选成熟进度");
     expect(summary).toHaveTextContent("还差 2 个成熟快照");
     expect(summary).toHaveTextContent("2026-05-07");
@@ -2593,7 +2604,7 @@ describe("StockAnalysisPage", () => {
         priority_score: null,
         priority_rank: null,
         priority_label: "样本不足",
-        reason: "当前状态样本不足：T+5 可用样本 6/20，仅作观察。",
+        reason: "Current market sample is insufficient: T+5 available 6/20, observation only.",
         stats: {
           return_1d: {
             available_count: 8,
@@ -2641,6 +2652,9 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => expect(summary).toHaveTextContent("T+1"), { timeout: 3_000 });
     expect(summary).toHaveTextContent("当前状态样本不足");
     expect(summary).toHaveTextContent("样本不足");
+    expect(summary).toHaveTextContent("T+5 可用样本 6/20，仅作观察");
+    expect(summary).not.toHaveTextContent("Current market sample is insufficient");
+    expect(summary).not.toHaveTextContent("observation only");
     expect(summary).not.toHaveTextContent("优先复核");
     expect(summary).toHaveTextContent("T+1");
     expect(summary).toHaveTextContent("T+5");

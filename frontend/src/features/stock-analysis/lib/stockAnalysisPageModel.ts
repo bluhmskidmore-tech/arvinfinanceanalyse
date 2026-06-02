@@ -709,6 +709,25 @@ export function localizeStockBackendText(
   const value = text?.trim();
   if (!value) return "说明待补";
   const lower = value.toLowerCase();
+  const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
+  const availableSample = value.match(/\b(T\+\d+)\s+available\s+(\d+)\s*\/\s*(\d+)/i);
+  const matureSnapshotSample = value.match(/\b(T\+\d+)\s+matured?\s+snapshots?\s+(\d+)\s*\/\s*(\d+)/i);
+  if (lower.includes("current market sample") && lower.includes("insufficient")) {
+    const sampleText = availableSample
+      ? `${availableSample[1].toUpperCase()} 可用样本 ${availableSample[2]}/${availableSample[3]}，`
+      : "";
+    return `当前状态样本不足：${sampleText}仅作观察。`;
+  }
+  if (matureSnapshotSample) {
+    const suffix = lower.includes("waiting for more mature days") ? "等待更多成熟日。" : "可作为强优先复核。";
+    return `${matureSnapshotSample[1].toUpperCase()} 已成熟快照 ${matureSnapshotSample[2]}/${matureSnapshotSample[3]}，${suffix}`;
+  }
+  if (lower.includes("observation-only candidate")) {
+    return `${familyLabel || "候选"}仅观察候选。`;
+  }
+  if (lower.includes("observation-only output") && lower.includes("does not generate trading instructions")) {
+    return "仅输出观察结果，不生成交易指令。";
+  }
   if (lower.includes("breadth inputs are unavailable")) {
     return "市场宽度输入不可用。";
   }
@@ -741,7 +760,6 @@ export function localizeStockBackendText(
   if (lower.includes("sector_rank is available")) {
     return "板块强弱已接入。";
   }
-  const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
   return value
     .replace(/\bbreadth\b/gi, familyLabel || "市场宽度")
     .replace(/\bmarket gate\b/gi, "市场门控")
@@ -1691,6 +1709,7 @@ function localizeThemeText(text: string | null | undefined): string {
   const value = text?.trim();
   if (!value) return "原因待补";
   const lower = value.toLowerCase();
+  if (lower.includes("near-miss") && lower.includes("failed gates")) return "强势样本未过门槛，保留观察。";
   if (lower.includes("observation-only") && lower.includes("leaders")) return "强势样本进入观察。";
   if (lower.includes("review-only") && lower.includes("below gate")) return "强势样本未达门槛，保留复核。";
   return value.replace(/\bproxy\b/gi, "代理观察").replace(/_/g, " ");
@@ -2217,6 +2236,17 @@ export function buildCandidateEvidenceCards(
   });
 }
 
+function localizeRiskExitReason(reason: string | null | undefined): string {
+  const value = reason?.trim();
+  if (!value) return "原因待补";
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    "2d_below_ema10": "连续 2 日收盘低于 10 日均线",
+    "2d_below_ema10_with_volume": "连续 2 日收盘低于 10 日均线且放量",
+  };
+  return labels[normalized] ?? localizeStockBackendText(value, "risk_exit");
+}
+
 export function buildRiskExitRows(
   payload: LivermoreStrategyPayload,
   confluence?: LivermoreSignalConfluencePayload | null,
@@ -2242,7 +2272,7 @@ export function buildRiskExitRows(
       status: "triggered",
       latestClose: formatNumber(parsedLatest),
       exitWatchPrice: formatNumber(parsedExit),
-      reason: `触发复核：${item.reason}`,
+      reason: `触发复核：${localizeRiskExitReason(item.reason)}`,
       distanceToExitPct,
       exitDistanceBucket,
     });
