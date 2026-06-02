@@ -13,7 +13,10 @@ from backend.app.tasks.macro_backfill import (
     BackfillRow,
     BackfillSource,
     _fetch_from_wind,
+    _infer_frequency,
+    _is_tushare_macro_series,
     _map_tushare_records,
+    _resolve_tushare_api,
     _resolve_sources,
     backfill_macro_series,
 )
@@ -340,6 +343,12 @@ def test_social_financing_stock_yoy_accepts_stable_macro_alias_name() -> None:
     assert len(rows) == 1
     assert rows[0]["trade_date"] == "2025-05-01"
     assert rows[0]["value"] == pytest.approx(8.7337, rel=1e-4)
+
+
+def test_stable_social_financing_alias_routes_to_tushare_monthly_api() -> None:
+    assert _resolve_tushare_api("social_financing_stock_yoy") == "sf_month"
+    assert _is_tushare_macro_series("social_financing_stock_yoy") is True
+    assert _infer_frequency("social_financing_stock_yoy", "unknown") == "monthly"
 
 
 def test_cn_pmi_uses_tushare_month_and_manufacturing_pmi_code() -> None:

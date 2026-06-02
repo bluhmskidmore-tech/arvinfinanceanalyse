@@ -953,6 +953,9 @@ def _pick_tushare_value(record: dict[str, object], series_name: str, mapping: di
 
 def _resolve_tushare_api(series_name: str) -> str | None:
     name = series_name
+    key = str(series_name or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if "social_financing_stock_yoy" in key or "sf_stock_yoy" in key:
+        return "sf_month"
     if "CPI" in name:
         return "cn_cpi"
     if "GDP" in name:
