@@ -1268,6 +1268,13 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toContain("balance-analysis.detail");
     expect(clientSource).not.toContain("balance-analysis.basis_breakdown");
     expect(clientSource).not.toContain("balance-analysis.advanced_attribution_bundle");
+    expect(clientSource).not.toContain("_MOCK_MACRO_FOUNDATION_PAYLOAD");
+    expect(clientSource).not.toContain("_MOCK_CHOICE_MACRO_LATEST_PAYLOAD");
+    expect(clientSource).not.toContain("_MOCK_MACRO_BOND_LINKAGE_PAYLOAD");
+    expect(clientSource).not.toContain("_MOCK_FX_FORMAL_STATUS_PAYLOAD");
+    expect(clientSource).not.toContain("_MOCK_FX_ANALYTICAL_PAYLOAD");
+    expect(clientSource).not.toContain("_buildMockNcdFundingProxyPayload");
+    expect(clientSource).not.toContain("buildMockChoiceMacroRecentPoints");
     expect(clientSource).not.toContain("balance-analysis.summary");
     expect(clientSource).not.toContain("balance-analysis.workbook");
     expect(clientSource).not.toContain("balance-analysis.decision-items");
