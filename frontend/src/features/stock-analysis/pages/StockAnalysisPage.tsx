@@ -2605,11 +2605,13 @@ export default function StockAnalysisPage() {
                     {kpiStrip.map((item) => (
                       <EquityKpiCard
                         key={item.key}
+                        kpiKey={item.key}
                         label={item.label}
                         value={item.value}
                         deltaText={item.detail}
                         deltaTone={kpiToneToDelta(item.tone)}
                         gaugeValue={item.gaugeValue}
+                        testId={`stock-analysis-kpi-${item.key}`}
                       />
                     ))}
                     </div>

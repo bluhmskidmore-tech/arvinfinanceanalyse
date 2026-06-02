@@ -24,6 +24,10 @@ const STOCK_ANALYSIS_CSS_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/pages/StockAnalysisPage.css",
 );
+const EQUITY_KPI_CARD_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/components/EquityKpiCard.module.css",
+);
 
 vi.mock("../components/charts/BaseChart", () => ({
   BaseChart: function MockBaseChart() {
@@ -1147,6 +1151,8 @@ describe("StockAnalysisPage", () => {
     expect(kpiSection).toHaveTextContent("市场状态");
     expect(kpiSection).toHaveTextContent("温和");
     expect(kpiSection).not.toHaveTextContent("WARM");
+    expect(screen.getByTestId("stock-analysis-kpi-market-state")).toHaveAttribute("data-equity-kpi-card");
+    expect(screen.getByTestId("stock-analysis-kpi-review-queue")).toHaveAttribute("data-equity-kpi-card");
 
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("复核队列");
@@ -1208,6 +1214,15 @@ describe("StockAnalysisPage", () => {
 
     expect(css).toContain(".stock-analysis-page__header h1");
     expect(css).toContain("white-space: nowrap");
+  });
+
+  it("keeps first-screen KPI cards compact and icon-led", () => {
+    const css = readFileSync(EQUITY_KPI_CARD_CSS_PATH, "utf8");
+
+    expect(css).toContain("height: 76px");
+    expect(css).toContain("min-height: 76px");
+    expect(css).toContain(".icon");
+    expect(css).not.toContain("min-height: 104px");
   });
 
   it("surfaces backend supply status and stock selection on the first screen", async () => {

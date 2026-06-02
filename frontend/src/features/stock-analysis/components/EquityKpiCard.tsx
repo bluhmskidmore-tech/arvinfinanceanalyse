@@ -1,4 +1,12 @@
-import { useMemo, type CSSProperties } from "react";
+import {
+  AlertOutlined,
+  AppstoreOutlined,
+  CheckCircleOutlined,
+  DatabaseOutlined,
+  SafetyCertificateOutlined,
+  StockOutlined,
+} from "@ant-design/icons";
+import { useMemo, type CSSProperties, type ReactNode } from "react";
 
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
@@ -8,6 +16,7 @@ import styles from "./EquityKpiCard.module.css";
 const SPARKLINE_STROKE = designTokens.color.primary[600];
 
 export type EquityKpiCardProps = {
+  kpiKey?: string;
   label: string;
   value: string;
   deltaText?: string;
@@ -15,6 +24,15 @@ export type EquityKpiCardProps = {
   sparkline?: number[];
   gaugeValue?: number;
   testId?: string;
+};
+
+const kpiIcons: Record<string, ReactNode> = {
+  "market-state": <StockOutlined />,
+  "review-queue": <CheckCircleOutlined />,
+  "sector-strength": <AppstoreOutlined />,
+  "risk-observation": <AlertOutlined />,
+  "closed-loop": <SafetyCertificateOutlined />,
+  "data-boundary": <DatabaseOutlined />,
 };
 
 function deltaClass(tone: NonNullable<EquityKpiCardProps["deltaTone"]>): string {
@@ -48,6 +66,7 @@ function buildSparklineOption(values: number[]): EChartsOption {
 }
 
 export function EquityKpiCard({
+  kpiKey,
   label,
   value,
   deltaText,
@@ -72,6 +91,11 @@ export function EquityKpiCard({
   return (
     <article className={styles.card} data-equity-kpi-card data-testid={testId}>
       <div className={styles.top}>
+        {kpiKey ? (
+          <span className={styles.icon} aria-hidden="true">
+            {kpiIcons[kpiKey] ?? <StockOutlined />}
+          </span>
+        ) : null}
         <span>{label}</span>
       </div>
       <div className={styles.value}>{value}</div>
@@ -84,7 +108,7 @@ export function EquityKpiCard({
         <ReactECharts
           className={styles.spark}
           option={sparklineOption}
-          style={{ height: 28, width: "100%" }}
+          style={{ height: 18, width: "100%" }}
         />
       ) : normalizedGauge != null ? (
         <div className={styles.gaugeTrack} aria-hidden="true" style={gaugeStyle}>
