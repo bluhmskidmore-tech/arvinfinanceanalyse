@@ -9,7 +9,6 @@ from backend.app.repositories.cffex_member_rank_repo import (
     normalize_cffex_contract,
     normalize_trade_date,
 )
-from backend.app.services.cffex_member_rank_service import ensure_cffex_member_rank_for_request
 
 
 @dataclass
@@ -124,13 +123,6 @@ def _cffex_member_rank_result(options: str) -> _WindResult:
 
     duckdb_path = resolve_system_duckdb_path()
     frame = load_member_rank_frame(duckdb_path, trade_date=trade_date, contract=contract)
-    if frame.empty:
-        ensure_cffex_member_rank_for_request(
-            duckdb_path=duckdb_path,
-            trade_date=trade_date,
-            contract=contract,
-        )
-        frame = load_member_rank_frame(duckdb_path, trade_date=trade_date, contract=contract)
     if frame.empty:
         return _WindResult(
             ErrorCode=404,

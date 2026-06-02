@@ -287,6 +287,62 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
     assert member_rank.Data == [["中信期货", "国泰君安"], [12345.0, 8901.0]]
 
 
+def test_windpy_cffex_member_rank_missing_rows_remain_read_only(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    get_settings.cache_clear()
+
+    previous_windpy = sys.modules.pop("WindPy", None)
+    refresh_calls: list[dict[str, object]] = []
+    try:
+        windpy = importlib.import_module("WindPy")
+
+        def fail_refresh(**kwargs: object) -> dict[str, object]:
+            refresh_calls.append(dict(kwargs))
+            raise AssertionError("cffexmemberrank read should not trigger DuckDB writes")
+
+        monkeypatch.setattr(windpy, "ensure_cffex_member_rank_for_request", fail_refresh, raising=False)
+        windpy.w.start()
+        member_rank = windpy.w.wset("cffexmemberrank", "date=2026-04-11;windcode=T.CFE;rankby=volume")
+    finally:
+        if previous_windpy is not None:
+            sys.modules["WindPy"] = previous_windpy
+        else:
+            sys.modules.pop("WindPy", None)
+        get_settings.cache_clear()
+
+    assert member_rank.ErrorCode == 404
+    assert member_rank.Fields == []
+    assert refresh_calls == []
+
+
+def test_crowding_script_reads_system_cffex_cache_for_latest_snapshot(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    script = get_toolkit_script("crowding_cn")
+    spec = importlib.util.spec_from_file_location("_legacy_crowding_cn", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    try:
+        history = legacy.fetch_system_cffex_history(lookback_days=365)
+        latest = legacy.generate_crowding_signal(history, window=243)
+    finally:
+        get_settings.cache_clear()
+
+    assert history[["date", "品种"]].to_dict("records") == [{"date": "2026-04-10", "品种": "T"}]
+    assert latest[["品种", "日期", "拥挤度信号"]].to_dict("records") == [
+        {"品种": "T", "日期": "2026-04-10", "拥挤度信号": "数据不足"}
+    ]
+    assert "历史样本不足" in str(latest.iloc[0]["说明"])
+
+
 def test_macro_toolkit_api_exposes_frontend_payload() -> None:
     app = FastAPI()
     app.include_router(macro_toolkit_router)
