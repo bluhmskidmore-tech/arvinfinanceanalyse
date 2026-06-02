@@ -6,9 +6,9 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 1207,
+  apiClientLines: 560,
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
-  apiClientMockOccurrences: 136,
+  apiClientMockOccurrences: 55,
   dashboardStyleFiles: {},
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {

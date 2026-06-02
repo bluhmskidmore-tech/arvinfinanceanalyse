@@ -123,6 +123,14 @@ def _resolve_python_executable() -> str:
     return shutil.which("python") or sys.executable
 
 
+def _sql_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
 def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
     config.cluster_root.mkdir(parents=True, exist_ok=True)
     if not config.data_dir.exists():
@@ -205,7 +213,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
             "-d",
             config.admin_database,
             "-tAc",
-            f"SELECT 1 FROM pg_roles WHERE rolname = '{config.user}'",
+            f"SELECT 1 FROM pg_roles WHERE rolname = {_sql_literal(config.user)}",
         ],
         capture_output=True,
     ).strip()
@@ -222,7 +230,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
                 "-d",
                 config.admin_database,
                 "-c",
-                f"CREATE ROLE {config.user} LOGIN PASSWORD '{config.password}';",
+                f"CREATE ROLE {_sql_identifier(config.user)} LOGIN PASSWORD {_sql_literal(config.password)};",
             ]
         )
 
@@ -238,7 +246,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
             "-d",
             config.admin_database,
             "-tAc",
-            f"SELECT 1 FROM pg_database WHERE datname = '{config.database}'",
+            f"SELECT 1 FROM pg_database WHERE datname = {_sql_literal(config.database)}",
         ],
         capture_output=True,
     ).strip()
@@ -261,11 +269,12 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
 
 def _reset_moss_public_schema(config: DevPostgresClusterConfig) -> None:
     """Drop and recreate public schema on the moss DB (dev cluster only)."""
+    owner = _sql_identifier(config.user)
     sql = (
         "DROP SCHEMA IF EXISTS public CASCADE; "
         "CREATE SCHEMA public; "
-        "ALTER SCHEMA public OWNER TO moss; "
-        "GRANT ALL ON SCHEMA public TO moss; "
+        f"ALTER SCHEMA public OWNER TO {owner}; "
+        f"GRANT ALL ON SCHEMA public TO {owner}; "
         "GRANT ALL ON SCHEMA public TO public;"
     )
     _run_checked_retry(
