@@ -440,6 +440,49 @@ describe("MacroToolkitPage", () => {
     expect(within(dataHealth).queryByRole("button", { name: "重新完整分析" })).not.toBeInTheDocument();
   });
 
+  it("surfaces the hidden count when data-health repair items are truncated", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const repairItems = Array.from({ length: 8 }, (_, index) => {
+      const itemNumber = index + 1;
+      return {
+        type: "missing",
+        scope: "full",
+        priority: "medium",
+        key: `repair:${itemNumber}`,
+        alias: `MISSING_${itemNumber}`,
+        label: `缺口 ${itemNumber}`,
+        source_table: "system_macro_sources",
+        latest_date: null,
+        reference_date: "2026-04-30",
+        stale_days: null,
+        suggested_action: `补齐缺口 ${itemNumber} 后重新运行完整宏观分析。`,
+        action: null,
+        tags: ["missing"],
+      };
+    });
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          data_health: {
+            ...analysisEnvelope.result.data_health!,
+            repair_items: repairItems,
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-observation"], { client });
+
+    const repairList = await screen.findByLabelText("待处理数据项");
+    expect(repairList).toHaveTextContent("缺口 6");
+    expect(repairList).not.toHaveTextContent("缺口 7");
+    expect(repairList).toHaveTextContent("还有 2 项未显示");
+  });
+
   it("shows M7/M10/M14 input evidence and missing-input warnings in capability results", async () => {
     renderWorkbenchApp(["/macro-toolkit"]);
 

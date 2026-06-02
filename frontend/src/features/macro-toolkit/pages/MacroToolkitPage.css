@@ -463,6 +463,13 @@
   overflow-wrap: anywhere;
 }
 
+.macro-toolkit-data-health__repair-overflow {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .macro-toolkit-readiness-tile {
   display: grid;
   gap: 6px;

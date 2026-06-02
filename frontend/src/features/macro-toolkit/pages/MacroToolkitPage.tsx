@@ -1871,6 +1871,8 @@ function MacroToolkitDataHealthPanel({
   const missingAliases = dataHealth.source_coverage.missing_aliases;
   const missingIndicators = dataHealth.indicator_coverage.missing;
   const repairItems = dataHealth.repair_items ?? [];
+  const visibleRepairItems = repairItems.slice(0, 6);
+  const hiddenRepairItemCount = repairItems.length - visibleRepairItems.length;
   const deferredText = dataHealth.deferred_sections.length
     ? `延后加载：${dataHealth.deferred_sections.join(" / ")}`
     : "完整结果已加载";
@@ -1947,7 +1949,7 @@ function MacroToolkitDataHealthPanel({
             </Tag>
           </div>
           <div className="macro-toolkit-data-health__repair-list">
-            {repairItems.slice(0, 6).map((item) => (
+            {visibleRepairItems.map((item) => (
               <div
                 className={`macro-toolkit-data-health__repair macro-toolkit-data-health__repair--${item.priority ?? "medium"}`}
                 key={item.key ?? `${item.type}-${item.label}-${item.suggested_action}`}
@@ -2004,6 +2006,11 @@ function MacroToolkitDataHealthPanel({
               </div>
             ))}
           </div>
+          {hiddenRepairItemCount > 0 ? (
+            <small className="macro-toolkit-data-health__repair-overflow">
+              还有 {hiddenRepairItemCount} 项未显示；请查看完整分析或后端明细确认。
+            </small>
+          ) : null}
         </div>
       ) : null}
     </section>
