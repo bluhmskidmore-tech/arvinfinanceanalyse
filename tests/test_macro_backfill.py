@@ -327,6 +327,21 @@ def test_social_financing_stock_yoy_uses_stock_end_value_not_monthly_increment()
     assert rows[0]["value"] == pytest.approx(8.7337, rel=1e-4)
 
 
+def test_social_financing_stock_yoy_accepts_stable_macro_alias_name() -> None:
+    rows = _map_tushare_records(
+        "sf_month",
+        [
+            {"month": "202405", "inc_month": 33000, "stk_endval": 391.93},
+            {"month": "202505", "inc_month": 22900, "stk_endval": 426.16},
+        ],
+        series_name="social_financing_stock_yoy",
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["trade_date"] == "2025-05-01"
+    assert rows[0]["value"] == pytest.approx(8.7337, rel=1e-4)
+
+
 def test_cn_pmi_uses_tushare_month_and_manufacturing_pmi_code() -> None:
     rows = _map_tushare_records(
         "cn_pmi",

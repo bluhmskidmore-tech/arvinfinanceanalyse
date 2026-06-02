@@ -920,6 +920,9 @@ def _social_financing_stock_yoy_records(records: list[dict[str, object]]) -> lis
 
 
 def _is_social_financing_stock_yoy_series(series_name: str) -> bool:
+    key = str(series_name or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if "social_financing_stock_yoy" in key or "sf_stock_yoy" in key:
+        return True
     return "社会融资规模存量" in series_name and "同比" in series_name
 
 
