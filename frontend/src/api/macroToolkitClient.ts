@@ -467,8 +467,14 @@ export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
   cffex_member_rank: MacroToolkitCffexMemberRankStatus;
 }>;
 
+export type MacroToolkitAnalysisRequest = {
+  detail?: "core" | "full";
+};
+
 export type MacroToolkitClientMethods = {
-  getMacroToolkitAnalysis: () => Promise<ApiEnvelope<MacroToolkitAnalysisPayload>>;
+  getMacroToolkitAnalysis: (
+    options?: MacroToolkitAnalysisRequest,
+  ) => Promise<ApiEnvelope<MacroToolkitAnalysisPayload>>;
   getMacroToolkitStrategySummaries: () => Promise<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
   getMacroToolkitScripts: () => Promise<ApiEnvelope<MacroToolkitPayload>>;
   runMacroToolkitScript: (
@@ -1360,7 +1366,7 @@ const MOCK_PAYLOAD: MacroToolkitPayload = {
 
 export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
   return {
-    async getMacroToolkitAnalysis() {
+    async getMacroToolkitAnalysis(_options?: MacroToolkitAnalysisRequest) {
       return buildMockApiEnvelope("macro_toolkit.analysis", MOCK_ANALYSIS, {
         basis: "analytical",
         formal_use_allowed: false,
@@ -1480,8 +1486,14 @@ export function createRealMacroToolkitClient({
   baseUrl,
 }: MacroToolkitClientFactoryOptions): MacroToolkitClientMethods {
   return {
-    getMacroToolkitAnalysis: () =>
-      requestJson<MacroToolkitAnalysisPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/analysis?detail=core"),
+    getMacroToolkitAnalysis: (options?: MacroToolkitAnalysisRequest) => {
+      const detail = options?.detail ?? "full";
+      return requestJson<MacroToolkitAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/toolkit/analysis?detail=${detail}`,
+      );
+    },
     getMacroToolkitStrategySummaries: () =>
       requestJson<MacroToolkitStrategySummariesPayload>(
         fetchImpl,

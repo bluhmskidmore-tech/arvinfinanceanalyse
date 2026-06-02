@@ -279,7 +279,7 @@ export default function MacroToolkitPage() {
 
   const analysisQuery = useQuery({
     queryKey: ["macro-toolkit", "analysis"],
-    queryFn: () => client.getMacroToolkitAnalysis(),
+    queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
     staleTime: 60_000,
   });
 

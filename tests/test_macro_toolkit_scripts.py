@@ -152,6 +152,46 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     get_settings.cache_clear()
 
 
+def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('M0017126', 'Manufacturing PMI', '2026-05-01', 50.0, 'monthly', 'index',
+               'sv_tushare_pmi', 'vv_tushare', 'rv_backfill_macro_v1', 'ok', 'run-pmi'),
+              ('M0017127', 'PMI new orders', '2026-05-01', 48.5, 'monthly', 'index',
+               'sv_tushare_pmi', 'vv_tushare', 'rv_backfill_macro_v1', 'ok', 'run-pmi'),
+              ('M5525763', 'Social financing stock YoY', '2026-04-01', 8.49, 'monthly', '%',
+               'sv_tushare_sf', 'vv_tushare', 'rv_backfill_macro_v1', 'ok', 'run-sf')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    pmi = load_series_by_alias("M0017126")
+    pmi_new_orders = load_series_by_alias("M0017127")
+    ppi = load_series_by_alias("M0001227")
+    m2 = load_series_by_alias("M0001385")
+    social_financing = load_series_by_alias("M5525763")
+
+    assert pmi["series_id"].tolist() == ["M0017126"]
+    assert pmi["value"].tolist() == [50.0]
+    assert pmi_new_orders["series_id"].tolist() == ["M0017127"]
+    assert pmi_new_orders["value"].tolist() == [48.5]
+    assert ppi["series_id"].tolist() == ["tushare.macro.cn_ppi.monthly"]
+    assert ppi["value"].tolist() == [-2.3]
+    assert m2["series_id"].tolist() == ["tushare.macro.cn_money.monthly"]
+    assert m2["value"].tolist() == [8.1]
+    assert social_financing["series_id"].tolist() == ["M5525763"]
+    assert social_financing["value"].tolist() == [8.49]
+    get_settings.cache_clear()
+
+
 def test_system_source_layer_reads_crisis_external_backfill_aliases(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -882,6 +922,7 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
     monkeypatch.setattr(macro_toolkit_route, "_equity_strategy_summaries", fail_if_called)
     monkeypatch.setattr(macro_toolkit_route, "_source_checks", fail_if_called)
     monkeypatch.setattr(macro_toolkit_route, "_capability_plan", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_route, "_a_share_stampede_risk", fail_if_called)
 
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -897,11 +938,12 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
     assert result["runtime_status"]["analysis_scope"] == "core"
     assert {
         item["key"] for item in result["runtime_status"]["deferred_sections"]
-    } == {"capability_results", "strategy_summaries", "source_checks", "capabilities"}
+    } == {"capability_results", "strategy_summaries", "a_share_risk", "source_checks", "capabilities"}
     assert result["capability_results"] == []
     assert result["strategy_summaries"] == []
     assert result["source_checks"] == []
     assert result["capabilities"] == []
+    assert result["a_share_risk"] is None
     assert {item["key"] for item in result["signal_cards"]} == {
         "crisis_score_cn",
         "a_share_stampede_risk",
@@ -910,6 +952,8 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
         "credit",
         "outputs",
     }
+    risk_card = next(item for item in result["signal_cards"] if item["key"] == "a_share_stampede_risk")
+    assert risk_card["tone"] == "missing"
 
 
 def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_payload(tmp_path, monkeypatch) -> None:

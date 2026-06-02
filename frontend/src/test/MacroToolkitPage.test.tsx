@@ -23,6 +23,12 @@ describe("MacroToolkitPage", () => {
     expect(source).toContain('from "../../../api/clientContext"');
   });
 
+  it("loads first-screen analysis through the deferred core scope", () => {
+    const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+
+    expect(source).toContain('client.getMacroToolkitAnalysis({ detail: "core" })');
+  });
+
   it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 

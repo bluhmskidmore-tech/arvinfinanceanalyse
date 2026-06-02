@@ -136,7 +136,7 @@ describe("macroToolkitClient", () => {
       baseUrl: "http://localhost:8000",
     });
 
-    await client.getMacroToolkitAnalysis();
+    await client.getMacroToolkitAnalysis({ detail: "core" });
     await client.getMacroToolkitStrategySummaries();
 
     expect(fetchImpl).toHaveBeenNthCalledWith(

@@ -269,14 +269,15 @@ def macro_toolkit_analysis(
     indicator_by_key = {str(item["key"]): item for item in indicators}
     output_files = _output_files()
     analysis_date = _latest_indicator_date(indicators)
-    a_share_risk = _a_share_stampede_risk(settings.duckdb_path)
     if detail == "core":
+        a_share_risk = None
         capability_results: list[dict[str, object]] = []
         strategy_summaries: list[dict[str, object]] = []
         source_checks: list[dict[str, object]] = []
         capabilities: list[dict[str, object]] = []
         runtime_status = _analysis_runtime_status("core")
     else:
+        a_share_risk = _a_share_stampede_risk(settings.duckdb_path)
         capability_results = _macro_capability_results(
             settings.duckdb_path,
             report_date=analysis_date,
@@ -3374,6 +3375,11 @@ def _analysis_runtime_status(scope: str) -> dict[str, object]:
             {
                 "key": "strategy_summaries",
                 "label": "策略展示",
+                "status": "deferred",
+            },
+            {
+                "key": "a_share_risk",
+                "label": "市场踩踏风险",
                 "status": "deferred",
             },
             {
