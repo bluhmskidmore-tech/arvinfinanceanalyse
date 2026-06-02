@@ -6,9 +6,10 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 5248,
+  apiClientLines: 5208,
   // Phase 2 dashboard signals + fixture imports; demos split to workbenchDashboardApi / bondDashboardWorkbenchEndpoints.
   apiClientMockOccurrences: 401,
+  dashboardStyleFiles: {},
   totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

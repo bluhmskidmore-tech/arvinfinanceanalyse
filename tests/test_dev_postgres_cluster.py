@@ -312,6 +312,16 @@ def test_reset_schema_refuses_non_dev_endpoint():
         module.command_reset_schema(wrong_port)
 
 
+def test_dev_postgres_cluster_quotes_sql_identifiers_and_literals():
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    assert module._sql_identifier('moss"user') == '"moss""user"'
+    assert module._sql_literal("moss'password") == "'moss''password'"
+
+
 def test_run_checked_retry_retries_transient_psql_exit_code(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
