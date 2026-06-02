@@ -455,9 +455,9 @@ def _build_alias_row_index(frame: pd.DataFrame) -> dict[str, tuple[int, ...]]:
     if frame.empty:
         return {}
     rows_by_alias: dict[str, list[int]] = {}
-    for row_index, row in frame.iterrows():
+    for row_position, (_, row) in enumerate(frame.iterrows()):
         for alias in _row_aliases(row):
-            rows_by_alias.setdefault(alias, []).append(int(row_index))
+            rows_by_alias.setdefault(alias, []).append(row_position)
     return {alias: tuple(row_indices) for alias, row_indices in rows_by_alias.items()}
 
 

@@ -179,6 +179,46 @@ def test_series_alias_lookup_reuses_system_frame_until_duckdb_file_changes(tmp_p
     assert usdcny["value"].tolist() == [7.1234]
     assert len(calls) == 2
 
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('M0099999', 'Cache invalidation sample', '2026-06-01', 50.5, 'monthly', 'index',
+               'sv_cache_test', 'vv_choice', 'rv_cache_test', 'ok', 'run-cache-test')
+            """
+        )
+    finally:
+        conn.close()
+
+    cache_invalidation_sample = load_series_by_alias("M0099999", duckdb_path=duckdb_path)
+
+    assert cache_invalidation_sample["series_id"].tolist() == ["M0099999"]
+    assert cache_invalidation_sample["value"].tolist() == [50.5]
+    assert len(calls) == 3
+
+
+def test_series_alias_lookup_uses_positional_rows_for_cached_alias_index(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    original_load_system_macro_frame = system_sources.load_system_macro_frame
+    calls: list[object] = []
+
+    def load_system_macro_frame_with_shifted_index(duckdb_path_arg=None):
+        calls.append(duckdb_path_arg)
+        frame = original_load_system_macro_frame(duckdb_path_arg)
+        frame.index = pd.RangeIndex(start=10, stop=10 + len(frame))
+        return frame
+
+    monkeypatch.setattr(system_sources, "load_system_macro_frame", load_system_macro_frame_with_shifted_index)
+
+    hs300 = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
+    copper = load_series_by_alias("CU0", duckdb_path=duckdb_path)
+
+    assert hs300["value"].tolist() == [4102.25]
+    assert copper["value"].tolist() == [81234.5]
+    assert len(calls) == 1
+
 
 def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
