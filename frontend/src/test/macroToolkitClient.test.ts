@@ -189,6 +189,51 @@ describe("macroToolkitClient", () => {
     );
   });
 
+  it("posts commodity futures refresh requests to the toolkit route", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            refresh: {
+              status: "dry_run",
+              dry_run: true,
+              product_count: 2,
+              row_count: 0,
+              products: [{ product_code: "RB" }, { product_code: "CU" }],
+              table: "fact_commodity_futures_daily",
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    await client.refreshCommodityFutures({
+      startDate: "2026-05-01",
+      endDate: "2026-06-01",
+      products: ["RB", "CU"],
+      dryRun: true,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/macro/toolkit/commodity-futures/refresh",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          start_date: "2026-05-01",
+          end_date: "2026-06-01",
+          products: ["RB", "CU"],
+          dry_run: true,
+        }),
+      }),
+    );
+  });
+
   it("requests core analysis first and reads deferred strategy summaries separately", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) =>
       new Response(

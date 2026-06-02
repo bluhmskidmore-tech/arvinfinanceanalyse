@@ -2037,6 +2037,126 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     get_settings.cache_clear()
 
 
+def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    calls: list[dict[str, object]] = []
+
+    def fake_run_commodity_daily_ingest(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "status": "completed",
+            "dry_run": False,
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "product_count": 3,
+            "row_count": 66,
+            "products": [
+                {"product_code": "RB", "row_count": 22, "vendor": "tushare"},
+                {"product_code": "CU", "row_count": 22, "vendor": "tushare"},
+                {"product_code": "SC", "row_count": 22, "vendor": "tushare"},
+            ],
+            "rule_version": "rv_commodity_daily_v1",
+            "table": "fact_commodity_futures_daily",
+        }
+
+    monkeypatch.setattr(macro_toolkit_route, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+    request = {
+        "start_date": "2026-05-01",
+        "end_date": "2026-06-01",
+        "products": ["RB", "CU", "SC"],
+        "dry_run": False,
+    }
+
+    denied = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json=request,
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    allowed = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json=request,
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+
+    assert allowed.status_code == 200, allowed.text
+    payload = allowed.json()
+    refresh = payload["result"]["refresh"]
+    assert refresh["status"] == "completed"
+    assert refresh["row_count"] == 66
+    assert refresh["product_count"] == 3
+    assert refresh["products"][0]["product_code"] == "RB"
+    assert refresh["table"] == "fact_commodity_futures_daily"
+    assert payload["result_meta"]["result_kind"] == "macro_toolkit.commodity_futures_refresh"
+    assert calls == [
+        {
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "duckdb_path": str(duckdb_path),
+            "products": ("RB", "CU", "SC"),
+            "dry_run": False,
+        }
+    ]
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_refresh_rejects_unknown_products(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    calls: list[dict[str, object]] = []
+
+    def fake_run_commodity_daily_ingest(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {"status": "completed", "products": [], "row_count": 0}
+
+    monkeypatch.setattr(macro_toolkit_route, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json={
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "products": ["UNKNOWN"],
+            "dry_run": False,
+        },
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 400, response.text
+    assert "Unknown commodity futures product" in response.text
+    assert calls == []
+    get_settings.cache_clear()
+
+
 def test_macro_toolkit_choice_stock_refresh_rejects_inflight_run(tmp_path, monkeypatch) -> None:
     governance_path = tmp_path / "governance"
     sqlite_path = tmp_path / "auth-scope.db"

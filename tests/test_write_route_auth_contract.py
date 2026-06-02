@@ -75,6 +75,7 @@ MUTATION_ROUTES = [
     ("POST", "/ui/market-data/livermore/position-snapshot", {"as_of_date": "2026-04-30", "csv_path": "livermore/positions.csv"}),
     ("POST", "/ui/market-data/livermore/position-snapshot/manual", {"as_of_date": "2026-04-30", "positions": [{"stock_code": "000001.SZ", "stock_name": "Alpha", "entry_cost": 10.5, "bars_since_entry": 6}]}),
     ("POST", "/ui/macro/toolkit/cffex-member-rank/refresh", {"trade_date": "2026-04-10", "contracts": ["T.CFE"], "sources": ["choice"]}),
+    ("POST", "/ui/macro/toolkit/commodity-futures/refresh", {"start_date": "2026-05-01", "end_date": "2026-06-01", "products": ["RB", "CU"], "dry_run": True}),
     ("POST", "/ui/macro/toolkit/source-backfill/refresh", {"alias": "M0041813", "start_date": "2026-04-01", "end_date": "2026-04-30", "sources": ["tushare_macro"]}),
     ("POST", "/ui/macro/toolkit/scripts/debug_wind/run", {"timeout_seconds": 30}),
     ("POST", "/api/analysis/adb/backfill?start_date=1900-01-01&end_date=1900-01-02", None),
@@ -207,6 +208,24 @@ def _patch_source_backfill_refresh(monkeypatch, calls: list[str]) -> str:
     return "NCD.SHIBOR.3M"
 
 
+def _patch_commodity_futures_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.macro_toolkit as route_module
+
+    def fake_run_commodity_daily_ingest(**_kwargs):
+        calls.append("called")
+        return {
+            "status": "dry_run",
+            "dry_run": True,
+            "row_count": 0,
+            "product_count": 2,
+            "products": [{"product_code": "RB"}, {"product_code": "CU"}],
+            "table": "fact_commodity_futures_daily",
+        }
+
+    monkeypatch.setattr(route_module, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    return "fact_commodity_futures_daily"
+
+
 def _patch_product_category_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.product_category_pnl as route_module
 
@@ -240,6 +259,12 @@ SCOPED_REFRESH_ROUTES = [
         {"alias": "M0041813", "start_date": "2026-04-01", "end_date": "2026-04-30", "sources": ["tushare_macro"]},
         "macro_toolkit.source_backfill",
         _patch_source_backfill_refresh,
+    ),
+    (
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        {"start_date": "2026-05-01", "end_date": "2026-06-01", "products": ["RB", "CU"], "dry_run": True},
+        "macro_toolkit.commodity_futures",
+        _patch_commodity_futures_refresh,
     ),
     ("/ui/pnl/product-category/refresh", None, "product_category_pnl", _patch_product_category_refresh),
 ]

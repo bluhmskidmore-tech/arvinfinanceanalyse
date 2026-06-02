@@ -60,6 +60,7 @@ from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRA
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS, run_commodity_daily_ingest
 from backend.app.tasks.macro_backfill import backfill_macro_series
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
@@ -94,6 +95,9 @@ _SOURCE_BACKFILL_TARGETS = {
         "default_sources": ["tushare_macro"],
     },
 }
+
+_DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = ("RB", "I", "CU", "AL", "SC", "AU", "NHCI")
+_MACRO_COMMODITY_PRODUCT_CODES = frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
 
 _ANALYSIS_INDICATORS = (
     {"key": "hs300", "alias": "sh000300", "label": "沪深300", "unit": "点", "group": "风险资产"},
@@ -254,6 +258,13 @@ class SourceBackfillRefreshRequest(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     sources: list[str] | None = None
+
+
+class CommodityFuturesRefreshRequest(BaseModel):
+    start_date: str | None = None
+    end_date: str | None = None
+    products: list[str] | None = None
+    dry_run: bool = False
 
 
 @router.get("/scripts")
@@ -577,6 +588,52 @@ def macro_toolkit_refresh_source_backfill(
     )
 
 
+@router.post("/commodity-futures/refresh")
+def macro_toolkit_refresh_commodity_futures(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    request: CommodityFuturesRefreshRequest | None = None,
+) -> dict[str, object]:
+    refresh_request = request or CommodityFuturesRefreshRequest()
+    settings = get_settings()
+    _ensure_commodity_futures_refresh_allowed(auth, settings)
+    end_date = refresh_request.end_date or date.today().isoformat()
+    start_date = refresh_request.start_date or _default_source_backfill_start_date(end_date)
+    products = _macro_commodity_refresh_products(refresh_request.products)
+    try:
+        refresh = run_commodity_daily_ingest(
+            start_date=start_date,
+            end_date=end_date,
+            duckdb_path=str(settings.duckdb_path),
+            products=products,
+            dry_run=refresh_request.dry_run,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not refresh_request.dry_run:
+        market_home_response_cache.invalidate()
+    status = str(refresh.get("status") or "")
+    return _envelope(
+        "macro_toolkit.commodity_futures_refresh",
+        {"refresh": refresh},
+        quality_flag="ok" if status in {"completed", "dry_run"} else "warning",
+        fallback_mode="none",
+        as_of_date=str(refresh.get("end_date") or end_date),
+    )
+
+
+def _macro_commodity_refresh_products(products: list[str] | None) -> tuple[str, ...]:
+    requested = products or list(_DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS)
+    normalized = tuple(str(product).strip().upper() for product in requested)
+    unknown = tuple(product for product in normalized if product not in _MACRO_COMMODITY_PRODUCT_CODES)
+    if unknown:
+        unknown_labels = ", ".join(product or "<blank>" for product in unknown)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown commodity futures product: {unknown_labels}.",
+        )
+    return normalized
+
+
 @router.post("/scripts/{name}/run")
 def macro_toolkit_run(
     name: str,
@@ -635,6 +692,20 @@ def _ensure_source_backfill_refresh_allowed(auth: AuthContext, settings: object)
             auth=auth,
             settings=settings,
             resource="macro_toolkit.source_backfill",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_commodity_futures_refresh_allowed(auth: AuthContext, settings: object) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_toolkit.commodity_futures",
             action="refresh",
         )
     except PermissionError as exc:

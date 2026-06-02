@@ -542,6 +542,24 @@ export type MacroToolkitSourceBackfillRefreshResponse = ApiEnvelope<{
   };
 }>;
 
+export type MacroToolkitCommodityFuturesRefreshRun = {
+  status: string;
+  dry_run?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
+  product_count?: number;
+  row_count?: number;
+  estimated_total_rows?: number;
+  estimated_trading_days?: number;
+  products?: Array<Record<string, unknown>>;
+  table?: string;
+  rule_version?: string;
+};
+
+export type MacroToolkitCommodityFuturesRefreshResponse = ApiEnvelope<{
+  refresh: MacroToolkitCommodityFuturesRefreshRun;
+}>;
+
 export type MacroToolkitAnalysisRequest = {
   detail?: "core" | "full";
 };
@@ -573,6 +591,12 @@ export type MacroToolkitClientMethods = {
     endDate?: string | null;
     sources?: string[];
   }) => Promise<MacroToolkitSourceBackfillRefreshResponse>;
+  refreshCommodityFutures: (options?: {
+    startDate?: string | null;
+    endDate?: string | null;
+    products?: string[];
+    dryRun?: boolean;
+  }) => Promise<MacroToolkitCommodityFuturesRefreshResponse>;
   refreshChoiceStock: (options?: {
     asOfDate?: string;
     refreshHistory?: boolean;
@@ -1879,6 +1903,39 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         },
       );
     },
+    async refreshCommodityFutures(options) {
+      const products = options?.products ?? ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"];
+      return buildMockApiEnvelope(
+        "macro_toolkit.commodity_futures_refresh",
+        {
+          refresh: {
+            status: options?.dryRun ? "dry_run" : "completed",
+            dry_run: options?.dryRun ?? false,
+            start_date: options?.startDate ?? null,
+            end_date: options?.endDate ?? "2026-04-30",
+            product_count: products.length,
+            row_count: options?.dryRun ? 0 : products.length * 22,
+            estimated_total_rows: options?.dryRun ? products.length * 22 : undefined,
+            estimated_trading_days: options?.dryRun ? 22 : undefined,
+            products: products.map((product) => ({
+              product_code: product,
+              row_count: options?.dryRun ? undefined : 22,
+              vendor: options?.dryRun ? "estimate_only" : "tushare",
+            })),
+            table: "fact_commodity_futures_daily",
+            rule_version: "rv_commodity_daily_v1",
+          },
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
     async refreshChoiceStock() {
       return buildMockApiEnvelope(
         "macro_toolkit.choice_stock_refresh",
@@ -1992,6 +2049,22 @@ export function createRealMacroToolkitClient({
             start_date: options.startDate ?? null,
             end_date: options.endDate ?? null,
             sources: options.sources ?? null,
+          }),
+        },
+      ),
+    refreshCommodityFutures: (options) =>
+      requestActionJson<MacroToolkitCommodityFuturesRefreshResponse>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            start_date: options?.startDate ?? null,
+            end_date: options?.endDate ?? null,
+            products: options?.products ?? null,
+            dry_run: options?.dryRun ?? false,
           }),
         },
       ),

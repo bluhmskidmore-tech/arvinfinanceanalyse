@@ -74,9 +74,9 @@ def warm_market_home_read_caches(*, duckdb_path: str) -> None:
             lambda: macro_foundation_formal_envelope(duckdb_path),
         ),
         (
-            "macro_analysis_full",
-            market_home_macro_analysis_cache_key(duckdb_path, "full"),
-            lambda: _build_macro_toolkit_analysis("full"),
+            "macro_analysis_core",
+            market_home_macro_analysis_cache_key(duckdb_path, "core"),
+            lambda: _build_macro_toolkit_analysis("core"),
         ),
         (
             "macro_strategy_summaries",

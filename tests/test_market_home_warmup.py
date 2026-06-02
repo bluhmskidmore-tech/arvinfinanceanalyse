@@ -89,5 +89,5 @@ def test_warm_market_home_read_caches_populates_all_steps(monkeypatch: pytest.Mo
     assert built[0].startswith("choice-series/latest::all::")
     assert "market-data/rates::" in built[1]
     assert "market-data/catalog::" in built[2]
-    assert "macro-toolkit/analysis::full::" in built[3]
+    assert "macro-toolkit/analysis::core::" in built[3]
     assert "macro-toolkit/strategy-summaries::" in built[4]

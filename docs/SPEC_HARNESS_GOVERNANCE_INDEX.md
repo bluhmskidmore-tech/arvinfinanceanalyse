@@ -124,6 +124,7 @@ Use this path for all business metric page or workflow work:
 | Data quality summaries, row counts, null counts, date coverage, sample hints | `moss-data-quality` |
 | Repository graph, symbols, call paths, and cross-page impact | `gitnexus` |
 | Browser-level visible behavior and page state verification | `playwright` |
+| Trace bundle stitching and harness artifact assembly | `stitch` |
 
 ## Minimum Handoff Shape
 

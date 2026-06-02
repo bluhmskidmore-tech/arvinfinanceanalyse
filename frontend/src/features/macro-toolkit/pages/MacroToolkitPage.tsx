@@ -25,6 +25,7 @@ import type { ApiEnvelope } from "../../../api/contracts";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
+  MacroToolkitCommodityFuturesRefreshRun,
   MacroToolkitChoiceStockRefreshRun,
   MacroToolkitChoiceStockRefreshPermission,
   MacroToolkitAShareRiskPayload,
@@ -307,6 +308,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [sourceBackfillResult, setSourceBackfillResult] = useState<string | null>(null);
   const [sourceBackfillError, setSourceBackfillError] = useState<string | null>(null);
   const [refreshingSourceAlias, setRefreshingSourceAlias] = useState<string | null>(null);
+  const [commodityRefreshResult, setCommodityRefreshResult] = useState<string | null>(null);
+  const [commodityRefreshError, setCommodityRefreshError] = useState<string | null>(null);
+  const [isRefreshingCommodity, setIsRefreshingCommodity] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [fullAnalysisEnvelope, setFullAnalysisEnvelope] =
     useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(null);
@@ -434,6 +438,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     analysisQuery.isFetching ||
     (showOperations && scriptsQuery.isFetching) ||
     strategyQuery.isFetching ||
+    isRefreshingCommodity ||
     isLoadingFullAnalysis;
   const queryErrors = [analysisQuery.error, ...(showOperations ? [scriptsQuery.error] : []), strategyQuery.error];
   const queryErrorText = queryErrors
@@ -593,6 +598,37 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setIsRefreshingChoiceStock(false);
     }
   }, [analysis?.as_of_date, analysisQuery, clearFullAnalysisCache, client, scriptsQuery, strategyQuery]);
+
+  const refreshCommodityFutures = useCallback(async () => {
+    setIsRefreshingCommodity(true);
+    setCommodityRefreshError(null);
+    setCommodityRefreshResult(null);
+    const shouldReloadFullAnalysis = !isCoreAnalysis;
+    try {
+      const response = await client.refreshCommodityFutures({
+        endDate: analysis?.as_of_date ?? undefined,
+      });
+      setCommodityRefreshResult(formatCommodityRefreshResult(response.result.refresh));
+      await clearFullAnalysisCache();
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      if (shouldReloadFullAnalysis) {
+        await loadFullAnalysis({ force: true });
+      }
+    } catch (error) {
+      setCommodityRefreshError(error instanceof Error ? error.message : "刷新商品期货失败");
+    } finally {
+      setIsRefreshingCommodity(false);
+    }
+  }, [
+    analysis?.as_of_date,
+    analysisQuery,
+    clearFullAnalysisCache,
+    client,
+    isCoreAnalysis,
+    loadFullAnalysis,
+    scriptsQuery,
+    strategyQuery,
+  ]);
 
   const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     {
@@ -1358,6 +1394,41 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 </Button>
                 {refreshResult ? <Alert type="success" showIcon message={refreshResult} /> : null}
                 {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="macro-toolkit-section">
+            <PageSectionLead
+              eyebrow="commodity"
+              title="商品期货状态"
+              description="刷新南华指数和宏观旁证商品期货；Crisis Score 公式仍只读取南华输入。"
+            />
+            <div className="macro-toolkit-cffex-panel">
+              <div className="macro-toolkit-cffex-metrics">
+                <MetricTile
+                  icon={<DatabaseOutlined />}
+                  label="刷新范围"
+                  value="RB / I / CU / AL / SC / AU / NHCI"
+                  detail="覆盖黑色、有色、原油、黄金和南华指数"
+                />
+                <MetricTile
+                  icon={<SafetyCertificateOutlined />}
+                  label="目标表"
+                  value="fact_commodity_futures_daily"
+                  detail="刷新后重新读取完整分析证据"
+                />
+              </div>
+              <div className="macro-toolkit-cffex-actions">
+                <Button
+                  icon={<ReloadOutlined />}
+                  loading={isRefreshingCommodity}
+                  onClick={() => void refreshCommodityFutures()}
+                >
+                  刷新商品期货
+                </Button>
+                {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
+                {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
               </div>
             </div>
           </section>
@@ -2343,6 +2414,13 @@ function choiceStockTableSummary(
   const statusText = statusLabel(table?.freshness_status ?? "unknown");
   const fallbackText = choiceStockFallbackText(table);
   return [dateText, statusText, fallbackText].filter(Boolean).join(" · ");
+}
+
+function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  const productCount = refresh.product_count ?? refresh.products?.length ?? 0;
+  const rowCount = refresh.row_count ?? refresh.estimated_total_rows ?? 0;
+  const action = refresh.status === "dry_run" ? "预估完成" : "刷新完成";
+  return `商品期货${action}：${productCount} 个品种，${rowCount} 行`;
 }
 
 function choiceStockFallbackText(

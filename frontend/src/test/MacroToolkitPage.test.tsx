@@ -809,6 +809,51 @@ describe("MacroToolkitPage", () => {
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2));
   });
 
+  it("refreshes commodity futures from the operations panel and reloads full evidence", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const calls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
+    const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async (options) => {
+        calls.push(options);
+        return analysisEnvelope;
+      },
+      refreshCommodityFutures: async (options) => {
+        refreshCalls.push(options);
+        return {
+          result_meta: {
+            ...analysisEnvelope.result_meta,
+            result_kind: "macro_toolkit.commodity_futures_refresh",
+          },
+          result: {
+            refresh: {
+              status: "completed",
+              dry_run: false,
+              start_date: "2026-04-01",
+              end_date: "2026-04-30",
+              product_count: 7,
+              row_count: 154,
+              products: [{ product_code: "RB", row_count: 22 }],
+              table: "fact_commodity_futures_daily",
+              rule_version: "rv_commodity_daily_v1",
+            },
+          },
+        };
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    await user.click(await screen.findByRole("button", { name: /刷新商品期货/ }));
+
+    expect(refreshCalls).toEqual([{ endDate: "2026-04-30" }]);
+    expect(await screen.findByText(/商品期货刷新完成/)).toHaveTextContent("7 个品种，154 行");
+    await waitFor(() => expect(calls).toContainEqual({ detail: "full" }));
+  });
+
   it("does not trigger source backfill for unsupported aliases even when action is enabled", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
