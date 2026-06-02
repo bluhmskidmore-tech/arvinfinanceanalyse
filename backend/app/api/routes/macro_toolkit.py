@@ -8,6 +8,10 @@ from typing import Annotated
 
 import duckdb
 import pandas as pd
+from backend.app.api.response_cache import (
+    market_home_macro_analysis_cache_key,
+    market_home_response_cache,
+)
 from backend.app.core_finance.macro import (
     analyze_cross_market_linkage,
     classify_low_crowding_market_regime,
@@ -255,6 +259,14 @@ def macro_toolkit_scripts() -> dict[str, object]:
 
 @router.get("/analysis")
 def macro_toolkit_analysis() -> dict[str, object]:
+    settings = get_settings()
+    return market_home_response_cache.get_or_build(
+        market_home_macro_analysis_cache_key(settings.duckdb_path),
+        _build_macro_toolkit_analysis,
+    )
+
+
+def _build_macro_toolkit_analysis() -> dict[str, object]:
     settings = get_settings()
     indicators = _analysis_indicators(settings.duckdb_path)
     indicator_by_key = {str(item["key"]): item for item in indicators}
