@@ -5,6 +5,10 @@ const eventsMonitoringTitle = "\u5173\u952e\u4e8b\u4ef6\u4e0e\u76d1\u63a7";
 const themeBreakoutPausedText =
   "\u5e02\u573a\u8fc7\u70ed\u95e8\u63a7\u4e0b\u6682\u505c\u9898\u6750\u89c2\u5bdf";
 const themeBreakoutReplayText = "\u5386\u53f2\u56de\u653e\u663e\u793a\u8be5\u6876\u62d6\u7d2f";
+const sourceVersionText = "\u6765\u6e90\u7248\u672c";
+const ruleVersionText = "\u89c4\u5219\u7248\u672c";
+const qualityText = "\u8d28\u91cf";
+const channelText = "\u901a\u9053";
 
 test.describe("stock analysis real-data browser smoke", () => {
   test.skip(!realStockSmokeEnabled, "Set MOSS_PLAYWRIGHT_REAL_STOCK_SMOKE=1 to run real stock-analysis smoke.");
@@ -58,10 +62,10 @@ test.describe("stock analysis real-data browser smoke", () => {
       await page.getByTestId(`stock-risk-row-${riskItem.stock_code}`).click();
       const drawer = page.getByTestId("stock-detail-drawer");
       const footer = page.getByTestId("stock-detail-footer-meta");
-      await expect(footer).toContainText("来源版本", { timeout: 60_000 });
-      await expect(footer).toContainText("规则版本");
-      await expect(footer).toContainText("质量");
-      await expect(footer).toContainText("通道");
+      await expect(footer).toContainText(sourceVersionText, { timeout: 60_000 });
+      await expect(footer).toContainText(ruleVersionText);
+      await expect(footer).toContainText(qualityText);
+      await expect(footer).toContainText(channelText);
 
       const drawerText = await drawer.innerText();
       for (const fragment of ["source_version", "rule_version", "quality_flag", "vendor_status"]) {

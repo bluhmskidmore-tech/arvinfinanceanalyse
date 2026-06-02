@@ -2336,9 +2336,34 @@ export default function StockAnalysisPage() {
                           {" · "}
                           {decisionSummary.exposureLabel}
                         </h1>
-                        <p className="stock-analysis-page__dh-hero-copy font-semibold text-[color:var(--sa-dh-ink)]">
-                          {decisionSummary.nextReviewAction}
-                        </p>
+                        <div
+                          className="flex flex-wrap gap-1.5 font-semibold text-[color:var(--sa-dh-ink)]"
+                          aria-label="下一步复核状态"
+                          title={decisionSummary.nextReviewAction}
+                        >
+                          {reviewQueue[0] ? (
+                            <>
+                              <span className="inline-flex items-center gap-1.5 rounded-md border border-primary-100 bg-white px-2 py-1 text-xs">
+                                <StockOutlined aria-hidden="true" /> 下一步 {reviewQueue[0].stockName}
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs">
+                                <BarChartOutlined aria-hidden="true" /> 距观察 {reviewQueue[0].distanceToBreakoutPct}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="inline-flex items-center gap-1.5 rounded-md border border-warning-200 bg-white px-2 py-1 text-xs text-warning-700">
+                                <StockOutlined aria-hidden="true" /> 复核 {reviewQueue.length}
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs">
+                                <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs">
+                                <ThunderboltOutlined aria-hidden="true" /> 共振 {consensusHitCount}
+                              </span>
+                            </>
+                          )}
+                        </div>
                         <div className="stock-analysis-page__dh-hero-status-strip" aria-label="市场门控状态">
                           {[
                             dailyJudgmentStrip.gateChip,
