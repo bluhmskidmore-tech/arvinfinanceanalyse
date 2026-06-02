@@ -800,6 +800,8 @@ describe("MacroToolkitPage", () => {
               trigger_mode: "terminal",
               history_row_count: 111,
               factor_row_count: 222,
+              source_version: "sv_factor",
+              vendor_version: "vv_factor",
               permission: choiceStockRefresh.permission,
             },
           },
@@ -815,7 +817,7 @@ describe("MacroToolkitPage", () => {
     expect(permissionTile).toHaveTextContent("已完成");
     expect(permissionTile?.querySelector("small")).toHaveAttribute(
       "title",
-      "run choice_stock_refresh:2026-04-30:done · report 2026-04-30 · trigger terminal · rows history 111 / factor 222 · resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
+      "run choice_stock_refresh:2026-04-30:done · report 2026-04-30 · trigger terminal · rows history 111 / factor 222 · source sv_factor · vendor vv_factor · resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
     );
   });
 

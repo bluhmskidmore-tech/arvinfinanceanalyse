@@ -1709,9 +1709,13 @@ function choiceStockRefreshDetail(
   const triggerMode = refresh.trigger_mode ?? "unknown";
   const historyRows = refresh.history_row_count ?? "-";
   const factorRows = refresh.factor_row_count ?? "-";
+  const source = refresh.source_version?.trim();
+  const vendor = refresh.vendor_version?.trim();
+  const versionText = [source ? `source ${source}` : "", vendor ? `vendor ${vendor}` : ""].filter(Boolean).join(" · ");
+  const version = versionText ? ` · ${versionText}` : "";
   const failureText = choiceStockRefreshFailureText(refresh);
   const failure = failureText ? ` · failure ${failureText}` : "";
-  return `run ${runId} · report ${reportDate} · trigger ${triggerMode} · rows history ${historyRows} / factor ${factorRows}${failure} · ${permissionDetail}`;
+  return `run ${runId} · report ${reportDate} · trigger ${triggerMode} · rows history ${historyRows} / factor ${factorRows}${version}${failure} · ${permissionDetail}`;
 }
 
 function choiceStockHasRunEvidence(refresh: MacroToolkitChoiceStockRefreshRun | null | undefined): refresh is MacroToolkitChoiceStockRefreshRun {
