@@ -1237,6 +1237,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     assert status_payload["result"]["refresh"]["trigger_mode"] == "terminal"
     assert status_payload["result"]["refresh"]["source_version"] == "sv_factor"
     assert status_payload["result"]["refresh"]["vendor_version"] == "vv_factor"
+    assert status_payload["result"]["refresh"]["rule_version"] == "rv_choice_stock_materialization_front_layer_v1"
+    assert status_payload["result"]["refresh"]["cache_version"] == "choice_stock_refresh_v1"
 
 
 def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch) -> None:
