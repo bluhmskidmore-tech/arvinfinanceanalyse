@@ -1235,6 +1235,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     assert status_payload["result"]["refresh"]["history_row_count"] == 111
     assert status_payload["result"]["refresh"]["factor_row_count"] == 222
     assert status_payload["result"]["refresh"]["trigger_mode"] == "terminal"
+    assert status_payload["result"]["refresh"]["source_version"] == "sv_factor"
+    assert status_payload["result"]["refresh"]["vendor_version"] == "vv_factor"
 
 
 def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch) -> None:
