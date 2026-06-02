@@ -1757,6 +1757,236 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Backend: `tests/test_cube_query_api.py`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
+## 14.5 PAGE-PORTFOLIO-HOME-001 Portfolio Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-PORTFOLIO-HOME-001`
+- Primary front-end route: `/portfolio`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+  - `frontend/src/features/workbench/module-home/usePortfolioHomeQueries.ts`
+- Primary downstream pages:
+  - `/balance-analysis`
+  - `/bond-dashboard`
+  - `/positions`
+  - `/pnl-attribution`
+
+### B. Primary business question
+
+- The page answers: what portfolio-scale, risk, structure, and PnL evidence is ready enough to decide the next drilldown?
+- It is a module home and navigation summary, not a standalone formal metric page.
+- It must not replace the formal truth on `/balance-analysis`, `/bond-dashboard`, `/positions`, or `/pnl-attribution`.
+
+### C. Data chain
+
+- `usePortfolioHomeQueries` loads existing balance, bond dashboard, risk, structure, portfolio comparison, basis, and PnL attribution read surfaces.
+- `buildModuleHomeView(... kind="portfolio")` maps those query envelopes into KPI cards, source statuses, briefings, distribution panels, and detail panels.
+- The page only displays returned fields and presentation conversions such as yuan to yi yuan; it does not create official finance calculations.
+
+### D. Units, dates, and status
+
+- Amounts follow the originating endpoint semantics and may be rendered in yi yuan only as presentation.
+- Dates are inherited from each endpoint result or result metadata; mixed dates must remain visible through source status and panel metadata.
+- Empty state: missing query data must remain a muted or warning status, not a synthetic portfolio total.
+- Failure state: failed child queries must remain visible at source or panel level.
+- Stale/fallback state: quality, fallback, and source metadata from child endpoints must not be hidden by the module home.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal-use claims remain scoped to each downstream page and API result metadata.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.6 PAGE-MARKET-HOME-001 Market Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-MARKET-HOME-001`
+- Primary front-end route: `/market-overview`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+  - `frontend/src/features/workbench/module-home/useMarketHomeQueries.ts`
+- Primary downstream pages:
+  - `/market-data`
+  - `/cross-asset`
+  - `/macro-toolkit`
+  - `/stock-analysis`
+  - `/news-events`
+
+### B. Primary business question
+
+- The page answers: which market data, macro, cross-asset, stock observation, or event context should be opened first today?
+- It is a market entry surface and must not promote observational or vendor-readiness signals into formal operating metrics.
+- Old `/market` bookmarks may redirect to `/market-data`; `/market-overview` remains the module home route.
+
+### C. Data chain
+
+- `useMarketHomeQueries` loads Choice macro latest data, market rate series, market catalog, and macro toolkit analysis summaries.
+- `buildModuleHomeView(... kind="market")` maps query envelopes into market KPI cards, rate tables, macro/toolkit panels, and source statuses.
+- The page references market data result metadata and child-page readiness instead of defining a new market metric contract.
+
+### D. Units, dates, and status
+
+- Rate, FX, spread, and macro units come from the originating market or macro payload and their local formatters.
+- Trade dates and as-of dates must stay tied to the source row or result metadata.
+- Empty state: no rates, no catalog, or no macro toolkit result must show a missing/partial status.
+- Failure state: failed market or macro queries must be visible and must not be replaced by demo market values.
+- Stale/fallback state: vendor, fallback, catalog, and source-version status must remain visible.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal-use claims remain scoped to `/market-data` or the specific returned `result_meta`.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.7 PAGE-RISK-HOME-001 Risk Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-RISK-HOME-001`
+- Primary front-end route: `/risk-overview`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+- Primary downstream pages:
+  - `/risk-tensor`
+  - `/concentration-monitor`
+  - `/cashflow-projection`
+
+### B. Primary business question
+
+- The page answers: which risk-tensor, concentration, or cashflow area needs the next review?
+- It is a risk module home and must not replace `PAGE-RISK-001` formal risk tensor truth.
+- It must not estimate regulatory DV01, liquidity pressure, or concentration limits in the frontend.
+
+### C. Data chain
+
+- The module home loads risk tensor dates, selected risk tensor payload, and cashflow projection payload through the shared API client.
+- `buildModuleHomeView(... kind="risk")` maps returned tensor and cashflow fields into KPI cards, detail panels, and drilldown status.
+- Concentration remains a downstream drilldown status unless its route supplies explicit data to this module home.
+
+### D. Units, dates, and status
+
+- DV01/CS01 values must preserve the backend risk tensor field semantics and visible units.
+- Report date comes from risk tensor date/result payload; cashflow may carry its own report date.
+- Empty state: no tensor date, no tensor payload, or no cashflow payload must remain visible.
+- Failure state: risk query failures must show warning/error status and must not be replaced with frontend estimates.
+- Stale/fallback state: degraded tensor inputs, maturity gaps, fallback dates, and quality flags must remain visible.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal risk metrics remain bound to `PAGE-RISK-001`.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.8 PAGE-PERFORMANCE-HOME-001 Performance Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-PERFORMANCE-HOME-001`
+- Primary front-end route: `/performance`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+- Primary downstream pages:
+  - `/kpi`
+  - `/team-performance`
+  - `/pnl-by-business`
+  - `/product-category-pnl`
+
+### B. Primary business question
+
+- The page answers: which KPI, team contribution, business PnL, or product PnL surface should support the current performance review?
+- It is a performance entry surface and must not rebuild KPI scoring or team allocation formulas.
+- It must not treat temporary-exception downstream pages as formal KPI truth.
+
+### C. Data chain
+
+- The module home loads KPI owners, KPI period summary, and business PnL YTD payloads where available.
+- `buildModuleHomeView(... kind="performance")` maps returned summaries into KPI cards, source statuses, briefings, and drilldown rows.
+- Team performance and product-category details remain governed by their own pages and result metadata.
+
+### D. Units, dates, and status
+
+- KPI period labels, PnL units, and report dates must come from the originating payloads.
+- Empty state: missing KPI owner, KPI summary, or business PnL must remain visible.
+- Failure state: failed KPI/PnL queries must not be hidden behind static performance copy.
+- Stale/fallback state: downstream quality, fallback, and temporary-exception boundaries must remain visible before any performance conclusion.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal KPI, team, and PnL semantics belong to the downstream pages and source contracts.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.9 PAGE-REPORTS-HOME-001 Reports And Data Home
+
+### A. Page identity
+
+- Page ID: `PAGE-REPORTS-HOME-001`
+- Primary front-end route: `/reports`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+- Primary downstream pages:
+  - `/platform-config`
+  - `/cube-query`
+  - `/reports`
+
+### B. Primary business question
+
+- The page answers: are data health, source status, self-service query, and report-planning surfaces ready to support delivery?
+- It is a governance/reporting entry surface and must not fabricate report data when a backend report interface is absent.
+- It must keep planned or unimplemented report capabilities visibly marked as planned/pending.
+
+### C. Data chain
+
+- The module home loads health status, source foundation preview, and cube dimensions where available.
+- `buildModuleHomeView(... kind="governance")` maps those payloads into data health KPIs, source rows, cube capability rows, and report planning notes.
+- Cube query semantics remain scoped to `PAGE-CUBE-QUERY-001`; platform health remains diagnostics rather than business metric approval.
+
+### D. Units, dates, and status
+
+- Health and source status fields are displayed as returned by their diagnostic endpoints.
+- Cube dimensions have no amount units; fact-table units are only known after a specific cube query.
+- Empty state: missing source, health, or cube capability must show explicit missing/planned status.
+- Failure state: failed health/source/cube reads must remain visible.
+- Stale/fallback state: diagnostics or source preview metadata must not be converted into formal data-quality approval.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal-use claims remain scoped to specific downstream query results and result metadata.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
 ## 15. 当前缺口
 
 ### 15.1 `as_of_date` 未统一

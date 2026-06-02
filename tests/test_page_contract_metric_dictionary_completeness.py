@@ -52,6 +52,21 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
         "cube query is a candidate query surface; page contract explicitly has no standalone "
         "`MTR-*` binding."
     ),
+    "PAGE-PORTFOLIO-HOME-001": (
+        "portfolio module home is a navigation summary; downstream pages own formal metric bindings."
+    ),
+    "PAGE-MARKET-HOME-001": (
+        "market module home is a mixed-source entry surface; downstream pages own metric bindings."
+    ),
+    "PAGE-RISK-HOME-001": (
+        "risk module home is a navigation summary; formal risk metrics remain on PAGE-RISK-001."
+    ),
+    "PAGE-PERFORMANCE-HOME-001": (
+        "performance module home is a navigation summary; downstream KPI/PnL pages own bindings."
+    ),
+    "PAGE-REPORTS-HOME-001": (
+        "reports module home is a diagnostics/query entry surface; no standalone business metrics."
+    ),
 }
 
 PAGE_HEADING_RE = re.compile(r"^##\s+[\d.]+\s+(PAGE-[A-Z0-9-]+)\b", re.MULTILINE)

@@ -550,6 +550,7 @@ Guardrails:
 ### 15.3 复用、排除与对齐说明
 
 - `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence，macro / FX / news 继续以 `GAP-OPS-MACRO-FX` 约束。
+- `module-home routes`: `/portfolio`、`/market-overview`、`/risk-overview`、`/performance`、`/reports` 已有 `PAGE-*-HOME-001` 合同；它们是一级入口和下钻摘要，不新增 standalone `MTR-*`。正式指标、candidate 指标和 source/version 解释继续由各下游页面合同、endpoint `result_meta` 或既有字典行负责。
 - `macro-observation`: 页面已有 `PAGE-MACRO-OBS-001`，但它是只读宏观观察 surface；核心信号、踩踏风险、策略供数状态和 source/version/run_id 只作分析证据，不新增 `MTR-MACRO-*` 或任何正式 `MTR-*`。
 - `macro-toolkit`: 页面已有 `PAGE-MACRO-TOOLKIT-001`，但它是工具/分析口径 surface；`coverage.hit_rate`、脚本数、策略数、真实链路数、刷新行数与 source/version/run_id 只作状态和追踪证据，不新增 `MTR-MACRO-*` 或任何正式 `MTR-*`。
 - `product-category-pnl`: 继续只复用当前 active 的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；detail rows、scenario、tree、row-level `business_net_income` 只有在 decision 3C field matrix / numbering / tests 落地后才可升格为更多 `MTR-*`。
