@@ -154,9 +154,21 @@ function formatCandidateHistoryReturn(value: number | null | undefined): string 
 }
 
 function candidateHistoryRowClass(status: string): string {
-  if (status === "pending") return "stock-detail-drawer__history-row--pending";
-  if (status === "partial_halt") return "stock-detail-drawer__history-row--halt";
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "pending") return "stock-detail-drawer__history-row--pending";
+  if (normalized === "partial_halt") return "stock-detail-drawer__history-row--halt";
   return "";
+}
+
+function candidateHistoryDataStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    complete: "已成熟",
+    partial_halt: "部分停牌",
+    pending: "待成熟",
+  };
+  const normalized = status.trim().toLowerCase();
+  const fallback = status.trim();
+  return labels[normalized] ?? (fallback || "—");
 }
 
 const candidateHistorySignalLabels: Record<string, string> = {
@@ -323,8 +335,8 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
             <Alert
               type="error"
               showIcon
-              message="加载个股复核数据失败"
-              description={detailQuery.error instanceof Error ? detailQuery.error.message : String(detailQuery.error)}
+              message="个股复核数据暂不可用"
+              description="请稍后重试，或切换到其他标的复核。"
               data-testid="stock-detail-error"
             />
           ) : null}
@@ -391,12 +403,8 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                 <Alert
                   type="warning"
                   showIcon
-                  message="入选历史加载失败"
-                  description={
-                    candidateHistoryQuery.error instanceof Error
-                      ? candidateHistoryQuery.error.message
-                      : String(candidateHistoryQuery.error)
-                  }
+                  message="入选历史暂不可用"
+                  description="图表与因子仍可继续查看。"
                   data-testid="stock-detail-candidate-history-error"
                 />
               ) : null}
@@ -434,7 +442,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                           <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_1d ?? null)}</td>
                           <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_5d ?? null)}</td>
                           <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_20d ?? null)}</td>
-                          <td>{row.data_status}</td>
+                          <td>{candidateHistoryDataStatusLabel(row.data_status)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -463,12 +471,8 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                 <Alert
                   type="warning"
                   showIcon
-                  message="市场事件加载失败"
-                  description={
-                    choiceNewsQuery.error instanceof Error
-                      ? choiceNewsQuery.error.message
-                      : String(choiceNewsQuery.error)
-                  }
+                  message="市场事件暂不可用"
+                  description="个股复核数据不受影响，可稍后刷新市场事件。"
                   data-testid="stock-detail-market-events-error"
                 />
               ) : null}

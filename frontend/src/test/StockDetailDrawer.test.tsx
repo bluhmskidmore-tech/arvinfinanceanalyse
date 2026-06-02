@@ -254,7 +254,10 @@ describe("StockDetailDrawer", () => {
 
     expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
-    expect(await screen.findByTestId("stock-detail-market-events-error")).toHaveTextContent("news feed unavailable");
+    const marketEventsError = await screen.findByTestId("stock-detail-market-events-error");
+    expect(marketEventsError).toHaveTextContent("市场事件暂不可用");
+    expect(marketEventsError).toHaveTextContent("个股复核数据不受影响");
+    expect(marketEventsError).not.toHaveTextContent("news feed unavailable");
   });
 
   it("shows empty state when choice news returns no events", async () => {
@@ -350,7 +353,9 @@ describe("StockDetailDrawer", () => {
     );
 
     expect(await screen.findByTestId("stock-detail-error")).toBeInTheDocument();
-    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent("network down");
+    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent("个股复核数据暂不可用");
+    expect(screen.getByTestId("stock-detail-error")).toHaveTextContent("请稍后重试");
+    expect(screen.getByTestId("stock-detail-error")).not.toHaveTextContent("network down");
   });
 
   it("close button calls onClose", async () => {
@@ -370,7 +375,7 @@ describe("StockDetailDrawer", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("fetches candidate history and renders table with returns and data_status", async () => {
+  it("fetches candidate history and renders table with returns and localized data status", async () => {
     const client = createApiClient({ mode: "mock" });
     const histItems: LivermoreCandidateHistoryRow[] = [
       {
@@ -403,6 +408,20 @@ describe("StockDetailDrawer", () => {
         return_20d: null,
         data_status: "pending",
       },
+      {
+        snapshot_as_of_date: "2026-03-27",
+        stock_code: "000001.SZ",
+        stock_name: "H3",
+        candidate_rank: 3,
+        selection_close: 10.1,
+        forward_trade_date_1d: "2026-03-30",
+        forward_trade_date_5d: null,
+        forward_trade_date_20d: null,
+        return_1d: null,
+        return_5d: null,
+        return_20d: null,
+        data_status: " partial_halt ",
+      },
     ];
     const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
@@ -430,9 +449,17 @@ describe("StockDetailDrawer", () => {
     expect(screen.getByText("1.00%")).toBeInTheDocument();
     expect(screen.getByText("-2.00%")).toBeInTheDocument();
     expect(screen.getByText("8.00%")).toBeInTheDocument();
+    const completeRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-10-1");
+    expect(completeRow).toHaveTextContent("已成熟");
+    expect(completeRow).not.toHaveTextContent("complete");
     const pendingRow = screen.getByTestId("stock-detail-candidate-history-row-2026-04-03-2");
-    expect(pendingRow).toHaveTextContent("pending");
+    expect(pendingRow).toHaveTextContent("待成熟");
+    expect(pendingRow).not.toHaveTextContent("pending");
     expect(within(pendingRow).getAllByText("—").length).toBeGreaterThanOrEqual(1);
+    const partialHaltRow = screen.getByTestId("stock-detail-candidate-history-row-2026-03-27-3");
+    expect(partialHaltRow).toHaveTextContent("部分停牌");
+    expect(partialHaltRow).not.toHaveTextContent("partial_halt");
+    expect(partialHaltRow).toHaveClass("stock-detail-drawer__history-row--halt");
   });
 
   it("shows candidate history error without breaking chart or factors", async () => {
@@ -455,7 +482,10 @@ describe("StockDetailDrawer", () => {
 
     expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
-    expect(await screen.findByTestId("stock-detail-candidate-history-error")).toHaveTextContent("candidate history down");
+    const candidateHistoryError = await screen.findByTestId("stock-detail-candidate-history-error");
+    expect(candidateHistoryError).toHaveTextContent("入选历史暂不可用");
+    expect(candidateHistoryError).toHaveTextContent("图表与因子仍可继续查看");
+    expect(candidateHistoryError).not.toHaveTextContent("candidate history down");
   });
 
   it("shows empty state when candidate history has no rows", async () => {
