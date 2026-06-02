@@ -1468,9 +1468,13 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
             icon={<DatabaseOutlined />}
             label="商品旁证覆盖"
             value={`${commodityCoverage.available_count}/${commodityCoverage.tracked_count}`}
-            detail={`Crisis Score 公式仍仅使用 ${commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}`}
+            detail={`${commodityCoverage.role} · 非公式输入`}
             tone="neutral"
           />
+          <small className="macro-toolkit-crisis-coverage-note">
+            Crisis Score 公式仍仅使用 {commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}；本区块为{" "}
+            {commodityCoverage.role}
+          </small>
           <div className="macro-toolkit-crisis-input-grid">
             {commodityCoverage.items.map((item) => (
               <div
@@ -1488,10 +1492,12 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
                 </div>
                 <strong>{item.aliases.join(" / ") || item.series_id || "alias missing"}</strong>
                 <small>
-                  {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
+                  {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"} ·{" "}
+                  {formatCommodityCoverageDateStatus(item.date_alignment_status)}
                 </small>
                 <small>
-                  {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · 未纳入公式
+                  {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · matched{" "}
+                  {item.matched_alias ?? "alias missing"} · {item.used_in_formula ? "纳入公式" : "未纳入公式"}
                 </small>
               </div>
             ))}
@@ -1827,15 +1833,21 @@ type CrisisCommodityCoverageItem = {
   field: string;
   label: string;
   aliases: string[];
+  matched_alias: string | null;
+  role: string;
+  used_in_formula: boolean;
   available: boolean;
   row_count: number | null;
   latest_date: string | null;
+  report_date: string | null;
+  date_alignment_status: string | null;
   series_id: string | null;
   source: string | null;
   value: number | null;
 };
 
 type CrisisCommodityCoverage = {
+  role: string;
   tracked_count: number;
   available_count: number;
   used_in_crisis_score: string[];
@@ -1864,6 +1876,7 @@ function normalizeCommodityCoverage(value: unknown): CrisisCommodityCoverage | n
     return null;
   }
   return {
+    role: typeof value.role === "string" ? value.role : "supplemental_observation",
     tracked_count: typeof value.tracked_count === "number" ? value.tracked_count : items.length,
     available_count:
       typeof value.available_count === "number" ? value.available_count : items.filter((item) => item.available).length,
@@ -1882,9 +1895,14 @@ function normalizeCommodityCoverageItem(value: unknown): CrisisCommodityCoverage
     field: value.field,
     label: value.label,
     aliases: Array.isArray(value.aliases) ? value.aliases.map((item) => String(item)).filter(Boolean) : [],
+    matched_alias: typeof value.matched_alias === "string" ? value.matched_alias : null,
+    role: typeof value.role === "string" ? value.role : "supplemental_observation",
+    used_in_formula: value.used_in_formula === true,
     available: value.available === true,
     row_count: typeof value.row_count === "number" ? value.row_count : null,
     latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
+    report_date: typeof value.report_date === "string" ? value.report_date : null,
+    date_alignment_status: typeof value.date_alignment_status === "string" ? value.date_alignment_status : null,
     series_id: typeof value.series_id === "string" ? value.series_id : null,
     source: typeof value.source === "string" ? value.source : null,
     value: typeof value.value === "number" ? value.value : null,
@@ -1902,6 +1920,19 @@ function formatCrisisWeight(key: string, weights: Record<string, unknown>) {
 
 function formatCrisisRowCount(rowCount: number | null | undefined) {
   return typeof rowCount === "number" ? `${rowCount} rows` : "行数缺失";
+}
+
+function formatCommodityCoverageDateStatus(status: string | null | undefined) {
+  if (status === "aligned") {
+    return "同日";
+  }
+  if (status === "lagging") {
+    return "滞后";
+  }
+  if (status === "missing") {
+    return "日期缺失";
+  }
+  return "对齐状态缺失";
 }
 
 function formatCrisisInputDetail(input: MacroToolkitInputEvidenceItem | undefined) {

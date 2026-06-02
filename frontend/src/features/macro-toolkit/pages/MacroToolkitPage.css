@@ -980,6 +980,12 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.macro-toolkit-crisis-coverage-note {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .macro-toolkit-crisis-input-grid {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }

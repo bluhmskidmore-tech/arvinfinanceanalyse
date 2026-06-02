@@ -1440,6 +1440,7 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     _seed_crisis_score_history(duckdb_path)
+    baseline_crisis = macro_toolkit_route._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -1499,6 +1500,10 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
         )
     finally:
         conn.close()
+    enriched_crisis = macro_toolkit_route._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
+    assert baseline_crisis["crisis_score"] == enriched_crisis["crisis_score"]
+    assert baseline_crisis["commodity_coverage"]["available_count"] < enriched_crisis["commodity_coverage"]["available_count"]
+    assert enriched_crisis["commodity_coverage"]["available_count"] == 6
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
     app = FastAPI()
@@ -1514,6 +1519,7 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     payload = response.json()["result"]
     crisis = next(item for item in payload["capability_results"] if item["key"] == "crisis_score_cn")
     coverage = crisis["result"]["commodity_coverage"]
+    assert coverage["role"] == "supplemental_observation"
     assert coverage["available_count"] == 6
     assert coverage["tracked_count"] == 6
     assert coverage["used_in_crisis_score"] == ["nanhua"]
@@ -1522,6 +1528,11 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     assert load_series_by_alias("SC0.INE", duckdb_path=duckdb_path)["series_id"].tolist() == ["COMMODITY.SC"]
     assert items["copper"]["available"] is True
     assert items["copper"]["aliases"] == ["CU0", "CU0.SHF"]
+    assert items["copper"]["matched_alias"] == "CU0"
+    assert items["copper"]["role"] == "supplemental_observation"
+    assert items["copper"]["used_in_formula"] is False
+    assert items["copper"]["report_date"] == "2026-04-10"
+    assert items["copper"]["date_alignment_status"] == "aligned"
     assert items["copper"]["series_id"] == "CA.COPPER"
     assert items["copper"]["source"] == "tushare"
     assert items["copper"]["latest_date"] == "2026-04-10"

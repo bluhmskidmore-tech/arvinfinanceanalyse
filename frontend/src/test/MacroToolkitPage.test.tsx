@@ -300,9 +300,12 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("2026-04-10");
     expect(crisisEvidence).toHaveTextContent("120 rows");
     expect(crisisEvidence).toHaveTextContent("商品旁证覆盖");
+    expect(crisisEvidence).toHaveTextContent("supplemental_observation");
     expect(crisisEvidence).toHaveTextContent("6/6");
     expect(crisisEvidence).toHaveTextContent("Crisis Score 公式仍仅使用 nanhua");
     expect(crisisEvidence).toHaveTextContent("Copper futures");
+    expect(crisisEvidence).toHaveTextContent("matched CU0");
+    expect(crisisEvidence).toHaveTextContent("同日");
     expect(crisisEvidence).toHaveTextContent("CU0 / CU0.SHF");
     expect(crisisEvidence).toHaveTextContent("Crude oil futures");
     expect(crisisEvidence).toHaveTextContent("Gold futures");
