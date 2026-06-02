@@ -17,7 +17,7 @@ import {
 } from "@ant-design/icons";
 import { Alert, Button, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/clientContext";
@@ -67,10 +67,11 @@ const GROUP_LABELS: Record<string, string> = {
 const EMPTY_SCRIPTS: MacroToolkitScriptRecord[] = [];
 const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
-const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
+
+const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
 
 type MacroToolkitPageProps = {
   mode?: MacroToolkitPageMode;
@@ -83,7 +84,6 @@ function normalizeMacroSourceBackfillAlias(alias: string | null | undefined) {
 function canRefreshMacroSourceBackfill(item: MacroToolkitRepairItem) {
   return (
     item.action?.kind === "source_backfill_required" &&
-    item.action.enabled &&
     MACRO_SOURCE_BACKFILL_ALIASES.has(normalizeMacroSourceBackfillAlias(item.alias))
   );
 }
@@ -289,6 +289,7 @@ function isReadyStatus(status: string) {
 
 export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageProps) {
   const client = useApiClient();
+  const queryClient = useQueryClient();
   const showOperations = mode === "toolkit";
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedName, setSelectedName] = useState<string | null>(null);
@@ -324,7 +325,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
 
   const strategyQuery = useQuery({
     queryKey: ["macro-toolkit", "strategy-summaries"],
-    queryFn: () => client.getMacroToolkitStrategySummaries(),
+    queryFn: ({ signal }) => client.getMacroToolkitStrategySummaries({ signal }),
     staleTime: 60_000,
   });
 
@@ -435,6 +436,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     setIsLoadingFullAnalysis(true);
     setFullAnalysisError(null);
     try {
+      await queryClient.cancelQueries({ queryKey: ["macro-toolkit", "strategy-summaries"] });
       const response = await client.getMacroToolkitAnalysis({ detail: "full" });
       setFullAnalysisEnvelope(response);
     } catch (error) {
@@ -442,14 +444,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     } finally {
       setIsLoadingFullAnalysis(false);
     }
-  }, [client]);
+  }, [client, queryClient]);
 
   const refreshMacroSourceBackfill = useCallback(
     async (item: MacroToolkitRepairItem) => {
-      if (!canRefreshMacroSourceBackfill(item)) {
+      const alias = normalizeMacroSourceBackfillAlias(item.alias);
+      if (!alias || !canRefreshMacroSourceBackfill(item)) {
         return;
       }
-      const alias = normalizeMacroSourceBackfillAlias(item.alias);
       setRefreshingSourceAlias(alias);
       setSourceBackfillError(null);
       setSourceBackfillResult(null);
@@ -946,7 +948,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               dataHealth={analysis.data_health}
               showActions={showOperations}
               onRepairAction={(item) => {
-                if (canRefreshMacroSourceBackfill(item)) {
+                if (item.action?.kind === "source_backfill_required") {
                   void refreshMacroSourceBackfill(item);
                   return;
                 }
@@ -1948,7 +1950,7 @@ function MacroToolkitDataHealthPanel({
                       >
                         {item.action.label ?? "查看完整分析"}
                       </Button>
-                    ) : showActions && canRefreshMacroSourceBackfill(item) ? (
+                    ) : showActions && item.action.enabled && canRefreshMacroSourceBackfill(item) ? (
                       <Button
                         size="small"
                         icon={<ReloadOutlined />}

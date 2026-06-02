@@ -29,6 +29,33 @@ describe("macroToolkitClient", () => {
     }
   });
 
+  it("aborts strategy summary reads when the caller signal is canceled", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(
+      (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    const pending = client.getMacroToolkitStrategySummaries({ signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow("aborted");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/macro/toolkit/analysis/strategy-summaries",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
   it("posts CFFEX member-rank refresh requests to the backend route", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(

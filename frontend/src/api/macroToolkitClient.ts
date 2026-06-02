@@ -546,11 +546,17 @@ export type MacroToolkitAnalysisRequest = {
   detail?: "core" | "full";
 };
 
+export type MacroToolkitRequestOptions = {
+  signal?: AbortSignal;
+};
+
 export type MacroToolkitClientMethods = {
   getMacroToolkitAnalysis: (
     options?: MacroToolkitAnalysisRequest,
   ) => Promise<ApiEnvelope<MacroToolkitAnalysisPayload>>;
-  getMacroToolkitStrategySummaries: () => Promise<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
+  getMacroToolkitStrategySummaries: (
+    options?: MacroToolkitRequestOptions,
+  ) => Promise<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
   getMacroToolkitScripts: () => Promise<ApiEnvelope<MacroToolkitPayload>>;
   runMacroToolkitScript: (
     name: string,
@@ -1935,11 +1941,12 @@ export function createRealMacroToolkitClient({
         `/ui/macro/toolkit/analysis?detail=${detail}`,
       );
     },
-    getMacroToolkitStrategySummaries: () =>
+    getMacroToolkitStrategySummaries: (options) =>
       requestJson<MacroToolkitStrategySummariesPayload>(
         fetchImpl,
         baseUrl,
         "/ui/macro/toolkit/analysis/strategy-summaries",
+        { signal: options?.signal },
       ),
     getMacroToolkitScripts: () =>
       requestJson<MacroToolkitPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/scripts"),
@@ -2017,8 +2024,15 @@ async function requestJson<TData>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
+  options: MacroToolkitRequestOptions = {},
 ): Promise<ApiEnvelope<TData>> {
   const controller = new AbortController();
+  const abortFromSignal = () => controller.abort();
+  if (options.signal?.aborted) {
+    controller.abort();
+  } else {
+    options.signal?.addEventListener("abort", abortFromSignal, { once: true });
+  }
   const timeoutId = setTimeout(() => controller.abort(), MACRO_TOOLKIT_READ_TIMEOUT_MS);
 
   let response: Response;
@@ -2033,11 +2047,15 @@ async function requestJson<TData>(
         ? (error as { name?: unknown }).name
         : undefined;
     if (errorName === "AbortError") {
+      if (options.signal?.aborted) {
+        throw error;
+      }
       throw new Error(`Macro toolkit request timed out: ${path}`);
     }
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    options.signal?.removeEventListener("abort", abortFromSignal);
   }
 
   if (!response.ok) {
