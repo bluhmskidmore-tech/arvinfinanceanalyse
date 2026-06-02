@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import sys
 from contextlib import contextmanager
-from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -12,7 +10,6 @@ from backend.app.tasks import macro_backfill as macro_backfill_module
 from backend.app.tasks.macro_backfill import (
     BackfillRow,
     BackfillSource,
-    _fetch_from_wind,
     _infer_frequency,
     _is_tushare_macro_series,
     _map_tushare_records,
@@ -30,7 +27,16 @@ def _noop_lock(*_args, **_kwargs):
 def test_resolve_sources_for_macro_and_rates() -> None:
     assert BackfillSource.TUSHARE_MACRO in _resolve_sources("CPI:当月同比", "EMM00072301", snapshot_rows=0)
     assert _resolve_sources("中债国债到期收益率:10年", "EMM00166466", snapshot_rows=5)[0] == BackfillSource.CHOICE_SNAPSHOT
-    assert BackfillSource.AKSHARE in _resolve_sources("存款类机构质押式回购加权利率:DR007", "CA.DR007", snapshot_rows=0)
+    assert _resolve_sources("存款类机构质押式回购加权利率:DR007", "CA.DR007", snapshot_rows=0) == (
+        BackfillSource.CHOICE_EDB,
+    )
+    assert _resolve_sources("信用利差:AAA-国债", "SPREAD.AAA", snapshot_rows=0) == (
+        BackfillSource.CHOICE_EDB,
+    )
+    assert _resolve_sources("螺纹钢现货价格", "CA.STEEL", snapshot_rows=0) == (
+        BackfillSource.TUSHARE_MACRO,
+        BackfillSource.CHOICE_EDB,
+    )
 
 
 def test_backfill_macro_series_dry_run_lists_sparse_series(tmp_path: Path) -> None:
@@ -274,45 +280,6 @@ def test_backfill_macro_series_mock_fetch_and_insert(tmp_path: Path, monkeypatch
         assert total == 2
     finally:
         conn.close()
-
-
-def test_fetch_from_wind_prefers_vendor_series_code(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, str] = {}
-
-    class FakePayload:
-        ErrorCode = 0
-        Times = [date(2026, 5, 1)]
-        Data = [[2.5]]
-
-    class FakeW:
-        @staticmethod
-        def isconnected() -> bool:
-            return True
-
-        @staticmethod
-        def wsd(wind_code: str, _field: str, _start: str, _end: str, _opts: str) -> FakePayload:
-            captured["wind_code"] = wind_code
-            return FakePayload()
-
-    monkeypatch.setattr(macro_backfill_module, "_wind_available", lambda: True)
-    fake_wind = type(sys)("WindPy")
-    fake_wind.w = FakeW()
-    monkeypatch.setitem(sys.modules, "WindPy", fake_wind)
-
-    rows = _fetch_from_wind(
-        series_id="EMM00166466",
-        series_name="中债国债到期收益率:10年",
-        vendor_series_code="S0059749",
-        start_date="2026-05-01",
-        end_date="2026-05-01",
-        frequency="daily",
-        unit="%",
-    )
-
-    assert captured["wind_code"] == "S0059749"
-    assert len(rows) == 1
-    assert rows[0].trade_date == "2026-05-01"
-    assert rows[0].value_numeric == 2.5
 
 
 def test_social_financing_stock_yoy_uses_stock_end_value_not_monthly_increment() -> None:

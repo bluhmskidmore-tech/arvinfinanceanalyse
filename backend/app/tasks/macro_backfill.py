@@ -1,4 +1,4 @@
-"""Backfill sparse rows in ``fact_choice_macro_daily`` from Choice / Tushare / Wind / AkShare."""
+"""Backfill sparse rows in ``fact_choice_macro_daily`` from Choice / Tushare."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -44,8 +44,6 @@ class BackfillSource(str, Enum):
     CHOICE_SNAPSHOT = "choice_snapshot"
     CHOICE_EDB = "choice_edb"
     TUSHARE_MACRO = "tushare_macro"
-    WIND = "wind"
-    AKSHARE = "akshare"
 
 
 @dataclass(frozen=True)
@@ -335,21 +333,19 @@ def _resolve_sources(series_name: str, series_id: str, *, snapshot_rows: int) ->
     name = series_name.upper()
 
     if _is_commodity_series(series_name):
-        return (BackfillSource.AKSHARE, BackfillSource.TUSHARE_MACRO)
+        return (BackfillSource.TUSHARE_MACRO, BackfillSource.CHOICE_EDB)
 
     if _is_tushare_macro_series(series_name):
         return (BackfillSource.TUSHARE_MACRO, BackfillSource.CHOICE_EDB)
 
     if _is_spread_series(series_name):
-        return (BackfillSource.WIND, BackfillSource.CHOICE_EDB)
+        return (BackfillSource.CHOICE_EDB,)
 
     if _is_daily_rate_series(series_name, series_id):
         sources: list[BackfillSource] = []
         if snapshot_rows > 0:
             sources.append(BackfillSource.CHOICE_SNAPSHOT)
-        sources.extend([BackfillSource.CHOICE_EDB, BackfillSource.WIND])
-        if "DR007" in name or series_id == "CA.DR007":
-            sources.insert(1 if sources and sources[0] == BackfillSource.CHOICE_SNAPSHOT else 0, BackfillSource.AKSHARE)
+        sources.append(BackfillSource.CHOICE_EDB)
         if "SHIBOR" in name or series_id.startswith("NCD.SHIBOR."):
             sources.insert(1 if sources and sources[0] == BackfillSource.CHOICE_SNAPSHOT else 0, BackfillSource.TUSHARE_MACRO)
         return tuple(_dedupe_sources(sources))
@@ -361,14 +357,10 @@ def _resolve_sources(series_name: str, series_id: str, *, snapshot_rows: int) ->
 
 
 def _plan_notes(series_name: str, sources: tuple[BackfillSource, ...]) -> str:
-    if BackfillSource.WIND in sources and not _wind_available():
-        return "WindPy unavailable; will fall back to next source in chain."
     if BackfillSource.TUSHARE_MACRO in sources and not _tushare_token_configured():
         return "MOSS_TUSHARE_TOKEN missing; Tushare leg may be skipped."
     if BackfillSource.CHOICE_EDB in sources:
         return "Choice EDB historical window backfill."
-    if BackfillSource.AKSHARE in sources and _is_commodity_series(series_name):
-        return "Public commodity lane via AkShare."
     return "Backfill plan resolved from series name/id."
 
 
@@ -454,18 +446,6 @@ def _fetch_by_source(
         )
     if source == BackfillSource.TUSHARE_MACRO:
         return _fetch_from_tushare(series_id=series_id, series_name=series_name, start_date=start_date, end_date=end_date, frequency=frequency, unit=unit)
-    if source == BackfillSource.WIND:
-        return _fetch_from_wind(
-            series_id=series_id,
-            series_name=series_name,
-            vendor_series_code=vendor_series_code,
-            start_date=start_date,
-            end_date=end_date,
-            frequency=frequency,
-            unit=unit,
-        )
-    if source == BackfillSource.AKSHARE:
-        return _fetch_from_akshare(series_id=series_id, series_name=series_name, start_date=start_date, end_date=end_date, frequency=frequency, unit=unit)
     return []
 
 
@@ -644,108 +624,6 @@ def _tushare_shibor_rows(pro: Any, *, series_id: str, series_name: str, start_da
             )
         )
     return rows
-
-
-def _fetch_from_wind(
-    *,
-    series_id: str,
-    series_name: str,
-    vendor_series_code: str,
-    start_date: str,
-    end_date: str,
-    frequency: str,
-    unit: str,
-) -> list[BackfillRow]:
-    if not _wind_available():
-        raise RuntimeError("WindPy is not available.")
-
-    from WindPy import w  # type: ignore  # noqa: PLC0415
-
-    if w.isconnected() is False and w.start() != 0:
-        raise RuntimeError("Wind start failed.")
-
-    wind_code = vendor_series_code or series_id
-    payload = w.wsd(wind_code, "close", start_date, end_date, "")
-    if int(getattr(payload, "ErrorCode", -1)) != 0:
-        raise RuntimeError(getattr(payload, "Data", f"Wind wsd failed for {wind_code}"))
-
-    rows: list[BackfillRow] = []
-    for trade_time, raw_value in zip(getattr(payload, "Times", []), (getattr(payload, "Data", [[]])[0] or []), strict=False):
-        trade_date = normalize_trade_date(trade_time)
-        value = _coerce_float(raw_value)
-        if trade_date is None or value is None:
-            continue
-        rows.append(
-            BackfillRow(
-                series_id=series_id,
-                series_name=series_name,
-                trade_date=trade_date,
-                value_numeric=value,
-                frequency=frequency,
-                unit=unit,
-            )
-        )
-    return rows
-
-
-def _fetch_from_akshare(
-    *,
-    series_id: str,
-    series_name: str,
-    start_date: str,
-    end_date: str,
-    frequency: str,
-    unit: str,
-) -> list[BackfillRow]:
-    import akshare as ak  # type: ignore  # noqa: PLC0415
-
-    if series_id == "CA.DR007" or "DR007" in series_name:
-        records: list[dict[str, object]] = []
-        for chunk_start, chunk_end in _month_ranges(start_date, end_date):
-            frame = ak.repo_rate_hist(
-                start_date=chunk_start.replace("-", ""),
-                end_date=chunk_end.replace("-", ""),
-            )
-            records.extend(_records_from_frame(frame))
-        rows: list[BackfillRow] = []
-        for record in records:
-            trade_date = normalize_trade_date(record.get("date"))
-            value = _coerce_float(record.get("FDR007"))
-            if trade_date is None or value is None or trade_date < start_date or trade_date > end_date:
-                continue
-            rows.append(
-                BackfillRow(
-                    series_id=series_id,
-                    series_name=series_name,
-                    trade_date=trade_date,
-                    value_numeric=value,
-                    frequency="daily",
-                    unit="%",
-                )
-            )
-        return rows
-
-    if "螺纹" in series_name or series_id == "CA.STEEL":
-        frame = ak.spot_price_qh(symbol="螺纹钢")
-        rows = []
-        for record in _records_from_frame(frame):
-            trade_date = normalize_trade_date(record.get("日期"))
-            value = _coerce_float(record.get("现货价格"))
-            if trade_date is None or value is None or trade_date < start_date or trade_date > end_date:
-                continue
-            rows.append(
-                BackfillRow(
-                    series_id=series_id,
-                    series_name=series_name,
-                    trade_date=trade_date,
-                    value_numeric=value,
-                    frequency="daily",
-                    unit="CNY/t",
-                )
-            )
-        return rows
-
-    return []
 
 
 def _insert_rows(
@@ -1006,16 +884,6 @@ def _infer_frequency(series_name: str, catalog_frequency: str) -> str:
     return "unknown"
 
 
-def _wind_available() -> bool:
-    try:
-        from WindPy import w  # type: ignore  # noqa: PLC0415, F401
-
-        _ = w
-        return True
-    except Exception:
-        return False
-
-
 def _tushare_token_configured() -> bool:
     return bool(resolve_tushare_token_with_settings_fallback(get_settings()))
 
@@ -1089,22 +957,6 @@ def _records_from_frame(frame: object) -> list[dict[str, object]]:
         return list(frame.to_dict(orient="records"))  # type: ignore[attr-defined]
     except (AttributeError, TypeError):
         return []
-
-
-def _month_ranges(start_date: str, end_date: str) -> list[tuple[str, str]]:
-    start = date.fromisoformat(start_date)
-    end = date.fromisoformat(end_date)
-    ranges: list[tuple[str, str]] = []
-    current = start
-    while current <= end:
-        if current.month == 12:
-            next_month = date(current.year + 1, 1, 1)
-        else:
-            next_month = date(current.year, current.month + 1, 1)
-        chunk_end = min(end, next_month - timedelta(days=1))
-        ranges.append((current.isoformat(), chunk_end.isoformat()))
-        current = chunk_end + timedelta(days=1)
-    return ranges
 
 
 if __name__ == "__main__":
