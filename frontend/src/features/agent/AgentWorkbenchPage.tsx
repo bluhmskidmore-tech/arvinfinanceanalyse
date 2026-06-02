@@ -1,7 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
-import { CheckOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
-import type { CSSProperties } from "react";
+import { CheckOutlined, CloseOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
 import type {
   AgentConversationContext,
@@ -50,15 +49,6 @@ type AgentQueryResult = {
 
 type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed";
 type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
-
-const visuallyHiddenStyle: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-};
 
 type AgentRunPayload = PollingTaskPayload & {
   run_id: string;
@@ -442,6 +432,11 @@ function createAgentConversationTurn(
     error: null,
     activeSuggestedActionPayload: null,
   };
+}
+
+function formatConversationContextBadge(conversationContext?: AgentConversationContext) {
+  const turnCount = conversationContext?.recent_turns.length ?? 0;
+  return turnCount > 0 ? `已带入 ${turnCount} 轮上下文` : null;
 }
 
 function trimAgentContextText(value: string, limit: number) {
@@ -1331,6 +1326,7 @@ export function EmbeddedAgentCopilot({
   const [queuedQuery, setQueuedQuery] = useState("");
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
+  const conversationBottomRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastAppliedDefaultQuestionRef = useRef(defaultQuestion.trim());
   const shouldFocusRestoredDraftRef = useRef(
@@ -1535,9 +1531,9 @@ export function EmbeddedAgentCopilot({
     if (!hasConversation) {
       return;
     }
-    const scrollIntoView = conversationRef.current?.scrollIntoView;
+    const scrollIntoView = conversationBottomRef.current?.scrollIntoView;
     if (typeof scrollIntoView === "function") {
-      scrollIntoView.call(conversationRef.current, { behavior: "smooth", block: "end" });
+      scrollIntoView.call(conversationBottomRef.current, { behavior: "smooth", block: "end" });
     }
   }, [
     hasConversation,
@@ -1546,6 +1542,16 @@ export function EmbeddedAgentCopilot({
     latestConversationTurn?.result,
     latestConversationTurn?.error,
   ]);
+
+  useEffect(() => {
+    if (!hasConversation || !queuedQuery.trim()) {
+      return;
+    }
+    const scrollIntoView = conversationBottomRef.current?.scrollIntoView;
+    if (typeof scrollIntoView === "function") {
+      scrollIntoView.call(conversationBottomRef.current, { behavior: "smooth", block: "end" });
+    }
+  }, [hasConversation, queuedQuery]);
 
   useEffect(() => {
     if (!hasConversation || !shouldFocusComposerRef.current) {
@@ -2549,11 +2555,26 @@ export function EmbeddedAgentCopilot({
   }
 
   function editAgentQuestion(turn: AgentConversationTurn) {
-    if (loading || turn.retryMode !== "ordinary" || !turn.question.trim()) {
+    if (turn.retryMode !== "ordinary" || !turn.question.trim()) {
       return;
     }
 
+    if (loading) {
+      if (latestConversationTurn?.id !== turn.id) {
+        return;
+      }
+      stopActiveAgentTurn();
+    }
+
     replaceComposerQuery(turn.question);
+  }
+
+  function canEditAgentQuestion(turn: AgentConversationTurn, isLatestLoadingTurn: boolean) {
+    if (turn.retryMode !== "ordinary" || !turn.question.trim()) {
+      return false;
+    }
+
+    return !loading || isLatestLoadingTurn;
   }
 
   function renderFinancialWorkflowPanel() {
@@ -2651,7 +2672,11 @@ export function EmbeddedAgentCopilot({
                   <span>{copyLabel}</span>
                 </button>
                 {copyStatus ? (
-                  <span aria-label="复制状态" role="status" style={visuallyHiddenStyle}>
+                  <span
+                    aria-label="复制状态"
+                    role="status"
+                    className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
+                  >
                     {copyStatusMessage}
                   </span>
                 ) : null}
@@ -2732,18 +2757,19 @@ export function EmbeddedAgentCopilot({
             </aside>
           </div>
         ) : (
-          <div
-            style={{
-              padding: 20,
-              borderRadius: 16,
-              border: `1px solid ${t.colorBorderSoft}`,
-              background: t.colorBgCanvas,
-              color: t.colorTextSecondary,
-              fontSize: 15,
-              lineHeight: 1.75,
-            }}
-          >
-            本次查询未返回可展示结果。请调整问题后重试。
+          <div className="agent-callout agent-callout--empty" role="status" aria-label="空结果状态">
+            <strong>没有可展示结果</strong>
+            <span>本次查询未返回可展示结果。请调整问题后重试。</span>
+            {canRegenerateAgentTurn(turn) ? (
+              <button
+                type="button"
+                className="agent-callout__action"
+                onClick={() => void regenerateAgentTurn(turn)}
+                disabled={loading}
+              >
+                重新生成
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -2965,18 +2991,26 @@ export function EmbeddedAgentCopilot({
           {conversationTurns.map((turn) => {
             const isLatestLoadingTurn = turn === latestConversationTurn && loading;
             const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error;
+            const conversationContextBadge = formatConversationContextBadge(turn.conversationContext);
+            const waitElapsedSeconds = formatAgentRunElapsed(
+              turn.agentRun,
+              isLatestLoadingTurn ? agentWaitSeconds : 0,
+            );
             return (
               <div key={turn.id} className="agent-turn">
                 <div className="agent-message agent-message--user">
                   <div className="agent-message__speaker">我</div>
                   <div className="agent-user-bubble">
                     <div className="agent-message__body">{turn.question}</div>
+                    {conversationContextBadge ? (
+                      <div className="agent-user-bubble__context">{conversationContextBadge}</div>
+                    ) : null}
                     {turn.retryMode === "ordinary" ? (
                       <button
                         type="button"
                         className="agent-user-bubble__edit"
                         onClick={() => editAgentQuestion(turn)}
-                        disabled={loading}
+                        disabled={!canEditAgentQuestion(turn, isLatestLoadingTurn)}
                       >
                         <EditOutlined aria-hidden="true" />
                         <span>编辑问题</span>
@@ -3006,10 +3040,17 @@ export function EmbeddedAgentCopilot({
                           {renderAgentRunProgress(turn.agentRun)}
                         </div>
                         <div className="agent-wait-status__detail">
-                          <span>{formatAgentWaitPhase(turn.agentRun)}</span>
-                          <span>已等待 {formatAgentRunElapsed(turn.agentRun, isLatestLoadingTurn ? agentWaitSeconds : 0)} 秒</span>
-                          {shouldDisplayAgentRunId(turn.agentRun) ? <span>run_id: {turn.agentRun?.run_id}</span> : null}
-                          <span>{formatAgentWaitHint(turn.agentRun, isLatestLoadingTurn ? agentWaitSeconds : 0)}</span>
+                          <details className="agent-wait-status__details">
+                            <summary>运行细节</summary>
+                            <div className="agent-wait-status__detail-list">
+                              <span>{formatAgentWaitPhase(turn.agentRun)}</span>
+                              <span>已等待 {waitElapsedSeconds} 秒</span>
+                              {shouldDisplayAgentRunId(turn.agentRun) ? (
+                                <span>run_id: {turn.agentRun?.run_id}</span>
+                              ) : null}
+                              <span>{formatAgentWaitHint(turn.agentRun, waitElapsedSeconds)}</span>
+                            </div>
+                          </details>
                           {isLatestLoadingTurn ? (
                             <button
                               type="button"
@@ -3028,14 +3069,24 @@ export function EmbeddedAgentCopilot({
                         <strong>已停止</strong>
                         <span>已停止等待这次回答。</span>
                         {turn.retryMode === "ordinary" && turn.question.trim() ? (
-                          <button
-                            type="button"
-                            className="agent-callout__action"
-                            onClick={() => void rerunOrdinaryTurn(turn)}
-                            disabled={loading}
-                          >
-                            重新发送
-                          </button>
+                          <div className="agent-callout__actions">
+                            <button
+                              type="button"
+                              className="agent-callout__action"
+                              onClick={() => editAgentQuestion(turn)}
+                              disabled={loading}
+                            >
+                              编辑这句
+                            </button>
+                            <button
+                              type="button"
+                              className="agent-callout__action"
+                              onClick={() => void rerunOrdinaryTurn(turn)}
+                              disabled={loading}
+                            >
+                              重新发送
+                            </button>
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
@@ -3047,6 +3098,42 @@ export function EmbeddedAgentCopilot({
               </div>
             );
           })}
+          {queuedQuery ? (
+            <div
+              className="agent-turn agent-turn--queued"
+              role="status"
+              aria-live="polite"
+              aria-label="排队中的下一句"
+            >
+              <div className="agent-message agent-message--user">
+                <div className="agent-message__speaker">我</div>
+                <div className="agent-user-bubble agent-user-bubble--queued">
+                  <div className="agent-user-bubble__context">待发送</div>
+                  <div className="agent-message__body">{queuedQuery}</div>
+                  <div className="agent-user-bubble__actions">
+                    <button
+                      type="button"
+                      className="agent-user-bubble__edit"
+                      onClick={restoreQueuedQueryToComposer}
+                    >
+                      <EditOutlined aria-hidden="true" />
+                      <span>编辑待发送</span>
+                    </button>
+                    <button type="button" className="agent-user-bubble__edit" onClick={cancelQueuedQuery}>
+                      <CloseOutlined aria-hidden="true" />
+                      <span>取消待发送</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <div
+            ref={conversationBottomRef}
+            className="agent-conversation__bottom"
+            data-testid="agent-conversation-bottom"
+            aria-hidden="true"
+          />
 
           {conversationTurns.length === 0 && error ? (
             <div className="agent-message agent-message--assistant">
@@ -3064,21 +3151,6 @@ export function EmbeddedAgentCopilot({
             </div>
           ) : null}
         </section>
-      ) : null}
-
-      {queuedQuery ? (
-        <div className="agent-queued-turn" role="status" aria-live="polite">
-          <span className="agent-queued-turn__text">已排队：{queuedQuery}</span>
-          <span className="agent-queued-turn__text">当前回答完成后自动发送。</span>
-          <span className="agent-queued-turn__actions">
-            <button type="button" onClick={restoreQueuedQueryToComposer}>
-              编辑排队
-            </button>
-            <button type="button" onClick={cancelQueuedQuery}>
-              取消排队
-            </button>
-          </span>
-        </div>
       ) : null}
 
       {hasConversation ? (

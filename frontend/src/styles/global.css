@@ -1567,6 +1567,15 @@ select {
   border-bottom: none;
 }
 
+.agent-turn--queued {
+  opacity: 0.82;
+}
+
+.agent-conversation__bottom {
+  min-height: 72px;
+  scroll-margin-bottom: 120px;
+}
+
 .agent-message {
   display: grid;
   gap: 6px;
@@ -1613,6 +1622,25 @@ select {
   max-width: 100%;
 }
 
+.agent-user-bubble--queued .agent-message__body {
+  border-style: dashed;
+  background: #f8fbff;
+}
+
+.agent-user-bubble__context {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.agent-user-bubble__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .agent-user-bubble__edit {
   display: inline-flex;
   align-items: center;
@@ -1632,6 +1660,21 @@ select {
   border-color: #b8cbe6;
   color: var(--moss-color-link);
   background: #f8fbff;
+}
+
+.agent-user-bubble__edit:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
+}
+
+.agent-wait-status__stop:focus-visible,
+.agent-result-toolbar__button:focus-visible,
+.agent-follow-up-chips__button:focus-visible,
+.agent-chat-composer__send:focus-visible,
+.agent-chat-composer__queue:focus-visible,
+.agent-callout__action:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
 }
 
 .agent-user-bubble__edit:disabled {
@@ -1765,13 +1808,55 @@ select {
 .agent-wait-status__detail {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
-  gap: 6px 10px;
+  gap: 8px;
   font-size: 13px;
   line-height: 1.55;
 }
 
-.agent-wait-status__detail span {
+.agent-wait-status__details {
+  min-width: 0;
+}
+
+.agent-wait-status__details summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--moss-color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.agent-wait-status__details summary:hover {
+  border-color: #b8cbe6;
+  color: var(--moss-color-link);
+  background: #ffffff;
+}
+
+.agent-wait-status__details summary:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
+}
+
+.agent-wait-status__details[open] {
+  flex-basis: 100%;
+}
+
+.agent-wait-status__detail-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+
+.agent-wait-status__detail-list span {
   overflow-wrap: anywhere;
 }
 
@@ -1827,7 +1912,10 @@ select {
 
 .agent-result-toolbar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1855,6 +1943,30 @@ select {
 .agent-result-toolbar__button:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+.agent-copy-feedback {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.agent-copy-feedback--success {
+  border-color: #badbcc;
+  background: #f0fbf5;
+  color: #1f7a4d;
+}
+
+.agent-copy-feedback--error {
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #b42318;
 }
 
 .agent-answer-panel {
@@ -2154,6 +2266,12 @@ select {
   font-weight: 780;
 }
 
+.agent-callout__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .agent-callout__action {
   justify-self: start;
   min-height: 32px;
@@ -2185,49 +2303,10 @@ select {
   color: var(--moss-color-text-secondary);
 }
 
-.agent-queued-turn {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin-top: 12px;
-  padding: 10px 12px;
+.agent-callout--empty {
   border: 1px solid #d7e8f8;
-  border-radius: 8px;
   background: #f5fbff;
   color: var(--moss-color-text-secondary);
-  font-size: 13px;
-  font-weight: 720;
-}
-
-.agent-queued-turn__text {
-  min-width: 0;
-  flex: 1 1 220px;
-  overflow-wrap: anywhere;
-}
-
-.agent-queued-turn__actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.agent-queued-turn__actions button {
-  min-height: 28px;
-  padding: 4px 9px;
-  border: 1px solid #c8d9eb;
-  border-radius: 7px;
-  background: #ffffff;
-  color: var(--moss-color-link);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 740;
-}
-
-.agent-queued-turn__actions button:hover {
-  border-color: #9fbce0;
-  background: #f8fbff;
 }
 
 .agent-composer-dock {
