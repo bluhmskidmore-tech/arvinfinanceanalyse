@@ -1454,6 +1454,24 @@ describe("StockAnalysisPage", () => {
     expect(framework).not.toHaveTextContent("sector_rank is available");
     expect(within(framework).getByTestId("stock-analysis-candidate-history-portfolio-backtest")).toHaveTextContent("组合回测");
     expect(within(framework).getByTestId("stock-analysis-cycle-proxy-backtest")).toHaveTextContent("代理回测");
+    await waitFor(() =>
+      expect(within(framework).getByTestId("stock-analysis-portfolio-backtest-boundary")).toHaveTextContent("代理口径"),
+    );
+    const portfolioBoundary = within(framework).getByTestId("stock-analysis-portfolio-backtest-boundary");
+    expect(portfolioBoundary).toHaveTextContent("代理口径");
+    expect(portfolioBoundary).toHaveTextContent("缺口 2");
+    expect(portfolioBoundary).toHaveTextContent("PMI");
+    expect(portfolioBoundary).toHaveTextContent("信用脉冲");
+    await waitFor(() =>
+      expect(within(framework).getByTestId("stock-analysis-cycle-proxy-boundary")).toHaveTextContent("代理口径"),
+    );
+    const cycleBoundary = within(framework).getByTestId("stock-analysis-cycle-proxy-boundary");
+    expect(cycleBoundary).toHaveTextContent("代理口径");
+    expect(cycleBoundary).toHaveTextContent("缺口 2");
+    expect(cycleBoundary).toHaveTextContent("PMI");
+    expect(cycleBoundary).toHaveTextContent("信用脉冲");
+    expect(framework).not.toHaveTextContent("missing_full_strategy_inputs");
+    expect(framework).not.toHaveTextContent("credit_impulse");
     await waitFor(() => expect(framework).toHaveTextContent("-18.42%"));
     expect(framework).toHaveTextContent("2024-09-24 至 2024-10-08");
     expect(framework).toHaveTextContent("2024-10-08 至 2025-04-25");
@@ -2087,7 +2105,10 @@ describe("StockAnalysisPage", () => {
     await user.click(screen.getByRole("button", { name: "查看完整诊断" }));
 
     expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
-    expect(screen.getByText("警告 / Warning")).toBeInTheDocument();
+    expect(screen.getByText("警告")).toBeInTheDocument();
+    expect(screen.queryByText("严重 / Error")).not.toBeInTheDocument();
+    expect(screen.queryByText("警告 / Warning")).not.toBeInTheDocument();
+    expect(screen.queryByText("信息 / Info")).not.toBeInTheDocument();
     expect(screen.getAllByText("市场宽度输入不可用。").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("数据缺口")).toBeInTheDocument();
     expect(screen.getAllByText(/市场宽度/).length).toBeGreaterThanOrEqual(1);
@@ -2144,8 +2165,9 @@ describe("StockAnalysisPage", () => {
 
     const themeLeaders = await screen.findByTestId("stock-analysis-theme-leaders-first-screen");
     const blocker = within(themeLeaders).getByTestId("stock-analysis-theme-leader-empty");
-    expect(blocker).toHaveTextContent("市场过热门控下暂停题材观察");
-    expect(blocker).toHaveTextContent("历史回放显示该桶拖累");
+    expect(blocker).toHaveTextContent("门控暂停");
+    expect(blocker).toHaveAttribute("title", expect.stringContaining("市场过热门控下暂停题材观察"));
+    expect(blocker).toHaveAttribute("title", expect.stringContaining("历史回放显示该桶拖累"));
     expect(themeLeaders).not.toHaveTextContent("Theme breakout execution is paused");
     expect(themeLeaders).not.toHaveTextContent("theme_breakout");
   });
@@ -2199,6 +2221,11 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
     expect(within(section).getByText("风险退出观察暂不可用。")).toBeInTheDocument();
+    expect(section).toHaveTextContent("持仓快照缺失");
+    expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
+
+    await userEvent.click(within(section).getByText("供数原因"));
+
     expect(section).toHaveTextContent("持仓快照缺失");
     expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
   });
@@ -2547,7 +2574,10 @@ describe("StockAnalysisPage", () => {
     expect(card).toHaveTextContent("样本不足");
     expect(card).toHaveTextContent("rank 21-30");
     expect(card).toHaveTextContent("降权观察");
-    expect(card).toHaveTextContent("最新 pending 日期 2026-05-13");
+    expect(card).toHaveTextContent("当前最新日期收益");
+    expect(card).toHaveTextContent("待成熟");
+    expect(card).toHaveTextContent("最新待成熟日期 2026-05-13");
+    expect(card).not.toHaveTextContent("pending");
     expect(card).toHaveTextContent("建议只用于复核排序，不自动改交易规则");
     expect(card).not.toHaveTextContent("买入");
     expect(card).not.toHaveTextContent("下单");

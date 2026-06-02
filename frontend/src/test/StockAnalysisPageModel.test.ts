@@ -3,6 +3,7 @@
 import type {
   ConfluenceReplayStatus,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyOptimizationPayload,
   LivermoreStrategyPayload,
 } from "../api/contracts";
 import {
@@ -34,6 +35,8 @@ import {
   buildEventsMonitoringPanelSummary,
   buildObservationPoolsPanelSummary,
   buildThemeBreakoutPanelSummary,
+  buildStrategyOptimizationPanelSummary,
+  localizeStockBackendText,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
 
@@ -1626,6 +1629,53 @@ describe("stockAnalysisPageModel", () => {
       buildStockAnalysisEventMonitorRows(strategyPayload, confluencePayload),
     );
     expect(events.headline).toMatch(/条待复核/);
+  });
+
+  it("localizes pending optimization summary copy when samples are insufficient", () => {
+    const payload: LivermoreStrategyOptimizationPayload = {
+      as_of_date: "2026-05-13",
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "HOT",
+      backtest_window_summary: null,
+      strategy_summaries: [],
+      slices: [],
+      recommendations: [],
+      pending_summary: {
+        primary_horizon: "return_5d",
+        pending_rows: 18,
+        pending_dates: ["2026-05-13"],
+        latest_pending_date: "2026-05-13",
+        message: "T+5 仍有 18 条收益待成熟，最新 pending 日期 2026-05-13。",
+      },
+      sample_maturity: null,
+    };
+
+    const summary = buildStrategyOptimizationPanelSummary({
+      payload,
+      rows: [],
+      queryState: "ready",
+    });
+
+    expect(summary.headline).toBe("优化样本不足");
+    expect(summary.detail).toContain("最新待成熟日期 2026-05-13");
+    expect(summary.detail).not.toContain("pending");
+    expect(summary.stats).toContainEqual(
+      expect.objectContaining({
+        key: "pending",
+        label: "待成熟",
+        value: "18 行",
+      }),
+    );
+  });
+
+  it("keeps generic backend pending copy as confirmation status, not return maturity", () => {
+    const copy = localizeStockBackendText("Signal confluence diagnostic pending detail.", "signal_confluence");
+
+    expect(copy).toContain("待确认");
+    expect(copy).not.toContain("待成熟");
   });
 
 });

@@ -346,6 +346,51 @@ function CompactStatusTile({
   );
 }
 
+function BacktestBoundaryChips({
+  label,
+  missingInputs,
+  testId,
+}: {
+  label: string;
+  missingInputs: readonly string[];
+  testId?: string;
+}) {
+  const missing = missingInputs.filter((item) => item.trim().length > 0);
+
+  return (
+    <div
+      className="mb-2 flex flex-wrap items-center gap-1.5"
+      role="status"
+      aria-label={`${label}边界`}
+      data-testid={testId}
+    >
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-[11px] font-bold text-primary-700">
+        <LineChartOutlined aria-hidden="true" /> 代理口径
+      </span>
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-warning-200 bg-warning-50 px-2 py-1 text-[11px] font-bold text-warning-700">
+        <DatabaseOutlined aria-hidden="true" /> 缺口 {missing.length}
+      </span>
+      {missing.slice(0, 3).map((input) => {
+        const labelText = cycleInputLabel(input);
+        return (
+          <span
+            key={input}
+            className="inline-flex max-w-36 items-center truncate rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+            title={labelText}
+          >
+            {compactText(labelText, 10)}
+          </span>
+        );
+      })}
+      {missing.length > 3 ? (
+        <span className="inline-flex items-center rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600">
+          +{missing.length - 3}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 const DECISION_GRID_ICONS = [
   <ClockCircleOutlined key="date" />,
   <DatabaseOutlined key="basis" />,
@@ -1540,6 +1585,11 @@ export default function StockAnalysisPage() {
   const themeBreakoutBlockerText = themeBreakoutUnsupported?.reason
     ? localizeStockBackendText(themeBreakoutUnsupported.reason, themeBreakoutUnsupported.key)
     : null;
+  const themeBreakoutBlockerLabel = themeBreakoutBlockerText
+    ? themeBreakoutBlockerText.includes("门控") || themeBreakoutBlockerText.includes("过热")
+      ? "门控暂停"
+      : compactText(themeBreakoutBlockerText, 10)
+    : null;
 
   const boundarySummary = useMemo(
     () =>
@@ -2377,6 +2427,23 @@ export default function StockAnalysisPage() {
                           ))}
                         </div>
                       </div>
+                      <aside className="stock-analysis-page__dh-hero-side" aria-label="首屏状态摘要">
+                        <span>
+                          <SafetyCertificateOutlined aria-hidden="true" />
+                          <small>门控</small>
+                          <strong>{backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}</strong>
+                        </span>
+                        <span>
+                          <DatabaseOutlined aria-hidden="true" />
+                          <small>边界</small>
+                          <strong>{backendSupplyOverview?.dataGapLabel ?? decisionSummary.boundaryLabel}</strong>
+                        </span>
+                        <span>
+                          <LineChartOutlined aria-hidden="true" />
+                          <small>下一步</small>
+                          <strong>{reviewQueue[0]?.stockName ?? "复核队列"}</strong>
+                        </span>
+                      </aside>
                     </div>
 
                     <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
@@ -2393,7 +2460,7 @@ export default function StockAnalysisPage() {
                         : null}
                     </div>
 
-                    <details className="stock-analysis-page__dh-details border-t border-[color:var(--sa-dh-line-soft)] pt-3">
+                    <details className="stock-analysis-page__dh-details">
                       <summary>
                         <span className="flex items-center gap-2">
                           <span className="text-[color:var(--sa-dh-blue)] group-open:rotate-90">▸</span>
@@ -2725,7 +2792,7 @@ export default function StockAnalysisPage() {
 
                 {kpiStrip.length > 0 ? (
                   <section data-testid="stock-analysis-kpi-section" aria-label="选股快照">
-                    <p className={SA_SECTION_EYEBROW}>选股快照</p>
+                    <p className="stock-analysis-page__visually-hidden">选股快照</p>
                     <div
                       className="stock-analysis-page__dh-kpi-strip"
                       data-testid="stock-analysis-kpi-strip"
@@ -2756,7 +2823,7 @@ export default function StockAnalysisPage() {
                       aria-label="策略选股概览"
                       data-testid="stock-analysis-strategy-lens"
                     >
-                      <p className={SA_SECTION_EYEBROW}>策略选股概览</p>
+                      <p className="stock-analysis-page__visually-hidden">策略选股概览</p>
                       <div className="stock-analysis-page__strategy-lens-grid">
                         {strategyLensItems.map((item) => (
                           <button
@@ -2878,31 +2945,31 @@ export default function StockAnalysisPage() {
 
                 {reviewQueue.length === 0 ? (
                   <div
-                    className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6"
+                    className="stock-analysis-page__review-empty-panel"
                     role="status"
                     data-testid="stock-analysis-review-queue-empty"
                     title={reviewQueueEmptyState?.detail ?? "查看观察池与板块"}
                   >
-                    <div className="grid w-full max-w-xl gap-2 sm:grid-cols-3">
+                    <div className="grid w-full gap-2 sm:grid-cols-3">
                       <CompactStatusTile
                         icon={<StockOutlined />}
                         label="复核队列"
                         value="0"
                         tone="warning"
-                        className="bg-white"
+                        className="w-full bg-white"
                         title={reviewQueueEmptyState?.headline ?? "暂无主候选"}
                       />
                       <CompactStatusTile
                         icon={<DatabaseOutlined />}
                         label="多因子"
                         value={factorScreenPayload?.candidate_count ?? 0}
-                        className="bg-white"
+                        className="w-full bg-white"
                       />
                       <CompactStatusTile
                         icon={<BarChartOutlined />}
                         label="板块"
                         value={sectorRowsFull.length}
-                        className="bg-white"
+                        className="w-full bg-white"
                       />
                     </div>
                   </div>
@@ -2911,7 +2978,6 @@ export default function StockAnalysisPage() {
                     icon={<BarChartOutlined />}
                     label="行业筛选"
                     value="0 候选"
-                    detail="该行业暂无候选复核项，可切换到其他行业复核。"
                     tone="warning"
                     testId="stock-analysis-review-queue-filter-empty"
                   />
@@ -3406,7 +3472,7 @@ export default function StockAnalysisPage() {
                         icon={<FireOutlined />}
                         label="题材"
                         value={themeBreakoutUnsupported ? "待补" : "0 Leader"}
-                        detail={themeBreakoutBlockerText ?? undefined}
+                        detail={themeBreakoutBlockerLabel ?? undefined}
                         tone={themeBreakoutUnsupported ? "warning" : "neutral"}
                         testId="stock-analysis-theme-leader-empty"
                         title={themeBreakoutBlockerText ?? "当前无题材突破 Leader"}
@@ -4348,7 +4414,11 @@ export default function StockAnalysisPage() {
                                 {
                                   key: "risk-exit-unsupported-reason",
                                   label: "供数原因",
-                                  children: <p className="m-0 text-xs">{riskExitUnsupported.reason}</p>,
+                                  children: (
+                                    <p className="m-0 text-xs">
+                                      {localizeStockBackendText(riskExitUnsupported.reason, riskExitUnsupported.key)}
+                                    </p>
+                                  ),
                                 },
                               ]}
                             />
@@ -4483,7 +4553,7 @@ export default function StockAnalysisPage() {
                         {strategyPayload ? (
                           <>
                             <Text strong type="danger">
-                              严重 / Error
+                              严重
                             </Text>
                             <ul>
                               {strategyPayload.diagnostics
@@ -4496,7 +4566,7 @@ export default function StockAnalysisPage() {
                               ) : null}
                             </ul>
                             <Text strong type="warning">
-                              警告 / Warning
+                              警告
                             </Text>
                             <ul>
                               {strategyPayload.diagnostics
@@ -4509,7 +4579,7 @@ export default function StockAnalysisPage() {
                               ) : null}
                             </ul>
                             <Text strong type="secondary">
-                              信息 / Info
+                              信息
                             </Text>
                             <ul>
                               {strategyPayload.diagnostics
@@ -4670,10 +4740,11 @@ export default function StockAnalysisPage() {
                       candidateHistoryPortfolioBacktestPayload?.status === "portfolio_proxy" &&
                       candidateHistoryPortfolioBacktestPayload.summary ? (
                         <>
-                          <p className="stock-analysis-page__footnote">
-                            当前更接近执行层的是候选历史组合回测；完整策略仍缺少{" "}
-                            {candidateHistoryPortfolioBacktestPayload.missing_full_strategy_inputs.join("、")}。
-                          </p>
+                          <BacktestBoundaryChips
+                            label="组合回测"
+                            missingInputs={candidateHistoryPortfolioBacktestPayload.missing_full_strategy_inputs}
+                            testId="stock-analysis-portfolio-backtest-boundary"
+                          />
                           <div className="stock-analysis-page__cycle-proxy-grid">
                             <div>
                               <span>组合回测收益</span>
@@ -4734,10 +4805,11 @@ export default function StockAnalysisPage() {
                     {!cycleProxyBacktestQuery.isLoading && !cycleProxyBacktestQuery.isError ? (
                       cycleProxyBacktestPayload?.status === "proxy" && cycleProxyBacktestPayload.summary ? (
                         <>
-                          <p className="stock-analysis-page__footnote">
-                            当前仅能输出代理回测；完整策略仍缺少{" "}
-                            {cycleProxyBacktestPayload.missing_full_strategy_inputs.join("、")}。
-                          </p>
+                          <BacktestBoundaryChips
+                            label="代理回测"
+                            missingInputs={cycleProxyBacktestPayload.missing_full_strategy_inputs}
+                            testId="stock-analysis-cycle-proxy-boundary"
+                          />
                           <div className="stock-analysis-page__cycle-proxy-grid">
                             <div>
                               <span>累计收益</span>
@@ -5393,11 +5465,13 @@ export default function StockAnalysisPage() {
                       <span>当前最新日期收益</span>
                       <strong>
                         {(strategyOptimizationPayload?.pending_summary.pending_rows ?? 0) > 0
-                          ? "pending"
+                          ? "待成熟"
                           : "已成熟"}
                       </strong>
                       <small>
-                        {strategyOptimizationPayload?.pending_summary.message ?? "T+5 收益成熟状态待补。"}
+                        {localizeStockBackendText(
+                          strategyOptimizationPayload?.pending_summary.message ?? "T+5 收益成熟状态待补。",
+                        )}
                       </small>
                     </div>
                     <p className="stock-analysis-page__footnote">
@@ -5596,10 +5670,16 @@ export default function StockAnalysisPage() {
                               ))}
                             </ul>
                           ) : null}
-                          <p className="stock-analysis-page__footnote">
-                            超跌反弹观察：基于价格回撤、企稳信号和放量特征的技术面筛选，仅作复核观察，不给出操作动作提示。市场状态
-                            过热或门控转弱时自动停用。
-                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5" aria-label="超跌筛选规则">
+                            {["价格回撤", "企稳", "放量", "门控停用"].map((label) => (
+                              <span
+                                key={label}
+                                className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+                              >
+                                <FireOutlined aria-hidden="true" /> {label}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                 <div className="stock-analysis-page__factor-screen">
                   <div className={SA_SECTION_HEAD}>
@@ -5687,11 +5767,24 @@ export default function StockAnalysisPage() {
                               ))}
                             </ul>
                           )}
-                          <p className="stock-analysis-page__footnote">
-                            多因子选股：综合价值（PE/PB/PS 倒数）、质量（ROE/毛利率）、动量（3月/12月收益）、低波动、股息五个因子加权评分，
-                            取前 10%。{factorScreenPayload?.coverage_note ?? ""}
-                            仅作复核观察，不给出操作动作提示。
-                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5" aria-label="多因子选股因子">
+                            {["价值", "质量", "动量", "低波", "股息"].map((label) => (
+                              <span
+                                key={label}
+                                className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+                              >
+                                <DatabaseOutlined aria-hidden="true" /> {label}
+                              </span>
+                            ))}
+                            {factorScreenPayload?.coverage_note ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-[11px] font-bold text-primary-700"
+                                title={factorScreenPayload.coverage_note}
+                              >
+                                覆盖 {compactText(factorScreenPayload.coverage_note, 14)}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
               </StrategyModuleCard>
 

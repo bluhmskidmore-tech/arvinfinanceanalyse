@@ -721,6 +721,17 @@ export function localizeStockBackendText(
   if (lower.includes("concept membership table pending")) {
     return "概念归属表待确认。";
   }
+  if (
+    lower.includes("livermore_position_snapshot") ||
+    (lower.includes("position snapshot") && (lower.includes("active a-share") || lower.includes("missing")))
+  ) {
+    return "持仓快照缺失，暂无可执行风险退出样本。";
+  }
+  if (lower.includes("pending")) {
+    const pendingLabel =
+      lower.includes("t+5") || lower.includes("return") || lower.includes("收益") ? "待成熟" : "待确认";
+    return value.replace(/最新\s*pending\s*日期/gi, `最新${pendingLabel}日期`).replace(/\bpending\b/gi, pendingLabel);
+  }
   if (lower.includes("theme breakout execution is paused") && lower.includes("overheat")) {
     return "市场过热门控下暂停题材观察；历史回放显示该桶拖累。";
   }
@@ -3360,7 +3371,9 @@ export function buildStrategyOptimizationPanelSummary(input: {
   if (!top) {
     return {
       headline: "优化样本不足",
-      detail: input.payload?.pending_summary.message,
+      detail: input.payload?.pending_summary.message
+        ? localizeStockBackendText(input.payload.pending_summary.message)
+        : undefined,
       badgeLabel: "待补",
       stats: [
         {
