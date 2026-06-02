@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -60,11 +60,11 @@ function mockManagedRunResult(
 }
 
 function getQueuedFollowUpStatus() {
-  return screen.getByRole("status", { name: "排队中的下一句" });
+  return screen.getByRole("status", { name: "待发送的下一句" });
 }
 
 function queryQueuedFollowUpStatus() {
-  return screen.queryByRole("status", { name: "排队中的下一句" });
+  return screen.queryByRole("status", { name: "待发送的下一句" });
 }
 
 function buildWorkflowExecutionResult() {
@@ -302,6 +302,23 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: GITNEXUS_STATUS_BUTTON })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_CONTEXT_BUTTON })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON })).toBeInTheDocument();
+  });
+
+  it("keeps technical runtime details collapsed by default", () => {
+    render(<AgentWorkbenchPage />);
+
+    const runtimeStatus = screen.getByLabelText("agent-runtime-status");
+    expect(runtimeStatus).toHaveTextContent("待提问");
+    expect(within(runtimeStatus).getByText("运行环境")).toBeVisible();
+    expect(within(runtimeStatus).getByText("Engine")).not.toBeVisible();
+  });
+
+  it("announces runtime status changes without expanding technical details", () => {
+    render(<AgentWorkbenchPage />);
+
+    const runtimeStatus = screen.getByLabelText("agent-runtime-status");
+    expect(runtimeStatus).toHaveAttribute("aria-live", "polite");
+    expect(runtimeStatus).toHaveAttribute("aria-atomic", "true");
   });
 
   it("renders four financial workflow shortcut buttons", () => {
@@ -970,9 +987,15 @@ describe("AgentWorkbenchPage", () => {
       />,
     );
 
-    expect(screen.getByText("页面上下文")).toBeInTheDocument();
-    expect(screen.getByText(/risk-dashboard/)).toBeInTheDocument();
-    expect(screen.getByText(/selected from risk table/)).toBeInTheDocument();
+    const pageContextDetails = screen.getByText("页面上下文").closest("details");
+    expect(pageContextDetails).not.toBeNull();
+    expect(pageContextDetails).not.toHaveAttribute("open");
+    expect(screen.getByText(/risk-dashboard/)).not.toBeVisible();
+    expect(screen.getByText(/selected from risk table/)).not.toBeVisible();
+    fireEvent.click(screen.getByText("页面上下文"));
+    expect(pageContextDetails).toHaveAttribute("open");
+    expect(screen.getByText(/risk-dashboard/)).toBeVisible();
+    expect(screen.getByText(/selected from risk table/)).toBeVisible();
     expect(screen.getByPlaceholderText(PAGE_CONTEXT_PLACEHOLDER)).toBeInTheDocument();
 
     await user.type(screen.getByPlaceholderText(PAGE_CONTEXT_PLACEHOLDER), "managed page context check");
@@ -1903,9 +1926,16 @@ describe("AgentWorkbenchPage", () => {
     expect(progress).toHaveTextContent("已提交");
     expect(progress).toHaveTextContent("排队中");
     expect(progress).toHaveTextContent("分析中");
+    expect(progress).toBeVisible();
+    const runtimeDetails = screen.getByText("运行细节").closest("details");
+    expect(runtimeDetails).not.toBeNull();
+    expect(runtimeDetails).not.toHaveAttribute("open");
     await waitFor(() => {
       expect(progress.querySelector('[data-current="true"]')).toHaveTextContent("分析中");
     });
+    fireEvent.click(screen.getByText("运行细节"));
+    expect(runtimeDetails).toHaveAttribute("open");
+    expect(progress).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("Hermes 正在分析");
 
     await act(async () => {
@@ -2029,7 +2059,14 @@ describe("AgentWorkbenchPage", () => {
     expect(copyStatus).toHaveTextContent("回答已复制");
     expect(copyStatus).toBeVisible();
     expect(copyStatus).toHaveClass("agent-copy-feedback");
-    expect(copyStatus.closest(".agent-result-toolbar")).not.toBeNull();
+    const toolbar = copyStatus.closest(".agent-result-toolbar");
+    expect(toolbar).not.toBeNull();
+    const resultMain = toolbar?.closest(".agent-result-main");
+    const answerPanel = resultMain?.querySelector(".agent-answer-panel");
+    expect(answerPanel).not.toBeNull();
+    expect(
+      (answerPanel?.compareDocumentPosition(toolbar as Element) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
@@ -2640,25 +2677,26 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("queued first turn")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued second turn");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
 
     const queuedPreview = getQueuedFollowUpStatus();
-    expect(queuedPreview).toHaveTextContent("待发送");
+    expect(queuedPreview).toHaveTextContent("下一句");
+    expect(queuedPreview).toHaveTextContent("当前回答完成后发送");
     expect(queuedPreview).toHaveTextContent("queued second turn");
     expect(screen.queryByText("已排队：queued second turn")).not.toBeInTheDocument();
     expect(screen.queryByText("当前回答完成后自动发送。")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("待发送");
+    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("下一句");
     expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
-    await user.click(screen.getByRole("button", { name: "编辑待发送" }));
+    await user.click(screen.getByRole("button", { name: "编辑草稿" }));
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
-    await user.click(screen.getByRole("button", { name: "取消待发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
+    await user.click(screen.getByRole("button", { name: "取消草稿" }));
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("agent-question-input"), "queued second turn");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
 
     await act(async () => {
@@ -2728,7 +2766,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "enter queue first turn");
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("enter queue first turn")).toBeInTheDocument();
-    expect(screen.getByText("Enter 排队发送 · Shift+Enter 换行")).toBeInTheDocument();
+    expect(screen.getByText("Enter 发送下一句 · Shift+Enter 换行")).toBeInTheDocument();
 
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     await user.type(input, "enter queued second turn");
@@ -2760,7 +2798,7 @@ describe("AgentWorkbenchPage", () => {
       scrollTargets.length = 0;
 
       await user.type(screen.getByLabelText("agent-question-input"), "scroll queued second turn");
-      await user.click(screen.getByRole("button", { name: "排队发送" }));
+      await user.click(screen.getByRole("button", { name: "发送下一句" }));
 
       expect(getQueuedFollowUpStatus()).toHaveTextContent("scroll queued second turn");
       await waitFor(() => {
@@ -2784,7 +2822,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("queued stop first turn")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued stop second turn");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued stop second turn");
 
     await user.click(screen.getByRole("button", { name: "停止当前回答" }));
@@ -2812,10 +2850,10 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("queued cancel first turn")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued cancel second turn");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued cancel second turn");
 
-    await user.click(screen.getByRole("button", { name: "取消待发送" }));
+    await user.click(screen.getByRole("button", { name: "取消草稿" }));
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("");
@@ -2870,10 +2908,10 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("queued edit first turn")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued edit second turn");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued edit second turn");
 
-    await user.click(screen.getByRole("button", { name: "编辑待发送" }));
+    await user.click(screen.getByRole("button", { name: "编辑草稿" }));
 
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
@@ -2895,7 +2933,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("question to edit while running")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued draft should be replaced");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft should be replaced");
 
     await user.click(screen.getByRole("button", { name: "停止当前回答" }));
@@ -2922,7 +2960,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("question to edit directly")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued draft replaced by direct edit");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft replaced by direct edit");
 
     await user.click(screen.getByRole("button", { name: "编辑问题" }));
@@ -3018,7 +3056,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("running follow-up before suggestion")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued draft should be replaced by suggestion");
-    await user.click(screen.getByRole("button", { name: "排队发送" }));
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft should be replaced by suggestion");
 
     await user.click(screen.getByRole("button", { name: "继续下钻期限桶" }));
@@ -4120,7 +4158,13 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("status", { name: "空结果状态" })).toHaveTextContent(
       "本次查询未返回可展示结果。请调整问题后重试。",
     );
-    expect(screen.getByText(/追踪编号: tr_empty/)).toBeInTheDocument();
+    const emptyResultDetails = screen.getByText("结果细节").closest("details");
+    expect(emptyResultDetails).not.toBeNull();
+    expect(emptyResultDetails).not.toHaveAttribute("open");
+    expect(screen.getByText(/追踪编号: tr_empty/)).not.toBeVisible();
+    fireEvent.click(screen.getByText("结果细节"));
+    expect(emptyResultDetails).toHaveAttribute("open");
+    expect(screen.getByText(/追踪编号: tr_empty/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "重新生成" }));
     expect(await screen.findByText("empty fallback regenerated answer")).toBeInTheDocument();
   });

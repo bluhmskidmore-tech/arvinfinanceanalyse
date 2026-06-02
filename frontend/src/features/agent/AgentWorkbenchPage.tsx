@@ -2650,6 +2650,10 @@ export function EmbeddedAgentCopilot({
         {hasRenderableResult(turnResult) ? (
           <div className="agent-result-grid">
             <div className="agent-result-main">
+              <AgentAnswerPanel
+                answer={turnResult.answer}
+                testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
+              />
               <div className="agent-result-toolbar" aria-label="assistant-answer-actions">
                 {canRegenerateAgentTurn(turn) ? (
                   <button
@@ -2681,10 +2685,6 @@ export function EmbeddedAgentCopilot({
                   </span>
                 ) : null}
               </div>
-              <AgentAnswerPanel
-                answer={turnResult.answer}
-                testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
-              />
 
               {turnResult.cards.length > 0 ? (
                 (() => {
@@ -2774,10 +2774,13 @@ export function EmbeddedAgentCopilot({
         )}
 
         {!hasRenderableResult(turnResult) ? (
-          <AgentResultMetaPanel
-            entries={buildResultMetaEntries(turnResult.result_meta)}
-            formatValue={formatMetaValue}
-          />
+          <details className="agent-result-details">
+            <summary>结果细节</summary>
+            <AgentResultMetaPanel
+              entries={buildResultMetaEntries(turnResult.result_meta)}
+              formatValue={formatMetaValue}
+            />
+          </details>
         ) : null}
       </div>
     );
@@ -2905,51 +2908,51 @@ export function EmbeddedAgentCopilot({
         </header>
       ) : null}
 
-      <div className="agent-runtime-strip" aria-label="agent-runtime-status">
-        <div className="agent-runtime-strip__state">
-          <span className={loading ? "agent-runtime-strip__dot agent-runtime-strip__dot--active" : "agent-runtime-strip__dot"} />
-          <span>{loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问"}</span>
+      <div
+        className="agent-runtime-strip"
+        aria-label="agent-runtime-status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <div className="agent-runtime-strip__summary">
+          <div className="agent-runtime-strip__state">
+            <span className={loading ? "agent-runtime-strip__dot agent-runtime-strip__dot--active" : "agent-runtime-strip__dot"} />
+            <span>{loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问"}</span>
+          </div>
+          <span className="agent-runtime-strip__provider">{runtimeStatus.provider}</span>
         </div>
-        <div className="agent-runtime-strip__item">
-          <span>Engine</span>
-          <strong>{runtimeStatus.provider}</strong>
-        </div>
-        <div className="agent-runtime-strip__item">
-          <span>Transport</span>
-          <strong>{runtimeStatus.transport}</strong>
-        </div>
-        <div className="agent-runtime-strip__item">
-          <span>Model</span>
-          <strong>{runtimeStatus.model}</strong>
-        </div>
-        <div className="agent-runtime-strip__item">
-          <span>Tools</span>
-          <strong>{runtimeStatus.toolsets}</strong>
-        </div>
-        <div className="agent-runtime-strip__item">
-          <span>Quality</span>
-          <strong>{runtimeStatus.quality}</strong>
-        </div>
+        <details className="agent-runtime-strip__details">
+          <summary>运行环境</summary>
+          <div className="agent-runtime-strip__detail-grid">
+            <div className="agent-runtime-strip__item">
+              <span>Engine</span>
+              <strong>{runtimeStatus.provider}</strong>
+            </div>
+            <div className="agent-runtime-strip__item">
+              <span>Transport</span>
+              <strong>{runtimeStatus.transport}</strong>
+            </div>
+            <div className="agent-runtime-strip__item">
+              <span>Model</span>
+              <strong>{runtimeStatus.model}</strong>
+            </div>
+            <div className="agent-runtime-strip__item">
+              <span>Tools</span>
+              <strong>{runtimeStatus.toolsets}</strong>
+            </div>
+            <div className="agent-runtime-strip__item">
+              <span>Quality</span>
+              <strong>{runtimeStatus.quality}</strong>
+            </div>
+          </div>
+        </details>
       </div>
 
       {pageContext ? (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 12,
-            borderRadius: 14,
-            border: `1px solid ${t.colorBorderSoft}`,
-            background: t.colorBgSurface,
-            color: t.colorTextSecondary,
-            fontSize: 12,
-            lineHeight: 1.6,
-          }}
-        >
-          <div style={{ color: t.colorTextMuted, marginBottom: 6 }}>页面上下文</div>
-          <code style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-            {formatPageContextSummary(pageContext)}
-          </code>
-        </div>
+        <details className="agent-page-context">
+          <summary>页面上下文</summary>
+          <code className="agent-page-context__code">{formatPageContextSummary(pageContext)}</code>
+        </details>
       ) : null}
 
       {!isEmbedded ? renderResearchShortcutPanel() : null}
@@ -3103,13 +3106,14 @@ export function EmbeddedAgentCopilot({
               className="agent-turn agent-turn--queued"
               role="status"
               aria-live="polite"
-              aria-label="排队中的下一句"
+              aria-label="待发送的下一句"
             >
               <div className="agent-message agent-message--user">
                 <div className="agent-message__speaker">我</div>
                 <div className="agent-user-bubble agent-user-bubble--queued">
-                  <div className="agent-user-bubble__context">待发送</div>
+                  <div className="agent-user-bubble__context">下一句</div>
                   <div className="agent-message__body">{queuedQuery}</div>
+                  <div className="agent-user-bubble__hint">当前回答完成后发送</div>
                   <div className="agent-user-bubble__actions">
                     <button
                       type="button"
@@ -3117,11 +3121,11 @@ export function EmbeddedAgentCopilot({
                       onClick={restoreQueuedQueryToComposer}
                     >
                       <EditOutlined aria-hidden="true" />
-                      <span>编辑待发送</span>
+                      <span>编辑草稿</span>
                     </button>
                     <button type="button" className="agent-user-bubble__edit" onClick={cancelQueuedQuery}>
                       <CloseOutlined aria-hidden="true" />
-                      <span>取消待发送</span>
+                      <span>取消草稿</span>
                     </button>
                   </div>
                 </div>

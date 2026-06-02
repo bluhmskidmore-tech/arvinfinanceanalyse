@@ -94,7 +94,7 @@ export function AgentQueryForm({
   const hasQuery = query.trim().length > 0;
   const submitHint = loading
     ? onQueueSubmit
-      ? "Enter 排队发送 · Shift+Enter 换行"
+      ? "Enter 发送下一句 · Shift+Enter 换行"
       : "正在回答 · Shift+Enter 换行"
     : "Enter 发送 · Shift+Enter 换行";
 
@@ -197,7 +197,7 @@ export function AgentQueryForm({
                 disabled={!hasQuery}
                 onClick={onQueueSubmit}
               >
-                排队发送
+                发送下一句
               </button>
             ) : null}
             <button
