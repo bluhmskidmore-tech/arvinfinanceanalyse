@@ -2060,9 +2060,8 @@ describe("StockAnalysisPage", () => {
     });
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("无候选行业");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 0 / 2 个候选");
-    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent(
-      "该行业暂无候选复核项，可切换到其他行业复核。",
-    );
+    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("行业筛选");
+    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("0 候选");
     expect(screen.queryByTestId("stock-analysis-review-queue-ranking-chart")).not.toBeInTheDocument();
   });
 
@@ -2126,6 +2125,29 @@ describe("StockAnalysisPage", () => {
     expect(section).not.toHaveTextContent("risk_exit");
     expect(section).not.toHaveTextContent("warning");
     expect(section).not.toHaveTextContent("missing");
+  });
+
+  it("shows localized theme breakout blockers in the first-screen empty tile", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          unsupported_outputs: [
+            {
+              key: "theme_breakout",
+              reason:
+                "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+            },
+          ],
+        }),
+      }),
+    });
+
+    const themeLeaders = await screen.findByTestId("stock-analysis-theme-leaders-first-screen");
+    const blocker = within(themeLeaders).getByTestId("stock-analysis-theme-leader-empty");
+    expect(blocker).toHaveTextContent("市场过热门控下暂停题材观察");
+    expect(blocker).toHaveTextContent("历史回放显示该桶拖累");
+    expect(themeLeaders).not.toHaveTextContent("Theme breakout execution is paused");
+    expect(themeLeaders).not.toHaveTextContent("theme_breakout");
   });
 
   it("avoids forbidden trading copy", async () => {

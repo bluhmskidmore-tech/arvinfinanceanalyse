@@ -305,6 +305,47 @@ function StatusIcon({
   );
 }
 
+function CompactStatusTile({
+  icon,
+  label,
+  value,
+  detail,
+  tone = "neutral",
+  testId,
+  title,
+  className = "",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  detail?: React.ReactNode;
+  tone?: string;
+  testId?: string;
+  title?: string;
+  className?: string;
+}) {
+  const valueLabel = typeof value === "string" || typeof value === "number" ? String(value) : null;
+  const detailLabel = typeof detail === "string" || typeof detail === "number" ? String(detail) : null;
+  const ariaLabel = [label, valueLabel, detailLabel].filter(Boolean).join(" ") || undefined;
+
+  return (
+    <div
+      className={`inline-flex min-h-12 items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2 ${className}`}
+      role="status"
+      aria-label={ariaLabel}
+      data-testid={testId}
+      title={title}
+    >
+      <StatusIcon tone={tone}>{icon}</StatusIcon>
+      <span className="min-w-0">
+        <span className={`block text-[10px] font-semibold ${toneTextClass(tone)}`}>{label}</span>
+        <strong className="block truncate text-sm font-semibold text-neutral-900">{value}</strong>
+        {detail ? <span className="block text-xs font-medium leading-snug text-neutral-600">{detail}</span> : null}
+      </span>
+    </div>
+  );
+}
+
 const DECISION_GRID_ICONS = [
   <ClockCircleOutlined key="date" />,
   <DatabaseOutlined key="basis" />,
@@ -1397,6 +1438,7 @@ export default function StockAnalysisPage() {
     () => consensusSummary.items.slice(0, 8),
     [consensusSummary.items],
   );
+  const consensusHitCount = consensusSummary.items.filter((item) => item.consensusCount >= 2).length;
 
   const factorPreviewItems = useMemo(
     () => factorScreenPayload?.items.slice(0, 10) ?? [],
@@ -1495,6 +1537,9 @@ export default function StockAnalysisPage() {
 
   const riskExitUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "risk_exit");
   const themeBreakoutUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "theme_breakout");
+  const themeBreakoutBlockerText = themeBreakoutUnsupported?.reason
+    ? localizeStockBackendText(themeBreakoutUnsupported.reason, themeBreakoutUnsupported.key)
+    : null;
 
   const boundarySummary = useMemo(
     () =>
@@ -2808,22 +2853,43 @@ export default function StockAnalysisPage() {
 
                 {reviewQueue.length === 0 ? (
                   <div
-                    className="flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-600"
+                    className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6"
                     role="status"
                     data-testid="stock-analysis-review-queue-empty"
+                    title={reviewQueueEmptyState?.detail ?? "查看观察池与板块"}
                   >
-                    <strong className="text-neutral-900">
-                      {reviewQueueEmptyState?.headline ?? "今天没有进入复核队列的候选"}
-                    </strong>
-                    <p className="m-0 max-w-md text-xs leading-relaxed text-neutral-500">
-                      {reviewQueueEmptyState?.detail ??
-                        "可下翻查看多因子或融合观察池，并核对门控与板块强弱。"}
-                    </p>
+                    <div className="grid w-full max-w-xl gap-2 sm:grid-cols-3">
+                      <CompactStatusTile
+                        icon={<StockOutlined />}
+                        label="复核队列"
+                        value="0"
+                        tone="warning"
+                        className="bg-white"
+                        title={reviewQueueEmptyState?.headline ?? "暂无主候选"}
+                      />
+                      <CompactStatusTile
+                        icon={<DatabaseOutlined />}
+                        label="多因子"
+                        value={factorScreenPayload?.candidate_count ?? 0}
+                        className="bg-white"
+                      />
+                      <CompactStatusTile
+                        icon={<BarChartOutlined />}
+                        label="板块"
+                        value={sectorRowsFull.length}
+                        className="bg-white"
+                      />
+                    </div>
                   </div>
                 ) : filteredCandidates.length === 0 ? (
-                  <p className="stock-analysis-page__empty" data-testid="stock-analysis-review-queue-filter-empty">
-                    该行业暂无候选复核项，可切换到其他行业复核。
-                  </p>
+                  <CompactStatusTile
+                    icon={<BarChartOutlined />}
+                    label="行业筛选"
+                    value="0 候选"
+                    detail="该行业暂无候选复核项，可切换到其他行业复核。"
+                    tone="warning"
+                    testId="stock-analysis-review-queue-filter-empty"
+                  />
                 ) : (
                   <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                     {filteredCandidates.map((card) => {
@@ -2936,7 +3002,16 @@ export default function StockAnalysisPage() {
                             items={[
                               {
                                 key: "evidence",
-                                label: "证据明细",
+                                label: (
+                                  <span className="inline-flex items-center gap-1">
+                                    <SafetyCertificateOutlined aria-hidden="true" />
+                                    <span aria-hidden="true">证据</span>
+                                    <span className="sr-only">证据明细</span>
+                                    <span className="rounded border border-neutral-200 bg-neutral-50 px-1 text-[10px] text-neutral-500">
+                                      {card.primaryEvidence.length + card.supportingEvidence.length}
+                                    </span>
+                                  </span>
+                                ),
                                 children: (
                                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                     <div>
@@ -2973,7 +3048,16 @@ export default function StockAnalysisPage() {
                               },
                               {
                                 key: "raw",
-                                label: "指标明细",
+                                label: (
+                                  <span className="inline-flex items-center gap-1">
+                                    <DatabaseOutlined aria-hidden="true" />
+                                    <span aria-hidden="true">指标</span>
+                                    <span className="sr-only">指标明细</span>
+                                    <span className="rounded border border-neutral-200 bg-neutral-50 px-1 text-[10px] text-neutral-500">
+                                      {card.rawFields.length}
+                                    </span>
+                                  </span>
+                                ),
                                 children: (
                                   <dl className="stock-analysis-page__raw-grid">
                                     {card.rawFields.map((field) => (
@@ -3008,17 +3092,29 @@ export default function StockAnalysisPage() {
                         </p>
                       </div>
                       <span className={SA_PILL}>
-                        共振 {consensusSummary.items.filter((item) => item.consensusCount >= 2).length} · 去重{" "}
-                        {consensusSummary.totalUnion}
+                        共振 {consensusHitCount} · 去重 {consensusSummary.totalUnion}
                       </span>
                     </div>
 
                     {!consensusSummary.hasAnyStrategy ? (
                       <p className="stock-analysis-page__empty">{consensusReviewPanelSummary?.detail ?? "策略池暂无候选。"}</p>
                     ) : consensusFirstScreenItems.length === 0 ? (
-                      <p className="stock-analysis-page__empty">
-                        各策略有候选，但暂无 ≥2 套策略共振；请先看复核队列或多因子池。
-                      </p>
+                      <div
+                        className="grid gap-2 sm:grid-cols-3"
+                        role="status"
+                        data-testid="stock-analysis-consensus-empty-scan"
+                        aria-label="暂无多策略共振"
+                      >
+                        <CompactStatusTile icon={<ThunderboltOutlined />} label="共振" value={consensusHitCount} />
+                        <CompactStatusTile icon={<DatabaseOutlined />} label="去重" value={consensusSummary.totalUnion} />
+                        <CompactStatusTile
+                          icon={<LineChartOutlined />}
+                          label="下一步"
+                          value="复核队列"
+                          tone="positive"
+                          className="border-primary-100 bg-primary-50"
+                        />
+                      </div>
                     ) : (
                       <div className="stock-analysis-page__consensus-first-list">
                         {consensusFirstScreenItems.map((row) => {
@@ -3086,9 +3182,15 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>多策略观察池</p>
                         <h2 className={SA_CARD_TITLE}>因子 / 超跌观察池</h2>
-                        <p className={SA_SECTION_DESC}>
-                          复核队列为空时，可直接从此处挑股；点击行打开 K 线与策略排名。
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="观察池状态">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <FireOutlined aria-hidden="true" /> 超跌{" "}
+                            {meanReversionMarketActive ? meanReversionPayload?.candidate_count ?? 0 : "暂停"}
+                          </span>
+                        </div>
                       </div>
                       <span className={SA_PILL}>
                         多因子 {factorScreenPayload?.candidate_count ?? 0} · 超跌{" "}
@@ -3100,9 +3202,20 @@ export default function StockAnalysisPage() {
                       <div className="stock-analysis-page__observation-preview-panel">
                         <h3>多因子 Top {factorPreviewItems.length || 0}</h3>
                         {!factorScreenPayload ? (
-                          <p className="stock-analysis-page__empty">多因子池未就绪。</p>
+                          <CompactStatusTile
+                            icon={<DatabaseOutlined />}
+                            label="多因子"
+                            value="未就绪"
+                            tone="warning"
+                            testId="stock-analysis-factor-preview-empty"
+                          />
                         ) : factorPreviewItems.length === 0 ? (
-                          <p className="stock-analysis-page__empty">当前无多因子候选。</p>
+                          <CompactStatusTile
+                            icon={<DatabaseOutlined />}
+                            label="多因子"
+                            value="0 候选"
+                            testId="stock-analysis-factor-preview-empty"
+                          />
                         ) : (
                           <div className="stock-analysis-page__table-wrap">
                             <table className="stock-analysis-page__table stock-analysis-page__table--dense">
@@ -3156,11 +3269,28 @@ export default function StockAnalysisPage() {
                       <div className="stock-analysis-page__observation-preview-panel">
                         <h3>超跌反弹 {meanReversionMarketActive ? "Top" : ""}</h3>
                         {!meanReversionMarketActive ? (
-                          <p className="stock-analysis-page__empty">当前门控不适合超跌反弹，观察池暂停。</p>
+                          <CompactStatusTile
+                            icon={<FireOutlined />}
+                            label="超跌"
+                            value="暂停"
+                            tone="warning"
+                            testId="stock-analysis-mean-reversion-preview-empty"
+                          />
                         ) : !meanReversionPayload ? (
-                          <p className="stock-analysis-page__empty">超跌反弹池未就绪。</p>
+                          <CompactStatusTile
+                            icon={<FireOutlined />}
+                            label="超跌"
+                            value="未就绪"
+                            tone="warning"
+                            testId="stock-analysis-mean-reversion-preview-empty"
+                          />
                         ) : meanReversionPreviewItems.length === 0 ? (
-                          <p className="stock-analysis-page__empty">当前无超跌反弹候选。</p>
+                          <CompactStatusTile
+                            icon={<FireOutlined />}
+                            label="超跌"
+                            value="0 候选"
+                            testId="stock-analysis-mean-reversion-preview-empty"
+                          />
                         ) : (
                           <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                             {meanReversionPreviewItems.map((row) => (
@@ -3230,9 +3360,14 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>题材突变</p>
                         <h2 className={SA_CARD_TITLE}>题材突破 Leader 股</h2>
-                        <p className={SA_SECTION_DESC}>
-                          题材簇内强势样本；点击行查看 K 线与多策略排名。
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="题材突破状态">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <FireOutlined aria-hidden="true" /> 题材 {themeBreakoutCards.length}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <StockOutlined aria-hidden="true" /> Leader {themeLeaderPreviewItems.length}
+                          </span>
+                        </div>
                       </div>
                       <span className={SA_PILL}>
                         {themeBreakoutCards.length > 0
@@ -3242,11 +3377,15 @@ export default function StockAnalysisPage() {
                     </div>
 
                     {themeLeaderPreviewItems.length === 0 ? (
-                      <p className="stock-analysis-page__empty">
-                        {themeBreakoutUnsupported?.reason
-                          ? localizeStockBackendText(themeBreakoutUnsupported.reason, themeBreakoutUnsupported.key)
-                          : "当前无题材突破 Leader；可展开下方深度区查看题材雷达明细。"}
-                      </p>
+                      <CompactStatusTile
+                        icon={<FireOutlined />}
+                        label="题材"
+                        value={themeBreakoutUnsupported ? "待补" : "0 Leader"}
+                        detail={themeBreakoutBlockerText ?? undefined}
+                        tone={themeBreakoutUnsupported ? "warning" : "neutral"}
+                        testId="stock-analysis-theme-leader-empty"
+                        title={themeBreakoutBlockerText ?? "当前无题材突破 Leader"}
+                      />
                     ) : (
                       <div className="stock-analysis-page__table-wrap">
                         <table className="stock-analysis-page__table stock-analysis-page__table--dense stock-analysis-page__theme-leaders-table">
@@ -3306,9 +3445,15 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>板块结构</p>
                         <h2 className={SA_CARD_TITLE}>各板块权重股表现</h2>
-                        <p className={SA_SECTION_DESC}>
-                          各强势板块内按当日换手前列的成分股；非指数权重口径，策略池样本作补充。
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="权重股样本状态">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <BarChartOutlined aria-hidden="true" /> Top {sectorHeavyweightPreview?.sectorLimit ?? 0}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <StockOutlined aria-hidden="true" /> 样本{" "}
+                            {sectorHeavyweightPreview?.totalSampleCount ?? 0}
+                          </span>
+                        </div>
                       </div>
                       <span className={SA_PILL}>
                         {sectorHeavyweightPreview
@@ -3320,21 +3465,34 @@ export default function StockAnalysisPage() {
                     </div>
 
                     {!sectorHeavyweightPreview || sectorHeavyweightPreview.rows.length === 0 ? (
-                      <p className="stock-analysis-page__empty">板块强弱数据未就绪，暂无法展示权重股表现。</p>
+                      <CompactStatusTile
+                        icon={<BarChartOutlined />}
+                        label="板块强弱"
+                        value="未就绪"
+                        tone="warning"
+                        testId="stock-analysis-sector-heavyweight-empty"
+                      />
                     ) : sectorHeavyweightRows.length === 0 ? (
-                      <p className="stock-analysis-page__empty">
-                        Top {sectorHeavyweightPreview.sectorLimit} 强势板块中，策略/题材观察池暂无命中样本。
-                      </p>
+                      <CompactStatusTile
+                        icon={<StockOutlined />}
+                        label={`Top ${sectorHeavyweightPreview.sectorLimit}`}
+                        value="0 命中"
+                        testId="stock-analysis-sector-heavyweight-empty"
+                      />
                     ) : (
                       <>
                         {sectorHeavyweightPreview.uncoveredSectorCount > 0 ? (
-                          <p
-                            className="stock-analysis-page__notice stock-analysis-page__sector-heavyweight-coverage"
+                          <div
+                            className="mb-2 inline-flex items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-2.5 py-1.5 text-xs font-semibold text-warning-700 stock-analysis-page__sector-heavyweight-coverage"
                             data-testid="stock-analysis-sector-heavyweight-coverage"
+                            role="status"
+                            aria-label={`权重股样本缺口 ${sectorHeavyweightPreview.uncoveredSectorCount}`}
                           >
-                            Top {sectorHeavyweightPreview.sectorLimit} 板块里，有{" "}
-                            {sectorHeavyweightPreview.uncoveredSectorCount} 个暂无成分/策略样本，故不展示空卡片。
-                          </p>
+                            <StatusIcon tone="warning">
+                              <DatabaseOutlined />
+                            </StatusIcon>
+                            缺口 {sectorHeavyweightPreview.uncoveredSectorCount}
+                          </div>
                         ) : null}
                         <div className="stock-analysis-page__sector-heavyweight-grid">
                           {sectorHeavyweightRows.map((sector) => (
@@ -3432,13 +3590,18 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>深度回测</p>
                         <h2 className={SA_CARD_TITLE}>历史共振 / 策略优先级 / 优化诊断</h2>
-                        <p className={SA_SECTION_DESC}>
-                          默认展示完整共振列表；切换 Tab 按需加载回测与优化结果。
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="回测诊断状态">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <ThunderboltOutlined aria-hidden="true" /> 共振 {consensusHitCount}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+                            <LineChartOutlined aria-hidden="true" /> 诊断{" "}
+                            {firstScreenAnalyticsRequested ? "已载入" : "待查"}
+                          </span>
+                        </div>
                       </div>
                       <span className={SA_PILL}>
-                        共振 {consensusSummary.items.filter((item) => item.consensusCount >= 2).length} · 去重{" "}
-                        {consensusSummary.totalUnion}
+                        共振 {consensusHitCount} · 去重 {consensusSummary.totalUnion}
                       </span>
                     </div>
 
@@ -3525,9 +3688,12 @@ export default function StockAnalysisPage() {
                           key: "priority",
                           label: "策略优先级",
                           children: !firstScreenAnalyticsRequested ? (
-                            <p className="stock-analysis-page__empty">
-                              切换到此 Tab 将加载当前市场策略优先级回测。
-                            </p>
+                            <CompactStatusTile
+                              icon={<LineChartOutlined />}
+                              label="策略优先级"
+                              value="待查"
+                              testId="stock-analysis-priority-deferred"
+                            />
                           ) : strategyScoreQuery.isLoading ? (
                             <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
                           ) : strategyScoreQuery.isError ? (
@@ -3582,7 +3748,12 @@ export default function StockAnalysisPage() {
                           key: "optimization",
                           label: "优化诊断",
                           children: !firstScreenAnalyticsRequested ? (
-                            <p className="stock-analysis-page__empty">切换到此 Tab 将加载优化诊断回测。</p>
+                            <CompactStatusTile
+                              icon={<SafetyCertificateOutlined />}
+                              label="优化诊断"
+                              value="待查"
+                              testId="stock-analysis-optimization-deferred"
+                            />
                           ) : strategyOptimizationQuery.isLoading ? (
                             <p className="stock-analysis-page__empty">优化诊断加载中。</p>
                           ) : strategyOptimizationQuery.isError ? (
@@ -3771,9 +3942,17 @@ export default function StockAnalysisPage() {
                         </div>
                       </div>
                     </div>
-                    <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
-                      单日截面 · 点击行业筛选候选
-                    </p>
+                    <div
+                      className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-semibold text-neutral-600"
+                      aria-label="板块筛选状态"
+                    >
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1">
+                        <ClockCircleOutlined aria-hidden="true" /> 单日截面
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1">
+                        <BarChartOutlined aria-hidden="true" /> 行业筛选
+                      </span>
+                    </div>
 
                     <Collapse
                       bordered={false}
@@ -3924,7 +4103,12 @@ export default function StockAnalysisPage() {
                               {!sectorRankSeriesQuery.isFetching &&
                               !sectorRankSeriesQuery.isError &&
                               sectorRankSeriesQuery.data?.result?.state === "missing" ? (
-                                <Text type="secondary">暂无多日窗口可用数据。</Text>
+                                <CompactStatusTile
+                                  icon={<BarChartOutlined />}
+                                  label="多日窗口"
+                                  value="无数据"
+                                  testId="stock-analysis-sector-series-empty"
+                                />
                               ) : null}
                               {!sectorRankSeriesQuery.isFetching &&
                               !sectorRankSeriesQuery.isError &&
@@ -4501,9 +4685,12 @@ export default function StockAnalysisPage() {
                           </div>
                         </>
                       ) : (
-                        <p className="stock-analysis-page__footnote">
-                          候选历史组合回测暂无可用样本，完整策略仍处于待验证状态。
-                        </p>
+                        <CompactStatusTile
+                          icon={<LineChartOutlined />}
+                          label="组合回测"
+                          value="样本不足"
+                          testId="stock-analysis-portfolio-backtest-empty"
+                        />
                       )
                     ) : null}
                   </div>
@@ -4554,9 +4741,12 @@ export default function StockAnalysisPage() {
                           </div>
                         </>
                       ) : (
-                        <p className="stock-analysis-page__footnote">
-                          代理回测暂无可用样本，完整策略仍处于待验证状态。
-                        </p>
+                        <CompactStatusTile
+                          icon={<LineChartOutlined />}
+                          label="代理回测"
+                          value="样本不足"
+                          testId="stock-analysis-cycle-proxy-empty"
+                        />
                       )
                     ) : null}
                   </div>
@@ -5292,15 +5482,32 @@ export default function StockAnalysisPage() {
                     <span className={SA_PILL}>条件触发</span>
                   </div>
                           {gateState && !meanReversionMarketActive ? (
-                            <p className="stock-analysis-page__empty">当前门控不适合超跌反弹，观察池暂停。</p>
+                            <CompactStatusTile
+                              icon={<FireOutlined />}
+                              label="超跌"
+                              value="暂停"
+                              tone="warning"
+                              testId="stock-analysis-mean-reversion-empty"
+                            />
                           ) : null}
                           {meanReversionMarketActive && !meanReversionPayload ? (
-                            <p className="stock-analysis-page__empty">数据未就绪。</p>
+                            <CompactStatusTile
+                              icon={<FireOutlined />}
+                              label="超跌"
+                              value="未就绪"
+                              tone="warning"
+                              testId="stock-analysis-mean-reversion-empty"
+                            />
                           ) : null}
                           {meanReversionMarketActive &&
                           meanReversionPayload &&
                           meanReversionPayload.items.length === 0 ? (
-                            <p className="stock-analysis-page__empty">当前无符合条件的超跌反弹候选股。</p>
+                            <CompactStatusTile
+                              icon={<FireOutlined />}
+                              label="超跌"
+                              value="0 候选"
+                              testId="stock-analysis-mean-reversion-empty"
+                            />
                           ) : null}
                           {meanReversionMarketActive &&
                           meanReversionPayload &&
@@ -5378,9 +5585,20 @@ export default function StockAnalysisPage() {
                     </span>
                   </div>
                           {!factorScreenPayload ? (
-                            <p className="stock-analysis-page__empty">因子数据未就绪。</p>
+                            <CompactStatusTile
+                              icon={<DatabaseOutlined />}
+                              label="多因子"
+                              value="未就绪"
+                              tone="warning"
+                              testId="stock-analysis-factor-screen-empty"
+                            />
                           ) : factorScreenPayload.items.length === 0 ? (
-                            <p className="stock-analysis-page__empty">当前无符合条件的多因子候选股。</p>
+                            <CompactStatusTile
+                              icon={<DatabaseOutlined />}
+                              label="多因子"
+                              value="0 候选"
+                              testId="stock-analysis-factor-screen-empty"
+                            />
                           ) : (
                             <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                               {factorScreenPayload.items.map((row) => (
@@ -5494,7 +5712,12 @@ export default function StockAnalysisPage() {
                     </table>
                   </div>
                         ) : (
-                  <p className="stock-analysis-page__empty">暂无关键事件，继续以只读证据复核。</p>
+                  <CompactStatusTile
+                    icon={<FireOutlined />}
+                    label="关键事件"
+                    value="0"
+                    testId="stock-analysis-events-empty"
+                  />
                 )}
               </StrategyModuleCard>
               </div>

@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../app/providers";
 import { createApiClient } from "../api/client";
-import type { ApiEnvelope, LivermoreCandidateHistoryRow, LivermoreStockDetailPayload } from "../api/contracts";
+import type {
+  ApiEnvelope,
+  ApiQuality,
+  LivermoreCandidateHistoryRow,
+  LivermoreStockDetailPayload,
+  ResultMeta,
+} from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
 
@@ -14,7 +20,17 @@ vi.mock("../components/charts/BaseChart", () => ({
   },
 }));
 
-function buildStockDetailEnvelope(overrides: { factor?: { pe: number | null } } = {}): ApiEnvelope<LivermoreStockDetailPayload> {
+function buildStockDetailEnvelope(
+  overrides: {
+    factor?: { pe: number | null };
+    meta?: {
+      source_version?: string;
+      rule_version?: string;
+      quality_flag?: ApiQuality;
+      vendor_status?: ResultMeta["vendor_status"];
+    };
+  } = {},
+): ApiEnvelope<LivermoreStockDetailPayload> {
   return buildMockApiEnvelope(
     "market_data.livermore.stock_detail",
     {
@@ -45,10 +61,10 @@ function buildStockDetailEnvelope(overrides: { factor?: { pe: number | null } } 
     },
     {
       basis: "analytical",
-      source_version: "sv_test",
-      rule_version: "rv_test",
-      quality_flag: "ok",
-      vendor_status: "ok",
+      source_version: overrides.meta?.source_version ?? "sv_test",
+      rule_version: overrides.meta?.rule_version ?? "rv_test",
+      quality_flag: overrides.meta?.quality_flag ?? "ok",
+      vendor_status: overrides.meta?.vendor_status ?? "ok",
     },
   );
 }
@@ -92,7 +108,15 @@ describe("StockDetailDrawer", () => {
     expect(await screen.findByTestId("stock-detail-chart")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factors")).toBeInTheDocument();
     expect(screen.getByTestId("stock-detail-factor-pe")).toHaveTextContent("9.70");
-    expect(screen.getByTestId("stock-detail-footer-meta")).toHaveTextContent("sv_test");
+    const footerMeta = screen.getByTestId("stock-detail-footer-meta");
+    expect(footerMeta).toHaveTextContent("来源版本 sv_test");
+    expect(footerMeta).toHaveTextContent("规则版本 rv_test");
+    expect(footerMeta).toHaveTextContent("质量 正常");
+    expect(footerMeta).toHaveTextContent("通道 正常");
+    expect(footerMeta).not.toHaveTextContent("source_version");
+    expect(footerMeta).not.toHaveTextContent("rule_version");
+    expect(footerMeta).not.toHaveTextContent("quality_flag");
+    expect(footerMeta).not.toHaveTextContent("vendor_status");
     await waitFor(() =>
       expect(newsSpy).toHaveBeenCalledWith({
         limit: 10,
@@ -101,6 +125,34 @@ describe("StockDetailDrawer", () => {
       }),
     );
     expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("按股票代码匹配");
+  });
+
+  it("localizes stock detail footer governance statuses", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        meta: {
+          source_version: "sv_live",
+          rule_version: "rv_live",
+          quality_flag: "warning",
+          vendor_status: "vendor_stale",
+        },
+      }),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    const footerMeta = await screen.findByTestId("stock-detail-footer-meta");
+    expect(footerMeta).toHaveTextContent("来源版本 sv_live");
+    expect(footerMeta).toHaveTextContent("规则版本 rv_live");
+    expect(footerMeta).toHaveTextContent("质量 需复核");
+    expect(footerMeta).toHaveTextContent("通道 供数陈旧");
+    expect(footerMeta).not.toHaveTextContent("warning");
+    expect(footerMeta).not.toHaveTextContent("vendor_stale");
   });
 
   it("shows the review context that opened the drawer", async () => {

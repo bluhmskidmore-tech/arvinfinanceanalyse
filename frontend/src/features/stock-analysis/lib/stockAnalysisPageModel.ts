@@ -721,6 +721,9 @@ export function localizeStockBackendText(
   if (lower.includes("concept membership table pending")) {
     return "概念归属表待确认。";
   }
+  if (lower.includes("theme breakout execution is paused") && lower.includes("overheat")) {
+    return "市场过热门控下暂停题材观察；历史回放显示该桶拖累。";
+  }
   if (lower.includes("market gate is available") && lower.includes("pmi") && lower.includes("credit impulse")) {
     return "市场门控已接入，PMI 与信用脉冲待补。";
   }

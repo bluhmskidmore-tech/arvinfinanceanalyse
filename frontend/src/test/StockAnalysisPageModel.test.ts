@@ -1521,6 +1521,33 @@ describe("stockAnalysisPageModel", () => {
     expect(events.map((event) => event.detail).join(" ")).not.toContain("concept membership table pending");
   });
 
+  it("localizes real theme breakout overheat blocker in event details", () => {
+    const reason = "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.";
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      unsupported_outputs: [
+        {
+          key: "theme_breakout",
+          reason,
+        },
+      ],
+    };
+
+    const events = buildStockAnalysisEventMonitorRows(payload, confluencePayload);
+    const themeBlocker = events.find((event) => event.key === "unsupported:theme_breakout");
+    const summary = buildThemeBreakoutPanelSummary({
+      payload,
+      cards: buildThemeBreakoutCards(payload),
+      reviewCount: 0,
+      unsupportedReason: reason,
+    });
+
+    expect(themeBlocker?.detail).toContain("市场过热门控下暂停题材观察");
+    expect(themeBlocker?.detail).toContain("历史回放显示该桶拖累");
+    expect(summary.detail).toContain("市场过热门控下暂停题材执行观察");
+    expect(`${themeBlocker?.detail} ${summary.detail}`).not.toContain("Theme breakout execution is paused");
+  });
+
   it("builds consensus review panel summary for empty resonance", () => {
     const summary = buildConsensusReviewPanelSummary(
       buildConsensusSummary({

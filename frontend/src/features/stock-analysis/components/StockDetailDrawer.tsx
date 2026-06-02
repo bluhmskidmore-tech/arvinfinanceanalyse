@@ -95,6 +95,29 @@ function formatDividendYield(value: number | null): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+const stockDetailMetaPendingLabel = "待确认";
+const stockDetailMetaQualityLabels: Record<string, string> = {
+  ok: "正常",
+  warning: "需复核",
+  stale: "陈旧",
+  missing: "缺失",
+  error: "异常",
+  pending: stockDetailMetaPendingLabel,
+};
+const stockDetailMetaVendorLabels: Record<string, string> = {
+  ok: "正常",
+  degraded: "降级",
+  vendor_stale: "供数陈旧",
+  vendor_unavailable: "通道不可用",
+  error: "异常",
+  pending: stockDetailMetaPendingLabel,
+};
+
+function stockDetailMetaLabel(value: string | null | undefined, labels: Record<string, string>) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return labels[normalized] ?? value ?? stockDetailMetaPendingLabel;
+}
+
 export type StockDetailDrawerProps = {
   stockCode: string | null;
   stockName?: string;
@@ -152,6 +175,7 @@ function candidateHistorySignalLabel(value: string | null | undefined): string {
 export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContext, onClose }: StockDetailDrawerProps) {
   const client = useApiClient();
   const [lookback, setLookback] = useState<number>(60);
+  const [drawerLayoutReady, setDrawerLayoutReady] = useState(false);
 
   const open = stockCode != null && stockCode.trim() !== "";
   const stockCodeForQuery = stockCode?.trim() || undefined;
@@ -204,6 +228,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
       width={720}
       open={open}
       onClose={onClose}
+      afterOpenChange={setDrawerLayoutReady}
       destroyOnClose
       className="stock-detail-drawer"
       data-testid="stock-detail-drawer"
@@ -311,7 +336,11 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
           {!detailQuery.isError ? (
             <section className="stock-detail-drawer__chart" aria-label="K 线与成交量" data-testid="stock-detail-chart">
               <Text strong>价格与成交量（复核）</Text>
-              <BaseChart option={chartOption} height={360} loading={detailQuery.isLoading} />
+              {drawerLayoutReady ? (
+                <BaseChart option={chartOption} height={360} loading={detailQuery.isLoading} />
+              ) : (
+                <p className="stock-detail-drawer__loading">图表布局准备中…</p>
+              )}
             </section>
           ) : null}
 
@@ -469,8 +498,10 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
           {!detailQuery.isError && meta ? (
             <footer className="stock-detail-drawer__footer-meta" data-testid="stock-detail-footer-meta">
               <Text type="secondary">
-                source_version {meta.source_version} · rule_version {meta.rule_version} · quality_flag{" "}
-                {meta.quality_flag} · vendor_status {meta.vendor_status}
+                来源版本 {meta.source_version ?? stockDetailMetaPendingLabel} · 规则版本{" "}
+                {meta.rule_version ?? stockDetailMetaPendingLabel} · 质量{" "}
+                {stockDetailMetaLabel(meta.quality_flag, stockDetailMetaQualityLabels)} · 通道{" "}
+                {stockDetailMetaLabel(meta.vendor_status, stockDetailMetaVendorLabels)}
               </Text>
             </footer>
           ) : null}
