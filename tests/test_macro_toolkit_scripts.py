@@ -465,6 +465,78 @@ def test_crowding_script_reads_system_cffex_cache_for_latest_snapshot(tmp_path, 
     assert "历史样本不足" in str(latest.iloc[0]["说明"])
 
 
+def test_signal_aggregator_dates_final_signal_to_latest_input_snapshot(monkeypatch) -> None:
+    script = get_toolkit_script("signal_aggregator")
+    spec = importlib.util.spec_from_file_location("_legacy_signal_aggregator", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 6, 2, 15, 30, tzinfo=tz)
+
+    monkeypatch.setattr(legacy, "datetime", _FrozenDateTime)
+
+    basis_df = pd.DataFrame(
+        [
+            {
+                "品种": "TF",
+                "日期": "2026-06-01",
+                "安全边际_空": True,
+                "安全边际说明": "net basis high",
+            }
+        ]
+    )
+    crowding_df = pd.DataFrame(
+        [
+            {
+                "品种": "TF",
+                "日期": "2026-06-01",
+                "拥挤度信号": "中性",
+                "C分位数": 0.5,
+                "说明": "neutral",
+            }
+        ]
+    )
+
+    result = legacy.run_three_layer_filter(
+        "TF",
+        {"bond_direction": "空", "regime": "hot"},
+        basis_df,
+        crowding_df,
+        {"score": 0.0, "status": "normal"},
+    )
+
+    assert result["日期"] == "2026-06-01"
+
+
+def test_signal_aggregator_uses_merrill_snapshot_date_when_filters_are_missing(monkeypatch) -> None:
+    script = get_toolkit_script("signal_aggregator")
+    spec = importlib.util.spec_from_file_location("_legacy_signal_aggregator_merrill_date", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 6, 2, 15, 30, tzinfo=tz)
+
+    monkeypatch.setattr(legacy, "datetime", _FrozenDateTime)
+
+    result = legacy.run_three_layer_filter(
+        "TF",
+        {"日期": "2026-05", "bond_direction": "空", "regime": "hot"},
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {"score": 0.0, "status": "normal"},
+    )
+
+    assert result["日期"] == "2026-05-01"
+
+
 def test_macro_toolkit_api_exposes_frontend_payload() -> None:
     app = FastAPI()
     app.include_router(macro_toolkit_router)

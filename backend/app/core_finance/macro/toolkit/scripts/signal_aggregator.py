@@ -50,6 +50,7 @@ def load_merrill() -> dict:
 
     row = df.iloc[-1]
     return {
+        '日期':           row.get('日期'),
         'bond_direction': str(row.get('bond_direction', '观望')).strip(),
         'bond_note':      str(row.get('bond_note', '')).strip(),
         'growth':         row.get('增长动量', 0),
@@ -94,6 +95,7 @@ def load_crisis() -> dict:
 
     row = df.iloc[-1]
     return {
+        '日期':   row.get('日期'),
         'score':  float(row.get('Crisis Score', 0)),
         'status': str(row.get('市场状态', '正常')).strip(),
     }
@@ -132,6 +134,32 @@ def load_technical_signals() -> pd.DataFrame:
 # 凯利公式仓位计算
 # ============================================================
 
+def latest_input_snapshot_date(*inputs) -> str | None:
+    """Return the latest business date carried by upstream strategy inputs."""
+    dates = []
+    date_columns = ('日期', 'date', 'trade_date', 'as_of_date')
+    for item in inputs:
+        if item is None:
+            continue
+        if isinstance(item, pd.DataFrame):
+            if item.empty:
+                continue
+            date_col = next((col for col in date_columns if col in item.columns), None)
+            if not date_col:
+                continue
+            candidates = item[date_col]
+        elif isinstance(item, dict):
+            candidates = [item.get(col) for col in date_columns if item.get(col) not in (None, '')]
+            if not candidates:
+                continue
+        else:
+            continue
+        parsed = pd.to_datetime(candidates, errors='coerce').dropna()
+        if not parsed.empty:
+            dates.append(parsed.max().date().isoformat())
+    return max(dates) if dates else None
+
+
 def kelly_position(win_rate: float, win_loss_ratio: float,
                    half_kelly: bool = True) -> float:
     """
@@ -166,6 +194,7 @@ def run_three_layer_filter(
     basis_df: pd.DataFrame,
     crowding_df: pd.DataFrame,
     crisis: dict,
+    signal_date: str | None = None,
 ) -> dict:
     """
     对单个品种执行三层过滤，返回最终信号字典
@@ -174,7 +203,7 @@ def run_three_layer_filter(
     """
     result = {
         '品种':       symbol,
-        '日期':       datetime.now().strftime('%Y-%m-%d'),
+        '日期':       signal_date or latest_input_snapshot_date(merrill, basis_df, crowding_df, crisis) or datetime.now().strftime('%Y-%m-%d'),
         '第一层_方向': '',
         '第一层_通过': False,
         '第二层_通过': False,
@@ -313,6 +342,7 @@ def main():
     crisis      = load_crisis()
     regime      = load_regime()
     tech_df     = load_technical_signals()
+    signal_date = latest_input_snapshot_date(merrill, basis_df, crowding_df, crisis, tech_df)
 
     print(f"  美林时钟方向: {merrill['bond_direction']}  ({merrill.get('bond_note', '')})")
     print(f"  Crisis Score: {crisis['score']:.3f}  ({crisis['status']})")
@@ -326,7 +356,7 @@ def main():
 
     print("\n[过滤] 执行三层过滤...")
     for sym in symbols:
-        r = run_three_layer_filter(sym, merrill, basis_df, crowding_df, crisis)
+        r = run_three_layer_filter(sym, merrill, basis_df, crowding_df, crisis, signal_date=signal_date)
         rows.append(r)
 
         status = "✓ 开仓" if r['最终信号'] != '空仓' else "✗ 空仓"
