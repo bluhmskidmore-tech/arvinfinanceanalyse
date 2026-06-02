@@ -1191,12 +1191,14 @@ describe("StockAnalysisPage", () => {
   it("scopes shell compression to the stock-analysis route", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
 
-    expect(css).toContain("@media (min-width: 901px)");
+    expect(css).toContain("@media (min-width: 721px)");
     expect(css).toContain(
       '.workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"])',
     );
     expect(css).toContain('[data-testid="workbench-section-subnav"]');
     expect(css).toContain('[data-testid="workbench-governance-banner"]');
+    expect(css).toContain(".stock-analysis-page__dh-topbar");
+    expect(css).toContain("background: transparent");
   });
 
   it("keeps the stock-analysis toolbar title from breaking on tablet width", () => {
