@@ -1,4 +1,4 @@
-import { Button, Card, Tabs } from "antd";
+import { Button, Card, Segmented } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
@@ -75,11 +75,14 @@ export function AssetStructurePie({
       styles={{ body: { minHeight: 320 } }}
       style={{ borderRadius: 8 }}
     >
-      <Tabs
+      <Segmented
         size="small"
-        activeKey={groupBy}
-        onChange={(k) => onGroupByChange(k as AssetGroupBy)}
-        items={TAB_ITEMS.map((t) => ({ key: t.key, label: t.label }))}
+        block
+        value={groupBy}
+        aria-label="bond-dashboard-asset-group"
+        onChange={(value) => onGroupByChange(value as AssetGroupBy)}
+        options={TAB_ITEMS.map((t) => ({ value: t.key, label: t.label }))}
+        style={{ marginBottom: 12 }}
       />
       <div style={{ position: "relative", height: 280 }}>
         <ReactECharts option={option} style={{ height: 280 }} notMerge lazyUpdate />

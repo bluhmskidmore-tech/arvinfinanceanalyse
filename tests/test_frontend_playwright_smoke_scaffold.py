@@ -13,13 +13,18 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
 
     config_text = config_path.read_text(encoding="utf-8")
     assert "../.codex-tmp/playwright-results" in config_text
-    assert 'baseURL: process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5888"' in config_text
+    assert 'const playwrightPort = process.env.MOSS_PLAYWRIGHT_PORT ?? "5888"' in config_text
+    assert 'process.env.MOSS_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${playwrightPort}`' in config_text
+    assert "baseURL: playwrightBaseURL" in config_text
     assert 'process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"' in config_text
-    assert "npm run dev -- --host 127.0.0.1 --port 5888" in config_text
+    assert "npm run dev -- --host 127.0.0.1 --port ${playwrightPort}" in config_text
+    assert 'VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "mock"' in config_text
 
     spec_text = spec_path.read_text(encoding="utf-8")
     assert "@axe-core/playwright" in spec_text
     assert 'test.skip(!serverCheck.ok, serverCheck.reason);' in spec_text
+    assert 'waitUntil: "domcontentloaded"' in spec_text
+    assert 'toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 })' in spec_text
     assert "page.screenshot({" in spec_text
     assert "fullPage: smokePage.screenshotFullPage ?? true" in spec_text
     assert "violations.filter((violation) => violation.impact === \"critical\")" in spec_text

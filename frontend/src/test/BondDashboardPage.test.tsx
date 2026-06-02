@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
+import { AssetStructurePie } from "../features/bond-dashboard/components/AssetStructurePie";
 import { CreditRatingBlocks } from "../features/bond-dashboard/components/CreditRatingBlocks";
 import { IndustryTable } from "../features/bond-dashboard/components/IndustryTable";
 import { MaturityStructureChart } from "../features/bond-dashboard/components/MaturityStructureChart";
@@ -360,6 +361,32 @@ describe("BondDashboardPage", () => {
     );
 
     expect(screen.getByText("0.50")).toBeInTheDocument();
+  });
+
+  it("uses a segmented asset-structure group control without Ant Tabs overflow controls", () => {
+    const onGroupByChange = vi.fn();
+    const { container } = render(
+      <AssetStructurePie
+        loading={false}
+        groupBy="bond_type"
+        onGroupByChange={onGroupByChange}
+        data={{
+          report_date: "2026-04-30",
+          group_by: "bond_type",
+          total_market_value: yuan(200),
+          items: [{ category: "Rate", total_market_value: yuan(200), bond_count: 1, percentage: pct(1) }],
+        }}
+      />,
+    );
+
+    expect(container.querySelector(".ant-tabs-nav")).toBeNull();
+    expect(container.querySelector(".ant-tabs-nav-more")).toBeNull();
+
+    const groupOptions = container.querySelectorAll(".ant-segmented-item");
+    expect(groupOptions).toHaveLength(4);
+    fireEvent.click(groupOptions[1]);
+
+    expect(onGroupByChange).toHaveBeenCalledWith("rating");
   });
 
   it("passes percent-point data to the maturity structure line chart", () => {

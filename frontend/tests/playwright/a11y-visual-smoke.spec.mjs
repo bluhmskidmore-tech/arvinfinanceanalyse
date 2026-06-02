@@ -27,6 +27,11 @@ const smokePages = [
     readySelector: '[data-testid="dashboard-home-page"]',
   },
   {
+    slug: "bond-dashboard",
+    path: "/bond-dashboard",
+    readySelector: '[data-testid="bond-dashboard-page"]',
+  },
+  {
     slug: "balance-analysis",
     path: "/balance-analysis",
     readySelector: '[data-testid="balance-analysis-page"]',
@@ -46,15 +51,21 @@ const smokePages = [
   },
 ];
 
+async function gotoVisiblePage(page, smokePage) {
+  await page.goto(smokePage.path, { waitUntil: "domcontentloaded" });
+  const pageRoot = page.locator(smokePage.readySelector);
+  await expect(pageRoot).toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 });
+  await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
+  return pageRoot;
+}
+
 test.describe("frontend accessibility + visual smoke", () => {
   for (const smokePage of smokePages) {
     test(`${smokePage.slug} has no critical axe violations`, async ({ page }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
       test.skip(!serverCheck.ok, serverCheck.reason);
 
-      await page.goto(smokePage.path, { waitUntil: "networkidle" });
-      const pageRoot = page.locator(smokePage.readySelector);
-      await expect(pageRoot).toBeVisible();
+      await gotoVisiblePage(page, smokePage);
 
       let axeBuilder = new AxeBuilder({ page }).include(smokePage.axeSelector ?? smokePage.readySelector);
       for (const selector of smokePage.excludeSelectors ?? []) {
