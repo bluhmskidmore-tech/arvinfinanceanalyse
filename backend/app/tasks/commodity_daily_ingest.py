@@ -224,17 +224,24 @@ def _row_tuple(row: dict[str, object]) -> tuple[object, ...]:
 
 
 def _parse_products_arg(value: str | None) -> tuple[str, ...] | None:
-    if not value:
+    if value is None:
         return None
     parsed = tuple(item.strip().upper() for item in value.split(",") if item.strip())
-    return parsed or None
+    return parsed
 
 
 def _select_products(products: tuple[str, ...] | None) -> tuple[CommodityProductSpec, ...]:
-    if not products:
+    if products is None:
         return COMMODITY_PRODUCTS
     requested = {str(item).strip().upper() for item in products if str(item).strip()}
-    return tuple(spec for spec in COMMODITY_PRODUCTS if spec.product_code.upper() in requested)
+    if not requested:
+        raise ValueError("At least one commodity product is required.")
+    selected = tuple(spec for spec in COMMODITY_PRODUCTS if spec.product_code.upper() in requested)
+    selected_codes = {spec.product_code.upper() for spec in selected}
+    unknown = tuple(sorted(requested - selected_codes))
+    if unknown:
+        raise ValueError(f"Unknown commodity product: {', '.join(unknown)}.")
+    return selected
 
 
 def _build_row(
@@ -268,6 +275,34 @@ def _build_row(
         "vendor_version": vendor_version,
         "rule_version": RULE_VERSION,
     }
+
+
+def _commodity_product_series_id(product_code: object) -> str:
+    normalized = str(product_code or "").strip().upper()
+    if normalized == "NHCI":
+        return "NHCI.NH"
+    if normalized == "NHII":
+        return "NHII.NH"
+    public_macro_ids = {
+        "CU": "CA.COPPER",
+        "AL": "CA.ALUMINUM",
+    }
+    if normalized in public_macro_ids:
+        return public_macro_ids[normalized]
+    return f"COMMODITY.{normalized}" if normalized else "COMMODITY.UNKNOWN"
+
+
+def _latest_product_observation(rows: list[dict[str, object]]) -> dict[str, object]:
+    if not rows:
+        return {}
+    latest = max(rows, key=lambda row: str(row.get("trade_date") or ""))
+    summary: dict[str, object] = {
+        "latest_date": str(latest.get("trade_date") or ""),
+        "series_id": _commodity_product_series_id(latest.get("product_code")),
+    }
+    if latest.get("close_value") is not None:
+        summary["latest_value"] = latest["close_value"]
+    return summary
 
 
 def _fetch_tushare_index_rows(
@@ -548,6 +583,7 @@ def run_commodity_daily_ingest(
                     "kind": spec.kind,
                     "tushare_ts_code": spec.tushare_ts_code,
                     "akshare_symbol": spec.akshare_symbol,
+                    "series_id": _commodity_product_series_id(spec.product_code),
                     "estimated_rows": len(estimated_trade_dates),
                     "vendor": "estimate_only",
                 }
@@ -590,6 +626,8 @@ def run_commodity_daily_ingest(
                         "name_zh": spec.name_zh,
                         "row_count": written,
                         "vendor": vendor,
+                        **_latest_product_observation(rows),
+                        "series_id": _commodity_product_series_id(spec.product_code),
                     }
                 )
                 total_rows += written

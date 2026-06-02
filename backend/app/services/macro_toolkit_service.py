@@ -305,6 +305,22 @@ def build_choice_stock_refresh_permission_payload(auth: AuthContext | None = Non
     }
 
 
+def build_commodity_futures_refresh_permission_payload(
+    auth: AuthContext | None = None,
+    *,
+    allowed: bool | None = None,
+) -> dict[str, object]:
+    return {
+        "mode": "scoped_refresh",
+        "allowed": allowed,
+        "user_id": auth.user_id if auth else None,
+        "role": auth.role if auth else None,
+        "identity_source": auth.identity_source if auth else None,
+        "resource": "macro_toolkit.commodity_futures",
+        "actions": ["dry_run", "refresh"],
+    }
+
+
 def default_choice_stock_refresh_as_of_date(duckdb_path: str | Path) -> str:
     path = Path(duckdb_path)
     if path.exists():

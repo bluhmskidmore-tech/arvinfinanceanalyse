@@ -268,7 +268,9 @@ class CommodityFuturesRefreshRequest(BaseModel):
 
 
 @router.get("/scripts")
-def macro_toolkit_scripts() -> dict[str, object]:
+def macro_toolkit_scripts(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
     settings = get_settings()
     scripts = [_script_payload(script) for script in iter_toolkit_scripts()]
     source_checks = _source_checks(settings.duckdb_path)
@@ -277,6 +279,7 @@ def macro_toolkit_scripts() -> dict[str, object]:
         settings.duckdb_path,
         reference_date=_latest_source_check_date(source_checks),
     )
+    commodity_permission = _commodity_futures_refresh_permission_payload(auth, settings=settings)
     return _envelope(
         "macro_toolkit.scripts",
         {
@@ -298,6 +301,9 @@ def macro_toolkit_scripts() -> dict[str, object]:
                 settings.governance_path,
                 reference_date=_latest_source_check_date(source_checks),
             ),
+            "commodity_futures_refresh": {
+                "permission": commodity_permission,
+            },
             "warnings": _script_warnings(cffex_status),
         },
     )
@@ -596,6 +602,7 @@ def macro_toolkit_refresh_commodity_futures(
     refresh_request = request or CommodityFuturesRefreshRequest()
     settings = get_settings()
     _ensure_commodity_futures_refresh_allowed(auth, settings)
+    permission = _commodity_futures_refresh_permission_payload(auth, allowed=True)
     end_date = refresh_request.end_date or date.today().isoformat()
     start_date = refresh_request.start_date or _default_source_backfill_start_date(end_date)
     products = _macro_commodity_refresh_products(refresh_request.products)
@@ -612,9 +619,16 @@ def macro_toolkit_refresh_commodity_futures(
     if not refresh_request.dry_run:
         market_home_response_cache.invalidate()
     status = str(refresh.get("status") or "")
+    refresh_payload = {**refresh, "permission": permission}
     return _envelope(
         "macro_toolkit.commodity_futures_refresh",
-        {"refresh": refresh},
+        {
+            "refresh": refresh_payload,
+            "commodity_futures_refresh": {
+                "permission": permission,
+                "refresh": refresh_payload,
+            },
+        },
         quality_flag="ok" if status in {"completed", "dry_run"} else "warning",
         fallback_mode="none",
         as_of_date=str(refresh.get("end_date") or end_date),
@@ -946,6 +960,37 @@ def _latest_choice_stock_inflight_refresh(
 
 def _choice_stock_refresh_permission_payload(auth: AuthContext | None = None) -> dict[str, object]:
     return macro_toolkit_service.build_choice_stock_refresh_permission_payload(auth)
+
+
+def _commodity_futures_refresh_permission_payload(
+    auth: AuthContext | None = None,
+    *,
+    settings: object | None = None,
+    allowed: bool | None = None,
+) -> dict[str, object]:
+    resolved_allowed = allowed
+    if (
+        resolved_allowed is None
+        and auth is not None
+        and settings is not None
+        and auth.identity_source != "fallback"
+    ):
+        try:
+            ensure_user_allowed(
+                auth=auth,
+                settings=settings,
+                resource="macro_toolkit.commodity_futures",
+                action="refresh",
+            )
+            resolved_allowed = True
+        except PermissionError:
+            resolved_allowed = False
+        except RuntimeError:
+            resolved_allowed = None
+    return macro_toolkit_service.build_commodity_futures_refresh_permission_payload(
+        auth,
+        allowed=resolved_allowed,
+    )
 
 
 def _choice_stock_refresh_overview(

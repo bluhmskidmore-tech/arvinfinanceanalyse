@@ -132,6 +132,13 @@ export type MacroToolkitChoiceStockRefreshResponse = ApiEnvelope<{
   choice_stock_refresh: MacroToolkitChoiceStockRefreshStatus;
 }>;
 
+export type MacroToolkitCommodityFuturesRefreshPermission = MacroToolkitChoiceStockRefreshPermission;
+
+export type MacroToolkitCommodityFuturesRefreshStatus = {
+  permission: MacroToolkitCommodityFuturesRefreshPermission;
+  refresh?: MacroToolkitCommodityFuturesRefreshRun;
+};
+
 export type MacroToolkitPayload = {
   default_data_sources: string[];
   toolkit_root: string;
@@ -144,6 +151,7 @@ export type MacroToolkitPayload = {
   capabilities: MacroToolkitCapability[];
   cffex_member_rank?: MacroToolkitCffexMemberRankStatus;
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
+  commodity_futures_refresh?: MacroToolkitCommodityFuturesRefreshStatus;
   warnings: string[];
 };
 
@@ -554,10 +562,12 @@ export type MacroToolkitCommodityFuturesRefreshRun = {
   products?: Array<Record<string, unknown>>;
   table?: string;
   rule_version?: string;
+  permission?: MacroToolkitCommodityFuturesRefreshPermission;
 };
 
 export type MacroToolkitCommodityFuturesRefreshResponse = ApiEnvelope<{
   refresh: MacroToolkitCommodityFuturesRefreshRun;
+  commodity_futures_refresh?: MacroToolkitCommodityFuturesRefreshStatus;
 }>;
 
 export type MacroToolkitAnalysisRequest = {
@@ -1439,6 +1449,15 @@ const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
   default_factor_max_stock_count: null,
 };
 
+const MOCK_COMMODITY_FUTURES_REFRESH: MacroToolkitCommodityFuturesRefreshStatus = {
+  permission: {
+    mode: "scoped_refresh",
+    allowed: true,
+    resource: "macro_toolkit.commodity_futures",
+    actions: ["dry_run", "refresh"],
+  },
+};
+
 const MOCK_A_SHARE_RISK: MacroToolkitAShareRiskPayload = {
   trade_date: "2026-04-30",
   status: "degraded",
@@ -1805,6 +1824,7 @@ const MOCK_PAYLOAD: MacroToolkitPayload = {
     stale_days: 0,
   },
   choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
+  commodity_futures_refresh: MOCK_COMMODITY_FUTURES_REFRESH,
   warnings: [],
 };
 
@@ -1921,30 +1941,36 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         if (product === "AL") return "CA.ALUMINUM";
         return `COMMODITY.${product}`;
       };
+      const refresh: MacroToolkitCommodityFuturesRefreshRun = {
+        status: options?.dryRun ? "dry_run" : "completed",
+        dry_run: options?.dryRun ?? false,
+        start_date: options?.startDate ?? null,
+        end_date: options?.endDate ?? "2026-04-30",
+        product_count: products.length,
+        row_count: options?.dryRun ? 0 : products.length * 22,
+        estimated_total_rows: options?.dryRun ? products.length * 22 : undefined,
+        estimated_trading_days: options?.dryRun ? 22 : undefined,
+        products: products.map((product) => ({
+          product_code: product,
+          name_zh: productNames[product] ?? product,
+          row_count: options?.dryRun ? undefined : 22,
+          estimated_rows: options?.dryRun ? 22 : undefined,
+          latest_date: options?.dryRun ? undefined : options?.endDate ?? "2026-04-30",
+          latest_value: product === "NHCI" && !options?.dryRun ? 3187.42 : undefined,
+          series_id: productSeriesId(product),
+          vendor: options?.dryRun ? "estimate_only" : "tushare",
+        })),
+        table: "fact_commodity_futures_daily",
+        rule_version: "rv_commodity_daily_v1",
+        permission: MOCK_COMMODITY_FUTURES_REFRESH.permission,
+      };
       return buildMockApiEnvelope(
         "macro_toolkit.commodity_futures_refresh",
         {
-          refresh: {
-            status: options?.dryRun ? "dry_run" : "completed",
-            dry_run: options?.dryRun ?? false,
-            start_date: options?.startDate ?? null,
-            end_date: options?.endDate ?? "2026-04-30",
-            product_count: products.length,
-            row_count: options?.dryRun ? 0 : products.length * 22,
-            estimated_total_rows: options?.dryRun ? products.length * 22 : undefined,
-            estimated_trading_days: options?.dryRun ? 22 : undefined,
-            products: products.map((product) => ({
-              product_code: product,
-              name_zh: productNames[product] ?? product,
-              row_count: options?.dryRun ? undefined : 22,
-              estimated_rows: options?.dryRun ? 22 : undefined,
-              latest_date: options?.dryRun ? undefined : options?.endDate ?? "2026-04-30",
-              latest_value: product === "NHCI" && !options?.dryRun ? 3187.42 : undefined,
-              series_id: productSeriesId(product),
-              vendor: options?.dryRun ? "estimate_only" : "tushare",
-            })),
-            table: "fact_commodity_futures_daily",
-            rule_version: "rv_commodity_daily_v1",
+          refresh,
+          commodity_futures_refresh: {
+            ...MOCK_COMMODITY_FUTURES_REFRESH,
+            refresh,
           },
         },
         {

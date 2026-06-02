@@ -290,6 +290,42 @@ def test_low_crowding_scores_rank_less_crowded_names_higher() -> None:
     assert scores.loc["quiet", "low_crowding_score"] > scores.loc["hot", "low_crowding_score"]
 
 
+def test_low_crowding_scores_are_stable_for_multistock_sample() -> None:
+    dates = pd.date_range("2026-01-01", periods=25, freq="D")
+    rows: list[dict[str, object]] = []
+    for stock_code in ["quiet", "hot", "fade", "spike"]:
+        for row_no, trade_date in enumerate(dates):
+            if stock_code == "quiet":
+                close_value = 10.0 + row_no * 0.02
+            elif stock_code == "hot":
+                close_value = 10.0 * (1.018**row_no)
+            elif stock_code == "fade":
+                close_value = 12.0 - row_no * 0.03
+            else:
+                close_value = 9.5 + (0.01 * row_no if row_no < 24 else 1.2)
+            rows.append(
+                {
+                    "trade_date": trade_date,
+                    "stock_code": stock_code,
+                    "close_value": round(close_value, 6),
+                    "turn": 1.0 + (0.05 * row_no if stock_code in {"hot", "spike"} else 0.01 * row_no),
+                    "amount": 100.0 + (20.0 * row_no if stock_code == "hot" else 5.0 * row_no if stock_code == "spike" else row_no),
+                    "pctchange": 0.0,
+                    "amplitude": 1.0 + (0.4 * row_no if stock_code == "hot" else 0.2 * row_no if stock_code == "spike" else 0.03 * row_no),
+                    "lowlimit": 1.0,
+                }
+            )
+
+    scores = compute_low_crowding_scores(pd.DataFrame(rows))
+
+    assert scores.index.tolist() == ["fade", "quiet", "spike", "hot"]
+    assert round(float(scores.loc["fade", "low_crowding_score"]), 12) == 4.752506014842
+    assert round(float(scores.loc["quiet", "low_crowding_score"]), 12) == 4.312700430439
+    assert round(float(scores.loc["spike", "low_crowding_score"]), 12) == -2.444403126732
+    assert round(float(scores.loc["hot", "low_crowding_score"]), 12) == -6.620803318549
+    assert round(float(scores.loc["hot", "low_crowding_rank_pct"]), 12) == 0.25
+
+
 def test_low_crowding_regime_uses_observation_breadth_and_limit_down() -> None:
     prices = pd.DataFrame(
         {

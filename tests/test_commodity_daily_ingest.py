@@ -5,7 +5,9 @@ from backend.app.tasks.commodity_daily_ingest import (
     CommodityProductSpec,
     _estimate_trading_days,
     _fetch_tushare_futures_rows,
+    _latest_product_observation,
     _normalize_trade_date,
+    _parse_products_arg,
     _records_from_frame,
     run_commodity_daily_ingest,
 )
@@ -94,6 +96,21 @@ def test_fetch_tushare_futures_rows_keeps_normalized_trade_date(monkeypatch) -> 
     assert rows[0]["contract_code"] == "RB2405.SHF"
 
 
+def test_latest_product_observation_reports_latest_date_value_and_series() -> None:
+    rows = [
+        {"product_code": "NHCI", "trade_date": "2024-01-02", "close_value": 101.2},
+        {"product_code": "NHCI", "trade_date": "2024-01-03", "close_value": 102.4},
+    ]
+
+    summary = _latest_product_observation(rows)
+
+    assert summary == {
+        "latest_date": "2024-01-03",
+        "latest_value": 102.4,
+        "series_id": "NHCI.NH",
+    }
+
+
 def test_dry_run_reports_sixteen_products_without_db_write(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "unused.duckdb"))
     monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
@@ -137,3 +154,96 @@ def test_dry_run_can_limit_to_selected_products(tmp_path, monkeypatch) -> None:
 
     assert payload["product_count"] == 2
     assert [item["product_code"] for item in payload["products"]] == ["TS", "T"]
+
+
+def test_dry_run_reports_public_macro_series_ids_for_metals(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "unused.duckdb"))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+
+    payload = run_commodity_daily_ingest(
+        start_date="2024-01-01",
+        end_date="2024-01-10",
+        products=("CU", "AL", "RB"),
+        dry_run=True,
+    )
+
+    series_by_product = {item["product_code"]: item["series_id"] for item in payload["products"]}
+    assert series_by_product == {
+        "CU": "CA.COPPER",
+        "AL": "CA.ALUMINUM",
+        "RB": "COMMODITY.RB",
+    }
+
+
+def test_completed_ingest_reports_series_id_when_product_has_no_rows(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+
+    def fetch_no_rows(**kwargs: object) -> tuple[list[dict[str, object]], str]:
+        _ = kwargs
+        return [], "none"
+
+    monkeypatch.setattr("backend.app.tasks.commodity_daily_ingest._fetch_product_rows", fetch_no_rows)
+
+    payload = run_commodity_daily_ingest(
+        start_date="2024-01-01",
+        end_date="2024-01-10",
+        products=("RB",),
+        dry_run=False,
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["row_count"] == 0
+    product = payload["products"][0]
+    assert product["product_code"] == "RB"
+    assert product["row_count"] == 0
+    assert product["vendor"] == "none"
+    assert product["series_id"] == "COMMODITY.RB"
+    assert "latest_date" not in product
+    assert "latest_value" not in product
+
+
+def test_dry_run_rejects_explicit_empty_products(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "unused.duckdb"))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+
+    try:
+        run_commodity_daily_ingest(
+            start_date="2024-01-01",
+            end_date="2024-01-10",
+            products=(),
+            dry_run=True,
+        )
+    except ValueError as exc:
+        assert "At least one commodity product is required" in str(exc)
+    else:
+        raise AssertionError("explicit empty products should be rejected")
+
+    assert not (tmp_path / "unused.duckdb").exists()
+
+
+def test_dry_run_rejects_unknown_products(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "unused.duckdb"))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+
+    try:
+        run_commodity_daily_ingest(
+            start_date="2024-01-01",
+            end_date="2024-01-10",
+            products=("TS", "BAD"),
+            dry_run=True,
+        )
+    except ValueError as exc:
+        assert "Unknown commodity product: BAD" in str(exc)
+    else:
+        raise AssertionError("unknown products should be rejected")
+
+    assert not (tmp_path / "unused.duckdb").exists()
+
+
+def test_parse_products_arg_preserves_explicit_empty_selection() -> None:
+    assert _parse_products_arg(None) is None
+    assert _parse_products_arg("TS, T") == ("TS", "T")
+    assert _parse_products_arg("") == ()
+    assert _parse_products_arg(" , ") == ()

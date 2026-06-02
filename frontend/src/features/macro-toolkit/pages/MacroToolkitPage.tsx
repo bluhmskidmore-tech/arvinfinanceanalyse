@@ -433,6 +433,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const cffexStatus = payload?.cffex_member_rank ?? analysis?.cffex_member_rank ?? null;
   const choiceStockRefresh =
     strategyPayload?.choice_stock_refresh ?? payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
+  const commodityFuturesRefresh = payload?.commodity_futures_refresh ?? null;
+  const commodityPermission = commodityRefreshRun?.permission ?? commodityFuturesRefresh?.permission ?? null;
+  const isCommodityRefreshUnauthorized = commodityPermission?.allowed === false;
+  const commodityRefreshDisabled = selectedCommodityProducts.length === 0 || isCommodityRefreshUnauthorized;
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
   const sourceChecks = payload?.source_checks ?? analysis?.source_checks ?? [];
   const capabilityItems = payload?.capabilities ?? analysis?.capabilities ?? [];
@@ -624,6 +628,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshRun(null);
       return;
     }
+    if (isCommodityRefreshUnauthorized) {
+      setCommodityRefreshError(commodityFuturesPermissionErrorMessage());
+      setCommodityRefreshResult(null);
+      setCommodityRefreshRun(null);
+      return;
+    }
     setIsRefreshingCommodity(true);
     setCommodityRefreshError(null);
     setCommodityRefreshResult(null);
@@ -647,7 +657,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         await loadFullAnalysis({ force: true });
       }
     } catch (error) {
-      setCommodityRefreshError(error instanceof Error ? error.message : "刷新商品期货失败");
+      setCommodityRefreshError(formatCommodityFuturesRefreshError(error));
       setCommodityRefreshRun(null);
     } finally {
       setIsRefreshingCommodity(false);
@@ -658,6 +668,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     clearFullAnalysisCache,
     client,
     isCoreAnalysis,
+    isCommodityRefreshUnauthorized,
     loadFullAnalysis,
     scriptsQuery,
     selectedCommodityProducts,
@@ -1452,6 +1463,13 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 />
                 <MetricTile
                   icon={<SafetyCertificateOutlined />}
+                  label="商品权限"
+                  value={choiceStockPermissionValue(commodityPermission)}
+                  detail={commodityFuturesPermissionDetail(commodityPermission)}
+                  tone={isCommodityRefreshUnauthorized ? "missing" : "neutral"}
+                />
+                <MetricTile
+                  icon={<SafetyCertificateOutlined />}
                   label="目标表"
                   value="fact_commodity_futures_daily"
                   detail="刷新后重新读取完整分析证据"
@@ -1485,7 +1503,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 <Button
                   icon={<InfoCircleOutlined />}
                   loading={isRefreshingCommodity}
-                  disabled={selectedCommodityProducts.length === 0}
+                  disabled={commodityRefreshDisabled}
                   onClick={() => void refreshCommodityFutures({ dryRun: true })}
                 >
                   预估商品期货
@@ -1493,7 +1511,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 <Button
                   icon={<ReloadOutlined />}
                   loading={isRefreshingCommodity}
-                  disabled={selectedCommodityProducts.length === 0}
+                  disabled={commodityRefreshDisabled}
                   onClick={() => void refreshCommodityFutures({ dryRun: false })}
                 >
                   刷新商品期货
@@ -2710,6 +2728,25 @@ function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefre
   return `商品期货${action}：${productCount} 个品种，${rowCount} 行${tradingDays}`;
 }
 
+function commodityFuturesPermissionErrorMessage() {
+  return "当前账号没有商品期货刷新权限，请先授予 macro_toolkit.commodity_futures:refresh。";
+}
+
+function formatCommodityFuturesRefreshError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/not allowed/i.test(message) && message.includes("macro_toolkit.commodity_futures")) {
+    return commodityFuturesPermissionErrorMessage();
+  }
+  return message || "刷新商品期货失败";
+}
+
+function commodityFuturesPermissionDetail(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
+  if (!permission) {
+    return "resource macro_toolkit.commodity_futures";
+  }
+  return choiceStockPermissionDetail(permission, "macro_toolkit.commodity_futures");
+}
+
 function choiceStockFallbackText(
   table: { fallback_mode?: string | null; fallback_date?: string | null } | null | undefined,
 ) {
@@ -2782,11 +2819,14 @@ function choiceStockRefreshFailureText(refresh: MacroToolkitChoiceStockRefreshRu
   return reason || refresh.error_message?.trim() || category || "";
 }
 
-function choiceStockPermissionDetail(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
+function choiceStockPermissionDetail(
+  permission: MacroToolkitChoiceStockRefreshPermission | null | undefined,
+  defaultResource = "choice_stock.refresh",
+) {
   if (!permission) {
-    return "resource choice_stock.refresh";
+    return `resource ${defaultResource}`;
   }
-  const resource = permission.resource ?? "choice_stock.refresh";
+  const resource = permission.resource ?? defaultResource;
   const mode = permission.mode || "unknown";
   const actions = permission.actions?.length ? permission.actions.join(" / ") : "unknown";
   const user = permission.user_id || "anonymous";

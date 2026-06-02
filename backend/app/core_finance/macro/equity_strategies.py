@@ -322,34 +322,8 @@ def classify_low_crowding_market_regime(
 
 def compute_low_crowding_scores(observations: pd.DataFrame) -> pd.DataFrame:
     obs = _clean_observation_frame(observations)
-    records: list[dict[str, float | str]] = []
-    for stock_code, group in obs.groupby("stock_code", sort=False):
-        ordered = group.sort_values("trade_date").tail(21)
-        if ordered.empty:
-            continue
-        latest = ordered.iloc[-1]
-        close = ordered["close_value"]
-        ret_5 = _window_return(close, 5)
-        ret_20 = _window_return(close, 20)
-        turn_median = ordered["turn"].tail(20).median()
-        amount_mean = ordered["amount"].tail(20).mean()
-        latest_turn = float(latest.get("turn", 0.0) or 0.0)
-        latest_amount = float(latest.get("amount", 0.0) or 0.0)
-        turn_accel = latest_turn / turn_median - 1 if pd.notna(turn_median) and turn_median > 0 else 0.0
-        amount_accel = latest_amount / amount_mean - 1 if pd.notna(amount_mean) and amount_mean > 0 else 0.0
-        amplitude_20 = float(ordered["amplitude"].tail(20).mean()) if ordered["amplitude"].notna().any() else 0.0
-        records.append(
-            {
-                "stock_code": str(stock_code),
-                "latest_date": str(latest["trade_date"])[:10],
-                "ret_5": float(ret_5),
-                "ret_20": float(ret_20),
-                "turn_accel": float(turn_accel),
-                "amount_accel": float(amount_accel),
-                "amplitude_20": float(amplitude_20),
-            }
-        )
-    if not records:
+    recent = obs.groupby("stock_code", sort=False).tail(21).copy()
+    if recent.empty:
         return pd.DataFrame(
             columns=[
                 "stock_code",
@@ -360,7 +334,38 @@ def compute_low_crowding_scores(observations: pd.DataFrame) -> pd.DataFrame:
             ]
         )
 
-    out = pd.DataFrame(records).set_index("stock_code")
+    recent_grouped = recent.groupby("stock_code", sort=False)
+    latest = recent_grouped.tail(1).set_index("stock_code")
+    recent20 = recent_grouped.tail(20)
+    recent20_grouped = recent20.groupby("stock_code", sort=False)
+
+    first_close = recent_grouped["close_value"].first()
+    last_close = recent_grouped["close_value"].last()
+    ret_5 = _grouped_window_return(recent, last_close, first_close, window=5)
+    ret_20 = _grouped_window_return(recent, last_close, first_close, window=20)
+
+    turn_median = recent20_grouped["turn"].median().reindex(latest.index)
+    amount_mean = recent20_grouped["amount"].mean().reindex(latest.index)
+    latest_turn = pd.to_numeric(latest["turn"], errors="coerce")
+    latest_amount = pd.to_numeric(latest["amount"], errors="coerce")
+    turn_accel = (latest_turn / turn_median - 1).where(turn_median.notna() & (turn_median > 0), 0.0)
+    amount_accel = (latest_amount / amount_mean - 1).where(amount_mean.notna() & (amount_mean > 0), 0.0)
+
+    amplitude_any = recent["amplitude"].notna().groupby(recent["stock_code"], sort=False).any()
+    amplitude_mean = recent20_grouped["amplitude"].mean().reindex(latest.index)
+    amplitude_20 = amplitude_mean.where(amplitude_any.reindex(latest.index).fillna(False), 0.0)
+
+    out = pd.DataFrame(
+        {
+            "latest_date": latest["trade_date"].astype(str).str[:10],
+            "ret_5": ret_5.reindex(latest.index),
+            "ret_20": ret_20.reindex(latest.index),
+            "turn_accel": turn_accel,
+            "amount_accel": amount_accel,
+            "amplitude_20": amplitude_20,
+        },
+        index=latest.index,
+    )
     components = pd.DataFrame(
         {
             "ret_5_hot": out["ret_5"].clip(lower=0),
@@ -375,6 +380,20 @@ def compute_low_crowding_scores(observations: pd.DataFrame) -> pd.DataFrame:
     out["low_crowding_score"] = -out["crowding_score"]
     out["low_crowding_rank_pct"] = out["low_crowding_score"].rank(pct=True)
     return out.sort_values("low_crowding_score", ascending=False)
+
+
+def _grouped_window_return(
+    recent: pd.DataFrame,
+    last_close: pd.Series,
+    first_close: pd.Series,
+    *,
+    window: int,
+) -> pd.Series:
+    shifted_start = recent.groupby("stock_code", sort=False)["close_value"].shift(window)
+    start_close = shifted_start.groupby(recent["stock_code"], sort=False).last()
+    start_close = start_close.reindex(last_close.index).where(start_close.notna(), first_close)
+    valid_start = start_close > 0
+    return (last_close / start_close - 1).where(valid_start, 0.0).fillna(0.0)
 
 
 def low_crowding_multifactor_selection(

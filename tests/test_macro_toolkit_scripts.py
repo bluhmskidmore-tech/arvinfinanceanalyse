@@ -625,6 +625,10 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "empty_table",
     }
     assert payload["result"]["choice_stock_refresh"]["permission"]["mode"] == "scoped_refresh"
+    commodity_permission = payload["result"]["commodity_futures_refresh"]["permission"]
+    assert commodity_permission["mode"] == "scoped_refresh"
+    assert commodity_permission["resource"] == "macro_toolkit.commodity_futures"
+    assert commodity_permission["actions"] == ["dry_run", "refresh"]
     assert "signal_aggregator" in scripts
     assert scripts["signal_aggregator"]["available"] is True
     assert payload["result_meta"]["tables_used"] == [
@@ -2171,6 +2175,9 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
     assert refresh["product_count"] == 3
     assert refresh["products"][0]["product_code"] == "RB"
     assert refresh["table"] == "fact_commodity_futures_daily"
+    assert refresh["permission"]["resource"] == "macro_toolkit.commodity_futures"
+    assert refresh["permission"]["actions"] == ["dry_run", "refresh"]
+    assert payload["result"]["commodity_futures_refresh"]["permission"] == refresh["permission"]
     assert payload["result_meta"]["result_kind"] == "macro_toolkit.commodity_futures_refresh"
     assert calls == [
         {
