@@ -79,3 +79,26 @@ class TTLResponseCache:
 
 
 market_home_response_cache = TTLResponseCache(default_ttl_seconds=resolve_default_ttl())
+
+
+def market_home_rates_cache_key(duckdb_path: str) -> str:
+    return f"market-data/rates::{duckdb_path}"
+
+
+def market_home_catalog_cache_key(duckdb_path: str) -> str:
+    return f"market-data/catalog::{duckdb_path}"
+
+
+def market_home_choice_latest_cache_key(
+    duckdb_path: str,
+    category: str | None = None,
+) -> str:
+    return f"choice-series/latest::{category or 'all'}::{duckdb_path}"
+
+
+def market_home_macro_analysis_cache_key(duckdb_path: str, detail: str = "full") -> str:
+    return f"macro-toolkit/analysis::{detail}::{duckdb_path}"
+
+
+def market_home_strategy_summaries_cache_key(duckdb_path: str) -> str:
+    return f"macro-toolkit/strategy-summaries::{duckdb_path}"

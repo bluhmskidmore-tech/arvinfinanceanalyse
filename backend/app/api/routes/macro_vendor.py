@@ -1,7 +1,12 @@
 from typing import Annotated
 
 from backend.app.api.perf_logging import timed_api_call
-from backend.app.api.response_cache import market_home_response_cache
+from backend.app.api.response_cache import (
+    market_home_catalog_cache_key,
+    market_home_choice_latest_cache_key,
+    market_home_rates_cache_key,
+    market_home_response_cache,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -36,7 +41,7 @@ def market_data_rates() -> dict[str, object]:
     """Formal-basis rates for the market-data page (stable series only)."""
     settings = get_settings()
     return market_home_response_cache.get_or_build(
-        f"market-data/rates::{settings.duckdb_path}",
+        market_home_rates_cache_key(settings.duckdb_path),
         lambda: timed_api_call(
             "/ui/market-data/rates",
             lambda: choice_macro_formal_envelope(settings.duckdb_path),
@@ -49,7 +54,7 @@ def market_data_catalog() -> dict[str, object]:
     """Formal-basis macro catalog for the market-data page."""
     settings = get_settings()
     return market_home_response_cache.get_or_build(
-        f"market-data/catalog::{settings.duckdb_path}",
+        market_home_catalog_cache_key(settings.duckdb_path),
         lambda: macro_foundation_formal_envelope(settings.duckdb_path),
     )
 
@@ -66,7 +71,7 @@ def macro_foundation() -> dict[str, object]:
 def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict[str, object]:
     settings = get_settings()
     return market_home_response_cache.get_or_build(
-        f"choice-series/latest::{category or 'all'}::{settings.duckdb_path}",
+        market_home_choice_latest_cache_key(settings.duckdb_path, category),
         lambda: choice_macro_latest_envelope(settings.duckdb_path, category=category),
     )
 

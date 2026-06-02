@@ -56,4 +56,8 @@ if ([string]::IsNullOrWhiteSpace($env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED)) {
   $env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "0"
 }
 
+if ([string]::IsNullOrWhiteSpace($env:MOSS_MARKET_HOME_PREWARM_ENABLED)) {
+  $env:MOSS_MARKET_HOME_PREWARM_ENABLED = "1"
+}
+
 & $python -m uvicorn backend.app.main:app @args

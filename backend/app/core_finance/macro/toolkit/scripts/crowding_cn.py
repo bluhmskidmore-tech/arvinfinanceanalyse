@@ -21,6 +21,7 @@ import sys
 import warnings
 warnings.filterwarnings('ignore')
 
+import duckdb
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -30,6 +31,9 @@ _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
 from paths import OUTPUT_DIR
+from backend.app.core_finance.macro.toolkit.system_sources import resolve_system_duckdb_path
+from backend.app.repositories.cffex_member_rank_repo import TABLE_NAME as CFFEX_TABLE_NAME
+from backend.app.repositories.cffex_member_rank_repo import VIEW_NAME as CFFEX_VIEW_NAME
 
 ROOT = OUTPUT_DIR
 
@@ -206,11 +210,107 @@ def calc_crowding(positions_df: pd.DataFrame) -> dict:
 # 历史拥挤度时序构建
 # ============================================================
 
+def fetch_system_cffex_history(lookback_days: int = 365) -> pd.DataFrame:
+    """
+    Build crowding history from the system CFFEX member-rank cache.
+    """
+    duckdb_path = resolve_system_duckdb_path()
+    if not duckdb_path.exists():
+        return pd.DataFrame()
+
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=lookback_days)
+
+    try:
+        conn = duckdb.connect(str(duckdb_path), read_only=True)
+    except duckdb.Error:
+        return pd.DataFrame()
+    try:
+        if not _table_exists(conn, CFFEX_TABLE_NAME):
+            return pd.DataFrame()
+        source = CFFEX_VIEW_NAME if _table_exists(conn, CFFEX_VIEW_NAME) else CFFEX_TABLE_NAME
+        raw = conn.execute(
+            f"""
+            select
+              trade_date,
+              contract,
+              member_name,
+              volume,
+              long_holding,
+              long_change,
+              short_holding,
+              short_change
+            from {source}
+            where trade_date >= ? and contract in ('TS.CFE', 'TF.CFE', 'T.CFE', 'TL.CFE')
+            """,
+            [start_dt.strftime("%Y-%m-%d")],
+        ).fetchdf()
+    except duckdb.Error:
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
+    if raw.empty:
+        return pd.DataFrame()
+
+    all_rows = []
+    raw["date"] = pd.to_datetime(raw["trade_date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    raw["product"] = raw["contract"].astype(str).str.split(".", n=1).str[0]
+    for (trade_date, product), group in raw.dropna(subset=["date"]).groupby(["date", "product"]):
+        if product not in FUTURES_WSET:
+            continue
+        positions = pd.DataFrame(
+            {
+                "member": group["member_name"].fillna("").astype(str),
+                "long_oi": pd.to_numeric(group["long_holding"], errors="coerce").fillna(0.0),
+                "short_oi": pd.to_numeric(group["short_holding"], errors="coerce").fillna(0.0),
+                "volume": pd.to_numeric(group["volume"], errors="coerce").fillna(0.0),
+                "long_chg": pd.to_numeric(group["long_change"], errors="coerce").fillna(0.0),
+                "short_chg": pd.to_numeric(group["short_change"], errors="coerce").fillna(0.0),
+            }
+        )
+        metrics = calc_crowding(positions)
+        if not metrics:
+            continue
+        all_rows.append({"date": trade_date, "品种": product, **metrics})
+
+    df = pd.DataFrame(all_rows)
+    if not df.empty:
+        df = df.sort_values(["品种", "date"]).reset_index(drop=True)
+    return df
+
+
+def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                """
+                select count(*)
+                from information_schema.tables
+                where table_schema = 'main' and table_name = ?
+                """,
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _is_system_wind(w) -> bool:
+    return w.__class__.__name__ == "_SystemChoiceTushareWind"
+
+
 def fetch_crowding_history(w, lookback_days: int = 365) -> pd.DataFrame:
     """
     逐日拉取近 lookback_days 个交易日的拥挤度数据
     注意：w.wset 每次只能拉单日，需要循环
     """
+    if _is_system_wind(w):
+        df = fetch_system_cffex_history(lookback_days=lookback_days)
+        if not df.empty:
+            print(f"\n[拥挤度] 使用系统中金所会员排名缓存: {len(df)} 行")
+            return df
+
     end_dt   = datetime.now()
     start_dt = end_dt - timedelta(days=lookback_days)
 
@@ -271,10 +371,27 @@ def generate_crowding_signal(history_df: pd.DataFrame,
 
     for name in ['TS', 'TF', 'T', 'TL']:
         sub = history_df[history_df['品种'] == name].copy()
-        if len(sub) < 10:
+        if sub.empty:
             continue
 
         sub = sub.sort_values('date').reset_index(drop=True)
+        if len(sub) < 10:
+            latest = sub.iloc[-1]
+            result_rows.append({
+                '品种':       name,
+                '日期':       latest['date'],
+                'SC':         round(latest['SC'], 4),
+                'HC':         round(latest['HC'], 4),
+                'C':          round(latest['C'], 4),
+                'C_smooth':   round(latest['C'], 4),
+                'C分位数':    np.nan,
+                '拥挤度信号': '数据不足',
+                '说明':       f"历史样本不足({len(sub)}日)，无法计算滚动分位数",
+                '多头持仓':   int(latest['total_long']),
+                '空头持仓':   int(latest['total_short']),
+            })
+            continue
+
         sub['C_smooth'] = sub['C'].rolling(5, min_periods=1).mean()  # 近1周平滑
 
         # 滚动分位数

@@ -56,6 +56,13 @@ def test_dev_api_does_not_enable_home_snapshot_prewarm_by_default():
     assert '$env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "1"' not in script
 
 
+def test_dev_api_enables_market_home_prewarm_by_default():
+    script = (ROOT / "scripts" / "dev-api.ps1").read_text(encoding="utf-8")
+
+    assert "MOSS_MARKET_HOME_PREWARM_ENABLED" in script
+    assert '$env:MOSS_MARKET_HOME_PREWARM_ENABLED = "1"' in script
+
+
 def test_dev_worker_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-worker.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script

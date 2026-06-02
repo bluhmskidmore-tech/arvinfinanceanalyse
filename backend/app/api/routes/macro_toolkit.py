@@ -11,7 +11,11 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.app.api.response_cache import market_home_response_cache
+from backend.app.api.response_cache import (
+    market_home_macro_analysis_cache_key,
+    market_home_response_cache,
+    market_home_strategy_summaries_cache_key,
+)
 from backend.app.core_finance.macro import (
     analyze_cross_market_linkage,
     classify_low_crowding_market_regime,
@@ -267,7 +271,7 @@ def macro_toolkit_analysis(
 ) -> dict[str, object]:
     settings = get_settings()
     return market_home_response_cache.get_or_build(
-        f"macro-toolkit/analysis::{detail}::{settings.duckdb_path}",
+        market_home_macro_analysis_cache_key(settings.duckdb_path, detail),
         lambda: _build_macro_toolkit_analysis(detail),
     )
 
@@ -346,7 +350,7 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
 def macro_toolkit_strategy_summaries() -> dict[str, object]:
     settings = get_settings()
     return market_home_response_cache.get_or_build(
-        f"macro-toolkit/strategy-summaries::{settings.duckdb_path}",
+        market_home_strategy_summaries_cache_key(settings.duckdb_path),
         _build_macro_toolkit_strategy_summaries,
     )
 
