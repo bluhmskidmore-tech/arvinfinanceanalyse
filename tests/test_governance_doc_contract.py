@@ -20,6 +20,50 @@ def _read_pnl_doc(name: str) -> str:
     return (DOCS_DIR / "pnl" / name).read_text(encoding="utf-8")
 
 
+def test_pnl_by_business_formal_untraced_diagnostic_records_data_quality_evidence():
+    diagnostic = _read_pnl_doc("pnl-by-business-formal-untraced-diagnostic-2026-05-31.md")
+
+    for required in (
+        "read-only diagnostic",
+        "not a metric contract",
+        "not a formal promotion",
+        "fact_formal_pnl_fi",
+        "fact_formal_zqtz_balance_daily",
+        "1684",
+        "3420",
+        "148",
+        "4,465,365.25",
+        "no_same_instrument_in_balance",
+        "cost_center_mismatch",
+        "do not mix formal primary into monthly/YTD conclusions",
+    ):
+        assert required in diagnostic
+
+
+def test_pnl_by_business_formal_untraced_detail_packet_lists_owner_triage_rows():
+    detail_packet = _read_pnl_doc("pnl-by-business-formal-untraced-detail-packet-2026-05-31.md")
+
+    for required in (
+        "owner triage packet",
+        "not a metric contract",
+        "not a backend matching-rule change",
+        "148",
+        "123",
+        "25",
+        "5,010,288.97",
+        "2120046",
+        "115364",
+        "102381245",
+        "260303",
+        "50106001",
+        "no_same_instrument_in_balance",
+        "cost_center_mismatch",
+        "Does this PnL row represent matured, sold, or no-position accrual activity?",
+        "Can cost_center be normalized or relaxed for this trace grain?",
+    ):
+        assert required in detail_packet
+
+
 def _read_root_file(name: str) -> str:
     return (ROOT / name).read_text(encoding="utf-8")
 

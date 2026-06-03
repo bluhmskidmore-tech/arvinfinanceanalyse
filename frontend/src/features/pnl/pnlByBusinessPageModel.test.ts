@@ -523,6 +523,8 @@ describe("pnlByBusinessPageModel", () => {
       missingAdbCount: 2,
       ftpAvailable: false,
       formalUntracedCount: 0,
+      formalUntracedValueDisplay: "未读取",
+      formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     });
     expect(model.insight.totalPnlDisplay).toBe("500 万元");
   });
@@ -550,6 +552,8 @@ describe("pnlByBusinessPageModel", () => {
       confidenceLabel: "可分析",
       missingAdbCount: 0,
       ftpAvailable: true,
+      formalUntracedValueDisplay: "未读取",
+      formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     });
   });
 
@@ -596,6 +600,8 @@ describe("pnlByBusinessPageModel", () => {
       confidenceLabel: "可分析",
       missingAdbCount: 0,
       ftpAvailable: true,
+      formalUntracedValueDisplay: "未读取",
+      formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     });
   });
 
@@ -660,6 +666,7 @@ describe("pnlByBusinessPageModel", () => {
       ftpAvailable: false,
       missingAdbCount: 0,
       formalUntracedCount: 5,
+      formalUntracedValueDisplay: "5 条未追溯",
       formalUntracedDisplay: "T 3 条 / A 2 条",
     });
     expect(model.insight.nextStep).toContain("对账证据");

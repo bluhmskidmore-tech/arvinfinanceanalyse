@@ -718,6 +718,7 @@ describe("pnl routed pages smoke", () => {
     );
     expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("2025-12-31");
     await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("未读取");
       expect(screen.getByText("报表月份")).toBeInTheDocument();
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("月报合计损益");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
@@ -819,6 +820,7 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-driver-overview")).toHaveTextContent("1.53%");
       expect(screen.getByTestId("pnl-by-business-analysis-panel")).toHaveTextContent("2025-12-31");
       expect(screen.getByTestId("pnl-by-business-analysis-table")).toHaveTextContent("1.00");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("未读取");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
     });
@@ -865,6 +867,9 @@ describe("pnl routed pages smoke", () => {
     fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "formal" } });
     await waitFor(() => {
       expect(client.getPnlByBusiness).toHaveBeenCalledWith("2025-11-30");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("0 条未追溯");
     });
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("对账证据");

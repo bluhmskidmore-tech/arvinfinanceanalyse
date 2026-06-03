@@ -103,7 +103,7 @@ function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightM
         </div>
         <div>
           <small>formal 对账</small>
-          <strong>{insight.formalUntracedCount} 条未追溯</strong>
+          <strong>{insight.formalUntracedValueDisplay}</strong>
           <span>{insight.formalUntracedDisplay}</span>
         </div>
       </div>

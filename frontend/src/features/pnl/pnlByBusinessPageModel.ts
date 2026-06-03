@@ -93,6 +93,7 @@ export type PnlByBusinessInsightModel = {
   missingAdbCount: number;
   manualAdjustmentCount: number;
   formalUntracedCount: number;
+  formalUntracedValueDisplay: string;
   formalUntracedDisplay: string;
   nextStep: string;
 };
@@ -733,6 +734,7 @@ function buildPnlByBusinessInsight(input: {
       missingAdbCount: 0,
       manualAdjustmentCount: 0,
       formalUntracedCount,
+      formalUntracedValueDisplay: `${formalUntracedCount} 条未追溯`,
       formalUntracedDisplay,
       nextStep:
         formalUntracedCount > 0
@@ -756,7 +758,8 @@ function buildPnlByBusinessInsight(input: {
       missingAdbCount: 0,
       manualAdjustmentCount: 0,
       formalUntracedCount: 0,
-      formalUntracedDisplay: "不与月报/YTD 混加",
+      formalUntracedValueDisplay: "未读取",
+      formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
       nextStep: "先看当月贡献，再切到年累计核对趋势与 FTP 后收益。",
     };
   }
@@ -793,7 +796,8 @@ function buildPnlByBusinessInsight(input: {
     missingAdbCount,
     manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
     formalUntracedCount: 0,
-    formalUntracedDisplay: "不与月报/YTD 混加",
+    formalUntracedValueDisplay: "未读取",
+    formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     nextStep: ftpAvailable
       ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
       : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",
