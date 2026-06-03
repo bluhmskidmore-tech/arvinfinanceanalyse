@@ -1213,6 +1213,20 @@ async function requestStockAnalysisAsOfDate(
 }
 
 describe("StockAnalysisPage", () => {
+  it("shows a dashboard skeleton while the stock analysis payload is loading", async () => {
+    const client = {
+      ...stockClient(),
+      getLivermoreStrategy: vi.fn(() => new Promise<ApiEnvelope<LivermoreStrategyPayload>>(() => undefined)),
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const loading = await screen.findByTestId("stock-analysis-loading-workbench");
+    expect(loading).toBeInTheDocument();
+    expect(screen.queryByText("正在加载股票分析结果。")).not.toBeInTheDocument();
+    expect(screen.getByText("股票分析加载中")).toBeInTheDocument();
+  });
+
   it("marks the backend-supply cockpit without changing the stock data path", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
@@ -1320,6 +1334,23 @@ describe("StockAnalysisPage", () => {
 
     expect(css).toContain(".stock-analysis-page__header h1");
     expect(css).toContain("white-space: nowrap");
+  });
+
+  it("keeps narrow first-screen rail evidence visible instead of hiding risk and boundary cards", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const narrowRailStart = css.indexOf("@media (max-width: 1279px)", css.indexOf("Canonical stock dashboard layout"));
+    const mobileStart = css.indexOf("@media (max-width: 720px)", narrowRailStart);
+    const narrowRailCss = css.slice(narrowRailStart, mobileStart);
+
+    expect(narrowRailCss).toContain('[data-testid="stock-analysis-first-screen-rail"]');
+    expect(narrowRailCss).toContain(".stock-analysis-page__rail-check-list");
+    expect(narrowRailCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(narrowRailCss).not.toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-risk-section"\][\s\S]*?display:\s*none/,
+    );
+    expect(narrowRailCss).not.toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-boundary-rail"\][\s\S]*?display:\s*none/,
+    );
   });
 
   it("keeps first-screen KPI cards compact and icon-led", () => {
@@ -2638,9 +2669,15 @@ describe("StockAnalysisPage", () => {
       client: stockClient({ strategyError: new Error("strategy unavailable") }),
     });
 
-    expect(await screen.findByText("股票分析结果加载失败。")).toBeInTheDocument();
+    const errorPanel = await screen.findByTestId("stock-analysis-error-workbench");
+    expect(errorPanel).toHaveTextContent("股票分析暂不可用");
     expect(screen.getByText("策略服务暂不可用，请稍后重试。")).toBeInTheDocument();
+    expect(errorPanel).toHaveTextContent("供数");
+    expect(errorPanel).toHaveTextContent("待恢复");
+    expect(errorPanel).toHaveTextContent("结论");
+    expect(errorPanel).toHaveTextContent("暂停");
     expect(screen.queryByText("strategy unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("股票分析结果加载失败。")).not.toBeInTheDocument();
   });
 
   it("keeps the page usable when signal confluence fails", async () => {
@@ -2669,7 +2706,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
-    expect(within(section).getByText("风险退出观察暂不可用。")).toBeInTheDocument();
+    expect(within(section).getByText("风险退出待补")).toBeInTheDocument();
     expect(section).toHaveTextContent("持仓快照缺失");
     expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
 
@@ -3318,6 +3355,31 @@ describe("StockAnalysisPage", () => {
     expect(row).toHaveTextContent("风险待确认");
     expect(row).not.toHaveTextContent("external_vendor_liquidity_guard");
     expect(row).not.toHaveTextContent("vendor liquidity guard");
+  });
+
+  it("renders unknown strategy priority statuses as pending business copy", async () => {
+    const scorePayload = buildStrategyScorePayload();
+    const rowsWithVendorStatus: LivermoreStrategyScorePayload["rows"] = scorePayload.rows.map((row) =>
+      row.signal_kind === "factor_screen"
+        ? {
+            ...row,
+            priority_label: "external_vendor_priority_state",
+          }
+        : row,
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyScore: buildStrategyScorePayload({
+          rows: rowsWithVendorStatus,
+          current_market_state_rows: rowsWithVendorStatus,
+        }),
+      }),
+    });
+
+    const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
+    expect(row).toHaveTextContent("状态待确认");
+    expect(row).not.toHaveTextContent("external_vendor_priority_state");
   });
 
   it("shows the T+5 optimization diagnosis without turning it into trading rules", async () => {

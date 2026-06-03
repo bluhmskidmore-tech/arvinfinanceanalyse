@@ -188,6 +188,107 @@ function compactText(text: string | null | undefined, maxLength = 28) {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
+function railActionLabel(
+  candidate: ReturnType<typeof buildCandidateReviewQueue>[number] | null | undefined,
+  fallback: string | null | undefined,
+) {
+  if (candidate) return `首位 ${candidate.stockName} · ${candidate.distanceToBreakoutPct}`;
+  if (!fallback) return "等待复核";
+  if (fallback.includes("多因子")) return "多因子池";
+  if (fallback.includes("候选")) return "候选复核";
+  if (fallback.includes("风险")) return "风险复核";
+  return compactText(fallback, 14) || "等待复核";
+}
+
+function StockAnalysisLoadingWorkbench() {
+  const kpiLabels = ["市场状态", "复核队列", "板块强弱", "数据边界", "风险观察", "闭环状态"];
+  const railLabels = ["闭环", "风险", "边界", "复核"];
+
+  return (
+    <section
+      className="stock-analysis-page__loading-workbench"
+      data-testid="stock-analysis-loading-workbench"
+      aria-label="股票分析加载态"
+    >
+      <div className="stock-analysis-page__loading-hero" aria-hidden="true">
+        <span className="stock-analysis-page__loading-line stock-analysis-page__loading-line--short" />
+        <span className="stock-analysis-page__loading-line stock-analysis-page__loading-line--title" />
+        <div className="stock-analysis-page__loading-chip-row">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="stock-analysis-page__loading-meta-grid">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      </div>
+      <aside className="stock-analysis-page__loading-rail" aria-hidden="true">
+        <span className="stock-analysis-page__loading-line stock-analysis-page__loading-line--short" />
+        <span className="stock-analysis-page__loading-verdict" />
+        <div className="stock-analysis-page__loading-rail-grid">
+          {railLabels.map((label) => (
+            <span key={label} />
+          ))}
+        </div>
+      </aside>
+      <div className="stock-analysis-page__loading-kpi-grid" aria-hidden="true">
+        {kpiLabels.map((label) => (
+          <span key={label} />
+        ))}
+      </div>
+      <div className="stock-analysis-page__loading-panel" aria-hidden="true">
+        <span className="stock-analysis-page__loading-line stock-analysis-page__loading-line--short" />
+        <span className="stock-analysis-page__loading-chart" />
+      </div>
+      <p className="stock-analysis-page__visually-hidden" role="status">
+        股票分析加载中
+      </p>
+    </section>
+  );
+}
+
+function StockAnalysisErrorWorkbench({ message }: { message: string }) {
+  return (
+    <section
+      className="stock-analysis-page__error-workbench"
+      data-testid="stock-analysis-error-workbench"
+      aria-label="股票分析错误态"
+      role="alert"
+    >
+      <div className="stock-analysis-page__error-hero">
+        <span className="stock-analysis-page__error-icon" aria-hidden="true">
+          <SafetyCertificateOutlined />
+        </span>
+        <div>
+          <p className="stock-analysis-page__dh-purpose-eyebrow">复核阻断</p>
+          <h2>股票分析暂不可用</h2>
+          <p>{message}</p>
+        </div>
+      </div>
+      <div className="stock-analysis-page__error-grid" aria-label="错误态状态摘要">
+        <span>
+          <DatabaseOutlined aria-hidden="true" />
+          <small>供数</small>
+          <strong>待恢复</strong>
+        </span>
+        <span>
+          <SafetyCertificateOutlined aria-hidden="true" />
+          <small>结论</small>
+          <strong>暂停</strong>
+        </span>
+        <span>
+          <StockOutlined aria-hidden="true" />
+          <small>复核</small>
+          <strong>不可用</strong>
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function formatGeneratedAtLabel(value: string | null | undefined) {
   if (!value) return "";
   const parsed = dayjs(value);
@@ -1227,6 +1328,22 @@ function strategyRiskFlagLabel(label: string | null | undefined) {
   return value;
 }
 
+function strategyPriorityStatusLabel(label: string | null | undefined) {
+  const value = label?.trim();
+  if (!value) return "状态待确认";
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    优先复核: "优先复核",
+    降权观察: "降权观察",
+    继续观察: "继续观察",
+    样本不足: "样本不足",
+  };
+  if (labels[value]) return labels[value];
+  if (labels[normalized]) return labels[normalized];
+  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "状态待确认";
+  return "状态待确认";
+}
+
 function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
   const diagnostics = row.diagnostics;
   if (!diagnostics) return [];
@@ -1675,9 +1792,10 @@ export default function StockAnalysisPage() {
   );
   const riskTriggeredCount = riskRows.filter((row) => row.status === "triggered").length;
   const riskWatchCount = riskRows.filter((row) => row.status === "watch").length;
-  const railNextActionLabel = reviewQueue[0]
+  const railNextActionFullLabel = reviewQueue[0]
     ? `${reviewQueue[0].stockName} · 距观察 ${reviewQueue[0].distanceToBreakoutPct}`
     : decisionSummary?.nextReviewAction ?? "等待复核队列";
+  const railNextActionLabel = railActionLabel(reviewQueue[0], decisionSummary?.nextReviewAction);
   const railRiskTone = riskTriggeredCount > 0 ? "negative" : riskWatchCount > 0 ? "warning" : "positive";
 
   const riskExitUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "risk_exit");
@@ -2499,16 +2617,11 @@ export default function StockAnalysisPage() {
         </header>
 
         {strategyQuery.isLoading ? (
-          <section className="stock-analysis-page__panel">
-            <p className="stock-analysis-page__state">正在加载股票分析结果。</p>
-          </section>
+          <StockAnalysisLoadingWorkbench />
         ) : null}
 
         {strategyQuery.isError ? (
-          <section className="stock-analysis-page__panel stock-analysis-page__panel--error">
-            <h2>股票分析结果加载失败。</h2>
-            <p>{errorMessage(strategyQuery.error)}</p>
-          </section>
+          <StockAnalysisErrorWorkbench message={errorMessage(strategyQuery.error)} />
         ) : null}
 
         {marketState ? (
@@ -4077,7 +4190,7 @@ export default function StockAnalysisPage() {
                                       data-testid={`first-screen-priority-row-${row.market_state}-${row.signal_kind}`}
                                     >
                                       <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
-                                      <td>{row.priority_label}</td>
+                                      <td>{strategyPriorityStatusLabel(row.priority_label)}</td>
                                       <td className="stock-analysis-page__table-number">
                                         {formatPriorityScore(row.priority_score)}
                                       </td>
@@ -4136,7 +4249,7 @@ export default function StockAnalysisPage() {
                                       data-testid={`first-screen-optimization-row-${row.summary_key}`}
                                     >
                                       <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
-                                      <td>{row.recommendation.priority_label}</td>
+                                      <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
                                       <td className="stock-analysis-page__table-number">
                                         {backtestStatsText(
                                           strategyOptimizationPrimaryStats(row, strategyOptimizationPayload),
@@ -4681,7 +4794,7 @@ export default function StockAnalysisPage() {
                           </div>
                         </div>
 
-                        <p className="stock-analysis-page__rail-next-action" title={railNextActionLabel}>
+                        <p className="stock-analysis-page__rail-next-action" title={railNextActionFullLabel}>
                           <StockOutlined aria-hidden="true" />
                           <span>{railNextActionLabel}</span>
                         </p>
@@ -4780,7 +4893,7 @@ export default function StockAnalysisPage() {
                               <DatabaseOutlined />
                             </span>
                             <span>
-                              <strong>风险退出观察暂不可用。</strong>
+                              <strong>风险退出待补</strong>
                               <p className="m-0">{riskExitBlockedSummary(riskExitUnsupported.reason)}</p>
                             </span>
                           </div>
@@ -4880,7 +4993,7 @@ export default function StockAnalysisPage() {
                         </div>
                       ) : (
                         <p className="stock-analysis-page__rail-empty">
-                          {riskExitUnsupported ? "等待持仓快照接入后生成风险退出观察项。" : "当前无风险退出观察项。"}
+                          {riskExitUnsupported ? "持仓快照待补" : "风险 0"}
                         </p>
                       )}
                     </section>
@@ -5595,7 +5708,7 @@ export default function StockAnalysisPage() {
                                   data-testid={`stock-analysis-market-priority-row-${row.market_state}-${row.signal_kind}`}
                                 >
                                   <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
-                                  <td>{row.priority_label}</td>
+                                  <td>{strategyPriorityStatusLabel(row.priority_label)}</td>
                                   <td className="stock-analysis-page__table-number" data-testid="stock-analysis-market-priority-score">
                                     {formatPriorityScore(row.priority_score)}
                                   </td>
@@ -5905,7 +6018,7 @@ export default function StockAnalysisPage() {
                             {strategyOptimizationRows.map((row) => (
                               <tr key={row.summary_key}>
                                 <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
-                                <td>{row.recommendation.priority_label}</td>
+                                <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
                                 <td className="stock-analysis-page__table-number">
                                   {backtestStatsText(strategyOptimizationPrimaryStats(row, strategyOptimizationPayload))}
                                 </td>
@@ -5939,7 +6052,9 @@ export default function StockAnalysisPage() {
                               strategyOptimizationSlices.weakest.signal_kind,
                             )} ${strategyOptimizationSliceLabel(
                               strategyOptimizationSlices.weakest,
-                            )}：${strategyOptimizationSlices.weakest.recommendation.priority_label}`
+                            )}：${strategyPriorityStatusLabel(
+                              strategyOptimizationSlices.weakest.recommendation.priority_label,
+                            )}`
                           : "切片样本不足，暂不做降权判断。"}
                       </small>
                     </div>
@@ -5965,7 +6080,7 @@ export default function StockAnalysisPage() {
                                     {label}：{strategyOptimizationSliceLabel(slice)}
                                   </td>
                                   <td>{strategyDisplayLabel(slice.strategy_label, slice.signal_kind)}</td>
-                                  <td>{slice.recommendation.priority_label}</td>
+                                  <td>{strategyPriorityStatusLabel(slice.recommendation.priority_label)}</td>
                                   <td className="stock-analysis-page__table-number">
                                     {backtestStatsText(strategyOptimizationPrimaryStats(slice, strategyOptimizationPayload))}
                                   </td>

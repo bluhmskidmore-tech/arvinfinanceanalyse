@@ -562,6 +562,7 @@ describe("stockAnalysisPageModel", () => {
             attention_score: 0.55,
             price_confirm_score: 0.8,
             crowding_penalty: 0.1,
+            fusion_action: "external_vendor_fusion_action",
             confidence: "external_vendor_confidence",
             reason: "Fusion observation-only candidate",
             evidence: { source_kinds: ["factor_screen", "theme_breakout", "external_vendor_signal"] },
@@ -577,13 +578,16 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].headline).toContain("融合策略");
     expect(cards[0].stockCode).toBe("000009.SZ");
     expect(cards[0].evidence.join(" ")).toContain("融合分");
+    expect(cards[0].evidence.join(" ")).toContain("融合裁决：裁决待确认");
+    expect(cards[0].evidence.join(" ")).not.toContain("external_vendor_fusion_action");
     expect(cards[0].counterEvidence.join(" ")).toContain("代理信号");
     expect(cards[0].counterEvidence.join(" ")).toContain("来源待确认");
     expect(cards[0].counterEvidence.join(" ")).not.toContain("external_vendor_signal");
-    expect(cards[0].rawFields.find((row) => row.key === "confidence")?.value).toBe("置信度待确认");
-    expect(cards[0].rawFields.find((row) => row.key === "confidence")?.value).not.toContain(
-      "external_vendor_confidence",
-    );
+    expect(cards[0].rawFields.map((row) => row.value).join(" ")).not.toContain("external_vendor_fusion_action");
+    const confidenceEvidence = cards[0].evidenceBullets.find((row) => row.key === "confidence");
+    expect(confidenceEvidence).toBeDefined();
+    expect(confidenceEvidence?.value).toBe("置信度待确认");
+    expect(confidenceEvidence?.value).not.toContain("external_vendor_confidence");
     expect(queue[0].stockName).toBe("Fusion Alpha");
     expect(summary.candidateCountLabel).toBe("候选 1");
     expect(summary.nextReviewAction).toContain("Fusion Alpha");
@@ -1238,6 +1242,52 @@ describe("stockAnalysisPageModel", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps unknown vendor closed-loop statuses out of status labels", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "external_vendor_adversarial_status",
+          mode: "external_vendor_mode",
+          risk_gate: "external_vendor_risk_gate",
+          position_scale: null,
+          strongest_block_reason: "vendor_quality_signal_pending",
+        },
+        closed_loop_state: {
+          entry_gate: "external_vendor_entry_gate",
+          exit_gate: "external_vendor_exit_gate",
+          replay_status: "external_vendor_replay_state",
+          lineage_status: "external_vendor_lineage_state",
+        },
+      },
+      {
+        quality_flag: "warning",
+        vendor_status: "vendor_unavailable",
+        fallback_mode: "latest_snapshot",
+      },
+    );
+
+    const copy = [
+      summary.summaryLabel,
+      summary.referenceRating.label,
+      summary.verdict.headline,
+      summary.verdict.primaryReason,
+      summary.verdict.nextStep,
+      ...summary.items.flatMap((item) => [item.label, item.statusLabel, item.detail]),
+    ].join(" ");
+
+    expect(summary.items.map((item) => item.statusLabel)).toEqual(
+      expect.arrayContaining(["状态待确认", "待确认"]),
+    );
+    expect(copy).not.toContain("external_vendor_entry_gate");
+    expect(copy).not.toContain("external_vendor_exit_gate");
+    expect(copy).not.toContain("external_vendor_replay_state");
+    expect(copy).not.toContain("external_vendor_lineage_state");
+    expect(copy).not.toContain("external_vendor_risk_gate");
+    expect(copy).not.toContain("vendor_quality_signal_pending");
   });
 
   it("builds a closed-loop summary that surfaces block states as blockers", () => {
@@ -2188,6 +2238,118 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.detail).not.toContain("priority review ranking");
   });
 
+  it("keeps unknown vendor strategy labels and statuses out of strategy panel headlines", () => {
+    const stats = {
+      return_1d: {
+        available_count: 30,
+        missing_count: 0,
+        positive_count: 18,
+        non_positive_count: 12,
+        avg_return: 0.006,
+        win_rate: 0.6,
+      },
+      return_5d: {
+        available_count: 30,
+        missing_count: 0,
+        positive_count: 20,
+        non_positive_count: 10,
+        avg_return: 0.0233,
+        win_rate: 0.667,
+      },
+      return_20d: {
+        available_count: 30,
+        missing_count: 0,
+        positive_count: 16,
+        non_positive_count: 14,
+        avg_return: 0.031,
+        win_rate: 0.533,
+      },
+    };
+    const priorityPayload: LivermoreStrategyScorePayload = {
+      as_of_date: "2026-05-13",
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "HOT",
+      rows: [
+        {
+          market_state: "HOT",
+          signal_kind: "external_vendor_alpha_signal",
+          strategy_label: "external_vendor_alpha_signal",
+          sample_status: "sufficient",
+          priority_score: 69,
+          priority_rank: 1,
+          priority_label: "external_vendor_priority_state",
+          reason: "vendor_quality_signal_pending",
+          stats,
+        },
+      ],
+      current_market_state_rows: [],
+    };
+    const optimizationPayload: LivermoreStrategyOptimizationPayload = {
+      as_of_date: "2026-05-13",
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "HOT",
+      backtest_window_summary: null,
+      strategy_summaries: [
+        {
+          summary_key: "strategy:external_vendor_alpha_signal",
+          signal_kind: "external_vendor_alpha_signal",
+          strategy_label: "external_vendor_alpha_signal",
+          sample_status: "sufficient",
+          stats,
+          date_weighted_stats: {},
+          recommendation: {
+            action: "promote",
+            priority_label: "external_vendor_priority_state",
+            reason: "vendor_quality_signal_pending",
+            primary_horizon: "return_5d",
+            available_count: 30,
+            min_sample: 20,
+            avg_return: 0.0233,
+            win_rate: 0.667,
+            score: 69,
+          },
+        },
+      ],
+      slices: [],
+      recommendations: [],
+      pending_summary: {
+        primary_horizon: "return_5d",
+        pending_rows: 0,
+        pending_dates: [],
+        latest_pending_date: null,
+        message: "",
+      },
+      sample_maturity: null,
+    };
+
+    const priority = buildMarketPriorityPanelSummary({
+      payload: priorityPayload,
+      rows: priorityPayload.rows,
+      marketState: "HOT",
+      queryState: "ready",
+    });
+    const optimization = buildStrategyOptimizationPanelSummary({
+      payload: optimizationPayload,
+      rows: optimizationPayload.strategy_summaries,
+      queryState: "ready",
+    });
+
+    expect(priority.headline).toBe("状态待确认 · 策略待确认");
+    expect(priority.badgeLabel).toBe("待确认");
+    expect(priority.tone).toBe("warning");
+    expect(optimization.headline).toBe("状态待确认 · 策略待确认");
+    expect(optimization.badgeLabel).toBe("待确认");
+    expect(optimization.tone).toBe("warning");
+    expect(`${priority.headline} ${optimization.headline}`).not.toContain("external_vendor_alpha_signal");
+    expect(`${priority.headline} ${optimization.headline}`).not.toContain("external_vendor_priority_state");
+  });
+
   it("localizes strategy panel error summaries before exposing request failures", () => {
     const errorMessage = "Failed to fetch market priority because source_table livermore_signal_snapshots is missing.";
     const priority = buildMarketPriorityPanelSummary({
@@ -2255,7 +2417,7 @@ describe("stockAnalysisPageModel", () => {
     );
     const coverage = localizeStockBackendText("factor_snapshot 无数据", "factor_screen_candidates");
 
-    expect(insufficient).toBe("当前状态样本不足：T+5 可用样本 6/20，仅作观察。");
+    expect(insufficient).toBe("样本不足 T+5 6/20");
     expect(insufficient).not.toContain("Current market sample");
     expect(fusion).toBe("融合池仅观察候选。");
     expect(fusion).not.toContain("Fusion observation-only candidate");

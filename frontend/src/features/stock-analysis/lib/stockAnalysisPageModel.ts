@@ -495,6 +495,21 @@ function fusionConfidenceLabel(value: string | null | undefined): string {
   return "置信度待确认";
 }
 
+function fusionActionLabel(value: string | null | undefined): string {
+  const action = value?.trim();
+  if (!action) return "待补";
+  const normalized = action.toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    observe: "观察",
+    review: "复核",
+    pending_review: "待复核",
+    observation_only: "仅观察",
+  };
+  if (labels[normalized]) return labels[normalized];
+  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "裁决待确认";
+  return action;
+}
+
 function buildHybridFusionEvidenceCards(
   payload: LivermoreStrategyPayload,
 ): StockCandidateEvidenceCard[] {
@@ -519,7 +534,7 @@ function buildHybridFusionEvidenceCards(
       {
         key: "fusion_action",
         label: "融合裁决",
-        value: item.fusion_action?.trim() || "待补",
+        value: fusionActionLabel(item.fusion_action),
       },
       { key: "confidence", label: "置信度", value: fusionConfidenceLabel(item.confidence) },
       { key: "formula_version", label: "公式版本", value: formula },
@@ -698,6 +713,37 @@ export function localizeStockDataFamily(inputFamily: string | null | undefined):
     price_spread: "价差",
   };
   return labels[normalized] ?? "输入待确认";
+}
+
+function localizeStockStrategyLabel(
+  strategyLabel: string | null | undefined,
+  signalKind: string | null | undefined,
+): string {
+  const label = strategyLabel?.trim();
+  const normalizedLabel = label?.toLowerCase().replace(/[\s-]+/g, "_");
+  const signalLabel = localizeStockDataFamily(signalKind);
+  const fallbackLabel = signalLabel === "输入待确认" ? "策略待确认" : signalLabel;
+  if (!label) return fallbackLabel;
+  if (label === signalKind || normalizedLabel === signalKind?.trim().toLowerCase().replace(/[\s-]+/g, "_")) {
+    return fallbackLabel;
+  }
+  if (normalizedLabel?.includes("external_vendor") || normalizedLabel?.includes("vendor_")) {
+    return fallbackLabel;
+  }
+  return label;
+}
+
+function strategyPrioritySummaryStatus(label: string | null | undefined): {
+  label: string;
+  badgeLabel: string;
+  tone: StockClosedLoopTone;
+} {
+  const value = label?.trim();
+  if (value === "优先复核") return { label: "优先复核", badgeLabel: "已就绪", tone: "positive" };
+  if (value === "降权观察") return { label: "降权观察", badgeLabel: "降权观察", tone: "warning" };
+  if (value === "继续观察") return { label: "继续观察", badgeLabel: "观察", tone: "neutral" };
+  if (value === "样本不足") return { label: "样本不足", badgeLabel: "待补", tone: "warning" };
+  return { label: "状态待确认", badgeLabel: "待确认", tone: "warning" };
 }
 
 function localizeDataGapStatus(status: string | null | undefined): string {
@@ -2857,7 +2903,7 @@ function closedLoopStatusLabel(key: StockClosedLoopSummaryItem["key"], status: s
   if (normalized === "open") return "开放";
   if (normalized === "watch") return "观察中";
   if (normalized === "pass" || normalized === "allow" || normalized === "ok") return "通过";
-  return key === "lineage" ? "待确认" : status;
+  return key === "lineage" ? "待确认" : "状态待确认";
 }
 
 function closedLoopExitCounts(
@@ -3406,16 +3452,17 @@ export function buildMarketPriorityPanelSummary(input: {
 
   const horizon = input.payload?.primary_horizon ?? "return_5d";
   const horizonStats = top.stats[horizon];
+  const status = strategyPrioritySummaryStatus(top.priority_label);
   return {
-    headline: `优先 ${top.strategy_label}`,
+    headline: `${status.label} · ${localizeStockStrategyLabel(top.strategy_label, top.signal_kind)}`,
     detail: localizeStockBackendText(top.reason, top.signal_kind),
-    badgeLabel: top.priority_label === "优先复核" ? "已就绪" : "降权观察",
+    badgeLabel: status.badgeLabel,
     stats: [
       {
         key: "score",
         label: "评分",
         value: top.priority_score?.toFixed(1) ?? "-",
-        tone: top.priority_label === "优先复核" ? "positive" : "warning",
+        tone: status.tone,
       },
       {
         key: "t5",
@@ -3424,7 +3471,7 @@ export function buildMarketPriorityPanelSummary(input: {
         tone: (horizonStats?.win_rate ?? 0) >= 0.5 ? "positive" : "neutral",
       },
     ],
-    tone: top.priority_label === "优先复核" ? "positive" : "warning",
+    tone: status.tone,
   };
 }
 
@@ -3546,10 +3593,11 @@ export function buildStrategyOptimizationPanelSummary(input: {
     };
   }
 
+  const status = strategyPrioritySummaryStatus(top.recommendation.priority_label);
   return {
-    headline: `${top.recommendation.priority_label} · ${top.strategy_label}`,
+    headline: `${status.label} · ${localizeStockStrategyLabel(top.strategy_label, top.signal_kind)}`,
     detail: localizeStockBackendText(top.recommendation.reason, top.signal_kind),
-    badgeLabel: top.recommendation.priority_label === "优先复核" ? "已就绪" : "降权观察",
+    badgeLabel: status.badgeLabel,
     stats: [
       {
         key: "promote",
@@ -3570,7 +3618,7 @@ export function buildStrategyOptimizationPanelSummary(input: {
         tone: "neutral",
       },
     ],
-    tone: top.recommendation.priority_label === "优先复核" ? "positive" : "warning",
+    tone: status.tone,
   };
 }
 
