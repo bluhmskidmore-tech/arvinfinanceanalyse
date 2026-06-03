@@ -2734,6 +2734,7 @@ export function EmbeddedAgentCopilot({
         kind: "request",
         message: "请先输入 GitNexus 仓库路径。",
       });
+      setComposerAssistHint("请先输入 GitNexus 仓库路径 · 再固定仓库");
       return;
     }
     pinRepoPath(normalized);

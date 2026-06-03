@@ -1057,6 +1057,17 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("已固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
   });
 
+  it("cues the repo path requirement when pinning an empty GitNexus repo", async () => {
+    const user = userEvent.setup();
+    render(<AgentWorkbenchPage />);
+
+    openGitNexusTools();
+    await user.clear(screen.getByLabelText("repo-path-input"));
+    await user.click(screen.getByRole("button", { name: "固定当前仓库" }));
+
+    expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再固定仓库")).toBeInTheDocument();
+  });
+
   it("unpins a pinned repo without removing recent repos", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
