@@ -2656,6 +2656,7 @@ export function EmbeddedAgentCopilot({
     updateComposerQuery(nextQuery);
     clearQueuedQueries();
     setError(null);
+    setRestoreErrorRunId("");
     focusComposerInput();
   }
 
