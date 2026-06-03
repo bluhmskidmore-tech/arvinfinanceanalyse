@@ -4556,6 +4556,62 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("continues polling a restored managed run until it completes after refresh", async () => {
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-polling");
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:restore-polling",
+          status: "queued",
+          run_kind: "sync",
+          question: "restore polling question",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+          result: null,
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "restored polling final answer",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_restore_polling_final",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:restore-polling",
+          ),
+        ),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    expect(await screen.findByText("restored polling final answer")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "agent-run-restore-status" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs/agent_run%3Arestore-polling")).toHaveLength(
+      2,
+    );
+  });
+
   it("shows a restore status while reconnecting to the latest run after refresh", () => {
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-pending");
     fetchMock.mockReturnValueOnce(new Promise(() => undefined));

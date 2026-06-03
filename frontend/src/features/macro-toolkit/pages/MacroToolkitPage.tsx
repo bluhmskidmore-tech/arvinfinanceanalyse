@@ -437,8 +437,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const commodityFuturesRefresh = payload?.commodity_futures_refresh ?? null;
   const commodityPermission = commodityRefreshRun?.permission ?? commodityFuturesRefresh?.permission ?? null;
   const commodityStatus = commodityFuturesRefresh?.status ?? null;
-  const isCommodityRefreshUnauthorized = commodityPermission?.allowed === false;
-  const commodityRefreshDisabled = selectedCommodityProducts.length === 0 || isCommodityRefreshUnauthorized;
+  const isCommodityRefreshAllowed = commodityPermission?.allowed === true;
+  const shouldShowCommodityPermissionNotice = !isCommodityRefreshAllowed;
+  const commodityRefreshDisabled = selectedCommodityProducts.length === 0 || !isCommodityRefreshAllowed;
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
   const sourceChecks = payload?.source_checks ?? analysis?.source_checks ?? [];
   const capabilityItems = payload?.capabilities ?? analysis?.capabilities ?? [];
@@ -630,8 +631,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshRun(null);
       return;
     }
-    if (isCommodityRefreshUnauthorized) {
-      setCommodityRefreshError(commodityFuturesPermissionErrorMessage());
+    if (!isCommodityRefreshAllowed) {
+      setCommodityRefreshError(commodityFuturesPermissionBlockMessage(commodityPermission));
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
       return;
@@ -670,8 +671,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     clearFullAnalysisCache,
     client,
     isCoreAnalysis,
-    isCommodityRefreshUnauthorized,
+    isCommodityRefreshAllowed,
     loadFullAnalysis,
+    commodityPermission,
     scriptsQuery,
     selectedCommodityProducts,
     strategyQuery,
@@ -1468,7 +1470,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   label="商品权限"
                   value={choiceStockPermissionValue(commodityPermission)}
                   detail={commodityFuturesPermissionDetail(commodityPermission)}
-                  tone={isCommodityRefreshUnauthorized ? "missing" : "neutral"}
+                  tone={shouldShowCommodityPermissionNotice ? "missing" : "neutral"}
                 />
                 <MetricTile
                   icon={<LineChartOutlined />}
@@ -1529,11 +1531,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   ))}
                 </Checkbox.Group>
               </div>
-              {isCommodityRefreshUnauthorized ? (
+              {shouldShowCommodityPermissionNotice ? (
                 <Alert
                   type="warning"
                   showIcon
-                  message="缺少商品期货刷新授权"
+                  message={commodityFuturesPermissionNoticeTitle(commodityPermission)}
                   description={commodityFuturesPermissionNotice(commodityPermission)}
                 />
               ) : null}
@@ -2936,6 +2938,16 @@ function commodityFuturesPermissionErrorMessage() {
   return "当前账号没有商品期货刷新权限，请先授予 macro_toolkit.commodity_futures:refresh。";
 }
 
+function commodityFuturesPermissionPendingMessage() {
+  return "商品期货刷新授权待确认，请先确认 macro_toolkit.commodity_futures:dry_run / refresh。";
+}
+
+function commodityFuturesPermissionBlockMessage(
+  permission: MacroToolkitChoiceStockRefreshPermission | null | undefined,
+) {
+  return permission?.allowed === false ? commodityFuturesPermissionErrorMessage() : commodityFuturesPermissionPendingMessage();
+}
+
 function formatCommodityFuturesRefreshError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (/not allowed/i.test(message) && message.includes("macro_toolkit.commodity_futures")) {
@@ -2949,6 +2961,10 @@ function commodityFuturesPermissionDetail(permission: MacroToolkitChoiceStockRef
     return "resource macro_toolkit.commodity_futures";
   }
   return choiceStockPermissionDetail(permission, "macro_toolkit.commodity_futures");
+}
+
+function commodityFuturesPermissionNoticeTitle(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
+  return permission?.allowed === false ? "缺少商品期货刷新授权" : "商品期货刷新授权待确认";
 }
 
 function commodityFuturesPermissionNotice(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {

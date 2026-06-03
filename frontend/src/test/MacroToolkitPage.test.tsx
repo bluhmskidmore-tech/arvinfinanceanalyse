@@ -1180,6 +1180,73 @@ describe("MacroToolkitPage", () => {
     expect(refreshCalls).toHaveLength(0);
   });
 
+  it("shows pending commodity futures permission before scoped refresh is confirmed", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const scriptsEnvelope = await baseClient.getMacroToolkitScripts();
+    const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => analysisEnvelope,
+      getMacroToolkitScripts: async () => ({
+        ...scriptsEnvelope,
+        result: {
+          ...scriptsEnvelope.result,
+          commodity_futures_refresh: {
+            ...scriptsEnvelope.result.commodity_futures_refresh!,
+            permission: {
+              mode: "scoped_refresh",
+              allowed: null,
+              user_id: "anonymous",
+              role: "viewer",
+              identity_source: "fallback",
+              resource: "macro_toolkit.commodity_futures",
+              actions: ["dry_run", "refresh"],
+            },
+          },
+        },
+      }),
+      refreshCommodityFutures: async (options) => {
+        refreshCalls.push(options);
+        return baseClient.refreshCommodityFutures(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    const permissionTile = await waitFor(() => {
+      const tile = within(commodityPanel).getByText("商品权限").closest(".macro-toolkit-metric");
+      expect(tile).toHaveTextContent("待确认");
+      return tile;
+    });
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      expect.stringContaining("resource macro_toolkit.commodity_futures"),
+    );
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      expect.stringContaining("actions dry_run / refresh"),
+    );
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      expect.stringContaining("user anonymous"),
+    );
+    expect(commodityPanel).toHaveTextContent("商品期货刷新授权待确认");
+    expect(commodityPanel).toHaveTextContent("macro_toolkit.commodity_futures");
+    expect(commodityPanel).toHaveTextContent("dry_run / refresh");
+    expect(commodityPanel).toHaveTextContent("anonymous");
+    expect(commodityPanel).toHaveTextContent("viewer");
+
+    const dryRunButton = within(commodityPanel).getByRole("button", { name: /预估商品期货/ });
+    const refreshButton = within(commodityPanel).getByRole("button", { name: /刷新商品期货/ });
+    expect(dryRunButton).toBeDisabled();
+    expect(refreshButton).toBeDisabled();
+    await user.click(dryRunButton);
+    expect(refreshCalls).toHaveLength(0);
+  });
+
   it("shows a readable commodity futures permission error when the backend rejects refresh", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });

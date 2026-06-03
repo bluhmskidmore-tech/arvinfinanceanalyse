@@ -1745,6 +1745,22 @@ export function EmbeddedAgentCopilot({
       latestAgentRunStatusRequests.set(latestRunId, restoreRequest);
     }
     void restoreRequest
+      .then((payload) =>
+        runPollingTask<AgentRunPayload>({
+          start: async () => payload,
+          getStatus: fetchAgentRunStatus,
+          getIntervalMs: getAgentRunPollIntervalMs,
+          maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
+          onUpdate: (nextPayload) => {
+            if (cancelled || !isCurrentConversationSession(restoreSession)) {
+              return;
+            }
+            setOrdinaryConversationMode("managed");
+            setAgentRun(nextPayload);
+            setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, nextPayload));
+          },
+        }),
+      )
       .then((payload) => {
         if (cancelled || !isCurrentConversationSession(restoreSession)) {
           return;
