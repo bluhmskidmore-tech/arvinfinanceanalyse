@@ -772,6 +772,11 @@ function fallbackLimitConfigDryRunCommand(
   ].join(" ");
 }
 
+function limitConfigBusinessCsvPath(dryRunCommand: string): string {
+  const match = dryRunCommand.match(/--config-path\s+(.+?)\s+--report-date\b/);
+  return match?.[1]?.trim() ?? "";
+}
+
 function shouldShowLimitConfigOperatorCommands(
   data: DV01LimitConfigStatusPayload | null,
   acceptanceStatus: "ready" | "blocked" | undefined,
@@ -828,6 +833,7 @@ function DV01LimitConfigStatusPanel({
   const reviewPackageCommand =
     data?.review_package_command || fallbackLimitConfigReviewPackageCommand(data);
   const dryRunCommand = data?.dry_run_command || fallbackLimitConfigDryRunCommand(data);
+  const businessCsvPath = limitConfigBusinessCsvPath(dryRunCommand);
   const hasOperatorCommands = shouldShowLimitConfigOperatorCommands(data, acceptanceStatus);
 
   return (
@@ -909,6 +915,12 @@ function DV01LimitConfigStatusPanel({
           ) : null}
           {hasOperatorCommands ? (
             <div className={styles.operatorBlock} data-testid="dv01-limit-config-operator-commands">
+              {businessCsvPath ? (
+                <>
+                  <div className={styles.operatorLabel}>业务填写文件</div>
+                  <code className={styles.commandText}>{businessCsvPath}</code>
+                </>
+              ) : null}
               {reviewPackageCommand ? (
                 <>
                   <div className={styles.operatorLabel}>review_package_command</div>

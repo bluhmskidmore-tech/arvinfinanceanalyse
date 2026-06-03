@@ -720,6 +720,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("review_package_command");
     expect(panel).toHaveTextContent("--review-package-dir");
     expect(panel).toHaveTextContent("dry_run_command");
+    expect(panel).toHaveTextContent("业务填写文件");
     expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31.csv");
     expect(panel).toHaveTextContent("--dry-run");
   });
@@ -768,6 +769,7 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("review_package_command");
     expect(panel).toHaveTextContent("--review-package-dir");
     expect(panel).toHaveTextContent("dry_run_command");
+    expect(panel).toHaveTextContent("业务填写文件");
     expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31.csv");
     expect(panel).toHaveTextContent("--dry-run");
   });
