@@ -2822,6 +2822,19 @@ describe("RiskTensorPage", () => {
       expect(tracePriority).toHaveTextContent("复核状态：待复核");
       expect(tracePriority).not.toHaveTextContent("业务已确认");
       expect(within(tracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
+
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("basis regulatory_dv01"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("cache_version cv_tensor_reissued"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("generated_at 2026-04-12T09:30:00Z"));
+
+      await user.click(await within(tracePriority).findByRole("button", { name: "确认业务复核" }));
+      await user.click(within(tracePriority).getByRole("button", { name: "复制确认记录" }));
+
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("basis regulatory_dv01"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("cache_version cv_tensor_reissued"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("generated_at 2026-04-12T09:30:00Z"));
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);

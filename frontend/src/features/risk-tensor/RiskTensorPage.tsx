@@ -853,12 +853,18 @@ export default function RiskTensorPage() {
         : qualityEvidenceCopyStatus === "failed"
           ? "复制失败，需手动选择证据"
           : "待复核";
+  const qualityIssuanceCopyLines = [
+    `basis ${tensorMeta?.basis ?? "未提供"}`,
+    `cache_version ${tensorMeta?.cache_version ?? "未提供"}`,
+    `generated_at ${tensorMeta?.generated_at ?? "未提供"}`,
+  ];
   const qualityTraceCopyText = [
     "风险张量质量证据",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
     `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
     `复核状态 ${qualityReviewStateLabel}`,
     `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
     `fallback ${qualityTraceFallbackDetail}`,
@@ -902,6 +908,7 @@ export default function RiskTensorPage() {
     `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
     "确认状态 业务已确认",
     `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
     `证据范围 ${qualityTraceMetadataDetail}`,
