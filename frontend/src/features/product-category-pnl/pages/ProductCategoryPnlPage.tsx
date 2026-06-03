@@ -92,6 +92,8 @@ const sectionDescriptionStyle = {
 } as const;
 
 type ScenarioReviewActionStatus = "pending" | "confirmed" | "issue";
+type ScenarioReviewIssueReason = "basis" | "ftp" | "attribution" | "data";
+type ScenarioComparisonFilter = "all" | "pressure" | "improvement";
 
 const SCENARIO_REVIEW_ACTION_STATUS_OPTIONS: ReadonlyArray<
   readonly [ScenarioReviewActionStatus, string]
@@ -99,6 +101,23 @@ const SCENARIO_REVIEW_ACTION_STATUS_OPTIONS: ReadonlyArray<
   ["pending", "待核对"],
   ["confirmed", "已确认"],
   ["issue", "有差异"],
+];
+
+const SCENARIO_REVIEW_ISSUE_REASON_OPTIONS: ReadonlyArray<
+  readonly [ScenarioReviewIssueReason, string]
+> = [
+  ["basis", "口径不一致"],
+  ["ftp", "FTP 驱动异常"],
+  ["attribution", "正式归因未覆盖"],
+  ["data", "数据待复核"],
+];
+
+const SCENARIO_COMPARISON_FILTER_OPTIONS: ReadonlyArray<
+  readonly [ScenarioComparisonFilter, string]
+> = [
+  ["all", "全部"],
+  ["pressure", "仅承压"],
+  ["improvement", "仅改善"],
 ];
 
 function formatProductCategoryRefreshStatusLine(
@@ -944,13 +963,40 @@ function ProductCategoryOperatingContributionList(props: {
 function ProductCategoryScenarioExplanationCard(props: {
   explanation: ProductCategoryScenarioExplanation;
   actionStatuses: Record<string, ScenarioReviewActionStatus>;
+  issueReasons: Record<string, ScenarioReviewIssueReason>;
   onSetActionStatus: (
     categoryId: string,
     actionIndex: number,
     status: ScenarioReviewActionStatus,
   ) => void;
+  onSetIssueReason: (
+    categoryId: string,
+    actionIndex: number,
+    reason: ScenarioReviewIssueReason,
+  ) => void;
+  onBulkActionStatus: (categoryId: string, actionCount: number, status: ScenarioReviewActionStatus) => void;
+  onResetActions: (categoryId: string, actionCount: number) => void;
 }) {
   const explanation = props.explanation;
+  const actionStatusEntries = explanation.reviewActionItems.map((_, index) => {
+    const key = `${explanation.categoryId}:${index}`;
+    return props.actionStatuses[key] ?? "pending";
+  });
+  const pendingCount = actionStatusEntries.filter((status) => status === "pending").length;
+  const confirmedCount = actionStatusEntries.filter((status) => status === "confirmed").length;
+  const issueCount = actionStatusEntries.filter((status) => status === "issue").length;
+  const selectedIssueReasonEntries = explanation.reviewActionItems
+    .map((_, index) => props.issueReasons[`${explanation.categoryId}:${index}`])
+    .filter((reason): reason is ScenarioReviewIssueReason => Boolean(reason));
+  const selectedIssueReasonLabels = SCENARIO_REVIEW_ISSUE_REASON_OPTIONS
+    .filter(([reason]) => selectedIssueReasonEntries.includes(reason))
+    .map(([, label]) => label);
+  const conclusionLabel =
+    issueCount > 0
+      ? `复核结论：${explanation.categoryLabel}仍有 ${issueCount} 项差异，需补充原因和证据后归档。`
+      : pendingCount > 0
+        ? `复核结论：${explanation.categoryLabel}还有 ${pendingCount} 项待核对，暂不建议归档。`
+        : `复核结论：${explanation.categoryLabel}动作已全部确认，可进入留痕归档。`;
 
   return (
     <div
@@ -971,6 +1017,7 @@ function ProductCategoryScenarioExplanationCard(props: {
           const categoryId = explanation.categoryId;
           const actionStatusKey = `${categoryId}:${index}`;
           const currentStatus = props.actionStatuses[actionStatusKey] ?? "pending";
+          const currentReason = props.issueReasons[actionStatusKey];
           return (
             <div
               className="product-category-financial-analysis__review-action-item"
@@ -990,9 +1037,67 @@ function ProductCategoryScenarioExplanationCard(props: {
                   </button>
                 ))}
               </div>
+              {currentStatus === "issue" ? (
+                <div className="product-category-financial-analysis__reason-group">
+                  {SCENARIO_REVIEW_ISSUE_REASON_OPTIONS.map(([reason, label]) => (
+                    <button
+                      aria-pressed={currentReason === reason}
+                      className="product-category-financial-analysis__reason-button"
+                      key={reason}
+                      onClick={() => props.onSetIssueReason(categoryId, index, reason)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           );
         })}
+      </div>
+      <div className="product-category-financial-analysis__review-console">
+        <div className="product-category-financial-analysis__review-console-head">
+          <span className="product-category-financial-analysis__scenario-kicker">复核结论台</span>
+          <div className="product-category-financial-analysis__review-console-actions">
+            <button
+              onClick={() =>
+                props.onBulkActionStatus(
+                  explanation.categoryId,
+                  explanation.reviewActionItems.length,
+                  "confirmed",
+                )
+              }
+              type="button"
+            >
+              全部确认
+            </button>
+            <button
+              onClick={() => props.onResetActions(explanation.categoryId, explanation.reviewActionItems.length)}
+              type="button"
+            >
+              重置复核
+            </button>
+          </div>
+        </div>
+        <div className="product-category-financial-analysis__review-totals">
+          <b>待核对 {pendingCount}</b>
+          <b>已确认 {confirmedCount}</b>
+          <b>有差异 {issueCount}</b>
+        </div>
+        <strong>{conclusionLabel}</strong>
+        <small>
+          差异原因：
+          {selectedIssueReasonLabels.length > 0 ? selectedIssueReasonLabels.join("、") : "未选择"}
+        </small>
+        <div className="product-category-financial-analysis__review-memo">
+          <span>复核备忘</span>
+          <p>
+            当前产品：{explanation.categoryLabel}；情景：{explanation.triggerRateLabel}；差额：
+            {explanation.scenarioDeltaLabel}；状态：待核对 {pendingCount}、已确认 {confirmedCount}、有差异{" "}
+            {issueCount}。
+          </p>
+        </div>
       </div>
       <div className="product-category-financial-analysis__explanation-grid">
         <span>{explanation.sideLabel}</span>
@@ -1016,11 +1121,106 @@ function ProductCategoryScenarioExplanationCard(props: {
   );
 }
 
+function ProductCategoryScenarioComparisonPanel(props: {
+  rows: ProductCategoryScenarioSensitivitySurface["comparisonRows"];
+  filter: ScenarioComparisonFilter;
+  selectedCategoryId: string | null;
+  onFilterChange: (filter: ScenarioComparisonFilter) => void;
+  onSelectCategory: (categoryId: string) => void;
+}) {
+  const visibleRows = props.rows.filter((row) => {
+    if (props.filter === "pressure") {
+      return row.worstDelta !== null && row.worstDelta < 0;
+    }
+    if (props.filter === "improvement") {
+      return row.bestDelta !== null && row.bestDelta > 0;
+    }
+    return true;
+  });
+  const rateColumns = props.rows[0]?.cells ?? [];
+
+  return (
+    <div className="product-category-financial-analysis__comparison" data-testid="product-category-scenario-comparison">
+      <div className="product-category-financial-analysis__comparison-head">
+        <div>
+          <div className="product-category-financial-analysis__scenario-kicker">多情景对比</div>
+          <p>横向比较各产品行在不同 FTP 情景下的净营收和较基线差额。</p>
+        </div>
+        <div className="product-category-financial-analysis__comparison-filters">
+          {SCENARIO_COMPARISON_FILTER_OPTIONS.map(([filter, label]) => (
+            <button
+              aria-pressed={props.filter === filter}
+              key={filter}
+              onClick={() => props.onFilterChange(filter)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {visibleRows.length === 0 ? (
+        <div className="product-category-financial-analysis__empty">当前筛选下暂无可比较产品行。</div>
+      ) : (
+        <div className="product-category-financial-analysis__comparison-table-wrap">
+          <table className="product-category-financial-analysis__comparison-table">
+            <thead>
+              <tr>
+                <th>产品</th>
+                <th>侧别</th>
+                <th>基线</th>
+                {rateColumns.map((cell) => (
+                  <th key={cell.rate}>{cell.rateLabel}</th>
+                ))}
+                <th>最差情景</th>
+                <th>区间</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row) => (
+                <tr
+                  className={props.selectedCategoryId === row.categoryId ? "is-selected" : undefined}
+                  key={row.categoryId}
+                >
+                  <td>
+                    <button
+                      className="product-category-financial-analysis__comparison-row-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        props.onSelectCategory(row.categoryId);
+                      }}
+                      type="button"
+                    >
+                      {row.categoryLabel} 多情景对比
+                    </button>
+                  </td>
+                  <td>{row.sideLabel}</td>
+                  <td>{row.baselineNetIncomeLabel}</td>
+                  {row.cells.map((cell) => (
+                    <td className={`is-${cell.tone}`} key={cell.rate}>
+                      {cell.netIncomeLabel} / {cell.deltaLabel}
+                    </td>
+                  ))}
+                  <td className={`is-${row.tone}`}>
+                    {row.worstRateLabel} / {row.worstDeltaLabel}
+                  </td>
+                  <td>{row.rangeLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductCategoryFinancialAnalysisPanel(props: {
   scenarioSensitivity: ProductCategoryScenarioSensitivitySurface;
   scenarioExplanation: ProductCategoryScenarioExplanation | null;
   selectedScenarioReviewCategoryId: string | null;
   scenarioReviewActionStatuses: Record<string, ScenarioReviewActionStatus>;
+  scenarioReviewIssueReasons: Record<string, ScenarioReviewIssueReason>;
   scenarioSensitivityRequested: boolean;
   scenarioSensitivityLoading: boolean;
   scenarioSensitivityError: boolean;
@@ -1031,10 +1231,23 @@ function ProductCategoryFinancialAnalysisPanel(props: {
     actionIndex: number,
     status: ScenarioReviewActionStatus,
   ) => void;
+  onSetScenarioReviewIssueReason: (
+    categoryId: string,
+    actionIndex: number,
+    reason: ScenarioReviewIssueReason,
+  ) => void;
+  onBulkScenarioReviewActionStatus: (
+    categoryId: string,
+    actionCount: number,
+    status: ScenarioReviewActionStatus,
+  ) => void;
+  onResetScenarioReviewActions: (categoryId: string, actionCount: number) => void;
   waterfall: ProductCategoryAttributionWaterfallSurface;
   decisionFocus: ProductCategoryDecisionFocusSurface;
 }) {
   const scenarioExplanation = props.scenarioExplanation;
+  const [scenarioComparisonFilter, setScenarioComparisonFilter] =
+    useState<ScenarioComparisonFilter>("all");
 
   return (
     <section className="product-category-financial-analysis" data-testid="product-category-financial-analysis">
@@ -1155,10 +1368,21 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                   <ProductCategoryScenarioExplanationCard
                     actionStatuses={props.scenarioReviewActionStatuses}
                     explanation={scenarioExplanation}
+                    issueReasons={props.scenarioReviewIssueReasons}
+                    onBulkActionStatus={props.onBulkScenarioReviewActionStatus}
+                    onResetActions={props.onResetScenarioReviewActions}
                     onSetActionStatus={props.onSetScenarioReviewActionStatus}
+                    onSetIssueReason={props.onSetScenarioReviewIssueReason}
                   />
                 ) : null}
               </div>
+              <ProductCategoryScenarioComparisonPanel
+                filter={scenarioComparisonFilter}
+                onFilterChange={setScenarioComparisonFilter}
+                onSelectCategory={props.onSelectScenarioReview}
+                rows={props.scenarioSensitivity.comparisonRows}
+                selectedCategoryId={props.selectedScenarioReviewCategoryId}
+              />
               <div className="product-category-financial-analysis__table-wrap">
                 <table className="product-category-financial-analysis__table">
                   <thead>
@@ -1550,6 +1774,9 @@ export default function ProductCategoryPnlPage() {
   const [scenarioReviewActionStatuses, setScenarioReviewActionStatuses] = useState<
     Record<string, ScenarioReviewActionStatus>
   >({});
+  const [scenarioReviewIssueReasons, setScenarioReviewIssueReasons] = useState<
+    Record<string, ScenarioReviewIssueReason>
+  >({});
   const [loadedTrendDiagnosticsKey, setLoadedTrendDiagnosticsKey] = useState("");
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
@@ -1736,13 +1963,74 @@ export default function ProductCategoryPnlPage() {
   );
   const handleScenarioReviewActionStatus = useCallback(
     (categoryId: string, actionIndex: number, status: ScenarioReviewActionStatus) => {
+      const actionStatusKey = `${categoryId}:${actionIndex}`;
       setScenarioReviewActionStatuses((current) => ({
         ...current,
-        [`${categoryId}:${actionIndex}`]: status,
+        [actionStatusKey]: status,
+      }));
+      if (status !== "issue") {
+        setScenarioReviewIssueReasons((current) => {
+          if (!(actionStatusKey in current)) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[actionStatusKey];
+          return next;
+        });
+      }
+    },
+    [],
+  );
+  const handleScenarioReviewIssueReason = useCallback(
+    (categoryId: string, actionIndex: number, reason: ScenarioReviewIssueReason) => {
+      setScenarioReviewIssueReasons((current) => ({
+        ...current,
+        [`${categoryId}:${actionIndex}`]: reason,
+      }));
+      setScenarioReviewActionStatuses((current) => ({
+        ...current,
+        [`${categoryId}:${actionIndex}`]: "issue",
       }));
     },
     [],
   );
+  const handleBulkScenarioReviewActionStatus = useCallback(
+    (categoryId: string, actionCount: number, status: ScenarioReviewActionStatus) => {
+      setScenarioReviewActionStatuses((current) => {
+        const next = { ...current };
+        for (let index = 0; index < actionCount; index += 1) {
+          next[`${categoryId}:${index}`] = status;
+        }
+        return next;
+      });
+      if (status !== "issue") {
+        setScenarioReviewIssueReasons((current) => {
+          const next = { ...current };
+          for (let index = 0; index < actionCount; index += 1) {
+            delete next[`${categoryId}:${index}`];
+          }
+          return next;
+        });
+      }
+    },
+    [],
+  );
+  const handleResetScenarioReviewActions = useCallback((categoryId: string, actionCount: number) => {
+    setScenarioReviewActionStatuses((current) => {
+      const next = { ...current };
+      for (let index = 0; index < actionCount; index += 1) {
+        delete next[`${categoryId}:${index}`];
+      }
+      return next;
+    });
+    setScenarioReviewIssueReasons((current) => {
+      const next = { ...current };
+      for (let index = 0; index < actionCount; index += 1) {
+        delete next[`${categoryId}:${index}`];
+      }
+      return next;
+    });
+  }, []);
   const attributionWaterfallSurface = useMemo(
     () => selectProductCategoryAttributionWaterfallSurface(attributionQuery.data?.result),
     [attributionQuery.data?.result],
@@ -2860,6 +3148,7 @@ export default function ProductCategoryPnlPage() {
           scenarioExplanation={scenarioExplanation}
           selectedScenarioReviewCategoryId={selectedScenarioExplanationCategoryId}
           scenarioReviewActionStatuses={scenarioReviewActionStatuses}
+          scenarioReviewIssueReasons={scenarioReviewIssueReasons}
           scenarioSensitivityRequested={scenarioSensitivityRequested}
           scenarioSensitivityLoading={scenarioSensitivityQueries.some((query) => query.isLoading)}
           scenarioSensitivityError={scenarioSensitivityQueries.some((query) => query.isError)}
@@ -2870,7 +3159,10 @@ export default function ProductCategoryPnlPage() {
             }
           }}
           onSelectScenarioReview={setSelectedScenarioReviewCategoryId}
+          onBulkScenarioReviewActionStatus={handleBulkScenarioReviewActionStatus}
+          onResetScenarioReviewActions={handleResetScenarioReviewActions}
           onSetScenarioReviewActionStatus={handleScenarioReviewActionStatus}
+          onSetScenarioReviewIssueReason={handleScenarioReviewIssueReason}
           waterfall={attributionWaterfallSurface}
           decisionFocus={decisionFocusSurface}
         />

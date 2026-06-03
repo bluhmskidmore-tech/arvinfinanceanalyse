@@ -351,6 +351,36 @@ export type ProductCategoryScenarioHeatRow = {
   tone: "positive" | "negative" | "neutral";
 };
 
+export type ProductCategoryScenarioComparisonCell = {
+  rate: string;
+  ratePct: number;
+  rateLabel: string;
+  netIncome: number | null;
+  netIncomeLabel: string;
+  delta: number | null;
+  deltaLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioComparisonRow = {
+  categoryId: string;
+  categoryLabel: string;
+  sideLabel: string;
+  baselineNetIncome: number | null;
+  baselineNetIncomeLabel: string;
+  cells: ProductCategoryScenarioComparisonCell[];
+  bestRateLabel: string;
+  bestDelta: number | null;
+  bestDeltaLabel: string;
+  worstRateLabel: string;
+  worstDelta: number | null;
+  worstDeltaLabel: string;
+  range: number | null;
+  rangeLabel: string;
+  maxAbsDelta: number;
+  tone: "positive" | "negative" | "neutral";
+};
+
 export type ProductCategoryScenarioBreakeven = {
   label: string;
   valueLabel: string;
@@ -424,6 +454,7 @@ export type ProductCategoryScenarioSensitivitySurface = {
   pathPoints: ProductCategoryScenarioPathPoint[];
   actionItems: ProductCategoryScenarioActionItem[];
   heatRows: ProductCategoryScenarioHeatRow[];
+  comparisonRows: ProductCategoryScenarioComparisonRow[];
   pressureSummary: ProductCategoryScenarioPressureSummary;
   analysisCopy: string | null;
   emptyCopy: string | null;
@@ -1307,6 +1338,97 @@ function selectProductCategoryScenarioHeatRows(input: {
   }));
 }
 
+function selectProductCategoryScenarioComparisonRows(input: {
+  baselineRowsById: Map<string, ProductCategoryPnlRow>;
+  scenarios: ProductCategoryPnlPayload[];
+}): ProductCategoryScenarioComparisonRow[] {
+  const scenarioRowsByCategory = new Map<
+    string,
+    { baselineRow: ProductCategoryPnlRow; scenarioRows: Array<{ rate: string; row: ProductCategoryPnlRow }> }
+  >();
+  for (const scenario of input.scenarios) {
+    const scenarioRate = scenario.scenario_rate_pct;
+    if (scenarioRate === null || scenarioRate === undefined) {
+      continue;
+    }
+    for (const scenarioRow of leafProductCategoryRows(scenario.rows)) {
+      const baselineRow = input.baselineRowsById.get(scenarioRow.category_id);
+      if (!baselineRow) {
+        continue;
+      }
+      const current = scenarioRowsByCategory.get(scenarioRow.category_id);
+      if (current) {
+        current.scenarioRows.push({ rate: String(scenarioRate), row: scenarioRow });
+      } else {
+        scenarioRowsByCategory.set(scenarioRow.category_id, {
+          baselineRow,
+          scenarioRows: [{ rate: String(scenarioRate), row: scenarioRow }],
+        });
+      }
+    }
+  }
+  const rows: Array<ProductCategoryScenarioComparisonRow | null> = [...scenarioRowsByCategory.entries()]
+    .map(([categoryId, entry]) => {
+      const baselineNetIncome = yiNumber(entry.baselineRow.business_net_income);
+      const cells = entry.scenarioRows
+        .map((scenarioEntry) => {
+          const rate = scenarioEntry.rate;
+          const ratePct = Number(rate);
+          const netIncome = yiNumber(scenarioEntry.row.business_net_income);
+          const delta = productCategoryRowDeltaYi(input.baselineRowsById, scenarioEntry.row);
+          return {
+            rate: String(rate),
+            ratePct,
+            rateLabel: `${ratePct.toFixed(2)}%`,
+            netIncome,
+            netIncomeLabel: productCategoryYiNumberLabel(netIncome),
+            delta,
+            deltaLabel: formatSignedProductCategoryYi(delta),
+            tone: productCategoryDeltaTone(delta),
+          };
+        })
+        .filter((cell): cell is ProductCategoryScenarioComparisonCell => cell !== null)
+        .sort((left, right) => left.ratePct - right.ratePct);
+      const comparableCells = cells.filter((cell): cell is ProductCategoryScenarioComparisonCell & {
+        delta: number;
+        netIncome: number;
+      } => cell.delta !== null && cell.netIncome !== null);
+      if (comparableCells.length === 0) {
+        return null;
+      }
+      const best = [...comparableCells].sort((left, right) => right.delta - left.delta)[0];
+      const worst = [...comparableCells].sort((left, right) => left.delta - right.delta)[0];
+      if (!best || !worst) {
+        return null;
+      }
+      const minNetIncome = Math.min(...comparableCells.map((cell) => cell.netIncome));
+      const maxNetIncome = Math.max(...comparableCells.map((cell) => cell.netIncome));
+      const range = Number((maxNetIncome - minNetIncome).toFixed(2));
+      const maxAbsDelta = Math.max(...comparableCells.map((cell) => Math.abs(cell.delta)), 0);
+      return {
+        categoryId,
+        categoryLabel: entry.baselineRow.category_name || categoryId,
+        sideLabel: productCategoryScenarioSideLabel(entry.baselineRow.side),
+        baselineNetIncome,
+        baselineNetIncomeLabel: productCategoryYiNumberLabel(baselineNetIncome),
+        cells,
+        bestRateLabel: best.rateLabel,
+        bestDelta: best.delta,
+        bestDeltaLabel: formatSignedProductCategoryYi(best.delta),
+        worstRateLabel: worst.rateLabel,
+        worstDelta: worst.delta,
+        worstDeltaLabel: formatSignedProductCategoryYi(worst.delta),
+        range,
+        rangeLabel: productCategoryYiNumberLabel(range),
+        maxAbsDelta,
+        tone: productCategoryDeltaTone(worst.delta),
+      };
+    });
+  return rows
+    .filter((row): row is ProductCategoryScenarioComparisonRow => row !== null)
+    .sort((left, right) => right.maxAbsDelta - left.maxAbsDelta);
+}
+
 function productCategoryScenarioBaselineRelation(delta: number): string {
   if (delta > 0) {
     return `高于基线 ${formatSignedProductCategoryYi(delta)}`;
@@ -1700,6 +1822,7 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       pathPoints: [],
       actionItems: [],
       heatRows: [],
+      comparisonRows: [],
       pressureSummary: EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY,
       analysisCopy: null,
       emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
@@ -1776,6 +1899,10 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
     pathPoints: selectProductCategoryScenarioPathPoints(rows),
     actionItems: selectProductCategoryScenarioActionItems({ best, worst, riskRows }),
     heatRows: selectProductCategoryScenarioHeatRows({
+      baselineRowsById,
+      scenarios: input.scenarios,
+    }),
+    comparisonRows: selectProductCategoryScenarioComparisonRows({
       baselineRowsById,
       scenarios: input.scenarios,
     }),

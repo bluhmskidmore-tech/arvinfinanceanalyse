@@ -559,6 +559,45 @@ describe("productCategoryPnlPageModel", () => {
         tone: "positive",
       }),
     ]);
+    expect(surface.comparisonRows).toEqual([
+      expect.objectContaining({
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        baselineNetIncomeLabel: "5.00",
+        bestRateLabel: "1.50%",
+        bestDeltaLabel: "+0.40",
+        worstRateLabel: "2.00%",
+        worstDeltaLabel: "-0.80",
+        rangeLabel: "1.20",
+        tone: "negative",
+        cells: [
+          expect.objectContaining({
+            rateLabel: "1.50%",
+            netIncomeLabel: "5.40",
+            deltaLabel: "+0.40",
+            tone: "positive",
+          }),
+          expect.objectContaining({
+            rateLabel: "2.00%",
+            netIncomeLabel: "4.20",
+            deltaLabel: "-0.80",
+            tone: "negative",
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        categoryId: "repo_assets",
+        categoryLabel: "买入返售",
+        sideLabel: "资产端",
+        baselineNetIncomeLabel: "-0.50",
+        bestRateLabel: "1.50%",
+        bestDeltaLabel: "+0.20",
+        worstRateLabel: "2.00%",
+        worstDeltaLabel: "-0.10",
+        rangeLabel: "0.30",
+      }),
+    ]);
     expect(surface.analysisCopy).toBe("FTP 上行时全表净营收承压，最差情景较基线 -0.90 亿元。");
     expect(surface.emptyCopy).toBeNull();
   });

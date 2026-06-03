@@ -407,6 +407,18 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("复核顺序");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("管理动作");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("产品行热力条");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("多情景对比");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("仅承压");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("仅改善");
+
+    await user.click(screen.getByRole("button", { name: "仅改善" }));
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent(
+      "当前筛选下暂无可比较产品行。",
+    );
+    await user.click(screen.getByRole("button", { name: "仅承压" }));
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("生息资产");
+    await user.click(screen.getByRole("button", { name: /生息资产 多情景对比/ }));
+    expect(screen.getByTestId("product-category-scenario-explanation")).toHaveTextContent("生息资产");
 
     await user.click(screen.getByRole("button", { name: /复核 1/ }));
     const explanation = screen.getByTestId("product-category-scenario-explanation");
@@ -432,6 +444,36 @@ describe("ProductCategoryPnlPage", () => {
 
     await user.click(within(explanation).getAllByRole("button", { name: "有差异" })[0]!);
     expect(within(explanation).getAllByRole("button", { name: "有差异" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    expect(explanation).toHaveTextContent("复核结论台");
+    expect(explanation).toHaveTextContent("待核对 2");
+    expect(explanation).toHaveTextContent("已确认 0");
+    expect(explanation).toHaveTextContent("有差异 1");
+
+    await user.click(within(explanation).getByRole("button", { name: "全部确认" }));
+    expect(within(explanation).getAllByRole("button", { name: "已确认" })).toHaveLength(3);
+    expect(explanation).toHaveTextContent("已确认 3");
+    expect(explanation).toHaveTextContent("复核结论：生息资产动作已全部确认，可进入留痕归档。");
+
+    await user.click(within(explanation).getAllByRole("button", { name: "有差异" })[1]!);
+    await user.click(within(explanation).getByRole("button", { name: "FTP 驱动异常" }));
+    expect(within(explanation).getByRole("button", { name: "FTP 驱动异常" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(explanation).toHaveTextContent("差异原因：FTP 驱动异常");
+    expect(explanation).toHaveTextContent("复核备忘");
+    expect(explanation).toHaveTextContent("当前产品：生息资产");
+
+    await user.click(within(explanation).getAllByRole("button", { name: "已确认" })[1]!);
+    expect(explanation).toHaveTextContent("差异原因：未选择");
+
+    await user.click(within(explanation).getByRole("button", { name: "重置复核" }));
+    expect(explanation).toHaveTextContent("待核对 3");
+    expect(within(explanation).getAllByRole("button", { name: "待核对" })[0]).toHaveAttribute(
       "aria-pressed",
       "true",
     );
