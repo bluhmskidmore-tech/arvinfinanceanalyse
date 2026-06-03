@@ -569,6 +569,9 @@ export default function RiskTensorPage() {
   const [payloadQualityRequestCopyStatus, setPayloadQualityRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [combinedQualityRequestCopyStatus, setCombinedQualityRequestCopyStatus] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -864,6 +867,12 @@ export default function RiskTensorPage() {
     "后端主读字段缺失或不可解析时，页面只保留后端原始展示/占位，不会在前端补算正式指标",
     "请核对风险张量物化任务、字段序列化、result_meta 证据和来源 lineage 后重新出具",
   ].join("\n");
+  const combinedQualityRequestCopyText = [
+    "风险张量首屏补证包",
+    payloadQualityRequestCopyText,
+    "",
+    qualityEvidenceRequestCopyText,
+  ].join("\n");
   const qualityEvidenceReviewRecordCopyText = [
     "风险张量质量证据确认记录",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -900,6 +909,12 @@ export default function RiskTensorPage() {
       ? "已复制字段补证请求"
       : payloadQualityRequestCopyStatus === "failed"
         ? "复制失败，请手动选择字段补证请求"
+        : "";
+  const combinedQualityRequestCopyMessage =
+    combinedQualityRequestCopyStatus === "copied"
+      ? "已复制完整补证包"
+      : combinedQualityRequestCopyStatus === "failed"
+        ? "复制失败，请手动选择完整补证包"
         : "";
 
   const handlePrimaryTenorDrill = () => {
@@ -980,6 +995,17 @@ export default function RiskTensorPage() {
       .writeText(payloadQualityRequestCopyText)
       .then(() => setPayloadQualityRequestCopyStatus("copied"))
       .catch(() => setPayloadQualityRequestCopyStatus("failed"));
+  };
+
+  const handleCopyCombinedQualityRequest = () => {
+    if (!navigator.clipboard?.writeText) {
+      setCombinedQualityRequestCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(combinedQualityRequestCopyText)
+      .then(() => setCombinedQualityRequestCopyStatus("copied"))
+      .catch(() => setCombinedQualityRequestCopyStatus("failed"));
   };
 
   const handleConfirmQualityEvidenceReview = () => {
@@ -1388,6 +1414,7 @@ export default function RiskTensorPage() {
                 <span>报告日 {result.report_date}</span>
                 <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
                 <span>字段 {payloadQualityIssueSummary}</span>
+                <span>{qualityTraceMetadataDetail}</span>
                 <p>
                   后端主读返回了缺失或不可解析字段；页面只保留后端原始展示/占位，不会在前端补算正式指标，请结合下方
                   result_meta 与质量证据复核。
@@ -1415,10 +1442,56 @@ export default function RiskTensorPage() {
                 >
                   复制字段补证请求
                 </button>
+                {missingQualityEvidenceLabels.length > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="risk-tensor-brief__link-button"
+                      onClick={handleCopyQualityEvidenceRequest}
+                    >
+                      复制证据补证请求
+                    </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-brief__link-button"
+                      onClick={handleCopyCombinedQualityRequest}
+                    >
+                      复制完整补证包
+                    </button>
+                  </>
+                ) : null}
                 {payloadQualityRequestCopyMessage ? (
                   <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
                     {payloadQualityRequestCopyMessage}
                   </small>
+                ) : null}
+                {qualityEvidenceRequestCopyMessage ? (
+                  <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                    {qualityEvidenceRequestCopyMessage}
+                  </small>
+                ) : null}
+                {combinedQualityRequestCopyMessage ? (
+                  <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                    {combinedQualityRequestCopyMessage}
+                  </small>
+                ) : null}
+                {qualityEvidenceRequestCopyStatus === "failed" ? (
+                  <pre
+                    className="risk-tensor-quality-detail__manual-copy"
+                    data-testid="risk-tensor-quality-evidence-warning-request-manual-copy"
+                    tabIndex={0}
+                  >
+                    {qualityEvidenceRequestCopyText}
+                  </pre>
+                ) : null}
+                {combinedQualityRequestCopyStatus === "failed" ? (
+                  <pre
+                    className="risk-tensor-quality-detail__manual-copy"
+                    data-testid="risk-tensor-combined-quality-warning-request-manual-copy"
+                    tabIndex={0}
+                  >
+                    {combinedQualityRequestCopyText}
+                  </pre>
                 ) : null}
                 {payloadQualityRequestCopyStatus === "failed" ? (
                   <pre
