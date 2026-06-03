@@ -1401,6 +1401,7 @@ describe("AgentWorkbenchPage", () => {
     openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: /读取流程/ }));
+    expect(screen.getByText("正在读取 GitNexus 流程 · 可继续输入")).toBeInTheDocument();
 
     await act(async () => {
       resolveProcesses(

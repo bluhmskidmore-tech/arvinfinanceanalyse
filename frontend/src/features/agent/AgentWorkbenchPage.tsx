@@ -2547,6 +2547,7 @@ export function EmbeddedAgentCopilot({
     }
 
     setProcessLoading(true);
+    setComposerAssistHint("正在读取 GitNexus 流程 · 可继续输入");
     setError(null);
     try {
       const requestBody: AgentQueryRequest = {
