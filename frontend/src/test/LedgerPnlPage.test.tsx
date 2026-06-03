@@ -1762,6 +1762,105 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("83.33%");
   });
 
+  it("surfaces exposure-time implied annualized intensity for detail rows", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlSummary = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.summary"),
+      result: {
+        report_date: "2026-05-31",
+        source_version: "sv_ledger_test",
+        ledger_monthly_pnl_core: money("10000000.00"),
+        ledger_monthly_pnl_all: money("10000000.00"),
+        ledger_total_assets: money("0.00"),
+        ledger_total_liabilities: money("0.00"),
+        ledger_net_assets: money("0.00"),
+        by_currency: [{ currency: "CNY", total_pnl: money("10000000.00") }],
+        by_account: [
+          { account_code: "601101", account_name: "贷款利息收入", total_pnl: money("10000000.00"), count: 1 },
+        ],
+      },
+    }));
+    const getLedgerPnlData = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.data"),
+      result: {
+        report_date: "2026-05-31",
+        summary: {
+          total_pnl_cnx: money("0.00"),
+          total_pnl_cny: money("10000000.00"),
+          total_pnl: money("10000000.00"),
+          count: 2,
+        },
+        items: [
+          {
+            account_code: "601101",
+            account_name: "贷款利息收入",
+            currency: "CNY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("10000000.00"),
+            daily_avg_balance: money("1000000000.00"),
+            days_in_period: 30,
+          },
+          {
+            account_code: "602101",
+            account_name: "存款利息支出",
+            currency: "CNY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("-5000000.00"),
+            daily_avg_balance: money("0.00"),
+            days_in_period: 30,
+          },
+        ],
+      },
+    }));
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary,
+        getLedgerPnlData,
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            formal_use_allowed: false,
+          },
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-05-31", undefined);
+      expect(getLedgerPnlData).toHaveBeenCalledWith("2026-05-31", undefined);
+    });
+
+    const table = await screen.findByTestId("ledger-pnl-exposure-intensity-table");
+    expect(table).toHaveTextContent("规模时间强度候选");
+    expect(table).toHaveTextContent("明细派生候选");
+    expect(table).toHaveTextContent("不是正式收益率或财务指标");
+    expect(table).toHaveTextContent("日均规模");
+    expect(table).toHaveTextContent("天数");
+    expect(table).toHaveTextContent("候选年化强度");
+    expect(table).toHaveTextContent("601101 贷款利息收入");
+    expect(table).toHaveTextContent("0.10 亿元");
+    expect(table).toHaveTextContent("10.00 亿元");
+    expect(table).toHaveTextContent("30");
+    expect(table).toHaveTextContent("12.17%");
+    expect(table).not.toHaveTextContent("602101 存款利息支出");
+  });
+
   it("does not fall back to an unrelated monthly analysis workbook", async () => {
     const base = createApiClient({ mode: "mock" });
     const getLedgerPnlDates = vi.fn(async () => ({

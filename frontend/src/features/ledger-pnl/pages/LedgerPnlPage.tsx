@@ -360,6 +360,46 @@ function buildDetailResidualAccountRows(props: {
     .slice(0, 5);
 }
 
+function buildDetailExposureIntensityRows(detailRows: LedgerPnlDataItem[]) {
+  return detailRows
+    .map((row) => {
+      const monthlyPnlYuan = ledgerMoneyYuan(row.monthly_pnl);
+      const dailyAvgBalanceYuan = ledgerMoneyYuan(row.daily_avg_balance);
+      const daysInPeriod = row.days_in_period;
+      if (
+        monthlyPnlYuan === null ||
+        dailyAvgBalanceYuan === null ||
+        !Number.isFinite(daysInPeriod) ||
+        daysInPeriod <= 0 ||
+        Math.abs(dailyAvgBalanceYuan) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+      ) {
+        return null;
+      }
+      const exposureTimeYuan = Math.abs(dailyAvgBalanceYuan) * (daysInPeriod / 365);
+      if (exposureTimeYuan < LEDGER_RECONCILIATION_TOLERANCE_YUAN) {
+        return null;
+      }
+      return {
+        accountCode: row.account_code,
+        accountName: row.account_name,
+        monthlyPnlYuan,
+        dailyAvgBalanceYuan,
+        daysInPeriod,
+        annualizedIntensityPct: (monthlyPnlYuan / exposureTimeYuan) * 100,
+      };
+    })
+    .filter((row): row is {
+      accountCode: string;
+      accountName: string;
+      monthlyPnlYuan: number;
+      dailyAvgBalanceYuan: number;
+      daysInPeriod: number;
+      annualizedIntensityPct: number;
+    } => row !== null)
+    .sort((left, right) => Math.abs(right.annualizedIntensityPct) - Math.abs(left.annualizedIntensityPct))
+    .slice(0, 5);
+}
+
 function buildLedgerExplainabilityModel(props: {
   totalPnl: LedgerMoneyValue | null | undefined;
   byCurrency: LedgerPnlSummaryByCurrency[];
@@ -416,6 +456,7 @@ function buildLedgerExplainabilityModel(props: {
       byAccount: props.byAccount,
       detailRows: props.detailRows,
     }),
+    exposureIntensityRows: buildDetailExposureIntensityRows(props.detailRows),
     residualYuan,
     formalBoundary:
       props.formalUseAllowed === true
@@ -582,6 +623,44 @@ function LedgerExplainabilityPanel(props: {
               </table>
             ) : (
               <div className="ledger-pnl-analysis__empty">暂无可拆解的损益方向数据</div>
+            )}
+          </div>
+
+          <div
+            data-testid="ledger-pnl-exposure-intensity-table"
+            className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
+          >
+            <div className="ledger-pnl-analysis__table-title">规模时间强度候选</div>
+            <div className="ledger-pnl-analysis__source-contract-note">
+              明细派生候选：按月损益 / (|日均规模| × 天数 / 365) 计算，仅用于定位异常解释线索，不是正式收益率或财务指标。
+            </div>
+            {props.model.exposureIntensityRows.length > 0 ? (
+              <table className="ledger-pnl-analysis__residual-table">
+                <thead>
+                  <tr>
+                    <th>科目</th>
+                    <th>月损益</th>
+                    <th>日均规模</th>
+                    <th>天数</th>
+                    <th>候选年化强度</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.model.exposureIntensityRows.map((row, index) => (
+                    <tr key={`${row.accountCode}-${row.daysInPeriod}-${index}`}>
+                      <td>
+                        {row.accountCode} {row.accountName}
+                      </td>
+                      <td>{formatYuanAsYi(row.monthlyPnlYuan)}</td>
+                      <td>{formatYuanAsYi(row.dailyAvgBalanceYuan)}</td>
+                      <td>{row.daysInPeriod}</td>
+                      <td>{formatPercent(row.annualizedIntensityPct)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="ledger-pnl-analysis__empty">暂无可计算的规模时间强度候选</div>
             )}
           </div>
 
