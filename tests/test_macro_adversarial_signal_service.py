@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.services import macro_adversarial_signal_service
-from tests.test_macro_toolkit_scripts import MACRO_TOOLKIT_READ_HEADERS, _seed_macro_toolkit_read_scope
 
 
 def _write_csv(path: Path, content: str) -> None:
@@ -97,7 +96,7 @@ def test_load_macro_adversarial_signal_payload_returns_missing_when_no_csv_exist
     assert meta["evidence_rows"] == 0
 
 
-def test_macro_toolkit_adversarial_signal_endpoint_emits_expected_result_meta(tmp_path, monkeypatch) -> None:
+def test_macro_toolkit_adversarial_signal_endpoint_emits_expected_result_meta(monkeypatch) -> None:
     monkeypatch.setattr(
         macro_toolkit_route,
         "OUTPUT_DIR",
@@ -127,13 +126,12 @@ def test_macro_toolkit_adversarial_signal_endpoint_emits_expected_result_meta(tm
             },
         ),
     )
-    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
 
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
-    response = client.get("/ui/macro/toolkit/adversarial-signal", headers=MACRO_TOOLKIT_READ_HEADERS)
+    response = client.get("/ui/macro/toolkit/adversarial-signal")
 
     assert response.status_code == 200
     payload = response.json()
