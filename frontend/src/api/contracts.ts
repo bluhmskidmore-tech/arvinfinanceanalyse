@@ -487,6 +487,37 @@ export type DV01RiskPayload = {
   computed_at: string;
 };
 
+export type DV01ReconciliationRow = {
+  report_date: string;
+  instrument_code: string;
+  instrument_name: string | null;
+  accounting_class: string;
+  issuer_name: string | null;
+  rating: string | null;
+  tenor_bucket: string;
+  face_value: Numeric;
+  market_value: Numeric;
+  modified_duration: Numeric;
+  dv01: Numeric;
+  dv01_share: Numeric;
+  source_version: string;
+  rule_version: string;
+  trace_id: string;
+};
+
+export type DV01ReconciliationPayload = {
+  report_date: string;
+  accounting_class: string;
+  total_face_value: Numeric;
+  total_market_value: Numeric;
+  face_weighted_modified_duration: Numeric;
+  total_dv01: Numeric;
+  position_count: number;
+  rows: DV01ReconciliationRow[];
+  warnings: string[];
+  computed_at: string;
+};
+
 export type SpreadScenarioResult = {
   scenario_name: string;
   spread_change_bp: Numeric;

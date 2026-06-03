@@ -13,9 +13,8 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, ClassVar, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
-
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, Field, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -828,6 +827,66 @@ class DV01RiskResponse(BaseModel):
     tenor_buckets: list[DV01TenorBucket] = Field(default_factory=list)
     top_bonds: list[DV01TopBondItem] = Field(default_factory=list)
     top_issuers: list[DV01TopIssuerItem] = Field(default_factory=list)
+    computed_at: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "total_face_value": ("yuan", False),
+        "total_market_value": ("yuan", False),
+        "face_weighted_modified_duration": ("ratio", False),
+        "total_dv01": ("dv01", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01ReconciliationRow(BaseModel):
+    """Bond-level DV01 reconciliation detail row."""
+
+    report_date: date
+    instrument_code: str
+    instrument_name: str | None = None
+    accounting_class: str
+    issuer_name: str | None = None
+    rating: str | None = None
+    tenor_bucket: str
+    face_value: Numeric
+    market_value: Numeric
+    modified_duration: Numeric
+    dv01: Numeric
+    dv01_share: Numeric
+    source_version: str
+    rule_version: str
+    trace_id: str
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "face_value": ("yuan", False),
+        "market_value": ("yuan", False),
+        "modified_duration": ("ratio", False),
+        "dv01": ("dv01", False),
+        "dv01_share": ("ratio", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01ReconciliationResponse(BaseModel):
+    """Bond-level DV01 reconciliation response."""
+
+    report_date: date
+    accounting_class: str
+    total_face_value: Numeric
+    total_market_value: Numeric
+    face_weighted_modified_duration: Numeric
+    total_dv01: Numeric
+    position_count: int
+    rows: list[DV01ReconciliationRow] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
 

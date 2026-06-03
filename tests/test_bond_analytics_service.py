@@ -4,12 +4,17 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    REPORT_DATE,
+    _seed_bond_snapshot_rows,
+)
 
 
 def _configure_and_materialize(tmp_path, monkeypatch):
@@ -461,6 +466,69 @@ def test_bond_analytics_dv01_risk_empty_scope_returns_warning(tmp_path, monkeypa
     assert result["tenor_buckets"] == []
     assert result["top_bonds"] == []
     assert result["top_issuers"] == []
+    assert result["warnings"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_reconciliation_defaults_to_oci_rows_and_totals(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_reconciliation(date(2026, 3, 31))
+    result = payload["result"]
+
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_reconciliation"
+    assert result["accounting_class"] == "OCI"
+    assert result["position_count"] == 1
+    assert result["rows"][0]["instrument_code"] == "CB-001"
+    assert result["rows"][0]["accounting_class"] == "OCI"
+    assert result["rows"][0]["source_version"]
+    assert result["rows"][0]["rule_version"]
+    assert result["rows"][0]["trace_id"]
+    assert _numeric_raw(result["total_face_value"]) == sum(_numeric_raw(row["face_value"]) for row in result["rows"])
+    assert _numeric_raw(result["total_market_value"]) == sum(_numeric_raw(row["market_value"]) for row in result["rows"])
+    assert _numeric_raw(result["total_dv01"]) == sum(_numeric_raw(row["dv01"]) for row in result["rows"])
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_reconciliation_all_scope_and_abs_share(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_reconciliation(date(2026, 3, 31), accounting_class="all")
+    result = payload["result"]
+
+    assert result["accounting_class"] == "all"
+    assert result["position_count"] == 3
+    assert {row["accounting_class"] for row in result["rows"]} == {"AC", "OCI", "TPL"}
+    total_abs_dv01 = sum(_numeric_raw(row["dv01"]).copy_abs() for row in result["rows"])
+    assert total_abs_dv01 > Decimal("0")
+    for row in result["rows"]:
+        expected_share = _numeric_raw(row["dv01"]).copy_abs() / total_abs_dv01
+        assert _numeric_raw(row["dv01_share"]).quantize(Decimal("0.00000001")) == expected_share.quantize(Decimal("0.00000001"))
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_reconciliation_empty_scope_returns_warning(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_reconciliation(date(2026, 4, 30), accounting_class="OCI")
+    result = payload["result"]
+
+    assert result["accounting_class"] == "OCI"
+    assert result["position_count"] == 0
+    assert result["rows"] == []
+    assert _numeric_raw(result["total_dv01"]) == Decimal("0")
     assert result["warnings"]
     get_settings.cache_clear()
 

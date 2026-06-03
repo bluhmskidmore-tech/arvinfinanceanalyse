@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ApiEnvelope, DV01RiskPayload, Numeric, ResultMeta } from "../api/contracts";
+import type { ApiEnvelope, DV01ReconciliationPayload, DV01RiskPayload, Numeric, ResultMeta } from "../api/contracts";
 import { DV01RiskView } from "../features/bond-analytics/components/DV01RiskView";
 import { formatRawAsNumeric } from "../utils/format";
 
@@ -12,6 +12,11 @@ type GetBondAnalyticsDv01Risk = (
   reportDate: string,
   options?: { accountingClass?: string; topN?: number; shockBps?: string },
 ) => Promise<ApiEnvelope<DV01RiskPayload>>;
+
+type GetBondAnalyticsDv01Reconciliation = (
+  reportDate: string,
+  options?: { accountingClass?: string },
+) => Promise<ApiEnvelope<DV01ReconciliationPayload>>;
 
 const yuan = (raw: number, signAware = false) =>
   formatRawAsNumeric({ raw, unit: "yuan", sign_aware: signAware });
@@ -35,6 +40,14 @@ function resultMeta(): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-12T00:00:00Z",
+  };
+}
+
+function reconciliationMeta(): ResultMeta {
+  return {
+    ...resultMeta(),
+    trace_id: "tr_dv01_reconciliation",
+    result_kind: "bond_analytics.dv01_reconciliation",
   };
 }
 
@@ -102,13 +115,73 @@ function payload(overrides: Partial<DV01RiskPayload> = {}): DV01RiskPayload {
   };
 }
 
-function renderView(getDv01Risk: GetBondAnalyticsDv01Risk) {
+function reconciliationPayload(
+  overrides: Partial<DV01ReconciliationPayload> = {},
+): DV01ReconciliationPayload {
+  return {
+    report_date: "2026-03-31",
+    accounting_class: "OCI",
+    total_face_value: yuan(3_000_000_000),
+    total_market_value: yuan(3_080_000_000),
+    face_weighted_modified_duration: ratio(3.2),
+    total_dv01: dv01(880_000),
+    position_count: 2,
+    rows: [
+      {
+        report_date: "2026-03-31",
+        instrument_code: "BOND-1",
+        instrument_name: "测试债 01",
+        accounting_class: "OCI",
+        issuer_name: "发行人A",
+        rating: "AAA",
+        tenor_bucket: "3-5Y",
+        face_value: yuan(1_000_000_000),
+        market_value: yuan(1_050_000_000),
+        modified_duration: ratio(3.7),
+        dv01: dv01(390_000),
+        dv01_share: ratio(0.44318, 4),
+        source_version: "sv_bond_1",
+        rule_version: "rv_bond_1",
+        trace_id: "trace_bond_1",
+      },
+      {
+        report_date: "2026-03-31",
+        instrument_code: "BOND-2",
+        instrument_name: "Beta 对账债",
+        accounting_class: "OCI",
+        issuer_name: "发行人B",
+        rating: "AA+",
+        tenor_bucket: "5-7Y",
+        face_value: yuan(2_000_000_000),
+        market_value: yuan(2_030_000_000),
+        modified_duration: ratio(4.1),
+        dv01: dv01(490_000),
+        dv01_share: ratio(0.55682, 4),
+        source_version: "sv_bond_2",
+        rule_version: "rv_bond_2",
+        trace_id: "trace_bond_2",
+      },
+    ],
+    warnings: [],
+    computed_at: "2026-04-12T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function renderView(
+  getDv01Risk: GetBondAnalyticsDv01Risk,
+  getDv01Reconciliation: GetBondAnalyticsDv01Reconciliation = vi.fn(async () => ({
+    result_meta: reconciliationMeta(),
+    result: reconciliationPayload(),
+  })),
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
   const client = {
     ...createApiClient({ mode: "mock" }),
     getBondAnalyticsDv01Risk: getDv01Risk,
+    getBondAnalyticsDv01Reconciliation: getDv01Reconciliation,
   };
   return render(
     <QueryClientProvider client={queryClient}>
@@ -160,8 +233,9 @@ describe("DV01RiskView", () => {
     expect(within(tenorTable).getByText("3.80 年")).toBeInTheDocument();
     expect(within(tenorTable).getByText("59.21%")).toBeInTheDocument();
     expect(screen.getByText("Top 债券")).toBeInTheDocument();
-    expect(screen.getByText("测试债 01")).toBeInTheDocument();
-    expect(screen.getByText("3.70 年")).toBeInTheDocument();
+    const topBondsTable = screen.getByTestId("dv01-risk-top-bonds-table");
+    expect(within(topBondsTable).getByText("测试债 01")).toBeInTheDocument();
+    expect(within(topBondsTable).getByText("3.70 年")).toBeInTheDocument();
     expect(screen.getByText("Top 发行人")).toBeInTheDocument();
     expect(within(screen.getByTestId("dv01-risk-top-issuers-table")).getByText("发行人A")).toBeInTheDocument();
     expect(within(screen.getByTestId("dv01-risk-top-issuers-table")).getByText("3.65 年")).toBeInTheDocument();
@@ -173,15 +247,25 @@ describe("DV01RiskView", () => {
       result_meta: resultMeta(),
       result: payload(),
     }));
+    const getDv01Reconciliation = vi.fn(async (_reportDate: string, options?: { accountingClass?: string }) => ({
+      result_meta: reconciliationMeta(),
+      result: reconciliationPayload({ accounting_class: options?.accountingClass ?? "OCI" }),
+    }));
 
-    renderView(getDv01Risk);
+    renderView(getDv01Risk, getDv01Reconciliation);
     await waitFor(() => expect(getDv01Risk).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getDv01Reconciliation).toHaveBeenCalledTimes(1));
 
-    await user.click(screen.getByText("全部"));
+    await user.click(within(screen.getByTestId("dv01-risk-accounting-class")).getByText("全部"));
     await waitFor(() => expect(getDv01Risk).toHaveBeenCalledTimes(2));
     expect(getDv01Risk.mock.calls[1]).toEqual([
       "2026-03-31",
       { accountingClass: "all", topN: 20, shockBps: "1,10,25,50" },
+    ]);
+    await waitFor(() => expect(getDv01Reconciliation).toHaveBeenCalledTimes(2));
+    expect(getDv01Reconciliation.mock.calls[1]).toEqual([
+      "2026-03-31",
+      { accountingClass: "all" },
     ]);
 
     await user.selectOptions(screen.getByTestId("dv01-risk-topn"), "50");
@@ -190,6 +274,41 @@ describe("DV01RiskView", () => {
       "2026-03-31",
       { accountingClass: "all", topN: 50, shockBps: "1,10,25,50" },
     ]);
+    expect(getDv01Reconciliation).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders bond-level reconciliation and filters rows on the frontend", async () => {
+    const user = userEvent.setup();
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01Reconciliation = vi.fn(async () => ({
+      result_meta: reconciliationMeta(),
+      result: reconciliationPayload(),
+    }));
+
+    renderView(getDv01Risk, getDv01Reconciliation);
+
+    await waitFor(() =>
+      expect(getDv01Reconciliation).toHaveBeenCalledWith("2026-03-31", {
+        accountingClass: "OCI",
+      }),
+    );
+    const panel = await screen.findByTestId("dv01-reconciliation-panel");
+    expect(panel).toHaveTextContent("单券明细对账");
+    expect(panel).toHaveTextContent("后端合计");
+    expect(panel).toHaveTextContent("当前筛选 2 / 2");
+    const table = within(panel).getByTestId("dv01-reconciliation-table");
+    expect(within(table).getByText("BOND-1")).toBeInTheDocument();
+    expect(within(table).getByText("BOND-2")).toBeInTheDocument();
+    expect(within(table).getByText("trace_bond_1")).toBeInTheDocument();
+
+    await user.type(screen.getByTestId("dv01-reconciliation-search"), "Beta");
+
+    await waitFor(() => expect(panel).toHaveTextContent("当前筛选 1 / 2"));
+    expect(within(table).getByText("BOND-2")).toBeInTheDocument();
+    expect(within(table).queryByText("BOND-1")).not.toBeInTheDocument();
   });
 
   it("shows the governed empty state without deriving frontend metrics", async () => {
@@ -210,10 +329,23 @@ describe("DV01RiskView", () => {
         warnings: ["no formal bond analytics rows"],
       }),
     }));
+    const getDv01Reconciliation = vi.fn(async () => ({
+      result_meta: reconciliationMeta(),
+      result: reconciliationPayload({
+        total_face_value: zero("yuan"),
+        total_market_value: zero("yuan"),
+        face_weighted_modified_duration: zero("ratio"),
+        total_dv01: zero("dv01"),
+        position_count: 0,
+        rows: [],
+        warnings: ["no formal bond analytics rows"],
+      }),
+    }));
 
-    renderView(getDv01Risk);
+    renderView(getDv01Risk, getDv01Reconciliation);
 
     expect(await screen.findByText("该报告日/分类暂无债券 DV01 数据")).toBeInTheDocument();
     expect(screen.queryByTestId("dv01-risk-shocks-table")).not.toBeInTheDocument();
+    expect(await screen.findByText("该报告日/分类暂无债券 DV01 明细数据")).toBeInTheDocument();
   });
 });

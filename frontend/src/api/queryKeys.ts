@@ -30,6 +30,18 @@ export const apiQueryKeys = {
       topN,
       shockBps,
     ] as const,
+  bondAnalyticsDv01Reconciliation: (
+    mode: string,
+    reportDate: string | null | undefined,
+    accountingClass: string,
+  ) =>
+    [
+      "bond-analytics",
+      "dv01-reconciliation",
+      mode,
+      normalizeReportDate(reportDate),
+      accountingClass,
+    ] as const,
   bondDashboardPortfolioComparison: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "portfolio-comparison", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardAssetStructure: (

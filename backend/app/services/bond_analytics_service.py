@@ -5,18 +5,10 @@ import logging
 import threading
 import time
 import uuid
+from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
-logger = logging.getLogger(__name__)
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
-
-from backend.app.governance.formal_compute_lineage import (
-    resolve_formal_dates_lineage,
-    resolve_formal_facts_lineage,
-)
-from backend.app.governance.locks import LockDefinition, acquire_lock
-from backend.app.governance.settings import Settings, get_settings
 from backend.app.core_finance.action_attribution import compute_action_attribution_bonds
 from backend.app.core_finance.bond_analytics.common import (
     STANDARD_SCENARIOS,
@@ -38,8 +30,16 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_return_decomposition,
     weighted_average_by_market_value,
 )
+from backend.app.governance.formal_compute_lineage import (
+    resolve_formal_dates_lineage,
+    resolve_formal_facts_lineage,
+)
+from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.settings import Settings, get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.pnl_repo import PnlRepository
+
 try:
     from backend.app.repositories.yield_curve_repo import (
         FX_LATEST_FALLBACK_PREFIX,
@@ -79,9 +79,8 @@ except ImportError:
             f"{YIELD_CURVE_LATEST_FALLBACK_PREFIX}: Using latest available {curve_type} curve "
             f"from trade_date={resolved_trade_date} for requested_trade_date={requested_trade_date}."
         )
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
+
 from backend.app.schemas.analysis_service import AnalysisQuery
-from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.bond_analytics import (
     AccountingClassAuditItem,
     AccountingClassAuditResponse,
@@ -92,11 +91,6 @@ from backend.app.schemas.bond_analytics import (
     AssetClassRiskSummary,
     BenchmarkExcessResponse,
     BondLevelDecomposition,
-    DV01RiskResponse,
-    DV01ShockScenario,
-    DV01TenorBucket,
-    DV01TopBondItem,
-    DV01TopIssuerItem,
     BondPositionChangeItem,
     BondPositionChangesResponse,
     BondTopHoldingItem,
@@ -104,6 +98,13 @@ from backend.app.schemas.bond_analytics import (
     ConcentrationItem,
     ConcentrationMetrics,
     CreditSpreadMigrationResponse,
+    DV01ReconciliationResponse,
+    DV01ReconciliationRow,
+    DV01RiskResponse,
+    DV01ShockScenario,
+    DV01TenorBucket,
+    DV01TopBondItem,
+    DV01TopIssuerItem,
     KRDBucket,
     KRDCurveRiskResponse,
     PortfolioHeadlinesResponse,
@@ -111,6 +112,7 @@ from backend.app.schemas.bond_analytics import (
     ScenarioResult,
     SpreadScenarioResult,
 )
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
 from backend.app.services.explicit_numeric import (
     collapse_numeric_json_to_q8_strings,
@@ -130,8 +132,13 @@ from backend.app.tasks.bond_analytics_materialize import (
     RULE_VERSION,
     materialize_bond_analytics_facts,
 )
-from backend.app.tasks.yield_curve_materialize import ensure_yield_curve_inputs_on_or_before
 from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CURVE_CACHE_VERSION
+from backend.app.tasks.yield_curve_materialize import ensure_yield_curve_inputs_on_or_before
+
+logger = logging.getLogger(__name__)
+
+# Backward-compatible module exports used by service tests and legacy route callers.
+__all__ = ["STANDARD_SCENARIOS", "build_formal_result_meta"]
 
 JOB_NAME = "bond_analytics_materialize"
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
@@ -1961,6 +1968,45 @@ def get_dv01_risk(
     )
 
 
+def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") -> dict:
+    normalized_class = _normalize_dv01_accounting_class(accounting_class)
+    rows = _repo().fetch_bond_analytics_rows(
+        report_date=report_date.isoformat(),
+        accounting_class=normalized_class,
+    )
+    total_face_value = sum((safe_decimal(row.get("face_value")) for row in rows), ZERO)
+    total_market_value = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
+    total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
+    total_abs_dv01 = _total_abs_dv01(rows)
+    warnings = [] if rows else [EMPTY_WARNING]
+
+    payload = DV01ReconciliationResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "accounting_class": normalized_class,
+                "total_face_value": total_face_value,
+                "total_market_value": total_market_value,
+                "face_weighted_modified_duration": _face_weighted_modified_duration(rows),
+                "total_dv01": total_dv01,
+                "position_count": len(rows),
+                "rows": _build_dv01_reconciliation_rows(rows, total_abs_dv01=total_abs_dv01),
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": warnings,
+            },
+            DV01ReconciliationResponse,
+        )
+    )
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind="bond_analytics.dv01_reconciliation",
+        lineage=_lineage(report_date.isoformat(), rows),
+        default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
 def _normalize_dv01_accounting_class(value: str) -> str:
     normalized = str(value or "OCI").strip().upper()
     if normalized in {"", "ALL"}:
@@ -2117,6 +2163,43 @@ def _build_dv01_top_issuers(
             )
         )
     return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.issuer_name), reverse=True)[:top_n]
+
+
+def _build_dv01_reconciliation_rows(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+) -> list[DV01ReconciliationRow]:
+    ordered = sorted(
+        rows,
+        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
+        reverse=True,
+    )
+    return [
+        DV01ReconciliationRow.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": row.get("report_date"),
+                    "instrument_code": str(row.get("instrument_code") or ""),
+                    "instrument_name": _optional_text(row.get("instrument_name")),
+                    "accounting_class": str(row.get("accounting_class") or ""),
+                    "issuer_name": _optional_text(row.get("issuer_name")),
+                    "rating": _optional_text(row.get("rating")),
+                    "tenor_bucket": str(row.get("tenor_bucket") or ""),
+                    "face_value": safe_decimal(row.get("face_value")),
+                    "market_value": safe_decimal(row.get("market_value")),
+                    "modified_duration": safe_decimal(row.get("modified_duration")),
+                    "dv01": safe_decimal(row.get("dv01")),
+                    "dv01_share": _dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
+                    "source_version": str(row.get("source_version") or ""),
+                    "rule_version": str(row.get("rule_version") or ""),
+                    "trace_id": str(row.get("trace_id") or ""),
+                },
+                DV01ReconciliationRow,
+            )
+        )
+        for row in ordered
+    ]
 
 
 def _optional_text(value: object) -> str | None:

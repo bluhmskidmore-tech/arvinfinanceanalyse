@@ -9,6 +9,7 @@ import type {
   BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
+  DV01ReconciliationPayload,
   DV01RiskPayload,
   BenchmarkExcessPayload,
   AssetStructurePayload,
@@ -85,6 +86,10 @@ type BondAnalyticsCoreSurfaceMethods = {
     reportDate: string,
     options?: { accountingClass?: string; topN?: number; shockBps?: string },
   ) => Promise<ApiEnvelope<DV01RiskPayload>>;
+  getBondAnalyticsDv01Reconciliation: (
+    reportDate: string,
+    options?: { accountingClass?: string },
+  ) => Promise<ApiEnvelope<DV01ReconciliationPayload>>;
   getBondAnalyticsActionAttribution: (
     reportDate: string,
     periodType: string,
@@ -130,6 +135,7 @@ type BondAnalyticsCoreClientMethods = Pick<
   | "getBondAnalyticsBenchmarkExcess"
   | "getBondAnalyticsKrdCurveRisk"
   | "getBondAnalyticsDv01Risk"
+  | "getBondAnalyticsDv01Reconciliation"
   | "getBondAnalyticsActionAttribution"
   | "getBondAnalyticsAccountingClassAudit"
   | "getBondAnalyticsCreditSpreadMigration"
@@ -469,6 +475,32 @@ export function createDemoBondAnalyticsClient(
           tenor_buckets: [],
           top_bonds: [],
           top_issuers: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsDv01Reconciliation(
+      reportDate: string,
+      options?: { accountingClass?: string },
+    ) {
+      await delay();
+      const accountingClass = options?.accountingClass ?? "OCI";
+      const zeroYuan = formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false });
+      const zeroRatio = formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: false });
+      const zeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope<DV01ReconciliationPayload>(
+        "bond_analytics.dv01_reconciliation",
+        {
+          report_date: reportDate,
+          accounting_class: accountingClass,
+          total_face_value: zeroYuan,
+          total_market_value: zeroYuan,
+          face_weighted_modified_duration: zeroRatio,
+          total_dv01: zeroDv01,
+          position_count: 0,
+          rows: [],
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -1001,6 +1033,18 @@ export function createRealBondAnalyticsClient(
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/dv01-risk?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsDv01Reconciliation: (
+      reportDate: string,
+      options?: { accountingClass?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      params.set("accounting_class", options?.accountingClass ?? "OCI");
+      return requestJson<DV01ReconciliationPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/dv01-reconciliation?${params.toString()}`,
       );
     },
     getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>

@@ -3,16 +3,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 import sys
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from httpx import ASGITransport
 from fastapi.testclient import TestClient
+from httpx import ASGITransport
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
@@ -20,7 +23,6 @@ from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
     seed_yield_curves_for_bond_analytics_tests,
 )
-
 
 REPORT_DATE = "2026-03-31"
 
@@ -57,6 +59,10 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
     (
         "/api/bond-analytics/dv01-risk",
         {"report_date": REPORT_DATE, "accounting_class": "OCI", "top_n": "20", "shock_bps": "1,10,25,50"},
+    ),
+    (
+        "/api/bond-analytics/dv01-reconciliation",
+        {"report_date": REPORT_DATE, "accounting_class": "OCI"},
     ),
     (
         "/api/bond-analytics/credit-spread-migration",
@@ -131,7 +137,7 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 11
+    assert len(paths) == len(set(paths)) == 12
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):
@@ -202,6 +208,50 @@ def test_bond_analytics_dv01_risk_returns_numeric_payload(tmp_path, monkeypatch)
     assert result["shock_scenarios"][0]["estimated_pnl"]["unit"] == "yuan"
     assert result["tenor_buckets"][0]["dv01_share"]["unit"] == "ratio"
     assert result["top_bonds"][0]["dv01"]["unit"] == "dv01"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_reconciliation_returns_numeric_payload(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/api/bond-analytics/dv01-reconciliation",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_reconciliation"
+    result = payload["result"]
+    assert result["accounting_class"] == "OCI"
+    assert result["total_face_value"]["unit"] == "yuan"
+    assert result["total_market_value"]["unit"] == "yuan"
+    assert result["face_weighted_modified_duration"]["unit"] == "ratio"
+    assert result["total_dv01"]["unit"] == "dv01"
+    assert result["rows"][0]["face_value"]["unit"] == "yuan"
+    assert result["rows"][0]["market_value"]["unit"] == "yuan"
+    assert result["rows"][0]["modified_duration"]["unit"] == "ratio"
+    assert result["rows"][0]["dv01"]["unit"] == "dv01"
+    assert result["rows"][0]["dv01_share"]["unit"] == "ratio"
     get_settings.cache_clear()
 
 

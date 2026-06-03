@@ -5,6 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  DV01ReconciliationRow,
   DV01ShockScenario,
   DV01TenorBucket,
   DV01TopBondItem,
@@ -14,7 +15,7 @@ import type {
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { tabularNumsStyle } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
-import type { BondAnalyticsDV01AccountingClassFilter, DV01RiskResponse } from "../types";
+import type { BondAnalyticsDV01AccountingClassFilter, DV01ReconciliationResponse, DV01RiskResponse } from "../types";
 import { formatPct, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 import styles from "./DV01RiskView.module.css";
@@ -78,6 +79,16 @@ function hasDv01RiskData(data: DV01RiskResponse): boolean {
     data.top_bonds.length > 0 ||
     data.top_issuers.length > 0
   );
+}
+
+function rowMatchesSearch(row: DV01ReconciliationRow, search: string): boolean {
+  const normalized = search.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  return [row.instrument_code, row.instrument_name, row.issuer_name]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(normalized));
 }
 
 const shockColumns: ColumnsType<DV01ShockScenario> = [
@@ -244,6 +255,70 @@ const topIssuerColumns: ColumnsType<DV01TopIssuerItem> = [
   },
 ];
 
+const reconciliationColumns: ColumnsType<DV01ReconciliationRow> = [
+  { title: "债券代码", dataIndex: "instrument_code", key: "instrument_code", fixed: "left", width: 120 },
+  {
+    title: "债券名称",
+    dataIndex: "instrument_name",
+    key: "instrument_name",
+    render: nullableText,
+    width: 160,
+  },
+  { title: "会计分类", dataIndex: "accounting_class", key: "accounting_class", width: 90 },
+  {
+    title: "发行人",
+    dataIndex: "issuer_name",
+    key: "issuer_name",
+    render: nullableText,
+    width: 140,
+  },
+  { title: "评级", dataIndex: "rating", key: "rating", render: nullableText, width: 80 },
+  { title: "期限桶", dataIndex: "tenor_bucket", key: "tenor_bucket", width: 90 },
+  {
+    title: "面值",
+    dataIndex: "face_value",
+    key: "face_value",
+    render: formatMoneyYi,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "市值",
+    dataIndex: "market_value",
+    key: "market_value",
+    render: formatMoneyYi,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "修正久期",
+    dataIndex: "modified_duration",
+    key: "modified_duration",
+    render: formatDurationYears,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 110,
+  },
+  {
+    title: "DV01",
+    dataIndex: "dv01",
+    key: "dv01",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "DV01 占比",
+    dataIndex: "dv01_share",
+    key: "dv01_share",
+    render: formatPct,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 110,
+  },
+  { title: "source_version", dataIndex: "source_version", key: "source_version", width: 150 },
+  { title: "rule_version", dataIndex: "rule_version", key: "rule_version", width: 130 },
+  { title: "trace_id", dataIndex: "trace_id", key: "trace_id", width: 140 },
+];
+
 function KpiCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className={styles.kpiCard}>
@@ -253,11 +328,85 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function DV01ReconciliationPanel({
+  data,
+  isLoading,
+  isError,
+  error,
+  search,
+  onSearchChange,
+}: {
+  data: DV01ReconciliationResponse | null;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  search: string;
+  onSearchChange: (value: string) => void;
+}) {
+  const rows = data?.rows ?? [];
+  const filteredRows = rows.filter((row) => rowMatchesSearch(row, search));
+
+  return (
+    <section className={styles.panel} data-testid="dv01-reconciliation-panel">
+      <div className={styles.reconciliationHeader}>
+        <div>
+          <h3 className={styles.panelTitle}>单券明细对账</h3>
+          <div className={styles.reconciliationMeta}>
+            后端合计：面值 {formatMoneyYi(data?.total_face_value)} · 市值 {formatMoneyYi(data?.total_market_value)} · 久期{" "}
+            {formatDurationYears(data?.face_weighted_modified_duration)} · DV01 {formatNumeric(data?.total_dv01)} · 持仓{" "}
+            {formatCount(data?.position_count ?? 0)}
+          </div>
+        </div>
+        <div className={styles.reconciliationControls}>
+          <span className={styles.reconciliationCount}>
+            当前筛选 {formatCount(filteredRows.length)} / {formatCount(rows.length)}
+          </span>
+          <input
+            className={styles.searchInput}
+            data-testid="dv01-reconciliation-search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="搜索代码/名称/发行人"
+          />
+        </div>
+      </div>
+
+      {isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="DV01 明细对账加载失败"
+          description={error instanceof Error ? error.message : String(error)}
+        />
+      ) : isLoading && !data ? (
+        <div className={styles.loadingState} data-testid="dv01-reconciliation-loading">
+          <Spin />
+        </div>
+      ) : !data || rows.length === 0 ? (
+        <div className={styles.emptyState} data-testid="dv01-reconciliation-empty-state">
+          该报告日/分类暂无债券 DV01 明细数据
+        </div>
+      ) : (
+        <Table<DV01ReconciliationRow>
+          data-testid="dv01-reconciliation-table"
+          dataSource={filteredRows}
+          columns={reconciliationColumns}
+          rowKey={(row) => `${row.report_date}-${row.instrument_code}-${row.accounting_class}`}
+          pagination={{ pageSize: 20, showSizeChanger: true }}
+          size="small"
+          scroll={{ x: 1600, y: 520 }}
+        />
+      )}
+    </section>
+  );
+}
+
 export function DV01RiskView({ reportDate }: Props) {
   const client = useApiClient();
   const [accountingClass, setAccountingClass] =
     useState<BondAnalyticsDV01AccountingClassFilter>("OCI");
   const [topN, setTopN] = useState<number>(20);
+  const [reconciliationSearch, setReconciliationSearch] = useState("");
 
   const queryOptions = useMemo(
     () => ({
@@ -280,9 +429,23 @@ export function DV01RiskView({ reportDate }: Props) {
     enabled: Boolean(reportDate),
     retry: false,
   });
+  const reconciliationQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsDv01Reconciliation(
+      client.mode,
+      reportDate,
+      accountingClass,
+    ),
+    queryFn: () =>
+      client.getBondAnalyticsDv01Reconciliation(reportDate, {
+        accountingClass,
+      }),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
 
   const data = query.data?.result ?? null;
   const hasData = data ? hasDv01RiskData(data) : false;
+  const reconciliationData = reconciliationQuery.data?.result ?? null;
 
   if (!reportDate) {
     return null;
@@ -429,6 +592,15 @@ export function DV01RiskView({ reportDate }: Props) {
               </div>
             </>
           )}
+
+          <DV01ReconciliationPanel
+            data={reconciliationData}
+            isLoading={reconciliationQuery.isLoading}
+            isError={reconciliationQuery.isError}
+            error={reconciliationQuery.error}
+            search={reconciliationSearch}
+            onSearchChange={setReconciliationSearch}
+          />
         </>
       )}
     </div>
