@@ -584,6 +584,10 @@ describe("LedgerPnlPage", () => {
     expect(within(cards).getAllByText("--")).toHaveLength(4);
     expect(within(cards).queryByText("0.00 亿元")).not.toBeInTheDocument();
 
+    const panel = await screen.findByTestId("ledger-pnl-explainability-panel");
+    expect(panel).toHaveTextContent("口径状态");
+    expect(panel).toHaveTextContent("切片可比/数据待补");
+
     const detailTable = await screen.findByTestId("ledger-pnl-detail-table");
     expect(within(detailTable).getAllByText("--")).toHaveLength(3);
     expect(detailTable).toHaveTextContent("1.00 亿元");

@@ -79,7 +79,11 @@ function formatMoney(value: LedgerMoneyValue | null | undefined) {
 }
 
 function ledgerMoneyYuan(value: LedgerMoneyValue | null | undefined) {
-  const yuan = Number(String(value?.yuan ?? "").trim());
+  const rawYuan = String(value?.yuan ?? "").trim();
+  if (!rawYuan) {
+    return null;
+  }
+  const yuan = Number(rawYuan);
   return Number.isFinite(yuan) ? yuan : null;
 }
 
@@ -623,6 +627,7 @@ function buildLedgerExplainabilityModel(props: {
     (check) => check.diff !== null && Math.abs(check.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN,
   );
   const hasPendingCheck = checks.some((check) => check.diff === null || check.comparabilityReason);
+  const hasUnknownCheck = checks.some((check) => check.diff === null);
   const residualYuan =
     largestResidualCheck && (hasMaterialGap || !hasPendingCheck) ? largestResidualCheck.diff : null;
   const largestResidualStatus = largestResidualCheck
@@ -650,7 +655,11 @@ function buildLedgerExplainabilityModel(props: {
         : hasPendingCheck
           ? "解释链待校验"
           : "解释链闭合",
-    comparabilityStatus: summaryDetailComparabilityReason ? "汇总/明细口径待核" : "当前切片可比",
+    comparabilityStatus: summaryDetailComparabilityReason
+      ? "汇总/明细口径待核"
+      : hasUnknownCheck
+        ? "切片可比/数据待补"
+        : "当前切片可比",
     explanationCoveragePct,
     bottleneck,
     driverRows: buildLedgerDriverRows(props.byAccount),
